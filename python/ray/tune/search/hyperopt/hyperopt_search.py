@@ -4,7 +4,9 @@ import numpy as np
 import copy
 import logging
 from functools import partial
-import pickle
+
+# Use cloudpickle instead of pickle to make lambda funcs in HyperOpt pickleable
+from ray import cloudpickle
 
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search.sample import (
@@ -38,6 +40,13 @@ except ImportError:
 from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
+
+
+HYPEROPT_UNDEFINED_DETAILS = (
+    " This issue can also come up with HyperOpt if your search space only "
+    "contains constant variables, which is not supported by HyperOpt. In that case, "
+    "don't pass any searcher or add sample variables to the search space."
+)
 
 
 class HyperOptSearch(Searcher):
@@ -192,6 +201,14 @@ class HyperOptSearch(Searcher):
     def _setup_hyperopt(self) -> None:
         from hyperopt.fmin import generate_trials_to_calculate
 
+        if not self._space:
+            raise RuntimeError(
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"
+                )
+                + HYPEROPT_UNDEFINED_DETAILS
+            )
+
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
@@ -283,6 +300,7 @@ class HyperOptSearch(Searcher):
                 UNDEFINED_SEARCH_SPACE.format(
                     cls=self.__class__.__name__, space="space"
                 )
+                + HYPEROPT_UNDEFINED_DETAILS
             )
         if not self._metric or not self._mode:
             raise RuntimeError(
@@ -305,7 +323,7 @@ class HyperOptSearch(Searcher):
                 new_ids,
                 self.domain,
                 self._hpopt_trials,
-                self.rstate.randint(2 ** 31 - 1),
+                self.rstate.randint(2**31 - 1),
             )
             self._hpopt_trials.insert_trial_docs(new_trials)
             self._hpopt_trials.refresh()
@@ -417,18 +435,21 @@ class HyperOptSearch(Searcher):
         self.rstate.set_state(state["rstate"])
 
     def save(self, checkpoint_path: str) -> None:
+        save_object = self.__dict__.copy()
+        save_object["__rstate"] = self.rstate.get_state()
         with open(checkpoint_path, "wb") as f:
-            pickle.dump(self.get_state(), f)
+            cloudpickle.dump(save_object, f)
 
     def restore(self, checkpoint_path: str) -> None:
         with open(checkpoint_path, "rb") as f:
-            trials_object = pickle.load(f)
+            save_object = cloudpickle.load(f)
 
-        if isinstance(trials_object, tuple):
-            self._hpopt_trials = trials_object[0]
-            self.rstate.set_state(trials_object[1])
+        if "__rstate" not in save_object:
+            # Backwards compatibility
+            self.set_state(save_object)
         else:
-            self.set_state(trials_object)
+            self.rstate.set_state(save_object.pop("__rstate"))
+            self.__dict__.update(save_object)
 
     @staticmethod
     def convert_search_space(spec: Dict, prefix: str = "") -> Dict:

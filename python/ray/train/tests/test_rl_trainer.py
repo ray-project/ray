@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import pytest
 import ray
@@ -47,14 +47,6 @@ class _DummyPreprocessor(Preprocessor):
     def transform_batch(self, df):
         self._batch_transformed = True
         return df * 2
-
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)

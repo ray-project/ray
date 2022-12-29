@@ -14,15 +14,16 @@ from ray.experimental.state.api import (
 from ray._private.test_utils import wait_for_condition
 from ray._raylet import ActorID, TaskID, ObjectID
 
-if sys.version_info > (3, 7, 0):
+if sys.version_info >= (3, 8, 0):
     from unittest.mock import AsyncMock
 else:
     from asyncmock import AsyncMock
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
+from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
 from ray.tests.test_state_api import (
-    generate_task_entry,
+    generate_task_data,
+    generate_task_event,
     generate_actor_data,
     generate_object_info,
 )
@@ -63,48 +64,44 @@ async def test_api_manager_summary_tasks(state_api_manager):
 
     first_task_name = "1"
     second_task_name = "2"
-    data_source_client.get_task_info = AsyncMock()
+    data_source_client.get_all_task_info = AsyncMock()
     ids = [TaskID((f"{i}" * 24).encode()) for i in range(5)]
-    # 1: {SCHEDULED:3, RUNNING:1}, 2:{SCHEDULED: 1}
-    data_source_client.get_task_info.side_effect = [
-        GetTasksInfoReply(
-            owned_task_info_entries=[
-                generate_task_entry(
+    # 1: {PENDING_NODE_ASSIGNMENT:3, RUNNING:1}, 2:{PENDING_NODE_ASSIGNMENT: 1}
+    data_source_client.get_all_task_info.side_effect = [
+        generate_task_data(
+            [
+                generate_task_event(
                     id=ids[0].binary(),
                     func_or_class=first_task_name,
-                    state=TaskStatus.SCHEDULED,
+                    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
-                generate_task_entry(
+                generate_task_event(
                     id=ids[1].binary(),
                     func_or_class=first_task_name,
-                    state=TaskStatus.SCHEDULED,
+                    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
-                generate_task_entry(
+                generate_task_event(
                     id=ids[2].binary(),
                     func_or_class=first_task_name,
-                    state=TaskStatus.SCHEDULED,
+                    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
-            ]
-        ),
-        GetTasksInfoReply(
-            owned_task_info_entries=[
-                generate_task_entry(
+                generate_task_event(
                     id=ids[3].binary(),
                     func_or_class=first_task_name,
                     state=TaskStatus.RUNNING,
                     type=TaskType.NORMAL_TASK,
                 ),
-                generate_task_entry(
+                generate_task_event(
                     id=ids[4].binary(),
                     func_or_class=second_task_name,
-                    state=TaskStatus.SCHEDULED,
+                    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.ACTOR_TASK,
                 ),
             ]
-        ),
+        )
     ]
 
     """
@@ -116,12 +113,12 @@ async def test_api_manager_summary_tasks(state_api_manager):
     data = result.result.node_id_to_summary["cluster"]
     assert data.summary[first_task_name].type == "NORMAL_TASK"
     assert data.summary[first_task_name].func_or_class_name == first_task_name
-    assert data.summary[first_task_name].state_counts["SCHEDULED"] == 3
+    assert data.summary[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 3
     assert data.summary[first_task_name].state_counts["RUNNING"] == 1
 
     assert data.summary[second_task_name].type == "ACTOR_TASK"
     assert data.summary[second_task_name].func_or_class_name == second_task_name
-    assert data.summary[second_task_name].state_counts["SCHEDULED"] == 1
+    assert data.summary[second_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
 
     assert data.total_tasks == 4
     assert data.total_actor_tasks == 1
@@ -221,9 +218,9 @@ async def test_api_manager_summary_objects(state_api_manager):
             core_workers_stats=[
                 generate_object_info(
                     object_ids[0].binary(),
-                    size_bytes=1024 ** 2,  # 1MB,
+                    size_bytes=1024**2,  # 1MB,
                     callsite=first_callsite,
-                    task_state=TaskStatus.SCHEDULED,
+                    task_state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     local_ref_count=2,
                     attempt_number=0,
                     pid=1,
@@ -233,9 +230,9 @@ async def test_api_manager_summary_objects(state_api_manager):
                 ),
                 generate_object_info(
                     object_ids[1].binary(),
-                    size_bytes=1024 ** 2,  # 1MB,
+                    size_bytes=1024**2,  # 1MB,
                     callsite=first_callsite,
-                    task_state=TaskStatus.SCHEDULED,
+                    task_state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     local_ref_count=2,
                     pid=2,
                     ip="123",
@@ -259,7 +256,7 @@ async def test_api_manager_summary_objects(state_api_manager):
             core_workers_stats=[
                 generate_object_info(
                     object_ids[3].binary(),
-                    size_bytes=1024 ** 2 * 2,  # 2MB,
+                    size_bytes=1024**2 * 2,  # 2MB,
                     callsite=first_callsite,
                     task_state=TaskStatus.RUNNING,
                     local_ref_count=1,
@@ -270,7 +267,7 @@ async def test_api_manager_summary_objects(state_api_manager):
                 ),
                 generate_object_info(
                     object_ids[4].binary(),
-                    size_bytes=1024 ** 2,  # 1MB,
+                    size_bytes=1024**2,  # 1MB,
                     callsite=second_callsite,
                     task_state=TaskStatus.RUNNING,
                     local_ref_count=4,
@@ -295,8 +292,8 @@ async def test_api_manager_summary_objects(state_api_manager):
     assert first_summary.total_size_mb == 4.0
     assert first_summary.total_num_workers == 3
     assert first_summary.total_num_nodes == 2
-    assert first_summary.task_state_counts["SCHEDULED"] == 1
-    assert first_summary.task_state_counts["Attempt #2: SCHEDULED"] == 1
+    assert first_summary.task_state_counts["PENDING_NODE_ASSIGNMENT"] == 1
+    assert first_summary.task_state_counts["Attempt #2: PENDING_NODE_ASSIGNMENT"] == 1
     assert first_summary.task_state_counts["RUNNING"] == 2
     assert first_summary.ref_type_counts["PINNED_IN_MEMORY"] == 3
     assert first_summary.ref_type_counts["USED_BY_PENDING_TASK"] == 1
@@ -341,10 +338,7 @@ def test_task_summary(ray_start_cluster):
         assert "task_wait_for_dep" in task_summary
         assert "run_long_time_task" in task_summary
         assert (
-            task_summary["task_wait_for_dep"]["state_counts"][
-                "WAITING_FOR_DEPENDENCIES"
-            ]
-            == 2
+            task_summary["task_wait_for_dep"]["state_counts"]["PENDING_ARGS_AVAIL"] == 2
         )
         assert task_summary["run_long_time_task"]["state_counts"]["RUNNING"] == 2
         assert task_summary["task_wait_for_dep"]["type"] == "NORMAL_TASK"
@@ -457,7 +451,7 @@ def test_object_summary(monkeypatch, ray_start_cluster):
             assert return_ref_summary["total_objects"] == 2
             assert return_ref_summary["total_num_workers"] == 1
             assert return_ref_summary["total_num_nodes"] == 1
-            assert return_ref_summary["task_state_counts"]["WAITING_FOR_EXECUTION"] == 2
+            assert return_ref_summary["task_state_counts"]["SUBMITTED_TO_WORKER"] == 2
             assert return_ref_summary["ref_type_counts"]["LOCAL_REFERENCE"] == 2
 
             return True

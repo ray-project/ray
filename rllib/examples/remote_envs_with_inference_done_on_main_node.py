@@ -13,7 +13,7 @@ import argparse
 import os
 
 import ray
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -33,7 +33,7 @@ def get_cli_args():
     # general args
     parser.add_argument(
         "--framework",
-        choices=["tf", "tf2", "tfe", "torch"],
+        choices=["tf", "tf2", "torch"],
         default="tf",
         help="The DL framework specifier.",
     )
@@ -111,24 +111,29 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=6, local_mode=args.local_mode)
 
-    config = {
-        "env": "CartPole-v0",
-        # Force sub-envs to be ray.actor.ActorHandles, so we can step
-        # through them in parallel.
-        "remote_worker_envs": True,
-        # Set the number of CPUs used by the (local) worker, aka "driver"
-        # to match the number of ray remote envs.
-        "num_cpus_for_driver": args.num_envs_per_worker + 1,
-        # Use a single worker (however, with n parallelized remote envs, maybe
-        # even running on another node).
-        # Action computations will occur on the "main" (GPU?) node, while
-        # the envs run on one or more CPU node(s).
-        "num_workers": 0,
-        "num_envs_per_worker": args.num_envs_per_worker,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+    config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .framework(args.framework)
+        .rollouts(
+            # Force sub-envs to be ray.actor.ActorHandles, so we can step
+            # through them in parallel.
+            remote_worker_envs=True,
+            num_envs_per_worker=args.num_envs_per_worker,
+            # Use a single worker (however, with n parallelized remote envs, maybe
+            # even running on another node).
+            # Action computations will occur on the "main" (GPU?) node, while
+            # the envs run on one or more CPU node(s).
+            num_rollout_workers=0,
+        )
+        .resources(
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            # Set the number of CPUs used by the (local) worker, aka "driver"
+            # to match the number of ray remote envs.
+            num_cpus_for_local_worker=args.num_envs_per_worker + 1,
+        )
+    )
 
     # Run as manual training loop.
     if args.no_tune:

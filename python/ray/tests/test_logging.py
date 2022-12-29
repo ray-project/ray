@@ -1,10 +1,13 @@
+import io
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
+import logging
 from collections import Counter, defaultdict
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -76,6 +79,29 @@ def test_reopen_changed_inode(tmp_path):
     assert file_info.file_handle.tell() == orig_file_pos
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+def test_deleted_file_does_not_throw_error(tmp_path):
+    filename = tmp_path / "file"
+
+    Path(filename).touch()
+
+    file_info = LogFileInfo(
+        filename=filename,
+        size_when_last_opened=0,
+        file_position=0,
+        file_handle=None,
+        is_err_file=False,
+        job_id=None,
+        worker_pid=None,
+    )
+
+    file_info.reopen_if_necessary()
+
+    os.remove(filename)
+
+    file_info.reopen_if_necessary()
+
+
 def test_log_rotation_config(ray_start_cluster, monkeypatch):
     cluster = ray_start_cluster
     max_bytes = 100
@@ -95,6 +121,63 @@ def test_log_rotation_config(ray_start_cluster, monkeypatch):
     config = worker_node.logging_config
     assert config["log_rotation_max_bytes"] == 0
     assert config["log_rotation_backup_count"] == 0
+
+
+def test_log_file_exists(shutdown_only):
+    """Verify all log files exist as specified in
+    https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure # noqa
+    """
+    ray.init(num_cpus=1)
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    log_rotating_component = [
+        (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
+        (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
+        (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
+        (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
+        (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),
+        (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER, [".log"]),
+        # Below components are not log rotating now.
+        (ray_constants.PROCESS_TYPE_RAYLET, [".out", ".err"]),
+        (ray_constants.PROCESS_TYPE_GCS_SERVER, [".out", ".err"]),
+        (ray_constants.PROCESS_TYPE_WORKER, [".out", ".err"]),
+    ]
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        for i in range(10):
+            print(f"test {i}")
+
+    # Create a runtime env to make sure dashboard agent is alive.
+    ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
+
+    paths = list(log_dir_path.iterdir())
+
+    def component_and_suffix_exists(component, paths):
+        component, suffixes = component
+        for path in paths:
+            filename = path.stem
+            suffix = path.suffix
+            if component in filename:
+                # core-worker log also contains "worker keyword". We ignore this case.
+                if (
+                    component == ray_constants.PROCESS_TYPE_WORKER
+                    and ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER in filename
+                ):
+                    continue
+                if suffix in suffixes:
+                    return True
+                else:
+                    # unexpected suffix.
+                    return False
+
+        return False
+
+    for component in log_rotating_component:
+        assert component_and_suffix_exists(component, paths), (component, paths)
 
 
 def test_log_rotation(shutdown_only, monkeypatch):
@@ -706,6 +789,45 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     assert not log_monitor.should_update_filenames(current)
     mock_timer.return_value = LOG_NAME_UPDATE_INTERVAL_S + 0.1
     assert log_monitor.should_update_filenames(current)
+
+
+def test_repr_inheritance():
+    """Tests that a subclass's repr is used in logging."""
+    logger = logging.getLogger(__name__)
+
+    class MyClass:
+        def __repr__(self) -> str:
+            return "ThisIsMyCustomActorName"
+
+        def do(self):
+            logger.warning("text")
+
+    class MySubclass(MyClass):
+        pass
+
+    my_class_remote = ray.remote(MyClass)
+    my_subclass_remote = ray.remote(MySubclass)
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+        my_class_actor = my_class_remote.remote()
+        ray.get(my_class_actor.do.remote())
+        # Wait a little to be sure that we have captured the output
+        time.sleep(1)
+        print("", flush=True)
+        print("", flush=True, file=sys.stderr)
+        f = f.getvalue()
+        assert "ThisIsMyCustomActorName" in f and "MySubclass" not in f
+
+    f2 = io.StringIO()
+    with redirect_stderr(f2):
+        my_subclass_actor = my_subclass_remote.remote()
+        ray.get(my_subclass_actor.do.remote())
+        # Wait a little to be sure that we have captured the output
+        time.sleep(1)
+        print("", flush=True, file=sys.stderr)
+        f2 = f2.getvalue()
+        assert "ThisIsMyCustomActorName" in f2 and "MySubclass" not in f2
 
 
 if __name__ == "__main__":

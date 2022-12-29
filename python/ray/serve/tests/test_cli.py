@@ -3,6 +3,7 @@ import signal
 import subprocess
 import sys
 import time
+import json
 from tempfile import NamedTemporaryFile
 from typing import List
 
@@ -12,6 +13,7 @@ import yaml
 
 import ray
 from ray import serve
+from ray.experimental.state.api import list_actors
 from ray._private.test_utils import wait_for_condition
 from ray.serve.schema import ServeApplicationSchema, ServeStatusSchema
 from ray.serve._private.constants import SERVE_NAMESPACE
@@ -33,9 +35,7 @@ def ping_endpoint(endpoint: str, params: str = ""):
 def assert_deployments_live(names: List[str]):
     """Checks if all deployments named in names have at least 1 living replica."""
 
-    running_actor_names = [
-        actor["name"] for actor in ray.util.list_named_actors(all_namespaces=True)
-    ]
+    running_actor_names = [actor["name"] for actor in list_actors()]
 
     all_deployments_live, nonliving_deployment = True, ""
     for deployment_name in names:
@@ -333,7 +333,8 @@ parrot_node = parrot.bind()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_application(ray_start_stop):
+@pytest.mark.parametrize("address", ["auto", "http://127.0.0.1:8265"])
+def test_run_application(ray_start_stop, address):
     """Deploys valid config file and import path via `serve run`."""
 
     # Deploy via config file
@@ -342,7 +343,7 @@ def test_run_application(ray_start_stop):
     )
 
     print('Running config file "arithmetic.yaml".')
-    p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
+    p = subprocess.Popen(["serve", "run", f"--address={address}", config_file_name])
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json() == 1,
         timeout=15,
@@ -362,7 +363,7 @@ def test_run_application(ray_start_stop):
     print('Running node at import path "ray.serve.tests.test_cli.parrot_node".')
     # Deploy via import path
     p = subprocess.Popen(
-        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot_node"]
+        ["serve", "run", f"--address={address}", "ray.serve.tests.test_cli.parrot_node"]
     )
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk"
@@ -393,7 +394,8 @@ molly_macaw = Macaw.bind("green", name="Molly")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_deployment_node(ray_start_stop):
+@pytest.mark.parametrize("address", ["auto", "http://127.0.0.1:8265"])
+def test_run_deployment_node(ray_start_stop, address):
     """Test `serve run` with bound args and kwargs."""
 
     # Deploy via import path
@@ -401,11 +403,11 @@ def test_run_deployment_node(ray_start_stop):
         [
             "serve",
             "run",
-            "--address=auto",
+            f"--address={address}",
             "ray.serve.tests.test_cli.molly_macaw",
         ]
     )
-    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=15)
     p.send_signal(signal.SIGINT)
     p.wait()
     assert ping_endpoint("Macaw") == CONNECTION_ERROR_MSG
@@ -421,7 +423,8 @@ metal_detector_node = MetalDetector.bind()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_runtime_env(ray_start_stop):
+@pytest.mark.parametrize("address", ["auto", "http://127.0.0.1:8265"])
+def test_run_runtime_env(ray_start_stop, address):
     """Test `serve run` with runtime_env passed in."""
 
     # With import path
@@ -429,14 +432,14 @@ def test_run_runtime_env(ray_start_stop):
         [
             "serve",
             "run",
-            "--address=auto",
+            f"--address={address}",
             "ray.serve.tests.test_cli.metal_detector_node",
             "--runtime-env-json",
             ('{"env_vars": {"buried_item": "lucky coin"} }'),
         ]
     )
     wait_for_condition(
-        lambda: ping_endpoint("MetalDetector") == "lucky coin", timeout=10
+        lambda: ping_endpoint("MetalDetector") == "lucky coin", timeout=15
     )
     p.send_signal(signal.SIGINT)
     p.wait()
@@ -446,7 +449,7 @@ def test_run_runtime_env(ray_start_stop):
         [
             "serve",
             "run",
-            "--address=auto",
+            f"--address={address}",
             os.path.join(
                 os.path.dirname(__file__),
                 "test_config_files",
@@ -468,6 +471,45 @@ def test_run_runtime_env(ray_start_stop):
     wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
     p.send_signal(signal.SIGINT)
     p.wait()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_port1(ray_start_stop):
+    """Test that `serve run` defaults to port 8000."""
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
+    )
+    subprocess.Popen(["serve", "run", config_file_name])
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/").text == "wonderful world",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_port2(ray_start_stop):
+    """If config file specifies a port, the default port value should not be used."""
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+    )
+    subprocess.Popen(["serve", "run", config_file_name])
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/").text == "wonderful world",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_port3(ray_start_stop):
+    """If port is specified as argument to `serve run`, it should override config."""
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+    )
+    subprocess.Popen(["serve", "run", "--port=8010", config_file_name])
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8010/").text == "wonderful world",
+        timeout=15,
+    )
 
 
 @serve.deployment
@@ -517,6 +559,47 @@ def test_build(ray_start_stop, node):
         print("Delete succeeded! Node is not reachable over HTTP.")
 
 
+k8sFNode = global_f.options(
+    num_replicas=2, ray_actor_options={"num_cpus": 2, "num_gpus": 1}
+).bind()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_build_kubernetes_flag():
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+        print("Building k8sFNode.")
+        subprocess.check_output(
+            [
+                "serve",
+                "build",
+                "ray.serve.tests.test_cli.k8sFNode",
+                "-o",
+                tmp.name,
+                "-k",
+            ]
+        )
+        print("Build succeeded!")
+
+        tmp.seek(0)
+        config = yaml.safe_load(tmp.read())
+        assert config == {
+            "importPath": "ray.serve.tests.test_cli.k8sFNode",
+            "runtimeEnv": json.dumps({}),
+            "host": "0.0.0.0",
+            "port": 8000,
+            "deployments": [
+                {
+                    "name": "global_f",
+                    "numReplicas": 2,
+                    "rayActorOptions": {
+                        "numCpus": 2.0,
+                        "numGpus": 1.0,
+                    },
+                },
+            ],
+        }
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("use_command", [True, False])
 def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
@@ -531,7 +614,8 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
     serve.start(detached=True)
     wait_for_condition(
-        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == 4, timeout=15
+        lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
+        timeout=15,
     )
 
     # Kill controller
@@ -551,7 +635,8 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     # Restore testing controller
     serve.start(detached=True)
     wait_for_condition(
-        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == 4, timeout=15
+        lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
+        timeout=15,
     )
     serve.shutdown()
     ray.shutdown()

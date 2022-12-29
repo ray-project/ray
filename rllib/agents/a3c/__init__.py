@@ -18,5 +18,5 @@ __all__ = [
 ]
 
 deprecation_warning(
-    "ray.rllib.agents.a3c", "ray.rllib.algorithms.[a3c|a2c]", error=False
+    "ray.rllib.agents.a3c", "ray.rllib.algorithms.[a3c|a2c]", error=True
 )

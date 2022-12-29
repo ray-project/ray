@@ -108,20 +108,23 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                                                       jint startupToken,
                                                       jint runtimeEnvHash) {
   auto task_execution_callback =
-      [](TaskType task_type,
+      [](const rpc::Address &caller_address,
+         TaskType task_type,
          const std::string task_name,
          const RayFunction &ray_function,
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<RayObject>> &args,
          const std::vector<rpc::ObjectReference> &arg_refs,
-         const std::vector<ObjectID> &return_ids,
          const std::string &debugger_breakpoint,
          const std::string &serialized_retry_exception_allowlist,
-         std::vector<std::shared_ptr<RayObject>> *results,
+         std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
+         std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
          std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
          bool *is_retryable_error,
+         bool *is_application_error,
          const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-         const std::string name_of_concurrency_group_to_execute) {
+         const std::string name_of_concurrency_group_to_execute,
+         bool is_reattempt) {
         // These 2 parameters are used for Python only, and Java worker
         // will not use them.
         RAY_UNUSED(defined_concurrency_groups);
@@ -168,6 +171,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
         // Check whether the exception is `IntentionalSystemExit`.
         jthrowable throwable = env->ExceptionOccurred();
         if (throwable) {
+          *is_application_error = true;
           Status status_to_return = Status::OK();
           if (env->IsInstanceOf(throwable,
                                 java_ray_intentional_system_exit_exception_class)) {
@@ -185,7 +189,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
 
         int64_t task_output_inlined_bytes = 0;
         // Process return objects.
-        if (!return_ids.empty()) {
+        if (!returns->empty()) {
           std::vector<std::shared_ptr<RayObject>> return_objects;
           JavaListToNativeVector<std::shared_ptr<RayObject>>(
               env,
@@ -194,9 +198,8 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
               [](JNIEnv *env, jobject java_native_ray_object) {
                 return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
               });
-          results->resize(return_ids.size(), nullptr);
           for (size_t i = 0; i < return_objects.size(); i++) {
-            auto &result_id = return_ids[i];
+            auto &result_id = (*returns)[i].first;
             size_t data_size =
                 return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0;
             auto &metadata = return_objects[i]->GetMetadata();
@@ -204,7 +207,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
             for (const auto &ref : return_objects[i]->GetNestedRefs()) {
               contained_object_ids.push_back(ObjectID::FromBinary(ref.object_id()));
             }
-            auto result_ptr = &(*results)[0];
+            auto result_ptr = &(*returns)[i].second;
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
                 result_id,
@@ -224,8 +227,8 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
               }
             }
 
-            RAY_CHECK_OK(
-                CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
+            RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+                result_id, result, ObjectID::Nil()));
           }
         }
 

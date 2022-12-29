@@ -19,8 +19,10 @@ from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
+    check_off_policyness,
     check_train_results,
     framework_iterator,
+    check_inference_w_connectors,
 )
 
 
@@ -35,7 +37,8 @@ FAKE_BATCH = SampleBatch(
         SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
         SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
         SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-        SampleBatch.DONES: np.array([False, False, True]),
+        SampleBatch.TERMINATEDS: np.array([False, False, True]),
+        SampleBatch.TRUNCATEDS: np.array([False, False, False]),
         SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
         SampleBatch.ACTION_DIST_INPUTS: np.array(
             [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
@@ -89,8 +92,8 @@ class TestPPO(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_ppo_compilation_and_schedule_mixins(self):
-        """Test whether PPO can be built with all frameworks."""
+    def test_ppo_compilation_w_connectors(self):
+        """Test whether PPO can be built with all frameworks w/ connectors."""
 
         # Build a PPOConfig object.
         config = (
@@ -103,13 +106,6 @@ class TestPPO(unittest.TestCase):
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
-            )
-            .rollouts(
-                num_rollout_workers=1,
-                # Test with compression.
-                compress_observations=True,
-            )
-            .training(
                 train_batch_size=128,
                 model=dict(
                     # Settings in case we use an LSTM.
@@ -117,15 +113,21 @@ class TestPPO(unittest.TestCase):
                     max_seq_len=20,
                 ),
             )
+            .rollouts(
+                num_rollout_workers=1,
+                # Test with compression.
+                compress_observations=True,
+                enable_connectors=True,
+            )
             .callbacks(MyCallbacks)
         )  # For checking lr-schedule correctness.
 
         num_iterations = 2
 
         for fw in framework_iterator(config, with_eager_tracing=True):
-            for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
+            for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
-                for lstm in [False]:
+                for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(
@@ -135,9 +137,9 @@ class TestPPO(unittest.TestCase):
                         )
                     )
 
-                    trainer = config.build(env=env)
-                    policy = trainer.get_policy()
-                    entropy_coeff = trainer.get_policy().entropy_coeff
+                    algo = config.build(env=env)
+                    policy = algo.get_policy()
+                    entropy_coeff = algo.get_policy().entropy_coeff
                     lr = policy.cur_lr
                     if fw == "tf":
                         entropy_coeff, lr = policy.get_session().run(
@@ -147,20 +149,91 @@ class TestPPO(unittest.TestCase):
                     check(lr, config.lr)
 
                     for i in range(num_iterations):
-                        results = trainer.train()
+                        results = algo.train()
                         check_train_results(results)
                         print(results)
 
-                    check_compute_single_action(
-                        trainer, include_prev_action_reward=True, include_state=lstm
+                    check_inference_w_connectors(policy, env_name=env)
+                    algo.stop()
+
+    def test_ppo_compilation_and_schedule_mixins(self):
+        """Test whether PPO can be built with all frameworks."""
+
+        # Build a PPOConfig object.
+        config = (
+            ppo.PPOConfig()
+            .training(
+                # Setup lr schedule for testing.
+                lr_schedule=[[0, 5e-5], [256, 0.0]],
+                # Set entropy_coeff to a faulty value to proof that it'll get
+                # overridden by the schedule below (which is expected).
+                entropy_coeff=100.0,
+                entropy_coeff_schedule=[[0, 0.1], [512, 0.0]],
+                train_batch_size=256,
+                sgd_minibatch_size=128,
+                num_sgd_iter=2,
+                model=dict(
+                    # Settings in case we use an LSTM.
+                    lstm_cell_size=10,
+                    max_seq_len=20,
+                ),
+            )
+            .rollouts(
+                num_rollout_workers=1,
+                # Test with compression.
+                compress_observations=True,
+            )
+            .callbacks(MyCallbacks)
+        )  # For checking lr-schedule correctness.
+
+        num_iterations = 2
+
+        for fw in framework_iterator(config, with_eager_tracing=True):
+            for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
+                print("Env={}".format(env))
+                for lstm in [False, True]:
+                    print("LSTM={}".format(lstm))
+                    config.training(
+                        model=dict(
+                            use_lstm=lstm,
+                            lstm_use_prev_action=lstm,
+                            lstm_use_prev_reward=lstm,
+                        )
                     )
-                    trainer.stop()
+
+                    algo = config.build(env=env)
+                    policy = algo.get_policy()
+                    entropy_coeff = algo.get_policy().entropy_coeff
+                    lr = policy.cur_lr
+                    if fw == "tf":
+                        entropy_coeff, lr = policy.get_session().run(
+                            [entropy_coeff, lr]
+                        )
+                    check(entropy_coeff, 0.1)
+                    check(lr, config.lr)
+
+                    for i in range(num_iterations):
+                        results = algo.train()
+                        print(results)
+                        check_train_results(results)
+                        # 2 sgd iters per update, 2 minibatches per trainbatch -> 4x
+                        # avg(0.0, 1.0, 2.0, 3.0) -> 1.5
+                        off_policy_ness = check_off_policyness(
+                            results, lower_limit=1.5, upper_limit=1.5
+                        )
+                        print(f"off-policy'ness={off_policy_ness}")
+
+                    check_compute_single_action(
+                        algo, include_prev_action_reward=True, include_state=lstm
+                    )
+                    algo.stop()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
             .environment(
+                "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
             )
             .rollouts(
@@ -173,7 +246,7 @@ class TestPPO(unittest.TestCase):
         # Test against all frameworks.
         for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
-            trainer = ppo.PPO(config=config, env="FrozenLake-v1")
+            trainer = config.build()
             # explore=False, always expect the same (deterministic) action.
             a_ = trainer.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
@@ -209,6 +282,7 @@ class TestPPO(unittest.TestCase):
         """Tests the free log std option works."""
         config = (
             ppo.PPOConfig()
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -224,7 +298,7 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
+            trainer = config.build()
             policy = trainer.get_policy()
 
             # Check the free log std var is created.
@@ -263,19 +337,11 @@ class TestPPO(unittest.TestCase):
             assert post_std != 0.0, post_std
             trainer.stop()
 
-    def test_ppo_legacy_config(self):
-        """Tests, whether the old PPO config dict is still functional."""
-        ppo_config = ppo.DEFAULT_CONFIG
-        # Expect warning.
-        print(f"Accessing learning-rate from legacy config dict: {ppo_config['lr']}")
-        # Build Algorithm.
-        ppo_trainer = ppo.PPO(config=ppo_config, env="CartPole-v1")
-        print(ppo_trainer.train())
-
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""
         config = (
             ppo.PPOConfig()
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
             )
@@ -290,7 +356,7 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = ppo.PPO(config=config, env="CartPole-v0")
+            trainer = config.build()
             policy = trainer.get_policy()
 
             # Check no free log std var by default.
@@ -316,7 +382,7 @@ class TestPPO(unittest.TestCase):
             check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
 
             # Calculate actual PPO loss.
-            if fw in ["tf2", "tfe"]:
+            if fw == "tf2":
                 PPOTF2Policy.loss(policy, policy.model, Categorical, train_batch)
             elif fw == "torch":
                 PPOTorchPolicy.loss(

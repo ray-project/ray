@@ -33,6 +33,7 @@ import subprocess
 import requests
 
 import ray
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.placement_group import placement_group, remove_placement_group
 
 from ray import serve
@@ -108,7 +109,11 @@ def run_wrk():
 
 results = ray.get(
     [
-        run_wrk.options(placement_group=pg, placement_group_bundle_index=i).remote()
+        run_wrk.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=i
+            )
+        ).remote()
         for i in range(expected_num_nodes)
     ]
 )

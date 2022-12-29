@@ -7,6 +7,7 @@ import logging
 import os
 import random
 from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
+from ray._private.utils import get_or_create_event_loop
 
 from ray.serve._private.common import ReplicaName
 from ray.serve.generated.serve_pb2 import (
@@ -58,6 +59,10 @@ class UpdatedObject:
 #     do_something(updated_object)
 UpdateStateCallable = Callable[[Any], None]
 KeyType = Union[str, LongPollNamespace, Tuple[LongPollNamespace, str]]
+
+
+class LongPollState(Enum):
+    TIME_OUT = auto()
 
 
 class LongPollClient:
@@ -146,16 +151,17 @@ class LongPollClient:
             return
 
         if isinstance(updates, (ray.exceptions.RayTaskError)):
-            if isinstance(updates.as_instanceof_cause(), (asyncio.TimeoutError)):
-                logger.debug("LongPollClient polling timed out. Retrying.")
-                self._schedule_to_event_loop(self._reset)
-            else:
-                # Some error happened in the controller. It could be a bug or
-                # some undesired state.
-                logger.error("LongPollHost errored\n" + updates.traceback_str)
-                # We must call this in event loop so it works in Ray Client.
-                # See https://github.com/ray-project/ray/issues/20971
-                self._schedule_to_event_loop(self._poll_next)
+            # Some error happened in the controller. It could be a bug or
+            # some undesired state.
+            logger.error("LongPollHost errored\n" + updates.traceback_str)
+            # We must call this in event loop so it works in Ray Client.
+            # See https://github.com/ray-project/ray/issues/20971
+            self._schedule_to_event_loop(self._poll_next)
+            return
+
+        if updates == LongPollState.TIME_OUT:
+            logger.debug("LongPollClient polling timed out. Retrying.")
+            self._schedule_to_event_loop(self._reset)
             return
 
         logger.debug(
@@ -205,7 +211,7 @@ class LongPollHost:
     async def listen_for_change(
         self,
         keys_to_snapshot_ids: Dict[KeyType, int],
-    ) -> Dict[KeyType, UpdatedObject]:
+    ) -> Union[LongPollState, Dict[KeyType, UpdatedObject]]:
         """Listen for changed objects.
 
         This method will returns a dictionary of updated objects. It returns
@@ -230,7 +236,7 @@ class LongPollHost:
         for key in watched_keys:
             # Create a new asyncio event for this key
             event = asyncio.Event()
-            task = asyncio.get_event_loop().create_task(event.wait())
+            task = get_or_create_event_loop().create_task(event.wait())
             async_task_to_watched_keys[task] = key
 
             # Make sure future caller of notify_changed will unblock this
@@ -246,7 +252,7 @@ class LongPollHost:
         [task.cancel() for task in not_done]
 
         if len(done) == 0:
-            raise asyncio.TimeoutError("Polling request timed out.")
+            return LongPollState.TIME_OUT
         else:
             updated_object_key: str = async_task_to_watched_keys[done.pop()]
             return {

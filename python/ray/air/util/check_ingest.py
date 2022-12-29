@@ -163,8 +163,8 @@ if __name__ == "__main__":
 
     # An example preprocessor chain that just scales all values by 4.0 in two stages.
     preprocessor = Chain(
-        BatchMapper(lambda df: df * 2),
-        BatchMapper(lambda df: df * 2),
+        BatchMapper(lambda df: df * 2, batch_format="pandas"),
+        BatchMapper(lambda df: df * 2, batch_format="pandas"),
     )
 
     # Setup the dummy trainer that prints ingest stats.

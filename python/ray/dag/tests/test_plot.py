@@ -54,12 +54,12 @@ def test_basic_dag_without_names_plot():
 
     graph = ray.dag.vis_utils._dag_to_dot(dag)
     to_string = graph.to_string()
-    assert "a_5 -> a_4" in to_string
-    assert "a_2 -> a_1" in to_string
-    assert "a_3 -> a_1" in to_string
-    assert "a_4 -> a" in to_string
-    assert "a_6 -> a" in to_string
-    assert "a_1 -> a" in to_string
+    assert "a -> a_2" in to_string
+    assert "a_1 -> a_2" in to_string
+    assert "a_3 -> a_4" in to_string
+    assert "a_2 -> a_6" in to_string
+    assert "a_4 -> a_6" in to_string
+    assert "a_5 -> a_6" in to_string
 
 
 if __name__ == "__main__":

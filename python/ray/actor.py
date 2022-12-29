@@ -544,8 +544,9 @@ class ActorClass:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.accelerators` for accelerator types.
-            memory: The heap memory request for this task/actor.
+                See `ray.util.accelerators` for accelerator types.
+            memory: The heap memory request in bytes for this task/actor,
+                rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
             max_restarts: This specifies the maximum
                 number of times that the actor should be restarted when it dies
@@ -584,8 +585,7 @@ class ActorClass:
                 as a global object independent of the creator.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children. See
-                :ref:`runtime-environments` for detailed documentation. This API is
-                in beta and may change before becoming stable.
+                :ref:`runtime-environments` for detailed documentation.
             scheduling_strategy: Strategy about how to
                 schedule a remote function or actor. Possible values are
                 None: ray will figure out the scheduling strategy to use, it
@@ -596,7 +596,9 @@ class ActorClass:
                 "DEFAULT": default hybrid scheduling;
                 "SPREAD": best effort spread scheduling;
                 `PlacementGroupSchedulingStrategy`:
-                placement group based scheduling.
+                placement group based scheduling;
+                `NodeAffinitySchedulingStrategy`:
+                node id based affinity scheduling.
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
@@ -1160,6 +1162,12 @@ class ActorHandle:
             assert (
                 not self._ray_is_cross_language
             ), "Cross language remote actor method cannot be executed locally."
+
+        if num_returns == "dynamic":
+            # TODO(swang): Support dynamic generators for actors.
+            raise NotImplementedError(
+                'num_returns="dynamic" not yet supported for actor tasks.'
+            )
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,

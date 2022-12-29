@@ -3,8 +3,8 @@ import json
 import os
 
 # For compatibility under py2 to consider unicode as str
+from ray.air import CheckpointConfig
 from ray.tune.utils.serialization import TuneFunctionEncoder
-from six import string_types
 
 from ray.tune import TuneError
 from ray.tune.experiment import Trial
@@ -155,7 +155,7 @@ def _to_argv(config):
             continue
         if not isinstance(v, bool) or v:  # for argparse flags
             argv.append("--{}".format(k.replace("_", "-")))
-        if isinstance(v, string_types):
+        if isinstance(v, str):
             argv.append(v)
         elif isinstance(v, bool):
             pass
@@ -208,16 +208,14 @@ def _create_trial_from_spec(
             except (TuneError, ValueError) as exc:
                 raise TuneError("Error parsing resources_per_trial", resources) from exc
 
-    remote_checkpoint_dir = spec.get("remote_checkpoint_dir")
+    experiment_dir_name = spec.get("experiment_dir_name")
 
     sync_config = spec.get("sync_config", SyncConfig())
     if (
-        sync_config.syncer is None
-        or sync_config.syncer == "auto"
-        or isinstance(sync_config.syncer, Syncer)
+        sync_config.syncer is not None
+        and sync_config.syncer != "auto"
+        and not isinstance(sync_config.syncer, Syncer)
     ):
-        custom_syncer = sync_config.syncer
-    else:
         raise ValueError(
             f"Unknown syncer type passed in SyncConfig: {type(sync_config.syncer)}. "
             f"Note that custom sync functions and templates have been deprecated. "
@@ -225,6 +223,8 @@ def _create_trial_from_spec(
             f"Please leave a comment on GitHub if you run into any issues with this: "
             f"https://github.com/ray-project/ray/issues"
         )
+
+    checkpoint_config = spec.get("checkpoint_config", CheckpointConfig())
 
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
@@ -235,13 +235,9 @@ def _create_trial_from_spec(
         local_dir=os.path.join(spec["local_dir"], output_path),
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
-        remote_checkpoint_dir=remote_checkpoint_dir,
-        custom_syncer=custom_syncer,
-        checkpoint_freq=args.checkpoint_freq,
-        checkpoint_at_end=args.checkpoint_at_end,
-        sync_on_checkpoint=sync_config.sync_on_checkpoint,
-        keep_checkpoints_num=args.keep_checkpoints_num,
-        checkpoint_score_attr=args.checkpoint_score_attr,
+        experiment_dir_name=experiment_dir_name,
+        sync_config=sync_config,
+        checkpoint_config=checkpoint_config,
         export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
         restore_path=spec.get("restore"),

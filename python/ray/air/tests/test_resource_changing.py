@@ -55,6 +55,8 @@ class AssertingDataParallelTrainer(DataParallelTrainer):
         scaling_config = self._validate_scaling_config(self.scaling_config)
         pgf = scaling_config.as_placement_group_factory()
         tr = session.get_trial_resources()
+        # Ensure that strategy attribute didn't get dropped.
+        assert pgf.strategy == "SPREAD"
         assert pgf == tr, (pgf, tr)
         return super().training_loop()
 
@@ -65,6 +67,8 @@ class AssertingXGBoostTrainer(XGBoostTrainer):
         scaling_config = self._validate_scaling_config(self.scaling_config)
         pgf = scaling_config.as_placement_group_factory()
         tr = session.get_trial_resources()
+        # Ensure that strategy attribute didn't get dropped.
+        assert pgf.strategy == "SPREAD"
         assert pgf == tr, (scaling_config, pgf, tr)
         return super()._ray_params
 
@@ -72,7 +76,10 @@ class AssertingXGBoostTrainer(XGBoostTrainer):
 def test_data_parallel_trainer(ray_start_8_cpus):
     num_workers = 2
     trainer = AssertingDataParallelTrainer(
-        train_fn, scaling_config=ScalingConfig(num_workers=num_workers)
+        train_fn,
+        scaling_config=ScalingConfig(
+            num_workers=num_workers, placement_strategy="SPREAD"
+        ),
     )
     tuner = Tuner(
         trainer,
@@ -108,7 +115,7 @@ def test_gbdt_trainer(ray_start_8_cpus):
     trainer = AssertingXGBoostTrainer(
         datasets={TRAIN_DATASET_KEY: train_ds},
         label_column="target",
-        scaling_config=ScalingConfig(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=2, placement_strategy="SPREAD"),
         params={
             "objective": "binary:logistic",
             "eval_metric": ["logloss"],

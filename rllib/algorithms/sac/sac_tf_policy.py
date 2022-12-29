@@ -3,16 +3,14 @@ TensorFlow policy class used for SAC.
 """
 
 import copy
-import gym
-import numpy as np
-from gym.spaces import Box, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete
 from functools import partial
 import logging
 from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     postprocess_nstep_and_prio,
     PRIO_WEIGHTS,
@@ -32,8 +30,8 @@ from ray.rllib.models.tf.tf_action_dist import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_mixins import TargetNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -307,7 +305,7 @@ def sac_actor_critic_loss(
         # Discrete case: "Best" means weighted by the policy (prob) outputs.
         q_tp1_best = tf.reduce_sum(tf.multiply(policy_tp1, q_tp1), axis=-1)
         q_tp1_best_masked = (
-            1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+            1.0 - tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
         ) * q_tp1_best
     # Continuous actions case.
     else:
@@ -364,7 +362,7 @@ def sac_actor_critic_loss(
 
         q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
         q_tp1_best_masked = (
-            1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+            1.0 - tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
         ) * q_tp1_best
 
     # Compute RHS of bellman equation for the Q-loss (critic(s)).
@@ -459,7 +457,7 @@ def compute_and_clip_gradients(
     """
     # Eager: Use GradientTape (which is a property of the `optimizer` object
     # (an OptimizerWrapper): see rllib/policy/eager_tf_policy.py).
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
         actor_grads_and_vars = list(
@@ -565,7 +563,7 @@ def apply_gradients(
         critic_apply_ops = [policy._critic_optimizer[0].apply_gradients(cgrads)]
 
     # Eager mode -> Just apply and return None.
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         policy._alpha_optimizer.apply_gradients(policy._alpha_grads_and_vars)
         return
     # Tf static graph -> Return op.
@@ -609,7 +607,7 @@ class ActorCriticOptimizerMixin:
 
     def __init__(self, config):
         # Eager mode.
-        if config["framework"] in ["tf2", "tfe"]:
+        if config["framework"] == "tf2":
             self.global_step = get_variable(0, tf_name="global_step")
             self._actor_optimizer = tf.keras.optimizers.Adam(
                 learning_rate=config["optimization"]["actor_learning_rate"]
@@ -674,7 +672,7 @@ class ComputeTDErrorMixin:
     def __init__(self, loss_fn):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             # Do forward pass on loss to update td errors attribute
             # (one TD-error value per item in batch to update PR weights).
@@ -687,7 +685,7 @@ class ComputeTDErrorMixin:
                     SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
                     SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
                     SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
-                    SampleBatch.DONES: tf.convert_to_tensor(done_mask),
+                    SampleBatch.TERMINATEDS: tf.convert_to_tensor(terminateds_mask),
                     PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
                 },
             )
@@ -695,39 +693,6 @@ class ComputeTDErrorMixin:
             return self.td_error
 
         self.compute_td_error = compute_td_error
-
-
-# TODO: Unify with DDPG's TargetNetworkMixin when SAC policy subclasses PolicyV2
-class TargetNetworkMixin:
-    def __init__(self, config: AlgorithmConfigDict):
-        @make_tf_callable(self.get_session())
-        def update_target_fn(tau):
-            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
-            update_target_expr = []
-            model_vars = self.model.trainable_variables()
-            target_model_vars = self.target_model.trainable_variables()
-            assert len(model_vars) == len(target_model_vars), (
-                model_vars,
-                target_model_vars,
-            )
-            for var, var_target in zip(model_vars, target_model_vars):
-                update_target_expr.append(
-                    var_target.assign(tau * var + (1.0 - tau) * var_target)
-                )
-                logger.debug("Update target op {}".format(var_target))
-            return tf.group(*update_target_expr)
-
-        # Hard initial update.
-        self._do_update = update_target_fn
-        self.update_target(tau=1.0)
-
-    # Support both hard and soft sync.
-    def update_target(self, tau: int = None) -> None:
-        self._do_update(np.float32(tau or self.config.get("tau")))
-
-    @override(TFPolicy)
-    def variables(self) -> List[TensorType]:
-        return self.model.variables() + self.target_model.variables()
 
 
 def setup_mid_mixins(
@@ -771,7 +736,7 @@ def setup_late_mixins(
         action_space (gym.spaces.Space): The Policy's action space.
         config: The Policy's config.
     """
-    TargetNetworkMixin.__init__(policy, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 def validate_spaces(

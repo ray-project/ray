@@ -62,7 +62,7 @@ class TestCQL(unittest.TestCase):
                 always_attach_evaluation_results=True,
                 evaluation_interval=2,
                 evaluation_duration=10,
-                evaluation_config={"input": "sampler"},
+                evaluation_config=cql.CQLConfig.overrides(input_="sampler"),
                 evaluation_parallel_to_training=False,
                 evaluation_num_workers=2,
             )
@@ -73,20 +73,19 @@ class TestCQL(unittest.TestCase):
 
         # Test for tf/torch frameworks.
         for fw in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build()
+            algo = config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
                 eval_results = results["evaluation"]
                 print(
-                    f"iter={trainer.iteration} "
-                    f"R={eval_results['episode_reward_mean']}"
+                    f"iter={algo.iteration} " f"R={eval_results['episode_reward_mean']}"
                 )
-            check_compute_single_action(trainer)
+            check_compute_single_action(algo)
 
             # Get policy and model.
-            pol = trainer.get_policy()
+            pol = algo.get_policy()
             cql_model = pol.model
             if fw == "tf":
                 pol.get_session().__enter__()
@@ -95,7 +94,7 @@ class TestCQL(unittest.TestCase):
             # using the data from CQL's global replay buffer.
             # Get a sample (MultiAgentBatch).
 
-            batch = trainer.workers.local_worker().input_reader.next()
+            batch = algo.workers.local_worker().input_reader.next()
             multi_agent_batch = batch.as_multi_agent()
             # All experiences have been buffered for `default_policy`
             batch = multi_agent_batch.policy_batches["default_policy"]
@@ -140,7 +139,7 @@ class TestCQL(unittest.TestCase):
             if fw == "tf":
                 pol.get_session().__exit__(None, None, None)
 
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

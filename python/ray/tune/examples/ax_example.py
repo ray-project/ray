@@ -47,7 +47,7 @@ def easy_objective(config):
             {
                 "timesteps_total": i,
                 "hartmann6": hartmann6(x),
-                "l2norm": np.sqrt((x ** 2).sum()),
+                "l2norm": np.sqrt((x**2).sum()),
             }
         )
         time.sleep(0.02)

@@ -29,7 +29,7 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
+void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                                  rpc::AddJobReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
   rpc::JobTableData mutable_job_table_data;
@@ -95,7 +95,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
   }
 }
 
-void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &request,
+void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
                                           rpc::MarkJobFinishedReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   const JobID job_id = JobID::FromBinary(request.job_id());
@@ -143,7 +143,7 @@ void GcsJobManager::AddJobFinishedListener(
   job_finished_listeners_.emplace_back(std::move(listener));
 }
 
-void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request,
+void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                                         rpc::GetAllJobInfoReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Getting all job info.";
@@ -161,7 +161,7 @@ void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request
   }
 }
 
-void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &request,
+void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
                                          rpc::ReportJobErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   auto job_id = JobID::FromBinary(request.job_error().job_id());
@@ -169,7 +169,7 @@ void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &reque
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-void GcsJobManager::HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
+void GcsJobManager::HandleGetNextJobID(rpc::GetNextJobIDRequest request,
                                        rpc::GetNextJobIDReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
   reply->set_job_id(gcs_table_storage_->GetNextJobID());

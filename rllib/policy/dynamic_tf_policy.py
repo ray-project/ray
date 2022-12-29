@@ -1,5 +1,5 @@
 from collections import namedtuple, OrderedDict
-import gym
+import gymnasium as gym
 import logging
 import re
 import tree  # pip install dm_tree
@@ -18,6 +18,10 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import (
@@ -171,7 +175,7 @@ class DynamicTFPolicy(TFPolicy):
                 assume a value of 1.
         """
         if obs_include_prev_action_reward != DEPRECATED_VALUE:
-            deprecation_warning(old="obs_include_prev_action_reward", error=False)
+            deprecation_warning(old="obs_include_prev_action_reward", error=True)
         self.observation_space = obs_space
         self.action_space = action_space
         self.config = config
@@ -585,6 +589,7 @@ class DynamicTFPolicy(TFPolicy):
             sess=self.get_session(),
             inputs=inputs,
             state_inputs=state_inputs,
+            num_grad_updates=batch.num_grad_updates,
         )
 
     @override(Policy)
@@ -627,9 +632,21 @@ class DynamicTFPolicy(TFPolicy):
                 )
             return self.learn_on_batch(sliced_batch)
 
-        return self.multi_gpu_tower_stacks[buffer_index].optimize(
-            self.get_session(), offset
+        tower_stack = self.multi_gpu_tower_stacks[buffer_index]
+        results = tower_stack.optimize(self.get_session(), offset)
+        self.num_grad_updates += 1
+
+        results.update(
+            {
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
+                DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                    self.num_grad_updates - 1 - (tower_stack.num_grad_updates or 0)
+                ),
+            }
         )
+
+        return results
 
     def _get_input_dict_and_dummy_batch(self, view_requirements, existing_inputs):
         """Creates input_dict and dummy_batch for loss initialization.
@@ -650,7 +667,7 @@ class DynamicTFPolicy(TFPolicy):
         input_dict = {}
         for view_col, view_req in view_requirements.items():
             # Point state_in to the already existing self._state_inputs.
-            mo = re.match("state_in_(\d+)", view_col)
+            mo = re.match(r"state_in_(\d+)", view_col)
             if mo is not None:
                 input_dict[view_col] = self._state_inputs[int(mo.group(1))]
             # State-outs (no placeholders needed).
@@ -728,7 +745,10 @@ class DynamicTFPolicy(TFPolicy):
                 logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
+                        -1.0,
+                        1.0,
+                        shape=value.shape.as_list()[1:],
+                        dtype=value.dtype.name,
                     ),
                     used_for_compute_actions=False,
                 )
@@ -818,7 +838,8 @@ class DynamicTFPolicy(TFPolicy):
                         SampleBatch.EPS_ID,
                         SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID,
-                        SampleBatch.DONES,
+                        SampleBatch.TERMINATEDS,
+                        SampleBatch.TRUNCATEDS,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
                         SampleBatch.T,
@@ -831,7 +852,8 @@ class DynamicTFPolicy(TFPolicy):
                         del self._loss_input_dict[key]
             # Remove those not needed at all (leave those that are needed
             # by Sampler to properly execute sample collection).
-            # Also always leave DONES, REWARDS, and INFOS, no matter what.
+            # Also always leave TERMINATEDS, TRUNCATEDS, REWARDS, and INFOS,
+            # no matter what.
             for key in list(self.view_requirements.keys()):
                 if (
                     key not in all_accessed_keys
@@ -840,7 +862,8 @@ class DynamicTFPolicy(TFPolicy):
                         SampleBatch.EPS_ID,
                         SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID,
-                        SampleBatch.DONES,
+                        SampleBatch.TERMINATEDS,
+                        SampleBatch.TRUNCATEDS,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
                         SampleBatch.T,
@@ -940,7 +963,7 @@ class TFMultiGPUTowerStack:
             deprecation_warning(
                 old="TFMultiGPUTowerStack(...)",
                 new="TFMultiGPUTowerStack(policy=[Policy])",
-                error=False,
+                error=True,
             )
             self.policy = None
             self.optimizers = optimizer
@@ -1061,7 +1084,12 @@ class TFMultiGPUTowerStack:
             with tf1.control_dependencies(self._update_ops):
                 self._train_op = self.optimizers[0].apply_gradients(avg)
 
-    def load_data(self, sess, inputs, state_inputs):
+        # The lifetime number of gradient updates that the policy having sent
+        # some data (SampleBatchType) into this tower stack's GPU buffer(s) has already
+        # undergone.
+        self.num_grad_updates = 0
+
+    def load_data(self, sess, inputs, state_inputs, num_grad_updates=None):
         """Bulk loads the specified inputs into device memory.
 
         The shape of the inputs must conform to the shapes of the input
@@ -1076,10 +1104,14 @@ class TFMultiGPUTowerStack:
                 [BATCH_SIZE, ...].
             state_inputs: List of RNN input arrays. These arrays have size
                 [BATCH_SIZE / MAX_SEQ_LEN, ...].
+            num_grad_updates: The lifetime number of gradient updates that the
+                policy having collected the data has already undergone.
 
         Returns:
             The number of tuples loaded per device.
         """
+        self.num_grad_updates = num_grad_updates
+
         if log_once("load_data"):
             logger.info(
                 "Training on concatenated sample batches:\n\n{}\n".format(

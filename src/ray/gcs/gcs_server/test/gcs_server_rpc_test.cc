@@ -14,6 +14,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -57,8 +58,9 @@ class GcsServerTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    gcs_server_->Stop();
     io_service_.stop();
+    rpc::DrainAndResetServerCallExecutor();
+    gcs_server_->Stop();
     thread_io_service_->join();
     gcs_server_.reset();
   }
@@ -170,16 +172,6 @@ class GcsServerTest : public ::testing::Test {
                           });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return resources;
-  }
-
-  bool AddProfileData(const rpc::AddProfileDataRequest &request) {
-    std::promise<bool> promise;
-    client_->AddProfileData(
-        request, [&promise](const Status &status, const rpc::AddProfileDataReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool ReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request) {
@@ -319,10 +311,12 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
 
-  // Report heartbeat
-  rpc::ReportHeartbeatRequest report_heartbeat_request;
-  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
-  ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
+  if (!RayConfig::instance().pull_based_healthcheck()) {
+    // Report heartbeat
+    rpc::ReportHeartbeatRequest report_heartbeat_request;
+    report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
+    ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
+  }
 
   // Unregister node info
   rpc::DrainNodeRequest unregister_node_info_request;
@@ -336,6 +330,9 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 }
 
 TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
+  if (RayConfig::instance().pull_based_healthcheck()) {
+    GTEST_SKIP();
+  }
   // Create gcs node info
   auto gcs_node_info = Mocker::GenNodeInfo();
 
@@ -357,9 +354,9 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
   register_node_info_request.mutable_node_info()->CopyFrom(*gcs_node_info);
   ASSERT_TRUE(RegisterNode(register_node_info_request));
   std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
-  ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() ==
-              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+  ASSERT_EQ(1, node_info_list.size());
+  ASSERT_EQ(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE,
+            node_info_list[0].state());
 
   // Report heartbeat
   report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
@@ -371,17 +368,9 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
   draining_request->set_node_id(gcs_node_info->node_id());
   ASSERT_TRUE(DrainNode(unregister_node_info_request));
   node_info_list = GetAllNodeInfo();
-  ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() ==
-              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
-}
-
-TEST_F(GcsServerTest, TestStats) {
-  rpc::ProfileTableData profile_table_data;
-  profile_table_data.set_component_id(NodeID::FromRandom().Binary());
-  rpc::AddProfileDataRequest add_profile_data_request;
-  add_profile_data_request.mutable_profile_data()->CopyFrom(profile_table_data);
-  ASSERT_TRUE(AddProfileData(add_profile_data_request));
+  ASSERT_EQ(1, node_info_list.size());
+  ASSERT_EQ(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD,
+            node_info_list[0].state());
 }
 
 TEST_F(GcsServerTest, TestWorkerInfo) {

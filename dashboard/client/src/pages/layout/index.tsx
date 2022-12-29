@@ -5,13 +5,20 @@ import ListItem from "@material-ui/core/ListItem";
 import ListItemText from "@material-ui/core/ListItemText";
 import { makeStyles } from "@material-ui/core/styles";
 import Typography from "@material-ui/core/Typography";
-import { NightsStay, VerticalAlignTop, WbSunny } from "@material-ui/icons";
+import {
+  Feedback,
+  Help,
+  NightsStay,
+  VerticalAlignTop,
+  WbSunny,
+} from "@material-ui/icons";
 import classnames from "classnames";
-import React, { PropsWithChildren } from "react";
-import { RouteComponentProps } from "react-router-dom";
+import React, { useContext } from "react";
+
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { GlobalContext } from "../../App";
 import { UsageStatsAlert } from "../../common/UsageStatsAlert";
 
-import SpeedTools from "../../components/SpeedTools";
 import Logo from "../../logo.svg";
 
 const drawerWidth = 200;
@@ -56,13 +63,17 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const BasicLayout = (
-  props: PropsWithChildren<
-    { setTheme: (theme: string) => void; theme: string } & RouteComponentProps
-  >,
-) => {
+const BasicLayout = ({
+  setTheme,
+  theme,
+}: {
+  setTheme: (theme: string) => void;
+  theme: string;
+}) => {
   const classes = useStyles();
-  const { location, history, children, setTheme, theme } = props;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { grafanaHost } = useContext(GlobalContext);
 
   return (
     <div className={classes.root}>
@@ -84,7 +95,7 @@ const BasicLayout = (
               classes.menuItem,
               location.pathname.includes("node") && classes.selected,
             )}
-            onClick={() => history.push("/node")}
+            onClick={() => navigate("/node")}
           >
             <ListItemText>NODES</ListItemText>
           </ListItem>
@@ -94,7 +105,7 @@ const BasicLayout = (
               classes.menuItem,
               location.pathname.includes("job") && classes.selected,
             )}
-            onClick={() => history.push("/job")}
+            onClick={() => navigate("/job")}
           >
             <ListItemText>JOBS</ListItemText>
           </ListItem>
@@ -104,7 +115,7 @@ const BasicLayout = (
               classes.menuItem,
               location.pathname.includes("actor") && classes.selected,
             )}
-            onClick={() => history.push("/actors")}
+            onClick={() => navigate("/actors")}
           >
             <ListItemText>ACTORS</ListItemText>
           </ListItem>
@@ -114,7 +125,7 @@ const BasicLayout = (
               classes.menuItem,
               location.pathname.includes("log") && classes.selected,
             )}
-            onClick={() => history.push("/log")}
+            onClick={() => navigate("/log")}
           >
             <ListItemText>LOGS</ListItemText>
           </ListItem>
@@ -124,17 +135,22 @@ const BasicLayout = (
               classes.menuItem,
               location.pathname.includes("events") && classes.selected,
             )}
-            onClick={() => history.push("/events")}
+            onClick={() => navigate("/events")}
           >
             <ListItemText>EVENTS</ListItemText>
           </ListItem>
-          <ListItem
-            button
-            className={classnames(classes.menuItem)}
-            onClick={() => history.push("/legacy")}
-          >
-            <ListItemText>TO LEGACY DASHBOARD</ListItemText>
-          </ListItem>
+          {grafanaHost !== "DISABLED" && (
+            <ListItem
+              button
+              className={classnames(
+                classes.menuItem,
+                location.pathname.includes("metrics") && classes.selected,
+              )}
+              onClick={() => navigate("/metrics")}
+            >
+              <ListItemText>METRICS</ListItemText>
+            </ListItem>
+          )}
           <ListItem>
             <IconButton
               color="primary"
@@ -156,12 +172,29 @@ const BasicLayout = (
                 {theme === "dark" ? <NightsStay /> : <WbSunny />}
               </Tooltip>
             </IconButton>
+            <IconButton
+              href="https://docs.ray.io/en/master/ray-core/ray-dashboard.html"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Tooltip title="Doc">
+                <Help />
+              </Tooltip>
+            </IconButton>
+            <IconButton
+              href="https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdashboard&template=bug-report.yml&title=%5BDashboard%5D+%3CTitle%3E"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Tooltip title="Give us feedback!">
+                <Feedback />
+              </Tooltip>
+            </IconButton>
           </ListItem>
-          <SpeedTools />
         </List>
       </Drawer>
       <div className={classes.child}>
-        {children}
+        <Outlet />
         <UsageStatsAlert />
       </div>
     </div>

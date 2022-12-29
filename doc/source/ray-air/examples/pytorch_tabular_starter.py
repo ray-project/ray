@@ -30,7 +30,6 @@ preprocessor = Chain(
 # __air_pytorch_train_start__
 import torch
 import torch.nn as nn
-from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
 from ray import train
 from ray.air import session
@@ -57,7 +56,7 @@ def train_loop_per_worker(config):
 
     # Get the Ray Dataset shard for this data parallel worker,
     # and convert it to a PyTorch Dataset.
-    train_data = train.get_dataset_shard("train")
+    train_data = session.get_dataset_shard("train")
     # Create model.
     model = create_model(num_features)
     model = train.torch.prepare_model(model)

@@ -1,5 +1,5 @@
 cartpole-sac:
-    env: CartPole-v0
+    env: CartPole-v1
     run: SAC
     stop:
         episode_reward_mean: 150.0
@@ -8,7 +8,6 @@ cartpole-sac:
         # Works for both torch and tf.
         framework: tf
         gamma: 0.95
-        no_done_at_end: false
         target_network_update_freq: 32
         tau: 1.0
         # initial_alpha: 0.5

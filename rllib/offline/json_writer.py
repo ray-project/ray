@@ -3,7 +3,7 @@ import json
 import logging
 import numpy as np
 import os
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 import time
 
 try:
@@ -60,10 +60,7 @@ class JsonWriter(OutputWriter):
         else:
             path = os.path.abspath(os.path.expanduser(path))
             # Try to create local dirs if they don't exist
-            try:
-                os.makedirs(path)
-            except OSError:
-                pass  # already exists
+            os.makedirs(path, exist_ok=True)
             assert os.path.exists(path), "Failed to create {}".format(path)
             self.path_is_uri = False
         self.path = path

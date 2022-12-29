@@ -39,12 +39,13 @@ if __name__ == "__main__":
     # Register the above custom model.
     ModelCatalog.register_custom_model("my_torch_model", MyCustomModel)
 
-    # Create the Trainer.
-    algo = ppo.PPO(
-        env="CartPole-v0",
-        config={
-            "framework": "torch",
-            "model": {
+    # Create the Algorithm from a config object.
+    config = (
+        ppo.PPOConfig()
+        .environment("CartPole-v1")
+        .framework("torch")
+        .training(
+            model={
                 # Auto-wrap the custom(!) model with an LSTM.
                 "use_lstm": True,
                 # To further customize the LSTM auto-wrapper.
@@ -53,9 +54,11 @@ if __name__ == "__main__":
                 "custom_model": "my_torch_model",
                 # Extra kwargs to be passed to your model's c'tor.
                 "custom_model_config": {},
-            },
-        },
+            }
+        )
     )
+    algo = config.build()
     algo.train()
+    algo.stop()
 
 # __sphinx_doc_end__

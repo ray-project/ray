@@ -15,7 +15,7 @@ Summary
 To run a distributed experiment with Tune, you need to:
 
 1. First, :ref:`start a Ray cluster <cluster-index>` if you have not already.
-2. Run the script on the head node, or use :ref:`ray submit <ray-submit-doc>`, or use :ref:`Ray Job Submission <jobs-overview>` (in beta starting with Ray 1.12).
+2. Run the script on the head node, or use :ref:`ray submit <ray-submit-doc>`, or use :ref:`Ray Job Submission <jobs-overview>`.
 
 .. tune-distributed-cloud:
 
@@ -225,9 +225,7 @@ If the trial/actor is placed on a different node, Tune will automatically push t
 Recovering From Failures
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune automatically persists the progress of your entire experiment (a ``Tuner.fit()`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed through ``Tuner.restore()``.
-There are a few options for restoring an experiment:
-"resume_unfinished", "resume_errored" and "restart_errored". See ``Tuner.restore()`` for more details.
+Tune automatically persists the progress of your entire experiment (a ``Tuner.fit()`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed through :meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>`.
 
 .. _tune-distributed-common:
 

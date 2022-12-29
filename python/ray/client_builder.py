@@ -14,6 +14,7 @@ from ray._private.ray_constants import (
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
+from ray._private.utils import split_address
 from ray._private.worker import BaseContext
 from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
@@ -185,8 +186,9 @@ class ClientBuilder:
             ray_init_kwargs=self._remote_init_kwargs,
             metadata=self._metadata,
         )
-        get_dashboard_url = ray.remote(ray._private.worker.get_dashboard_url)
-        dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
+
+        dashboard_url = ray.util.client.ray._get_dashboard_url()
+
         cxt = ClientContext(
             dashboard_url=dashboard_url,
             python_version=client_info_dict["python_version"],
@@ -324,14 +326,12 @@ class _LocalClientBuilder(ClientBuilder):
 def _split_address(address: str) -> Tuple[str, str]:
     """
     Splits address into a module string (scheme) and an inner_address.
+
+    If the scheme is not present, then "ray://" is prepended to the address.
     """
     if "://" not in address:
         address = "ray://" + address
-    # NOTE: We use a custom splitting function instead of urllib because
-    # PEP allows "underscores" in a module names, while URL schemes do not
-    # allow them.
-    module_string, inner_address = address.split("://", maxsplit=1)
-    return (module_string, inner_address)
+    return split_address(address)
 
 
 def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:

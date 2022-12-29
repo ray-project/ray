@@ -79,7 +79,7 @@ public class DeploymentCreator {
 
   private boolean routed;
 
-  private DeploymentLanguage deploymentLanguage;
+  private DeploymentLanguage language;
 
   public Deployment create() {
 
@@ -97,7 +97,7 @@ public class DeploymentCreator {
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
-            .setDeploymentLanguage(deploymentLanguage);
+            .setDeploymentLanguage(language);
 
     return new Deployment(
         deploymentDef,
@@ -246,11 +246,12 @@ public class DeploymentCreator {
     return this;
   }
 
-  public DeploymentLanguage getDeploymentLanguage() {
-    return deploymentLanguage;
+  public DeploymentLanguage getLanguage() {
+    return language;
   }
 
-  public void setDeploymentLanguage(DeploymentLanguage deploymentLanguage) {
-    this.deploymentLanguage = deploymentLanguage;
+  public DeploymentCreator setLanguage(DeploymentLanguage language) {
+    this.language = language;
+    return this;
   }
 }

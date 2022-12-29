@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+import gymnasium as gym
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import unittest
 
@@ -33,41 +33,43 @@ class TestPreprocessors(unittest.TestCase):
         ray.shutdown()
 
     def test_preprocessing_disabled(self):
-        config = ppo.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["env"] = "ray.rllib.examples.env.random_env.RandomEnv"
-        config["env_config"] = {
-            "config": {
-                "observation_space": Dict(
-                    {
-                        "a": Discrete(5),
-                        "b": Dict(
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                "ray.rllib.examples.env.random_env.RandomEnv",
+                env_config={
+                    "config": {
+                        "observation_space": Dict(
                             {
-                                "ba": Discrete(4),
-                                "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32),
+                                "a": Discrete(5),
+                                "b": Dict(
+                                    {
+                                        "ba": Discrete(4),
+                                        "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32),
+                                    }
+                                ),
+                                "c": Tuple((MultiDiscrete([2, 3]), Discrete(1))),
+                                "d": Box(-1.0, 1.0, (1,), dtype=np.int32),
                             }
                         ),
-                        "c": Tuple((MultiDiscrete([2, 3]), Discrete(1))),
-                        "d": Box(-1.0, 1.0, (1,), dtype=np.int32),
-                    }
-                ),
-            },
-        }
-        # Set this to True to enforce no preprocessors being used.
-        # Complex observations now arrive directly in the model as
-        # structures of batches, e.g. {"a": tensor, "b": [tensor, tensor]}
-        # for obs-space=Dict(a=..., b=Tuple(..., ...)).
-        config["_disable_preprocessor_api"] = True
-        # Speed things up a little.
-        config["train_batch_size"] = 100
-        config["sgd_minibatch_size"] = 10
-        config["rollout_fragment_length"] = 5
-        config["num_sgd_iter"] = 1
+                    },
+                },
+            )
+            # Speed things up a little.
+            .rollouts(rollout_fragment_length=5)
+            .training(train_batch_size=100, sgd_minibatch_size=10, num_sgd_iter=1)
+            .debugging(seed=42)
+            # Set this to True to enforce no preprocessors being used.
+            # Complex observations now arrive directly in the model as
+            # structures of batches, e.g. {"a": tensor, "b": [tensor, tensor]}
+            # for obs-space=Dict(a=..., b=Tuple(..., ...)).
+            .experimental(_disable_preprocessor_api=True)
+        )
 
         num_iterations = 1
         # Only supported for tf so far.
         for _ in framework_iterator(config):
-            algo = ppo.PPO(config=config)
+            algo = config.build()
             for i in range(num_iterations):
                 results = algo.train()
                 check_train_results(results)
@@ -76,16 +78,24 @@ class TestPreprocessors(unittest.TestCase):
             algo.stop()
 
     def test_gym_preprocessors(self):
-        p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
+        p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v1"))
         self.assertEqual(type(p1), NoPreprocessor)
 
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v1"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
-        p3 = ModelCatalog.get_preprocessor(gym.make("MsPacman-ram-v0"))
+        p3 = ModelCatalog.get_preprocessor(
+            gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-ram-v5")
+        )
         self.assertEqual(type(p3), AtariRamPreprocessor)
 
-        p4 = ModelCatalog.get_preprocessor(gym.make("MsPacmanNoFrameskip-v4"))
+        p4 = ModelCatalog.get_preprocessor(
+            gym.make(
+                "GymV26Environment-v0",
+                env_id="ALE/MsPacman-v5",
+                make_kwargs={"frameskip": 1},
+            )
+        )
         self.assertEqual(type(p4), GenericPixelPreprocessor)
 
     def test_tuple_preprocessor(self):
@@ -152,6 +162,62 @@ class TestPreprocessors(unittest.TestCase):
         check(
             pp.transform((np.array([0, 1, 3]),)),
             [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        )
+
+    def test_multidimensional_multidiscrete_one_hot_preprocessor(self):
+        space2d = MultiDiscrete([[2, 2], [3, 3]])
+        space3d = MultiDiscrete([[[2, 2], [3, 4]], [[5, 6], [7, 8]]])
+        pp2d = get_preprocessor(space2d)(space2d)
+        pp3d = get_preprocessor(space3d)(space3d)
+        self.assertTrue(isinstance(pp2d, OneHotPreprocessor))
+        self.assertTrue(isinstance(pp3d, OneHotPreprocessor))
+        self.assertTrue(pp2d.shape == (10,))
+        self.assertTrue(pp3d.shape == (37,))
+        check(
+            pp2d.transform(np.array([[1, 0], [2, 1]])),
+            [0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+        )
+        check(
+            pp3d.transform(np.array([[[0, 1], [2, 3]], [[4, 5], [6, 7]]])),
+            [
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+            ],
         )
 
 

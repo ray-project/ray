@@ -12,7 +12,7 @@ from typing import (
 )
 
 import numpy as np
-import gym
+import gymnasium as gym
 
 from ray.rllib.utils.annotations import ExperimentalAPI
 
@@ -109,7 +109,8 @@ EnvObsType = Any
 # Represents an action passed to the env.
 EnvActionType = Any
 
-# Info dictionary returned by calling step() on gym envs. Commonly empty dict.
+# Info dictionary returned by calling `reset()` or `step()` on `gymnasium.Env`
+# instances. Might be an empty dict.
 EnvInfoDict = dict
 
 # Represents a File object
@@ -172,7 +173,8 @@ class AgentConnectorDataType:
         env_id: ID of the environment.
         agent_id: ID to help identify the agent from which the data is received.
         data: A payload (``data``). With RLlib's default sampler, the payload
-            is a dictionary of arbitrary data columns (obs, rewards, dones, etc).
+            is a dictionary of arbitrary data columns (obs, rewards, terminateds,
+            truncateds, etc).
     """
 
     def __init__(self, env_id: str, agent_id: str, data: Any):
@@ -192,14 +194,24 @@ class ActionConnectorDataType:
     Args:
         env_id: ID of the environment.
         agent_id: ID to help identify the agent from which the data is received.
+        input_dict: Input data that was passed into the policy.
+            Sometimes output must be adapted based on the input, for example
+            action masking. So the entire input data structure is provided here.
         output: An object of PolicyOutputType. It is is composed of the
             action output, the internal state output, and additional data fetches.
 
     """
 
-    def __init__(self, env_id: str, agent_id: str, output: PolicyOutputType):
+    def __init__(
+        self,
+        env_id: str,
+        agent_id: str,
+        input_dict: TensorStructType,
+        output: PolicyOutputType,
+    ):
         self.env_id = env_id
         self.agent_id = agent_id
+        self.input_dict = input_dict
         self.output = output
 
 
@@ -215,17 +227,19 @@ class AgentConnectorsOutput:
     The branching happens in ViewRequirementAgentConnector.
 
     Args:
-        for_training: The raw input dictionary that sampler can use to
-            build episodes and training batches,
-        for_action: The SampleBatch that can be immediately used for
+        raw_dict: The raw input dictionary that sampler can use to
+            build episodes and training batches.
+            This raw dict also gets passed into ActionConnectors in case
+            it contains data useful for action adaptation (e.g. action masks).
+        sample_batch: The SampleBatch that can be immediately used for
             querying the policy for next action.
     """
 
     def __init__(
-        self, for_training: Dict[str, TensorStructType], for_action: "SampleBatch"
+        self, raw_dict: Dict[str, TensorStructType], sample_batch: "SampleBatch"
     ):
-        self.for_training = for_training
-        self.for_action = for_action
+        self.raw_dict = raw_dict
+        self.sample_batch = sample_batch
 
 
 # __sphinx_doc_end_agent_connector_output__

@@ -1,48 +1,66 @@
+import importlib.util
 import inspect
 import os
-import shutil
-import tempfile
+import sys
 import warnings
-from distutils.version import LooseVersion
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
+
 
 import transformers
 import transformers.modeling_utils
 import transformers.trainer
 import transformers.training_args
 from transformers.trainer_utils import IntervalStrategy
+from transformers.utils import is_datasets_available
 from torch.utils.data import Dataset as TorchDataset
 
 from ray.air import session
-from ray.air._internal.checkpointing import (
-    save_preprocessor_to_dir,
-)
-from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.constants import (
     EVALUATION_DATASET_KEY,
-    PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,
-    TUNE_CHECKPOINT_ID,
 )
-from ray.train.data_parallel_trainer import _DataParallelCheckpointManager
 from ray.train.huggingface._huggingface_utils import (
-    CHECKPOINT_PATH_ON_NODE_KEY,
-    NODE_IP_KEY,
     TrainReportCallback,
     process_datasets,
     wrap_transformers_trainer,
 )
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
-from ray.tune.trainable import Trainable
-from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
-from ray.util import PublicAPI, get_node_ip_address
+from ray.util import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+# Due to HF Dataset's dynamic module system, we need to dynamically import the
+# datasets_modules module on every actor when training.
+# We accomplish this by simply running the following bit of code directly
+# in module you are currently viewing. This ensures that when we
+# unpickle the HuggingFaceTrainer, it will be ran before pickle tries to
+# import datasets_modules and prevents an exception from being thrown.
+# Same logic is present inside HF Transformers Ray integration:
+# https://github.com/huggingface/transformers/blob/\
+# 7d5fde991d598370d961be8cb7add6541e2b59ce/src/transformers/integrations.py#L271
+# Also see https://github.com/ray-project/ray/issues/28084
+if "datasets_modules" not in sys.modules and is_datasets_available():
+    import datasets.load
+
+    dynamic_modules_path = os.path.join(
+        datasets.load.init_dynamic_modules(), "__init__.py"
+    )
+    # load dynamic_modules from path
+    spec = importlib.util.spec_from_file_location(
+        "datasets_modules", dynamic_modules_path
+    )
+    datasets_modules = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = datasets_modules
+    spec.loader.exec_module(datasets_modules)
 
 # This trainer uses a special checkpoint syncing logic.
 # Because HF checkpoints are very large dirs (at least several GBs),
@@ -55,64 +73,6 @@ if TYPE_CHECKING:
 # TODO(ml-team): Make dir syncing checkpoint logic generic.
 
 
-# The checkpoint is turned into a dict with node ip & path
-# in HuggingFaceTrainer.as_trainable
-# TODO(team-ml): Refactor checkpoint management along with Tune.
-class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
-    def commit(self, path: Optional[Path] = None) -> None:
-        if (
-            self.storage_mode == CheckpointStorage.MEMORY
-            or not path
-            or not isinstance(self.dir_or_data, dict)
-        ):
-            return
-
-        source_ip = self.dir_or_data[NODE_IP_KEY]
-        source_path = self.dir_or_data[CHECKPOINT_PATH_ON_NODE_KEY]
-        target_ip = get_node_ip_address()
-
-        if source_ip == target_ip:
-            source_path = Path(source_path)
-            for inner in source_path.iterdir():
-                try:
-                    shutil.move(str(inner.absolute()), str(path.absolute()))
-                except OSError:
-                    # This file may have already been moved by another rank worker.
-                    # Disregard, as the files are identical across all ranks.
-                    pass
-            # No need to file lock here as each rank worker has its own folder.
-            shutil.rmtree(str(source_path.absolute()), ignore_errors=True)
-        else:
-            sync_dir_between_nodes(
-                source_ip=source_ip,
-                source_path=source_path,
-                target_ip=target_ip,
-                target_path=str(path),
-                return_futures=False,
-                max_size_bytes=None,
-            )
-            delete_on_node(node_ip=source_ip, path=source_path)
-        save_preprocessor_to_dir(self.dir_or_data.pop(PREPROCESSOR_KEY, None), path)
-        # add tune checkpoint id
-        with open(path.joinpath(TUNE_CHECKPOINT_ID), "w") as f:
-            f.write(str(self.id))
-
-
-class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
-    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        sync_checkpoint = _SyncedTrackedCheckpoint(
-            dir_or_data=checkpoint.dir_or_data,
-            storage_mode=checkpoint.storage_mode,
-            checkpoint_id=checkpoint.id,
-            metrics=checkpoint.metrics,
-            node_ip=checkpoint.node_ip,
-        )
-
-        super(
-            _DataParallelSyncingCheckpointManager, self
-        )._process_persistent_checkpoint(checkpoint=sync_checkpoint)
-
-
 @PublicAPI(stability="alpha")
 class HuggingFaceTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
@@ -120,7 +80,11 @@ class HuggingFaceTrainer(TorchTrainer):
     This Trainer runs the ``transformers.Trainer.train()`` method on multiple
     Ray Actors. The training is carried out in a distributed fashion through PyTorch
     DDP. These actors already have the necessary torch process group already
-    configured for distributed PyTorch training.
+    configured for distributed PyTorch training. If you have PyTorch >= 1.12.0
+    installed, you can also run FSDP training by specifying the ``fsdp`` argument
+    in ``TrainingArguments``. For more information on configuring FSDP,
+    refer to `Hugging Face documentation <https://huggingface.co/docs/transformers/\
+main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
     The training function ran on every Actor will first run the
     specified ``trainer_init_per_worker`` function to obtain an instantiated
@@ -141,8 +105,7 @@ class HuggingFaceTrainer(TorchTrainer):
     argument in ``TrainingArguments`` will be automatically set. Please note
     that if you want to use CPU training, you will need to set the ``no_cuda``
     argument in ``TrainingArguments`` manually - otherwise, an exception
-    (segfault) may be thrown. Furthermore, 'steps' value for ``save_strategy``,
-    ``logging_strategy`` and ``evaluation_strategy`` is not yet supported.
+    (segfault) may be thrown.
 
     This Trainer requires ``transformers>=4.19.0`` package.
 
@@ -263,8 +226,6 @@ class HuggingFaceTrainer(TorchTrainer):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
-    _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
-
     _dataset_config = {
         # training dataset should be split by us
         "train": DatasetConfig(fit=True, split=True, required=True),
@@ -292,7 +253,7 @@ class HuggingFaceTrainer(TorchTrainer):
 
         # Functionality required for HuggingFaceTrainer only added in this
         # version
-        if LooseVersion(transformers.__version__) < LooseVersion("4.19.0"):
+        if Version(transformers.__version__) < Version("4.19.0"):
             raise RuntimeError(
                 "HuggingFaceTrainer requires transformers>=4.19.0, but you "
                 f"have {transformers.__version__} which is incompatible. "
@@ -354,66 +315,6 @@ class HuggingFaceTrainer(TorchTrainer):
 
         super()._validate_attributes()
 
-    def _convert_directory_checkpoint_to_sync_if_needed(
-        self, checkpoint: Checkpoint
-    ) -> Checkpoint:
-        """Replace the directory checkpoint with a node ip & path dict checkpoint.
-
-        This dict checkpoint will be used to sync the directory.
-        If we were to use a directory checkpoint directly, it would get deepcopied &
-        serialized unnecessarily."""
-        with checkpoint.as_directory() as checkpoint_path:
-            # Load checkpoint from path.
-            checkpoint_path = Path(checkpoint_path).expanduser().absolute()
-            if not checkpoint_path.joinpath(TUNE_CHECKPOINT_ID).exists():
-                # If the ID file is missing, we assume that this is already
-                # a sync checkpoint
-                dict_checkpoint = checkpoint.to_dict()
-                if (
-                    NODE_IP_KEY not in dict_checkpoint
-                    or CHECKPOINT_PATH_ON_NODE_KEY not in dict_checkpoint
-                ):
-                    raise ValueError(
-                        "Wrong checkpoint format. Ensure the checkpoint is a "
-                        "result of `HuggingFaceTrainer`."
-                    )
-                return checkpoint
-            with open(checkpoint_path.joinpath(TUNE_CHECKPOINT_ID), "r") as f:
-                tune_checkpoint_id = int(f.read())
-
-            return Checkpoint.from_dict(
-                {
-                    NODE_IP_KEY: get_node_ip_address(),
-                    CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
-                    TUNE_CHECKPOINT_ID: tune_checkpoint_id,
-                }
-            )
-
-    def setup(self) -> None:
-        if self.resume_from_checkpoint:
-            self.resume_from_checkpoint = (
-                self._convert_directory_checkpoint_to_sync_if_needed(
-                    self.resume_from_checkpoint
-                )
-            )
-
-    def as_trainable(self) -> Type[Trainable]:
-        original_param_dict = self._param_dict.copy()
-        resume_from_checkpoint: Optional[Checkpoint] = self._param_dict.get(
-            "resume_from_checkpoint", None
-        )
-        if resume_from_checkpoint:
-            self._param_dict[
-                "resume_from_checkpoint"
-            ] = self._convert_directory_checkpoint_to_sync_if_needed(
-                resume_from_checkpoint
-            )
-        try:
-            ret = super().as_trainable()
-        finally:
-            self._param_dict = original_param_dict
-        return ret
-
 
 def _huggingface_train_loop_per_worker(config):
     """Per-worker training loop for HuggingFace Transformers."""
@@ -436,48 +337,42 @@ def _huggingface_train_loop_per_worker(config):
         train_torch_dataset, eval_torch_dataset, **config
     )
 
-    if trainer.args.push_to_hub and not trainer.args.hub_token:
-        warnings.warn(
-            "You have set `push_to_hub=True` but didn't specify `hub_token`. "
-            "Pushing to hub will most likely fail, as the credentials will not "
-            "be automatically propagated from the local enviroment to the Ray Actors. "
-            "If that happens, specify `hub_token` in `TrainingArguments`."
+    strategies = [
+        strategy
+        for strategy in (trainer.args.evaluation_strategy, trainer.args.save_strategy)
+        if strategy not in ("no", IntervalStrategy.NO)
+    ]
+    strategies = [trainer.args.logging_strategy] + strategies
+    if not all(strategy == strategies[0] for strategy in strategies[1:]):
+        raise ValueError(
+            "When using Ray AIR,`logging_strategy`, `evaluation_strategy` "
+            "and `save_strategy` must all be set to the same value. "
+            "`evaluation_strategy` or `save_strategy` may also be set to 'no'.\n"
+            f"Got `logging_strategy`={trainer.args.logging_strategy}\n"
+            f"`evaluation_strategy`={trainer.args.evaluation_strategy}\n"
+            f"`save_strategy`={trainer.args.save_strategy}"
         )
+
+    if trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS):
+        if (
+            trainer.args.save_steps < trainer.args.logging_steps
+            or trainer.args.save_steps % trainer.args.logging_steps != 0
+        ):
+            raise ValueError(
+                "When using 'steps' `save_strategy`, `save_steps` must be "
+                "equal or bigger to `logging_steps`, and must be divisible "
+                "by `logging_steps` (so that saving occurs at the same time "
+                f"logging does). Got `save_steps`={trainer.args.save_steps}, "
+                f"`logging_steps`={trainer.args.logging_steps}."
+            )
 
     if trainer.args.evaluation_strategy in ("steps", IntervalStrategy.STEPS):
-        raise ValueError(
-            "'steps' value for `evaluation_strategy`, `logging_strategy` "
-            "or `save_strategy` is not yet supported.\n"
-            f"Got `evaluation_strategy={trainer.args.evaluation_strategy}`."
-        )
-
-    # For the two arguments below, HF defaults to STEPS. Unfortunately,
-    # there doesn't seem to be a way to differentiate between
-    # user-set and default values for those arguments, so we can only
-    # assume that they were set by default and print a warning.
-    # Alternatively, we can force users to set EPOCH themselves,
-    # but that wouldn't make for nice UX if the first thing they see
-    # with their code is an exception.
-
-    # HF defaults to steps, we need to override
-    if trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS):
-        warnings.warn(
-            "'steps' value for `evaluation_strategy`, `logging_strategy` "
-            "or `save_strategy` is not yet supported.\n"
-            f"Got `save_strategy={trainer.args.save_strategy}`, setting "
-            "to 'epoch' automatically."
-        )
-        trainer.args.save_strategy = IntervalStrategy.EPOCH
-
-    # HF defaults to steps, we need to override
-    if trainer.args.logging_strategy in ("steps", IntervalStrategy.STEPS):
-        warnings.warn(
-            "'steps' value for `evaluation_strategy`, `logging_strategy` "
-            "or `save_strategy` is not yet supported.\n"
-            f"Got `logging_strategy={trainer.args.logging_strategy}`, setting "
-            "to 'epoch' automatically."
-        )
-        trainer.args.logging_strategy = IntervalStrategy.EPOCH
+        if trainer.args.logging_steps != trainer.args.eval_steps:
+            raise ValueError(
+                "`logging_steps` must be equal to `eval_steps`. "
+                f"Got `logging_steps`={trainer.args.logging_steps}, "
+                f"`eval_steps`={trainer.args.eval_steps}"
+            )
 
     if trainer.args.load_best_model_at_end:
         raise ValueError(
@@ -489,6 +384,14 @@ def _huggingface_train_loop_per_worker(config):
             "`Checkpoint.get_model()`.\n"
             "You can configure the checkpointing by setting "
             "`run_config.checkpoint_config`."
+        )
+
+    if trainer.args.push_to_hub and not trainer.args.hub_token:
+        warnings.warn(
+            "You have set `push_to_hub=True` but didn't specify `hub_token`. "
+            "Pushing to hub will most likely fail, as the credentials will not "
+            "be automatically propagated from the local enviroment to the Ray Actors. "
+            "If that happens, specify `hub_token` in `TrainingArguments`."
         )
 
     trainer = wrap_transformers_trainer(trainer)
@@ -505,29 +408,8 @@ def _huggingface_train_loop_per_worker(config):
     trainer.add_callback(TrainReportCallback)
 
     checkpoint = session.get_checkpoint()
-    checkpoint_path = None
-    remove_checkpoint_path = False
     if checkpoint:
-        assert isinstance(checkpoint, Checkpoint)
-        checkpoint_dict = checkpoint.to_dict()
-        source_ip = checkpoint_dict[NODE_IP_KEY]
-        source_path = checkpoint_dict[CHECKPOINT_PATH_ON_NODE_KEY]
-        target_ip = get_node_ip_address()
-        if source_ip == target_ip:
-            checkpoint_path = source_path
-        else:
-            checkpoint_path = tempfile.mkdtemp(
-                suffix=Path(trainer.args.output_dir).name
-            )
-            remove_checkpoint_path = True
-            sync_dir_between_nodes(
-                source_ip=source_ip,
-                source_path=source_path,
-                target_ip=target_ip,
-                target_path=checkpoint_path,
-                return_futures=False,
-                max_size_bytes=None,
-            )
-    trainer.train(resume_from_checkpoint=checkpoint_path)
-    if remove_checkpoint_path:
-        shutil.rmtree(checkpoint_path, ignore_errors=True)
+        with checkpoint.as_directory() as checkpoint_path:
+            trainer.train(resume_from_checkpoint=checkpoint_path)
+    else:
+        trainer.train()

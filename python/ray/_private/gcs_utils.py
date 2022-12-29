@@ -3,6 +3,7 @@ import logging
 import time
 import traceback
 import inspect
+import os
 import asyncio
 from functools import wraps
 from typing import List, Optional
@@ -23,7 +24,6 @@ from ray.core.generated.gcs_pb2 import (
     JobTableData,
     ObjectTableData,
     PlacementGroupTableData,
-    ProfileTableData,
     PubSubMessage,
     ResourceDemand,
     ResourceLoad,
@@ -33,6 +33,7 @@ from ray.core.generated.gcs_pb2 import (
     ResourceUsageBatchData,
     TablePrefix,
     TablePubsub,
+    TaskEvents,
     WorkerTableData,
 )
 
@@ -50,9 +51,9 @@ __all__ = [
     "ResourceUsageBatchData",
     "ResourcesData",
     "ObjectTableData",
-    "ProfileTableData",
     "TablePrefix",
     "TablePubsub",
+    "TaskEvents",
     "ResourceDemand",
     "ResourceLoad",
     "ResourceMap",
@@ -116,11 +117,13 @@ def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     req = gcs_service_pb2.CheckAliveRequest()
     try:
         channel = create_gcs_channel(address)
-        stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
+        stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)
         resp = stub.CheckAlive(req, timeout=timeout)
     except grpc.RpcError:
         traceback.print_exc()
         return False
+    finally:
+        channel.close()
     if resp.status.code != GcsCode.OK:
         raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
 
@@ -138,11 +141,24 @@ def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     return True
 
 
+# This global variable is used for testing only
+_called_freq = {}
+
+
 def _auto_reconnect(f):
+    # This is for testing to count the frequence
+    # of gcs call
     if inspect.iscoroutinefunction(f):
 
         @wraps(f)
         async def wrapper(self, *args, **kwargs):
+            if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+                global _called_freq
+                name = f.__name__
+                if name not in _called_freq:
+                    _called_freq[name] = 0
+                _called_freq[name] += 1
+
             remaining_retry = self._nums_reconnect_retry
             while True:
                 try:
@@ -171,6 +187,12 @@ def _auto_reconnect(f):
 
         @wraps(f)
         def wrapper(self, *args, **kwargs):
+            if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+                global _called_freq
+                name = f.__name__
+                if name not in _called_freq:
+                    _called_freq[name] = 0
+                _called_freq[name] += 1
             remaining_retry = self._nums_reconnect_retry
             while True:
                 try:
@@ -412,10 +434,13 @@ class GcsAioClient:
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel()
         )
-        self._heartbeat_info_stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+        self._node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             self._channel.channel()
         )
         self._job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
+            self._channel.channel()
+        )
+        self._actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             self._channel.channel()
         )
 
@@ -424,7 +449,7 @@ class GcsAioClient:
         self, node_ips: List[bytes], timeout: Optional[float] = None
     ) -> List[bool]:
         req = gcs_service_pb2.CheckAliveRequest(raylet_address=node_ips)
-        reply = await self._heartbeat_info_stub.CheckAlive(req, timeout=timeout)
+        reply = await self._node_info_stub.CheckAlive(req, timeout=timeout)
 
         if reply.status.code != GcsCode.OK:
             raise RuntimeError(
@@ -530,6 +555,19 @@ class GcsAioClient:
     ) -> gcs_service_pb2.GetAllJobInfoReply:
         req = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._job_info_stub.GetAllJobInfo(req, timeout=timeout)
+        return reply
+
+    @_auto_reconnect
+    async def get_named_actor_info(
+        self,
+        actor_name: str,
+        ray_namespace: str = "",
+        timeout: Optional[float] = None,
+    ) -> gcs_service_pb2.GetNamedActorInfoReply:
+        req = gcs_service_pb2.GetNamedActorInfoRequest(
+            name=actor_name, ray_namespace=ray_namespace
+        )
+        reply = await self._actor_info_stub.GetNamedActorInfo(req, timeout=timeout)
         return reply
 
 

@@ -3,105 +3,68 @@
 # sets up all the packages necessary for a /developer/ of Ray.
 #
 # In short, if you change it here, PLEASE also change it in setup.py.
-#
-# setup.py install_requires
-aiohttp>=3.7
-aiosignal
-click >= 7.0, <= 8.0.4
-cloudpickle
-filelock
-frozenlist
-gpustat == 1.0.0b1
-grpcio >= 1.28.1, <= 1.43.0
-jsonschema
-msgpack >= 1.0.0, < 2.0.0
-numpy >= 1.16
-opencensus
-prometheus_client >= 0.7.1, < 0.14.0
-protobuf >= 3.15.3, < 4.0.0
-py-spy >= 0.2.0
-pydantic >= 1.8, < 1.10.0
-pyyaml
-requests
-smart_open
-virtualenv
 
-## setup.py extras
-dm_tree
-flask
-pygame
-gym>=0.21.0,<0.24.0; python_version >= '3.7'
-gym==0.19.0; python_version < '3.7'
-lz4
+# You can obtain this list from the ray.egg-info/requires.txt
+
+## setup.py install_requires
+attrs
+click>=7.0
+filelock
+jsonschema
+msgpack<2.0.0,>=1.0.0
+protobuf>= 3.15.3, != 3.19.55
+pyyaml
+aiosignal
+frozenlist
+requests
+virtualenv>=20.0.24
+
+# Python version-specific requirements
+dataclasses; python_version < '3.7'
+# Tracking issue: https://github.com/ray-project/ray/issues/30984
+grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'
+grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'
+grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'
+grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'
+numpy>=1.16; python_version < '3.9'
+numpy>=1.19.3; python_version >= '3.9'
+packaging; python_version >= '3.10'
+typing_extensions; python_version < '3.8'
+
+# ray[all]
+uvicorn
+py-spy>=0.2.0
+rich
+urllib3
+tabulate
 scikit-image
+scipy
+aiohttp>=3.7
+fastapi
+gymnasium==0.26.3
+opencensus
+fsspec
+dm_tree
+matplotlib!=3.4.3; platform_system != "Windows"
+tensorboardX>=1.9
+smart_open
+requests
+kubernetes
+colorful
+lz4
+# Manually parse pandas requirement
 pandas>=1.0.5; python_version < '3.7'
 pandas>=1.3.0; python_version >= '3.7'
-scipy >= 1.5
-tabulate
-tensorboardX >= 1.9
-uvicorn==0.16.0
-dataclasses; python_version < '3.7'
-starlette==0.18.0
 aiorwlock
-gradio; platform_system != "Windows"
-
-# Requirements for running tests
-pyarrow >= 6.0.1, < 7.0.0
-# Used for Dataset tests.
-polars
-azure-cli-core==2.29.1
-azure-identity==1.7.0
-azure-mgmt-compute==23.1.0
-azure-mgmt-network==19.0.0
-azure-mgmt-resource==20.0.0
-msrestazure==0.6.4
-boto3
-cython >= 0.29.26
-dataclasses; python_version < '3.7'
-feather-format
-google-api-python-client
-google-cloud-storage
-gym-minigrid==1.0.3
-kubernetes
-lxml
-moto[s3,server] >= 4.0.0
-mypy
-networkx
-numba
-asyncmock
-# higher version of llvmlite breaks windows
-llvmlite==0.34.0
-openpyxl
-opentelemetry-api==1.1.0
-opentelemetry-sdk==1.1.0
 opentelemetry-exporter-otlp==1.1.0
-pexpect
-Pillow; platform_system != "Windows"
-pygments
-pyspark==3.1.2
-pytest==7.0.1
-pytest-asyncio==0.16.0
-pytest-rerunfailures
-pytest-sugar
-pytest-lazy-fixture
-pytest-timeout
-pytest-virtualenv
-redis >= 3.5.0, < 4.0.0
-scikit-learn==0.24.2
-testfixtures
-werkzeug<2.2.0
-xlrd
 starlette
-fastapi==0.76.0
-smart_open[s3]
-tqdm
-async-exit-stack
-async-generator
-cryptography>=3.0.0
-proxy.py
-# For doc tests
-myst-parser==0.15.2
-myst-nb==0.13.1
-jupytext==1.13.6
-pytest-docker-tools
-pytest-forked
+typer
+pyarrow >= 6.0.1; python_version >= '3.7' and platform_system != "Windows"
+pyarrow >= 6.0.1, < 7.0.0; python_version < '3.7' or platform_system == "Windows"
+aiohttp_cors
+opentelemetry-api==1.1.0
+pyyaml
+gpustat>=1.0.0
+pydantic
+prometheus_client<0.14.0,>=0.7.1
+opentelemetry-sdk==1.1.0

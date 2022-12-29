@@ -20,7 +20,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -150,12 +150,15 @@ if __name__ == "__main__":
             },
         ),
         param_space={
-            "env": "CartPole-v0",
+            "env": "CartPole-v1",
             "num_envs_per_worker": 2,
             "callbacks": MyCallbacks,
             "framework": args.framework,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            # TODO(avnishn): This example uses functions specific to episode v1
+            # that is not compatible with episode v2. Needs to be updated
+            "enable_connectors": False,
         },
     )
     # there is only one trial involved.

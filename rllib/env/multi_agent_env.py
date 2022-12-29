@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import logging
 from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 
@@ -33,6 +33,11 @@ class MultiAgentEnv(gym.Env):
     Agents are identified by (string) agent ids. Note that these "agents" here
     are not to be confused with RLlib Algorithms, which are also sometimes
     referred to as "agents" or "RL agents".
+
+    The preferred format for action- and observation space is a mapping from agent
+    ids to their individual spaces. If that is not provided, the respective methods'
+    observation_space_contains(), action_space_contains(),
+    action_space_sample() and observation_space_sample() have to be overwritten.
     """
 
     def __init__(self):
@@ -45,12 +50,22 @@ class MultiAgentEnv(gym.Env):
 
         # Do the action and observation spaces map from agent ids to spaces
         # for the individual agents?
-        if not hasattr(self, "_spaces_in_preferred_format"):
-            self._spaces_in_preferred_format = None
+        if not hasattr(self, "_action_space_in_preferred_format"):
+            self._action_space_in_preferred_format = None
+        if not hasattr(self, "_obs_space_in_preferred_format"):
+            self._obs_space_in_preferred_format = None
 
     @PublicAPI
-    def reset(self) -> MultiAgentDict:
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[dict] = None,
+    ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         """Resets the env and returns observations from ready agents.
+
+        Args:
+            seed: An optional seed to use for the new episode.
 
         Returns:
             New observations for each ready agent.
@@ -61,7 +76,7 @@ class MultiAgentEnv(gym.Env):
             ...     # Define your env here. # doctest: +SKIP
             ...     ... # doctest: +SKIP
             >>> env = MyMultiAgentEnv() # doctest: +SKIP
-            >>> obs = env.reset() # doctest: +SKIP
+            >>> obs, infos = env.reset(seed=42, options={}) # doctest: +SKIP
             >>> print(obs) # doctest: +SKIP
             {
                 "car_0": [2.4, 1.6],
@@ -74,7 +89,9 @@ class MultiAgentEnv(gym.Env):
     @PublicAPI
     def step(
         self, action_dict: MultiAgentDict
-    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
+    ) -> Tuple[
+        MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
+    ]:
         """Returns observations from ready agents.
 
         The returns are dicts mapping from agent_id strings to values. The
@@ -84,27 +101,27 @@ class MultiAgentEnv(gym.Env):
             Tuple containing 1) new observations for
             each ready agent, 2) reward values for each ready agent. If
             the episode is just started, the value will be None.
-            3) Done values for each ready agent. The special key
+            3) Terminated values for each ready agent. The special key
             "__all__" (required) is used to indicate env termination.
-            4) Optional info values for each agent id.
+            4) Truncated values for each ready agent.
+            5) Info values for each agent id (may be empty dicts).
 
         Examples:
             >>> env = ... # doctest: +SKIP
-            >>> obs, rewards, dones, infos = env.step( # doctest: +SKIP
-            ...    action_dict={ # doctest: +SKIP
-            ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2, # doctest: +SKIP
-            ...    }) # doctest: +SKIP
+            >>> obs, rewards, terminateds, truncateds, infos = env.step(action_dict={
+            ...     "car_0": 1, "car_1": 0, "traffic_light_1": 2,
+            ... }) # doctest: +SKIP
             >>> print(rewards) # doctest: +SKIP
             {
                 "car_0": 3,
                 "car_1": -1,
                 "traffic_light_1": 0,
             }
-            >>> print(dones) # doctest: +SKIP
+            >>> print(terminateds) # doctest: +SKIP
             {
                 "car_0": False,    # car_0 is still running
-                "car_1": True,     # car_1 is done
-                "__all__": False,  # the env is not done
+                "car_1": True,     # car_1 is terminated
+                "__all__": False,  # the env is not terminated
             }
             >>> print(infos) # doctest: +SKIP
             {
@@ -126,17 +143,17 @@ class MultiAgentEnv(gym.Env):
                 in x.
         """
         if (
-            not hasattr(self, "_spaces_in_preferred_format")
-            or self._spaces_in_preferred_format is None
+            not hasattr(self, "_obs_space_in_preferred_format")
+            or self._obs_space_in_preferred_format is None
         ):
-            self._spaces_in_preferred_format = (
-                self._check_if_space_maps_agent_id_to_sub_space()
+            self._obs_space_in_preferred_format = (
+                self._check_if_obs_space_maps_agent_id_to_sub_space()
             )
-        if self._spaces_in_preferred_format:
+        if self._obs_space_in_preferred_format:
             for key, agent_obs in x.items():
                 if not self.observation_space[key].contains(agent_obs):
                     return False
-            if not all(k in self.observation_space for k in x):
+            if not all(k in self.observation_space.spaces for k in x):
                 if log_once("possibly_bad_multi_agent_dict_missing_agent_observations"):
                     logger.warning(
                         "You environment returns observations that are "
@@ -148,7 +165,13 @@ class MultiAgentEnv(gym.Env):
                     )
             return True
 
-        logger.warning("observation_space_contains() has not been implemented")
+        logger.warning(
+            "observation_space_contains() of {} has not been implemented. "
+            "You "
+            "can either implement it yourself or bring the observation "
+            "space into the preferred format of a mapping from agent ids "
+            "to their individual observation spaces. ".format(self)
+        )
         return True
 
     @ExperimentalAPI
@@ -162,17 +185,23 @@ class MultiAgentEnv(gym.Env):
             True if the action space contains all actions in x.
         """
         if (
-            not hasattr(self, "_spaces_in_preferred_format")
-            or self._spaces_in_preferred_format is None
+            not hasattr(self, "_action_space_in_preferred_format")
+            or self._action_space_in_preferred_format is None
         ):
-            self._spaces_in_preferred_format = (
-                self._check_if_space_maps_agent_id_to_sub_space()
+            self._action_space_in_preferred_format = (
+                self._check_if_action_space_maps_agent_id_to_sub_space()
             )
-        if self._spaces_in_preferred_format:
-            return all([self.action_space[agent].contains(x[agent]) for agent in x])
+        if self._action_space_in_preferred_format:
+            return all(self.action_space[agent].contains(x[agent]) for agent in x)
 
         if log_once("action_space_contains"):
-            logger.warning("action_space_contains() has not been implemented")
+            logger.warning(
+                "action_space_contains() of {} has not been implemented. "
+                "You "
+                "can either implement it yourself or bring the observation "
+                "space into the preferred format of a mapping from agent ids "
+                "to their individual observation spaces. ".format(self)
+            )
         return True
 
     @ExperimentalAPI
@@ -189,13 +218,13 @@ class MultiAgentEnv(gym.Env):
             A random action for each environment.
         """
         if (
-            not hasattr(self, "_spaces_in_preferred_format")
-            or self._spaces_in_preferred_format is None
+            not hasattr(self, "_action_space_in_preferred_format")
+            or self._action_space_in_preferred_format is None
         ):
-            self._spaces_in_preferred_format = (
-                self._check_if_space_maps_agent_id_to_sub_space()
+            self._action_space_in_preferred_format = (
+                self._check_if_action_space_maps_agent_id_to_sub_space()
             )
-        if self._spaces_in_preferred_format:
+        if self._action_space_in_preferred_format:
             if agent_ids is None:
                 agent_ids = self.get_agent_ids()
             samples = self.action_space.sample()
@@ -204,7 +233,12 @@ class MultiAgentEnv(gym.Env):
                 for agent_id in agent_ids
                 if agent_id != "__all__"
             }
-        logger.warning("action_space_sample() has not been implemented")
+        logger.warning(
+            f"action_space_sample() of {self} has not been implemented. "
+            "You can either implement it yourself or bring the observation "
+            "space into the preferred format of a mapping from agent ids "
+            "to their individual observation spaces."
+        )
         return {}
 
     @ExperimentalAPI
@@ -223,20 +257,26 @@ class MultiAgentEnv(gym.Env):
         """
 
         if (
-            not hasattr(self, "_spaces_in_preferred_format")
-            or self._spaces_in_preferred_format is None
+            not hasattr(self, "_obs_space_in_preferred_format")
+            or self._obs_space_in_preferred_format is None
         ):
-            self._spaces_in_preferred_format = (
-                self._check_if_space_maps_agent_id_to_sub_space()
+            self._obs_space_in_preferred_format = (
+                self._check_if_obs_space_maps_agent_id_to_sub_space()
             )
-        if self._spaces_in_preferred_format:
+        if self._obs_space_in_preferred_format:
             if agent_ids is None:
                 agent_ids = self.get_agent_ids()
             samples = self.observation_space.sample()
             samples = {agent_id: samples[agent_id] for agent_id in agent_ids}
             return samples
         if log_once("observation_space_sample"):
-            logger.warning("observation_space_sample() has not been implemented")
+            logger.warning(
+                "observation_space_sample() of {} has not been implemented. "
+                "You "
+                "can either implement it yourself or bring the observation "
+                "space into the preferred format of a mapping from agent ids "
+                "to their individual observation spaces. ".format(self)
+            )
         return {}
 
     @PublicAPI
@@ -251,7 +291,7 @@ class MultiAgentEnv(gym.Env):
         return self._agent_ids
 
     @PublicAPI
-    def render(self, mode=None) -> None:
+    def render(self) -> None:
         """Tries to render the environment."""
 
         # By default, do nothing.
@@ -369,20 +409,22 @@ class MultiAgentEnv(gym.Env):
         return env
 
     @DeveloperAPI
-    def _check_if_space_maps_agent_id_to_sub_space(self) -> bool:
-        # do the action and observation spaces map from agent ids to spaces
-        # for the individual agents?
-        obs_space_check = (
+    def _check_if_obs_space_maps_agent_id_to_sub_space(self) -> bool:
+        """Checks if obs space maps from agent ids to spaces of individual agents."""
+        return (
             hasattr(self, "observation_space")
             and isinstance(self.observation_space, gym.spaces.Dict)
             and set(self.observation_space.spaces.keys()) == self.get_agent_ids()
         )
-        action_space_check = (
+
+    @DeveloperAPI
+    def _check_if_action_space_maps_agent_id_to_sub_space(self) -> bool:
+        """Checks if action space maps from agent ids to spaces of individual agents."""
+        return (
             hasattr(self, "action_space")
             and isinstance(self.action_space, gym.spaces.Dict)
             and set(self.action_space.keys()) == self.get_agent_ids()
         )
-        return obs_space_check and action_space_check
 
 
 @PublicAPI
@@ -414,7 +456,7 @@ def make_multi_agent(
     Examples:
          >>> from ray.rllib.env.multi_agent_env import make_multi_agent
          >>> # By gym string:
-         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0") # doctest: +SKIP
+         >>> ma_cartpole_cls = make_multi_agent("CartPole-v1") # doctest: +SKIP
          >>> # Create a 2 agent multi-agent cartpole.
          >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2}) # doctest: +SKIP
          >>> obs = ma_cartpole.reset() # doctest: +SKIP
@@ -444,18 +486,19 @@ def make_multi_agent(
                 config = {}
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
-                self.agents = [gym.make(env_name_or_creator) for _ in range(num)]
+                self.envs = [gym.make(env_name_or_creator) for _ in range(num)]
             else:
-                self.agents = [env_name_or_creator(config) for _ in range(num)]
-            self.dones = set()
-            self.observation_space = self.agents[0].observation_space
-            self.action_space = self.agents[0].action_space
+                self.envs = [env_name_or_creator(config) for _ in range(num)]
+            self.terminateds = set()
+            self.truncateds = set()
+            self.observation_space = self.envs[0].observation_space
+            self.action_space = self.envs[0].action_space
             self._agent_ids = set(range(num))
 
         @override(MultiAgentEnv)
         def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
             if agent_ids is None:
-                agent_ids = list(range(len(self.agents)))
+                agent_ids = list(range(len(self.envs)))
             obs = {agent_id: self.observation_space.sample() for agent_id in agent_ids}
 
             return obs
@@ -463,7 +506,7 @@ def make_multi_agent(
         @override(MultiAgentEnv)
         def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
             if agent_ids is None:
-                agent_ids = list(range(len(self.agents)))
+                agent_ids = list(range(len(self.envs)))
             actions = {agent_id: self.action_space.sample() for agent_id in agent_ids}
 
             return actions
@@ -481,23 +524,38 @@ def make_multi_agent(
             return all(self.observation_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
-        def reset(self):
-            self.dones = set()
-            return {i: a.reset() for i, a in enumerate(self.agents)}
+        def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+            self.terminateds = set()
+            self.truncateds = set()
+            obs, infos = {}, {}
+            for i, env in enumerate(self.envs):
+                obs[i], infos[i] = env.reset(seed=seed, options=options)
+            return obs, infos
 
         @override(MultiAgentEnv)
         def step(self, action_dict):
-            obs, rew, done, info = {}, {}, {}, {}
+            obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
             for i, action in action_dict.items():
-                obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
-                if done[i]:
-                    self.dones.add(i)
-            done["__all__"] = len(self.dones) == len(self.agents)
-            return obs, rew, done, info
+                obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[
+                    i
+                ].step(action)
+                if terminated[i]:
+                    self.terminateds.add(i)
+                if truncated[i]:
+                    self.truncateds.add(i)
+            # TODO: Flaw in our MultiAgentEnv API wrt. new gymnasium: Need to return
+            #  an additional episode_done bool that covers cases where all agents are
+            #  either terminated or truncated, but not all are truncated and not all are
+            #  terminated. We can then get rid of the aweful `__all__` special keys!
+            terminated["__all__"] = len(self.terminateds) + len(self.truncateds) == len(
+                self.envs
+            )
+            truncated["__all__"] = len(self.truncateds) == len(self.envs)
+            return obs, rew, terminated, truncated, info
 
         @override(MultiAgentEnv)
-        def render(self, mode=None):
-            return self.agents[0].render(mode)
+        def render(self):
+            return self.envs[0].render(self.render_mode)
 
     return MultiEnv
 
@@ -536,7 +594,8 @@ class MultiAgentEnvWrapper(BaseEnv):
         self.num_envs = num_envs
         self.restart_failed_sub_environments = restart_failed_sub_environments
 
-        self.dones = set()
+        self.terminateds = set()
+        self.truncateds = set()
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
         for env in self.envs:
@@ -547,27 +606,44 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     def poll(
         self,
-    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
-        obs, rewards, dones, infos = {}, {}, {}, {}
+    ) -> Tuple[
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+    ]:
+        obs, rewards, terminateds, truncateds, infos = {}, {}, {}, {}, {}
         for i, env_state in enumerate(self.env_states):
-            obs[i], rewards[i], dones[i], infos[i] = env_state.poll()
-        return obs, rewards, dones, infos, {}
+            (
+                obs[i],
+                rewards[i],
+                terminateds[i],
+                truncateds[i],
+                infos[i],
+            ) = env_state.poll()
+        return obs, rewards, terminateds, truncateds, infos, {}
 
     @override(BaseEnv)
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         for env_id, agent_dict in action_dict.items():
-            if env_id in self.dones:
+            if env_id in self.terminateds or env_id in self.truncateds:
                 raise ValueError(
                     f"Env {env_id} is already done and cannot accept new actions"
                 )
             env = self.envs[env_id]
             try:
-                obs, rewards, dones, infos = env.step(agent_dict)
+                obs, rewards, terminateds, truncateds, infos = env.step(agent_dict)
             except Exception as e:
                 if self.restart_failed_sub_environments:
                     logger.exception(e.args[0])
                     self.try_restart(env_id=env_id)
-                    obs, rewards, dones, infos = e, {}, {"__all__": True}, {}
+                    obs = e
+                    rewards = {}
+                    terminateds = {"__all__": True}
+                    truncateds = {"__all__": False}
+                    infos = {}
                 else:
                     raise e
 
@@ -575,32 +651,50 @@ class MultiAgentEnvWrapper(BaseEnv):
                 obs, (dict, Exception)
             ), "Not a multi-agent obs dict or an Exception!"
             assert isinstance(rewards, dict), "Not a multi-agent reward dict!"
-            assert isinstance(dones, dict), "Not a multi-agent done dict!"
+            assert isinstance(terminateds, dict), "Not a multi-agent terminateds dict!"
+            assert isinstance(truncateds, dict), "Not a multi-agent truncateds dict!"
             assert isinstance(infos, dict), "Not a multi-agent info dict!"
             if isinstance(obs, dict) and set(infos).difference(set(obs)):
                 raise ValueError(
                     "Key set for infos must be a subset of obs: "
                     "{} vs {}".format(infos.keys(), obs.keys())
                 )
-            if "__all__" not in dones:
+            if "__all__" not in terminateds:
                 raise ValueError(
                     "In multi-agent environments, '__all__': True|False must "
-                    "be included in the 'done' dict: got {}.".format(dones)
+                    "be included in the 'terminateds' dict: got {}.".format(terminateds)
+                )
+            elif "__all__" not in truncateds:
+                raise ValueError(
+                    "In multi-agent environments, '__all__': True|False must "
+                    "be included in the 'truncateds' dict: got {}.".format(truncateds)
                 )
 
-            if dones["__all__"]:
-                self.dones.add(env_id)
-            self.env_states[env_id].observe(obs, rewards, dones, infos)
+            if terminateds["__all__"]:
+                self.terminateds.add(env_id)
+            if truncateds["__all__"]:
+                self.truncateds.add(env_id)
+            self.env_states[env_id].observe(
+                obs, rewards, terminateds, truncateds, infos
+            )
 
     @override(BaseEnv)
-    def try_reset(self, env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
-        ret = {}
+    def try_reset(
+        self,
+        env_id: Optional[EnvID] = None,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[dict] = None,
+    ) -> Optional[Tuple[MultiEnvDict, MultiEnvDict]]:
+        ret_obs = {}
+        ret_infos = {}
         if isinstance(env_id, int):
             env_id = [env_id]
         if env_id is None:
             env_id = list(range(len(self.envs)))
         for idx in env_id:
-            obs = self.env_states[idx].reset()
+            obs, infos = self.env_states[idx].reset(seed=seed, options=options)
+
             if isinstance(obs, Exception):
                 if self.restart_failed_sub_environments:
                     self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
@@ -608,10 +702,14 @@ class MultiAgentEnvWrapper(BaseEnv):
                     raise obs
             else:
                 assert isinstance(obs, dict), "Not a multi-agent obs dict!"
-            if obs is not None and idx in self.dones:
-                self.dones.remove(idx)
-            ret[idx] = obs
-        return ret
+            if obs is not None:
+                if idx in self.terminateds:
+                    self.terminateds.remove(idx)
+                if idx in self.truncateds:
+                    self.truncateds.remove(idx)
+            ret_obs[idx] = obs
+            ret_infos[idx] = infos
+        return ret_obs, ret_infos
 
     @override(BaseEnv)
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
@@ -701,54 +799,72 @@ class _MultiAgentEnvState:
         self.initialized = False
         self.last_obs = {}
         self.last_rewards = {}
-        self.last_dones = {"__all__": False}
+        self.last_terminateds = {"__all__": False}
+        self.last_truncateds = {"__all__": False}
         self.last_infos = {}
 
     def poll(
         self,
-    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
+    ) -> Tuple[
+        MultiAgentDict,
+        MultiAgentDict,
+        MultiAgentDict,
+        MultiAgentDict,
+        MultiAgentDict,
+    ]:
         if not self.initialized:
+            # TODO(sven): Should we make it possible to pass in a seed here?
             self.reset()
             self.initialized = True
 
         observations = self.last_obs
         rewards = {}
-        dones = {"__all__": self.last_dones["__all__"]}
-        infos = {}
+        terminateds = {"__all__": self.last_terminateds["__all__"]}
+        truncateds = {"__all__": self.last_truncateds["__all__"]}
+        infos = self.last_infos
 
         # If episode is done or we have an error, release everything we have.
-        if dones["__all__"] or isinstance(observations, Exception):
+        if (
+            terminateds["__all__"]
+            or truncateds["__all__"]
+            or isinstance(observations, Exception)
+        ):
             rewards = self.last_rewards
             self.last_rewards = {}
-            dones = self.last_dones
+            terminateds = self.last_terminateds
             if isinstance(observations, Exception):
-                dones["__all__"] = True
-            self.last_dones = {}
+                terminateds["__all__"] = True
+                truncateds["__all__"] = False
+            self.last_terminateds = {}
+            truncateds = self.last_truncateds
+            self.last_truncateds = {}
             self.last_obs = {}
             infos = self.last_infos
             self.last_infos = {}
-        # Only release those agents' rewards/dones/infos, whose
+        # Only release those agents' rewards/terminateds/truncateds/infos, whose
         # observations we have.
         else:
             for ag in observations.keys():
                 if ag in self.last_rewards:
                     rewards[ag] = self.last_rewards[ag]
                     del self.last_rewards[ag]
-                if ag in self.last_dones:
-                    dones[ag] = self.last_dones[ag]
-                    del self.last_dones[ag]
-                if ag in self.last_infos:
-                    infos[ag] = self.last_infos[ag]
-                    del self.last_infos[ag]
+                if ag in self.last_terminateds:
+                    terminateds[ag] = self.last_terminateds[ag]
+                    del self.last_terminateds[ag]
+                if ag in self.last_truncateds:
+                    truncateds[ag] = self.last_truncateds[ag]
+                    del self.last_truncateds[ag]
 
-        self.last_dones["__all__"] = False
-        return observations, rewards, dones, infos
+        self.last_terminateds["__all__"] = False
+        self.last_truncateds["__all__"] = False
+        return observations, rewards, terminateds, truncateds, infos
 
     def observe(
         self,
         obs: MultiAgentDict,
         rewards: MultiAgentDict,
-        dones: MultiAgentDict,
+        terminateds: MultiAgentDict,
+        truncateds: MultiAgentDict,
         infos: MultiAgentDict,
     ):
         self.last_obs = obs
@@ -757,23 +873,36 @@ class _MultiAgentEnvState:
                 self.last_rewards[ag] += r
             else:
                 self.last_rewards[ag] = r
-        for ag, d in dones.items():
-            if ag in self.last_dones:
-                self.last_dones[ag] = self.last_dones[ag] or d
+        for ag, d in terminateds.items():
+            if ag in self.last_terminateds:
+                self.last_terminateds[ag] = self.last_terminateds[ag] or d
             else:
-                self.last_dones[ag] = d
+                self.last_terminateds[ag] = d
+        for ag, t in truncateds.items():
+            if ag in self.last_truncateds:
+                self.last_truncateds[ag] = self.last_truncateds[ag] or t
+            else:
+                self.last_truncateds[ag] = t
         self.last_infos = infos
 
-    def reset(self) -> MultiAgentDict:
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[dict] = None,
+    ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         try:
-            self.last_obs = self.env.reset()
+            obs_and_infos = self.env.reset(seed=seed, options=options)
         except Exception as e:
             if self.return_error_as_obs:
                 logger.exception(e.args[0])
-                self.last_obs = e
+                obs_and_infos = e, e
             else:
                 raise e
+
+        self.last_obs, self.last_infos = obs_and_infos
         self.last_rewards = {}
-        self.last_dones = {"__all__": False}
-        self.last_infos = {}
-        return self.last_obs
+        self.last_terminateds = {"__all__": False}
+        self.last_truncateds = {"__all__": False}
+
+        return self.last_obs, self.last_infos

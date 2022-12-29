@@ -50,6 +50,7 @@ extensions = [
     "sphinx_external_toc",
     "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
+    "sphinxcontrib.redoc",
 ]
 
 myst_enable_extensions = [
@@ -80,8 +81,14 @@ external_toc_path = "_toc.yml"
 
 html_extra_path = ["robots.txt"]
 
-# Omit prompt when using copy button
-copybutton_prompt_text = r"\$ "
+html_baseurl = "https://docs.ray.io/en/latest"
+
+# This pattern matches:
+# - Python Repl prompts (">>> ") and it's continuation ("... ")
+# - Bash prompts ("$ ")
+# - IPython prompts ("In []: ", "In [999]: ") and it's continuations
+#   ("  ...: ", "     : ")
+copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
 
 
@@ -179,10 +186,12 @@ linkcheck_ignore = [
     # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
     "https://scikit-optimize.github.io/stable/modules/",
     "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
+    "https://speakerdeck.com/*",  # forbidden for bots
     r"https://huggingface.co/*",  # seems to be flaky
     r"https://www.meetup.com/*",  # seems to be flaky
     r"https://www.pettingzoo.ml/*",  # seems to be flaky
     r"http://localhost[:/].*",  # Ignore localhost links
+    r"^http:/$",  # Ignore incomplete links
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -201,12 +210,13 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
-    "show_navbar_depth": 0,
+    "show_navbar_depth": 1,
     "launch_buttons": {
         "notebook_interface": "jupyterlab",
         "binderhub_url": "https://mybinder.org",
         "colab_url": "https://colab.research.google.com",
     },
+    "announcement": "<div class='topnav'></div>",
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -218,10 +228,6 @@ html_title = f"Ray {release}"
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None
-
-# The name of an image file (relative to this directory) to place at the top
-# of the sidebar.
-html_logo = "images/ray_logo.png"
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
@@ -303,6 +309,8 @@ def setup(app):
     app.add_css_file(
         "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css"
     )
+    # https://github.com/ines/termynal
+    app.add_css_file("css/termynal.css")
 
     # Custom JS
     app.add_js_file(
@@ -315,6 +323,12 @@ def setup(app):
     # to give thumbs up / down and feedback on existing docs pages.
     app.add_js_file("js/rate-the-docs.es.min.js")
 
+    # https://github.com/ines/termynal
+    app.add_js_file("js/termynal.js", defer="defer")
+    app.add_js_file("js/custom.js", defer="defer")
+
+    app.add_js_file("js/top-navigation.js", defer="defer")
+
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
     # Download docs from ecosystem library repos
@@ -326,3 +340,18 @@ def setup(app):
     linkcheck_summarizer = LinkcheckSummarizer()
     app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
     app.connect("build-finished", linkcheck_summarizer.summarize)
+
+    # Create galleries on the fly
+    app.connect("builder-inited", build_gallery)
+
+
+redoc = [
+    {
+        "name": "Ray Jobs API",
+        "page": "cluster/running-applications/job-submission/api",
+        "spec": "cluster/running-applications/job-submission/openapi.yml",
+        "embed": True,
+    },
+]
+
+redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"

@@ -14,5 +14,5 @@ __all__ = [
 from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(
-    "ray.rllib.agents.alpha_star", "ray.rllib.algorithms.alpha_star", error=False
+    "ray.rllib.agents.alpha_star", "ray.rllib.algorithms.alpha_star", error=True
 )

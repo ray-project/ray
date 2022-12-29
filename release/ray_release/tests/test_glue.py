@@ -11,7 +11,11 @@ from ray_release.alerts.handle import result_to_handle_map
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
-from ray_release.config import Test
+from ray_release.config import (
+    Test,
+    DEFAULT_COMMAND_TIMEOUT,
+    DEFAULT_WAIT_FOR_NODES_TIMEOUT,
+)
 from ray_release.exception import (
     ReleaseTestConfigError,
     LocalEnvSetupError,
@@ -86,6 +90,7 @@ class GlueTest(unittest.TestCase):
         self.sdk.returns["get_project"] = APIDict(
             result=APIDict(name="unit_test_project")
         )
+        self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
         self.writeClusterEnv("{'env': true}")
         self.writeClusterCompute("{'compute': true}")
@@ -99,10 +104,13 @@ class GlueTest(unittest.TestCase):
         this_sdk = self.sdk
         this_tempdir = self.tempdir
 
+        self.instances = {}
+
         self.cluster_manager_return = {}
         self.command_runner_return = {}
         self.file_manager_return = {}
 
+        this_instances = self.instances
         this_cluster_manager_return = self.cluster_manager_return
         this_command_runner_return = self.command_runner_return
         this_file_manager_return = self.file_manager_return
@@ -119,6 +127,7 @@ class GlueTest(unittest.TestCase):
                     test_name, project_id, this_sdk, smoke_test=smoke_test
                 )
                 self.return_dict = this_cluster_manager_return
+                this_instances["cluster_manager"] = self
 
         class MockCommandRunner(MockReturn, CommandRunner):
             return_dict = self.cluster_manager_return
@@ -304,6 +313,35 @@ class GlueTest(unittest.TestCase):
             self._run(result)
 
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
+
+    def testAutomaticClusterEnvVariables(self):
+        result = Result()
+
+        self._succeed_until("local_env")
+
+        with self.assertRaises(LocalEnvSetupError):
+            self._run(result)
+
+        cluster_manager = self.instances["cluster_manager"]
+
+        command_timeout = self.test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
+        wait_timeout = self.test["run"]["wait_for_nodes"].get(
+            "timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT
+        )
+
+        expected_idle_termination_minutes = int(command_timeout / 60 + 10)
+        expected_maximum_uptime_minutes = int(
+            expected_idle_termination_minutes + wait_timeout + 10
+        )
+
+        self.assertEqual(
+            cluster_manager.cluster_compute["idle_termination_minutes"],
+            expected_idle_termination_minutes,
+        )
+        self.assertEqual(
+            cluster_manager.cluster_compute["maximum_uptime_minutes"],
+            expected_maximum_uptime_minutes,
+        )
 
     def testInvalidPrepareLocalEnv(self):
         result = Result()

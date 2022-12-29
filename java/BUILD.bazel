@@ -160,6 +160,7 @@ define_java_module(
         "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:commons_io_commons_io",
         "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_apache_httpcomponents_client5_httpclient5",
         "@maven//:org_apache_httpcomponents_client5_httpclient5_fluent",

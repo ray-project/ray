@@ -1,10 +1,14 @@
 import logging
 import logging.handlers
+import os
 import sys
 import urllib
 import urllib.request
 from pathlib import Path
 from queue import Queue
+from urllib.parse import urlparse
+import yaml
+
 
 import requests
 import scipy.linalg  # noqa: F401
@@ -22,8 +26,10 @@ __all__ = [
     "mock_modules",
     "update_context",
     "LinkcheckSummarizer",
+    "build_gallery",
 ]
 
+GALLERIES = ["ray-overview/eco-gallery.yml"]
 
 # Taken from https://github.com/edx/edx-documentation
 FEEDBACK_FORM_FMT = (
@@ -59,6 +65,7 @@ MOCK_MODULES = [
     "dask.distributed",
     "datasets",
     "datasets.iterable_dataset",
+    "datasets.load",
     "gym",
     "gym.spaces",
     "horovod",
@@ -89,6 +96,7 @@ MOCK_MODULES = [
     "ray.core.generated.ray.protocol.Task",
     "ray.serve.generated",
     "ray.serve.generated.serve_pb2",
+    "ray.serve.generated.serve_pb2_grpc",
     "scipy.signal",
     "scipy.stats",
     "setproctitle",
@@ -101,7 +109,15 @@ MOCK_MODULES = [
     "tensorflow.contrib.slim",
     "tree",
     "wandb",
+    "wandb.data_types",
+    "wandb.util",
     "zoopt",
+    "composer",
+    "composer.trainer",
+    "composer.loggers",
+    "composer.loggers.logger_destination",
+    "composer.core",
+    "composer.core.state",
 ]
 
 
@@ -117,6 +133,9 @@ def make_typing_mock(module, name):
 
 
 def mock_modules():
+    if os.environ.get("RAY_MOCK_MODULES", "1") == "0":
+        return
+
     for mod_name in MOCK_MODULES:
         mock_module = mock.MagicMock()
         mock_module.__spec__ = mock.MagicMock()
@@ -255,3 +274,70 @@ class LinkcheckSummarizer:
 
         if not has_broken_links:
             self.logger.info("No broken links found!")
+
+
+def build_gallery(app):
+    for gallery in GALLERIES:
+        panel_items = []
+        source = yaml.safe_load((Path(app.srcdir) / gallery).read_text())
+
+        meta = source["meta"]
+        is_titled = True if meta.get("section-titles") else False
+        meta.pop("section-titles")
+        projects = source["projects"]
+        buttons = source["buttons"]
+
+        for item in projects:
+            ref = ":type: url"
+            website = item["website"]
+            if "://" not in website:  # if it has no http/s protocol, it's a "ref"
+                ref = ref.replace("url", "ref")
+
+            if not item.get("image"):
+                item["image"] = "https://docs.ray.io/_images/ray_logo.png"
+            gh_stars = ""
+            if item["repo"]:
+                try:
+                    url = urlparse(item["repo"])
+                    if url.netloc == "github.com":
+                        _, org, repo = url.path.rstrip("/").split("/")
+                        gh_stars = (
+                            f".. image:: https://img.shields.io/github/"
+                            f"stars/{org}/{repo}?style=social)]\n"
+                            f"\t\t:target: {item['repo']}"
+                        )
+                except Exception:
+                    pass
+
+            item = f"""
+        ---
+        :img-top: {item["image"]}
+
+        {item["description"]}
+
+        {gh_stars}
+
+        +++
+        .. link-button:: {item["website"]}
+            {ref}
+            :text: {item["name"]}
+            :classes: {buttons["classes"]}
+            """
+            panel_items.append(item)
+
+        panel_header = ".. panels::\n"
+        for k, v in meta.items():
+            panel_header += f"\t:{k}: {v}\n"
+
+        if is_titled:
+            panels = ""
+            for item, panel in zip(projects, panel_items):
+                title = item["section_title"]
+                underline_title = "-" * len(title)
+                panels += f"{title}\n{underline_title}\n\n{panel_header}{panel}\n\n"
+        else:
+            panel_items = "\n".join(panel_items)
+            panels = panel_header + panel_items
+
+        gallery_out = gallery.replace(".yml", ".txt")
+        (Path(app.srcdir) / gallery_out).write_text(panels)

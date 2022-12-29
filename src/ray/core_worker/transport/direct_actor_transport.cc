@@ -25,6 +25,36 @@ using namespace ray::gcs;
 namespace ray {
 namespace core {
 
+void SerializeReturnObject(const ObjectID &object_id,
+                           const std::shared_ptr<RayObject> &return_object,
+                           rpc::ReturnObject *return_object_proto) {
+  return_object_proto->set_object_id(object_id.Binary());
+
+  if (!return_object) {
+    // This should only happen if the local raylet died. Caller should
+    // retry the task.
+    RAY_LOG(WARNING) << "Failed to create task return object " << object_id
+                     << " in the object store, exiting.";
+    QuickExit();
+  }
+  return_object_proto->set_size(return_object->GetSize());
+  if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
+    return_object_proto->set_in_plasma(true);
+  } else {
+    if (return_object->GetData() != nullptr) {
+      return_object_proto->set_data(return_object->GetData()->Data(),
+                                    return_object->GetData()->Size());
+    }
+    if (return_object->GetMetadata() != nullptr) {
+      return_object_proto->set_metadata(return_object->GetMetadata()->Data(),
+                                        return_object->GetMetadata()->Size());
+    }
+  }
+  for (const auto &nested_ref : return_object->GetNestedRefs()) {
+    return_object_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
+  }
+}
+
 void CoreWorkerDirectTaskReceiver::Init(
     std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
     rpc::Address rpc_address,
@@ -35,7 +65,7 @@ void CoreWorkerDirectTaskReceiver::Init(
 }
 
 void CoreWorkerDirectTaskReceiver::HandleTask(
-    const rpc::PushTaskRequest &request,
+    rpc::PushTaskRequest request,
     rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
@@ -91,45 +121,50 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
     RAY_CHECK(num_returns >= 0);
 
-    std::vector<std::shared_ptr<RayObject>> return_objects;
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
     bool is_retryable_error = false;
+    bool is_application_error = false;
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
+                                &dynamic_return_objects,
                                 reply->mutable_borrowed_refs(),
-                                &is_retryable_error);
+                                &is_retryable_error,
+                                &is_application_error);
     reply->set_is_retryable_error(is_retryable_error);
+    reply->set_is_application_error(is_application_error);
 
     bool objects_valid = return_objects.size() == num_returns;
-    if (objects_valid) {
-      for (size_t i = 0; i < return_objects.size(); i++) {
-        auto return_object = reply->add_return_objects();
-        ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
-        return_object->set_object_id(id.Binary());
+    for (const auto &return_object : return_objects) {
+      if (return_object.second == NULL) {
+        objects_valid = false;
+      }
+    }
 
-        if (!return_objects[i]) {
-          // This should only happen if the local raylet died. Caller should
-          // retry the task.
-          RAY_LOG(WARNING) << "Failed to create task return object " << id
-                           << " in the object store, exiting.";
-          QuickExit();
+    if (objects_valid) {
+      if (task_spec.ReturnsDynamic()) {
+        size_t num_dynamic_returns_expected = task_spec.DynamicReturnIds().size();
+        if (num_dynamic_returns_expected > 0) {
+          RAY_CHECK(dynamic_return_objects.size() == num_dynamic_returns_expected)
+              << "Expected " << num_dynamic_returns_expected
+              << " dynamic returns, but task generated " << dynamic_return_objects.size();
         }
-        const auto &result = return_objects[i];
-        return_object->set_size(result->GetSize());
-        if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
-          return_object->set_in_plasma(true);
-        } else {
-          if (result->GetData() != nullptr) {
-            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
-          }
-          if (result->GetMetadata() != nullptr) {
-            return_object->set_metadata(result->GetMetadata()->Data(),
-                                        result->GetMetadata()->Size());
-          }
-        }
-        for (const auto &nested_ref : result->GetNestedRefs()) {
-          return_object->add_nested_inlined_refs()->CopyFrom(nested_ref);
-        }
+      } else {
+        RAY_CHECK(dynamic_return_objects.size() == 0)
+            << "Task with static num_returns returned " << dynamic_return_objects.size()
+            << " objects dynamically";
+      }
+      for (const auto &dynamic_return : dynamic_return_objects) {
+        auto return_object_proto = reply->add_dynamic_return_objects();
+        SerializeReturnObject(
+            dynamic_return.first, dynamic_return.second, return_object_proto);
+      }
+      for (size_t i = 0; i < return_objects.size(); i++) {
+        const auto &return_object = return_objects[i];
+        auto return_object_proto = reply->add_return_objects();
+        SerializeReturnObject(
+            return_object.first, return_object.second, return_object_proto);
       }
 
       if (task_spec.IsActorCreationTask()) {
@@ -160,13 +195,22 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         send_reply_callback(status, nullptr, nullptr);
       }
     } else {
-      RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
+      RAY_CHECK(objects_valid);
       send_reply_callback(status, nullptr, nullptr);
     }
   };
 
-  auto reject_callback = [](rpc::SendReplyCallback send_reply_callback) {
-    send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
+  auto cancel_callback = [reply, task_spec](rpc::SendReplyCallback send_reply_callback) {
+    if (task_spec.IsActorTask()) {
+      // We consider cancellation of actor tasks to be a push task RPC failure.
+      send_reply_callback(
+          Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
+    } else {
+      // We consider cancellation of normal tasks to be an in-band cancellation of a
+      // successful RPC.
+      reply->set_was_cancelled_before_running(true);
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    }
   };
 
   auto dependencies = task_spec.GetDependencies(false);
@@ -204,7 +248,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     it->second->Add(request.sequence_number(),
                     request.client_processed_up_to(),
                     std::move(accept_callback),
-                    std::move(reject_callback),
+                    std::move(cancel_callback),
                     std::move(send_reply_callback),
                     task_spec.ConcurrencyGroupName(),
                     task_spec.FunctionDescriptor(),
@@ -217,7 +261,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     normal_scheduling_queue_->Add(request.sequence_number(),
                                   request.client_processed_up_to(),
                                   std::move(accept_callback),
-                                  std::move(reject_callback),
+                                  std::move(cancel_callback),
                                   std::move(send_reply_callback),
                                   "",
                                   task_spec.FunctionDescriptor(),

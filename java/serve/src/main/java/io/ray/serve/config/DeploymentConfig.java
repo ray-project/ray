@@ -193,15 +193,15 @@ public class DeploymentConfig implements Serializable {
         io.ray.serve.generated.DeploymentConfig.newBuilder()
             .setNumReplicas(numReplicas)
             .setMaxConcurrentQueries(maxConcurrentQueries)
-            .setUserConfig(
-                ByteString.copyFrom(
-                    MessagePackSerializer.encode(userConfig).getKey())) // TODO-xlang
             .setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS)
             .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
             .setDeploymentLanguage(deploymentLanguage);
+    if (null != userConfig) {
+      builder.setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()));
+    }
     if (null != autoscalingConfig) {
       builder.setAutoscalingConfig(autoscalingConfig.toProto());
     }

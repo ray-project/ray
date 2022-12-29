@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional, Set, Tuple, Union, Callable
 import pickle
 import warnings
 
+from ray.air.execution.resources.request import _sum_bundles
 from ray.util.annotations import PublicAPI
 from ray.tune.execution import trial_runner
 from ray.tune.resources import Resources
@@ -117,8 +118,7 @@ class DistributeResources:
         """Get total sums of resources in bundles"""
         if not bundles:
             return {"CPU": 0, "GPU": 0}
-        pgf = PlacementGroupFactory(bundles)
-        return pgf.required_resources
+        return _sum_bundles(bundles)
 
     def _is_bundle_empty(self, bundle: Dict[str, float]) -> bool:
         return not (bundle.get("CPU", 0) or bundle.get("GPU", 0))
@@ -452,7 +452,12 @@ class DistributeResources:
             base_bundles, added_bundles, increase_by, False
         )
 
-        pgf = PlacementGroupFactory(new_bundles)
+        pgf = PlacementGroupFactory(
+            new_bundles,
+            strategy=base_trial_resource.strategy,
+            *base_trial_resource._args,
+            **base_trial_resource._kwargs,
+        )
         pgf._head_bundle_is_empty = base_trial_resource._head_bundle_is_empty
         return pgf
 

@@ -2,17 +2,19 @@ common: &common
   env:
     BUILDKITE: "true"
     CI: "true"
-    PYTHON: "3.6"
+    PYTHON: "3.7"
     RAY_USE_RANDOM_PORTS: "1"
     RAY_DEFAULT_BUILD: "1"
     LC_ALL: en_US.UTF-8
     LANG: en_US.UTF-8
+    BUILD: "1"
+    DL: "1"
 
 prelude_commands: &prelude_commands |-
   rm -rf /tmp/bazel_event_logs
   cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
   (which bazel && bazel clean) || true;
-  . ./ci/ci.sh init && source ~/.zshrc
+  . ./ci/ci.sh init && source ~/.zshenv
   ./ci/ci.sh build
   ./ci/env/install-dependencies.sh
   ./ci/env/env_info.sh
@@ -44,7 +46,7 @@ steps:
     - export MAC_WHEELS=1
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1
-    - . ./ci/ci.sh init && source ~/.zshrc
+    - . ./ci/ci.sh init && source ~/.zshenv
     - ./ci/ci.sh build
     # Test wheels
     - ./ci/ci.sh test_wheels

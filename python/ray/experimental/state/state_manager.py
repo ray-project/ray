@@ -21,6 +21,8 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllPlacementGroupRequest,
     GetAllWorkerInfoReply,
     GetAllWorkerInfoRequest,
+    GetTaskEventsReply,
+    GetTaskEventsRequest,
 )
 from ray.core.generated.node_manager_pb2 import (
     GetObjectsInfoReply,
@@ -40,7 +42,9 @@ from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoRequest,
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
+from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
+from ray.dashboard.utils import Dict as Dictionary
 from ray.experimental.state.common import RAY_MAX_LIMIT_FROM_DATA_SOURCE
 from ray.experimental.state.exception import DataSourceUnavailable
 
@@ -160,6 +164,9 @@ class StateDataSourceClient:
         self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
             gcs_channel
         )
+        self._gcs_task_info_stub = gcs_service_pb2_grpc.TaskInfoGcsServiceStub(
+            gcs_channel
+        )
 
     def register_raylet_client(self, node_id: str, address: str, port: int):
         full_addr = f"{address}:{port}"
@@ -224,6 +231,16 @@ class StateDataSourceClient:
         return reply
 
     @handle_grpc_network_errors
+    async def get_all_task_info(
+        self, timeout: int = None, limit: int = None
+    ) -> Optional[GetTaskEventsReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        request = GetTaskEventsRequest(limit=limit)
+        reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
+        return reply
+
+    @handle_grpc_network_errors
     async def get_all_placement_group_info(
         self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllPlacementGroupReply]:
@@ -274,6 +291,9 @@ class StateDataSourceClient:
             else:
                 logger.exception(e)
                 raise e
+
+    async def get_all_cluster_events(self) -> Dictionary:
+        return DataSource.events
 
     @handle_grpc_network_errors
     async def get_task_info(

@@ -4,6 +4,7 @@ from typing import Optional
 
 from ray._private import ray_option_utils
 from ray.util.placement_group import PlacementGroup, check_placement_group_index
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def validate_options(kwargs_dict: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -28,8 +29,12 @@ def validate_options(kwargs_dict: Optional[Dict[str, Any]]) -> Optional[Dict[str
     # specified, placement group cannot be resolved at client. So this check
     # skips this case and relies on server to enforce any condition.
     bundle_index = out.get("placement_group_bundle_index", None)
+    pg = out.get("placement_group", None)
+    scheduling_strategy = out.get("scheduling_strategy", None)
+    if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
+        pg = scheduling_strategy.placement_group
+        bundle_index = scheduling_strategy.placement_group_bundle_index
     if bundle_index is not None:
-        pg = out.get("placement_group", None)
         if pg is None:
             pg = PlacementGroup.empty()
         if pg == "default" and (

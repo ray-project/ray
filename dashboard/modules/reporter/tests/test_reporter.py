@@ -1,16 +1,19 @@
 import logging
 import os
 import sys
-import time
 
 import pytest
 import requests
+import numpy as np
+import time
 
+from multiprocessing import Process
+
+import psutil
 import ray
 from mock import patch
 from ray._private import ray_constants
 from ray._private.test_utils import (
-    RayTestTimeoutException,
     fetch_prometheus,
     format_web_url,
     wait_for_condition,
@@ -28,43 +31,12 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def test_profiling(shutdown_only):
-    addresses = ray.init(include_dashboard=True, num_cpus=6)
+def random_work():
+    import time
 
-    @ray.remote(num_cpus=2)
-    class Actor:
-        def getpid(self):
-            return os.getpid()
-
-    c = Actor.remote()
-    actor_pid = ray.get(c.getpid.remote())
-
-    webui_url = addresses["webui_url"]
-    assert wait_until_server_available(webui_url) is True
-    webui_url = format_web_url(webui_url)
-
-    start_time = time.time()
-    launch_profiling = None
-    while True:
-        # Sometimes some startup time is required
-        if time.time() - start_time > 15:
-            raise RayTestTimeoutException(
-                "Timed out while collecting profiling stats, "
-                f"launch_profiling: {launch_profiling}"
-            )
-        launch_profiling = requests.get(
-            webui_url + "/api/launch_profiling",
-            params={
-                "ip": ray.nodes()[0]["NodeManagerAddress"],
-                "pid": actor_pid,
-                "duration": 5,
-            },
-        ).json()
-        if launch_profiling["result"]:
-            profiling_info = launch_profiling["data"]["profilingInfo"]
-            break
-        time.sleep(1)
-    logger.info(profiling_info)
+    for _ in range(10000):
+        time.sleep(0.1)
+        np.random.rand(5 * 1024 * 1024)  # 40 MB
 
 
 def test_node_physical_stats(enable_test_module, shutdown_only):
@@ -124,11 +96,9 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
                 "ray_node_mem_used" in metric_names,
                 "ray_node_mem_available" in metric_names,
                 "ray_node_mem_total" in metric_names,
-                "ray_raylet_cpu" in metric_names,
-                "ray_raylet_mem" in metric_names,
-                "ray_raylet_mem_uss" in metric_names
-                if sys.platform == "linux"
-                else True,
+                "ray_component_cpu_percentage" in metric_names,
+                "ray_component_rss_mb" in metric_names,
+                "ray_component_uss_mb" in metric_names,
                 "ray_node_disk_io_read" in metric_names,
                 "ray_node_disk_io_write" in metric_names,
                 "ray_node_disk_io_read_count" in metric_names,
@@ -155,7 +125,10 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
         raylet_pid = None
         # Find the raylet pid recorded in the tag.
         for sample in metric_samples:
-            if sample.name == "ray_raylet_cpu":
+            if (
+                sample.name == "ray_component_cpu_percentage"
+                and sample.labels["Component"] == "raylet"
+            ):
                 raylet_pid = sample.labels["pid"]
                 break
         return str(raylet_proc.process.pid) == str(raylet_pid)
@@ -183,9 +156,11 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
 
     def test_worker_stats():
         _, metric_names, metric_samples = fetch_prometheus(prom_addresses)
-        expected_metrics = ["ray_workers_cpu", "ray_workers_mem"]
-        if sys.platform == "linux":
-            expected_metrics.append("ray_workers_mem_uss")
+        expected_metrics = [
+            "ray_component_cpu_percentage",
+            "ray_component_rss_mb",
+            "ray_component_uss_mb",
+        ]
         for metric in expected_metrics:
             if metric not in metric_names:
                 raise RuntimeError(
@@ -241,6 +216,19 @@ def test_report_stats():
                 children_system=0.0,
             ),
         },
+        "agent": {
+            "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
+            "cpu_percent": 0.0,
+            "cmdline": ["fake raylet cmdline"],
+            "create_time": 1614826390.274854,
+            "pid": 7154,
+            "cpu_times": Bunch(
+                user=0.03683138,
+                system=0.035913716,
+                children_user=0.0,
+                children_system=0.0,
+            ),
+        },
         "bootTime": 1612934656.0,
         "loadAvg": ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45, 0.44)),
         "disk_io": (100, 100, 100, 100),
@@ -268,21 +256,21 @@ def test_report_stats():
     }
 
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 27
+    assert len(records) == 29
     # Test stats without raylets
     test_stats["raylet"] = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 25
+    assert len(records) == 27
     # Test stats with gpus
     test_stats["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000}
     ]
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 29
+    assert len(records) == 31
     # Test stats without autoscaler report
     cluster_stats = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 27
+    assert len(records) == 29
 
 
 @pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])
@@ -302,6 +290,74 @@ def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
             # Unless K8s disk usage display is enabled, we should get dummy values.
             assert root_usage.total == 1
             assert root_usage.free == 1
+
+
+def test_reporter_worker_cpu_percent():
+    raylet_dummy_proc_f = psutil.Process
+    agent_mock = Process(target=random_work)
+    children = [Process(target=random_work) for _ in range(2)]
+
+    class ReporterAgentDummy(object):
+        _workers = {}
+
+        def _get_raylet_proc(self):
+            return raylet_dummy_proc_f()
+
+        def _get_agent_proc(self):
+            return psutil.Process(agent_mock.pid)
+
+        def _generate_worker_key(self, proc):
+            return (proc.pid, proc.create_time())
+
+    obj = ReporterAgentDummy()
+
+    try:
+        agent_mock.start()
+        for child_proc in children:
+            child_proc.start()
+        children_pids = {p.pid for p in children}
+        workers = ReporterAgent._get_workers(obj)
+        # In the first run, the percent should be 0.
+        assert all([worker["cpu_percent"] == 0.0 for worker in workers])
+        for _ in range(10):
+            time.sleep(0.1)
+            workers = ReporterAgent._get_workers(obj)
+            workers_pids = {w["pid"] for w in workers}
+
+            # Make sure all children are registered.
+            for pid in children_pids:
+                assert pid in workers_pids
+
+            for worker in workers:
+                if worker["pid"] in children_pids:
+                    # Subsequent run shouldn't be 0.
+                    worker["cpu_percent"] > 0
+
+        # Kill one of the child procs and test it is cleaned.
+        print("killed ", children[0].pid)
+        children[0].kill()
+        wait_for_condition(lambda: not children[0].is_alive())
+        workers = ReporterAgent._get_workers(obj)
+        workers_pids = {w["pid"] for w in workers}
+        assert children[0].pid not in workers_pids
+        assert children[1].pid in workers_pids
+
+        children[1].kill()
+        wait_for_condition(lambda: not children[1].is_alive())
+        workers = ReporterAgent._get_workers(obj)
+        workers_pids = {w["pid"] for w in workers}
+        assert children[0].pid not in workers_pids
+        assert children[1].pid not in workers_pids
+
+    except Exception as e:
+        logger.exception(e)
+        raise
+    finally:
+        for child_proc in children:
+            if child_proc.is_alive():
+                child_proc.kill()
+        if agent_mock.is_alive():
+            agent_mock.kill()
 
 
 if __name__ == "__main__":

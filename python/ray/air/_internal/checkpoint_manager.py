@@ -13,8 +13,10 @@ import ray
 from ray._private.dict import flatten_dict
 from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
+from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
 from ray.air._internal.util import is_nan
 from ray.util import log_once
+from ray._private.ray_constants import env_integer
 
 
 logger = logging.getLogger(__name__)
@@ -57,7 +59,7 @@ class _TrackedCheckpoint:
 
     def __init__(
         self,
-        dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef]],
+        dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef, Checkpoint]],
         storage_mode: CheckpointStorage,
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
@@ -71,15 +73,21 @@ class _TrackedCheckpoint:
 
         self.metrics = flatten_dict(metrics) if metrics else {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
+        # If True, and the checkpoint is an AIR Checkpoint backed by
+        # a local directory, will move files instead of copying them
+        # when commiting to disk.
+        self._move_instead_of_copy = not bool(
+            env_integer(COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV, 0)
+        )
 
         if (
             dir_or_data is not None
             and storage_mode == CheckpointStorage.MEMORY
-            and not isinstance(dir_or_data, (dict, ray.ObjectRef))
+            and not isinstance(dir_or_data, (dict, ray.ObjectRef, Checkpoint))
         ):
             raise ValueError(
-                f"Memory checkpoints only support Ray object references and dicts "
-                f"as their data. Got: {dir_or_data}"
+                f"Memory checkpoints only support Ray object references, dicts "
+                f"and AIR Checkpoint as their data. Got: {dir_or_data}"
             )
 
     def commit(self, path: Optional[Path] = None) -> None:
@@ -94,6 +102,13 @@ class _TrackedCheckpoint:
 
         if not path:
             # If no path is given, skip
+            return
+
+        if isinstance(self.dir_or_data, Checkpoint):
+            if self.dir_or_data._local_path and self._move_instead_of_copy:
+                self.dir_or_data = self.dir_or_data._move_directory(str(path))
+            else:
+                self.dir_or_data = self.dir_or_data.to_directory(str(path))
             return
 
         if not isinstance(self.dir_or_data, dict):
@@ -156,10 +171,13 @@ class _TrackedCheckpoint:
 
     def __repr__(self):
         if self.storage_mode == CheckpointStorage.MEMORY:
-            return f"<_TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
+            return (
+                f"<_TrackedCheckpoint id={self.id} storage='MEMORY' "
+                f"result={self.metrics}>"
+            )
 
         return (
-            f"<_TrackedCheckpoint storage='PERSISTENT' "
+            f"<_TrackedCheckpoint id={self.id} storage='PERSISTENT' "
             f"dir_or_data={self.dir_or_data}>"
         )
 

@@ -41,10 +41,10 @@ class BaseTrainer(abc.ABC):
     Note: The base ``BaseTrainer`` class cannot be instantiated directly. Only
     one of its subclasses can be used.
 
-    How does a trainer work?
+    **How does a trainer work?**
 
     - First, initialize the Trainer. The initialization runs locally,
-      so heavyweight setup should not be done in __init__.
+      so heavyweight setup should not be done in ``__init__``.
     - Then, when you call ``trainer.fit()``, the Trainer is serialized
       and copied to a remote Ray actor. The following methods are then
       called in sequence on the remote actor.
@@ -214,14 +214,25 @@ class BaseTrainer(abc.ABC):
                 f"`ray.data.Dataset` objects, "
                 f"found {type(self.datasets)} with value `{self.datasets}`."
             )
-        elif any(
-            not isinstance(ds, ray.data.Dataset) and not callable(ds)
-            for ds in self.datasets.values()
-        ):
-            raise ValueError(
-                f"At least one value in the `datasets` dict is not a "
-                f"`ray.data.Dataset`: {self.datasets}"
-            )
+        else:
+            for key, dataset in self.datasets.items():
+                if isinstance(dataset, ray.data.DatasetPipeline):
+                    raise ValueError(
+                        f"The Dataset under '{key}' key is a "
+                        f"`ray.data.DatasetPipeline`. Only `ray.data.Dataset` are "
+                        f"allowed to be passed in.  Pipelined/streaming ingest can be "
+                        f"configured via the `dataset_config` arg. See "
+                        "https://docs.ray.io/en/latest/ray-air/check-ingest.html#enabling-streaming-ingest"  # noqa: E501
+                        "for an example."
+                    )
+                elif not isinstance(dataset, ray.data.Dataset) and not callable(
+                    dataset
+                ):
+                    raise ValueError(
+                        f"The Dataset under '{key}' key is not a `ray.data.Dataset`. "
+                        f"Received {dataset} instead."
+                    )
+
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
             self.preprocessor, ray.data.Preprocessor
@@ -301,7 +312,7 @@ class BaseTrainer(abc.ABC):
     def training_loop(self) -> None:
         """Loop called by fit() to run training and report results to Tune.
 
-        Note: this method runs on a remote process.
+        .. note:: This method runs on a remote process.
 
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
@@ -311,7 +322,7 @@ class BaseTrainer(abc.ABC):
 
         Example:
 
-        .. code-block: python
+        .. code-block:: python
 
             from ray.train.trainer import BaseTrainer
 
@@ -351,12 +362,16 @@ class BaseTrainer(abc.ABC):
             raise TrainingFailedError from e
         return result
 
-    def as_trainable(self) -> Type["Trainable"]:
-        """Convert self to a ``tune.Trainable`` class."""
+    def _generate_trainable_cls(self) -> Type["Trainable"]:
+        """Generate the base Trainable class.
+
+        Returns:
+            A Trainable class to use for training.
+        """
+
         from ray.tune.execution.placement_groups import PlacementGroupFactory
         from ray.tune.trainable import wrap_function
 
-        base_config = self._param_dict
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
 
@@ -381,17 +396,18 @@ class BaseTrainer(abc.ABC):
 
         trainable_cls = wrap_function(train_func, warn=False)
         has_base_dataset = bool(self.datasets)
+        if has_base_dataset:
+            from ray.data.context import DatasetContext
+
+            dataset_context = DatasetContext.get_current()
+        else:
+            dataset_context = None
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
 
             _handles_checkpoint_freq = trainer_cls._handles_checkpoint_freq
             _handles_checkpoint_at_end = trainer_cls._handles_checkpoint_at_end
-
-            # Workaround for actor name not being logged correctly
-            # if __repr__ is not directly defined in a class.
-            def __repr__(self):
-                return super().__repr__()
 
             @classmethod
             def has_base_dataset(cls) -> bool:
@@ -403,9 +419,8 @@ class BaseTrainer(abc.ABC):
                 """Returns the unchanged scaling config provided through the Trainer."""
                 return scaling_config
 
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-
+            def setup(self, config, **kwargs):
+                base_config = dict(kwargs)
                 # Create a new config by merging the dicts.
                 # run_config is not a tunable hyperparameter so it does not need to be
                 # merged.
@@ -420,6 +435,11 @@ class BaseTrainer(abc.ABC):
                 ] = self._reconcile_scaling_config_with_trial_resources(
                     merged_scaling_config
                 )
+                if self.has_base_dataset():
+                    # Set the DatasetContext on the Trainer actor to the DatasetContext
+                    # specified on the driver.
+                    DatasetContext._set_current(dataset_context)
+                super(TrainTrainable, self).setup(config)
 
             def _reconcile_scaling_config_with_trial_resources(
                 self, scaling_config: ScalingConfig
@@ -476,3 +496,13 @@ class BaseTrainer(abc.ABC):
                 return validated_scaling_config.as_placement_group_factory()
 
         return TrainTrainable
+
+    def as_trainable(self) -> Type["Trainable"]:
+        """Convert self to a ``tune.Trainable`` class."""
+        from ray import tune
+
+        base_config = self._param_dict
+        trainable_cls = self._generate_trainable_cls()
+
+        # Wrap with `tune.with_parameters` to handle very large values in base_config
+        return tune.with_parameters(trainable_cls, **base_config)

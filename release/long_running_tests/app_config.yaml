@@ -7,7 +7,11 @@ debian_packages:
 
 python:
   pip_packages:
-    - "gym[atari]>=0.21.0,<0.24.1"
+    # These dependencies should be handled by requirements_rllib.txt and
+    # requirements_ml_docker.txt and removed here
+    - gym>=0.21.0,<0.24.1
+    - ale-py==0.7.5
+    - autorom[accept-rom-license]
     - pytest
     - tensorflow
   conda_packages: []
@@ -15,7 +19,7 @@ python:
 post_build_cmds:
   - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin'
   - pip3 install pytest || true
-  - pip3 install -U ray[all] "gym[atari]>=0.21.0,<0.24.1" autorom[accept-rom-license]
+  - pip3 install -U ray[all]
   - pip3 install ray[all]
   # TODO (Alex): Ideally we would install all the dependencies from the new
   # version too, but pip won't be able to find the new version of ray-cpp.

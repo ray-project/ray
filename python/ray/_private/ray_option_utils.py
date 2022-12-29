@@ -120,7 +120,13 @@ _task_only_options = {
     ),
     # override "_common_options"
     "num_cpus": _resource_option("num_cpus", default_value=1),
-    "num_returns": _counting_option("num_returns", False, default_value=1),
+    "num_returns": Option(
+        (int, str, type(None)),
+        lambda x: x is None or x == "dynamic" or x >= 0,
+        "The keyword 'num_returns' only accepts None, a non-negative integer, or "
+        '"dynamic" (for generators)',
+        default_value=1,
+    ),
     "object_store_memory": Option(  # override "_common_options"
         (int, type(None)),
         lambda x: x is None,

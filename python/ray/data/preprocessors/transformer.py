@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class PowerTransformer(Preprocessor):
     """Apply a `power transform <https://en.wikipedia.org/wiki/Power_transform>`_ to
     make your data more normally distributed.

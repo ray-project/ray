@@ -108,6 +108,12 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
+  // Dynamically created objects. These are objects whose refs were allocated
+  // by the task at run time instead of by the task caller at f.remote() time.
+  // We need to notify the task caller that they own these objects. The
+  // language-level ObjectRefs should be returned inside one of the statically
+  // allocated return objects.
+  repeated ReturnObject dynamic_return_objects = 2;
   // Set to true if the worker will be exiting.
   bool worker_exiting = 3;
   // The references that the worker borrowed during the task execution. A
@@ -127,6 +133,10 @@ message PushTaskReply {
   repeated ObjectReferenceCount borrowed_refs = 4;
   // Whether the result contains a retryable application-level error.
   bool is_retryable_error = 5;
+  // Whether the result contains an application-level error.
+  bool is_application_error = 6;
+  // Whether the task was cancelled before it started running (i.e. while queued).
+  bool was_cancelled_before_running = 7;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -210,6 +220,11 @@ message ObjectLocationUpdate {
   optional ObjectPlasmaLocationUpdate plasma_location_update = 2;
   // When it's set, it contains where the object is spilled to.
   optional ObjectSpilledLocationUpdate spilled_location_update = 3;
+  // When it's set, this means that it was a dynamically created ObjectID, so
+  // we need to notify the owner of the outer ObjectID, which should be owned
+  // by the same worker. If the outer ObjectID is still in scope, then the
+  // owner can add the dynamically created ObjectID to its ref count.
+  optional bytes generator_id = 4;
 }
 
 message GetObjectLocationsOwnerRequest {
@@ -307,8 +322,18 @@ message PlasmaObjectReadyRequest {
 
 message PlasmaObjectReadyReply {}
 
+message DeleteObjectsRequest {
+  // List of object ids to delete.
+  repeated bytes object_ids = 1;
+  // Whether to only free local objects.
+  bool local_only = 2;
+}
+
+message DeleteObjectsReply {}
+
 message SpillObjectsRequest {
   repeated ObjectReference object_refs_to_spill = 1;
+  DeleteObjectsRequest delete_request = 2;
 }
 
 message SpillObjectsReply {
@@ -400,6 +425,8 @@ service CoreWorkerService {
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
   // Trigger local GC on the worker.
   rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Delete objects explicitly.
+  rpc DeleteObjects(DeleteObjectsRequest) returns (DeleteObjectsReply);
   // Spill objects to external storage. Caller: raylet; callee: I/O worker.
   rpc SpillObjects(SpillObjectsRequest) returns (SpillObjectsReply);
   // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.

@@ -77,29 +77,80 @@ ds.groupby("variety").count().show()
 # fmt: on
 
 # fmt: off
-# __writing_native_udfs_begin__
+# __writing_default_udfs_tabular_begin__
 import ray
 import pandas as pd
 
 # Load dataset.
 ds = ray.data.read_csv("example://iris.csv")
+print(ds.default_batch_format())
+# <class 'pandas.core.frame.DataFrame'>
 
 # UDF as a function on Pandas DataFrame batches.
-def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
+def pandas_transform(df_batch: pd.DataFrame) -> pd.DataFrame:
     # Filter rows.
-    df = df[df["variety"] == "Versicolor"]
+    df_batch = df_batch[df_batch["variety"] == "Versicolor"]
     # Add derived column.
-    df["normalized.sepal.length"] =  df["sepal.length"] / df["sepal.length"].max()
+    # Notice here that `df["sepal.length"].max()` is only the max value of the column
+    # within a given batch (instead of globally)!!
+    df_batch.loc[:, "normalized.sepal.length"] = df_batch["sepal.length"] / df_batch["sepal.length"].max()
     # Drop column.
-    df = df.drop(columns=["sepal.length"])
-    return df
+    df_batch = df_batch.drop(columns=["sepal.length"])
+    return df_batch
 
 ds.map_batches(pandas_transform).show(2)
 # -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
 #     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
 # -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
 #     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
-# __writing_native_udfs_end__
+# __writing_default_udfs_tabular_end__
+# fmt: on
+
+# fmt: off
+# __writing_default_udfs_tensor_begin__
+import ray
+import numpy as np
+
+# Load dataset.
+ds = ray.data.range_tensor(1000, shape=(2, 2))
+print(ds.default_batch_format())
+# <class 'numpy.ndarray'>
+
+# UDF as a function on NumPy ndarray batches.
+def tensor_transform(arr: np.ndarray) -> np.ndarray:
+    # Notice here that the ndarray is of shape (batch_size, 2, 2)
+    # Multiply each element in the ndarray by a factor of 2
+    return arr * 2
+
+ds.map_batches(tensor_transform).show(2)
+# [array([[0, 0],
+#         [0, 0]]),
+# array([[2, 2],
+#         [2, 2]])]
+
+# __writing_default_udfs_tensor_end__
+# fmt: on
+
+# fmt: off
+# __writing_default_udfs_list_begin__
+import ray
+
+# Load dataset.
+ds = ray.data.range(1000)
+print(ds.default_batch_format())
+# <class 'list'>
+
+# UDF as a function on Python list batches.
+def list_transform(list) -> list:
+    # Notice here that the list is of length batch_size
+    # Multiply each element in the list by a factor of 2
+    return [x * 2 for x in list]
+
+ds.map_batches(list_transform).show(2)
+# 0
+# 2
+
+# __writing_default_udfs_list_end__
 # fmt: on
 
 # fmt: off
@@ -115,7 +166,7 @@ def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
     # Filter rows.
     df = df[df["variety"] == "Versicolor"]
     # Add derived column.
-    df["normalized.sepal.length"] =  df["sepal.length"] / df["sepal.length"].max()
+    df.loc[:, "normalized.sepal.length"] = df["sepal.length"] / df["sepal.length"].max()
     # Drop column.
     df = df.drop(columns=["sepal.length"])
     return df
@@ -516,6 +567,35 @@ ds.show(2)
 # -> (('sepal.length', 4.9), ('sepal.width', 3.0), ('petal.length', 1.4),
 #     ('petal.width', 0.2), ('variety', 'Setosa'))
 # __writing_simple_out_row_udfs_end__
+# fmt: on
+
+# fmt: off
+# __configuring_batch_size_begin__
+import ray
+import pandas as pd
+
+# Load dataset.
+ds = ray.data.read_csv("example://iris.csv")
+
+# UDF as a function on Pandas DataFrame batches.
+def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
+    # Filter rows.
+    df = df[df["variety"] == "Versicolor"]
+    # Add derived column.
+    df.loc[:, "normalized.sepal.length"] = df["sepal.length"] / df["sepal.length"].max()
+    # Drop column.
+    df = df.drop(columns=["sepal.length"])
+    return df
+
+# Have each batch that pandas_transform receives contain 10 rows.
+ds = ds.map_batches(pandas_transform, batch_size=10)
+
+ds.show(2)
+# -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
+#     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
+# -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
+#     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
+# __configuring_batch_size_end__
 # fmt: on
 
 # fmt: off

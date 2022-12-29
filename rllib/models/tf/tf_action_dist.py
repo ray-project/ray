@@ -1,5 +1,5 @@
 import functools
-import gym
+import gymnasium as gym
 from math import log
 import numpy as np
 import tree  # pip install dm_tree
@@ -95,6 +95,17 @@ class Categorical(TFActionDistribution):
     @override(ActionDistribution)
     def required_model_output_shape(action_space, model_config):
         return action_space.n
+
+
+@DeveloperAPI
+def get_categorical_class_with_temperature(t: float):
+    """Categorical distribution class that has customized default temperature."""
+
+    class CategoricalWithTemperature(Categorical):
+        def __init__(self, inputs, model=None, temperature=t):
+            super().__init__(inputs, model, temperature)
+
+    return CategoricalWithTemperature
 
 
 @DeveloperAPI
@@ -435,7 +446,7 @@ class SquashedGaussian(TFActionDistribution):
         # Get log-prob for squashed Gaussian.
         unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
         log_prob = log_prob_gaussian - tf.reduce_sum(
-            tf.math.log(1 - unsquashed_values_tanhd ** 2 + SMALL_NUMBER), axis=-1
+            tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER), axis=-1
         )
         return log_prob
 

@@ -2,7 +2,7 @@
    RLlib Trainers.
    This env follows RecSim obs and action APIs.
 """
-import gym
+import gymnasium as gym
 import numpy as np
 from typing import Optional
 
@@ -105,7 +105,7 @@ class ParametricRecSys(gym.Env):
     def _get_embedding(self):
         return np.random.uniform(-1, 1, size=(self.embedding_size,)).astype(np.float32)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         # Reset the current user's time budget.
         self.current_user_budget = self.user_time_budget
 
@@ -121,15 +121,17 @@ class ParametricRecSys(gym.Env):
         else:
             self.current_user = self._get_embedding()
 
-        return self._get_obs()
+        return self._get_obs(), {}
 
     def step(self, action):
         # Action is the suggested slate (indices of the docs in the
         # suggested ones).
 
-        scores = [
-            np.dot(self.current_user, doc) for doc in self.currently_suggested_docs
-        ]
+        # We calculate scores as the dot product between document features and user
+        # features. The softmax ensures regret<1 further down.
+        scores = softmax(
+            [np.dot(self.current_user, doc) for doc in self.currently_suggested_docs]
+        )
         best_reward = np.max(scores)
 
         # User choice model: User picks a doc stochastically,
@@ -137,18 +139,22 @@ class ParametricRecSys(gym.Env):
         # (categories) vectors (rewards).
         # There is also a no-click doc whose weight is 0.0.
         user_doc_overlaps = np.array([scores[a] for a in action] + [0.0])
+        # We have to softmax again so that probabilities add up to 1
+        probabilities = softmax(user_doc_overlaps)
         which_clicked = np.random.choice(
-            np.arange(self.slate_size + 1), p=softmax(user_doc_overlaps)
+            np.arange(self.slate_size + 1), p=probabilities
         )
 
         reward = 0.0
         if which_clicked < self.slate_size:
             # Reward is 1.0 - regret if clicked. 0.0 if not clicked.
             regret = best_reward - user_doc_overlaps[which_clicked]
-            reward = 1 - regret
+            # The reward also represents the user engagement that we define to be
+            # withing the range [0...100].
+            reward = (1 - regret) * 100
             # If anything clicked, deduct from the current user's time budget.
             self.current_user_budget -= 1.0
-        done = self.current_user_budget <= 0.0
+        done = truncated = self.current_user_budget <= 0.0
 
         # Compile response.
         response = tuple(
@@ -159,7 +165,7 @@ class ParametricRecSys(gym.Env):
             for idx in range(len(user_doc_overlaps) - 1)
         )
 
-        return self._get_obs(response=response), reward, done, {}
+        return self._get_obs(response=response), reward, done, truncated, {}
 
     def _get_obs(self, response=None):
         # Sample D docs from infinity or our pre-existing docs.
@@ -201,14 +207,14 @@ if __name__ == "__main__":
         num_docs_in_db=100,
         num_users_in_db=1,
     )
-    obs = env.reset()
+    obs, info = env.reset()
     num_episodes = 0
     episode_rewards = []
     episode_reward = 0.0
 
     while num_episodes < 100:
         action = env.action_space.sample()
-        obs, reward, done, _ = env.step(action)
+        obs, reward, done, truncated, _ = env.step(action)
 
         episode_reward += reward
         if done:

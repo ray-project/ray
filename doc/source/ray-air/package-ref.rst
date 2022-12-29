@@ -74,6 +74,15 @@ Feature Scalers
 .. autoclass:: ray.data.preprocessors.StandardScaler
     :show-inheritance:
 
+K-Bins Discretizers
+###################
+
+.. autoclass:: ray.data.preprocessors.CustomKBinsDiscretizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.UniformKBinsDiscretizer
+    :show-inheritance:
+
 Text Encoders
 #############
 
@@ -340,20 +349,20 @@ Monitoring Integrations
 Comet
 #####
 
-.. autoclass:: ray.air.callbacks.comet.CometLoggerCallback
+.. autoclass:: ray.air.integrations.comet.CometLoggerCallback
 
 Keras
 #####
 
-.. autoclass:: ray.air.callbacks.keras.Callback
+.. autoclass:: ray.air.integrations.keras.Callback
     :members:
 
 MLflow
 ######
 
-.. autoclass:: ray.air.callbacks.mlflow.MLflowLoggerCallback
+.. autoclass:: ray.air.integrations.mlflow.MLflowLoggerCallback
 
 Weights and Biases
 ##################
 
-.. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
+.. autoclass:: ray.air.integrations.wandb.WandbLoggerCallback

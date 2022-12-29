@@ -12,6 +12,8 @@ and from the command line. Take a look at the ``ray.init`` `documentation
 .. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``ray.init`` in Python to connect to the cluster services. On a single machine, you can run ``ray.init()`` without ``ray start``, which will both start the Ray cluster services and connect to them.
 
 
+.. _cluster-resources:
+
 Cluster Resources
 -----------------
 
@@ -55,11 +57,13 @@ If using the command line, connect to the Ray cluster as follow:
 .. _omp-num-thread-note:
 
 .. note::
-    Ray sets the environment variable ``OMP_NUM_THREADS=1`` by default. This is done
-    to avoid performance degradation with many workers (issue #6998). You can
-    override this by explicitly setting ``OMP_NUM_THREADS``. ``OMP_NUM_THREADS`` is commonly
-    used in numpy, PyTorch, and Tensorflow to perform multi-threaded linear algebra.
-    In multi-worker setting, we want one thread per worker instead of many threads
+    Ray sets the environment variable ``OMP_NUM_THREADS=<num_cpus>`` if ``num_cpus`` is set on 
+    the task/actor via :ref:`ray.remote() <ray-remote-ref>` and :ref:`.options() <ray-options-ref>`.
+    Ray sets ``OMP_NUM_THREADS=1`` if ``num_cpus`` is not specified; this 
+    is done to avoid performance degradation with many workers (issue #6998). You can
+    also override this by explicitly setting ``OMP_NUM_THREADS`` to override anything Ray sets by default. 
+    ``OMP_NUM_THREADS`` is commonly used in numpy, PyTorch, and Tensorflow to perform multi-threaded 
+    linear algebra. In multi-worker setting, we want one thread per worker instead of many threads
     per worker to avoid contention. Some other libraries may have their own way to configure
     parallelism. For example, if you're using OpenCV, you should manually set the number of
     threads using cv2.setNumThreads(num_threads) (set to 0 to disable multi-threading).

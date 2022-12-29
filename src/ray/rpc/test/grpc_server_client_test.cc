@@ -23,7 +23,7 @@ namespace ray {
 namespace rpc {
 class TestServiceHandler {
  public:
-  void HandlePing(const PingRequest &request,
+  void HandlePing(PingRequest request,
                   PingReply *reply,
                   SendReplyCallback send_reply_callback) {
     RAY_LOG(INFO) << "Got ping request, no_reply=" << request.no_reply();
@@ -47,7 +47,7 @@ class TestServiceHandler {
         });
   }
 
-  void HandlePingTimeout(const PingTimeoutRequest &request,
+  void HandlePingTimeout(PingTimeoutRequest request,
                          PingTimeoutReply *reply,
                          SendReplyCallback send_reply_callback) {
     while (frozen) {

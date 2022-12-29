@@ -137,7 +137,7 @@ To start, you first have to define a loss function. In RLlib, loss functions are
         action_dist = dist_class(logits, model)
         return -tf.reduce_mean(action_dist.logp(actions) * rewards)
 
-In the above snippet, ``actions`` is a Tensor placeholder of shape ``[batch_size, action_dim...]``, and ``rewards`` is a placeholder of shape ``[batch_size]``. The ``action_dist`` object is an `ActionDistribution <rllib-package-ref.html#ray.rllib.models.ActionDistribution>`__ that is parameterized by the output of the neural network policy model. Passing this loss function to ``build_tf_policy`` is enough to produce a very basic TF policy:
+In the above snippet, ``actions`` is a Tensor placeholder of shape ``[batch_size, action_dim...]``, and ``rewards`` is a placeholder of shape ``[batch_size]``. The ``action_dist`` object is an :ref:`ActionDistribution <rllib-models-walkthrough>` that is parameterized by the output of the neural network policy model. Passing this loss function to ``build_tf_policy`` is enough to produce a very basic TF policy:
 
 .. code-block:: python
 
@@ -161,7 +161,7 @@ We can create an `Algorithm <#algorithms>`__ and try running this policy on a to
             return MyTFPolicy
 
     ray.init()
-    tune.Tuner(MyAlgo, param_space={"env": "CartPole-v0", "num_workers": 2}).fit()
+    tune.Tuner(MyAlgo, param_space={"env": "CartPole-v1", "num_workers": 2}).fit()
 
 
 If you run the above snippet `(runnable file here) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`__, you'll probably notice that CartPole doesn't learn so well:

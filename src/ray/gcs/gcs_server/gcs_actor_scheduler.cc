@@ -61,6 +61,14 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   auto send_reply_callback = [this, actor, reply](Status status,
                                                   std::function<void()> success,
                                                   std::function<void()> failure) {
+    if (reply->canceled()) {
+      HandleRequestWorkerLeaseCanceled(
+          actor,
+          NodeID::Nil(),
+          reply->failure_type(),
+          /*scheduling_failure_message*/ reply->scheduling_failure_message());
+      return;
+    }
     const auto &retry_at_raylet_address = reply->retry_at_raylet_address();
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     auto node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
@@ -400,6 +408,11 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
                                       actor->GetActorTableData(),
                                       [this, actor, leased_worker](Status status) {
                                         RAY_CHECK_OK(status);
+                                        if (actor->GetState() ==
+                                            rpc::ActorTableData::DEAD) {
+                                          // Actor has already been killed.
+                                          return;
+                                        }
                                         CreateActorOnWorker(actor, leased_worker);
                                       }));
   }

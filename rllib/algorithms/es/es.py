@@ -6,15 +6,18 @@ import logging
 import numpy as np
 import random
 import time
-from typing import Optional
+from typing import Dict, List, Optional
 
 import ray
-from ray.rllib.algorithms import Algorithm, AlgorithmConfig
+from ray.rllib.algorithms import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import ESTFPolicy, rollout
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
+from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
@@ -24,7 +27,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.torch_utils import set_torch_seed
-from ray.rllib.utils.typing import AlgorithmConfigDict
+from ray.rllib.utils.typing import PolicyID
 
 logger = logging.getLogger(__name__)
 
@@ -46,31 +49,34 @@ class ESConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.es import ESConfig
-        >>> config = ESConfig().training(sgd_stepsize=0.02, report_length=20)\
-        ...     .resources(num_gpus=0)\
-        ...     .rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = ESConfig()  # doctest: +SKIP
+        >>> config = config.training(sgd_stepsize=0.02, report_length=20)#doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.es import ESConfig
         >>> from ray import tune
         >>> config = ESConfig()
         >>> # Print out some default values.
-        >>> print(config.action_noise_std)
+        >>> print(config.action_noise_std)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(rollouts_used=tune.grid_search([32, 64]), eval_prob=0.5)
+        >>> config = config.training(  # doctest: +SKIP
+        ...     rollouts_used=tune.grid_search([32, 64]), eval_prob=0.5)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "ES",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=ray.air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
+
     """
 
     def __init__(self):
@@ -90,18 +96,23 @@ class ESConfig(AlgorithmConfig):
         self.stepsize = 0.01
         self.noise_size = 250000000
         self.report_length = 10
+        self.tf_single_threaded = True
 
         # Override some of AlgorithmConfig's default values with ES-specific values.
         self.train_batch_size = 10000
-        self.num_workers = 10
+        self.num_rollout_workers = 10
         self.observation_filter = "MeanStdFilter"
-        # ARS will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
-        # Therefore, we must be careful not to use more than 1 env per eval worker
-        # (would break ARSPolicy's compute_single_action method) and to not do
-        # obs-filtering.
-        self.evaluation_config["num_envs_per_worker"] = 1
-        self.evaluation_config["observation_filter"] = "NoFilter"
 
+        # ES will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
+        # Therefore, we must be careful not to use more than 1 env per eval worker
+        # (would break ESPolicy's compute_single_action method) and to not do
+        # obs-filtering.
+        self.evaluation(
+            evaluation_config=AlgorithmConfig.overrides(
+                num_envs_per_worker=1,
+                observation_filter="NoFilter",
+            )
+        )
         # __sphinx_doc_end__
         # fmt: on
 
@@ -109,15 +120,16 @@ class ESConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        action_noise_std: Optional[float] = None,
-        l2_coeff: Optional[float] = None,
-        noise_stdev: Optional[int] = None,
-        episodes_per_batch: Optional[int] = None,
-        eval_prob: Optional[float] = None,
-        # return_proc_mode: Optional[int] = None,
-        stepsize: Optional[float] = None,
-        noise_size: Optional[int] = None,
-        report_length: Optional[int] = None,
+        action_noise_std: Optional[float] = NotProvided,
+        l2_coeff: Optional[float] = NotProvided,
+        noise_stdev: Optional[int] = NotProvided,
+        episodes_per_batch: Optional[int] = NotProvided,
+        eval_prob: Optional[float] = NotProvided,
+        # return_proc_mode: Optional[int] = NotProvided,
+        stepsize: Optional[float] = NotProvided,
+        noise_size: Optional[int] = NotProvided,
+        report_length: Optional[int] = NotProvided,
+        tf_single_threaded: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "ESConfig":
         """Sets the training related configuration.
@@ -135,6 +147,8 @@ class ESConfig(AlgorithmConfig):
             noise_size: Number of rows in the noise table (shared across workers).
                 Each row contains a gaussian noise value for each model parameter.
             report_length: How many of the last rewards we average over.
+            tf_single_threaded: Whether the tf-session should be generated without any
+                parallelism options.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -142,28 +156,57 @@ class ESConfig(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if action_noise_std is not None:
+        if action_noise_std is not NotProvided:
             self.action_noise_std = action_noise_std
-        if l2_coeff is not None:
+        if l2_coeff is not NotProvided:
             self.l2_coeff = l2_coeff
-        if noise_stdev is not None:
+        if noise_stdev is not NotProvided:
             self.noise_stdev = noise_stdev
-        if episodes_per_batch is not None:
+        if episodes_per_batch is not NotProvided:
             self.episodes_per_batch = episodes_per_batch
-        if eval_prob is not None:
+        if eval_prob is not NotProvided:
             self.eval_prob = eval_prob
         # Only supported return_proc mode is "centered_rank" right now. No need to
         # configure this.
-        # if return_proc_mode is not None:
+        # if return_proc_mode is not NotProvided:
         #    self.return_proc_mode = return_proc_mode
-        if stepsize is not None:
+        if stepsize is not NotProvided:
             self.stepsize = stepsize
-        if noise_size is not None:
+        if noise_size is not NotProvided:
             self.noise_size = noise_size
-        if report_length is not None:
+        if report_length is not NotProvided:
             self.report_length = report_length
+        if tf_single_threaded is not NotProvided:
+            self.tf_single_threaded = tf_single_threaded
 
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.num_gpus > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for ES!")
+        if self.num_rollout_workers <= 0:
+            raise ValueError("`num_rollout_workers` must be > 0 for ES!")
+        if (
+            self.evaluation_config is not None
+            and self.evaluation_config.get("num_envs_per_worker") != 1
+        ):
+            raise ValueError(
+                "`evaluation_config.num_envs_per_worker` must always be 1 for "
+                "ES! To parallelize evaluation, increase "
+                "`evaluation_num_workers` to > 1."
+            )
+        if (
+            self.evaluation_config is not None
+            and self.evaluation_config.get("observation_filter") != "NoFilter"
+        ):
+            raise ValueError(
+                "`evaluation_config.observation_filter` must always be "
+                "`NoFilter` for ES!"
+            )
 
 
 @ray.remote
@@ -186,11 +229,11 @@ class SharedNoiseTable:
         return np.random.randint(0, len(self.noise) - dim + 1)
 
 
-@ray.remote
-class Worker:
+@ray.remote(max_restarts=-1)
+class Worker(FaultAwareApply):
     def __init__(
         self,
-        config,
+        config: AlgorithmConfig,
         policy_params,
         env_creator,
         noise,
@@ -199,23 +242,22 @@ class Worker:
     ):
 
         # Set Python random, numpy, env, and torch/tf seeds.
-        seed = config.get("seed")
+        seed = config.seed
         if seed is not None:
             # Python random module.
             random.seed(seed)
             # Numpy.
             np.random.seed(seed)
             # Torch.
-            if config.get("framework") == "torch":
+            if config.framework_str == "torch":
                 set_torch_seed(seed)
 
         self.min_task_runtime = min_task_runtime
         self.config = config
-        self.config.update(policy_params)
-        self.config["single_threaded"] = True
+        self.config.update_from_dict(policy_params)
         self.noise = SharedNoiseTable(noise)
 
-        env_context = EnvContext(config["env_config"] or {}, worker_index)
+        env_context = EnvContext(config.env_config, worker_index)
         self.env = env_creator(env_context)
         # Seed the env, if gym.Env.
         if not hasattr(self.env, "seed"):
@@ -226,13 +268,11 @@ class Worker:
 
         from ray.rllib import models
 
-        self.preprocessor = models.ModelCatalog.get_preprocessor(
-            self.env, config["model"]
-        )
+        self.preprocessor = models.ModelCatalog.get_preprocessor(self.env, config.model)
 
         _policy_class = get_policy_class(config)
         self.policy = _policy_class(
-            self.env.observation_space, self.env.action_space, config
+            self.env.observation_space, self.env.action_space, config.to_dict()
         )
 
     @property
@@ -270,7 +310,7 @@ class Worker:
             len(noise_indices) == 0 or time.time() - task_tstart < self.min_task_runtime
         ):
 
-            if np.random.uniform() < self.config["eval_prob"]:
+            if np.random.uniform() < self.config.eval_prob:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_flat_weights(params)
                 rewards, length = self.rollout(timestep_limit, add_noise=False)
@@ -280,7 +320,7 @@ class Worker:
                 # Do a regular run with parameter perturbations.
                 noise_index = self.noise.sample_index(self.policy.num_params)
 
-                perturbation = self.config["noise_stdev"] * self.noise.get(
+                perturbation = self.config.noise_stdev * self.noise.get(
                     noise_index, self.policy.num_params
                 )
 
@@ -309,8 +349,8 @@ class Worker:
         )
 
 
-def get_policy_class(config):
-    if config["framework"] == "torch":
+def get_policy_class(config: AlgorithmConfig):
+    if config.framework_str == "torch":
         from ray.rllib.algorithms.es.es_torch_policy import ESTorchPolicy
 
         policy_cls = ESTorchPolicy
@@ -324,49 +364,24 @@ class ES(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return ESConfig().to_dict()
-
-    @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for ES!")
-        if config["num_workers"] <= 0:
-            raise ValueError("`num_workers` must be > 0 for ES!")
-        if config["evaluation_config"]["num_envs_per_worker"] != 1:
-            raise ValueError(
-                "`evaluation_config.num_envs_per_worker` must always be 1 for "
-                "ES! To parallelize evaluation, increase "
-                "`evaluation_num_workers` to > 1."
-            )
-        if config["evaluation_config"]["observation_filter"] != "NoFilter":
-            raise ValueError(
-                "`evaluation_config.observation_filter` must always be "
-                "`NoFilter` for ES!"
-            )
+    def get_default_config(cls) -> AlgorithmConfig:
+        return ESConfig()
 
     @override(Algorithm)
     def setup(self, config):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
         if isinstance(config, dict):
-            self.config = self.merge_trainer_configs(
-                self.get_default_config(), config, self._allow_unknown_configs
-            )
-        else:
-            self.config = config.to_dict()
+            self.config = self.get_default_config().update_from_dict(config)
 
         # Call super's validation method.
-        self.validate_config(self.config)
+        self.config.validate()
 
         # Generate the local env.
-        env_context = EnvContext(self.config["env_config"] or {}, worker_index=0)
+        env_context = EnvContext(self.config.env_config or {}, worker_index=0)
         env = self.env_creator(env_context)
 
-        self.callbacks = self.config["callbacks"]()
+        self.callbacks = self.config.callbacks_class()
 
         self._policy_class = get_policy_class(self.config)
         self.policy = self._policy_class(
@@ -374,20 +389,24 @@ class ES(Algorithm):
             action_space=env.action_space,
             config=self.config,
         )
-        self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
-        self.report_length = self.config["report_length"]
+        self.optimizer = optimizers.Adam(self.policy, self.config.stepsize)
+        self.report_length = self.config.report_length
 
         # Create the shared noise table.
         logger.info("Creating shared noise table.")
-        noise_id = create_shared_noise.remote(self.config["noise_size"])
+        noise_id = create_shared_noise.remote(self.config.noise_size)
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
         logger.info("Creating actors.")
-        self.workers = [
+        remote_workers = [
             Worker.remote(self.config, {}, self.env_creator, noise_id, idx + 1)
-            for idx in range(self.config["num_workers"])
+            for idx in range(self.config.num_rollout_workers)
         ]
+        self.workers = WorkerSet._from_existing(
+            local_worker=None,
+            remote_workers=remote_workers,
+        )
 
         self.episodes_so_far = 0
         self.reward_list = []
@@ -480,6 +499,10 @@ class ES(Algorithm):
         if len(all_eval_returns) > 0:
             self.reward_list.append(np.mean(eval_returns))
 
+        # Bring restored workers back if necessary.
+        # We will sync filters right next.
+        self.workers.probe_unhealthy_workers()
+
         # Now sync the filters
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
@@ -504,29 +527,39 @@ class ES(Algorithm):
         return result
 
     @override(Algorithm)
+    def restore_workers(self, workers: WorkerSet):
+        restored = self.workers.probe_unhealthy_workers()
+        if restored:
+            self._sync_weights_to_workers(worker_set=self.workers, worker_ids=restored)
+
+    @override(Algorithm)
     def compute_single_action(self, observation, *args, **kwargs):
         action, _, _ = self.policy.compute_actions([observation], update=False)
         if kwargs.get("full_fetch"):
             return action[0], [], {}
         return action[0]
 
-    @Deprecated(new="compute_single_action", error=False)
+    @Deprecated(new="compute_single_action", error=True)
     def compute_action(self, observation, *args, **kwargs):
         return self.compute_single_action(observation, *args, **kwargs)
 
     @override(Algorithm)
-    def _sync_weights_to_workers(self, *, worker_set=None, workers=None):
+    def _sync_weights_to_workers(self, *, worker_set=None, worker_ids=None):
         # Broadcast the new policy weights to all evaluation workers.
         assert worker_set is not None
         logger.info("Synchronizing weights to evaluation workers.")
         weights = ray.put(self.policy.get_flat_weights())
-        worker_set.foreach_policy(lambda p, pid: p.set_flat_weights(ray.get(weights)))
+        worker_set.foreach_worker(
+            lambda w: w.foreach_policy(
+                lambda p, _: p.set_flat_weights(ray.get(weights))
+            ),
+            local_worker=False,
+            remote_worker_ids=worker_ids,
+        )
 
     @override(Algorithm)
     def cleanup(self):
-        # workaround for https://github.com/ray-project/ray/issues/1516
-        for w in self.workers:
-            w.__ray_terminate__.remote()
+        self.workers.stop()
 
     def _collect_results(self, theta_id, min_episodes, min_timesteps):
         num_episodes, num_timesteps = 0, 0
@@ -537,11 +570,12 @@ class ES(Algorithm):
                     num_episodes, num_timesteps
                 )
             )
-            rollout_ids = [
-                worker.do_rollouts.remote(theta_id) for worker in self.workers
-            ]
+            rollout_ids = self.workers.foreach_worker(
+                func=lambda w: w.do_rollouts(ray.get(theta_id)),
+                local_worker=False,
+            )
             # Get the results of the rollouts.
-            for result in ray.get(rollout_ids):
+            for result in rollout_ids:
                 results.append(result)
                 # Update the number of episodes and the number of timesteps
                 # keeping in mind that result.noisy_lengths is a list of lists,
@@ -551,16 +585,22 @@ class ES(Algorithm):
 
         return results, num_episodes, num_timesteps
 
+    def get_weights(self, policies: Optional[List[PolicyID]] = None) -> dict:
+        return self.policy.get_flat_weights()
+
+    def set_weights(self, weights: Dict[PolicyID, dict]):
+        self.policy.set_flat_weights(weights)
+
     def __getstate__(self):
         return {
-            "weights": self.policy.get_flat_weights(),
+            "weights": self.get_weights(),
             "filter": self.policy.observation_filter,
             "episodes_so_far": self.episodes_so_far,
         }
 
     def __setstate__(self, state):
         self.episodes_so_far = state["episodes_so_far"]
-        self.policy.set_flat_weights(state["weights"])
+        self.set_weights(state["weights"])
         self.policy.observation_filter = state["filter"]
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
@@ -575,7 +615,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.es.es.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.es.es.ESConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

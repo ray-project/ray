@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from ray._private.test_utils import SignalActor
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -264,7 +265,11 @@ def test_ids(ray_start_regular):
         assert isinstance(rtc.get_placement_group_id(), str)
         assert rtc.get_placement_group_id() == rtc.current_placement_group_id.hex()
 
-    ray.get(foo_pg.options(placement_group=pg).remote())
+    ray.get(
+        foo_pg.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    )
     ray.util.remove_placement_group(pg)
 
     # task id
@@ -298,6 +303,13 @@ def test_no_auto_init(shutdown_only):
     assert not ray.is_initialized()
     ray.get_runtime_context()
     assert not ray.is_initialized()
+
+
+def test_errors_when_ray_not_initialized():
+    with pytest.raises(AssertionError, match="Ray has not been initialized"):
+        ray.get_runtime_context().get_job_id()
+    with pytest.raises(AssertionError, match="Ray has not been initialized"):
+        ray.get_runtime_context().get_node_id()
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ Actor Pool
 
     .. literalinclude:: ../doc_code/actor-pool.py
 
-    See the `package reference <package-ref.html#ray.util.ActorPool>`_ for more information.
+    See the :ref:`package reference <ray-actor-pool-ref>` for more information.
 
 .. tabbed:: Java
 
@@ -29,4 +29,4 @@ actors, you can use :ref:`ray.util.queue.Queue <ray-queue-ref>`.
 
 .. literalinclude:: ../doc_code/actor-queue.py
 
-Ray's Queue API has similar API as Python's ``asyncio.Queue`` and ``queue.Queue``.
+Ray's Queue API has a similar API to Python's ``asyncio.Queue`` and ``queue.Queue``.

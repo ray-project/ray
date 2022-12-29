@@ -21,9 +21,10 @@ public class WorkerJvmOptionsTest extends BaseTest {
     // that raylet can correctly handle dynamic options with whitespaces.
     ActorHandle<Echo> actor =
         Ray.actor(Echo::new)
-            .setJvmOptions(ImmutableList.of("-Dtest.suffix=suffix", "-Dtest.suffix1=suffix1"))
+            .setJvmOptions(
+                ImmutableList.of("-Dtest.suffix=suffix", "-Dtest.suffix1=suffix1 suffix1"))
             .remote();
     ObjectRef<String> obj = actor.task(Echo::getOptions).remote();
-    Assert.assertEquals(obj.get(), "suffix");
+    Assert.assertEquals(obj.get(30 * 1000), "suffix");
   }
 }

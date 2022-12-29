@@ -1,19 +1,15 @@
-import tempfile
 import logging
 import os
 import random
 import types
-import warnings
 import collections
+from distutils.version import LooseVersion
 
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 
 import ray
-from ray import train
 from ray.air import session
 from ray.train._internal.accelerator import Accelerator
-from ray.train.constants import PYTORCH_PROFILER_KEY
 from torch.optim import Optimizer
 from ray.train._internal.session import get_accelerator, set_accelerator
 from ray.util.annotations import PublicAPI, Deprecated
@@ -23,6 +19,11 @@ import numpy as np
 import torch
 from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
+
+if LooseVersion(torch.__version__) < LooseVersion("1.11.0"):
+    FullyShardedDataParallel = None
+else:
+    from torch.distributed.fsdp import FullyShardedDataParallel
 from torch.utils.data import (
     DistributedSampler,
     DataLoader,
@@ -45,11 +46,15 @@ def get_device() -> torch.device:
     return get_accelerator(_TorchAccelerator).get_device()
 
 
+# TODO: Deprecation: Hard-deprecate args in Ray 2.2.
 @PublicAPI(stability="beta")
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: bool = True,
-    wrap_ddp: bool = True,
+    parallel_strategy: Optional[str] = "ddp",
+    parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
+    # Deprecated args.
+    wrap_ddp: bool = False,
     ddp_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
@@ -62,17 +67,38 @@ def prepare_model(
         move_to_device: Whether to move the model to the correct
             device. If set to False, the model needs to manually be moved
             to the correct device.
-        wrap_ddp: Whether to wrap models in
-            ``DistributedDataParallel``.
-        ddp_kwargs (Dict[str, Any]): Args to pass into
-            ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
-            set to True.
+        parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
+            in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
+            or neither.
+        parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
+            ``DistributedDataParallel`` or ``FullyShardedDataParallel``
+            initialization if ``parallel_strategy`` is set to "ddp"
+            or "fsdp", respectively.
     """
+
+    if wrap_ddp:
+        raise DeprecationWarning(
+            "The `wrap_ddp` argument is deprecated as of Ray 2.1. Use the "
+            "`parallel_strategy` argument instead."
+        )
+
+    if ddp_kwargs:
+        raise DeprecationWarning(
+            "The `ddp_kwargs` argument is deprecated as of Ray 2.1. Use the "
+            "`parallel_strategy_kwargs` arg instead."
+        )
+
+    if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
+        raise ImportError(
+            "FullyShardedDataParallel requires torch>=1.11.0. "
+            "Run `pip install 'torch>=1.11.0'` to use FullyShardedDataParallel."
+        )
+
     return get_accelerator(_TorchAccelerator).prepare_model(
         model,
         move_to_device=move_to_device,
-        wrap_ddp=wrap_ddp,
-        ddp_kwargs=ddp_kwargs,
+        parallel_strategy=parallel_strategy,
+        parallel_strategy_kwargs=parallel_strategy_kwargs,
     )
 
 
@@ -188,62 +214,9 @@ class TorchWorkerProfiler:
     WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
 
     def __init__(self, trace_dir: Optional[str] = None):
-        warnings.warn(
-            "The `ray.train.torch.TorchWorkerProfiler` API is deprecated in Ray 2.0",
-            DeprecationWarning,
-            stacklevel=2,
+        raise DeprecationWarning(
+            "The `ray.train.torch.TorchWorkerProfiler` API is deprecated in Ray 2.0.",
         )
-        if profile is None:
-            raise ImportError(
-                "Torch Profiler requires torch>=1.8.1. "
-                "Run `pip install 'torch>=1.8.1'` to use TorchWorkerProfiler."
-            )
-
-        trace_dir = trace_dir or Path(tempfile.gettempdir()).joinpath(
-            self.WORKER_TRACE_DIR_NAME
-        )
-        self.trace_dir = Path(trace_dir)
-        self.trace_dir.mkdir(parents=True, exist_ok=True)
-        # Accumulated traces.
-        self.profiler_trace_filenames = []
-
-    def trace_handler(self, p: profile):
-        """A stateful PyTorch Profiler trace handler.
-
-        This will the export chrome trace to a file on disk.
-
-        These exported traces can then be fetched by calling
-        ``get_and_clear_profile_traces``.
-
-        Args:
-            p: A PyTorch Profiler profile.
-        """
-        trace_filename = f"worker_{train.world_rank()}_epoch_{p.step_num}.pt.trace.json"
-        trace_path = self.trace_dir.joinpath(trace_filename)
-
-        logger.debug(f"Writing worker trace to {trace_path}.")
-        p.export_chrome_trace(str(trace_path))
-        self.profiler_trace_filenames.append(trace_filename)
-
-    def get_and_clear_profile_traces(self):
-        """Reads unread Profiler traces from this worker.
-
-        Returns:
-            The traces in a format consumable by
-            ``TorchTensorboardProfilerCallback``.
-        """
-
-        def get_trace(filename):
-            trace_path = self.trace_dir.joinpath(filename)
-            return trace_path.read_text()
-
-        traces = [
-            (trace_filename, get_trace(trace_filename))
-            for trace_filename in self.profiler_trace_filenames
-        ]
-
-        self.profiler_trace_files = []
-        return {PYTORCH_PROFILER_KEY: traces}
 
 
 class _TorchAccelerator(Accelerator):
@@ -263,8 +236,8 @@ class _TorchAccelerator(Accelerator):
         self,
         model: torch.nn.Module,
         move_to_device: bool = True,
-        wrap_ddp: bool = True,
-        ddp_kwargs: Optional[Dict[str, Any]] = None,
+        parallel_strategy: Optional[str] = "ddp",
+        parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.nn.Module:
         """Prepares the model for distributed execution.
 
@@ -276,20 +249,17 @@ class _TorchAccelerator(Accelerator):
             move_to_device: Whether to move the model to the correct
                 device. If set to False, the model needs to manually be moved
                 to the correct device.
-            wrap_ddp: Whether to wrap models in
-                ``DistributedDataParallel``.
-            ddp_kwargs (Dict[str, Any]): Args to pass into
-                ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
-                set to True.
+            parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
+                in ``DistributedDataParallel``, ``FullyShardedDataParallel`` (
+                Experimental), or neither.
+            parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
+                ``DistributedDataParallel`` or ``FullyShardedDataParallel``
+                initialization if ``parallel_strategy`` is set to "ddp"
+                or "fsdp", respectively.
         """
-        ddp_kwargs = ddp_kwargs or {}
+        parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
-        # Backwards compatibility
-        try:
-            rank = session.get_local_rank()
-        except Exception:
-            rank = train.local_rank()
-
+        rank = session.get_local_rank()
         device = self.get_device()
 
         if torch.cuda.is_available():
@@ -336,23 +306,31 @@ class _TorchAccelerator(Accelerator):
             # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
             model.__getstate__ = types.MethodType(model_get_state, model)
 
-        # Backwards compatibility
-        try:
-            world_size = session.get_world_size()
-        except Exception:
-            world_size = train.world_size()
+        world_size = session.get_world_size()
 
-        if wrap_ddp and world_size > 1:
+        if parallel_strategy and world_size > 1:
+            if parallel_strategy == "ddp":
+                DataParallel = DistributedDataParallel
+                if torch.cuda.is_available():
+                    parallel_strategy_kwargs = {
+                        "device_ids": [device],
+                        "output_device": device,
+                        **parallel_strategy_kwargs,
+                    }
+            else:
+                if not torch.cuda.is_available():
+                    raise RuntimeError(
+                        "FSDP is only available with GPU-enabled "
+                        "training. Set "
+                        "`use_gpu=True` in your Trainer to train with "
+                        "GPUs."
+                    )
+                DataParallel = FullyShardedDataParallel
             if rank == 0:
-                logger.info("Wrapping provided model in DDP.")
+                logger.info(f"Wrapping provided model in {DataParallel.__name__}.")
             else:
-                logger.debug("Wrapping provided model in DDP.")
-            if torch.cuda.is_available():
-                model = DistributedDataParallel(
-                    model, device_ids=[rank], output_device=rank, **ddp_kwargs
-                )
-            else:
-                model = DistributedDataParallel(model, **ddp_kwargs)
+                logger.debug(f"Wrapping provided model in {DataParallel.__name__}.")
+            model = DataParallel(model, **parallel_strategy_kwargs)
 
         return model
 
@@ -383,13 +361,8 @@ class _TorchAccelerator(Accelerator):
                 if ``move_to_device`` is False.
         """
 
-        # Backwards compatibility
-        try:
-            world_size = session.get_world_size()
-            world_rank = session.get_world_rank()
-        except Exception:
-            world_size = train.world_size()
-            world_rank = train.world_rank()
+        world_size = session.get_world_size()
+        world_rank = session.get_world_rank()
 
         # Only add Distributed Sampler if the following conditions hold:
         # 1. More than one training worker is being used.
@@ -420,19 +393,22 @@ class _TorchAccelerator(Accelerator):
                 # shuffling is enabled by checking the default sampler type.
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
 
-                def seeded_worker_init_fn(worker_init_fn):
-                    def wrapper(worker_id):
-                        worker_seed = torch.initial_seed() % 2 ** 32
+                def seeded_worker_init_fn(
+                    worker_init_fn: Optional[Callable[[int], None]]
+                ):
+                    def wrapper(worker_id: int):
+                        worker_seed = torch.initial_seed() % 2**32
                         np.random.seed(worker_seed)
                         random.seed(worker_seed)
-                        worker_init_fn(worker_id)
+                        if worker_init_fn:
+                            worker_init_fn(worker_id)
 
                     return wrapper
 
-                worker_init_fn = loader.worker_init_fn
-                generator = loader.generator
+                worker_init_fn: Optional[Callable[[int], None]] = loader.worker_init_fn
+                generator: Optional[torch.Generator] = loader.generator
                 if self._seed is not None:
-                    worker_init_fn = seeded_worker_init_fn(loader.worker_init_fn)
+                    worker_init_fn = seeded_worker_init_fn(worker_init_fn)
                     generator = torch.Generator()
                     generator.manual_seed(self._seed)
 
@@ -493,7 +469,9 @@ class _TorchAccelerator(Accelerator):
         """
         if torch.cuda.is_available():
             # GPU IDs are assigned by Ray after you specify "use_gpu"
-            gpu_ids = ray.get_gpu_ids()
+            # GPU `ray.get_gpu_ids()` may return ints or may return strings.
+            # We should always convert to strings.
+            gpu_ids = [str(id) for id in ray.get_gpu_ids()]
 
             if len(gpu_ids) > 0:
                 # By default, there should only be one GPU ID if `use_gpu=True`.
@@ -504,9 +482,7 @@ class _TorchAccelerator(Accelerator):
 
                 cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
                 if cuda_visible_str and cuda_visible_str != "NoDevFiles":
-                    cuda_visible_list = [
-                        int(dev) for dev in cuda_visible_str.split(",")
-                    ]
+                    cuda_visible_list = cuda_visible_str.split(",")
                     device_id = cuda_visible_list.index(gpu_id)
                 else:
                     raise RuntimeError(
@@ -604,7 +580,7 @@ class _WrappedDataLoader(DataLoader):
             elif isinstance(item, torch.Tensor):
                 item_on_device = try_move_device(item)
             else:
-                logger.info(
+                logger.debug(
                     f"Data type {type(item)} doesn't support being moved to device."
                 )
                 item_on_device = item

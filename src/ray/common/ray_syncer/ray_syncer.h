@@ -137,6 +137,12 @@ class RaySyncer {
   /// version of message, false will be returned.
   bool OnDemandBroadcasting(MessageType message_type);
 
+  /// Request trigger a broadcasting for a constructed message immediately instead of
+  /// waiting for ray syncer to poll the message.
+  ///
+  /// \param message The message to be broadcasted.
+  void BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> message);
+
  private:
   /// Get the io_context used by RaySyncer.
   instrumented_io_context &GetIOContext() { return io_context_; }
@@ -176,6 +182,16 @@ class RaySyncer {
 
   /// The local node state
   std::unique_ptr<NodeState> node_state_;
+
+  /// Context of a rpc call.
+  struct StartSyncCall {
+    StartSyncRequest request;
+    StartSyncResponse response;
+    grpc::ClientContext context;
+    std::promise<void> promise;
+  };
+
+  absl::flat_hash_set<std::unique_ptr<StartSyncCall>> inflight_requests_;
 
   /// Timer is used to do broadcasting.
   ray::PeriodicalRunner timer_;

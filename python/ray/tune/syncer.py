@@ -2,6 +2,7 @@ import abc
 from functools import partial
 import threading
 from typing import (
+    Any,
     Callable,
     Dict,
     List,
@@ -25,9 +26,9 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
     is_non_local_path_uri,
 )
+from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.result import NODE_IP
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
@@ -49,21 +50,6 @@ _EXCLUDE_FROM_SYNC = [
     "./save_to_object*",
     "./rank_*",
 ]
-
-
-def _validate_upload_dir(sync_config: "SyncConfig") -> bool:
-    if not sync_config.upload_dir:
-        return True
-
-    if sync_config.upload_dir.startswith("file://"):
-        return True
-
-    if not is_non_local_path_uri(sync_config.upload_dir):
-        raise ValueError(
-            f"Could not identify external storage filesystem for "
-            f"upload dir `{sync_config.upload_dir}`. "
-            f"Hint: {fs_hint(sync_config.upload_dir)}"
-        )
 
 
 @PublicAPI
@@ -89,8 +75,6 @@ class SyncConfig:
             storage syncing. Defaults to True.
         sync_period: Syncing period for syncing between nodes.
         sync_timeout: Timeout after which running sync processes are aborted.
-            Currently only affects trial-to-cloud syncing.
-
     """
 
     upload_dir: Optional[str] = None
@@ -135,16 +119,35 @@ class SyncConfig:
             max_height="none",
         )
 
+    def validate_upload_dir(self) -> bool:
+        """Checks if ``upload_dir`` is supported by ``syncer``.
+
+        Returns True if ``upload_dir`` is valid, otherwise raises
+        ``ValueError``.
+
+        Args:
+            upload_dir: Path to validate.
+        """
+        if isinstance(self.syncer, Syncer):
+            return self.syncer.validate_upload_dir(self.upload_dir)
+        else:
+            return Syncer.validate_upload_dir(self.upload_dir)
+
 
 class _BackgroundProcess:
     def __init__(self, fn: Callable):
         self._fn = fn
         self._process = None
         self._result = {}
+        self._start_time = float("-inf")
 
     @property
     def is_running(self):
         return self._process and self._process.is_alive()
+
+    @property
+    def start_time(self):
+        return self._start_time
 
     def start(self, *args, **kwargs):
         if self.is_running:
@@ -162,13 +165,31 @@ class _BackgroundProcess:
             self._result["result"] = result
 
         self._process = threading.Thread(target=entrypoint)
+        self._process.daemon = True
         self._process.start()
+        self._start_time = time.time()
 
-    def wait(self):
+    def wait(self, timeout: Optional[float] = None) -> Any:
+        """Waits for the backgrond process to finish running. Waits until the
+        background process has run for at least `timeout` seconds, counting from
+        the time when the process was started."""
         if not self._process:
-            return
+            return None
 
-        self._process.join()
+        time_remaining = None
+        if timeout:
+            elapsed = time.time() - self.start_time
+            time_remaining = max(timeout - elapsed, 0)
+
+        self._process.join(timeout=time_remaining)
+
+        if self._process.is_alive():
+            self._process = None
+            raise TimeoutError(
+                f"{getattr(self._fn, '__name__', str(self._fn))} did not finish "
+                f"running within the timeout of {timeout} seconds."
+            )
+
         self._process = None
 
         exception = self._result.get("exception")
@@ -199,10 +220,21 @@ class Syncer(abc.ABC):
     The base class also exposes an API to only kick off syncs every ``sync_period``
     seconds.
 
+    Args:
+        sync_period: The minimum time in seconds between sync operations, as
+            used by ``sync_up/down_if_needed``.
+        sync_timeout: The maximum time to wait for a sync process to finish before
+            issuing a new sync operation. Ex: should be used by ``wait`` if launching
+            asynchronous sync tasks.
     """
 
-    def __init__(self, sync_period: float = 300.0):
+    def __init__(
+        self,
+        sync_period: float = DEFAULT_SYNC_PERIOD,
+        sync_timeout: float = DEFAULT_SYNC_TIMEOUT,
+    ):
         self.sync_period = sync_period
+        self.sync_timeout = sync_timeout
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
 
@@ -279,7 +311,8 @@ class Syncer(abc.ABC):
         """Wait for asynchronous sync command to finish.
 
         You should implement this method if you spawn asynchronous syncing
-        processes.
+        processes. This method should timeout after `sync_timeout` and
+        raise a `TimeoutError`.
         """
         pass
 
@@ -353,19 +386,56 @@ class Syncer(abc.ABC):
     def _repr_html_(self) -> str:
         return
 
+    @classmethod
+    def validate_upload_dir(cls, upload_dir: str) -> bool:
+        """Checks if ``upload_dir`` is supported by the Syncer.
+
+        Returns True if ``upload_dir`` is valid, otherwise raises
+        ``ValueError``.
+
+        Args:
+            upload_dir: Path to validate.
+        """
+        if not upload_dir:
+            return True
+
+        if upload_dir.startswith("file://"):
+            return True
+
+        if not is_non_local_path_uri(upload_dir):
+            raise ValueError(
+                f"Could not identify external storage filesystem for "
+                f"upload dir `{upload_dir}`. "
+                f"Hint: {fs_hint(upload_dir)}"
+            )
+
 
 class _BackgroundSyncer(Syncer):
     """Syncer using a background process for asynchronous file transfer."""
 
-    def __init__(self, sync_period: float = 300.0):
-        super(_BackgroundSyncer, self).__init__(sync_period=sync_period)
+    def __init__(
+        self,
+        sync_period: float = DEFAULT_SYNC_PERIOD,
+        sync_timeout: float = DEFAULT_SYNC_TIMEOUT,
+    ):
+        super(_BackgroundSyncer, self).__init__(
+            sync_period=sync_period, sync_timeout=sync_timeout
+        )
         self._sync_process = None
         self._current_cmd = None
+
+    def _should_continue_existing_sync(self):
+        """Returns whether a previous sync is still running within the timeout."""
+        return (
+            self._sync_process
+            and self._sync_process.is_running
+            and time.time() - self._sync_process.start_time < self.sync_timeout
+        )
 
     def sync_up(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
-        if self._sync_process and self._sync_process.is_running:
+        if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, "
                 f"skipping sync up of {local_dir} to {remote_dir}"
@@ -373,7 +443,7 @@ class _BackgroundSyncer(Syncer):
             return False
         elif self._sync_process:
             try:
-                self._sync_process.wait()
+                self.wait()
             except Exception as e:
                 logger.warning(f"Last sync command failed: {e}")
 
@@ -392,7 +462,7 @@ class _BackgroundSyncer(Syncer):
     def sync_down(
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
     ) -> bool:
-        if self._sync_process and self._sync_process.is_running:
+        if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, "
                 f"skipping sync down of {remote_dir} to {local_dir}"
@@ -400,7 +470,7 @@ class _BackgroundSyncer(Syncer):
             return False
         elif self._sync_process:
             try:
-                self._sync_process.wait()
+                self.wait()
             except Exception as e:
                 logger.warning(f"Last sync command failed: {e}")
 
@@ -415,11 +485,16 @@ class _BackgroundSyncer(Syncer):
         raise NotImplementedError
 
     def delete(self, remote_dir: str) -> bool:
-        if self._sync_process and self._sync_process.is_running:
+        if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, skipping deletion of {remote_dir}"
             )
             return False
+        elif self._sync_process:
+            try:
+                self.wait()
+            except Exception as e:
+                logger.warning(f"Last sync command failed: {e}")
 
         self._current_cmd = self._delete_command(uri=remote_dir)
         self.retry()
@@ -432,8 +507,12 @@ class _BackgroundSyncer(Syncer):
     def wait(self):
         if self._sync_process:
             try:
-                self._sync_process.wait()
+                self._sync_process.wait(timeout=self.sync_timeout)
             except Exception as e:
+                # Let `TimeoutError` pass through, to be handled separately
+                # from errors thrown by the sync operation
+                if isinstance(e, TimeoutError):
+                    raise e
                 raise TuneError(f"Sync process failed: {e}") from e
             finally:
                 self._sync_process = None
@@ -444,6 +523,11 @@ class _BackgroundSyncer(Syncer):
         cmd, kwargs = self._current_cmd
         self._sync_process = _BackgroundProcess(cmd)
         self._sync_process.start(**kwargs)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_sync_process"] = None
+        return state
 
 
 class _DefaultSyncer(_BackgroundSyncer):
@@ -477,7 +561,9 @@ def get_node_to_storage_syncer(sync_config: SyncConfig) -> Optional[Syncer]:
         return None
 
     if sync_config.syncer == "auto":
-        return _DefaultSyncer(sync_period=sync_config.sync_period)
+        return _DefaultSyncer(
+            sync_period=sync_config.sync_period, sync_timeout=sync_config.sync_timeout
+        )
 
     if isinstance(sync_config.syncer, Syncer):
         return sync_config.syncer
@@ -500,6 +586,7 @@ class SyncerCallback(Callback):
         self._sync_processes: Dict[str, _BackgroundProcess] = {}
         self._sync_times: Dict[str, float] = {}
         self._sync_period = sync_period
+        self._trial_ips = {}
 
     def _get_trial_sync_process(self, trial: "Trial"):
         return self._sync_processes.setdefault(
@@ -537,10 +624,22 @@ class SyncerCallback(Callback):
         if not force and (not self._should_sync(trial) or sync_process.is_running):
             return False
 
-        if NODE_IP in trial.last_result:
-            source_ip = trial.last_result[NODE_IP]
-        else:
-            source_ip = ray.get(trial.runner.get_current_ip.remote())
+        source_ip = self._trial_ips.get(trial.trial_id, None)
+
+        if not source_ip:
+            try:
+                source_ip = trial.get_runner_ip()
+            except RayActorError as e:
+                logger.error(
+                    f"Trial {trial}: An error occurred when trying to get the "
+                    f"node ip where this trial is running: {e}"
+                )
+
+            # If it still does not exist, the runner is terminated.
+            if not source_ip:
+                return False
+
+        self._trial_ips[trial.trial_id] = source_ip
 
         try:
             sync_process.wait()
@@ -571,6 +670,11 @@ class SyncerCallback(Callback):
                 )
         return True
 
+    def on_trial_start(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        self._trial_ips.pop(trial.trial_id, None)
+
     def on_trial_result(
         self,
         iteration: int,
@@ -586,6 +690,13 @@ class SyncerCallback(Callback):
     ):
         self._sync_trial_dir(trial, force=True, wait=True)
         self._remove_trial_sync_process(trial)
+        self._trial_ips.pop(trial.trial_id, None)
+
+    def on_trial_error(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        self._remove_trial_sync_process(trial)
+        self._trial_ips.pop(trial.trial_id, None)
 
     def on_checkpoint(
         self,
@@ -622,3 +733,9 @@ class SyncerCallback(Callback):
                 f"At least one trial failed to sync down when waiting for all "
                 f"trials to sync: \n{sync_str}"
             )
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        for remove in ["_sync_times", "_sync_processes", "_trial_ips"]:
+            state.pop(remove, None)
+        return state

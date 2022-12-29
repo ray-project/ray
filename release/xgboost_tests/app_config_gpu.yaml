@@ -8,6 +8,7 @@ python:
     - pytest
     - xgboost_ray
     - petastorm
+    - modin==0.12.1
   conda_packages: []
 
 post_build_cmds:

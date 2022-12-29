@@ -93,6 +93,7 @@ There are a couple gotchas about parameter specification when using Tuners with 
 - Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner ``param_space``.
 - **Exception:** all arguments of the :class:`RunConfig <ray.air.config.RunConfig>` and :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` are inherently un-tunable.
 
+See :doc:`/tune/tutorials/tune_get_data_in_and_out` for an example.
 
 How to configure a Tuner?
 -------------------------
@@ -173,13 +174,16 @@ Read more about this in the :ref:`Search Algorithm <search-alg-ref>` and :ref:`S
 How to analyze results?
 -----------------------
 
-``Tuner.fit()`` generates a `ResultGrid` object. This object contains metrics, results, and checkpoints
-of each trial. Below is a simple example:
+``Tuner.fit()`` generates a :ref:`ResultGrid <result-grid-docstring>` object.
+This object contains metrics, results, and checkpoints of each trial.
+Below is a simple example:
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
     :start-after: __result_grid_inspection_start__
     :end-before: __result_grid_inspection_end__
+
+See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
 
 Advanced Tuning
 ---------------

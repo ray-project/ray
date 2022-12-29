@@ -2,10 +2,12 @@ import inspect
 import logging
 from typing import Any, Dict, Optional, List, Type, Union, Callable
 import pandas as pd
+import numpy as np
 
 import ray
 from ray.air import Checkpoint
-from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+from ray.air.data_batch_type import DataBatchType
+from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
 from ray.data import Preprocessor
 from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
@@ -31,7 +33,7 @@ class BatchPredictor:
     ):
         self._checkpoint = checkpoint
         # Store as object ref so we only serialize it once for all map workers
-        self._checkpoint_ref = checkpoint.to_object_ref()
+        self._checkpoint_ref = ray.put(checkpoint)
         self._predictor_cls = predictor_cls
         self._predictor_kwargs = predictor_kwargs
         self._override_preprocessor: Optional[Preprocessor] = None
@@ -100,31 +102,6 @@ class BatchPredictor:
     ) -> ray.data.Dataset:
         """Run batch scoring on a Dataset.
 
-        Examples:
-            >>> import pandas as pd
-            >>> import ray
-            >>> from ray.air import Checkpoint
-            >>> from ray.train.predictor import Predictor
-            >>> from ray.train.batch_predictor import BatchPredictor
-            >>> # Create a batch predictor that returns identity as the predictions.
-            >>> batch_pred = BatchPredictor.from_pandas_udf( # doctest: +SKIP
-            ...     lambda data: data)
-            >>> # Create a dummy dataset.
-            >>> ds = ray.data.from_pandas(pd.DataFrame({ # doctest: +SKIP
-            ...     "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
-            >>> # Execute batch prediction using this predictor.
-            >>> predictions = batch_pred.predict(ds, # doctest: +SKIP
-            ...     feature_columns=["feature_1"], keep_columns=["label"])
-            >>> print(predictions) # doctest: +SKIP
-            Dataset(num_blocks=1, num_rows=3, schema={a: int64, label: int64})
-            >>> # Calculate final accuracy.
-            >>> def calculate_accuracy(df):
-            ...    return pd.DataFrame({"correct": df["predictions"] == df["label"]})
-            >>> correct = predictions.map_batches(calculate_accuracy) # doctest: +SKIP
-            >>> print("Final accuracy: ", # doctest: +SKIP
-            ...    correct.sum(on="correct") / correct.count())
-            Final accuracy: 1.0000
-
         Args:
             data: Ray dataset or pipeline to run batch prediction on.
             feature_columns: List of columns in data to use for prediction. Columns not
@@ -150,6 +127,38 @@ class BatchPredictor:
         Returns:
             Dataset containing scoring results.
 
+        Examples:
+
+            .. testcode::
+
+                import pandas as pd
+                import ray
+                from ray.train.batch_predictor import BatchPredictor
+
+                def calculate_accuracy(df):
+                    return pd.DataFrame({"correct": df["preds"] == df["label"]})
+
+                # Create a batch predictor that returns identity as the predictions.
+                batch_pred = BatchPredictor.from_pandas_udf(
+                    lambda data: pd.DataFrame({"preds": data["feature_1"]}))
+
+                # Create a dummy dataset.
+                ds = ray.data.from_pandas(pd.DataFrame({
+                    "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
+
+                # Execute batch prediction using this predictor.
+                predictions = batch_pred.predict(ds,
+                    feature_columns=["feature_1"], keep_columns=["label"])
+
+                # print predictions and calculate final accuracy
+                print(predictions)
+                correct = predictions.map_batches(calculate_accuracy)
+                print(f"Final accuracy: {correct.sum(on='correct') / correct.count()}")
+
+            .. testoutput::
+
+                Dataset(num_blocks=1, num_rows=3, schema={preds: int64, label: int64})
+                Final accuracy: 1.0
         """
         if num_gpus_per_worker is None:
             num_gpus_per_worker = 0
@@ -163,13 +172,12 @@ class BatchPredictor:
 
         predictor_cls = self._predictor_cls
         checkpoint_ref = self._checkpoint_ref
-        predictor_kwargs = self._predictor_kwargs
         override_prep = self._override_preprocessor
         # Automatic set use_gpu in predictor constructor if user provided
         # explicit GPU resources
         if (
             "use_gpu" in inspect.signature(predictor_cls.from_checkpoint).parameters
-            and "use_gpu" not in predictor_kwargs
+            and "use_gpu" not in self._predictor_kwargs
             and num_gpus_per_worker > 0
         ):
             logger.info(
@@ -177,14 +185,27 @@ class BatchPredictor:
                 "Automatically enabling GPU prediction for this predictor. To "
                 "disable set `use_gpu` to `False` in `BatchPredictor.predict`."
             )
-            predictor_kwargs["use_gpu"] = True
+            self._predictor_kwargs["use_gpu"] = True
 
+        predictor_kwargs_ref = ray.put(self._predictor_kwargs)
+
+        # In case of [arrow block] -> [X] -> [Pandas UDF] -> [Y] -> [TorchPredictor]
+        # We have two places where we can chose data format with less conversion cost.
+        # This is the [X], between data block and first preprocessor.
+        preprocessor_batch_format: BatchFormat = (
+            self._determine_preprocessor_batch_format(data)
+        )
+        # This is the [Y] in case of separated GPU stage prediction
+        predict_stage_batch_format: BatchFormat = (
+            self._predictor_cls._batch_format_to_use()
+        )
         ctx = DatasetContext.get_current()
         cast_tensor_columns = ctx.enable_tensor_extension_casting
 
         class ScoringWrapper:
             def __init__(self):
-                checkpoint = Checkpoint.from_object_ref(checkpoint_ref)
+                checkpoint = ray.get(checkpoint_ref)
+                predictor_kwargs = ray.get(predictor_kwargs_ref)
                 self._predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )
@@ -194,19 +215,66 @@ class BatchPredictor:
                 if override_prep:
                     self._predictor.set_preprocessor(override_prep)
 
-            def __call__(self, batch):
-                if feature_columns:
-                    prediction_batch = batch[feature_columns]
-                else:
-                    prediction_batch = batch
-                prediction_output = self._predictor.predict(
+            def _select_columns_from_input_batch(
+                self,
+                batch_data: DataBatchType,
+                select_columns: Optional[List[str]] = None,
+            ):
+                """Return a subset of input batch based on provided columns."""
+                # No select columns specified, use all columns.
+                if not select_columns:
+                    return batch_data
+                elif isinstance(batch_data, np.ndarray):
+                    raise ValueError(
+                        f"Column name(s) {select_columns} should not be provided "
+                        "for prediction input data type of ``numpy.ndarray``"
+                    )
+                elif isinstance(batch_data, dict):
+                    return {k: v for k, v in batch_data.items() if k in select_columns}
+                elif isinstance(batch_data, pd.DataFrame):
+                    # Select a subset of the pandas columns.
+                    return batch_data[select_columns]
+
+            def _keep_columns_from_input_batch(
+                self,
+                input_batch: DataBatchType,
+                prediction_output_batch: DataBatchType,
+                keep_columns: Optional[List[str]] = None,
+            ):
+                """Return a union of input batch and prediction output batch
+                based on provided columns.
+                """
+                if not keep_columns:
+                    return prediction_output_batch
+                elif isinstance(input_batch, np.ndarray):
+                    raise ValueError(
+                        f"Column name(s) {keep_columns} should not be provided "
+                        "for prediction input data type of ``numpy.ndarray``"
+                    )
+                elif isinstance(input_batch, dict):
+                    for column in keep_columns:
+                        prediction_output_batch[column] = input_batch[column]
+                    return prediction_output_batch
+                elif isinstance(input_batch, pd.DataFrame):
+                    prediction_output_batch[keep_columns] = input_batch[keep_columns]
+                    return prediction_output_batch
+
+            def __call__(self, input_batch: DataBatchType) -> DataBatchType:
+                # TODO (jiaodong): Investigate if there's room to optimize prediction
+                # result joins to minimize GPU <> CPU transfer
+                prediction_batch: DataBatchType = self._select_columns_from_input_batch(
+                    input_batch, select_columns=feature_columns
+                )
+                prediction_output_batch: DataBatchType = self._predictor.predict(
                     prediction_batch, **predict_kwargs
                 )
-                if keep_columns:
-                    prediction_output[keep_columns] = batch[keep_columns]
-                return convert_batch_type_to_pandas(
-                    prediction_output, cast_tensor_columns
+                prediction_output_batch: DataBatchType = (
+                    self._keep_columns_from_input_batch(
+                        input_batch, prediction_output_batch, keep_columns=keep_columns
+                    )
                 )
+
+                return prediction_output_batch
 
         compute = ray.data.ActorPoolStrategy(
             min_size=min_scoring_workers, max_size=max_scoring_workers
@@ -221,14 +289,22 @@ class BatchPredictor:
             if preprocessor:
                 # Set the in-predictor preprocessing to a no-op when using a separate
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
-                override_prep = BatchMapper(lambda x: x)
+                override_prep = BatchMapper(
+                    lambda x: x, batch_format=predict_stage_batch_format
+                )
+                # preprocessor.transform will break for DatasetPipeline due to
+                # missing _dataset_format()
                 batch_fn = preprocessor._transform_batch
-                data = data.map_batches(batch_fn, batch_format="pandas")
+                data = data.map_batches(
+                    batch_fn, batch_format=predict_stage_batch_format
+                )
 
         prediction_results = data.map_batches(
             ScoringWrapper,
             compute=compute,
-            batch_format="pandas",
+            batch_format=preprocessor_batch_format
+            if self.get_preprocessor() is not None
+            else predict_stage_batch_format,
             batch_size=batch_size,
             **ray_remote_args,
         )
@@ -260,22 +336,6 @@ class BatchPredictor:
 
         This is a convenience wrapper around calling `.window()` on the Dataset prior
         to passing it `BatchPredictor.predict()`.
-
-        Examples:
-            >>> import pandas as pd
-            >>> import ray
-            >>> from ray.air import Checkpoint
-            >>> from ray.train.predictor import Predictor
-            >>> from ray.train.batch_predictor import BatchPredictor
-            >>> # Create a batch predictor that always returns `42` for each input.
-            >>> batch_pred = BatchPredictor.from_pandas_udf( # doctest: +SKIP
-            ...     lambda data: pd.DataFrame({"a": [42] * len(data)})
-            >>> # Create a dummy dataset.
-            >>> ds = ray.data.range_tensor(1000, parallelism=4) # doctest: +SKIP
-            >>> # Setup a prediction pipeline.
-            >>> print(batch_pred.predict_pipelined( # doctest: +SKIP
-            ...     ds, blocks_per_window=1))
-            DatasetPipeline(num_windows=4, num_stages=3)
 
         Args:
             data: Ray dataset to run batch prediction on.
@@ -310,6 +370,28 @@ class BatchPredictor:
 
         Returns:
             DatasetPipeline that generates scoring results.
+
+        Examples:
+
+             .. testcode::
+
+                import pandas as pd
+                import ray
+                from ray.train.batch_predictor import BatchPredictor
+
+                # Create a batch predictor that always returns `42` for each input.
+                batch_pred = BatchPredictor.from_pandas_udf(
+                    lambda data: pd.DataFrame({"a": [42] * len(data)}))
+
+                # Create a dummy dataset.
+                ds = ray.data.range_tensor(1000, parallelism=4)
+
+                # Setup a prediction pipeline.
+                print(batch_pred.predict_pipelined(ds, blocks_per_window=1))
+
+             .. testoutput::
+
+                DatasetPipeline(num_windows=4, num_stages=3)
         """
 
         if blocks_per_window is None and bytes_per_window is None:
@@ -335,3 +417,38 @@ class BatchPredictor:
             ray_remote_args=ray_remote_args,
             **predict_kwargs,
         )
+
+    def _determine_preprocessor_batch_format(
+        self, ds: Union[ray.data.Dataset, ray.data.DatasetPipeline]
+    ) -> BatchFormat:
+        """Determine batch format we use for the first preprocessor.
+
+        In case of [arrow block] -> [X] -> [Pandas/Numpy UDF] -> [Predictor]
+        We choose the best X based on dataset block format and preprocessor's
+        transform type to avoid unnecessary data conversion.
+
+        Args:
+            ds (Union[ray.data.Dataset, ray.data.DatasetPipeline]): Input
+                dataset or dataset pipeline.
+
+        Returns:
+            BatchFormat: Batch format to use for the preprocessor.
+        """
+        preprocessor = self.get_preprocessor()
+        dataset_block_format = ds.dataset_format()
+        if dataset_block_format == BlockFormat.SIMPLE:
+            # Naive case that we cast to pandas for compatibility.
+            # TODO: Revisit
+            return BatchFormat.PANDAS
+
+        if preprocessor is None:
+            # No preprocessor, just use the predictor format.
+            return self._predictor_cls._batch_format_to_use()
+        elif hasattr(preprocessor, "preprocessors"):
+            # For Chain preprocessor, we picked the first one as entry point.
+            # TODO (jiaodong): We should revisit if our Chain preprocessor is
+            # still optimal with context of lazy execution.
+            preprocessor = preprocessor.preprocessors[0]
+
+        # Use same batch format as first preprocessor to minimize data copies.
+        return preprocessor._determine_transform_to_use(dataset_block_format)

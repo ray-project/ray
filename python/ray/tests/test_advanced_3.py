@@ -182,11 +182,11 @@ def test_object_ref_properties():
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=int(10 ** 8))
+    ray.init(num_cpus=1, object_store_memory=int(10**8))
 
     @ray.remote
     def f():
-        return np.zeros(6 * 10 ** 7, dtype=np.uint8)
+        return np.zeros(6 * 10**7, dtype=np.uint8)
 
     x_id = f.remote()
     ray.wait([x_id])
@@ -200,10 +200,10 @@ def test_ray_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName:
         def __init__(self):
-            assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
+            assert setproctitle.getproctitle() == "ray::UniqueName.__init__"
 
         def f(self):
-            assert setproctitle.getproctitle() == "ray::UniqueName.f()"
+            assert setproctitle.getproctitle() == "ray::UniqueName.f"
 
     @ray.remote
     def unique_1():
@@ -220,7 +220,7 @@ def test_ray_task_name_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName:
         def __init__(self):
-            assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
+            assert setproctitle.getproctitle() == "ray::UniqueName.__init__"
 
         def f(self):
             assert setproctitle.getproctitle() == f"ray::{method_task_name}"

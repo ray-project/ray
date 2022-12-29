@@ -19,7 +19,6 @@ class ImportThread:
     Attributes:
         worker: the worker object in this process.
         mode: worker mode
-        redis_client: the redis client used to query exports.
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
         imported_collision_identifiers: This is a dictionary mapping collision

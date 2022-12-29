@@ -212,6 +212,22 @@ def test_user_config(serve_instance):
     wait_for_condition(lambda: check("456", 3))
 
 
+def test_user_config_empty(serve_instance):
+    @serve.deployment(user_config={})
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self, *args):
+            return self.count
+
+        def reconfigure(self, config):
+            self.count += 1
+
+    handle = serve.run(Counter.bind())
+    assert ray.get(handle.remote()) == 1
+
+
 def test_scaling_replicas(serve_instance):
     @serve.deployment(name="counter", num_replicas=2)
     class Counter:

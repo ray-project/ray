@@ -1,6 +1,5 @@
-from gym import Env
-from gym.spaces import Box, Dict, Discrete, Tuple
-from gym.envs.registration import EnvSpec
+import gymnasium as gym
+from gymnasium.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import re
 import unittest
@@ -35,7 +34,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-class SimpleEnv(Env):
+class SimpleEnv(gym.Env):
     def __init__(self, config):
         self._skip_env_checking = True
         if config.get("simplex_actions", False):
@@ -47,18 +46,19 @@ class SimpleEnv(Env):
         self.state = None
         self.steps = None
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.state = self.observation_space.sample()
         self.steps = 0
-        return self.state
+        return self.state, {}
 
     def step(self, action):
         self.steps += 1
         # Reward is 1.0 - (max(actions) - state).
-        [r] = 1.0 - np.abs(np.max(action) - self.state)
-        d = self.steps >= self.max_steps
+        [rew] = 1.0 - np.abs(np.max(action) - self.state)
+        terminated = False
+        truncated = self.steps >= self.max_steps
         self.state = self.observation_space.sample()
-        return self.state, r, d, {}
+        return self.state, rew, terminated, truncated, {}
 
 
 class TestSAC(unittest.TestCase):
@@ -128,47 +128,51 @@ class TestSAC(unittest.TestCase):
             for env in [
                 "random_dict_env",
                 "random_tuple_env",
-                # "MsPacmanNoFrameskip-v4",
-                "CartPole-v0",
+                "CartPole-v1",
             ]:
                 print("Env={}".format(env))
+                config.environment(env)
                 # Test making the Q-model a custom one for CartPole, otherwise,
                 # use the default model.
                 config.q_model_config["custom_model"] = (
                     "batch_norm{}".format("_torch" if fw == "torch" else "")
-                    if env == "CartPole-v0"
+                    if env == "CartPole-v1"
                     else None
                 )
-                trainer = config.build(env=env)
+                algo = config.build()
                 for i in range(num_iterations):
-                    results = trainer.train()
+                    results = algo.train()
                     check_train_results(results)
                     print(results)
-                check_compute_single_action(trainer)
+                check_compute_single_action(algo)
 
                 # Test, whether the replay buffer is saved along with
                 # a checkpoint (no point in doing it for all frameworks since
                 # this is framework agnostic).
-                if fw == "tf" and env == "CartPole-v0":
-                    checkpoint = trainer.save()
-                    new_trainer = sac.SAC(config, env=env)
-                    new_trainer.restore(checkpoint)
+                if fw == "tf" and env == "CartPole-v1":
+                    checkpoint = algo.save()
+                    new_algo = config.build()
+                    new_algo.restore(checkpoint)
                     # Get some data from the buffer and compare.
-                    data = trainer.local_replay_buffer.replay_buffers[
+                    data = algo.local_replay_buffer.replay_buffers[
                         "default_policy"
                     ]._storage[: 42 + 42]
-                    new_data = new_trainer.local_replay_buffer.replay_buffers[
+                    new_data = new_algo.local_replay_buffer.replay_buffers[
                         "default_policy"
                     ]._storage[: 42 + 42]
                     check(data, new_data)
-                    new_trainer.stop()
+                    new_algo.stop()
 
-                trainer.stop()
+                algo.stop()
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
         config = (
             sac.SACConfig()
+            .environment(
+                SimpleEnv,
+                env_config={"simplex_actions": True},
+            )
             .training(
                 twin_q=False,
                 gamma=0.99,
@@ -180,9 +184,6 @@ class TestSAC(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             .reporting(
                 min_time_s_per_iteration=0,
-            )
-            .environment(
-                env_config={"simplex_actions": True},
             )
             .debugging(seed=42)
         )
@@ -230,7 +231,6 @@ class TestSAC(unittest.TestCase):
             "default_policy/log_alpha_1": "log_alpha",
         }
 
-        env = SimpleEnv
         batch_size = 64
         obs_size = (batch_size, 1)
         actions = np.random.random(size=(batch_size, 2))
@@ -250,8 +250,8 @@ class TestSAC(unittest.TestCase):
             config, frameworks=("tf", "torch"), session=True
         ):
             # Generate Algorithm and get its default Policy object.
-            trainer = config.build(env=env)
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
             p_sess = None
             if sess:
                 p_sess = policy.get_session()
@@ -259,11 +259,20 @@ class TestSAC(unittest.TestCase):
             # Set all weights (of all nets) to fixed values.
             if weights_dict is None:
                 # Start with the tf vars-dict.
-                assert fw in ["tf2", "tf", "tfe"]
-                weights_dict = policy.get_weights()
-                if fw == "tfe":
+                assert fw in ["tf2", "tf"]
+
+                weights_dict_list = (
+                    policy.model.variables() + policy.target_model.variables()
+                )
+                with p_sess.graph.as_default():
+                    collector = ray.experimental.tf_utils.TensorFlowVariables(
+                        [], p_sess, weights_dict_list
+                    )
+                    weights_dict = collector.get_weights()
+
+                if fw == "tf2":
                     log_alpha = weights_dict[10]
-                    weights_dict = self._translate_tfe_weights(weights_dict, map_)
+                    weights_dict = self._translate_tf2_weights(weights_dict, map_)
             else:
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(weights_dict, map_)
@@ -329,7 +338,7 @@ class TestSAC(unittest.TestCase):
                 tf_a_grads = [g for g, v in tf_a_grads]
                 tf_e_grads = [g for g, v in tf_e_grads]
 
-            elif fw == "tfe":
+            elif fw == "tf2":
                 with tf.GradientTape() as tape:
                     tf_loss(policy, policy.model, None, input_)
                 c, a, e, t = (
@@ -437,9 +446,9 @@ class TestSAC(unittest.TestCase):
                     tf_inputs.append(in_)
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = trainer.local_replay_buffer
+                    buf = algo.local_replay_buffer
                     patch_buffer_with_fake_sampling_method(buf, in_)
-                    trainer.train()
+                    algo.train()
                     updated_weights = policy.get_weights()
                     # Net must have changed.
                     if tf_updated_weights:
@@ -456,9 +465,9 @@ class TestSAC(unittest.TestCase):
                     in_ = tf_inputs[update_iteration]
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = trainer.local_replay_buffer
+                    buf = algo.local_replay_buffer
                     patch_buffer_with_fake_sampling_method(buf, in_)
-                    trainer.train()
+                    algo.train()
                     # Compare updated model.
                     for tf_key in sorted(tf_weights.keys()):
                         if re.search("_[23]|alpha", tf_key):
@@ -491,7 +500,7 @@ class TestSAC(unittest.TestCase):
                             )
                         else:
                             check(tf_var, torch_var, atol=0.003)
-            trainer.stop()
+            algo.stop()
 
     def test_sac_dict_obs_order(self):
         dict_space = Dict(
@@ -507,24 +516,26 @@ class TestSAC(unittest.TestCase):
             {k: v for k, v in reversed(dict_space.sample().items())} for _ in range(10)
         ]
 
-        class NestedDictEnv(Env):
+        class NestedDictEnv(gym.Env):
             def __init__(self):
                 self.action_space = Box(low=-1.0, high=1.0, shape=(2,))
                 self.observation_space = dict_space
-                self._spec = EnvSpec("NestedDictEnv-v0")
                 self.steps = 0
 
-            def reset(self):
+            def reset(self, *, seed=None, options=None):
                 self.steps = 0
-                return dict_samples[0]
+                return dict_samples[0], {}
 
             def step(self, action):
                 self.steps += 1
-                return dict_samples[self.steps], 1, self.steps >= 5, {}
+                terminated = False
+                truncated = self.steps >= 5
+                return dict_samples[self.steps], 1, terminated, truncated, {}
 
         tune.register_env("nested", lambda _: NestedDictEnv())
         config = (
             sac.SACConfig()
+            .environment("nested")
             .training(
                 replay_buffer_config={
                     "capacity": 10,
@@ -541,12 +552,12 @@ class TestSAC(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build(env="nested")
+            algo = config.build()
             for _ in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
+            check_compute_single_action(algo)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return SampleBatch(
@@ -554,7 +565,9 @@ class TestSAC(unittest.TestCase):
                 SampleBatch.CUR_OBS: np.random.random(size=obs_size),
                 SampleBatch.ACTIONS: actions,
                 SampleBatch.REWARDS: np.random.random(size=(batch_size,)),
-                SampleBatch.DONES: np.random.choice([True, False], size=(batch_size,)),
+                SampleBatch.TERMINATEDS: np.random.choice(
+                    [True, False], size=(batch_size,)
+                ),
                 SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
                 "weights": np.random.random(size=(batch_size,)),
                 "batch_indexes": [0] * batch_size,
@@ -669,7 +682,7 @@ class TestSAC(unittest.TestCase):
                 framework=fw,
             )
         else:
-            assert fw == "tfe"
+            assert fw == "tf2"
             q_tp1 = fc(
                 relu(
                     fc(
@@ -687,7 +700,7 @@ class TestSAC(unittest.TestCase):
         q_t_selected = np.squeeze(q_t, axis=-1)
         q_tp1 -= alpha * log_pis_tp1
         q_tp1_best = np.squeeze(q_tp1, axis=-1)
-        dones = train_batch[SampleBatch.DONES]
+        dones = train_batch[SampleBatch.TERMINATEDS]
         rewards = train_batch[SampleBatch.REWARDS]
         if fw == "torch":
             dones = dones.float().numpy()
@@ -722,7 +735,7 @@ class TestSAC(unittest.TestCase):
 
         return model_dict
 
-    def _translate_tfe_weights(self, weights_dict, map_):
+    def _translate_tf2_weights(self, weights_dict, map_):
         model_dict = {
             "default_policy/log_alpha": None,
             "default_policy/log_alpha_target": None,
