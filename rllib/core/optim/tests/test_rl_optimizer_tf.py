@@ -1,7 +1,7 @@
 # TODO (avnishn): Merge with the torch version of this test once the
 # RLTrainer has been merged.
 import gymnasium as gym
-import tensorflow as tf
+import tensorflow as tf  # TODO (Artur): Use try_import_tf here (leads to error)
 from typing import Any, Mapping, Union
 import unittest
 
