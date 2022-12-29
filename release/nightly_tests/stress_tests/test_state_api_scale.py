@@ -74,7 +74,11 @@ def test_many_tasks(num_tasks: int):
 
     SAMPLES = 100
 
-    @ray.remote
+    # `num_cpus` required obtained from 1 / (num_tasks /num_total_cpus)
+    #  where num_total_cpus obtained from cluster_compute in `release_tests.yaml`
+    # 1 / (10k/45 * 7) ~= 0.03, taking a smaller value to make sure all tasks could be
+    # running at the same time.
+    @ray.remote(num_cpus=0.02)
     def pi4_sample(signal):
         in_count = 0
         for _ in range(SAMPLES):
