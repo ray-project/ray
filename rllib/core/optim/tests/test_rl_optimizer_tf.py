@@ -1,7 +1,6 @@
 # TODO (avnishn): Merge with the torch version of this test once the
 # RLTrainer has been merged.
 import gymnasium as gym
-import tensorflow as tf
 from typing import Any, Mapping, Union
 import unittest
 
@@ -16,10 +15,13 @@ from ray.rllib.offline.dataset_reader import (
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_optimizer import BCTFOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import TensorType
+
+_, tf, _ = try_import_tf()
 
 
 class BCTFTrainer:
