@@ -217,6 +217,8 @@ def _build_docker_image(
     if py_version == "py311":
         # TODO(rickyx): remove once conda supports py3.11
         build_args["DEFAULT_CONDA_CHANNEL"] = "conda-forge"
+        # TODO(rickyx): build for autoscaler when dependencies supported.
+        build_args["AUTOSCALER"] = ""
 
     tagged_name = f"rayproject/{image_name}:nightly-{py_version}-{device_tag}"
 
