@@ -18,6 +18,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
 )
+from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 try:
@@ -59,6 +60,13 @@ def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="This test relies on gcs server randomly choosing raylets "
+    + "for actors without required resources, which is only supported by "
+    + "raylet-based actor scheduler. The same test logic for gcs-based "
+    + "actor scheduler can be found at `test_actor_distribution_balance`.",
+)
 def test_actor_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -167,7 +175,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote(max_restarts=0)
+    @ray.remote(max_restarts=0, scheduling_strategy="SPREAD")
     class Counter:
         def __init__(self):
             self.x = 0

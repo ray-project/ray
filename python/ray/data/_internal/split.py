@@ -118,7 +118,7 @@ def _split_single_block(
     for index in split_indices:
         logger.debug(f"slicing block {prev_index}:{index}")
         stats = BlockExecStats.builder()
-        split_block = block_accessor.slice(prev_index, index, copy=True)
+        split_block = block_accessor.slice(prev_index, index)
         accessor = BlockAccessor.for_block(split_block)
         _meta = BlockMetadata(
             num_rows=accessor.num_rows(),

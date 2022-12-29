@@ -10,7 +10,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -23,8 +23,7 @@ class TensorflowPredictor(DLPredictor):
     """A predictor for TensorFlow models.
 
     Args:
-        model_definition: A callable that returns a TensorFlow Keras model
-            to use for predictions.
+        model: A Tensorflow Keras model to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
         model_weights: List of weights to use for the model.
@@ -34,14 +33,11 @@ class TensorflowPredictor(DLPredictor):
 
     def __init__(
         self,
-        model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
+        *,
+        model: Optional[tf.keras.Model] = None,
         preprocessor: Optional["Preprocessor"] = None,
-        model_weights: Optional[list] = None,
         use_gpu: bool = False,
     ):
-        self.model_definition = model_definition
-        self.model_weights = model_weights
-
         self.use_gpu = use_gpu
         # TensorFlow model objects cannot be pickled, therefore we use
         # a callable that returns the model and initialize it here,
@@ -52,9 +48,9 @@ class TensorflowPredictor(DLPredictor):
         if use_gpu:
             # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
             with tf.device("GPU:0"):
-                self._model = self.model_definition()
+                self._model = model
         else:
-            self._model = self.model_definition()
+            self._model = model
             gpu_devices = tf.config.list_physical_devices("GPU")
             if len(gpu_devices) > 0 and log_once("tf_predictor_not_using_gpu"):
                 logger.warning(
@@ -65,18 +61,17 @@ class TensorflowPredictor(DLPredictor):
                     "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
                     "enable GPU prediction."
                 )
-
-        if model_weights is not None:
-            self._model.set_weights(model_weights)
         super().__init__(preprocessor)
 
     def __repr__(self):
-        fn_name = getattr(self.model_definition, "__name__", self.model_definition)
+        fn_name = getattr(self._model, "__name__", self._model)
+        fn_name_str = ""
+        if fn_name:
+            fn_name_str = str(fn_name)[:40]
         return (
             f"{self.__class__.__name__}("
-            f"model_definition={fn_name}, "
+            f"model={fn_name_str!r}, "
             f"preprocessor={self._preprocessor!r}, "
-            f"model_weights={self.model_weights!r}, "
             f"use_gpu={self.use_gpu!r})"
         )
 
@@ -84,8 +79,10 @@ class TensorflowPredictor(DLPredictor):
     def from_checkpoint(
         cls,
         checkpoint: Checkpoint,
-        model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
-        use_gpu: bool = False,
+        model_definition: Optional[
+            Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]]
+        ] = None,
+        use_gpu: Optional[bool] = False,
     ) -> "TensorflowPredictor":
         """Instantiate the predictor from a Checkpoint.
 
@@ -97,19 +94,22 @@ class TensorflowPredictor(DLPredictor):
                 ``TensorflowTrainer`` run.
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
+                This is only needed if the `checkpoint` was created from
+                `TensorflowCheckpoint.from_model`.
+            use_gpu: Whether GPU should be used during prediction.
         """
         checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
-        model_weights = checkpoint.get_model_weights()
+        model = checkpoint.get_model(model_definition)
         preprocessor = checkpoint.get_preprocessor()
         return cls(
-            model_definition=model_definition,
-            model_weights=model_weights,
+            model=model,
             preprocessor=preprocessor,
             use_gpu=use_gpu,
         )
 
+    @DeveloperAPI
     def call_model(
-        self, tensor: Union[tf.Tensor, Dict[str, tf.Tensor]]
+        self, inputs: Union[tf.Tensor, Dict[str, tf.Tensor]]
     ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
         """Runs inference on a single batch of tensor data.
 
@@ -131,8 +131,8 @@ class TensorflowPredictor(DLPredictor):
 
                 # Use a custom predictor to format model output as a dict.
                 class CustomPredictor(TensorflowPredictor):
-                    def call_model(self, tensor):
-                        model_output = super().call_model(tensor)
+                    def call_model(self, inputs):
+                        model_output = super().call_model(inputs)
                         return {
                             str(i): model_output[i] for i in range(len(model_output))
                         }
@@ -141,8 +141,8 @@ class TensorflowPredictor(DLPredictor):
                 predictions = predictor.predict(data_batch)
 
         Args:
-            tensor: A batch of data to predict on, represented as either a single
-                PyTorch tensor or for multi-input models, a dictionary of tensors.
+            inputs: A batch of data to predict on, represented as either a single
+                TensorFlow tensor or for multi-input models, a dictionary of tensors.
 
         Returns:
             The model outputs, either as a single tensor or a dictionary of tensors.
@@ -150,9 +150,9 @@ class TensorflowPredictor(DLPredictor):
         """
         if self.use_gpu:
             with tf.device("GPU:0"):
-                return self._model(tensor)
+                return self._model(inputs)
         else:
-            return self._model(tensor)
+            return self._model(inputs)
 
     def predict(
         self,
@@ -192,8 +192,7 @@ class TensorflowPredictor(DLPredictor):
             ...     )
             >>>
             >>> weights = [np.array([[2.0]]), np.array([0.0])]
-            >>> predictor = TensorflowPredictor(
-            ...     model_definition=build_model, model_weights=weights)
+            >>> predictor = TensorflowPredictor(model=build_model())
             >>>
             >>> data = np.asarray([1, 2, 3])
             >>> predictions = predictor.predict(data) # doctest: +SKIP
@@ -210,7 +209,7 @@ class TensorflowPredictor(DLPredictor):
             ...     return tf.keras.models.Model(
             ...         inputs=[input1, input2], outputs=output)
             >>>
-            >>> predictor = TensorflowPredictor(model_definition=build_model)
+            >>> predictor = TensorflowPredictor(model=build_model())
             >>>
             >>> # Pandas dataframe.
             >>> data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])

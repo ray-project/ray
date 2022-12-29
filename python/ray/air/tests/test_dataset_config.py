@@ -120,7 +120,7 @@ def test_error(ray_start_4_cpus):
         {"train": 10},
         dataset_config={},
         datasets={"train": ds},
-        preprocessor=BatchMapper(lambda x: x),
+        preprocessor=BatchMapper(lambda x: x, batch_format="pandas"),
     )
     test.fit()
 
@@ -162,11 +162,15 @@ def test_use_stream_api_config(ray_start_4_cpus):
 def test_fit_transform_config(ray_start_4_cpus):
     ds = ray.data.range_table(10)
 
-    def drop_odd(rows):
-        key = list(rows)[0]
-        return rows[(rows[key] % 2 == 0)]
+    def drop_odd_pandas(batch):
+        return batch[batch["value"] % 2 == 0]
 
-    prep = BatchMapper(drop_odd)
+    def drop_odd_numpy(batch):
+        arr = batch["value"]
+        return arr[arr % 2 == 0]
+
+    prep_pandas = BatchMapper(drop_odd_pandas, batch_format="pandas")
+    prep_numpy = BatchMapper(drop_odd_numpy, batch_format="numpy")
 
     # Single worker basic case.
     test = TestBasic(
@@ -175,7 +179,18 @@ def test_fit_transform_config(ray_start_4_cpus):
         {"train": 5, "test": 5},
         dataset_config={},
         datasets={"train": ds, "test": ds},
-        preprocessor=prep,
+        preprocessor=prep_pandas,
+    )
+    test.fit()
+
+    # Single worker basic case.
+    test = TestBasic(
+        1,
+        True,
+        {"train": 5, "test": 5},
+        dataset_config={},
+        datasets={"train": ds, "test": ds},
+        preprocessor=prep_numpy,
     )
     test.fit()
 
@@ -186,7 +201,7 @@ def test_fit_transform_config(ray_start_4_cpus):
         {"train": 5, "test": 10},
         dataset_config={"test": DatasetConfig(transform=False)},
         datasets={"train": ds, "test": ds},
-        preprocessor=prep,
+        preprocessor=prep_pandas,
     )
     test.fit()
 
@@ -240,13 +255,13 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         assert results[0] == results[1], results
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
-        assert "Stage 1 read->map_batches: 5/5 blocks executed " in stats, stats
+        assert "Stage 1 read->map_batches: 1/1 blocks executed " in stats, stats
 
     def rand(x):
         return [random.random() for _ in range(len(x))]
 
-    prep = BatchMapper(rand)
-    ds = ray.data.range_table(5)
+    prep = BatchMapper(rand, batch_format="pandas")
+    ds = ray.data.range_table(5, parallelism=1)
     test = TestStream(
         checker,
         preprocessor=prep,
@@ -260,8 +275,8 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
     def rand(x):
         return [random.random() for _ in range(len(x))]
 
-    prep = BatchMapper(rand)
-    ds = ray.data.range_table(5)
+    prep = BatchMapper(rand, batch_format="pandas")
+    ds = ray.data.range_table(5, parallelism=1)
 
     # Test the default 1GiB window size.
     def checker(shard, results):
@@ -272,7 +287,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
         assert (
-            "Stage 1 read->randomize_block_order->map_batches: 5/5 blocks executed "
+            "Stage 1 read->randomize_block_order->map_batches: 1/1 blocks executed "
             in stats
         ), stats
 

@@ -3,7 +3,7 @@ Anti-pattern: Redefining the same remote function or class harms performance
 
 **TLDR:** Avoid redefining the same remote function or class.
 
-Decorating the same function or class multiple times using the :ref:`ray.remote() <ray-remote-ref>` decorator leads to slow performance in Ray.
+Decorating the same function or class multiple times using the :ref:`ray.remote <ray-remote-ref>` decorator leads to slow performance in Ray.
 For each Ray remote function or class, Ray will pickle it and upload to GCS.
 Later on, the worker that runs the task or actor will download and unpickle it.
 Each decoration of the same function or class generates a new remote function or class from Ray's perspective.

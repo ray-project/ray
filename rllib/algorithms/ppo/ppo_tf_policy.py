@@ -165,7 +165,6 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                     1 + self.config["clip_param"],
                 ),
             )
-            mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
             # Compute a value function loss.
             if self.config["use_critic"]:
@@ -194,7 +193,7 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
 
             # Store stats in policy for stats_fn.
             self._total_loss = total_loss
-            self._mean_policy_loss = mean_policy_loss
+            self._mean_policy_loss = reduce_mean_valid(-surrogate_loss)
             self._mean_vf_loss = mean_vf_loss
             self._mean_entropy = mean_entropy
             # Backward compatibility: Deprecate self._mean_kl.

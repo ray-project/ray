@@ -212,16 +212,11 @@ class MockErrorInfoAccessor : public ErrorInfoAccessor {
 namespace ray {
 namespace gcs {
 
-class MockStatsInfoAccessor : public StatsInfoAccessor {
+class MockTaskInfoAccessor : public TaskInfoAccessor {
  public:
   MOCK_METHOD(Status,
-              AsyncAddProfileData,
-              (const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status,
-              AsyncGetAll,
-              (const MultiItemCallback<rpc::ProfileTableData> &callback),
+              AsyncAddTaskEventData,
+              (std::unique_ptr<rpc::TaskEventData> data_ptr, StatusCallback callback),
               (override));
 };
 
@@ -294,7 +289,7 @@ class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               SyncWaitUntilReady,
-              (const PlacementGroupID &placement_group_id),
+              (const PlacementGroupID &placement_group_id, int64_t timeout_seconds),
               (override));
 };
 

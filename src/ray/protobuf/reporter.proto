@@ -37,6 +37,31 @@ message GetProfilingStatsReply {
   string std_err = 3;
 }
 
+message GetTracebackRequest {
+  // PID of the worker process.
+  uint32 pid = 1;
+  // If using native flag for py-spy
+  optional bool native = 2;
+}
+
+message GetTracebackReply {
+  bool success = 1;
+  string output = 2;
+}
+
+message CpuProfilingRequest {
+  uint32 pid = 1;
+  optional string format = 2;
+  optional uint32 duration = 3;
+  // If using native flag for py-spy
+  optional bool native = 4;
+}
+
+message CpuProfilingReply {
+  bool success = 1;
+  string output = 2;
+}
+
 message ReportMetricsRequest {
   repeated MetricPoint metrics_points = 1;
 }
@@ -47,10 +72,10 @@ message ReportMetricsReply {
 
 message ReportOCMetricsRequest {
   repeated opencensus.proto.metrics.v1.Metric metrics = 1;
+  bytes worker_id = 2;
 }
 
-message ReportOCMetricsReply {
-}
+message ReportOCMetricsReply {}
 
 // Resource usage reported by the node reporter.
 message NodeResourceUsage {
@@ -68,6 +93,8 @@ service ReporterService {
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
   // Report OpenCensus metrics to the local metrics agent.
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
+  rpc GetTraceback(GetTracebackRequest) returns (GetTracebackReply);
+  rpc CpuProfiling(CpuProfilingRequest) returns (CpuProfilingReply);
 }
 
 message StreamLogRequest {

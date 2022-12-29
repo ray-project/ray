@@ -2,7 +2,7 @@
 
 from typing import Dict
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 import ray
@@ -11,7 +11,7 @@ from ray.rllib.algorithms.simple_q.utils import Q_SCOPE, Q_TARGET_SCOPE
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.tf.tf_action_dist import get_categorical_class_with_temperature
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
@@ -33,16 +33,6 @@ tf1, tf, tfv = try_import_tf()
 
 # Importance sampling weights for prioritized replay
 PRIO_WEIGHTS = "weights"
-
-
-def get_dist_class_with_temperature(t: float):
-    """Categorical distribution class that has customized default temperature."""
-
-    class CategoricalWithTemperature(Categorical):
-        def __init__(self, inputs, model=None, temperature=t):
-            super().__init__(inputs, model, temperature)
-
-    return CategoricalWithTemperature
 
 
 class QLoss:
@@ -70,7 +60,7 @@ class QLoss:
             z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
-            r_tau = tf.expand_dims(rewards, -1) + gamma ** n_step * tf.expand_dims(
+            r_tau = tf.expand_dims(rewards, -1) + gamma**n_step * tf.expand_dims(
                 1.0 - done_mask, -1
             ) * tf.expand_dims(z, 0)
             r_tau = tf.clip_by_value(r_tau, v_min, v_max)
@@ -110,7 +100,7 @@ class QLoss:
             q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
             # compute RHS of bellman equation
-            q_t_selected_target = rewards + gamma ** n_step * q_tp1_best_masked
+            q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
 
             # compute the error (potentially clipped)
             self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
@@ -134,7 +124,7 @@ class ComputeTDErrorMixin:
     def __init__(self):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             # Do forward pass on loss to update td error attribute
             build_q_losses(
@@ -146,7 +136,7 @@ class ComputeTDErrorMixin:
                     SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
                     SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
                     SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
-                    SampleBatch.DONES: tf.convert_to_tensor(done_mask),
+                    SampleBatch.TERMINATEDS: tf.convert_to_tensor(terminateds_mask),
                     PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
                 },
             )
@@ -248,7 +238,7 @@ def get_distribution_inputs_and_class(
 
     return (
         policy.q_values,
-        get_dist_class_with_temperature(temperature),
+        get_categorical_class_with_temperature(temperature),
         [],
     )  # state-out
 
@@ -334,7 +324,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
         q_dist_tp1_best,
         train_batch[PRIO_WEIGHTS],
         tf.cast(train_batch[SampleBatch.REWARDS], tf.float32),
-        tf.cast(train_batch[SampleBatch.DONES], tf.float32),
+        tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32),
         config["gamma"],
         config["n_step"],
         config["num_atoms"],
@@ -349,7 +339,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
 def adam_optimizer(
     policy: Policy, config: AlgorithmConfigDict
 ) -> "tf.keras.optimizers.Optimizer":
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         return tf.keras.optimizers.Adam(
             learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"]
         )
@@ -393,7 +383,7 @@ def setup_late_mixins(
     action_space: gym.spaces.Space,
     config: AlgorithmConfigDict,
 ) -> None:
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 def compute_q_values(
@@ -471,7 +461,7 @@ def postprocess_nstep_and_prio(
             batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS],
             batch[SampleBatch.NEXT_OBS],
-            batch[SampleBatch.DONES],
+            batch[SampleBatch.TERMINATEDS],
             batch[PRIO_WEIGHTS],
         )
         # Retain compatibility with old-style Replay args

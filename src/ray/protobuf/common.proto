@@ -67,7 +67,8 @@ message DefaultSchedulingStrategy {}
 
 message SpreadSchedulingStrategy {}
 
-// Update std::hash<SchedulingStrategy> in task_spec.h when this is changed.
+// Update std::hash<SchedulingStrategy> and operator== in task_spec.h when this is
+// changed.
 message SchedulingStrategy {
   oneof scheduling_strategy {
     // Default hybrid scheduling strategy.
@@ -199,6 +200,10 @@ enum ErrorType {
   // using the internal free() call. We will only recover this object if it is
   // needed for reconstruction of another downstream object.
   OBJECT_FREED = 21;
+  // We use this error for failure due to running out of memory.
+  OUT_OF_MEMORY = 22;
+  // We use this error for failure due to node died unexpectedly.
+  NODE_DIED = 23;
 }
 
 /// The information per ray error type.
@@ -208,10 +213,38 @@ message RayErrorInfo {
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
     string error_message = 4;
   }
+  // The type of error that caused the exception.
+  optional ErrorType error_type = 11;
 }
 
-/// The task exception encapsulates all information about task
-/// execution execeptions.
+message OutOfMemoryErrorContext {
+  // The task id of the task evicted due to node running out of memory.
+  bytes task_id = 1;
+  // The task name of the task evicted due to node running out of memory.
+  string task_name = 2;
+  // The IP address of the node that was running the task.
+  string node_ip_address = 3;
+  // The memory used by the node.
+  uint64 memory_used_bytes = 4;
+  // The memory total by the node.
+  uint64 memory_total_bytes = 5;
+  // The fraction of memory used, i.e. used / total.
+  double memory_usage_fraction = 6;
+  // The threshold when task will be evicted to free up memory.
+  double memory_threshold = 7;
+}
+
+message NodeDiedErrorContext {
+  // The id of the node that died.
+  bytes node_id = 1;
+  // The IP address of the node that died.
+  string node_ip_address = 2;
+}
+
+/// The task exception encapsulates the information about task
+/// execution execeptions. This should be used by the frontend
+/// to represent a user application error. Errors originating from the
+/// backend such as from the raylet should be propagated as RayErrorInfo.
 message RayException {
   // Language of this exception.
   Language language = 1;
@@ -361,6 +394,13 @@ message TaskInfoEntry {
   map<string, double> required_resources = 13;
   // Runtime environment for this task.
   RuntimeEnvInfo runtime_env_info = 23;
+  // The node if of the task. If the task is retried, it could
+  // contain the node id of the previous executed task.
+  optional bytes node_id = 24;
+  // The actor id for this task.
+  // If the task type is Actor creation task or Actor task
+  // this is set. Otherwise, it is empty.
+  optional bytes actor_id = 25;
 }
 
 message Bundle {
@@ -541,22 +581,56 @@ message ViewData {
   repeated Measure measures = 2;
 }
 
+// The current state of a task, in rough chronological order of transition.
+// The typical order of states is as follows:
+//
+// Normal tasks go through scheduling (PENDING_* states) and when submitted
+// to a worker begin running immediately:
+//
+//    PENDING_* -> SUBMITTED_TO_WORKER -> RUNNING_* -> FINISHED
+//
+// On the other hand, actor tasks are submitted to their actor's worker as soon
+// as dependencies are available, and may still be waiting for arg download or
+// earlier actor tasks to finish prior to running:
+//
+//    PENDING_* -> SUBMITTED_TO_WORKER -> PENDING_* -> RUNNING_* -> FINISHED
+//
+// The above is just a typical order. Due to failures or scheduler spillback,
+// tasks may transition back to earlier states for scheduling.
 enum TaskStatus {
   // We don't have a status for this task because we are not the owner or the
   // task metadata has already been deleted.
   NIL = 0;
-  // The task is waiting for its dependencies to be created.
-  WAITING_FOR_DEPENDENCIES = 1;
-  // All dependencies have been created and the task is scheduled to execute.
-  SCHEDULED = 2;
-  // The task finished successfully.
-  FINISHED = 3;
-  // The task is scheduled properly and waiting for execution.
-  // It includes time to deliver the task to the remote worker + queueing time
-  // from the execution side.
-  WAITING_FOR_EXECUTION = 5;
-  // The task that is running.
+  // The task is waiting for its dependencies to be created. For actor tasks, this
+  // can also indicate Ray is waiting for the target actor to be created.
+  PENDING_ARGS_AVAIL = 1;
+  // All dependencies have been created and Ray is confirming a node / worker for the
+  // task to be executed on. This step is part of Ray's distributed scheduling protocol.
+  PENDING_NODE_ASSIGNMENT = 2;
+  // The task has been tentatively assigned to a node, but Ray is waiting for enough
+  // object store memory on the node to free up for downloading task dependencies.
+  // This state is a sub-state of PENDING_NODE_ASSIGNMENT and used for metrics only.
+  PENDING_OBJ_STORE_MEM_AVAIL = 3;
+  // The task has been tentatively assigned to a node, and its dependencies are being
+  // actively downloaded onto the node.
+  // This state is a sub-state of PENDING_NODE_ASSIGNMENT and used for metrics only.
+  PENDING_ARGS_FETCH = 4;
+  // A node / worker for the task has been selected, and the task has been submitted
+  // to the worker. It will be executed shortly. For actor tasks, execution may be
+  // delayed to satisfy ordering constraints or argument fetching.
+  SUBMITTED_TO_WORKER = 5;
+  // The task is running on a worker.
   RUNNING = 6;
+  // The task is running on a worker, but is blocked in a ray.get() call.
+  // This state is a sub-state of RUNNING and used for metrics only.
+  RUNNING_IN_RAY_GET = 7;
+  // The task is running on a worker, but is blocked in a ray.wait() call.
+  // This state is a sub-state of RUNNING and used for metrics only.
+  RUNNING_IN_RAY_WAIT = 8;
+  // The task has finished.
+  FINISHED = 9;
+  // The task has finished but failed with an Exception or system error.
+  FAILED = 10;
 }
 
 // Debug info for a referenced object.
@@ -656,7 +730,7 @@ message MetricPoint {
 
 // Type of a worker exit.
 enum WorkerExitType {
-  // Worker exit due to system level failures (i.e. worker crash).
+  // Worker exits due to system level failures (i.e. worker crash).
   SYSTEM_ERROR = 0;
   // System-level exit that is intended. E.g.,
   // Workers that are killed because they are idle for a long time.
@@ -667,6 +741,8 @@ enum WorkerExitType {
   // Intended exit from users (e.g., users exit workers with exit code 0
   // or exit initated by Ray API such as ray.kill).
   INTENDED_USER_EXIT = 3;
+  // Worker exits due to node running out of memory.
+  NODE_OUT_OF_MEMORY = 4;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

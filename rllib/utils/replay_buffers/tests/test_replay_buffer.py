@@ -19,7 +19,8 @@ class TestReplayBuffer(unittest.TestCase):
                     SampleBatch.OBS: [np.random.random((4,))],
                     SampleBatch.NEXT_OBS: [np.random.random((4,))],
                     SampleBatch.REWARDS: [np.random.rand()],
-                    SampleBatch.DONES: [np.random.choice([False, True])],
+                    SampleBatch.TERMINATEDS: [np.random.choice([False, True])],
+                    SampleBatch.TRUNCATEDS: [np.random.choice([False, False])],
                     "batch_id": [self.batch_id],
                 }
             )
@@ -91,7 +92,8 @@ class TestReplayBuffer(unittest.TestCase):
                         SampleBatch.REWARDS: 2 * [np.random.rand()],
                         SampleBatch.OBS: 2 * [np.random.random((4,))],
                         SampleBatch.NEXT_OBS: 2 * [np.random.random((4,))],
-                        SampleBatch.DONES: [False, True],
+                        SampleBatch.TERMINATEDS: [False, True],
+                        SampleBatch.TRUNCATEDS: [False, False],
                         SampleBatch.EPS_ID: 2 * [self.batch_id],
                         SampleBatch.AGENT_INDEX: 2 * [0],
                         SampleBatch.SEQ_LENS: [2],
@@ -199,7 +201,8 @@ class TestReplayBuffer(unittest.TestCase):
                     SampleBatch.T: i * [np.random.random((4,))],
                     SampleBatch.ACTIONS: i * [np.random.choice([0, 1])],
                     SampleBatch.REWARDS: i * [np.random.rand()],
-                    SampleBatch.DONES: i * [np.random.choice([False, True])],
+                    SampleBatch.TERMINATEDS: i * [np.random.choice([False, True])],
+                    SampleBatch.TRUNCATEDS: i * [np.random.choice([False, True])],
                     SampleBatch.SEQ_LENS: [i],
                     "batch_id": i * [i],
                 }
@@ -213,7 +216,8 @@ class TestReplayBuffer(unittest.TestCase):
                     SampleBatch.T: 4 * [np.random.random((4,))],
                     SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
                     SampleBatch.REWARDS: 4 * [np.random.rand()],
-                    SampleBatch.DONES: 4 * [np.random.choice([False, True])],
+                    SampleBatch.TERMINATEDS: 4 * [np.random.choice([False, True])],
+                    SampleBatch.TRUNCATEDS: 4 * [np.random.choice([False, True])],
                     SampleBatch.SEQ_LENS: [2, 2],
                     "batch_id": 4 * [4],
                 }
@@ -246,7 +250,8 @@ class TestReplayBuffer(unittest.TestCase):
                     SampleBatch.T: 5 * [np.random.random((4,))],
                     SampleBatch.ACTIONS: 5 * [np.random.choice([0, 1])],
                     SampleBatch.REWARDS: 5 * [np.random.rand()],
-                    SampleBatch.DONES: 5 * [np.random.choice([False, True])],
+                    SampleBatch.TERMINATEDS: 5 * [np.random.choice([False, True])],
+                    SampleBatch.TRUNCATEDS: 5 * [np.random.choice([False, True])],
                     SampleBatch.SEQ_LENS: [5],
                     "batch_id": 5 * [5],
                 }
@@ -287,7 +292,8 @@ class TestReplayBuffer(unittest.TestCase):
                     SampleBatch.T: [0, 1, 2, 3],
                     SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
                     SampleBatch.REWARDS: 4 * [np.random.rand()],
-                    SampleBatch.DONES: [False, False, False, True],
+                    SampleBatch.TERMINATEDS: [False, False, False, True],
+                    SampleBatch.TRUNCATEDS: [False, False, False, False],
                     SampleBatch.SEQ_LENS: [4],
                     SampleBatch.EPS_ID: 4 * [i],
                 }
@@ -301,7 +307,8 @@ class TestReplayBuffer(unittest.TestCase):
                     SampleBatch.T: [0, 1, 0, 1],
                     SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
                     SampleBatch.REWARDS: 4 * [np.random.rand()],
-                    SampleBatch.DONES: [False, True, False, True],
+                    SampleBatch.TERMINATEDS: [False, True, False, True],
+                    SampleBatch.TRUNCATEDS: [False, False, False, False],
                     SampleBatch.SEQ_LENS: [2, 2],
                     SampleBatch.EPS_ID: [3, 3, 4, 4],
                 }
@@ -335,7 +342,8 @@ class TestReplayBuffer(unittest.TestCase):
                     SampleBatch.T: [0, 1, 0, 1],
                     SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
                     SampleBatch.REWARDS: 4 * [np.random.rand()],
-                    SampleBatch.DONES: [False, True, False, False],
+                    SampleBatch.TERMINATEDS: [False, True, False, False],
+                    SampleBatch.TRUNCATEDS: [False, False, False, False],
                     SampleBatch.SEQ_LENS: [2, 2],
                     SampleBatch.EPS_ID: [5, 5, 6, 6],
                 }
@@ -364,7 +372,8 @@ class TestReplayBuffer(unittest.TestCase):
                     SampleBatch.T: [0, 1, 2, 3],
                     SampleBatch.ACTIONS: 4 * [np.random.choice([0, 1])],
                     SampleBatch.REWARDS: 4 * [np.random.rand()],
-                    SampleBatch.DONES: [False, False, False, True],
+                    SampleBatch.TERMINATEDS: [False, False, False, True],
+                    SampleBatch.TRUNCATEDS: [False, False, False, False],
                     SampleBatch.SEQ_LENS: [4],
                     SampleBatch.EPS_ID: 4 * [7],
                 }

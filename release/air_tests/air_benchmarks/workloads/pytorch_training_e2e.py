@@ -2,6 +2,9 @@ import click
 import time
 import json
 import os
+from typing import Dict
+
+import numpy as np
 import pandas as pd
 
 from torchvision import transforms
@@ -15,11 +18,10 @@ from ray.data.preprocessors import BatchMapper
 from ray import train
 from ray.air import session
 from ray.train.torch import TorchTrainer
-from ray.data.datasource import ImageFolderDatasource
 from ray.air.config import ScalingConfig
 
 
-def preprocess_image_with_label(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess_image_with_label(batch: Dict[str, np.ndarray]) -> pd.DataFrame:
     """
     User Pytorch code to transform user image.
     """
@@ -31,9 +33,10 @@ def preprocess_image_with_label(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df.loc[:, "image"] = [preprocess(image).numpy() for image in df["image"]]
-    # Fix fixed synthetic value for perf benchmark purpose
-    df.loc[:, "label"] = df["label"].map(lambda _: 1)
+    batch = batch["image"]
+    df = pd.DataFrame(
+        {"image": [preprocess(image) for image in batch], "label": [1] * len(batch)}
+    )
     return df
 
 
@@ -86,11 +89,9 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     )
     print(f"Training for {num_epochs} epochs with {num_workers} workers.")
     start = time.time()
-    dataset = ray.data.read_datasource(
-        ImageFolderDatasource(), root=data_url, size=(256, 256)
-    )
+    dataset = ray.data.read_images(data_url, size=(256, 256))
 
-    preprocessor = BatchMapper(preprocess_image_with_label)
+    preprocessor = BatchMapper(preprocess_image_with_label, batch_format="numpy")
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,

@@ -72,7 +72,6 @@ public class StrategyCalcOnRayServe {
 
   // docs-main-start
   public static void main(String[] args) {
-    System.setProperty("ray.job.code-search-path", System.getProperty("java.class.path"));
 
     long time = System.currentTimeMillis();
     String bank1 = "demo_bank_1";

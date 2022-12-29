@@ -1,5 +1,7 @@
 import numpy as np
 
+import ray
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import MeanStdFilter
 
@@ -44,3 +46,16 @@ class _MockWorker:
         assert all(k in new_filters for k in self.filters)
         for k in self.filters:
             self.filters[k].sync(new_filters[k])
+
+    def apply(self, fn):
+        return fn(self)
+
+
+class _MockWorkerSet(WorkerSet):
+    def __init__(self, num_mock_workers):
+        super().__init__(local_worker=False, _setup=False)
+        self.add_workers(num_workers=num_mock_workers, validate=False)
+
+    def _make_worker(self, *args, **kwargs):
+        RemoteWorker = ray.remote(_MockWorker)
+        return RemoteWorker.remote(sample_count=10)

@@ -9,12 +9,13 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
 from ray.tune.search import BasicVariantGenerator
-from ray.tune.syncer import SyncerCallback
+from ray.tune.syncer import SyncerCallback, SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 
@@ -143,7 +144,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {
         "stopping_criterion": {"training_iteration": 3},
-        "checkpoint_freq": 2,
+        "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
         "max_failures": 2,
     }
     trial = Trial("__fake", **kwargs)
@@ -202,9 +203,10 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
     kwargs = {
         "stopping_criterion": {"training_iteration": 4},
-        "checkpoint_freq": 2,
+        "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
+        "sync_config": SyncConfig(upload_dir=upload_dir),
+        "experiment_dir_name": "exp",
         "max_failures": 2,
-        "remote_checkpoint_dir": upload_dir,
     }
 
     # Test recovery of trial that hasn't been checkpointed
@@ -248,7 +250,8 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     # Test recovery of trial that won't be checkpointed
     kwargs = {
         "stopping_criterion": {"training_iteration": 3},
-        "remote_checkpoint_dir": upload_dir,
+        "sync_config": SyncConfig(upload_dir=upload_dir),
+        "experiment_dir_name": "exp",
     }
 
     t3 = Trial("__fake", **kwargs)
@@ -285,9 +288,10 @@ def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, durable):
     runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])  # noqa
     kwargs = {
         "stopping_criterion": {"training_iteration": 5},
-        "checkpoint_freq": 1,
+        "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
+        "sync_config": SyncConfig(upload_dir=upload_dir),
+        "experiment_dir_name": "exp",
         "max_failures": 1,
-        "remote_checkpoint_dir": upload_dir,
     }
 
     trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
@@ -328,9 +332,10 @@ def test_migration_checkpoint_removal(
     runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
     kwargs = {
         "stopping_criterion": {"training_iteration": 4},
-        "checkpoint_freq": 2,
+        "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
+        "sync_config": SyncConfig(upload_dir=upload_dir),
+        "experiment_dir_name": "exp",
         "max_failures": 2,
-        "remote_checkpoint_dir": upload_dir,
     }
 
     # Test recovery of trial that has been checkpointed
@@ -386,9 +391,17 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, durable):
     )
 
     exp1_args = base_dict
-    exp2_args = dict(base_dict.items(), local_dir=dirpath, checkpoint_freq=1)
+    exp2_args = dict(
+        base_dict.items(),
+        local_dir=dirpath,
+        checkpoint_config=dict(checkpoint_frequency=1),
+    )
     exp3_args = dict(base_dict.items(), config=dict(mock_error=True))
-    exp4_args = dict(base_dict.items(), config=dict(mock_error=True), checkpoint_freq=1)
+    exp4_args = dict(
+        base_dict.items(),
+        config=dict(mock_error=True),
+        checkpoint_config=dict(checkpoint_frequency=1),
+    )
 
     all_experiments = {
         "exp1": exp1_args,
@@ -472,7 +485,7 @@ tune.run(
         {
             "experiment": {
                 "run": "PG",
-                "checkpoint_freq": 1,
+                "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
                 "local_dir": dirpath,
             }
         },
@@ -576,7 +589,13 @@ tune.run(
 
     # Restore properly from checkpoint
     trials2 = tune.run_experiments(
-        {"experiment": {"run": _Mock, "local_dir": dirpath, "checkpoint_freq": 1}},
+        {
+            "experiment": {
+                "run": _Mock,
+                "local_dir": dirpath,
+                "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
+            }
+        },
         resume=True,
         raise_on_failed_trial=False,
     )

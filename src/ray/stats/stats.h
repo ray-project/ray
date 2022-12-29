@@ -24,6 +24,7 @@
 #include "opencensus/tags/tag_key.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/io_service_pool.h"
+#include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter.h"
@@ -51,9 +52,11 @@ static absl::Mutex stats_mutex;
 /// to any signal handler.
 /// \param global_tags[in] Tags that will be appended to all metrics in this process.
 /// \param metrics_agent_port[in] The port to export metrics at each node.
+/// \param worker_id[in] The worker ID of the current component.
 /// \param exporter_to_use[in] The exporter client you will use for this process' metrics.
 static inline void Init(const TagsType &global_tags,
                         const int metrics_agent_port,
+                        const WorkerID &worker_id,
                         std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
                         int64_t metrics_report_batch_size =
                             RayConfig::instance().metrics_report_batch_size()) {
@@ -96,7 +99,7 @@ static inline void Init(const TagsType &global_tags,
 
   MetricPointExporter::Register(exporter, metrics_report_batch_size);
   OpenCensusProtoExporter::Register(
-      metrics_agent_port, (*metrics_io_service), "127.0.0.1");
+      metrics_agent_port, (*metrics_io_service), "127.0.0.1", worker_id);
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(

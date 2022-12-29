@@ -37,7 +37,6 @@ using ray::TaskID;
 using ray::WorkerID;
 
 using ray::Language;
-using ray::rpc::ProfileTableData;
 
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
@@ -105,6 +104,10 @@ class WorkerLeaseInterface {
   virtual void ReportWorkerBacklog(
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
+
+  virtual void GetTaskFailureCause(
+      const TaskID &task_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) = 0;
 
   virtual ~WorkerLeaseInterface(){};
 };
@@ -258,6 +261,7 @@ class RayletClient : public RayletClientInterface {
   /// this will be populated with the current job config.
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
+  /// \param entrypoint The entrypoint of the job.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket,
@@ -271,7 +275,8 @@ class RayletClient : public RayletClientInterface {
                NodeID *raylet_id,
                int *port,
                std::string *serialized_job_config,
-               StartupToken startup_token);
+               StartupToken startup_token,
+               const std::string &entrypoint);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -408,6 +413,11 @@ class RayletClient : public RayletClientInterface {
                            const WorkerID &worker_id,
                            bool disconnect_worker,
                            bool worker_exiting) override;
+
+  void GetTaskFailureCause(
+      const TaskID &task_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+      override;
 
   /// Implements WorkerLeaseInterface.
   void ReportWorkerBacklog(

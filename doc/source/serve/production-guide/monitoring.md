@@ -7,6 +7,7 @@ This section helps you debug and monitor your Serve applications by:
 * viewing the Ray dashboard
 * using Ray logging and Loki
 * inspecting built-in Ray Serve metrics
+* exporting metrics into Arize platform
 
 ## Ray dashboard
 
@@ -225,28 +226,56 @@ The following metrics are exposed by Ray Serve:
    :header-rows: 1
 
    * - Name
+     - Fields
      - Description
    * - ``serve_deployment_request_counter`` [**]
+     - * deployment
+       * replica
      - The number of queries that have been processed in this replica.
    * - ``serve_deployment_error_counter`` [**]
+     - * deployment
+       * replica
      - The number of exceptions that have occurred in the deployment.
    * - ``serve_deployment_replica_starts`` [**]
+     - * deployment
+       * replica
      - The number of times this replica has been restarted due to failure.
+   * - ``serve_deployment_replica_healthy``
+     - * deployment
+       * replica
+     - Whether this deployment replica is healthy. 1 means healthy, 0 unhealthy.
    * - ``serve_deployment_processing_latency_ms`` [**]
+     - * deployment
+       * replica
      - The latency for queries to be processed.
    * - ``serve_replica_processing_queries`` [**]
+     - * deployment
+       * replica
      - The current number of queries being processed.
    * - ``serve_num_http_requests`` [*]
+     - * route
+       * method
      - The number of HTTP requests processed.
    * - ``serve_num_http_error_requests`` [*]
+     - * route
+       * error_code
+       * method
      - The number of non-200 HTTP responses.
    * - ``serve_num_router_requests`` [*]
+     - * deployment
      - The number of requests processed by the router.
    * - ``serve_handle_request_counter`` [**]
+     - * handle
+       * deployment
      - The number of requests processed by this ServeHandle.
    * - ``serve_deployment_queued_queries`` [*]
+     - * deployment
+       * endpoint
      - The number of queries for this deployment waiting to be assigned to a replica.
    * - ``serve_num_deployment_http_error_requests`` [*]
+     - * deployment
+       * error_code
+       * method
      - The number of non-200 HTTP responses returned by each deployment.
 ```
 [*] - only available when using HTTP calls  
@@ -298,3 +327,10 @@ ray_my_counter{..., deployment="MyDeployment"} 5.0
 ```
 
 See the [Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.
+
+## Exporting metrics into Arize
+Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platforms.
+
+[Arize](https://docs.arize.com/arize/) is a machine learning observability platform which can help you to monitor real-time model performance, root cause model failures/performance degradation using explainability & slice analysis and surface drift, data quality, data consistency issues etc.
+
+To integrate with Arize, you can directly add Arize client code into your Serve deployment code. ([Example code](https://docs.arize.com/arize/integrations/integrations/anyscale-ray-serve))

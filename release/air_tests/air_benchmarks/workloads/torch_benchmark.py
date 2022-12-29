@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from pathlib import Path
 from typing import Dict, Tuple
 
 import click
@@ -308,7 +309,11 @@ def train_torch_vanilla(
 
     num_epochs = config["epochs"]
 
-    nccl_network_interface = find_network_interface()
+    try:
+        nccl_network_interface = find_network_interface()
+        runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": nccl_network_interface}}
+    except Exception:
+        runtime_env = {}
 
     actors = create_actors_with_options(
         num_actors=num_workers,
@@ -316,7 +321,7 @@ def train_torch_vanilla(
             "CPU": cpus_per_worker,
             "GPU": int(use_gpu),
         },
-        runtime_env={"env_vars": {"NCCL_SOCKET_IFNAME": nccl_network_interface}},
+        runtime_env=runtime_env,
     )
 
     run_fn_on_actors(actors=actors, fn=lambda: os.environ.pop("OMP_NUM_THREADS", None))
@@ -400,6 +405,7 @@ def cli():
 @click.option("--use-gpu", is_flag=True, default=False)
 @click.option("--batch-size", type=int, default=64)
 @click.option("--smoke-test", is_flag=True, default=False)
+@click.option("--local", is_flag=True, default=False)
 def run(
     num_runs: int = 1,
     num_epochs: int = 4,
@@ -408,6 +414,7 @@ def run(
     use_gpu: bool = False,
     batch_size: int = 64,
     smoke_test: bool = False,
+    local: bool = False,
 ):
     # Note: smoke_test is ignored as we just adjust the batch size.
     # The parameter is passed by the release test pipeline.
@@ -418,13 +425,14 @@ def run(
     config["epochs"] = num_epochs
     config["batch_size"] = batch_size
 
-    ray.init(
-        "auto",
-    )
+    if local:
+        ray.init(num_cpus=4)
+    else:
+        ray.init("auto")
 
     print("Preparing Torch benchmark: Downloading MNIST")
 
-    path = os.path.abspath("workloads/_torch_prepare.py")
+    path = str((Path(__file__).parent / "_torch_prepare.py").absolute())
     upload_file_to_all_nodes(path)
     run_command_on_all_nodes(["python", path])
 

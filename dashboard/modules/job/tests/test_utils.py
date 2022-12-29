@@ -3,13 +3,58 @@ import sys
 
 import pytest
 
-from ray.dashboard.modules.job.utils import file_tail_iterator
+from ray.dashboard.modules.job.common import JobSubmitRequest
+from ray.dashboard.modules.job.utils import (
+    file_tail_iterator,
+    strip_keys_with_value_none,
+    parse_and_validate_request,
+)
 
 
 @pytest.fixture
 def tmp():
     with NamedTemporaryFile() as f:
         yield f.name
+
+
+def test_strip_keys_with_value_none():
+    d = {"a": 1, "b": None, "c": 3}
+    assert strip_keys_with_value_none(d) == {"a": 1, "c": 3}
+    d = {"a": 1, "b": 2, "c": 3}
+    assert strip_keys_with_value_none(d) == d
+    d = {"a": 1, "b": None, "c": None}
+    assert strip_keys_with_value_none(d) == {"a": 1}
+
+
+# Mock for aiohttp.web.Request, which should not be constructed directly.
+class MockRequest:
+    def __init__(self, **kwargs):
+        self._json = kwargs
+
+    async def json(self):
+        return self._json
+
+
+@pytest.mark.asyncio
+async def test_mock_request():
+    request = MockRequest(a=1, b=2)
+    assert await request.json() == {"a": 1, "b": 2}
+    request = MockRequest(a=1, b=None)
+    assert await request.json() == {"a": 1, "b": None}
+
+
+# async test
+@pytest.mark.asyncio
+class TestParseAndValidateRequest:
+    async def test_basic(self):
+        request = MockRequest(entrypoint="echo hi")
+        expected = JobSubmitRequest(entrypoint="echo hi")
+        assert await parse_and_validate_request(request, JobSubmitRequest) == expected
+
+    async def test_forward_compatibility(self):
+        request = MockRequest(entrypoint="echo hi", new_client_field=None)
+        expected = JobSubmitRequest(entrypoint="echo hi")
+        assert await parse_and_validate_request(request, JobSubmitRequest) == expected
 
 
 class TestIterLine:

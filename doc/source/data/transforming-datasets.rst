@@ -76,9 +76,9 @@ the Iris dataset.
 
 .. _transform_datasets_writing_udfs:
 
-------------------------------
-Writing User-defined Functions
-------------------------------
+-------------------------------------
+Writing User-defined Functions (UDFs)
+-------------------------------------
 
 User-defined functions (UDFs) are routines that apply on one row (e.g.
 :meth:`.map() <ray.data.Dataset.map>`) or a batch of rows (e.g.
@@ -130,16 +130,26 @@ Here is an overview of the available batch formats:
     This may incur a conversion cost if the underlying Dataset block is not
     zero-copy convertible from an Arrow table.
 
+    .. literalinclude:: ./doc_code/transforming_datasets.py
+      :language: python
+      :start-after: __writing_default_udfs_tabular_begin__
+      :end-before: __writing_default_udfs_tabular_end__
+
   * **Tensor Datasets** (single-column): Each batch will be a single
     `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
     containing the single tensor column for this batch.
 
+    .. literalinclude:: ./doc_code/transforming_datasets.py
+      :language: python
+      :start-after: __writing_default_udfs_tensor_begin__
+      :end-before: __writing_default_udfs_tensor_end__
+
   * **Simple Datasets**: Each batch will be a Python list.
 
-  .. literalinclude:: ./doc_code/transforming_datasets.py
-    :language: python
-    :start-after: __writing_native_udfs_begin__
-    :end-before: __writing_native_udfs_end__
+    .. literalinclude:: ./doc_code/transforming_datasets.py
+      :language: python
+      :start-after: __writing_default_udfs_list_begin__
+      :end-before: __writing_default_udfs_list_end__
 
 .. tabbed:: "pandas"
 
@@ -187,6 +197,43 @@ Here is an overview of the available batch formats:
     :start-after: __writing_numpy_udfs_begin__
     :end-before: __writing_numpy_udfs_end__
 
+Converting between the underlying Datasets data representations (Arrow, Pandas, and
+Python lists) and the requested batch format (``"default"``, ``"pandas"``,
+``"pyarrow"``, ``"numpy"``) may incur data copies; which conversions cause data copying
+is given in the below table:
+
+
+.. list-table:: Data Format Conversion Costs
+   :header-rows: 1
+   :stub-columns: 1
+
+   * - Dataset Format x Batch Format
+     - ``"default"``
+     - ``"pandas"``
+     - ``"numpy"``
+     - ``"pyarrow"``
+   * - ``"pandas"``
+     - Zero-copy
+     - Zero-copy
+     - Copy*
+     - Copy*
+   * - ``"arrow"``
+     - Copy*
+     - Copy*
+     - Zero-copy*
+     - Zero-copy
+   * - ``"simple"``
+     - Zero-copy
+     - Copy
+     - Copy
+     - Copy
+
+.. note::
+  \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
+  represented in our tensor extension type (unless data is boolean). Copies **always**
+  occur when converting boolean data from/to Arrow to/from Pandas/NumPy, since Arrow
+  bitpacks boolean data while Pandas/NumPy does not.
+
 .. tip::
 
    Prefer using vectorized operations on the ``pandas.DataFrame``,
@@ -194,6 +241,14 @@ Here is an overview of the available batch formats:
    example, suppose you want to compute the sum of a column in ``pandas.DataFrame``:
    instead of iterating over each row of a batch and summing up values of that column,
    use ``df_batch["col_foo"].sum()``.
+
+.. tip::
+
+  If the UDF for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` does **not**
+  mutate its input, we can prevent an unnecessary data batch copy by specifying
+  ``zero_copy_batch=True``, which will provide the UDF with zero-copy, read-only
+  batches. See the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` docstring for
+  more information.
 
 .. _transform_datasets_batch_output_types:
 
@@ -290,6 +345,57 @@ The following output types are allowed for per-row UDFs (e.g.,
     :language: python
     :start-after: __writing_simple_out_row_udfs_begin__
     :end-before: __writing_simple_out_row_udfs_end__
+
+.. _transform_datasets_configuring_batch_size:
+
+----------------------
+Configuring Batch Size
+----------------------
+
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` is the canonical parallel
+transformation API for Datasets: it launches parallel tasks over the underlying Datasets
+blocks and maps UDFs over data batches within those tasks, allowing the UDF to
+implement vectorized operations on batches. An important parameter to
+set is ``batch_size``, which controls the size of the batches provided to the UDF.
+
+.. literalinclude:: ./doc_code/transforming_datasets.py
+  :language: python
+  :start-after: __configuring_batch_size_begin__
+  :end-before: __configuring_batch_size_end__
+
+Increasing ``batch_size`` can result in faster execution by better leveraging vectorized
+operations and hardware, reducing batch slicing and concatenation overhead, and overall
+saturation of CPUs/GPUs, but will also result in higher memory utilization, which can
+lead to out-of-memory failures. If encountering OOMs, decreasing your ``batch_size`` may
+help.
+
+.. note::
+  The default ``batch_size`` of ``4096`` may be too large for datasets with large rows
+  (e.g. tables with many columns or a collection of large images).
+
+If you specify a ``batch_size`` that's larger than your ``Dataset`` blocks, Datasets
+will bundle multiple blocks together for a single task in order to better satisfy
+``batch_size``. If ``batch_size`` is a lot larger than your ``Dataset`` blocks (e.g. if
+your dataset was created with too large of a ``parallelism`` and/or the ``batch_size``
+is set to too large of a value for your dataset), the number of parallel tasks
+may be less than expected.
+
+If your ``Dataset`` blocks are smaller than your ``batch_size`` and you want to increase
+`:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` parallelism, decrease your
+``batch_size`` to prevent this block bundling. If you think that your ``Dataset`` blocks
+are too small, try decreasing ``parallelism`` during the read to create larger blocks.
+
+.. note::
+  The size of the batches provided to the UDF may be smaller than the provided
+  ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to a given
+  task.
+
+.. note::
+  Block bundling (processing multiple blocks in a single task) will not occur if
+  ``batch_size`` is not set; instead, each task will receive a single block. If a block
+  is smaller than the default ``batch_size`` (4096), then the batch provided to the UDF
+  in that task will the same size as the block, and will therefore be smaller than the
+  default ``batch_size``.
 
 .. _transform_datasets_compute_strategy:
 

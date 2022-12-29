@@ -10,12 +10,12 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging
-from typing import List, Optional, Type, Union
-import math
+from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
 )
@@ -25,15 +25,14 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.utils.typing import ResultDict
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -41,21 +40,25 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 
+if TYPE_CHECKING:
+    from ray.rllib.core.rl_module import RLModule
+
 logger = logging.getLogger(__name__)
 
 
-class PPOConfig(AlgorithmConfig):
+class PPOConfig(PGConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> config = PPOConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
-        ...             .resources(num_gpus=0)\
-        ...             .rollouts(num_workers=4)
-        >>> print(config.to_dict())
+        >>> config = PPOConfig()  # doctest: +SKIP
+        >>> config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3)  # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
@@ -63,14 +66,16 @@ class PPOConfig(AlgorithmConfig):
         >>> from ray import tune
         >>> config = PPOConfig()
         >>> # Print out some default values.
-        >>> print(config.clip_param)
+        >>> print(config.clip_param)  # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
+        >>> config.training(  # doctest: +SKIP
+        ... lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2
+        ... )
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config = config.environment(env="CartPole-v1")   # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner(  # doctest: +SKIP
         ...     "PPO",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -84,7 +89,6 @@ class PPOConfig(AlgorithmConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # PPO specific settings:
-        self.lr_schedule = None
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
@@ -100,11 +104,12 @@ class PPOConfig(AlgorithmConfig):
         self.grad_clip = None
         self.kl_target = 0.01
 
-        # Override some of AlgorithmConfig's default values with PPO-specific values.
-        self.rollout_fragment_length = 200
+        # Override some of PG/AlgorithmConfig's default values with PPO-specific values.
+        self.num_rollout_workers = 2
         self.train_batch_size = 4000
         self.lr = 5e-5
         self.model["vf_share_layers"] = False
+        self._disable_preprocessor_api = False
         # __sphinx_doc_end__
         # fmt: on
 
@@ -112,26 +117,37 @@ class PPOConfig(AlgorithmConfig):
         self.vf_share_layers = DEPRECATED_VALUE
 
     @override(AlgorithmConfig)
+    def get_default_rl_module_class(self) -> Union[Type["RLModule"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
+            )
+
+            return PPOTorchRLModule
+        else:
+            raise ValueError(f"The framework {self.framework_str} is not supported.")
+
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-        use_critic: Optional[bool] = None,
-        use_gae: Optional[bool] = None,
-        lambda_: Optional[float] = None,
-        kl_coeff: Optional[float] = None,
-        sgd_minibatch_size: Optional[int] = None,
-        num_sgd_iter: Optional[int] = None,
-        shuffle_sequences: Optional[bool] = None,
-        vf_loss_coeff: Optional[float] = None,
-        entropy_coeff: Optional[float] = None,
-        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
-        clip_param: Optional[float] = None,
-        vf_clip_param: Optional[float] = None,
-        grad_clip: Optional[float] = None,
-        kl_target: Optional[float] = None,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        use_critic: Optional[bool] = NotProvided,
+        use_gae: Optional[bool] = NotProvided,
+        lambda_: Optional[float] = NotProvided,
+        kl_coeff: Optional[float] = NotProvided,
+        sgd_minibatch_size: Optional[int] = NotProvided,
+        num_sgd_iter: Optional[int] = NotProvided,
+        shuffle_sequences: Optional[bool] = NotProvided,
+        vf_loss_coeff: Optional[float] = NotProvided,
+        entropy_coeff: Optional[float] = NotProvided,
+        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        clip_param: Optional[float] = NotProvided,
+        vf_clip_param: Optional[float] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        kl_target: Optional[float] = NotProvided,
         # Deprecated.
-        vf_share_layers=None,
+        vf_share_layers=DEPRECATED_VALUE,
         **kwargs,
     ) -> "PPOConfig":
         """Sets the training related configuration.
@@ -167,49 +183,87 @@ class PPOConfig(AlgorithmConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
-        # Pass kwargs onto super's `training()` method.
-        super().training(**kwargs)
-
-        if lr_schedule is not None:
-            self.lr_schedule = lr_schedule
-        if use_critic is not None:
-            self.use_critic = use_critic
-        if use_gae is not None:
-            self.use_gae = use_gae
-        if lambda_ is not None:
-            self.lambda_ = lambda_
-        if kl_coeff is not None:
-            self.kl_coeff = kl_coeff
-        if sgd_minibatch_size is not None:
-            self.sgd_minibatch_size = sgd_minibatch_size
-        if num_sgd_iter is not None:
-            self.num_sgd_iter = num_sgd_iter
-        if shuffle_sequences is not None:
-            self.shuffle_sequences = shuffle_sequences
-        if vf_loss_coeff is not None:
-            self.vf_loss_coeff = vf_loss_coeff
-        if entropy_coeff is not None:
-            self.entropy_coeff = entropy_coeff
-        if entropy_coeff_schedule is not None:
-            self.entropy_coeff_schedule = entropy_coeff_schedule
-        if clip_param is not None:
-            self.clip_param = clip_param
-        if vf_clip_param is not None:
-            self.vf_clip_param = vf_clip_param
-        if grad_clip is not None:
-            self.grad_clip = grad_clip
-        if kl_target is not None:
-            self.kl_target = kl_target
-
-        if vf_share_layers is not None:
-            self.model["vf_share_layers"] = vf_share_layers
+        if vf_share_layers != DEPRECATED_VALUE:
             deprecation_warning(
                 old="ppo.DEFAULT_CONFIG['vf_share_layers']",
                 new="PPOConfig().training(model={'vf_share_layers': ...})",
-                error=False,
+                error=True,
             )
 
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if lr_schedule is not NotProvided:
+            self.lr_schedule = lr_schedule
+        if use_critic is not NotProvided:
+            self.use_critic = use_critic
+        if use_gae is not NotProvided:
+            self.use_gae = use_gae
+        if lambda_ is not NotProvided:
+            self.lambda_ = lambda_
+        if kl_coeff is not NotProvided:
+            self.kl_coeff = kl_coeff
+        if sgd_minibatch_size is not NotProvided:
+            self.sgd_minibatch_size = sgd_minibatch_size
+        if num_sgd_iter is not NotProvided:
+            self.num_sgd_iter = num_sgd_iter
+        if shuffle_sequences is not NotProvided:
+            self.shuffle_sequences = shuffle_sequences
+        if vf_loss_coeff is not NotProvided:
+            self.vf_loss_coeff = vf_loss_coeff
+        if entropy_coeff is not NotProvided:
+            if isinstance(entropy_coeff, int):
+                entropy_coeff = float(entropy_coeff)
+            if entropy_coeff < 0.0:
+                raise ValueError("`entropy_coeff` must be >= 0.0")
+            self.entropy_coeff = entropy_coeff
+        if entropy_coeff_schedule is not NotProvided:
+            self.entropy_coeff_schedule = entropy_coeff_schedule
+        if clip_param is not NotProvided:
+            self.clip_param = clip_param
+        if vf_clip_param is not NotProvided:
+            self.vf_clip_param = vf_clip_param
+        if grad_clip is not NotProvided:
+            self.grad_clip = grad_clip
+        if kl_target is not NotProvided:
+            self.kl_target = kl_target
+
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        # SGD minibatch size must be smaller than train_batch_size (b/c
+        # we subsample a batch of `sgd_minibatch_size` from the train-batch for
+        # each `num_sgd_iter`).
+        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
+        # to -1 to auto-calculate the actual batch size later).
+        if self.sgd_minibatch_size > self.train_batch_size:
+            raise ValueError(
+                f"`sgd_minibatch_size` ({self.sgd_minibatch_size}) must be <= "
+                f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
+                f" is be split into {self.sgd_minibatch_size} chunks, each of which is "
+                f"iterated over (used for updating the policy) {self.num_sgd_iter} "
+                "times."
+            )
+
+        # Episodes may only be truncated (and passed into PPO's
+        # `postprocessing_fn`), iff generalized advantage estimation is used
+        # (value function estimate at end of truncated episode to estimate
+        # remaining value).
+        if (
+            not self.in_evaluation
+            and self.batch_mode == "truncate_episodes"
+            and not self.use_gae
+        ):
+            raise ValueError(
+                "Episode truncation is not supported without a value "
+                "function (to estimate the return at the end of the truncated"
+                " trajectory). Consider setting "
+                "batch_mode=complete_episodes."
+            )
 
 
 class UpdateKL:
@@ -243,151 +297,29 @@ class UpdateKL:
         self.workers.local_worker().foreach_policy_to_train(update)
 
 
-def warn_about_bad_reward_scales(config, result):
-    if result["policy_reward_mean"]:
-        return result  # Punt on handling multiagent case.
-
-    # Warn about excessively high VF loss.
-    learner_info = result["info"][LEARNER_INFO]
-    if DEFAULT_POLICY_ID in learner_info:
-        scaled_vf_loss = (
-            config["vf_loss_coeff"]
-            * learner_info[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["vf_loss"]
-        )
-
-        policy_loss = learner_info[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["policy_loss"]
-        if config.get("model", {}).get("vf_share_layers") and scaled_vf_loss > 100:
-            logger.warning(
-                "The magnitude of your value function loss is extremely large "
-                "({}) compared to the policy loss ({}). This can prevent the "
-                "policy from learning. Consider scaling down the VF loss by "
-                "reducing vf_loss_coeff, or disabling vf_share_layers.".format(
-                    scaled_vf_loss, policy_loss
-                )
-            )
-
-    # Warn about bad clipping configs
-    if config["vf_clip_param"] <= 0:
-        rew_scale = float("inf")
-    else:
-        rew_scale = round(
-            abs(result["episode_reward_mean"]) / config["vf_clip_param"], 0
-        )
-    if rew_scale > 200:
-        logger.warning(
-            "The magnitude of your environment rewards are more than "
-            "{}x the scale of `vf_clip_param`. ".format(rew_scale)
-            + "This means that it will take more than "
-            "{} iterations for your value ".format(rew_scale)
-            + "function to converge. If this is not intended, consider "
-            "increasing `vf_clip_param`."
-        )
-
-    return result
-
-
 class PPO(Algorithm):
-    # TODO: Change the return value of this method to return a AlgorithmConfig object
-    #  instead.
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return PPOConfig().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return PPOConfig()
 
+    @classmethod
     @override(Algorithm)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Validates the Algorithm's config dict.
-
-        Args:
-            config: The Algorithm's config to check.
-
-        Raises:
-            ValueError: In case something is wrong with the config.
-        """
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if isinstance(config["entropy_coeff"], int):
-            config["entropy_coeff"] = float(config["entropy_coeff"])
-
-        if config["entropy_coeff"] < 0.0:
-            raise DeprecationWarning("entropy_coeff must be >= 0.0")
-
-        # SGD minibatch size must be smaller than train_batch_size (b/c
-        # we subsample a batch of `sgd_minibatch_size` from the train-batch for
-        # each `num_sgd_iter`).
-        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
-        # to -1 to auto-calculate the actual batch size later).
-        if (
-            config["train_batch_size"] > 0
-            and config["sgd_minibatch_size"] > config["train_batch_size"]
-        ):
-            raise ValueError(
-                "`sgd_minibatch_size` ({}) must be <= "
-                "`train_batch_size` ({}).".format(
-                    config["sgd_minibatch_size"], config["train_batch_size"]
-                )
-            )
-
-        # Check for mismatches between `train_batch_size` and
-        # `rollout_fragment_length` and auto-adjust `rollout_fragment_length`
-        # if necessary.
-        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
-        # to -1 to auto-calculate the actual batch size later).
-        num_workers = config["num_workers"] or 1
-        calculated_min_rollout_size = (
-            num_workers
-            * config["num_envs_per_worker"]
-            * config["rollout_fragment_length"]
-        )
-        if (
-            config["train_batch_size"] > 0
-            and config["train_batch_size"] % calculated_min_rollout_size != 0
-        ):
-            new_rollout_fragment_length = math.ceil(
-                config["train_batch_size"]
-                / (num_workers * config["num_envs_per_worker"])
-            )
-            logger.warning(
-                "`train_batch_size` ({}) cannot be achieved with your other "
-                "settings (num_workers={} num_envs_per_worker={} "
-                "rollout_fragment_length={})! Auto-adjusting "
-                "`rollout_fragment_length` to {}.".format(
-                    config["train_batch_size"],
-                    config["num_workers"],
-                    config["num_envs_per_worker"],
-                    config["rollout_fragment_length"],
-                    new_rollout_fragment_length,
-                )
-            )
-            config["rollout_fragment_length"] = new_rollout_fragment_length
-
-        # Episodes may only be truncated (and passed into PPO's
-        # `postprocessing_fn`), iff generalized advantage estimation is used
-        # (value function estimate at end of truncated episode to estimate
-        # remaining value).
-        if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
-            raise ValueError(
-                "Episode truncation is not supported without a value "
-                "function (to estimate the return at the end of the truncated"
-                " trajectory). Consider setting "
-                "batch_mode=complete_episodes."
-            )
-
-        # Multi-agent mode and multi-GPU optimizer.
-        if config["multiagent"]["policies"] and not config["simple_optimizer"]:
-            logger.info(
-                "In multi-agent mode, policies will be optimized sequentially"
-                " by the multi-GPU optimizer. Consider setting "
-                "simple_optimizer=True if this doesn't work for you."
-            )
-
-    @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 
-            return PPOTorchPolicy
+            if config._enable_rl_module_api:
+                from ray.rllib.algorithms.ppo.torch.ppo_torch_policy_rlm import (
+                    PPOTorchPolicyWithRLModule,
+                )
+
+                return PPOTorchPolicyWithRLModule
+            else:
+                from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
+
+                return PPOTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 
@@ -400,13 +332,13 @@ class PPO(Algorithm):
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
-        if self._by_agent_steps:
+        if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_agent_steps=self.config.train_batch_size
             )
         else:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_env_steps=self.config.train_batch_size
             )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
@@ -415,22 +347,31 @@ class PPO(Algorithm):
         # Standardize advantages
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config["simple_optimizer"]:
+        if self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
+        policies_to_update = list(train_results.keys())
+
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            "num_grad_updates_per_policy": {
+                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                for pid in policies_to_update
+            },
         }
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
-        if self.workers.remote_workers():
+        if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+                self.workers.sync_weights(
+                    policies=policies_to_update,
+                    global_vars=global_vars,
+                )
 
-        # For each policy: update KL scale and warn about possible issues
+        # For each policy: Update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():
             # Update KL loss with dynamic scaling
             # for each (possibly multiagent) policy we are training
@@ -439,7 +380,7 @@ class PPO(Algorithm):
 
             # Warn about excessively high value function loss
             scaled_vf_loss = (
-                self.config["vf_loss_coeff"] * policy_info[LEARNER_STATS_KEY]["vf_loss"]
+                self.config.vf_loss_coeff * policy_info[LEARNER_STATS_KEY]["vf_loss"]
             )
             policy_loss = policy_info[LEARNER_STATS_KEY]["policy_loss"]
             if (
@@ -459,7 +400,7 @@ class PPO(Algorithm):
             mean_reward = train_batch.policy_batches[policy_id]["rewards"].mean()
             if (
                 log_once("ppo_warned_vf_clip")
-                and mean_reward > self.config["vf_clip_param"]
+                and mean_reward > self.config.vf_clip_param
             ):
                 self.warned_vf_clip = True
                 logger.warning(
@@ -483,7 +424,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.ppo.ppo::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.ppo.ppo::PPOConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

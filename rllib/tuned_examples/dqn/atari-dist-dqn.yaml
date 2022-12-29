@@ -1,12 +1,14 @@
 atari-dist-dqn:
     env:
         grid_search:
-            - BreakoutNoFrameskip-v4
-            - BeamRiderNoFrameskip-v4
-            - QbertNoFrameskip-v4
-            - SpaceInvadersNoFrameskip-v4
+            - ALE/Breakout-v5
+            - ALE/BeamRider-v5
+            - ALE/Qbert-v5
+            - ALE/SpaceInvaders-v5
     run: DQN
     config:
+        env_config:
+            frameskip: 1  # no frameskip
         double_q: false
         dueling: false
         num_atoms: 51

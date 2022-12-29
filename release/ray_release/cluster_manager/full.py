@@ -27,6 +27,7 @@ class FullClusterManager(MinimalClusterManager):
     def start_cluster(self, timeout: float = 600.0):
         logger.info(f"Creating cluster {self.cluster_name}")
         logger.info(f"Autosuspend time: {self.autosuspend_minutes} minutes")
+        logger.info(f"Auto terminate after: {self.maximum_uptime_minutes} minutes")
         try:
             result = self.sdk.create_cluster(
                 dict(
@@ -44,7 +45,7 @@ class FullClusterManager(MinimalClusterManager):
         # Trigger session start
         logger.info(f"Starting cluster {self.cluster_name} ({self.cluster_id})")
         cluster_url = anyscale_cluster_url(
-            project_id=self.project_id, session_id=self.cluster_id
+            project_id=self.project_id, cluster_id=self.cluster_id
         )
         logger.info(f"Link to cluster: {format_link(cluster_url)}")
 

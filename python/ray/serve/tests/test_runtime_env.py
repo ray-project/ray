@@ -96,6 +96,8 @@ Test.delete()
     run_string_as_driver(driver2)
 
 
+# NOTE: This test uses deployment.deploy() instead of serve.run() to preserve
+# the cached runtime_env that's returned by serve.get_deployment().
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_working_dir_scale_up_in_new_driver(ray_start, tmp_dir):
     with open("hello", "w") as f:
@@ -109,13 +111,15 @@ from ray import serve
 
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
+serve.start(detached=True)
 
 @serve.deployment(version="1")
 class Test:
     def __call__(self, *args):
         return os.getpid(), open("hello").read()
 
-handle = serve.run(Test.bind())
+Test.deploy()
+handle = Test.get_handle()
 assert ray.get(handle.remote())[1] == "world"
 """
 
@@ -130,9 +134,11 @@ from ray import serve
 
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
+serve.start(detached=True)
 
 Test = serve.get_deployment("Test")
-handle = serve.run(Test.options(num_replicas=2).bind())
+Test.options(num_replicas=2).deploy()
+handle = Test.get_handle()
 results = ray.get([handle.remote() for _ in range(1000)])
 print(set(results))
 assert all(r[1] == "world" for r in results), (

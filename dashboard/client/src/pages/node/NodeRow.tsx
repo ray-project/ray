@@ -8,8 +8,10 @@ import {
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import { sortBy } from "lodash";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import useSWR from "swr";
+import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
@@ -31,13 +33,19 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
    * Click handler for when one clicks on the expand/unexpand button in this row.
    */
   onExpandButtonClick: () => void;
+  newIA?: boolean;
 };
 
 /**
  * A single row that represents the node information only.
  * Does not show any data about the node's workers.
  */
-const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
+export const NodeRow = ({
+  node,
+  expanded,
+  onExpandButtonClick,
+  newIA = false,
+}: NodeRowProps) => {
   const {
     hostname = "",
     ip = "",
@@ -73,13 +81,29 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
       </TableCell>
       <TableCell align="center">
         <Tooltip title={raylet.nodeId} arrow interactive>
-          <Link to={`/node/${raylet.nodeId}`} className={classes.idCol}>
+          <Link
+            to={newIA ? `nodes/${raylet.nodeId}` : `/node/${raylet.nodeId}`}
+            className={classes.idCol}
+          >
             {raylet.nodeId}
           </Link>
         </Tooltip>
       </TableCell>
       <TableCell align="center">
-        <Box minWidth={TEXT_COL_MIN_WIDTH}>{ip}</Box>
+        <Box minWidth={TEXT_COL_MIN_WIDTH}>
+          {ip} {raylet.isHeadNode && "(Head)"}
+        </Box>
+      </TableCell>
+      <TableCell>
+        <Link
+          to={
+            newIA
+              ? `/new/logs/${encodeURIComponent(logUrl)}`
+              : `/log/${encodeURIComponent(logUrl)}`
+          }
+        >
+          Log
+        </Link>
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
@@ -102,13 +126,18 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
         <NodeGRAM node={node} />
       </TableCell>
       <TableCell>
-        {raylet && raylet.objectStoreUsedMemory && (
+        {raylet && objectStoreTotalMemory && (
           <PercentageBar
             num={raylet.objectStoreUsedMemory}
             total={objectStoreTotalMemory}
           >
             {memoryConverter(raylet.objectStoreUsedMemory)}/
-            {memoryConverter(objectStoreTotalMemory)}
+            {memoryConverter(objectStoreTotalMemory)}(
+            {(
+              (raylet.objectStoreUsedMemory / objectStoreTotalMemory) *
+              100
+            ).toFixed(1)}
+            %)
           </PercentageBar>
         )}
       </TableCell>
@@ -122,9 +151,6 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
       </TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
-      <TableCell>
-        <Link to={`/log/${encodeURIComponent(logUrl)}`}>Log</Link>
-      </TableCell>
     </TableRow>
   );
 };
@@ -138,15 +164,16 @@ type WorkerRowProps = {
    * Detail of the node the worker is inside.
    */
   node: NodeDetail;
+  newIA?: boolean;
 };
 
 /**
  * A single row that represents the data of a Worker
  */
-const WorkerRow = ({ node, worker }: WorkerRowProps) => {
+export const WorkerRow = ({ node, worker, newIA = false }: WorkerRowProps) => {
   const classes = rowStyles();
 
-  const { mem, logUrl } = node;
+  const { ip, mem, logUrl } = node;
   const {
     pid,
     cpuPercent: cpu = 0,
@@ -156,9 +183,11 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
   } = worker;
 
   const coreWorker = coreWorkerStats.length ? coreWorkerStats[0] : undefined;
-  const workerLogUrl = coreWorker
-    ? `/log/${encodeURIComponent(logUrl)}?fileName=${coreWorker.workerId}`
-    : `/log/${encodeURIComponent(logUrl)}`;
+  const workerLogUrl =
+    (newIA
+      ? `/new/logs/${encodeURIComponent(logUrl)}`
+      : `/log/${encodeURIComponent(logUrl)}`) +
+    (coreWorker ? `?fileName=${coreWorker.workerId}` : "");
 
   return (
     <TableRow>
@@ -178,6 +207,30 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
+        <Link to={workerLogUrl} target="_blank">
+          Logs
+        </Link>
+        <br />
+        <a
+          href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
+          target="_blank"
+          title="Sample the current Python stack trace for this worker."
+          rel="noreferrer"
+        >
+          Stack&nbsp;Trace
+        </a>
+        <br />
+        <a
+          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
+          target="_blank"
+          title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
+          rel="noreferrer"
+        >
+          CPU&nbsp;Flame&nbsp;Graph
+        </a>
+        <br />
+      </TableCell>
+      <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
           {cpu}%
         </PercentageBar>
@@ -186,7 +239,7 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         {mem && (
           <PercentageBar num={memoryInfo.rss} total={mem[0]}>
             {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
-            {(memoryInfo.rss / mem[0]).toFixed(1)}
+            {((memoryInfo.rss / mem[0]) * 100).toFixed(1)}
             %)
           </PercentageBar>
         )}
@@ -201,11 +254,6 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell>N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
-      <TableCell>
-        <Link to={workerLogUrl} target="_blank">
-          Log
-        </Link>
-      </TableCell>
     </TableRow>
   );
 };
@@ -223,6 +271,7 @@ type NodeRowsProps = {
    * Whether the row should start expanded. By default, this is false.
    */
   startExpanded?: boolean;
+  newIA?: boolean;
 };
 
 /**
@@ -232,40 +281,32 @@ export const NodeRows = ({
   node,
   isRefreshing,
   startExpanded = false,
+  newIA = false,
 }: NodeRowsProps) => {
   const [isExpanded, setExpanded] = useState(startExpanded);
-  const [workers, setWorkers] = useState<Worker[]>([]);
-  const tot = useRef<NodeJS.Timeout>();
 
-  const getDetail = useCallback(async () => {
-    if (!isRefreshing || !isExpanded) {
-      return;
-    }
-    const { data } = await getNodeDetail(node.raylet.nodeId);
-    const { data: rspData, result } = data;
-    if (rspData?.detail) {
-      const sortedWorkers = sortBy(
-        rspData.detail.workers,
-        (worker) => worker.pid,
-      );
-      setWorkers(sortedWorkers);
-    }
+  const { data } = useSWR(
+    ["getNodeDetail", node.raylet.nodeId],
+    async (_, nodeId) => {
+      const { data } = await getNodeDetail(nodeId);
+      const { data: rspData, result } = data;
 
-    if (result === false) {
-      console.error("Node Query Error Please Check Node Name");
-    }
-
-    tot.current = setTimeout(getDetail, 4000);
-  }, [isRefreshing, isExpanded, node.raylet.nodeId]);
-
-  useEffect(() => {
-    getDetail();
-    return () => {
-      if (tot.current) {
-        clearTimeout(tot.current);
+      if (result === false) {
+        console.error("Node Query Error Please Check Node Name");
       }
-    };
-  }, [getDetail]);
+
+      if (rspData?.detail) {
+        const sortedWorkers = sortBy(
+          rspData.detail.workers,
+          (worker) => worker.pid,
+        );
+        return sortedWorkers;
+      }
+    },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
+  );
+
+  const workers = data ?? [];
 
   const handleExpandButtonClick = () => {
     setExpanded(!isExpanded);
@@ -277,10 +318,16 @@ export const NodeRows = ({
         node={node}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
+        newIA={newIA}
       />
       {isExpanded &&
         workers.map((worker) => (
-          <WorkerRow key={worker.pid} node={node} worker={worker} />
+          <WorkerRow
+            key={worker.pid}
+            node={node}
+            worker={worker}
+            newIA={newIA}
+          />
         ))}
     </React.Fragment>
   );

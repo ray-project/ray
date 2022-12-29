@@ -1,5 +1,5 @@
-A Guide To Logging & Outputs in Tune
-====================================
+Logging & Outputs in Tune
+=========================
 
 Tune by default will log results for TensorBoard, CSV, and JSON formats.
 If you need to log something lower level like model weights or gradients, see :ref:`Trainable Logging <trainable-logging>`.

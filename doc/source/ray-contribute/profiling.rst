@@ -1,3 +1,5 @@
+.. _ray-core-internal-profiling:
+
 Profiling (internal)
 ====================
 

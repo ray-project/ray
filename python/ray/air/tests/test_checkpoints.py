@@ -4,11 +4,14 @@ import re
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 
+import pytest
+
 import ray
-from ray.air._internal.remote_storage import delete_at_uri, _ensure_directory
-from ray.air.checkpoint import Checkpoint, _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
+from ray.air._internal.remote_storage import _ensure_directory, delete_at_uri
+from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 from ray.data import Preprocessor
 
@@ -29,6 +32,155 @@ def test_repr():
     assert len(representation) < MAX_REPR_LENGTH
     pattern = re.compile("^Checkpoint\\((.*)\\)$")
     assert pattern.match(representation)
+
+
+class StubCheckpoint(Checkpoint):
+
+    _SERIALIZED_ATTRS = ("foo",)
+
+    def __init__(self, *args, **kwargs):
+        self.foo = None
+        self.baz = None
+        super().__init__(*args, **kwargs)
+
+
+class OtherStubCheckpoint(Checkpoint):
+    pass
+
+
+class OtherStubCheckpointWithAttrs(Checkpoint):
+    _SERIALIZED_ATTRS = StubCheckpoint._SERIALIZED_ATTRS
+
+
+def test_from_checkpoint():
+    checkpoint = Checkpoint.from_dict({"spam": "ham"})
+    assert type(StubCheckpoint.from_checkpoint(checkpoint)) is StubCheckpoint
+
+    # Check that attributes persist if same checkpoint type.
+    checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+    checkpoint.foo = "bar"
+    assert StubCheckpoint.from_checkpoint(checkpoint).foo == "bar"
+
+    # Check that attributes persist if the new checkpoint
+    # has them as well.
+    # Check that attributes persist if same checkpoint type.
+    checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+    checkpoint.foo = "bar"
+    assert OtherStubCheckpointWithAttrs.from_checkpoint(checkpoint).foo == "bar"
+
+
+class TestCheckpointTypeCasting:
+    def test_dict(self):
+        data = StubCheckpoint.from_dict({"foo": "bar"}).to_dict()
+        assert isinstance(Checkpoint.from_dict(data), StubCheckpoint)
+
+        data = Checkpoint.from_dict({"foo": "bar"}).to_dict()
+        assert isinstance(StubCheckpoint.from_dict(data), StubCheckpoint)
+
+        with pytest.raises(ValueError):
+            data = OtherStubCheckpoint.from_dict({"foo": "bar"}).to_dict()
+            StubCheckpoint.from_dict(data)
+
+    def test_directory(self):
+        path = StubCheckpoint.from_dict({"foo": "bar"}).to_directory()
+        assert isinstance(Checkpoint.from_directory(path), StubCheckpoint)
+
+        path = Checkpoint.from_dict({"foo": "bar"}).to_directory()
+        assert isinstance(StubCheckpoint.from_directory(path), StubCheckpoint)
+
+        with pytest.raises(ValueError):
+            path = OtherStubCheckpoint.from_dict({"foo": "bar"}).to_directory()
+            StubCheckpoint.from_directory(path)
+
+    def test_uri(self):
+        uri = StubCheckpoint.from_dict({"foo": "bar"}).to_uri("memory://1/")
+        assert isinstance(Checkpoint.from_uri(uri), StubCheckpoint)
+
+        uri = Checkpoint.from_dict({"foo": "bar"}).to_uri("memory://2/")
+        assert isinstance(StubCheckpoint.from_uri(uri), StubCheckpoint)
+
+        with pytest.raises(ValueError):
+            uri = OtherStubCheckpoint.from_dict({"foo": "bar"}).to_uri("memory://3/")
+            StubCheckpoint.from_uri(uri)
+
+    def test_e2e(self):
+        from ray.air import session
+        from ray.air.config import ScalingConfig
+        from ray.train.torch import TorchTrainer
+
+        def train_loop_per_worker():
+            checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+            session.report({}, checkpoint=checkpoint)
+
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=1),
+        )
+        results = trainer.fit()
+        assert isinstance(results.checkpoint, StubCheckpoint)
+
+
+class TestCheckpointSerializedAttrs:
+    def test_dict(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        recovered_checkpoint = StubCheckpoint.from_dict(checkpoint.to_dict())
+
+        assert recovered_checkpoint.foo == "bar"
+
+    def test_directory(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        recovered_checkpoint = StubCheckpoint.from_directory(checkpoint.to_directory())
+
+        assert recovered_checkpoint.foo == "bar"
+
+    def test_directory_move_instead_of_copy(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        path = checkpoint.to_directory()
+        recovered_checkpoint = StubCheckpoint.from_directory(path)
+        tmpdir = tempfile.mkdtemp()
+        new_path = recovered_checkpoint._move_directory(tmpdir)
+        new_recovered_checkpoint = StubCheckpoint.from_directory(new_path)
+
+        assert recovered_checkpoint._local_path == tmpdir
+        assert new_recovered_checkpoint.foo == "bar"
+        assert not list(Path(path).glob("*"))
+
+    def test_uri(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        uri = checkpoint.to_uri("memory://bucket")
+        recovered_checkpoint = StubCheckpoint.from_uri(uri)
+
+        assert recovered_checkpoint.foo == "bar"
+
+    def test_e2e(self):
+        from ray.air import session
+        from ray.air.config import ScalingConfig
+        from ray.train.torch import TorchTrainer
+
+        def train_loop_per_worker():
+            checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+            assert "foo" in checkpoint._SERIALIZED_ATTRS
+            checkpoint.foo = "bar"
+            session.report({}, checkpoint=checkpoint)
+
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=1),
+        )
+        results = trainer.fit()
+        assert results.checkpoint.foo == "bar"
 
 
 class CheckpointsConversionTest(unittest.TestCase):
@@ -60,19 +212,36 @@ class CheckpointsConversionTest(unittest.TestCase):
         shutil.rmtree(self.tmpdir)
         shutil.rmtree(self.tmpdir_pa)
 
-    def _prepare_dict_checkpoint(self) -> Checkpoint:
+    def _prepare_dict_checkpoint(self) -> StubCheckpoint:
         # Create checkpoint from dict
-        checkpoint = Checkpoint.from_dict(self.checkpoint_dict_data)
-        self.assertIsInstance(checkpoint, Checkpoint)
+        checkpoint = StubCheckpoint.from_dict(dict(self.checkpoint_dict_data))
+        # The `foo` attribute should be serialized.
+        self.assertTrue("foo" in StubCheckpoint._SERIALIZED_ATTRS)
+        checkpoint.foo = "bar"
+        # The `baz` attribute shouldn't be serialized.
+        self.assertFalse("baz" in StubCheckpoint._SERIALIZED_ATTRS)
+        checkpoint.baz = "qux"
+
+        self.assertIsInstance(checkpoint, StubCheckpoint)
         self.assertTrue(checkpoint._data_dict)
         self.assertEqual(
             checkpoint._data_dict["metric"], self.checkpoint_dict_data["metric"]
         )
+
         return checkpoint
 
-    def _assert_dict_checkpoint(self, checkpoint):
+    def _assert_dict_checkpoint(self, checkpoint, check_state=True):
         # Convert into dict
         checkpoint_data = checkpoint.to_dict()
+        self.assertIsInstance(checkpoint, StubCheckpoint)
+        if check_state:
+            self.assertEqual(checkpoint.foo, "bar")
+            self.assertEqual(checkpoint.baz, None)
+        checkpoint_data = {
+            key: value
+            for key, value in checkpoint_data.items()
+            if not key.startswith("_")
+        }
         self.assertDictEqual(checkpoint_data, self.checkpoint_dict_data)
 
     def test_dict_checkpoint_bytes(self):
@@ -130,7 +299,7 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         # Create from dict
         checkpoint = ray.get(obj_ref)
-        self._assert_dict_checkpoint(checkpoint)
+        self._assert_dict_checkpoint(checkpoint, check_state=False)
 
     def test_dict_checkpoint_uri(self):
         """Test conversion from dict to cloud checkpoint and back."""
@@ -166,11 +335,16 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         self._assert_dict_checkpoint(checkpoint)
 
-    def _prepare_fs_checkpoint(self) -> Checkpoint:
+    def _prepare_fs_checkpoint(self) -> StubCheckpoint:
         # Create checkpoint from fs
-        checkpoint = Checkpoint.from_directory(self.checkpoint_dir)
+        checkpoint = StubCheckpoint.from_directory(self.checkpoint_dir)
+        # The `foo` attribute should be serialized.
+        self.assertIn("foo", StubCheckpoint._SERIALIZED_ATTRS)
+        checkpoint.foo = "bar"
+        # The `baz` attribute shouldn't be serialized.
+        self.assertNotIn("baz", StubCheckpoint._SERIALIZED_ATTRS)
+        checkpoint.baz = "qux"
 
-        self.assertIsInstance(checkpoint, Checkpoint)
         self.assertTrue(checkpoint._local_path, str)
         self.assertEqual(checkpoint._local_path, self.checkpoint_dir)
 
@@ -183,6 +357,9 @@ class CheckpointsConversionTest(unittest.TestCase):
         with open(os.path.join(local_dir, "test_data.pkl"), "rb") as fp:
             local_data = pickle.load(fp)
 
+        self.assertEqual(checkpoint.foo, "bar")
+        self.assertEqual(checkpoint.baz, None)
+        self.assertIsInstance(checkpoint, StubCheckpoint)
         self.assertDictEqual(local_data, self.checkpoint_dir_data)
 
     def test_fs_checkpoint_bytes(self):
@@ -341,7 +518,7 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         with checkpoint.as_directory() as checkpoint_dir:
             assert os.path.exists(checkpoint_dir)
-            assert checkpoint_dir.endswith(checkpoint._uuid.hex)
+            assert Path(checkpoint_dir).stem.endswith(checkpoint._uuid.hex)
 
         assert not os.path.exists(checkpoint_dir)
 
@@ -443,7 +620,7 @@ class CheckpointsSerdeTest(unittest.TestCase):
         # URI checkpoints keep the same internal representation, pointing to
         # a remote location
 
-        checkpoint = Checkpoint.from_uri("s3://some/bucket")
+        checkpoint = Checkpoint.from_uri("memory:///some/bucket")
 
         self._testCheckpointSerde(checkpoint, *checkpoint.get_internal_representation())
 
@@ -557,9 +734,24 @@ class PreprocessorCheckpointTest(unittest.TestCase):
             with self.assertRaises(TypeError):
                 os.path.exists(checkpoint)
 
+    def testCheckpointUri(self):
+        orig_checkpoint = Checkpoint.from_dict({"data": 2})
+
+        self.assertEqual(orig_checkpoint.uri, None)
+
+        # file:// URI
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Checkpoint.from_directory(orig_checkpoint.to_directory(tmpdir))
+            self.assertEqual(checkpoint.uri, "file://" + tmpdir)
+
+        # cloud URI
+        checkpoint = Checkpoint.from_uri(
+            orig_checkpoint.to_uri("memory://some/location")
+        )
+        self.assertEqual(checkpoint.uri, "memory://some/location")
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))

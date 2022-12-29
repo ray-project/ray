@@ -85,7 +85,7 @@ diff --git opencensus/stats/internal/stats_exporter.cc opencensus/stats/internal
 index 43ddbc7..37b4ae1 100644
 --- opencensus/stats/internal/stats_exporter.cc
 +++ opencensus/stats/internal/stats_exporter.cc
-@@ -95,25 +95,56 @@ void StatsExporterImpl::ClearHandlersForTesting() {
+@@ -95,25 +95,57 @@ void StatsExporterImpl::ClearHandlersForTesting() {
  }
  
  void StatsExporterImpl::StartExportThread() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -140,6 +140,7 @@ index 43ddbc7..37b4ae1 100644
 +}
 +
 +void StatsExporter::ExportNow() {
++  DeltaProducer::Get()->Flush();
 +  StatsExporterImpl::Get()->Export();
 +}
 +

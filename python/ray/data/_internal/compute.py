@@ -1,5 +1,6 @@
 import collections
 import logging
+import math
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import ray
@@ -18,6 +19,7 @@ from ray.data.block import (
     RowUDF,
 )
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -31,8 +33,8 @@ BlockTransform = Union[
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
     # Callable[[Block, BatchUDF, ...], Iterable[Block]],
-    Callable[[Block], Iterable[Block]],
-    Callable[[Block, Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block]], Iterable[Block]],
+    Callable[[Iterable[Block], Union[BatchUDF, RowUDF]], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
 
@@ -61,6 +63,7 @@ class TaskPoolStrategy(ComputeStrategy):
         block_list: BlockList,
         clear_input_blocks: bool,
         name: Optional[str] = None,
+        target_block_size: Optional[int] = None,
         fn: Optional[UDF] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -79,39 +82,61 @@ class TaskPoolStrategy(ComputeStrategy):
         if block_list.initial_num_blocks() == 0:
             return block_list
 
-        blocks = block_list.get_blocks_with_metadata()
         if name is None:
             name = "map"
+        blocks = block_list.get_blocks_with_metadata()
+        # Bin blocks by target block size.
+        if target_block_size is not None:
+            _check_batch_size(blocks, target_block_size, name)
+            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size, name)
+        else:
+            block_bundles = [((b,), (m,)) for b, m in blocks]
+        del blocks
         name = name.title()
-        map_bar = ProgressBar(name, total=len(blocks))
+        map_bar = ProgressBar(name, total=len(block_bundles))
 
         if context.block_splitting_enabled:
-            map_block = cached_remote_fn(_map_block_split).options(**remote_args)
+            map_block = cached_remote_fn(_map_block_split).options(
+                num_returns="dynamic", **remote_args
+            )
             refs = [
-                map_block.remote(b, block_fn, m.input_files, fn, *fn_args, **fn_kwargs)
-                for b, m in blocks
+                map_block.remote(
+                    block_fn,
+                    [f for m in ms for f in m.input_files],
+                    fn,
+                    len(bs),
+                    *(bs + fn_args),
+                    **fn_kwargs,
+                )
+                for bs, ms in block_bundles
             ]
         else:
             map_block = cached_remote_fn(_map_block_nosplit).options(
                 **dict(remote_args, num_returns=2)
             )
             all_refs = [
-                map_block.remote(b, block_fn, m.input_files, fn, *fn_args, **fn_kwargs)
-                for b, m in blocks
+                map_block.remote(
+                    block_fn,
+                    [f for m in ms for f in m.input_files],
+                    fn,
+                    len(bs),
+                    *(bs + fn_args),
+                    **fn_kwargs,
+                )
+                for bs, ms in block_bundles
             ]
-            data_refs = [r[0] for r in all_refs]
-            refs = [r[1] for r in all_refs]
+            data_refs, refs = map(list, zip(*all_refs))
 
         in_block_owned_by_consumer = block_list._owned_by_consumer
         # Release input block references.
         if clear_input_blocks:
-            del blocks
+            del block_bundles
             block_list.clear()
 
         # Common wait for non-data refs.
         try:
             results = map_bar.fetch_until_complete(refs)
-        except (ray.exceptions.RayTaskError, KeyboardInterrupt) as e:
+        except (ray.exceptions.RayError, KeyboardInterrupt) as e:
             # One or more mapper tasks failed, or we received a SIGINT signal
             # while waiting; either way, we cancel all map tasks.
             for ref in refs:
@@ -120,17 +145,22 @@ class TaskPoolStrategy(ComputeStrategy):
             for ref in refs:
                 try:
                     ray.get(ref)
-                except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
+                except ray.exceptions.RayError:
+                    # Cancellation either succeeded, or the task had already failed with
+                    # a different error, or cancellation failed. In all cases, we
+                    # swallow the exception.
                     pass
             # Reraise the original task failure exception.
             raise e from None
 
         new_blocks, new_metadata = [], []
         if context.block_splitting_enabled:
-            for result in results:
-                for block, metadata in result:
-                    new_blocks.append(block)
-                    new_metadata.append(metadata)
+            for ref_generator in results:
+                refs = list(ref_generator)
+                metadata = ray.get(refs.pop(-1))
+                assert len(metadata) == len(refs)
+                new_blocks += refs
+                new_metadata += metadata
         else:
             for block, metadata in zip(data_refs, results):
                 new_blocks.append(block)
@@ -199,6 +229,7 @@ class ActorPoolStrategy(ComputeStrategy):
         block_list: BlockList,
         clear_input_blocks: bool,
         name: Optional[str] = None,
+        target_block_size: Optional[int] = None,
         fn: Optional[UDF] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -215,19 +246,26 @@ class ActorPoolStrategy(ComputeStrategy):
         if fn_constructor_kwargs is None:
             fn_constructor_kwargs = {}
 
-        context = DatasetContext.get_current()
-
+        if name is None:
+            name = "map"
         blocks_in = block_list.get_blocks_with_metadata()
+        # Bin blocks by target block size.
+        if target_block_size is not None:
+            _check_batch_size(blocks_in, target_block_size, name)
+            block_bundles = _bundle_blocks_up_to_size(
+                blocks_in, target_block_size, name
+            )
+        else:
+            block_bundles = [((b,), (m,)) for b, m in blocks_in]
+        del blocks_in
         owned_by_consumer = block_list._owned_by_consumer
 
         # Early release block references.
         if clear_input_blocks:
             block_list.clear()
 
-        orig_num_blocks = len(blocks_in)
+        orig_num_blocks = len(block_bundles)
         results = []
-        if name is None:
-            name = "map"
         name = name.title()
         map_bar = ProgressBar(name, total=orig_num_blocks)
 
@@ -252,25 +290,35 @@ class ActorPoolStrategy(ComputeStrategy):
 
             def map_block_split(
                 self,
-                block: Block,
                 input_files: List[str],
-                *fn_args,
+                num_blocks: int,
+                *blocks_and_fn_args,
                 **fn_kwargs,
             ) -> BlockPartition:
                 return _map_block_split(
-                    block, block_fn, input_files, self.fn, *fn_args, **fn_kwargs
+                    block_fn,
+                    input_files,
+                    self.fn,
+                    num_blocks,
+                    *blocks_and_fn_args,
+                    **fn_kwargs,
                 )
 
             @ray.method(num_returns=2)
             def map_block_nosplit(
                 self,
-                block: Block,
                 input_files: List[str],
-                *fn_args,
+                num_blocks: int,
+                *blocks_and_fn_args,
                 **fn_kwargs,
             ) -> Tuple[Block, BlockMetadata]:
                 return _map_block_nosplit(
-                    block, block_fn, input_files, self.fn, *fn_args, **fn_kwargs
+                    block_fn,
+                    input_files,
+                    self.fn,
+                    num_blocks,
+                    *blocks_and_fn_args,
+                    **fn_kwargs,
                 )
 
         if "num_cpus" not in remote_args:
@@ -336,27 +384,20 @@ class ActorPoolStrategy(ComputeStrategy):
 
                 # Schedule a new task.
                 while (
-                    blocks_in
+                    block_bundles
                     and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
                 ):
-                    block, meta = blocks_in.pop()
-                    if context.block_splitting_enabled:
-                        ref = worker.map_block_split.remote(
-                            block,
-                            meta.input_files,
-                            *fn_args,
-                            **fn_kwargs,
-                        )
-                    else:
-                        ref, meta_ref = worker.map_block_nosplit.remote(
-                            block,
-                            meta.input_files,
-                            *fn_args,
-                            **fn_kwargs,
-                        )
-                        metadata_mapping[ref] = meta_ref
+                    blocks, metas = block_bundles.pop()
+                    # TODO(swang): Support block splitting for compute="actors".
+                    ref, meta_ref = worker.map_block_nosplit.remote(
+                        [f for meta in metas for f in meta.input_files],
+                        len(blocks),
+                        *(blocks + fn_args),
+                        **fn_kwargs,
+                    )
+                    metadata_mapping[ref] = meta_ref
                     tasks[ref] = worker
-                    block_indices[ref] = len(blocks_in)
+                    block_indices[ref] = len(block_bundles)
                     tasks_in_flight[worker] += 1
 
             map_bar.close()
@@ -364,16 +405,11 @@ class ActorPoolStrategy(ComputeStrategy):
             new_blocks, new_metadata = [], []
             # Put blocks in input order.
             results.sort(key=block_indices.get)
-            if context.block_splitting_enabled:
-                for result in ray.get(results):
-                    for block, metadata in result:
-                        new_blocks.append(block)
-                        new_metadata.append(metadata)
-            else:
-                for block in results:
-                    new_blocks.append(block)
-                    new_metadata.append(metadata_mapping[block])
-                new_metadata = ray.get(new_metadata)
+            # TODO(swang): Support block splitting for compute="actors".
+            for block in results:
+                new_blocks.append(block)
+                new_metadata.append(metadata_mapping[block])
+            new_metadata = ray.get(new_metadata)
             return BlockList(
                 new_blocks, new_metadata, owned_by_consumer=owned_by_consumer
             )
@@ -385,7 +421,7 @@ class ActorPoolStrategy(ComputeStrategy):
             except Exception as err:
                 logger.exception(f"Error killing workers: {err}")
             finally:
-                raise e
+                raise e from None
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
@@ -408,18 +444,19 @@ def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
 
 
 def _map_block_split(
-    block: Block,
     block_fn: BlockTransform,
     input_files: List[str],
     fn: Optional[UDF],
-    *fn_args,
+    num_blocks: int,
+    *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,
 ) -> BlockPartition:
-    output = []
     stats = BlockExecStats.builder()
+    blocks, fn_args = blocks_and_fn_args[:num_blocks], blocks_and_fn_args[num_blocks:]
     if fn is not None:
         fn_args = (fn,) + fn_args
-    for new_block in block_fn(block, *fn_args, **fn_kwargs):
+    new_metas = []
+    for new_block in block_fn(blocks, *fn_args, **fn_kwargs):
         accessor = BlockAccessor.for_block(new_block)
         new_meta = BlockMetadata(
             num_rows=accessor.num_rows(),
@@ -428,28 +465,94 @@ def _map_block_split(
             input_files=input_files,
             exec_stats=stats.build(),
         )
-        owner = DatasetContext.get_current().block_owner
-        output.append((ray.put(new_block, _owner=owner), new_meta))
+        yield new_block
+        new_metas.append(new_meta)
         stats = BlockExecStats.builder()
-    return output
+    yield new_metas
 
 
 def _map_block_nosplit(
-    block: Block,
     block_fn: BlockTransform,
     input_files: List[str],
     fn: Optional[UDF],
-    *fn_args,
+    num_blocks: int,
+    *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,
 ) -> Tuple[Block, BlockMetadata]:
     stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
+    blocks, fn_args = blocks_and_fn_args[:num_blocks], blocks_and_fn_args[num_blocks:]
     if fn is not None:
         fn_args = (fn,) + fn_args
-    for new_block in block_fn(block, *fn_args, **fn_kwargs):
+    for new_block in block_fn(blocks, *fn_args, **fn_kwargs):
         builder.add_block(new_block)
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)
     return new_block, accessor.get_metadata(
         input_files=input_files, exec_stats=stats.build()
     )
+
+
+def _bundle_blocks_up_to_size(
+    blocks: List[Tuple[ObjectRef[Block], BlockMetadata]],
+    target_size: int,
+    name: str,
+) -> List[Tuple[List[ObjectRef[Block]], List[BlockMetadata]]]:
+    """Group blocks into bundles that are up to (but not exceeding) the provided target
+    size.
+    """
+    block_bundles = []
+    curr_bundle = []
+    curr_bundle_size = 0
+    for b, m in blocks:
+        num_rows = m.num_rows
+        if num_rows is None:
+            num_rows = float("inf")
+        if curr_bundle_size > 0 and curr_bundle_size + num_rows > target_size:
+            block_bundles.append(curr_bundle)
+            curr_bundle = []
+            curr_bundle_size = 0
+        curr_bundle.append((b, m))
+        curr_bundle_size += num_rows
+    if curr_bundle:
+        block_bundles.append(curr_bundle)
+    if len(blocks) / len(block_bundles) >= 10:
+        logger.warning(
+            f"`batch_size` is set to {target_size}, which reduces parallelism from "
+            f"{len(blocks)} to {len(block_bundles)}. If the performance is worse than "
+            "expected, this may indicate that the batch size is too large or the "
+            "input block size is too small. To reduce batch size, consider decreasing "
+            "`batch_size` or use the default in `map_batches`. To increase input "
+            "block size, consider decreasing `parallelism` in read."
+        )
+    return [tuple(zip(*block_bundle)) for block_bundle in block_bundles]
+
+
+def _check_batch_size(
+    blocks_and_meta: List[Tuple[ObjectRef[Block], BlockMetadata]],
+    batch_size: int,
+    name: str,
+):
+    """Log a warning if the provided batch size exceeds the configured target max block
+    size.
+    """
+    batch_size_bytes = None
+    for _, meta in blocks_and_meta:
+        if meta.num_rows and meta.size_bytes:
+            batch_size_bytes = math.ceil(batch_size * (meta.size_bytes / meta.num_rows))
+            break
+    context = DatasetContext.get_current()
+    if (
+        batch_size_bytes is not None
+        and batch_size_bytes > context.target_max_block_size
+    ):
+        logger.warning(
+            f"Requested batch size {batch_size} results in batches of "
+            f"{batch_size_bytes} bytes for {name} tasks, which is larger than the "
+            f"configured target max block size {context.target_max_block_size}. This "
+            "may result in out-of-memory errors for certain workloads, and you may "
+            "want to decrease your batch size or increase the configured target max "
+            "block size, e.g.: "
+            "from ray.data.context import DatasetContext; "
+            "DatasetContext.get_current().target_max_block_size = 4_000_000_000"
+        )

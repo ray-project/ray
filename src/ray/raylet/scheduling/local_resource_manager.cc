@@ -447,4 +447,50 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) co
   return local_resources_.total.Has(resource_id);
 }
 
+absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
+LocalResourceManager::GetResourceUsageMap() const {
+  const auto &local_resources = GetLocalResources();
+  const auto &avail_map =
+      local_resources.GetAvailableResourceInstances().ToResourceRequest().ToResourceMap();
+  const auto &total_map =
+      local_resources.GetTotalResourceInstances().ToResourceRequest().ToResourceMap();
+
+  absl::flat_hash_map<std::string, ResourceUsage> resource_usage_map;
+  for (const auto &it : total_map) {
+    const auto &resource = it.first;
+    auto total = it.second;
+    auto avail_it = avail_map.find(resource);
+    double avail = avail_it == avail_map.end() ? 0 : avail_it->second;
+
+    // Ignore the node IP resource. It is useless to track because it is
+    // for the affinity purpose.
+    std::string prefix("node:");
+    if (resource.compare(0, prefix.size(), prefix) == 0) {
+      continue;
+    }
+
+    // TODO(sang): Right now, we just skip pg resource.
+    // Process pg resources properly.
+    const auto &data = ParsePgFormattedResource(
+        resource, /*for_wildcard_resource*/ true, /*for_indexed_resource*/ true);
+    if (data) {
+      continue;
+    }
+
+    resource_usage_map[resource].avail = avail;
+    resource_usage_map[resource].used = total - avail;
+  }
+
+  return resource_usage_map;
+}
+
+void LocalResourceManager::RecordMetrics() const {
+  for (auto &[resource, resource_usage] : GetResourceUsageMap()) {
+    ray::stats::STATS_resources.Record(resource_usage.avail,
+                                       {{"State", "AVAILABLE"}, {"Name", resource}});
+    ray::stats::STATS_resources.Record(resource_usage.used,
+                                       {{"State", "USED"}, {"Name", resource}});
+  }
+}
+
 }  // namespace ray

@@ -106,6 +106,8 @@ class ScalingConfig:
             not trigger properly).
     """
 
+    # If adding new attributes here, please also update
+    # ray.train.gbdt_trainer._convert_scaling_config_to_ray_params
     trainer_resources: Optional[Union[Dict, SampleRange]] = None
     num_workers: Optional[Union[int, SampleRange]] = None
     use_gpu: Union[bool, SampleRange] = False
@@ -160,7 +162,25 @@ class ScalingConfig:
     @property
     def _trainer_resources_not_none(self):
         if self.trainer_resources is None:
-            return {"CPU": 1}
+            if self.num_workers:
+                # For Google Colab, don't allocate resources to the base Trainer.
+                # Colab only has 2 CPUs, and because of this resource scarcity,
+                # we have to be careful on where we allocate resources. Since Colab
+                # is not distributed, the concern about many parallel Ray Tune trials
+                # leading to all Trainers being scheduled on the head node if we set
+                # `trainer_resources` to 0 is no longer applicable.
+                try:
+                    import google.colab  # noqa: F401
+
+                    trainer_resources = 0
+                except ImportError:
+                    trainer_resources = 1
+            else:
+                # If there are no additional workers, then always reserve 1 CPU for
+                # the Trainer.
+                trainer_resources = 1
+
+            return {"CPU": trainer_resources}
         return {k: v for k, v in self.trainer_resources.items() if v != 0}
 
     @property
@@ -457,7 +477,7 @@ class FailureConfig:
             raise ValueError("max_failures must be 0 if fail_fast=True.")
 
         # Same check as in TrialRunner
-        if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() != "RAISE"):
+        if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
             )
@@ -502,8 +522,7 @@ class CheckpointConfig:
             on disk for this run. If a checkpoint is persisted to disk after
             there are already this many checkpoints, then an existing
             checkpoint will be deleted. If this is ``None`` then checkpoints
-            will not be deleted. If this is ``0`` then no checkpoints will be
-            persisted to disk.
+            will not be deleted. Must be >= 1.
         checkpoint_score_attribute: The attribute that will be used to
             score checkpoints to determine which checkpoints should be kept
             on disk when there are greater than ``num_to_keep`` checkpoints.
@@ -535,11 +554,11 @@ class CheckpointConfig:
     checkpoint_at_end: Optional[bool] = None
 
     def __post_init__(self):
-        if self.num_to_keep is not None and self.num_to_keep < 0:
+        if self.num_to_keep is not None and self.num_to_keep <= 0:
             raise ValueError(
                 f"Received invalid num_to_keep: "
                 f"{self.num_to_keep}. "
-                f"Must be None or non-negative integer."
+                f"Must be None or an integer >= 1."
             )
         if self.checkpoint_score_order not in (MAX, MIN):
             raise ValueError(

@@ -19,6 +19,7 @@ from typing import (
 import numpy as np
 
 import ray
+from ray import ObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -60,7 +61,7 @@ KeyFn = Union[None, str, Callable[[T], Any]]
 def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
     """Check the key function is valid on the given dataset."""
     try:
-        fmt = ds._dataset_format()
+        fmt = ds.dataset_format()
     except ValueError:
         # Dataset is empty/cleared, validation not possible.
         return
@@ -118,7 +119,7 @@ BatchUDF = Union[
     # UDF type.
     # Callable[[DataBatch, ...], DataBatch]
     Callable[[DataBatch], DataBatch],
-    _CallableClassProtocol,
+    "_CallableClassProtocol",
 ]
 
 # A UDF on data rows.
@@ -127,7 +128,7 @@ RowUDF = Union[
     # UDF type.
     # Callable[[T, ...], U]
     Callable[[T], U],
-    _CallableClassProtocol[T, U],
+    "_CallableClassProtocol[T, U]",
 ]
 
 # A list of block references pending computation by a single task. For example,
@@ -136,11 +137,11 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 
 # The metadata that describes the output of a BlockPartition. This has the
 # same type as the metadata that describes each block in the partition.
-BlockPartitionMetadata = "BlockMetadata"
+BlockPartitionMetadata = List["BlockMetadata"]
 
-# TODO(ekl) replace this with just `BlockPartition` once block splitting is on
-# by default. When block splitting is off, the type is a plain block.
-MaybeBlockPartition = Union[Block, BlockPartition]
+# TODO(ekl/chengsu): replace this with just `ObjectRefGenerator` once block splitting
+# is on by default. When block splitting is off, the type is a plain block.
+MaybeBlockPartition = Union[Block, ObjectRefGenerator]
 
 VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy"]
 

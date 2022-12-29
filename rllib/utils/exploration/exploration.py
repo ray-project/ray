@@ -1,4 +1,4 @@
-from gym.spaces import Space
+from gymnasium.spaces import Space
 from typing import Dict, List, Optional, Union, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
@@ -217,6 +217,6 @@ class Exploration:
         """
         pass
 
-    @Deprecated(new="get_state", error=False)
+    @Deprecated(new="get_state", error=True)
     def get_info(self, sess: Optional["tf.Session"] = None):
-        return self.get_state(sess)
+        pass

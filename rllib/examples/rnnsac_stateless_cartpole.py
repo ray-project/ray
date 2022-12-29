@@ -4,7 +4,7 @@ from pathlib import Path
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.tune.registry import get_trainable_cls
 
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 
@@ -17,7 +17,6 @@ param_space = {
     "num_cpus_per_worker": 1,
     "log_level": "INFO",
     "env": StatelessCartPole,
-    "horizon": 1000,
     "gamma": 0.95,
     "batch_mode": "complete_episodes",
     "replay_buffer_config": {
@@ -96,16 +95,14 @@ if __name__ == "__main__":
     best_checkpoint = results.get_best_result().best_checkpoints[0][0]
     print("Loading checkpoint: {}".format(best_checkpoint))
 
-    algo = get_algorithm_class("RNNSAC")(
-        env=StatelessCartPole, config=checkpoint_config
-    )
+    algo = get_trainable_cls("RNNSAC")(env=StatelessCartPole, config=checkpoint_config)
     algo.restore(best_checkpoint)
 
     env = algo.env_creator({})
     state = algo.get_policy().get_initial_state()
     prev_action = 0
     prev_reward = 0
-    obs = env.reset()
+    obs, info = env.reset()
 
     eps = 0
     ep_reward = 0
@@ -117,7 +114,7 @@ if __name__ == "__main__":
             prev_reward=prev_reward,
             full_fetch=True,
         )
-        obs, reward, done, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         prev_action = action
         prev_reward = reward
         ep_reward += reward
@@ -125,12 +122,12 @@ if __name__ == "__main__":
             env.render()
         except Exception:
             pass
-        if done:
+        if terminated or truncated:
             eps += 1
             print("Episode {}: {}".format(eps, ep_reward))
             ep_reward = 0
             state = algo.get_policy().get_initial_state()
             prev_action = 0
             prev_reward = 0
-            obs = env.reset()
+            obs, info = env.reset()
     ray.shutdown()

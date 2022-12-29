@@ -2,7 +2,7 @@
 PyTorch policy class used for CQL.
 """
 import numpy as np
-import gym
+import gymnasium as gym
 import logging
 import tree
 from typing import Dict, List, Tuple, Type, Union
@@ -19,14 +19,14 @@ from ray.rllib.algorithms.sac.sac_torch_policy import (
     build_sac_model_and_action_dist,
     optimizer_fn,
     ComputeTDErrorMixin,
-    TargetNetworkMixin,
     setup_late_mixins,
     action_distribution_fn,
 )
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
-from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -112,7 +112,7 @@ def cql_loss(
     actions = train_batch[SampleBatch.ACTIONS]
     rewards = train_batch[SampleBatch.REWARDS].float()
     next_obs = train_batch[SampleBatch.NEXT_OBS]
-    terminals = train_batch[SampleBatch.DONES]
+    terminals = train_batch[SampleBatch.TERMINATEDS]
 
     model_out_t, _ = model(SampleBatch(obs=obs, _is_training=True), [], None)
 

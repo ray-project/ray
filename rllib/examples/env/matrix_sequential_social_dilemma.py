@@ -11,8 +11,8 @@ from collections import Iterable
 from typing import Dict, Optional
 
 import numpy as np
-from gym.spaces import Discrete
-from gym.utils import seeding
+from gymnasium.spaces import Discrete
+from gymnasium.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.examples.env.utils.interfaces import InfoAccumulationInterface
 from ray.rllib.examples.env.utils.mixins import (
@@ -63,19 +63,16 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
         if self.output_additional_info:
             self._init_info()
 
-    def seed(self, seed=None):
-        """Seed the PRNG of this space."""
+    def reset(self, *, seed=None, options=None):
         self.np_random, seed = seeding.np_random(seed)
-        return [seed]
 
-    def reset(self):
         self.step_count_in_current_episode = 0
         if self.output_additional_info:
             self._reset_info()
         return {
             self.player_row_id: self.NUM_STATES - 1,
             self.player_col_id: self.NUM_STATES - 1,
-        }
+        }, {}
 
     def step(self, actions: dict):
         """
@@ -140,7 +137,7 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
             "__all__": epi_is_done,
         }
 
-        return observations, rewards, done, info
+        return observations, rewards, done, done, info
 
     def _get_info_for_current_epi(self, epi_is_done):
         if epi_is_done and self.output_additional_info:
@@ -162,7 +159,7 @@ class IteratedMatchingPennies(
 
     NUM_AGENTS = 2
     NUM_ACTIONS = 2
-    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    NUM_STATES = NUM_ACTIONS**NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[+1, -1], [-1, +1]], [[-1, +1], [+1, -1]]])
@@ -178,7 +175,7 @@ class IteratedPrisonersDilemma(
 
     NUM_AGENTS = 2
     NUM_ACTIONS = 2
-    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    NUM_STATES = NUM_ACTIONS**NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[-1, -1], [-3, +0]], [[+0, -3], [-2, -2]]])
@@ -194,7 +191,7 @@ class IteratedAsymPrisonersDilemma(
 
     NUM_AGENTS = 2
     NUM_ACTIONS = 2
-    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    NUM_STATES = NUM_ACTIONS**NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[+0, -1], [-3, +0]], [[+0, -3], [-2, -2]]])
@@ -208,7 +205,7 @@ class IteratedStagHunt(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDile
 
     NUM_AGENTS = 2
     NUM_ACTIONS = 2
-    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    NUM_STATES = NUM_ACTIONS**NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[3, 3], [0, 2]], [[2, 0], [1, 1]]])
@@ -222,7 +219,7 @@ class IteratedChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilem
 
     NUM_AGENTS = 2
     NUM_ACTIONS = 2
-    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    NUM_STATES = NUM_ACTIONS**NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[+0, +0], [-1.0, +1.0]], [[+1, -1], [-10, -10]]])
@@ -236,7 +233,7 @@ class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialD
 
     NUM_AGENTS = 2
     NUM_ACTIONS = 2
-    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    NUM_STATES = NUM_ACTIONS**NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[+2.0, +0], [-1.0, +1.0]], [[+2.5, -1], [-10, -10]]])
@@ -250,7 +247,7 @@ class IteratedBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
 
     NUM_AGENTS = 2
     NUM_ACTIONS = 2
-    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    NUM_STATES = NUM_ACTIONS**NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array(
@@ -266,7 +263,7 @@ class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilem
 
     NUM_AGENTS = 2
     NUM_ACTIONS = 2
-    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    NUM_STATES = NUM_ACTIONS**NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array(
@@ -279,7 +276,7 @@ def define_greed_fear_matrix_game(greed, fear):
     class GreedFearGame(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
         NUM_AGENTS = 2
         NUM_ACTIONS = 2
-        NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+        NUM_STATES = NUM_ACTIONS**NUM_AGENTS + 1
         ACTION_SPACE = Discrete(NUM_ACTIONS)
         OBSERVATION_SPACE = Discrete(NUM_STATES)
         R = 3
@@ -304,7 +301,7 @@ class IteratedBoSAndPD(
 
     NUM_AGENTS = 2
     NUM_ACTIONS = 3
-    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    NUM_STATES = NUM_ACTIONS**NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array(

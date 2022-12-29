@@ -9,5 +9,5 @@ from ray.rllib.utils.deprecation import deprecation_warning
 deprecation_warning(
     old="ray.rllib.agents.mock",
     new="ray.rllib.algorithms.mock",
-    error=False,
+    error=True,
 )

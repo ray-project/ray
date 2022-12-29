@@ -3,6 +3,7 @@ package io.ray.serve.poll;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.serve.BaseServeTest;
 import io.ray.serve.DummyServeController;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
@@ -15,7 +16,6 @@ import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -38,24 +38,19 @@ public class LongPollClientTest {
   @SuppressWarnings({"unchecked", "unused"})
   @Test
   public void normalTest() throws Throwable {
-    boolean inited = Ray.isInitialized();
-    String previous_namespace = System.getProperty("ray.job.namespace");
-    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
-    Ray.init();
-
+    BaseServeTest.initRay();
     try {
+      String prefix = "LongPollClientTest_normalTest";
       // Init controller.
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName = CommonUtil.formatActorName(Constants.SERVE_CONTROLLER_NAME, prefix);
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null, null);
 
       // Init route table.
-      String endpointName1 = "normalTest1";
-      String endpointName2 = "normalTest2";
+      String endpointName1 = prefix + "_endpoint1";
+      String endpointName2 = prefix + "_endpoint2";
       EndpointSet endpointSet =
           EndpointSet.newBuilder()
               .putEndpoints(
@@ -108,17 +103,7 @@ public class LongPollClientTest {
       LongPollClientFactory.stop();
       Assert.assertFalse(LongPollClientFactory.isInitialized());
     } finally {
-      Serve.setInternalReplicaContext(null);
-      LongPollClientFactory.stop();
-      LongPollClientFactory.clearAllCache();
-      if (!inited) {
-        Ray.shutdown();
-      }
-      if (previous_namespace == null) {
-        System.clearProperty("ray.job.namespace");
-      } else {
-        System.setProperty("ray.job.namespace", previous_namespace);
-      }
+      BaseServeTest.clearAndShutdownRay();
     }
   }
 }

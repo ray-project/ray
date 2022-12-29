@@ -13,6 +13,7 @@ class Frequency(enum.Enum):
     ANY = enum.auto()
     MULTI = enum.auto()
     NIGHTLY = enum.auto()
+    NIGHTLY_3x = enum.auto()
     WEEKLY = enum.auto()
 
 
@@ -22,6 +23,7 @@ frequency_str_to_enum = {
     "any-smoke": Frequency.ANY,
     "multi": Frequency.MULTI,
     "nightly": Frequency.NIGHTLY,
+    "nightly-3x": Frequency.NIGHTLY_3x,
     "weekly": Frequency.WEEKLY,
 }
 

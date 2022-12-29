@@ -1,21 +1,40 @@
 base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
-env_vars: {}
+env_vars: {"LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin"}
 debian_packages:
   - unzip
   - zip
 
+  # Needed to run MuJoCo with gymnasium.
+  - libosmesa6-dev
+  - libgl1-mesa-glx
+  - libglfw3
+  - patchelf
+  # End: MuJoCo.
+
 python:
-  # These dependencies should be handled by requirements_rllib.txt and
-  # requirements_ml_docker.txt
   pip_packages:
-      - gym>=0.21.0,<0.24.1
+  ## These dependencies should be handled by requirements_rllib.txt and
+  ## requirements_ml_docker.txt and removed here
+  - gymnasium[atari,mujoco]==0.26.3
+  - ale-py==0.8.0
+  - gym==0.26.2
+  - mujoco-py<2.2,>=2.1
+  - autorom[accept-rom-license]
   conda_packages: []
 
 post_build_cmds:
   - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  # TODO(jungong): remove once nightly image gets upgraded.
-  - pip install -U pybullet==3.2.0
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   # Clone the rl-experiments repo for offline-RL files.
   - git clone https://github.com/ray-project/rl-experiments.git
-  - cp rl-experiments/halfcheetah-sac/2021-09-06/halfcheetah_expert_sac.zip ~/.
+  - unzip rl-experiments/halfcheetah-sac/2022-12-17/halfcheetah_1500_mean_reward_sac.zip -d ~/.
+  # Use torch+CUDA10.2 for our release tests. CUDA11.x has known performance issues in combination with torch+GPU+CNNs
+  # TODO(sven): remove once nightly image gets upgraded.
+  - pip3 install torch==1.12.1+cu102 torchvision==0.13.1+cu102 --extra-index-url https://download.pytorch.org/whl/cu102
+
+  # TODO(sven): remove once nightly image gets gymnasium and the other new dependencies.
+  - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+  - mkdir ~/.mujoco
+  - mv mujoco210-linux-x86_64.tar.gz ~/.mujoco/.
+  - cd ~/.mujoco
+  - tar -xf ~/.mujoco/mujoco210-linux-x86_64.tar.gz

@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from pathlib import Path
 
 import click
 import numpy as np
@@ -65,7 +66,7 @@ def train_func(use_ray: bool, config: dict):
         )
 
     if use_ray:
-        from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
+        from ray.air.integrations.keras import Callback as TrainCheckpointReportCallback
 
         class CustomReportCallback(TrainCheckpointReportCallback):
             def _handle(self, logs: dict, when: str = None):
@@ -81,6 +82,7 @@ def train_func(use_ray: bool, config: dict):
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,
         callbacks=callbacks,
+        verbose=2,  # Disables progress bar in remote actors.
     )
     results = history.history
     loss = results["loss"][-1]
@@ -236,6 +238,7 @@ def cli():
 @click.option("--use-gpu", is_flag=True, default=False)
 @click.option("--batch-size", type=int, default=64)
 @click.option("--smoke-test", is_flag=True, default=False)
+@click.option("--local", is_flag=True, default=False)
 def run(
     num_runs: int = 1,
     num_epochs: int = 4,
@@ -244,6 +247,7 @@ def run(
     use_gpu: bool = False,
     batch_size: int = 64,
     smoke_test: bool = False,
+    local: bool = False,
 ):
     # Note: smoke_test is ignored as we just adjust the batch size.
     # The parameter is passed by the release test pipeline.
@@ -254,10 +258,15 @@ def run(
     config["epochs"] = num_epochs
     config["batch_size"] = batch_size
 
-    ray.init("auto")
+    if local:
+        ray.init(num_cpus=4)
+    else:
+        ray.init("auto")
+
     print("Preparing Tensorflow benchmark: Downloading MNIST")
 
-    path = os.path.abspath("workloads/_tensorflow_prepare.py")
+    path = str((Path(__file__).parent / "_tensorflow_prepare.py").absolute())
+
     upload_file_to_all_nodes(path)
     run_command_on_all_nodes(["python", path])
 

@@ -180,6 +180,10 @@ bool TaskSpecification::HasRuntimeEnv() const {
 
 uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
+bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
+
+int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
+
 int TaskSpecification::GetRuntimeEnvHash() const {
   absl::flat_hash_map<std::string, double> required_resource;
   if (RayConfig::instance().worker_resource_limits_enabled()) {
@@ -454,12 +458,13 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth();
+         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth()
+         << ", attempt_number=" << AttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_restarts=" << MaxActorRestarts()
+           << ", max_restarts=" << MaxActorRestarts() << ", max_retries=" << MaxRetries()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -468,12 +473,30 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
            << "}";
+  } else if (IsNormalTask()) {
+    stream << ", max_retries=" << MaxRetries();
   }
 
-  // Print runtime env.
+  // Print non-sensitive runtime env info.
   if (HasRuntimeEnv()) {
     const auto &runtime_env_info = RuntimeEnvInfo();
-    stream << ", serialized_runtime_env=" << SerializedRuntimeEnv();
+    stream << ", runtime_env_hash=" << GetRuntimeEnvHash();
+    if (runtime_env_info.has_runtime_env_config()) {
+      stream << ", eager_install="
+             << runtime_env_info.runtime_env_config().eager_install();
+      stream << ", setup_timeout_seconds="
+             << runtime_env_info.runtime_env_config().setup_timeout_seconds();
+    }
+  }
+
+  return stream.str();
+}
+
+std::string TaskSpecification::RuntimeEnvDebugString() const {
+  std::ostringstream stream;
+  if (HasRuntimeEnv()) {
+    const auto &runtime_env_info = RuntimeEnvInfo();
+    stream << "serialized_runtime_env=" << SerializedRuntimeEnv();
     const auto &uris = runtime_env_info.uris();
     if (!uris.working_dir_uri().empty() || uris.py_modules_uris().size() > 0) {
       stream << ", runtime_env_uris=";
@@ -486,6 +509,7 @@ std::string TaskSpecification::DebugString() const {
       // Erase the last ":"
       stream.seekp(-1, std::ios_base::end);
     }
+    stream << ", runtime_env_hash=" << GetRuntimeEnvHash();
     if (runtime_env_info.has_runtime_env_config()) {
       stream << ", eager_install="
              << runtime_env_info.runtime_env_config().eager_install();
@@ -493,8 +517,20 @@ std::string TaskSpecification::DebugString() const {
              << runtime_env_info.runtime_env_config().setup_timeout_seconds();
     }
   }
-
   return stream.str();
+}
+
+bool TaskSpecification::IsRetriable() const {
+  if (IsActorTask()) {
+    return false;
+  }
+  if (IsActorCreationTask() && MaxActorRestarts() == 0) {
+    return false;
+  }
+  if (IsNormalTask() && MaxRetries() == 0) {
+    return false;
+  }
+  return true;
 }
 
 std::string TaskSpecification::CallSiteString() const {

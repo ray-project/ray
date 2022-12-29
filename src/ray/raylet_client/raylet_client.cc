@@ -111,7 +111,8 @@ raylet::RayletClient::RayletClient(
     NodeID *raylet_id,
     int *port,
     std::string *serialized_job_config,
-    StartupToken startup_token)
+    StartupToken startup_token,
+    const std::string &entrypoint)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
@@ -128,7 +129,8 @@ raylet::RayletClient::RayletClient(
                                             language,
                                             fbb.CreateString(ip_address),
                                             /*port=*/0,
-                                            fbb.CreateString(*serialized_job_config));
+                                            fbb.CreateString(*serialized_job_config),
+                                            fbb.CreateString(entrypoint));
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -382,6 +384,21 @@ Status raylet::RayletClient::ReturnWorker(int worker_port,
         }
       });
   return Status::OK();
+}
+
+void raylet::RayletClient::GetTaskFailureCause(
+    const TaskID &task_id,
+    const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) {
+  rpc::GetTaskFailureCauseRequest request;
+  request.set_task_id(task_id.Binary());
+  grpc_client_->GetTaskFailureCause(
+      request,
+      [callback](const Status &status, const rpc::GetTaskFailureCauseReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Error getting task result: " << status;
+        }
+        callback(status, reply);
+      });
 }
 
 void raylet::RayletClient::ReleaseUnusedWorkers(

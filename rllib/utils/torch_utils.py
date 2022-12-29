@@ -3,16 +3,15 @@ import logging
 import warnings
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
-from gym.spaces import Discrete, MultiDiscrete
+from gymnasium.spaces import Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
@@ -54,6 +53,7 @@ def apply_grad_clipping(
     else:
         clip_value = np.inf
 
+    num_none_grads = 0
     for param_group in optimizer.param_groups:
         # Make sure we only pass params with grad != None into torch
         # clip_grad_norm_. Would fail otherwise.
@@ -67,22 +67,20 @@ def apply_grad_clipping(
                 global_norm = global_norm.cpu().numpy()
 
             grad_gnorm += min(global_norm, clip_value)
+        else:
+            num_none_grads += 1
 
-    if grad_gnorm > 0:
-        return {"grad_gnorm": grad_gnorm}
-    else:
+    # Note (Kourosh): grads could indeed be zero. This method should still return
+    # grad_gnorm in that case.
+    if num_none_grads == len(optimizer.param_groups):
         # No grads available
         return {}
+    return {"grad_gnorm": grad_gnorm}
 
 
-@Deprecated(
-    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=False
-)
+@Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
 def atanh(x: TensorType) -> TensorType:
-    """Atanh function for PyTorch."""
-    return 0.5 * torch.log(
-        (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER)
-    )
+    pass
 
 
 @PublicAPI
@@ -114,32 +112,9 @@ def concat_multi_gpu_td_errors(
     }
 
 
-@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=False)
+@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=True)
 def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
-    """Converts values in `stats` to non-Tensor numpy or python types.
-
-    Args:
-        stats: Any (possibly nested) struct, the values in which will be
-            converted and returned as a new struct with all torch tensors
-            being converted to numpy types.
-
-    Returns:
-        Any: A new struct with the same structure as `stats`, but with all
-            values converted to non-torch Tensor types.
-    """
-
-    # The mapping function used to numpyize torch Tensors.
-    def mapping(item):
-        if isinstance(item, torch.Tensor):
-            return (
-                item.cpu().item()
-                if len(item.size()) == 0
-                else item.detach().cpu().numpy()
-            )
-        else:
-            return item
-
-    return tree.map_structure(mapping, stats)
+    pass
 
 
 @PublicAPI
@@ -152,13 +127,14 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
 
     Returns:
         Any: A new struct with the same structure as `x`, but with all
-            values converted to torch Tensor types.
+            values converted to torch Tensor types. This does not convert possibly
+            nested elements that are None because torch has no representation for that.
     """
 
     def mapping(item):
         if item is None:
-            # returns None with dtype=np.obj
-            return np.asarray(item)
+            # Torch has no representation for `None`, so we return None
+            return item
 
         # Special handling of "Repeated" values.
         if isinstance(item, RepeatedValues):
@@ -166,14 +142,14 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
                 tree.map_structure(mapping, item.values), item.lengths, item.max_len
             )
 
-        tensor = None
         # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             tensor = item
         # Numpy arrays.
         elif isinstance(item, np.ndarray):
             # Object type (e.g. info dicts in train batch): leave as-is.
-            if item.dtype == object:
+            # str type (e.g. agent_id in train batch): leave as-is.
+            if item.dtype == object or item.dtype.type is np.str_:
                 return item
             # Non-writable numpy-arrays will cause PyTorch warning.
             elif item.flags.writeable is False:
@@ -255,7 +231,7 @@ def flatten_inputs_to_1d_tensor(
     Examples:
         >>> # B=2
         >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1))))
@@ -460,7 +436,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
 
     Examples:
         >>> import torch
-        >>> import gym
+        >>> import gymnasium as gym
         >>> from ray.rllib.utils.torch_utils import one_hot
         >>> x = torch.IntTensor([0, 3])  # batch-dim=2
         >>> # Discrete space with 4 (one-hot) slots per batch item.

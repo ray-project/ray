@@ -223,10 +223,7 @@ message ObjectStoreStats {
 
 message GetNodeStatsReply {
   repeated CoreWorkerStats core_workers_stats = 1;
-  repeated ViewData view_data = 2;
   uint32 num_workers = 3;
-  repeated TaskSpec infeasible_tasks = 4;
-  repeated TaskSpec ready_tasks = 5;
   ObjectStoreStats store_stats = 6;
 }
 
@@ -342,6 +339,14 @@ message NotifyGCSRestartRequest {}
 
 message NotifyGCSRestartReply {}
 
+message GetTaskFailureCauseRequest {
+  bytes task_id = 1;
+}
+
+message GetTaskFailureCauseReply {
+  optional RayErrorInfo failure_cause = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage.
@@ -405,4 +410,7 @@ service NodeManagerService {
   rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
   // [State API] Get the all object information of the node.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
+  // Gets the task execution result. May contain a result if
+  // the task completed in error.
+  rpc GetTaskFailureCause(GetTaskFailureCauseRequest) returns (GetTaskFailureCauseReply);
 }

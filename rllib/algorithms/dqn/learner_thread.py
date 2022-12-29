@@ -30,13 +30,13 @@ class LearnerThread(threading.Thread):
         self.grad_timer = _Timer()
         self.overall_timer = _Timer()
         self.daemon = True
-        self.weights_updated = False
+        self.policy_ids_updated = []
         self.stopped = False
         self.learner_info = {}
 
     def run(self):
         # Switch on eager mode if configured.
-        if self.local_worker.policy_config.get("framework") in ["tf2", "tfe"]:
+        if self.local_worker.policy_config.get("framework") == "tf2":
             tf1.enable_eager_execution()
         while not self.stopped:
             self.step()
@@ -55,6 +55,7 @@ class LearnerThread(threading.Thread):
                     # minibatch SGD, tf vs torch).
                     learner_info_builder = LearnerInfoBuilder(num_devices=1)
                     multi_agent_results = self.local_worker.learn_on_batch(ma_batch)
+                    self.policy_ids_updated.extend(list(multi_agent_results.keys()))
                     for pid, results in multi_agent_results.items():
                         learner_info_builder.add_learn_on_batch_results(results, pid)
                         td_error = results["td_error"]
@@ -75,7 +76,6 @@ class LearnerThread(threading.Thread):
                     (replay_actor, prio_dict, ma_batch.count, ma_batch.agent_steps())
                 )
                 self.learner_queue_size.push(self.inqueue.qsize())
-                self.weights_updated = True
                 self.overall_timer.push_units_processed(
                     ma_batch and ma_batch.count or 0
                 )

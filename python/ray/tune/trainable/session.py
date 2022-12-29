@@ -11,7 +11,8 @@ from ray.air._internal.session import Session
 from ray.air.checkpoint import Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.trainable.function_trainable import _StatusReporter
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.tune.trainable.util import TrainableUtil
+from ray.util.annotations import PublicAPI, Deprecated
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
 from ray.util.scheduling_strategies import (
@@ -50,6 +51,10 @@ class _TuneSessionImpl(Session):
         return self._status_reporter.loaded_checkpoint
 
     @property
+    def experiment_name(self) -> str:
+        return self._status_reporter.experiment_name
+
+    @property
     def trial_name(self) -> str:
         return self._status_reporter.trial_name
 
@@ -61,8 +66,12 @@ class _TuneSessionImpl(Session):
     def trial_resources(self) -> "PlacementGroupFactory":
         return self._status_reporter.trial_resources
 
+    @property
+    def trial_dir(self) -> str:
+        return self._status_reporter.logdir
 
-@PublicAPI
+
+@Deprecated(message=_deprecation_msg)
 def is_session_enabled() -> bool:
     """Returns True if running within an Tune process."""
     global _session
@@ -204,7 +213,7 @@ def _shutdown():
     _session = None
 
 
-@PublicAPI
+@Deprecated(message=_deprecation_msg)
 def report(_metric=None, **kwargs):
     """Logs all keyword arguments.
 
@@ -232,7 +241,7 @@ def report(_metric=None, **kwargs):
     )
     _session = get_session()
     if _session:
-        if _session._iter:
+        if _session._air_session_has_reported:
             raise ValueError(
                 "It is not allowed to mix `tune.report` with `session.report`."
             )
@@ -240,7 +249,7 @@ def report(_metric=None, **kwargs):
         return _session(_metric, **kwargs)
 
 
-@PublicAPI
+@Deprecated(message=_deprecation_msg)
 @contextmanager
 def checkpoint_dir(step: int):
     """Returns a checkpoint dir inside a context.
@@ -301,7 +310,7 @@ def checkpoint_dir(step: int):
         raise ValueError("checkpoint_dir(step) must be provided - got None.")
 
     if _session:
-        if _session._iter:
+        if _session._air_session_has_reported:
             raise ValueError(
                 "It is not allowed to mix `with tune.checkpoint_dir` "
                 "with `session.report`."
@@ -312,11 +321,14 @@ def checkpoint_dir(step: int):
 
     yield _checkpoint_dir
 
+    # Drop marker again in case it was deleted.
+    TrainableUtil.mark_as_checkpoint_dir(_checkpoint_dir)
+
     if _session:
         _session.set_checkpoint(_checkpoint_dir)
 
 
-@DeveloperAPI
+@Deprecated(message=_deprecation_msg)
 def get_trial_dir():
     """Returns the directory where trial results are saved.
 
@@ -331,7 +343,7 @@ def get_trial_dir():
         return _session.logdir
 
 
-@DeveloperAPI
+@Deprecated(message=_deprecation_msg)
 def get_trial_name():
     """Trial name for the corresponding trial.
 
@@ -346,7 +358,7 @@ def get_trial_name():
         return _session.trial_name
 
 
-@DeveloperAPI
+@Deprecated(message=_deprecation_msg)
 def get_trial_id():
     """Trial id for the corresponding trial.
 
@@ -361,7 +373,7 @@ def get_trial_id():
         return _session.trial_id
 
 
-@DeveloperAPI
+@Deprecated(message=_deprecation_msg)
 def get_trial_resources():
     """Trial resources for the corresponding trial.
 

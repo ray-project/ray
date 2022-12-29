@@ -3,11 +3,12 @@
 # https://github.com/ray-project/ray/issues/6732
 
 import argparse
-from gym.spaces import Discrete, Box
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 import os
 
 from ray import air, tune
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.models.mobilenet_v2_with_lstm_models import (
     MobileV2PlusRNNModel,
@@ -25,7 +26,7 @@ cnn_shape_torch = (3, 224, 224)
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -50,37 +51,42 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # Configure our Trainer.
-    config = {
-        "env": RandomEnv,
-        "framework": args.framework,
-        "model": {
-            "custom_model": "my_model",
-            # Extra config passed to the custom model's c'tor as kwargs.
-            "custom_model_config": {
-                # By default, torch CNNs use "channels-first",
-                # tf "channels-last".
-                "cnn_shape": cnn_shape_torch
-                if args.framework == "torch"
-                else cnn_shape,
+    # Configure our PPO.
+    config = (
+        PPOConfig()
+        .environment(
+            RandomEnv,
+            env_config={
+                "action_space": Discrete(2),
+                # Test a simple Image observation space.
+                "observation_space": Box(
+                    0.0,
+                    1.0,
+                    shape=cnn_shape_torch if args.framework == "torch" else cnn_shape,
+                    dtype=np.float32,
+                ),
             },
-            "max_seq_len": 20,
-            "vf_share_layers": True,
-        },
+        )
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=0)
+        .training(
+            model={
+                "custom_model": "my_model",
+                # Extra config passed to the custom model's c'tor as kwargs.
+                "custom_model_config": {
+                    # By default, torch CNNs use "channels-first",
+                    # tf "channels-last".
+                    "cnn_shape": cnn_shape_torch
+                    if args.framework == "torch"
+                    else cnn_shape,
+                },
+                "max_seq_len": 20,
+                "vf_share_layers": True,
+            }
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,  # no parallelism
-        "env_config": {
-            "action_space": Discrete(2),
-            # Test a simple Image observation space.
-            "observation_space": Box(
-                0.0,
-                1.0,
-                shape=cnn_shape_torch if args.framework == "torch" else cnn_shape,
-                dtype=np.float32,
-            ),
-        },
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     tune.Tuner(
         "PPO", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)

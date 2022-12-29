@@ -7,7 +7,7 @@ COPY requirements.txt ./
 COPY requirements_dl.txt ./
 COPY requirements_ml_docker.txt ./
 COPY requirements_rllib.txt ./
-COPY requirements_tune.txt ./requirements_tune.txt
+COPY requirements_tune.txt ./
 COPY requirements_train.txt ./
 COPY requirements_upstream.txt ./
 
@@ -23,8 +23,12 @@ RUN sudo apt-get update \
         unzip \
         unrar \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
+    # First, install requirements
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -r requirements.txt \
+    # Then, keep requirements bounds as constraints and install remaining test dependencies
+    && $HOME/anaconda3/bin/pip --use-deprecated=legacy-resolver --no-cache-dir install -U \
+           -c requirements.txt \
            -r requirements_rllib.txt \
            -r requirements_train.txt \
            -r requirements_tune.txt \
@@ -36,12 +40,7 @@ RUN sudo apt-get update \
     && if [ $(python -c 'import sys; print(sys.version_info.minor)') != "6" ]; then \
         $HOME/anaconda3/bin/pip uninstall dataclasses typing -y; fi  \
     && sudo rm \
-        requirements.txt \
-        requirements_ml_docker.txt \
-        requirements_tune.txt \
-        requirements_rllib.txt \
-        requirements_train.txt \
-        requirements_upstream.txt \
+        requirements*.txt \
     && sudo apt-get clean
 
 # Make sure tfp is installed correctly and matches tf version.

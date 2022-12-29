@@ -10,12 +10,13 @@ This example shows:
     (in the model).
 """
 import argparse
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import os
 
 import ray
 from ray import air, tune
+from ray.tune.registry import get_trainable_cls
 
 
 def get_cli_args():
@@ -29,7 +30,7 @@ def get_cli_args():
     parser.add_argument("--num-cpus", type=int, default=3)
     parser.add_argument(
         "--framework",
-        choices=["tf", "tf2", "tfe", "torch"],
+        choices=["tf", "tf2", "torch"],
         default="tf",
         help="The DL framework specifier.",
     )
@@ -76,34 +77,38 @@ if __name__ == "__main__":
 
     ray.init(local_mode=args.local_mode)
 
-    config = {
-        "env": "ray.rllib.examples.env.random_env.RandomEnv",
-        "env_config": {
-            "config": {
-                "observation_space": Dict(
-                    {
-                        "a": Discrete(2),
-                        "b": Dict(
-                            {
-                                "ba": Discrete(3),
-                                "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32),
-                            }
-                        ),
-                        "c": Tuple((MultiDiscrete([2, 3]), Discrete(2))),
-                        "d": Box(-1.0, 1.0, (2,), dtype=np.int32),
-                    }
-                ),
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment(
+            "ray.rllib.examples.env.random_env.RandomEnv",
+            env_config={
+                "config": {
+                    "observation_space": Dict(
+                        {
+                            "a": Discrete(2),
+                            "b": Dict(
+                                {
+                                    "ba": Discrete(3),
+                                    "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32),
+                                }
+                            ),
+                            "c": Tuple((MultiDiscrete([2, 3]), Discrete(2))),
+                            "d": Box(-1.0, 1.0, (2,), dtype=np.int32),
+                        }
+                    ),
+                },
             },
-        },
+        )
+        .framework(args.framework)
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0)))
         # Set this to True to enforce no preprocessors being used.
         # Complex observations now arrive directly in the model as
         # structures of batches, e.g. {"a": tensor, "b": [tensor, tensor]}
         # for obs-space=Dict(a=..., b=Tuple(..., ...)).
-        "_disable_preprocessor_api": True,
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", 0)),
-        "framework": args.framework,
-    }
+        .experimental(_disable_preprocessor_api=True)
+    )
 
     stop = {
         "training_iteration": args.stop_iters,

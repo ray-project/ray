@@ -13,7 +13,6 @@ py_library(
 py_test_module_list(
   files = [
     "test_dashboard.py",
-    "test_metrics_head.py",
     "test_ray_cluster_with_external_redis.py",
   ],
   size = "large",
@@ -21,20 +20,11 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
-py_test(
-  name = "test_k8s_cluster_launcher",
-  srcs = ["test_k8s_cluster_launcher.py"],
-  tags = ["exclusive", "manual", "team:serverless"],
-  deps = ["//:ray_lib", ":conftest"],
-  data = ["test_cli_patterns/test_k8s_cluster_launcher.yaml"]
-)
-
 py_test_module_list(
   files = [
     "test_actor_pool.py",
     "test_async.py",
-    "test_actor_failures.py",
-    "test_actor_resources.py",
+    "test_asyncio.py",
     "test_actor_lifetime.py",
     "test_advanced.py",
     "test_advanced_2.py",
@@ -52,10 +42,12 @@ py_test_module_list(
     "test_basic_4.py",
     "test_basic_5.py",
     "test_cancel.py",
+    "test_dashboard_profiler.py",
     "test_gcs_fault_tolerance.py",
     "test_gcs_utils.py",
     "test_generators.py",
     "test_metrics_agent.py",
+    "test_metrics_head.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
@@ -114,24 +106,30 @@ py_test_module_list(
   files = [
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_logging.py",
+    "test_memory_deadlock.py",
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
+    "test_nested_task.py",
     "test_metrics.py",
+    "test_task_events.py",
     "test_task_metrics.py",
-    "test_multi_node.py",
+    "test_task_metrics_reconstruction.py",
+    "test_actor_state_metrics.py",
+    "test_placement_group_metrics.py",
+    "test_object_store_metrics.py",
     "test_multi_node_2.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
-    "test_multiprocessing.py",
     "test_object_assign_owner.py",
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_4.py",
-    "test_placement_group_5.py",
+    "test_placement_group_failover.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
-    "test_reference_counting.py",
+    "test_ray_shutdown.py",
     "test_resource_demand_scheduler.py",
+    "test_resource_metrics.py",
     "test_runtime_context.py",
     "test_runtime_env_env_vars.py",
     "test_runtime_env_packaging.py",
@@ -154,6 +152,7 @@ py_test_module_list(
     "test_namespace.py",
     "test_scheduling.py",
     "test_traceback.py",
+    "test_queue.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
@@ -162,32 +161,32 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_actor_out_of_order.py",
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_args.py",
     "test_asyncio_cluster.py",
-    "test_asyncio.py",
     "test_concurrency_group.py",
     "test_component_failures.py",
+    "test_cross_language.py",
     "test_debug_tools.py",
     "test_distributed_sort.py",
-    "test_microbenchmarks.py",
-    "test_mini.py",
-    "test_node_manager.py",
-    "test_numba.py",
-    "test_queue.py",
-    "test_ray_shutdown.py",
-    "test_unhandled_error.py",
-    "test_top_level_api.py",
+    "test_environ.py",
+    "test_get_or_create_actor.py",
     "test_list_actors.py",
     "test_list_actors_2.py",
     "test_list_actors_3.py",
     "test_list_actors_4.py",
-    "test_actor_out_of_order.py",
-    "test_cross_language.py",
-    "test_environ.py",
+    "test_metrics_agent_2.py",
+    "test_microbenchmarks.py",
+    "test_mini.py",
+    "test_node_manager.py",
+    "test_numba.py",
+    "test_redis_tls.py",
     "test_raylet_output.py",
     "test_scheduling_performance.py",
-    "test_get_or_create_actor.py",
+    "test_top_level_api.py",
+    "test_unhandled_error.py",
+    "test_utils.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -198,7 +197,7 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
   ],
-  size = "small",
+  size = "medium",
   tags = ["exclusive", "ray_ha", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
@@ -206,19 +205,22 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_batch_node_provider_unit.py",
+    "test_batch_node_provider_integration.py",
     "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
+    "test_autoscaler_e2e.py",
     "test_autoscaler_gcp.py",
     "test_cli_logger.py",
     "test_client_metadata.py",
     "test_client_terminate.py",
     "test_command_runner.py",
     "test_coordinator_server.py",
-    "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
     "test_node_provider_availability_tracker.py",
     "test_response_cache.py",
-    "kuberay/test_autoscaling_config.py"
+    "kuberay/test_autoscaling_config.py",
+    "kuberay/test_kuberay_node_provider.py"
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:serverless"],
@@ -255,13 +257,18 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_actor_failures.py",
+    "test_actor_resources.py",
     "test_failure.py",
     "test_actor_advanced.py",
+    "test_multi_node.py",
     "test_threaded_actor.py",
     "test_stress_failure.py",
     "test_state_api.py",
     "test_reconstruction.py",
     "test_reconstruction_2.py",
+    "test_reconstruction_stress.py",
+    "test_reconstruction_stress_spill.py",
     "test_failure_2.py",
     "test_failure_3.py",
     "test_chaos.py",
@@ -270,6 +277,7 @@ py_test_module_list(
     "test_exit_observability.py",
     "test_usage_stats.py",
     "test_placement_group_3.py",
+    "test_placement_group_5.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_0", "team:core"],
@@ -300,6 +308,8 @@ py_test_module_list(
     "test_placement_group_mini_integration.py",
     "test_scheduling_2.py",
     "test_multi_node_3.py",
+    "test_multiprocessing.py",
+    "test_reference_counting.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],
@@ -314,6 +324,7 @@ py_test_module_list(
     "test_runtime_env_working_dir.py",
     "test_runtime_env_working_dir_2.py",
     "test_runtime_env_working_dir_3.py",
+    "test_runtime_env_working_dir_4.py",
     "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",
@@ -454,6 +465,7 @@ py_test_module_list(
     "test_basic_4.py",
     "test_basic_5.py",
     "test_asyncio.py",
+    "test_object_assign_owner.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
     "test_list_actors_2.py",
@@ -505,4 +517,20 @@ py_test_module_list(
   name_suffix = "_asan",
   tags = ["exclusive", "asan_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "spark/test_basic.py",
+    "spark/test_GPU.py",
+    "spark/test_multicores_per_task.py",
+    "spark/test_utils.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+  data = [
+    "spark/discover_2_gpu.sh",
+    "spark/discover_4_gpu.sh"
+  ],
 )

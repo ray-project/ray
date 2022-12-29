@@ -1,5 +1,5 @@
 cartpole-a3c:
-    env: CartPole-v0
+    env: CartPole-v1
     run: A3C
     stop:
         episode_reward_mean: 150

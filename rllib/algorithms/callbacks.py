@@ -48,9 +48,12 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         if legacy_callbacks_dict:
             deprecation_warning(
                 "callbacks dict interface",
-                "a class extending rllib.algorithms.callbacks.DefaultCallbacks",
+                (
+                    "a class extending rllib.algorithms.callbacks.DefaultCallbacks; see"
+                    " `rllib/examples/custom_metrics_and_callbacks.py` for an example."
+                ),
+                error=True,
             )
-        self.legacy_callbacks = legacy_callbacks_dict or {}
 
     @OverrideToImplementCustomLogic
     def on_algorithm_init(
@@ -108,26 +111,39 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
-    def before_sub_environment_reset(
+    def on_episode_created(
         self,
         *,
         worker: "RolloutWorker",
-        sub_environment: EnvType,
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
         env_index: int,
+        episode: Union[Episode, EpisodeV2],
         **kwargs,
     ) -> None:
-        """Callback run before a sub-environment is reset.
+        """Callback run when a new episode is created (but has not started yet!).
 
-        This method gets called before every `try_reset()` is called by RLlib
-        on a sub-environment (usually a gym.Env). This includes the very first (initial)
-        reset performed on each sub-environment.
+        This method gets called after a new Episode(V2) instance is created to
+        start a new episode. This happens before the respective sub-environment's
+        (usually a gym.Env) `reset()` is called by RLlib.
+
+        1) Episode(V2) created: This callback fires.
+        2) Respective sub-environment (gym.Env) is `reset()`.
+        3) Callback `on_episode_start` is fired.
+        4) Stepping through sub-environment/episode commences.
 
         Args:
             worker: Reference to the current rollout worker.
-            sub_environment: The sub-environment instance that we are about to reset.
-                This is usually a gym.Env object.
+            base_env: BaseEnv running the episode. The underlying
+                sub environment objects can be retrieved by calling
+                `base_env.get_sub_environments()`.
+            policies: Mapping of policy id to policy objects. In single
+                agent mode there will only be a single "default" policy.
             env_index: The index of the sub-environment that is about to be reset
                 (within the vector of sub-environments of the BaseEnv).
+            episode: The newly created episode. This is the one that will be started
+                with the upcoming reset. Only after the reset call, the
+                `on_episode_start` event will be triggered.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -143,7 +159,15 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
-        """Callback run on the rollout worker before each episode starts.
+        """Callback run right after an Episode has started.
+
+        This method gets called after the Episode(V2)'s respective sub-environment's
+        (usually a gym.Env) `reset()` is called by RLlib.
+
+        1) Episode(V2) created: Triggers callback `on_episode_created`.
+        2) Respective sub-environment (gym.Env) is `reset()`.
+        3) Episode(V2) starts: This callback fires.
+        4) Stepping through sub-environment/episode commences.
 
         Args:
             worker: Reference to the current rollout worker.
@@ -160,15 +184,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
-
-        if self.legacy_callbacks.get("on_episode_start"):
-            self.legacy_callbacks["on_episode_start"](
-                {
-                    "env": base_env,
-                    "policy": policies,
-                    "episode": episode,
-                }
-            )
+        pass
 
     @OverrideToImplementCustomLogic
     def on_episode_step(
@@ -199,11 +215,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
-
-        if self.legacy_callbacks.get("on_episode_step"):
-            self.legacy_callbacks["on_episode_step"](
-                {"env": base_env, "episode": episode}
-            )
+        pass
 
     @OverrideToImplementCustomLogic
     def on_episode_end(
@@ -238,15 +250,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
-
-        if self.legacy_callbacks.get("on_episode_end"):
-            self.legacy_callbacks["on_episode_end"](
-                {
-                    "env": base_env,
-                    "policy": policies,
-                    "episode": episode,
-                }
-            )
+        pass
 
     @OverrideToImplementCustomLogic
     def on_evaluate_start(
@@ -318,17 +322,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 trajectory data. You should not mutate this object.
             kwargs: Forward compatibility placeholder.
         """
-
-        if self.legacy_callbacks.get("on_postprocess_traj"):
-            self.legacy_callbacks["on_postprocess_traj"](
-                {
-                    "episode": episode,
-                    "agent_id": agent_id,
-                    "pre_batch": original_batches[agent_id],
-                    "post_batch": postprocessed_batch,
-                    "all_pre_batches": original_batches,
-                }
-            )
+        pass
 
     @OverrideToImplementCustomLogic
     def on_sample_end(
@@ -342,14 +336,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 object to modify the samples generated.
             kwargs: Forward compatibility placeholder.
         """
-
-        if self.legacy_callbacks.get("on_sample_end"):
-            self.legacy_callbacks["on_sample_end"](
-                {
-                    "worker": worker,
-                    "samples": samples,
-                }
-            )
+        pass
 
     @OverrideToImplementCustomLogic
     def on_learn_on_batch(
@@ -379,29 +366,19 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_train_result(
         self,
         *,
-        algorithm: Optional["Algorithm"] = None,
+        algorithm: "Algorithm",
         result: dict,
-        trainer=None,
         **kwargs,
     ) -> None:
-        """Called at the end of Trainable.train().
+        """Called at the end of Algorithm.train().
 
         Args:
-            algorithm: Current trainer instance.
-            result: Dict of results returned from trainer.train() call.
+            algorithm: Current Algorithm instance.
+            result: Dict of results returned from Algorithm.train() call.
                 You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
-        if trainer is not None:
-            algorithm = trainer
-
-        if self.legacy_callbacks.get("on_train_result"):
-            self.legacy_callbacks["on_train_result"](
-                {
-                    "trainer": algorithm,
-                    "result": result,
-                }
-            )
+        pass
 
     @Deprecated(
         old="on_trainer_init(trainer, **kwargs)",
@@ -535,19 +512,23 @@ class MultiCallbacks(DefaultCallbacks):
             )
 
     @override(DefaultCallbacks)
-    def before_sub_environment_reset(
+    def on_episode_created(
         self,
         *,
         worker: "RolloutWorker",
-        sub_environment: EnvType,
-        env_index: Optional[int] = None,
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
+        env_index: int,
+        episode: Union[Episode, EpisodeV2],
         **kwargs,
     ) -> None:
         for callback in self._callback_list:
-            callback.before_sub_environment_reset(
+            callback.on_episode_created(
                 worker=worker,
-                sub_environment=sub_environment,
+                base_env=base_env,
+                policies=policies,
                 env_index=env_index,
+                episode=episode,
                 **kwargs,
             )
 
@@ -684,17 +665,11 @@ class MultiCallbacks(DefaultCallbacks):
             )
 
     @override(DefaultCallbacks)
-    def on_train_result(
-        self, *, algorithm=None, result: dict, trainer=None, **kwargs
-    ) -> None:
-        if trainer is not None:
-            algorithm = trainer
+    def on_train_result(self, *, algorithm=None, result: dict, **kwargs) -> None:
 
         for callback in self._callback_list:
             # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
-            callback.on_train_result(
-                algorithm=algorithm, result=result, trainer=algorithm, **kwargs
-            )
+            callback.on_train_result(algorithm=algorithm, result=result, **kwargs)
 
 
 # This Callback is used by the RE3 exploration strategy.
@@ -755,15 +730,9 @@ class RE3UpdateCallbacks(DefaultCallbacks):
             )
 
     @override(DefaultCallbacks)
-    def on_train_result(
-        self, *, result: dict, algorithm=None, trainer=None, **kwargs
-    ) -> None:
-        if trainer is not None:
-            algorithm = trainer
+    def on_train_result(self, *, result: dict, algorithm=None, **kwargs) -> None:
         # TODO(gjoliver): Remove explicit _step tracking and pass
         # trainer._iteration as a parameter to on_learn_on_batch() call.
         RE3UpdateCallbacks._step = result["training_iteration"]
         # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
-        super().on_train_result(
-            algorithm=algorithm, result=result, trainer=algorithm, **kwargs
-        )
+        super().on_train_result(algorithm=algorithm, result=result, **kwargs)

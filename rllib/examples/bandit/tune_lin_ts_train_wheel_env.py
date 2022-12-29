@@ -9,7 +9,7 @@ import time
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.bandit.bandit import BanditLinTS
+from ray.rllib.algorithms.bandit.bandit import BanditLinTSConfig
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 
 
@@ -43,11 +43,11 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=2)
 
-    config = {
-        "env": WheelBanditEnv,
-        "framework": args.framework,
-        "eager_tracing": (args.framework == "tf2"),
-    }
+    config = (
+        BanditLinTSConfig()
+        .environment(WheelBanditEnv)
+        .framework(args.framework, eager_tracing=args.framework == "tf2")
+    )
 
     # Actual env steps per `train()` call will be
     # 10 * `min_sample_timesteps_per_iteration` (100 by default) = 1,000
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     start_time = time.time()
     tuner = tune.Tuner(
         "BanditLinTS",
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop={"training_iteration": training_iterations},
             checkpoint_config=air.CheckpointConfig(
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     # Restore trainer from checkpoint
     checkpoint = results.get_best_result().checkpoint
-    trainer = BanditLinTS(config=config)
+    trainer = config.build()
     with checkpoint.as_directory() as checkpoint_dir:
         trainer.restore(checkpoint_dir)
 

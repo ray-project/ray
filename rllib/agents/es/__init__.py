@@ -7,4 +7,4 @@ __all__ = ["ESTFPolicy", "ESTorchPolicy", "ESTrainer", "DEFAULT_CONFIG"]
 
 from ray.rllib.utils.deprecation import deprecation_warning
 
-deprecation_warning("ray.rllib.agents.es", "ray.rllib.algorithms.es", error=False)
+deprecation_warning("ray.rllib.agents.es", "ray.rllib.algorithms.es", error=True)

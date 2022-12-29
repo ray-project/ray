@@ -28,26 +28,35 @@ namespace ray {
 namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
-#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(   \
-      new ServerCallFactoryImpl<SERVICE,                       \
-                                SERVICE##Handler,              \
-                                HANDLER##Request,              \
-                                HANDLER##Reply>(               \
-          service_,                                            \
-          &SERVICE::AsyncService::Request##HANDLER,            \
-          service_handler_,                                    \
-          &SERVICE##Handler::Handle##HANDLER,                  \
-          cq,                                                  \
-          main_service_,                                       \
-          #SERVICE ".grpc_server." #HANDLER,                   \
-          MAX_ACTIVE_RPCS));                                   \
+#define _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, RECORD_METRICS) \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
+      new ServerCallFactoryImpl<SERVICE,                                        \
+                                SERVICE##Handler,                               \
+                                HANDLER##Request,                               \
+                                HANDLER##Reply>(                                \
+          service_,                                                             \
+          &SERVICE::AsyncService::Request##HANDLER,                             \
+          service_handler_,                                                     \
+          &SERVICE##Handler::Handle##HANDLER,                                   \
+          cq,                                                                   \
+          main_service_,                                                        \
+          #SERVICE ".grpc_server." #HANDLER,                                    \
+          MAX_ACTIVE_RPCS,                                                      \
+          RECORD_METRICS));                                                     \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
+/// Define a RPC service handler with gRPC server metrics enabled.
+#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, true)
+
+/// Define a RPC service handler with gRPC server metrics disabled.
+#define RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, false)
+
 // Define a void RPC client method.
-#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)                   \
-  virtual void Handle##METHOD(const ::ray::rpc::METHOD##Request &request, \
-                              ::ray::rpc::METHOD##Reply *reply,           \
+#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
+  virtual void Handle##METHOD(::ray::rpc::METHOD##Request request, \
+                              ::ray::rpc::METHOD##Reply *reply,    \
                               ::ray::rpc::SendReplyCallback send_reply_callback) = 0;
 
 class GrpcService;
@@ -81,22 +90,7 @@ class GrpcServer {
   void Run();
 
   // Shutdown this server
-  void Shutdown() {
-    if (!is_closed_) {
-      // Shutdown the server with an immediate deadline.
-      // TODO(edoakes): do we want to do this in all cases?
-      server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
-      for (const auto &cq : cqs_) {
-        cq->Shutdown();
-      }
-      for (auto &polling_thread : polling_threads_) {
-        polling_thread.join();
-      }
-      is_closed_ = true;
-      RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
-      server_.reset();
-    }
-  }
+  void Shutdown();
 
   /// Get the port of this gRPC server.
   int GetPort() const { return port_; }
@@ -108,6 +102,8 @@ class GrpcServer {
   /// \param[in] service A `GrpcService` to register to this server.
   void RegisterService(GrpcService &service);
   void RegisterService(grpc::Service &service);
+
+  grpc::Server &GetServer() { return *server_; }
 
  protected:
   /// This function runs in a background thread. It keeps polling events from the

@@ -1,19 +1,18 @@
 """TensorFlow policy class used for SlateQ."""
 
 import functools
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
 from typing import Dict
 
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import clip_gradients
-from ray.rllib.algorithms.sac.sac_tf_policy import TargetNetworkMixin
 from ray.rllib.algorithms.slateq.slateq_tf_model import SlateQTFModel
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import SlateMultiCategorical
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_mixins import LearningRateSchedule
+from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -147,7 +146,7 @@ def build_slateq_losses(
     next_q_target_max = tf.reduce_max(input_tensor=next_q_target_slate, axis=1)
 
     target = reward + policy.config["gamma"] * next_q_target_max * (
-        1.0 - tf.cast(train_batch["dones"], tf.float32)
+        1.0 - tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
     )
     target = tf.stop_gradient(target)
 
@@ -339,13 +338,13 @@ def setup_late_mixins(
         action_space: The Policy's action space.
         config: The Policy's config.
     """
-    TargetNetworkMixin.__init__(policy, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 def rmsprop_optimizer(
     policy: Policy, config: AlgorithmConfigDict
 ) -> "tf.keras.optimizers.Optimizer":
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         return tf.keras.optimizers.RMSprop(
             learning_rate=policy.cur_lr,
             epsilon=config["rmsprop_epsilon"],

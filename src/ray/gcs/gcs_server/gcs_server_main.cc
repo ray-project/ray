@@ -24,6 +24,7 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 DEFINE_string(redis_address, "", "The ip address of redis.");
+DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
@@ -32,6 +33,9 @@ DEFINE_string(config_list, "", "The config list of raylet.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
 DEFINE_string(node_ip_address, "", "The ip address of the node.");
+DEFINE_string(session_name,
+              "",
+              "session_name: The session name (ClusterID) of the cluster.");
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
@@ -54,6 +58,7 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
+  const std::string session_name = FLAGS_session_name;
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
@@ -64,13 +69,13 @@ int main(int argc, char *argv[]) {
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);
 
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::ComponentKey, "gcs_server"},
-      {ray::stats::WorkerIdKey, ""},
-      {ray::stats::JobIdKey, ""},
-      {ray::stats::VersionKey, kRayVersion},
-      {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(global_tags, metrics_agent_port);
+  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "gcs_server"},
+                                            {ray::stats::WorkerIdKey, ""},
+                                            {ray::stats::JobIdKey, ""},
+                                            {ray::stats::VersionKey, kRayVersion},
+                                            {ray::stats::NodeAddressKey, node_ip_address},
+                                            {ray::stats::SessionNameKey, session_name}};
+  ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
@@ -87,6 +92,7 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().gcs_server_rpc_server_thread_num();
   gcs_server_config.redis_address = redis_address;
   gcs_server_config.redis_port = redis_port;
+  gcs_server_config.enable_redis_ssl = FLAGS_redis_enable_ssl;
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
@@ -100,9 +106,10 @@ int main(int argc, char *argv[]) {
   auto handler = [&main_service, &gcs_server](const boost::system::error_code &error,
                                               int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
+    main_service.stop();
+    ray::rpc::DrainAndResetServerCallExecutor();
     gcs_server.Stop();
     ray::stats::Shutdown();
-    main_service.stop();
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32

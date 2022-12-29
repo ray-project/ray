@@ -39,7 +39,7 @@ ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
-DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10 ** 9
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
 # The default proportion of available memory allocated to the object store
 DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 # The smallest cap on the memory used by the object store that we allow.
@@ -47,18 +47,18 @@ DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
-DEFAULT_REDIS_MAX_MEMORY_BYTES = 10 ** 10
+DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
-REDIS_MINIMUM_MEMORY_BYTES = 10 ** 7
+REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
-REQUIRE_SHM_SIZE_THRESHOLD = 10 ** 10
+REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # Mac with 16GB memory has degraded performance when the object store size is
 # greater than 2GB.
 # (see https://github.com/ray-project/ray/issues/20388 for details)
 # The workaround here is to limit capacity to 2GB for Mac by default,
 # and raise error if the capacity is overwritten by user.
-MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = 2 * 2 ** 30
+MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = 2 * 2**30
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
@@ -69,8 +69,10 @@ RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
     "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S"
 )
-# Defaults to 30 seconds. This should be enough time for the job to start.
-RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 30
+# Defaults to 10 minutes. This should be longer than the total time it takes for
+# the local working_dir and py_modules to be uploaded, or these files might get
+# garbage collected before the job starts.
+RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
 RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
@@ -105,8 +107,8 @@ DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 30
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
-FUNCTION_SIZE_WARN_THRESHOLD = 10 ** 7
-FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD", (10 ** 8))
+FUNCTION_SIZE_WARN_THRESHOLD = 10**7
+FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD", (10**8))
 
 # If remote functions with the same source are imported this many times, then
 # print a warning.
@@ -354,3 +356,15 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
+
+
+def gcs_actor_scheduling_enabled():
+    return os.environ.get("RAY_gcs_actor_scheduling_enabled") == "true"
+
+
+DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
+
+# Supported Python versions for runtime env's "conda" field. Ray downloads
+# Ray wheels into the conda environment, so the Ray wheels for these Python
+# versions must be available online.
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]

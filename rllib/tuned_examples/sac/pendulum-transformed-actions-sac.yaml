@@ -18,7 +18,6 @@ transformed-actions-pendulum-sac-dummy-torch:
             high: 500.0
 
         horizon: 200
-        soft_horizon: false
         q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
@@ -27,7 +26,6 @@ transformed-actions-pendulum-sac-dummy-torch:
           fcnet_hiddens: [256, 256]
         tau: 0.005
         target_entropy: auto
-        no_done_at_end: true
         n_step: 1
         rollout_fragment_length: 1
         train_batch_size: 256
@@ -42,4 +40,4 @@ transformed-actions-pendulum-sac-dummy-torch:
           entropy_learning_rate: 0.0003
         num_workers: 0
         num_gpus: 0
-        metrics_smoothing_episodes: 5
+        metrics_num_episodes_for_smoothing: 5

@@ -16,7 +16,7 @@ def test_allreduce_different_name(ray_start_single_node_2_gpus, group_name):
     assert (results[1] == cp.ones((10,), dtype=cp.float32) * world_size).all()
 
 
-@pytest.mark.parametrize("array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20])
+@pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 def test_allreduce_different_array_size(ray_start_single_node_2_gpus, array_size):
     world_size = 2
     actors, _ = create_collective_workers(world_size)

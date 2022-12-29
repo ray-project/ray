@@ -1,9 +1,9 @@
 import collections
-from gym.spaces import Space
+from gymnasium.spaces import Space
 import logging
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Dict, List, Tuple, TYPE_CHECKING, Union
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -94,6 +94,9 @@ class _PolicyCollector:
         self.batches = []
         # Reset agent steps to 0.
         self.agent_steps = 0
+        # Add num_grad_updates counter to the policy's batch.
+        batch.num_grad_updates = self.policy.num_grad_updates
+
         return batch
 
 
@@ -216,12 +219,14 @@ class SimpleListCollector(SampleCollector):
     @override(SampleCollector)
     def add_init_obs(
         self,
+        *,
         episode: Episode,
         agent_id: AgentID,
         env_id: EnvID,
         policy_id: PolicyID,
-        t: int,
         init_obs: TensorType,
+        init_infos: Optional[Dict[str, TensorType]] = None,
+        t: int = -1,
     ) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
@@ -251,8 +256,9 @@ class SimpleListCollector(SampleCollector):
             episode_id=episode.episode_id,
             agent_index=episode._agent_index(agent_id),
             env_id=env_id,
-            t=t,
             init_obs=init_obs,
+            init_infos=init_infos or {},
+            t=t,
         )
 
         self.episodes[episode.episode_id] = episode
@@ -338,6 +344,7 @@ class SimpleListCollector(SampleCollector):
                 if data_col
                 in [
                     SampleBatch.OBS,
+                    SampleBatch.INFOS,
                     SampleBatch.ENV_ID,
                     SampleBatch.EPS_ID,
                     SampleBatch.AGENT_INDEX,
@@ -451,7 +458,7 @@ class SimpleListCollector(SampleCollector):
         for agent_id, (_, pre_batch) in pre_batches.items():
             # Entire episode is said to be done.
             # Error if no DONE at end of this agent's trajectory.
-            if is_done and check_dones and not pre_batch[SampleBatch.DONES][-1]:
+            if is_done and check_dones and not pre_batch.is_terminated_or_truncated():
                 raise ValueError(
                     "Episode {} terminated for all agents, but we still "
                     "don't have a last observation for agent {} (policy "
@@ -461,9 +468,8 @@ class SimpleListCollector(SampleCollector):
                         self.agent_key_to_policy_id[(episode_id, agent_id)],
                     )
                     + "Please ensure that you include the last observations "
-                    "of all live agents when setting done[__all__] to "
-                    "True. Alternatively, set no_done_at_end=True to "
-                    "allow this."
+                    "of all live agents when setting truncated[__all__] or "
+                    "terminated[__all__] to True."
                 )
 
             # Skip a trajectory's postprocessing (and thus using it for training),
@@ -484,13 +490,19 @@ class SimpleListCollector(SampleCollector):
                 other_batches = {}
             pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
             policy = self.policy_map[pid]
-            if (
-                any(pre_batch[SampleBatch.DONES][:-1])
-                or len(set(pre_batch[SampleBatch.EPS_ID])) > 1
-            ):
+            if not pre_batch.is_single_trajectory():
+                raise ValueError(
+                    "Batches sent to postprocessing must be from a single trajectory! "
+                    "TERMINATED & TRUNCATED need to be False everywhere, except the "
+                    "last timestep, which can be either True or False for those keys)!",
+                    pre_batch,
+                )
+            elif len(set(pre_batch[SampleBatch.EPS_ID])) > 1:
+                episode_ids = set(pre_batch[SampleBatch.EPS_ID])
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "
-                    "from a single trajectory.",
+                    "from a single episode! Your trajectory contains data from "
+                    f"{len(episode_ids)} episodes ({list(episode_ids)}).",
                     pre_batch,
                 )
             # Call the Policy's Exploration's postprocess method.
@@ -588,6 +600,10 @@ class SimpleListCollector(SampleCollector):
         for pid, collector in episode.batch_builder.policy_collectors.items():
             if collector.agent_steps > 0:
                 ma_batch[pid] = collector.build()
+
+        # TODO(sven): We should always return the same type here (MultiAgentBatch),
+        #  no matter what. Just have to unify our `training_step` methods, then. This
+        #  will reduce a lot of confusion about what comes out of the sampling process.
         # Create the batch.
         ma_batch = MultiAgentBatch.wrap_as_needed(
             ma_batch, env_steps=episode.batch_builder.env_steps
@@ -623,7 +639,7 @@ class SimpleListCollector(SampleCollector):
 
             # Reached the fragment-len -> We should build an MA-Batch.
             if built_steps + ongoing_steps >= self.rollout_fragment_length:
-                if self.count_steps_by != "agent_steps":
+                if self.count_steps_by == "env_steps":
                     assert built_steps + ongoing_steps == self.rollout_fragment_length
                 # If we reached the fragment-len only because of `episode_id`
                 # (still ongoing) -> postprocess `episode_id` first.

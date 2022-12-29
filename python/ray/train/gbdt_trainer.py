@@ -1,5 +1,6 @@
 import os
 import warnings
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 from ray import tune
@@ -9,6 +10,7 @@ from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import flatten_dict
@@ -18,7 +20,7 @@ if TYPE_CHECKING:
 
     from ray.data.preprocessor import Preprocessor
 
-_WARN_REPARTITION_THRESHOLD = 10 * 1024 ** 3
+_WARN_REPARTITION_THRESHOLD = 10 * 1024**3
 
 
 def _convert_scaling_config_to_ray_params(
@@ -59,7 +61,40 @@ def _convert_scaling_config_to_ray_params(
             "num_actors": int(num_actors),
         }
     )
-    ray_params = ray_params_cls(
+
+    # This should be upstreamed to xgboost_ray,
+    # but also left here for backwards compatibility.
+    if not hasattr(ray_params_cls, "placement_options"):
+
+        @dataclass
+        class RayParamsFromScalingConfig(ray_params_cls):
+            # Passed as kwargs to PlacementGroupFactory
+            placement_options: Dict[str, Any] = None
+
+            def get_tune_resources(self) -> PlacementGroupFactory:
+                pgf = super().get_tune_resources()
+                placement_options = self.placement_options.copy()
+                extended_pgf = PlacementGroupFactory(
+                    pgf.bundles,
+                    **placement_options,
+                )
+                extended_pgf._head_bundle_is_empty = pgf._head_bundle_is_empty
+                return extended_pgf
+
+        ray_params_cls_extended = RayParamsFromScalingConfig
+    else:
+        ray_params_cls_extended = ray_params_cls
+
+    placement_options = {
+        "strategy": scaling_config.placement_strategy,
+    }
+    # Special case, same as in ScalingConfig.as_placement_group_factory
+    if scaling_config._max_cpu_fraction_per_node is not None:
+        placement_options[
+            "_max_cpu_fraction_per_node"
+        ] = scaling_config._max_cpu_fraction_per_node
+    ray_params = ray_params_cls_extended(
+        placement_options=placement_options,
         **ray_params_kwargs,
     )
 
@@ -123,8 +158,10 @@ class GBDTTrainer(BaseTrainer):
     ):
         self.label_column = label_column
         self.params = params
-        self.dmatrix_params = dmatrix_params or {}
+
         self.train_kwargs = train_kwargs
+        self.dmatrix_params = dmatrix_params or {}
+
         super().__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -132,6 +169,12 @@ class GBDTTrainer(BaseTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+        # Ray Datasets should always use distributed loading.
+        for dataset_name in self.datasets.keys():
+            dataset_params = self.dmatrix_params.get(dataset_name, {})
+            dataset_params["distributed"] = True
+            self.dmatrix_params[dataset_name] = dataset_params
 
     def _validate_attributes(self):
         super()._validate_attributes()
@@ -270,19 +313,14 @@ class GBDTTrainer(BaseTrainer):
         if checkpoint_at_end:
             self._checkpoint_at_end(model, evals_result)
 
-    def as_trainable(self) -> Type[Trainable]:
-        trainable_cls = super().as_trainable()
+    def _generate_trainable_cls(self) -> Type["Trainable"]:
+        trainable_cls = super()._generate_trainable_cls()
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
         ray_params_cls = self._ray_params_cls
         default_ray_params = self._default_ray_params
 
         class GBDTTrainable(trainable_cls):
-            # Workaround for actor name not being logged correctly
-            # if __repr__ is not directly defined in a class.
-            def __repr__(self):
-                return super().__repr__()
-
             def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
                 checkpoint_path = super().save_checkpoint()
                 parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)

@@ -16,6 +16,7 @@ import os
 
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import Logger, LegacyLoggerCallback
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -24,7 +25,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -75,13 +76,14 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    config = {
-        "env": "CartPole-v0" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1",
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2.
-        "eager_tracing": args.framework in ["tfe", "tf2"],
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment(
+            "CartPole-v1" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1"
+        )
+        # Run with tracing enabled for tf2.
+        .framework(args.framework, eager_tracing=args.framework == "tf2")
         # Setting up a custom logger config.
         # ----------------------------------
         # The following are different examples of custom logging setups:
@@ -100,17 +102,21 @@ if __name__ == "__main__":
         #     "logdir": "/tmp",
         # },
         # 3) Custom logger (see `MyPrintLogger` class above).
-        "logger_config": {
-            # Provide the class directly or via fully qualified class
-            # path.
-            "type": MyPrintLogger,
-            # `config` keys:
-            "prefix": "ABC",
-            # Optional: Custom logdir (do not define this here
-            # for using ~/ray_results/...).
-            # "logdir": "/somewhere/on/my/file/system/"
-        },
-    }
+        .debugging(
+            logger_config={
+                # Provide the class directly or via fully qualified class
+                # path.
+                "type": MyPrintLogger,
+                # `config` keys:
+                "prefix": "ABC",
+                # Optional: Custom logdir (do not define this here
+                # for using ~/ray_results/...).
+                # "logdir": "/somewhere/on/my/file/system/"
+            }
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -120,7 +126,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         args.run,
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop=stop,
             verbose=2,

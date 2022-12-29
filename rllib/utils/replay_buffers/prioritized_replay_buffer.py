@@ -220,12 +220,12 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             assert priority > 0
             assert 0 <= idx < len(self._storage)
             int_idx = self._storage._get_internal_index(idx)
-            delta = priority ** self._alpha - self._it_sum[int_idx]
+            delta = priority**self._alpha - self._it_sum[int_idx]
             self._prio_change_stats.push(delta)
             assert self._it_sum[int_idx] != self._it_sum.neutral_element
             assert self._it_min[int_idx] != self._it_min.neutral_element
-            self._it_sum[int_idx] = priority ** self._alpha
-            self._it_min[int_idx] = priority ** self._alpha
+            self._it_sum[int_idx] = priority**self._alpha
+            self._it_min[int_idx] = priority**self._alpha
 
             self._max_priority = max(self._max_priority, priority)
 

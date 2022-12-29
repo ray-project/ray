@@ -1,18 +1,21 @@
 import os
-
-import numpy as np
 import pytest
 
 import ray
 from ray.air import session
-from ray.air.checkpoint import Checkpoint
-from ray.air.examples.tf.tensorflow_regression_example import (
-    get_dataset,
+from ray.train.examples.tf.tensorflow_regression_example import (
     train_func as tensorflow_linear_train_func,
 )
 from ray.air.config import ScalingConfig
-from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
-from ray.train.tensorflow import TensorflowPredictor, TensorflowTrainer
+from ray.data.preprocessors import Concatenator
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.tensorflow import (
+    TensorflowPredictor,
+    TensorflowTrainer,
+    TensorflowCheckpoint,
+)
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
 @pytest.fixture
@@ -29,7 +32,6 @@ def build_model():
     model = tf.keras.Sequential(
         [
             tf.keras.layers.InputLayer(input_shape=()),
-            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(1),
         ]
@@ -41,53 +43,52 @@ def build_model():
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_tensorflow_linear(ray_start_4_cpus, num_workers):
     """Also tests air Keras callback."""
+    epochs = 3
 
     def train_func(config):
         result = tensorflow_linear_train_func(config)
         assert len(result) == epochs
         assert result[-1]["loss"] < result[0]["loss"]
 
-    num_workers = num_workers
-    epochs = 3
-    scaling_config = ScalingConfig(num_workers=num_workers)
-    config = {
+    train_loop_config = {
         "lr": 1e-3,
         "batch_size": 32,
         "epochs": epochs,
     }
+    scaling_config = ScalingConfig(num_workers=num_workers)
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
+    preprocessor = Concatenator(exclude=["", "y"], output_column_name="x")
+
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
-        train_loop_config=config,
+        train_loop_config=train_loop_config,
         scaling_config=scaling_config,
-        datasets={TRAIN_DATASET_KEY: get_dataset()},
+        datasets={TRAIN_DATASET_KEY: dataset},
+        preprocessor=preprocessor,
     )
     trainer.fit()
 
 
 def test_tensorflow_e2e(ray_start_4_cpus):
     def train_func():
-        model = build_model().get_weights()
-        session.report({}, checkpoint=Checkpoint.from_dict({MODEL_KEY: model}))
+        model = build_model()
+        session.report({}, checkpoint=TensorflowCheckpoint.from_model(model))
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TensorflowTrainer(
-        train_loop_per_worker=train_func, scaling_config=scaling_config
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+        preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
+    assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
-    class TensorflowScorer:
-        def __init__(self):
-            self.pred = TensorflowPredictor.from_checkpoint(
-                result.checkpoint, build_model
-            )
-
-        def __call__(self, x):
-            return self.pred.predict(x, dtype=np.float)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, TensorflowPredictor, model_definition=build_model
+    )
 
     predict_dataset = ray.data.range(3)
-    predictions = predict_dataset.map_batches(
-        TensorflowScorer, batch_format="pandas", compute="actors"
-    )
+    predictions = batch_predictor.predict(predict_dataset)
     assert predictions.count() == 3
 
 
@@ -101,24 +102,31 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
         else:
             model = build_model()
 
-        model.save("my_model", overwrite=True)
+        model.save("my_model")
         session.report(
-            metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model")
+            metrics={"iter": 1},
+            checkpoint=TensorflowCheckpoint.from_saved_model("my_model"),
         )
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TensorflowTrainer(
-        train_loop_per_worker=train_func, scaling_config=scaling_config
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+        preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
+    checkpoint = result.checkpoint
+    assert isinstance(checkpoint.get_preprocessor(), DummyPreprocessor)
 
     trainer2 = TensorflowTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
-        resume_from_checkpoint=result.checkpoint,
+        resume_from_checkpoint=checkpoint,
+        preprocessor=DummyPreprocessor(),
     )
     result = trainer2.fit()
     checkpoint = result.checkpoint
+    assert isinstance(checkpoint.get_preprocessor(), DummyPreprocessor)
     with checkpoint.as_directory() as ckpt_dir:
         assert os.path.exists(os.path.join(ckpt_dir, "saved_model.pb"))
     assert result.metrics["iter"] == 1

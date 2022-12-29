@@ -5,6 +5,7 @@ parts:
     chapters:
       - file: ray-overview/index
       - file: ray-overview/installation
+      - file: ray-overview/use-cases
       - file: ray-overview/ray-libraries
 
   - caption: Ray AI Runtime
@@ -25,6 +26,7 @@ parts:
       sections:
         - file: ray-air/examples/torch_image_example
         - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
+        - file: ray-air/examples/convert_existing_tf_code_to_ray_air
         - file: ray-air/examples/tfx_tabular_train_to_serve
         - file: ray-air/examples/huggingface_text_classification
         - file: ray-air/examples/sklearn_example
@@ -38,6 +40,9 @@ parts:
         - file: ray-air/examples/upload_to_comet_ml
         - file: ray-air/examples/upload_to_wandb
         - file: ray-air/examples/feast_example
+        - file: ray-air/examples/automl_with_ray_air
+        - file: ray-air/examples/batch_tuning
+        - file: ray-air/examples/batch_forecasting
     - file: ray-air/package-ref
     - file: ray-air/benchmarks
 
@@ -53,6 +58,8 @@ parts:
             sections:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
+              - file: data/examples/batch_training
+                title: Batch training on the NYC taxi dataset
               - file: data/examples/big_data_ingestion
                 title: Large-scale ML Ingest
               - file: data/examples/ocr_example
@@ -85,79 +92,96 @@ parts:
           - file: tune/key-concepts
           - file: tune/tutorials/overview
             sections:
-              - file: tune/tutorials/tune-lifecycle
-                title: "How Tune Works"
-              - file: tune/tutorials/tune-stopping
-                title: "How to Stop and Resume"
-              - file: tune/tutorials/tune-metrics
-                title: "Using Callbacks and Metrics"
-              - file: tune/tutorials/tune-distributed
-                title: "Distributed Tuning"
+              - file: tune/tutorials/tune-run
+                title: "Running Basic Experiments"
               - file: tune/tutorials/tune-output
                 title: "Logging Tune Runs"
               - file: tune/tutorials/tune-resources
-                title: "Managing Resources"
-              - file: tune/tutorials/tune-checkpoints
-                title: "Working with Checkpoints"
+                title: "Setting Trial Resources"
               - file: tune/tutorials/tune-search-spaces
                 title: "Using Search Spaces"
-              - file: tune/tutorials/tune-advanced-tutorial
-                title: "Understanding PBT"
+              - file: tune/tutorials/tune-stopping
+                title: "How to Stop and Resume"
+              - file: tune/tutorials/tune-checkpoints
+                title: "Working with Checkpoints"
+              - file: tune/tutorials/tune-metrics
+                title: "Using Callbacks and Metrics"
+              - file: tune/tutorials/tune_get_data_in_and_out
+              - file: tune/examples/tune_analyze_results
+              - file: tune/examples/pbt_guide
+                sections:
+                  - file: tune/examples/pbt_visualization/pbt_visualization
+                    title: "Visualizing and Understanding PBT"
+              - file: tune/tutorials/tune-distributed
+                title: "Deploying Tune in the Cloud"
+              - file: tune/tutorials/tune-lifecycle
+                title: "Tune Architecture"
               - file: tune/tutorials/tune-scalability
                 title: "Scalability Benchmarks"
           - file: tune/examples/index
             sections:
-              - file: tune/examples/tune-sklearn
-                title: "Scikit-Learn Example"
-              - file: tune/examples/tune_mnist_keras
-                title: "Keras Example"
-              - file: tune/examples/tune-pytorch-cifar
-                title: "PyTorch Example"
-              - file: tune/examples/tune-pytorch-lightning
-                title: "PyTorch Lightning Example"
-              - file: tune/examples/mxnet_example
-                title: "MXNet Example"
-              - file: tune/examples/tune-serve-integration-mnist
-                title: "Ray Serve Example"
-              - file: tune/examples/pbt_ppo_example
-                title: "Ray RLlib Example"
-              - file: tune/examples/tune-xgboost
-                title: "XGBoost Example"
-              - file: tune/examples/lightgbm_example
-                title: "LightGBM Example"
-              - file: tune/examples/horovod_simple
-                title: "Horovod Example"
-              - file: tune/examples/pbt_transformers
-                title: "Huggingface Example"
-              - file: tune/examples/tune-comet
-                title: "Comet Example"
-              - file: tune/examples/tune-wandb
-                title: "Weights & Biases Example"
-              - file: tune/examples/ax_example
-                title: "Ax Example"
-              - file: tune/examples/dragonfly_example
-                title: "Dragonfly Example"
-              - file: tune/examples/skopt_example
-                title: "Skopt Example"
-              - file: tune/examples/hyperopt_example
-                title: "HyperOpt Example"
-              - file: tune/examples/bayesopt_example
-                title: "Bayesopt Example"
-              - file: tune/examples/flaml_example
-                title: "FLAML Example"
-              - file: tune/examples/bohb_example
-                title: "BOHB Example"
-              - file: tune/examples/nevergrad_example
-                title: "Nevergrad Example"
-              - file: tune/examples/optuna_example
-                title: "Optuna Example"
-              - file: tune/examples/zoopt_example
-                title: "ZOOpt Example"
-              - file: tune/examples/sigopt_example
-                title: "SigOpt Example"
-              - file: tune/examples/hebo_example
-                title: "HEBO Example"
-
+              - file: tune/examples/ml-frameworks
+                sections:
+                  - file: tune/examples/tune-sklearn
+                    title: "Scikit-Learn Example"
+                  - file: tune/examples/tune_mnist_keras
+                    title: "Keras Example"
+                  - file: tune/examples/tune-pytorch-cifar
+                    title: "PyTorch Example"
+                  - file: tune/examples/tune-pytorch-lightning
+                    title: "PyTorch Lightning Example"
+                  - file: tune/examples/mxnet_example
+                    title: "MXNet Example"
+                  - file: tune/examples/tune-serve-integration-mnist
+                    title: "Ray Serve Example"
+                  - file: tune/examples/pbt_ppo_example
+                    title: "Ray RLlib Example"
+                  - file: tune/examples/tune-xgboost
+                    title: "XGBoost Example"
+                  - file: tune/examples/lightgbm_example
+                    title: "LightGBM Example"
+                  - file: tune/examples/horovod_simple
+                    title: "Horovod Example"
+                  - file: tune/examples/pbt_transformers
+                    title: "Huggingface Example"
+              - file: tune/examples/experiment-tracking
+                sections:
+                  - file: tune/examples/tune-comet
+                    title: "Comet Example"
+                  - file: tune/examples/tune-wandb
+                    title: "Weights & Biases Example"
+                  - file: tune/examples/tune-mlflow
+                    title: "MLflow Example"
+              - file: tune/examples/hpo-frameworks
+                sections:
+                  - file: tune/examples/ax_example
+                    title: "Ax Example"
+                  - file: tune/examples/dragonfly_example
+                    title: "Dragonfly Example"
+                  - file: tune/examples/skopt_example
+                    title: "Skopt Example"
+                  - file: tune/examples/hyperopt_example
+                    title: "HyperOpt Example"
+                  - file: tune/examples/bayesopt_example
+                    title: "Bayesopt Example"
+                  - file: tune/examples/flaml_example
+                    title: "FLAML Example"
+                  - file: tune/examples/bohb_example
+                    title: "BOHB Example"
+                  - file: tune/examples/nevergrad_example
+                    title: "Nevergrad Example"
+                  - file: tune/examples/optuna_example
+                    title: "Optuna Example"
+                  - file: tune/examples/zoopt_example
+                    title: "ZOOpt Example"
+                  - file: tune/examples/sigopt_example
+                    title: "SigOpt Example"
+                  - file: tune/examples/hebo_example
+                    title: "HEBO Example"
+              - file: tune/examples/other-examples
+                title: "Other Examples"
+              - file: tune/examples/exercises
+                title: "Exercises"
           - file: tune/faq
           - file: tune/api_docs/overview.rst
 
@@ -178,11 +202,12 @@ parts:
                   - file: serve/production-guide/rest-api
                   - file: serve/production-guide/kubernetes
                   - file: serve/production-guide/monitoring
-                  - file: serve/production-guide/failures
+                  - file: serve/production-guide/fault-tolerance
               - file: serve/performance
               - file: serve/handling-dependencies
               - file: serve/managing-java-deployments
               - file: serve/migration
+              - file: serve/direct-ingress
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
@@ -196,19 +221,22 @@ parts:
       - file: rllib/index
         title: Ray RLlib
         sections:
-          - file: rllib/core-concepts
           - file: rllib/rllib-training
+          - file: rllib/core-concepts
           - file: rllib/rllib-env
           - file: rllib/rllib-algorithms
           - file: rllib/user-guides
             sections:
+              - file: rllib/rllib-advanced-api
               - file: rllib/rllib-models
+              - file: rllib/rllib-saving-and-loading-algos-and-policies
               - file: rllib/rllib-concepts
               - file: rllib/rllib-sample-collection
               - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
               - file: rllib/rllib-connector
               - file: rllib/rllib-dev
+              - file: rllib/rllib-cli
           - file: rllib/rllib-examples
           - file: rllib/package_ref/index
 
@@ -218,7 +246,7 @@ parts:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
-          - file: ray-core/examples/using-ray-with-pytorch-lightning
+          - file: ray-more-libs/using-ray-with-pytorch-lightning
           - file: workflows/index
             title: Ray Workflows (Alpha)
             sections:
@@ -249,7 +277,10 @@ parts:
           - file: ray-core/examples/plot_parameter_server
           - file: ray-core/examples/plot_pong_example
           - file: ray-core/examples/highly_parallel
-      - file: ray-core/package-ref
+          - file: ray-core/examples/batch_prediction
+          - file: ray-core/examples/batch_training
+          - file: ray-core/examples/automl_for_time_series
+      - file: ray-core/api
 
   - caption: Ray Clusters
     chapters:
@@ -272,6 +303,7 @@ parts:
         - file: cluster/kubernetes/examples
           sections:
             - file: cluster/kubernetes/examples/ml-example.md
+            - file: cluster/kubernetes/examples/gpu-training-example.md
         - file: cluster/kubernetes/references
       - file: cluster/vms/index
         title: Deploying on VMs
@@ -281,7 +313,6 @@ parts:
           title: User Guides
           sections:
           - file: cluster/vms/user-guides/launching-clusters/index
-            title: Launching Clusters
           - file: cluster/vms/user-guides/large-cluster-best-practices
           - file: cluster/vms/user-guides/configuring-autoscaling
           - file: cluster/vms/user-guides/community/index
@@ -297,7 +328,15 @@ parts:
         - file: cluster/vms/references/index
       - file: cluster/running-applications/index
         title: Applications Guide
+      - file: cluster/faq
+      - file: cluster/package-overview
 
+  - caption: Monitoring and Debugging
+    chapters:
+      - file: ray-observability/monitoring-debugging/monitoring-debugging
+        title: User Guides
+      - file: ray-observability/index
+        title: Tools
 
   - caption: References
     chapters:
@@ -314,5 +353,4 @@ parts:
           - file: ray-contribute/fake-autoscaler
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
-      - file: ray-observability/index
       - file: ray-contribute/whitepaper

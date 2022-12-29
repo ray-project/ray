@@ -10,4 +10,4 @@ __all__ = [
     "CQLTrainer",
 ]
 
-deprecation_warning("ray.rllib.agents.cql", "ray.rllib.algorithms.cql", error=False)
+deprecation_warning("ray.rllib.agents.cql", "ray.rllib.algorithms.cql", error=True)

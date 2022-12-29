@@ -4,10 +4,11 @@ import dataclasses
 import json
 import logging
 import traceback
-
+import ray
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
+    JobDeleteResponse,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
@@ -40,12 +41,15 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         request_submission_id = submit_request.submission_id or submit_request.job_id
         try:
+            ray._private.usage.usage_lib.record_library_usage("job_submission")
             submission_id = await self.get_job_manager().submit_job(
                 entrypoint=submit_request.entrypoint,
                 submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
-                _driver_on_current_node=False,
+                entrypoint_num_cpus=submit_request.entrypoint_num_cpus,
+                entrypoint_num_gpus=submit_request.entrypoint_num_gpus,
+                entrypoint_resources=submit_request.entrypoint_resources,
             )
 
             resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)
@@ -72,7 +76,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager(),
+            self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
         if not job:
@@ -99,13 +103,46 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
+    @routes.delete("/api/job_agent/jobs/{job_or_submission_id}")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def delete_job(self, req: Request) -> Response:
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+        job = await find_job_by_ids(
+            self._dashboard_agent.gcs_aio_client,
+            self.get_job_manager().job_info_client(),
+            job_or_submission_id,
+        )
+        if not job:
+            return Response(
+                text=f"Job {job_or_submission_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+        if job.type is not JobType.SUBMISSION:
+            return Response(
+                text="Can only delete submission type jobs",
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
+
+        try:
+            deleted = await self.get_job_manager().delete_job(job.submission_id)
+            resp = JobDeleteResponse(deleted=deleted)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
+
     @routes.get("/api/job_agent/jobs/{job_or_submission_id}/logs")
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager(),
+            self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
         if not job:
@@ -133,7 +170,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager(),
+            self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
         if not job:
@@ -154,9 +191,13 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         async for lines in self._job_manager.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
 
+        return ws
+
     def get_job_manager(self):
         if not self._job_manager:
-            self._job_manager = JobManager(self._dashboard_agent.gcs_aio_client)
+            self._job_manager = JobManager(
+                self._dashboard_agent.gcs_aio_client, self._dashboard_agent.log_dir
+            )
         return self._job_manager
 
     async def run(self, server):

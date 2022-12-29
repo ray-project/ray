@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Tuple
 
-import gym
+import gymnasium as gym
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS,
@@ -14,7 +14,7 @@ from ray.rllib.algorithms.dqn.dqn_torch_model import DQNTorchModel
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
-    TorchCategorical,
+    get_torch_categorical_class_with_temperature,
     TorchDistributionWrapper,
 )
 from ray.rllib.policy.policy import Policy
@@ -24,6 +24,7 @@ from ray.rllib.policy.torch_mixins import (
     LearningRateSchedule,
     TargetNetworkMixin,
 )
+
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
@@ -42,16 +43,6 @@ torch, nn = try_import_torch()
 F = None
 if nn:
     F = nn.functional
-
-
-def get_dist_class_with_temperature(t: float):
-    """TorchCategorical distribution class that has customized default temperature."""
-
-    class TorchCategoricalWithTemperature(TorchCategorical):
-        def __init__(self, inputs, model=None, temperature=t):
-            super().__init__(inputs, model, temperature)
-
-    return TorchCategoricalWithTemperature
 
 
 class QLoss:
@@ -78,7 +69,7 @@ class QLoss:
             z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
-            r_tau = torch.unsqueeze(rewards, -1) + gamma ** n_step * torch.unsqueeze(
+            r_tau = torch.unsqueeze(rewards, -1) + gamma**n_step * torch.unsqueeze(
                 1.0 - done_mask, -1
             ) * torch.unsqueeze(z, 0)
             r_tau = torch.clamp(r_tau, v_min, v_max)
@@ -114,7 +105,7 @@ class QLoss:
             q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
             # compute RHS of bellman equation
-            q_t_selected_target = rewards + gamma ** n_step * q_tp1_best_masked
+            q_t_selected_target = rewards + gamma**n_step * q_tp1_best_masked
 
             # compute the error (potentially clipped)
             self.td_error = q_t_selected - q_t_selected_target.detach()
@@ -134,13 +125,13 @@ class ComputeTDErrorMixin:
 
     def __init__(self):
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             input_dict = self._lazy_tensor_dict({SampleBatch.CUR_OBS: obs_t})
             input_dict[SampleBatch.ACTIONS] = act_t
             input_dict[SampleBatch.REWARDS] = rew_t
             input_dict[SampleBatch.NEXT_OBS] = obs_tp1
-            input_dict[SampleBatch.DONES] = done_mask
+            input_dict[SampleBatch.TERMINATEDS] = terminateds_mask
             input_dict[PRIO_WEIGHTS] = importance_weights
 
             # Do forward pass on loss to update td error attribute
@@ -233,7 +224,7 @@ def build_q_model_and_distribution(
     # parameter is partially binded to the configured value.
     temperature = config["categorical_distribution_temperature"]
 
-    return model, get_dist_class_with_temperature(temperature)
+    return model, get_torch_categorical_class_with_temperature(temperature)
 
 
 def get_distribution_inputs_and_class(
@@ -256,7 +247,11 @@ def get_distribution_inputs_and_class(
     # parameter is partially binded to the configured value.
     temperature = policy.config["categorical_distribution_temperature"]
 
-    return q_vals, get_dist_class_with_temperature(temperature), []  # state-out
+    return (
+        q_vals,
+        get_torch_categorical_class_with_temperature(temperature),
+        [],  # state-out
+    )
 
 
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
@@ -355,7 +350,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
         q_probs_tp1_best,
         train_batch[PRIO_WEIGHTS],
         train_batch[SampleBatch.REWARDS],
-        train_batch[SampleBatch.DONES].float(),
+        train_batch[SampleBatch.TERMINATEDS].float(),
         config["gamma"],
         config["n_step"],
         config["num_atoms"],

@@ -72,6 +72,17 @@ command_runner_to_file_manager = {
 uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
 
 
+def _get_extra_tags() -> dict:
+    env_vars = (
+        "BUILDKITE_JOB_ID",
+        "BUILDKITE_PULL_REQUEST",
+        "BUILDKITE_PIPELINE_SLUG",
+        "BUILDKITE_SOURCE",
+        "RELEASE_FREQUENCY",
+    )
+    return {key.lower(): os.getenv(key, "") for key in env_vars}
+
+
 def run_release_test(
     test: Test,
     anyscale_project: str,
@@ -92,9 +103,13 @@ def run_release_test(
     result.smoke_test = smoke_test
 
     buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
+    buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
+
     if buildkite_url:
-        buildkite_url += "#" + os.getenv("BUILDKITE_JOB_ID", "")
+        buildkite_url += "#" + buildkite_job_id
+
     result.buildkite_url = buildkite_url
+    result.buildkite_job_id = buildkite_job_id
 
     working_dir = test["working_dir"]
 
@@ -126,10 +141,16 @@ def run_release_test(
     else:
         file_manager_cls = command_runner_to_file_manager[command_runner_cls]
 
+    # Extra tags to be set on resources on cloud provider's side
+    extra_tags = _get_extra_tags()
+    result.extra_tags = extra_tags
+
     # Instantiate managers and command runner
     try:
         cluster_manager = cluster_manager_cls(
-            test["name"], anyscale_project, smoke_test=smoke_test
+            test["name"],
+            anyscale_project,
+            smoke_test=smoke_test,
         )
         file_manager = file_manager_cls(cluster_manager=cluster_manager)
         command_runner = command_runner_cls(cluster_manager, file_manager, working_dir)
@@ -160,7 +181,44 @@ def run_release_test(
         else:
             cluster_manager.set_cluster_env(cluster_env)
 
-        cluster_manager.set_cluster_compute(cluster_compute)
+        # Load some timeouts
+        build_timeout = int(test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT))
+        command_timeout = int(test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT))
+        cluster_timeout = int(
+            test["run"].get("session_timeout", DEFAULT_CLUSTER_TIMEOUT)
+        )
+        # Use default timeout = 0 here if wait_for_nodes is empty. This is to make
+        # sure we don't inflate the maximum_uptime_minutes too much if we don't wait
+        # for nodes at all.
+        # The actual default will be otherwise loaded further down.
+        wait_timeout = int(test["run"].get("wait_for_nodes", {}).get("timeout", 0))
+
+        autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
+        if autosuspend_mins:
+            cluster_manager.autosuspend_minutes = autosuspend_mins
+            autosuspend_base = autosuspend_mins
+        else:
+            cluster_manager.autosuspend_minutes = min(
+                DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
+            )
+            # Maximum uptime should be based on the command timeout, not the
+            # DEFAULT_AUTOSUSPEND_MINS
+            autosuspend_base = int(command_timeout / 60) + 10
+
+        maximum_uptime_minutes = test["cluster"].get("maximum_uptime_minutes", None)
+        if maximum_uptime_minutes:
+            cluster_manager.maximum_uptime_minutes = maximum_uptime_minutes
+        else:
+            cluster_manager.maximum_uptime_minutes = (
+                autosuspend_base + wait_timeout + 10
+            )
+
+        # Set cluster compute here. Note that this may use timeouts provided
+        # above.
+        cluster_manager.set_cluster_compute(
+            cluster_compute,
+            extra_tags=extra_tags,
+        )
 
         buildkite_group(":nut_and_bolt: Setting up local environment")
         driver_setup_script = test.get("driver_setup", None)
@@ -172,7 +230,6 @@ def run_release_test(
 
         # Install local dependencies
         command_runner.prepare_local_env(ray_wheels_url)
-        command_timeout = test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
 
         # Re-install anyscale package as local dependencies might have changed
         # from local env setup
@@ -192,29 +249,17 @@ def run_release_test(
             cluster_manager.cluster_name = get_cluster_name(cluster_id)
         else:
             buildkite_group(":gear: Building cluster environment")
-            build_timeout = test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT)
 
             if cluster_env_id:
                 cluster_manager.cluster_env_id = cluster_env_id
 
             cluster_manager.build_configs(timeout=build_timeout)
 
-            cluster_timeout = test["run"].get(
-                "session_timeout", DEFAULT_CLUSTER_TIMEOUT
-            )
-
-            autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
-            if autosuspend_mins:
-                cluster_manager.autosuspend_minutes = autosuspend_mins
-            else:
-                cluster_manager.autosuspend_minutes = min(
-                    DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
-                )
-
             buildkite_group(":rocket: Starting up cluster")
             cluster_manager.start_cluster(timeout=cluster_timeout)
 
         result.cluster_url = cluster_manager.get_cluster_url()
+        result.cluster_id = cluster_manager.cluster_id
 
         # Upload files
         buildkite_group(":wrench: Preparing remote environment")
@@ -223,10 +268,11 @@ def run_release_test(
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
         if wait_for_nodes:
             buildkite_group(":stopwatch: Waiting for nodes to come up")
-            num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
-            wait_timeout = test["run"]["wait_for_nodes"].get(
-                "timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT
+            # Overwrite wait_timeout from above to account for better default
+            wait_timeout = int(
+                wait_for_nodes.get("timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT)
             )
+            num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
 
         prepare_cmd = test["run"].get("prepare", None)
@@ -248,6 +294,8 @@ def run_release_test(
             command_env["IS_SMOKE_TEST"] = "1"
 
         is_long_running = test["run"].get("long_running", False)
+
+        start_time_unix = time.time()
 
         try:
             command_runner.run_command(
@@ -273,6 +321,18 @@ def run_release_test(
             command_results["last_update_diff"] = time.time() - command_results.get(
                 "last_update", 0.0
             )
+
+        try:
+            # Timeout is the time the test took divided by 200
+            # (~7 minutes for a 24h test) but no less than 30s
+            # and no more than 900s
+            metrics_timeout = max(30, min((time.time() - start_time_unix) / 200, 900))
+            command_runner.save_metrics(start_time_unix, timeout=metrics_timeout)
+            metrics = command_runner.fetch_metrics()
+        except Exception as e:
+            logger.exception(f"Could not fetch metrics for test command: {e}")
+            metrics = {}
+
         if smoke_test:
             command_results["smoke_test"] = True
 
@@ -283,6 +343,7 @@ def run_release_test(
         logger.exception(e)
         buildkite_open_last()
         pipeline_exception = e
+        metrics = {}
 
     try:
         last_logs = command_runner.get_last_logs()
@@ -301,6 +362,7 @@ def run_release_test(
 
     time_taken = time.monotonic() - start_time
     result.runtime = time_taken
+    result.prometheus_metrics = metrics
 
     os.chdir(old_wd)
 

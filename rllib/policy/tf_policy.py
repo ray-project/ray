@@ -1,24 +1,28 @@
 import logging
 import math
-import os
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy, PolicyState
+from ray.rllib.policy.policy import Policy, PolicyState, PolicySpec
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
@@ -65,6 +69,18 @@ class TFPolicy(Policy):
         >>> print(policy.postprocess_trajectory(SampleBatch({...}))) # doctest: +SKIP
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
+
+    # In order to create tf_policies from checkpoints, this class needs to separate
+    # variables into their own scopes. Normally, we would do this in the model
+    # catalog, but since Policy.from_state() can be called anywhere, we need to
+    # keep track of it here to not break the from_state API.
+    tf_var_creation_scope_counter = 0
+
+    @staticmethod
+    def next_tf_var_scope_name():
+        # Tracks multiple instances that are spawned from this policy via .from_state()
+        TFPolicy.tf_var_creation_scope_counter += 1
+        return f"var_scope_{TFPolicy.tf_var_creation_scope_counter}"
 
     @DeveloperAPI
     def __init__(
@@ -433,12 +449,22 @@ class TFPolicy(Policy):
 
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         stats = builder.get(fetches)
+        self.num_grad_updates += 1
+
         stats.update(
             {
                 "custom_metrics": learn_stats,
                 NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
+                DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                    self.num_grad_updates
+                    - 1
+                    - (postprocessed_batch.num_grad_updates or 0)
+                ),
             }
         )
+
         return stats
 
     @override(Policy)
@@ -452,6 +478,46 @@ class TFPolicy(Policy):
         builder = _TFRunBuilder(self.get_session(), "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
+
+    @staticmethod
+    def _tf1_from_state_helper(state: PolicyState) -> "Policy":
+        """Recovers a TFPolicy from a state object.
+
+        The `state` of an instantiated TFPolicy can be retrieved by calling its
+        `get_state` method. Is meant to be used by the Policy.from_state() method to
+        aid with tracking variable creation.
+
+        Args:
+            state: The state to recover a new TFPolicy instance from.
+
+        Returns:
+            A new TFPolicy instance.
+        """
+        serialized_pol_spec: Optional[dict] = state.get("policy_spec")
+        if serialized_pol_spec is None:
+            raise ValueError(
+                "No `policy_spec` key was found in given `state`! "
+                "Cannot create new Policy."
+            )
+        pol_spec = PolicySpec.deserialize(serialized_pol_spec)
+
+        with tf1.variable_scope(TFPolicy.next_tf_var_scope_name()):
+            # Create the new policy.
+            new_policy = pol_spec.policy_class(
+                # Note(jungong) : we are intentionally not using keyward arguments here
+                # because some policies name the observation space parameter obs_space,
+                # and some others name it observation_space.
+                pol_spec.observation_space,
+                pol_spec.action_space,
+                pol_spec.config,
+            )
+
+        # Set the new policy's state (weights, optimizer vars, exploration state,
+        # etc..).
+        new_policy.set_state(state)
+
+        # Return the new policy.
+        return new_policy
 
     @override(Policy)
     @DeveloperAPI
@@ -476,7 +542,7 @@ class TFPolicy(Policy):
     def get_exploration_state(self) -> Dict[str, TensorType]:
         return self.exploration.get_state(sess=self.get_session())
 
-    @Deprecated(new="get_exploration_state", error=False)
+    @Deprecated(new="get_exploration_state", error=True)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()
 
@@ -495,6 +561,7 @@ class TFPolicy(Policy):
     def get_state(self) -> PolicyState:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
+
         if len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = self.get_session().run(
                 self._optimizer_variables.variables
@@ -516,23 +583,11 @@ class TFPolicy(Policy):
                 state=state["_exploration_state"], sess=self.get_session()
             )
 
-        # Restore glbal timestep.
+        # Restore global timestep.
         self.global_timestep = state["global_timestep"]
 
         # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
-
-    @override(Policy)
-    @DeveloperAPI
-    def export_checkpoint(
-        self, export_dir: str, filename_prefix: str = "model"
-    ) -> None:
-        """Export tensorflow checkpoint to export_dir."""
-        os.makedirs(export_dir, exist_ok=True)
-        save_path = os.path.join(export_dir, filename_prefix)
-        with self.get_session().graph.as_default():
-            saver = tf1.train.Saver()
-            saver.save(self.get_session(), save_path)
 
     @override(Policy)
     @DeveloperAPI
@@ -575,21 +630,22 @@ class TFPolicy(Policy):
 
                 model_proto = g.make_model("onnx_model")
                 tf2onnx.utils.save_onnx_model(
-                    export_dir, "saved_model", feed_dict={}, model_proto=model_proto
+                    export_dir, "model", feed_dict={}, model_proto=model_proto
                 )
-        else:
+        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
+        elif (
+            hasattr(self, "model")
+            and hasattr(self.model, "base_model")
+            and isinstance(self.model.base_model, tf.keras.Model)
+        ):
             with self.get_session().graph.as_default():
-                signature_def_map = self._build_signature_def()
-                builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
-                builder.add_meta_graph_and_variables(
-                    self.get_session(),
-                    [tf1.saved_model.tag_constants.SERVING],
-                    signature_def_map=signature_def_map,
-                    saver=tf1.summary.FileWriter(export_dir).add_graph(
-                        graph=self.get_session().graph
-                    ),
-                )
-                builder.save()
+                try:
+                    self.model.base_model.save(filepath=export_dir, save_format="tf")
+                except Exception:
+                    logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+        else:
+            logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     @override(Policy)
     @DeveloperAPI

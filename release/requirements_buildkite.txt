@@ -1,8 +1,10 @@
-anyscale
+# Requirements to run release tests from buildkite (client dependencies will be installed separately)
+# Copy anyscale pin to requirements.txt and util.py
+anyscale==0.5.51
 click
 boto3
 jinja2
-protobuf >= 3.15.3, != 3.19.5, < 4.0.0
+protobuf >= 3.15.3, != 3.19.5
 pydantic < 1.10.0
 pyyaml
 requests

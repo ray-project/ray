@@ -55,14 +55,6 @@ export type JobDetail = {
   jobWorkers: Worker[];
 };
 
-export type JobDetailRsp = {
-  data: {
-    detail: JobDetail;
-  };
-  msg: string;
-  result: boolean;
-};
-
 export type JobListRsp = UnifiedJob[];
 
 export type UnifiedJob = {
@@ -78,6 +70,7 @@ export type UnifiedJob = {
   metadata: { [key: string]: string } | null;
   runtime_env: { [key: string]: string } | null;
   driver_info: DriverInfo | null;
+  driver_agent_http_address: string | null;
 };
 
 export type DriverInfo = {
@@ -85,4 +78,34 @@ export type DriverInfo = {
   node_ip_address: string;
   node_id: string;
   pid: string;
+};
+
+export type TaskProgress = {
+  numFinished?: number;
+  numPendingArgsAvail?: number;
+  numSubmittedToWorker?: number;
+  numRunning?: number;
+  numPendingNodeAssignment?: number;
+  numFailed?: number;
+  numUnknown?: number;
+};
+
+export type JobProgressRsp = {
+  data: {
+    detail: TaskProgress;
+  };
+  msg: string;
+  result: boolean;
+};
+
+export type JobProgressByTaskName = {
+  tasks: { name: string; progress: TaskProgress }[];
+};
+
+export type JobProgressByTaskNameRsp = {
+  data: {
+    detail: JobProgressByTaskName;
+  };
+  msg: string;
+  result: boolean;
 };

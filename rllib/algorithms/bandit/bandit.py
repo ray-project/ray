@@ -1,5 +1,5 @@
 import logging
-from typing import Type, Union
+from typing import Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -7,7 +7,6 @@ from ray.rllib.algorithms.bandit.bandit_tf_policy import BanditTFPolicy
 from ray.rllib.algorithms.bandit.bandit_torch_policy import BanditTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import Deprecated
 
 logger = logging.getLogger(__name__)
@@ -27,7 +26,6 @@ class BanditConfig(AlgorithmConfig):
         # __sphinx_doc_begin__
         # Override some of AlgorithmConfig's default values with bandit-specific values.
         self.framework_str = "torch"
-        self.num_workers = 0
         self.rollout_fragment_length = 1
         self.train_batch_size = 1
         # Make sure, a `train()` call performs at least 100 env sampling
@@ -42,13 +40,13 @@ class BanditLinTSConfig(BanditConfig):
     """Defines a configuration class from which a Thompson-sampling bandit can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.bandit import BanditLinTSConfig
+        >>> from ray.rllib.algorithms.bandit import BanditLinTSConfig # doctest: +SKIP
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
-        >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)# doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env=WheelBanditEnv)
-        >>> trainer.train()
+        >>> algo = config.build(env=WheelBanditEnv)  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self):
@@ -65,13 +63,14 @@ class BanditLinUCBConfig(BanditConfig):
     """Defines a config class from which an upper confidence bound bandit can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.bandit import BanditLinUCBConfig
+        >>> from ray.rllib.algorithms.bandit import BanditLinUCBConfig# doctest: +SKIP
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
-        >>> config = BanditLinUCBConfig().rollouts(num_rollout_workers=4)
-        >>> print(config.to_dict())
+        >>> config = BanditLinUCBConfig()  # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4) # doctest: +SKIP
+        >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env=WheelBanditEnv)
-        >>> trainer.train()
+        >>> algo = config.build(env=WheelBanditEnv)  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
     """
 
     def __init__(self):
@@ -90,10 +89,13 @@ class BanditLinTS(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> BanditLinTSConfig:
-        return BanditLinTSConfig().to_dict()
+        return BanditLinTSConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return BanditTorchPolicy
         elif config["framework"] == "tf2":
@@ -106,10 +108,13 @@ class BanditLinUCB(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> BanditLinUCBConfig:
-        return BanditLinUCBConfig().to_dict()
+        return BanditLinUCBConfig()
 
+    @classmethod
     @override(Algorithm)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return BanditTorchPolicy
         elif config["framework"] == "tf2":
@@ -126,7 +131,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.bandit.bandit.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.bandit.bandit.BanditLin[UCB|TS]Config(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

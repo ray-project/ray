@@ -10,9 +10,9 @@ import traceback
 import urllib
 import urllib.parse
 import warnings
+import shutil
 from datetime import datetime
-from distutils.dir_util import copy_tree
-from typing import Optional, Set
+from typing import Optional, Set, List, Tuple
 
 import click
 import psutil
@@ -21,7 +21,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-import ray._private.utils
+from ray._private.utils import parse_resources_json
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
@@ -43,16 +43,13 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.experimental.state.api import get_log, list_logs
-from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
 from ray.experimental.state.state_cli import (
     ray_get,
     ray_list,
-    output_with_format,
+    logs_state_cli_group,
     summary_state_cli_group,
-    AvailableFormat,
 )
 
 logger = logging.getLogger(__name__)
@@ -587,21 +584,7 @@ def start(
         include_node_ip_address = True
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
-    try:
-        resources = json.loads(resources)
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold("--resources"))
-        cli_logger.abort(
-            "Valid values look like this: `{}`",
-            cf.bold('--resources=\'{"CustomResource3": 1, ' '"CustomResource2": 2}\''),
-        )
-
-        raise Exception(
-            "Unable to parse the --resources argument using "
-            "json.loads. Try using a format like\n\n"
-            '    --resources=\'{"CustomResource1": 3, '
-            '"CustomReseource2": 2}\''
-        )
+    resources = parse_resources_json(resources, cli_logger, cf)
 
     if plasma_store_socket_name is not None:
         warnings.warn(
@@ -815,6 +798,17 @@ def start(
                     ),
                 )
             cli_logger.newline()
+            cli_logger.print("To see the status of the cluster, use")
+            cli_logger.print("  {}".format(cf.bold("ray status")))
+            dashboard_url = node.address_info["webui_url"]
+            if dashboard_url:
+                cli_logger.print("To monitor and debug Ray, view the dashboard at ")
+                cli_logger.print(
+                    "  {}".format(
+                        cf.bold(dashboard_url),
+                    )
+                )
+            cli_logger.newline()
             cli_logger.print(
                 cf.underlined(
                     "If connection fails, check your "
@@ -968,111 +962,164 @@ def start(
 @click.option(
     "-g",
     "--grace-period",
-    default=10,
+    default=16,
     help=(
-        "The time ray waits for processes to be properly terminated. "
+        "The time in seconds ray waits for processes to be properly terminated. "
         "If processes are not terminated within the grace period, "
-        "they are forcefully terminated after the grace period."
+        "they are forcefully terminated after the grace period. "
     ),
 )
 @add_click_logging_options
 @PublicAPI
-def stop(force, grace_period):
+def stop(force: bool, grace_period: int):
     """Stop Ray processes manually on the local machine."""
-
-    # Note that raylet needs to exit before object store, otherwise
-    # it cannot exit gracefully.
     is_linux = sys.platform.startswith("linux")
-    processes_to_kill = RAY_PROCESSES
+    total_procs_found = 0
+    total_procs_stopped = 0
+    procs_not_gracefully_killed = []
 
-    process_infos = []
-    for proc in psutil.process_iter(["name", "cmdline"]):
-        try:
-            process_infos.append((proc, proc.name(), proc.cmdline()))
-        except psutil.Error:
-            pass
+    def kill_procs(
+        force: bool, grace_period: int, processes_to_kill: List[str]
+    ) -> Tuple[int, int, List[psutil.Process]]:
+        """Find all processes from `processes_to_kill` and terminate them.
 
-    stopped = []
-    for keyword, filter_by_cmd in processes_to_kill:
-        if filter_by_cmd and is_linux and len(keyword) > 15:
-            # getting here is an internal bug, so we do not use cli_logger
-            msg = (
-                "The filter string should not be more than {} "
-                "characters. Actual length: {}. Filter: {}"
-            ).format(15, len(keyword), keyword)
-            raise ValueError(msg)
+        Unless `force` is specified, it gracefully kills processes. If
+        processes are not cleaned within `grace_period`, it force kill all
+        remaining processes.
 
-        found = []
-        for candidate in process_infos:
-            proc, proc_cmd, proc_args = candidate
-            corpus = proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
-            if keyword in corpus:
-                found.append(candidate)
-        for proc, proc_cmd, proc_args in found:
-            proc_string = str(subprocess.list2cmdline(proc_args))
+        Returns:
+            total_procs_found: Total number of processes found from
+                `processes_to_kill` is added.
+            total_procs_stopped: Total number of processes gracefully
+                stopped from `processes_to_kill` is added.
+            procs_not_gracefully_killed: If processes are not killed
+                gracefully, they are added here.
+        """
+        process_infos = []
+        for proc in psutil.process_iter(["name", "cmdline"]):
             try:
-                if force:
-                    proc.kill()
-                else:
-                    # TODO(mehrdadn): On Windows, this is forceful termination.
-                    # We don't want CTRL_BREAK_EVENT, because that would
-                    # terminate the entire process group. What to do?
-                    proc.terminate()
+                process_infos.append((proc, proc.name(), proc.cmdline()))
+            except psutil.Error:
+                pass
 
-                if force:
-                    cli_logger.verbose(
-                        "Killed `{}` {} ",
-                        cf.bold(proc_string),
-                        cf.dimmed("(via SIGKILL)"),
-                    )
-                else:
-                    cli_logger.verbose(
-                        "Send termination request to `{}` {}",
-                        cf.bold(proc_string),
-                        cf.dimmed("(via SIGTERM)"),
-                    )
+        stopped = []
+        for keyword, filter_by_cmd in processes_to_kill:
+            if filter_by_cmd and is_linux and len(keyword) > 15:
+                # getting here is an internal bug, so we do not use cli_logger
+                msg = (
+                    "The filter string should not be more than {} "
+                    "characters. Actual length: {}. Filter: {}"
+                ).format(15, len(keyword), keyword)
+                raise ValueError(msg)
 
-                stopped.append(proc)
-            except psutil.NoSuchProcess:
-                cli_logger.verbose(
-                    "Attempted to stop `{}`, but process was already dead.",
-                    cf.bold(proc_string),
+            found = []
+            for candidate in process_infos:
+                proc, proc_cmd, proc_args = candidate
+                corpus = (
+                    proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
                 )
-            except (psutil.Error, OSError) as ex:
-                cli_logger.error(
-                    "Could not terminate `{}` due to {}", cf.bold(proc_string), str(ex)
-                )
+                if keyword in corpus:
+                    found.append(candidate)
+            for proc, proc_cmd, proc_args in found:
+                proc_string = str(subprocess.list2cmdline(proc_args))
+                try:
+                    if force:
+                        proc.kill()
+                    else:
+                        # TODO(mehrdadn): On Windows, this is forceful termination.
+                        # We don't want CTRL_BREAK_EVENT, because that would
+                        # terminate the entire process group. What to do?
+                        proc.terminate()
 
-    # Wait for the processes to actually stop.
-    # Dedup processes.
-    stopped, alive = psutil.wait_procs(stopped, timeout=0)
-    procs_to_kill = stopped + alive
-    total_found = len(procs_to_kill)
+                    if force:
+                        cli_logger.verbose(
+                            "Killed `{}` {} ",
+                            cf.bold(proc_string),
+                            cf.dimmed("(via SIGKILL)"),
+                        )
+                    else:
+                        cli_logger.verbose(
+                            "Send termination request to `{}` {}",
+                            cf.bold(proc_string),
+                            cf.dimmed("(via SIGTERM)"),
+                        )
 
-    # Wait for grace period to terminate processes.
-    gone_procs = set()
+                    stopped.append(proc)
+                except psutil.NoSuchProcess:
+                    cli_logger.verbose(
+                        "Attempted to stop `{}`, but process was already dead.",
+                        cf.bold(proc_string),
+                    )
+                except (psutil.Error, OSError) as ex:
+                    cli_logger.error(
+                        "Could not terminate `{}` due to {}",
+                        cf.bold(proc_string),
+                        str(ex),
+                    )
 
-    def on_terminate(proc):
-        gone_procs.add(proc)
-        cli_logger.print(f"{len(gone_procs)}/{total_found} stopped.", end="\r")
+        # Wait for the processes to actually stop.
+        # Dedup processes.
+        stopped, alive = psutil.wait_procs(stopped, timeout=0)
+        procs_to_kill = stopped + alive
+        total_found = len(procs_to_kill)
 
-    stopped, alive = psutil.wait_procs(
-        procs_to_kill, timeout=grace_period, callback=on_terminate
+        # Wait for grace period to terminate processes.
+        gone_procs = set()
+
+        def on_terminate(proc):
+            gone_procs.add(proc)
+            cli_logger.print(f"{len(gone_procs)}/{total_found} stopped.", end="\r")
+
+        stopped, alive = psutil.wait_procs(
+            procs_to_kill, timeout=grace_period, callback=on_terminate
+        )
+        total_stopped = len(stopped)
+
+        # For processes that are not killed within the grace period,
+        # we send force termination signals.
+        for proc in alive:
+            proc.kill()
+        # Wait a little bit to make sure processes are killed forcefully.
+        psutil.wait_procs(alive, timeout=2)
+        return total_found, total_stopped, alive
+
+    # GCS should exit after all other processes exit.
+    # Otherwise, some of processes may exit with an unexpected
+    # exit code which breaks ray start --block.
+    processes_to_kill = RAY_PROCESSES
+    gcs = processes_to_kill[0]
+    assert gcs[0] == "gcs_server"
+
+    grace_period_to_kill_gcs = int(grace_period / 2)
+    grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
+
+    # Kill evertyhing except GCS.
+    found, stopped, alive = kill_procs(
+        force, grace_period_to_kill_components, processes_to_kill[1:]
     )
-    total_stopped = len(stopped)
+    total_procs_found += found
+    total_procs_stopped += stopped
+    procs_not_gracefully_killed.extend(alive)
+
+    # Kill GCS.
+    found, stopped, alive = kill_procs(force, grace_period_to_kill_gcs, [gcs])
+    total_procs_found += found
+    total_procs_stopped += stopped
+    procs_not_gracefully_killed.extend(alive)
 
     # Print the termination result.
-    if total_found == 0:
+    if total_procs_found == 0:
         cli_logger.print("Did not find any active Ray processes.")
     else:
-        if total_stopped == total_found:
-            cli_logger.success("Stopped all {} Ray processes.", total_stopped)
+        if total_procs_stopped == total_procs_found:
+            cli_logger.success("Stopped all {} Ray processes.", total_procs_stopped)
         else:
             cli_logger.warning(
-                f"Stopped only {total_stopped} out of {total_found} Ray processes "
-                f"within the grace period {grace_period} seconds. "
+                f"Stopped only {total_procs_stopped} out of {total_procs_found} "
+                f"Ray processes within the grace period {grace_period} seconds. "
                 f"Set `{cf.bold('-v')}` to see more details. "
-                f"Remaining processes {alive} will be forcefully terminated.",
+                f"Remaining processes {procs_not_gracefully_killed} "
+                "will be forcefully terminated.",
             )
             cli_logger.warning(
                 f"You can also use `{cf.bold('--force')}` to forcefully terminate "
@@ -1080,12 +1127,6 @@ def stop(force, grace_period):
                 "proper termination."
             )
 
-    # For processes that are not killed within the grace period,
-    # we send force termination signals.
-    for proc in alive:
-        proc.kill()
-    # Wait a little bit to make sure processes are killed forcefully.
-    psutil.wait_procs(alive, timeout=2)
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
@@ -1968,210 +2009,6 @@ def local_dump(
     )
 
 
-@cli.command(name="logs")
-@click.argument(
-    "glob_filter",
-    required=False,
-    default="*",
-)
-@click.option(
-    "-ip",
-    "--node-ip",
-    required=False,
-    type=str,
-    default=None,
-    help="Filters the logs by this ip address.",
-)
-@click.option(
-    "--node-id",
-    "-id",
-    required=False,
-    type=str,
-    default=None,
-    help="Filters the logs by this NodeID.",
-)
-@click.option(
-    "--pid",
-    "-pid",
-    required=False,
-    type=str,
-    default=None,
-    help="Retrieves the logs from the process with this pid.",
-)
-@click.option(
-    "--actor-id",
-    "-a",
-    required=False,
-    type=str,
-    default=None,
-    help="Retrieves the logs corresponding to this ActorID.",
-)
-@click.option(
-    "--task-id",
-    "-t",
-    required=False,
-    type=str,
-    default=None,
-    help="Retrieves the logs corresponding to this TaskID.",
-)
-@click.option(
-    "--follow",
-    "-f",
-    required=False,
-    type=bool,
-    is_flag=True,
-    help="Streams the log file as it is updated instead of just tailing.",
-)
-@click.option(
-    "--tail",
-    required=False,
-    type=int,
-    default=None,
-    help="Number of lines to tail from log. -1 indicates fetching the whole file.",
-)
-@click.option(
-    "--interval",
-    required=False,
-    type=float,
-    default=None,
-    help="The interval to print new logs when `--follow` is specified.",
-    hidden=True,
-)
-@click.option(
-    "--timeout",
-    default=DEFAULT_RPC_TIMEOUT,
-    help=(
-        "Timeout in seconds for the API requests. "
-        f"Default is {DEFAULT_RPC_TIMEOUT}. If --follow is specified, "
-        "this option will be ignored."
-    ),
-)
-@click.option(
-    "--address",
-    default=None,
-    help=(
-        "The address of Ray API server. If not provided, it will be configured "
-        "automatically from querying the GCS server."
-    ),
-)
-@PublicAPI(stability="alpha")
-def ray_logs(
-    glob_filter,
-    node_ip: str,
-    node_id: str,
-    pid: str,
-    actor_id: str,
-    task_id: str,
-    follow: bool,
-    tail: int,
-    interval: float,
-    timeout: int,
-    address: Optional[str],
-):
-    """Print the log file that matches the GLOB_FILTER.
-
-    By default, it prints a list of log files that match the filter.
-    If there's only 1 match, it will print the log file.
-    By default, it prints the head node logs.
-
-    Usage:
-
-        Print the last 500 lines of raylet.out on a head node.
-
-        ```
-        ray logs raylet.out -tail 500
-        ```
-
-        Print the last 500 lines of raylet.out on a worker node id A.
-
-        ```
-        ray logs raylet.out -tail 500 —-node-id A
-        ```
-
-        Follow the log file with an actor id ABC.
-
-        ```
-        ray logs --actor-id ABC --follow
-        ```
-
-        Get the actor log from pid 123, ip ABC.
-        Note that this goes well with the driver log of Ray which prints
-        (ip=ABC, pid=123, class_name) logs.
-
-        ```
-        ray logs —ip=ABC pid=123
-        ```
-
-        Download the gcs_server.txt file to the local machine.
-
-        ```
-        ray logs gcs_server.out -tail -1 > gcs_server.txt
-        ```
-    """
-    if task_id is not None:
-        raise NotImplementedError("--task-id is not yet supported")
-
-    # If both id & ip are not provided, choose a head node as a default.
-    if node_id is None and node_ip is None:
-        address = ray._private.services.canonicalize_bootstrap_address_or_die(address)
-        node_ip = address.split(":")[0]
-
-    filename = None
-    match_unique = pid is not None or actor_id is not None  # Worker log  # Actor log
-
-    # If there's no unique match, try listing logs based on the glob filter.
-    if not match_unique:
-        logs = list_logs(
-            address=address,
-            node_id=node_id,
-            node_ip=node_ip,
-            glob_filter=glob_filter,
-            timeout=timeout,
-        )
-        log_files_found = []
-        for _, log_files in logs.items():
-            for log_file in log_files:
-                log_files_found.append(log_file)
-
-        # if there's only 1 file, that means there's a unique match.
-        if len(log_files_found) == 1:
-            filename = log_files_found[0]
-            match_unique = True
-        # Otherwise, print a list of log files.
-        else:
-            if node_id:
-                print(f"Node ID: {node_id}")
-            elif node_ip:
-                print(f"Node IP: {node_ip}")
-            print(output_with_format(logs, schema=None, format=AvailableFormat.YAML))
-
-    # If there's an unique match, print the log file.
-    if match_unique:
-        if not tail:
-            tail = 0 if follow else DEFAULT_LOG_LIMIT
-
-            if tail > 0:
-                print(
-                    f"--- Log has been truncated to last {tail} lines."
-                    " Use `--tail` flag to toggle. ---\n"
-                )
-
-        for chunk in get_log(
-            address=address,
-            node_id=node_id,
-            node_ip=node_ip,
-            filename=filename,
-            actor_id=actor_id,
-            task_id=task_id,
-            pid=pid,
-            tail=tail,
-            follow=follow,
-            _interval=interval,
-            timeout=timeout,
-        ):
-            print(chunk, end="", flush=True)
-
-
 @cli.command()
 @click.argument("cluster_config_file", required=False, type=str)
 @click.option(
@@ -2507,22 +2344,21 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
-        if not os.path.isdir(generate_bazel_project_template_to):
-            cli_logger.abort(
-                "The provided directory "
-                f"{generate_bazel_project_template_to} doesn't exist."
-            )
-        copy_tree(cpp_templete_dir, generate_bazel_project_template_to)
+        # copytree expects that the dst dir doesn't exist
+        # so we manually delete it if it exists.
+        if os.path.exists(generate_bazel_project_template_to):
+            shutil.rmtree(generate_bazel_project_template_to)
+        shutil.copytree(cpp_templete_dir, generate_bazel_project_template_to)
         out_include_dir = os.path.join(
             generate_bazel_project_template_to, "thirdparty/include"
         )
-        if not os.path.exists(out_include_dir):
-            os.makedirs(out_include_dir)
-        copy_tree(include_dir, out_include_dir)
+        if os.path.exists(out_include_dir):
+            shutil.rmtree(out_include_dir)
+        shutil.copytree(include_dir, out_include_dir)
         out_lib_dir = os.path.join(generate_bazel_project_template_to, "thirdparty/lib")
-        if not os.path.exists(out_lib_dir):
-            os.makedirs(out_lib_dir)
-        copy_tree(lib_dir, out_lib_dir)
+        if os.path.exists(out_lib_dir):
+            shutil.rmtree(out_lib_dir)
+        shutil.copytree(lib_dir, out_lib_dir)
 
         cli_logger.print(
             "Project template generated to {}",
@@ -2575,6 +2411,7 @@ cli.add_command(enable_usage_stats)
 cli.add_command(ray_list, name="list")
 cli.add_command(ray_get, name="get")
 add_command_alias(summary_state_cli_group, name="summary", hidden=False)
+add_command_alias(logs_state_cli_group, name="logs", hidden=False)
 
 try:
     from ray.dashboard.modules.job.cli import job_cli_group

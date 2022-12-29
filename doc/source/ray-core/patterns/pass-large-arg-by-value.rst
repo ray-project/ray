@@ -1,3 +1,5 @@
+.. _ray-pass-large-arg-by-value:
+
 Anti-pattern: Passing the same large argument by value repeatedly harms performance
 ===================================================================================
 

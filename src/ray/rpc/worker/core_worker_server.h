@@ -27,27 +27,36 @@ class CoreWorker;
 namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_CORE_WORKER_RPC_HANDLERS                                         \
-  RPC_SERVICE_HANDLER(CoreWorkerService, PushTask, -1)                       \
-  RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete, -1) \
-  RPC_SERVICE_HANDLER(CoreWorkerService, RayletNotifyGCSRestart, -1)         \
-  RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, -1)                \
-  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForActorOutOfScope, -1)         \
-  RPC_SERVICE_HANDLER(CoreWorkerService, PubsubLongPolling, -1)              \
-  RPC_SERVICE_HANDLER(CoreWorkerService, PubsubCommandBatch, -1)             \
-  RPC_SERVICE_HANDLER(CoreWorkerService, UpdateObjectLocationBatch, -1)      \
-  RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectLocationsOwner, -1)        \
-  RPC_SERVICE_HANDLER(CoreWorkerService, KillActor, -1)                      \
-  RPC_SERVICE_HANDLER(CoreWorkerService, CancelTask, -1)                     \
-  RPC_SERVICE_HANDLER(CoreWorkerService, RemoteCancelTask, -1)               \
-  RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats, -1)             \
-  RPC_SERVICE_HANDLER(CoreWorkerService, LocalGC, -1)                        \
-  RPC_SERVICE_HANDLER(CoreWorkerService, SpillObjects, -1)                   \
-  RPC_SERVICE_HANDLER(CoreWorkerService, RestoreSpilledObjects, -1)          \
-  RPC_SERVICE_HANDLER(CoreWorkerService, DeleteSpilledObjects, -1)           \
-  RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady, -1)              \
-  RPC_SERVICE_HANDLER(CoreWorkerService, Exit, -1)                           \
-  RPC_SERVICE_HANDLER(CoreWorkerService, AssignObjectOwner, -1)
+/// Disable gRPC server metrics since it incurs too high cardinality.
+#define RAY_CORE_WORKER_RPC_HANDLERS                                                     \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, PushTask, -1)           \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
+      CoreWorkerService, DirectActorCallArgWaitComplete, -1)                             \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
+      CoreWorkerService, RayletNotifyGCSRestart, -1)                                     \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, GetObjectStatus, -1)    \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
+      CoreWorkerService, WaitForActorOutOfScope, -1)                                     \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, PubsubLongPolling, -1)  \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, PubsubCommandBatch, -1) \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
+      CoreWorkerService, UpdateObjectLocationBatch, -1)                                  \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
+      CoreWorkerService, GetObjectLocationsOwner, -1)                                    \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, KillActor, -1)          \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, CancelTask, -1)         \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, RemoteCancelTask, -1)   \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, GetCoreWorkerStats, -1) \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, LocalGC, -1)            \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, DeleteObjects, -1)      \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, SpillObjects, -1)       \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
+      CoreWorkerService, RestoreSpilledObjects, -1)                                      \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
+      CoreWorkerService, DeleteSpilledObjects, -1)                                       \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, PlasmaObjectReady, -1)  \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, Exit, -1)               \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, AssignObjectOwner, -1)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
@@ -64,6 +73,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoteCancelTask)               \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteObjects)                  \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SpillObjects)                   \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RestoreSpilledObjects)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \

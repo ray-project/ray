@@ -1,8 +1,12 @@
-import gym
 import logging
-from typing import Dict
+from typing import Dict, List
+
+import numpy as np
+
 
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
@@ -16,6 +20,7 @@ from ray.rllib.utils.typing import (
     ModelGradients,
     TensorType,
 )
+
 
 logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
@@ -196,38 +201,39 @@ class KLCoeffMixin:
 
 
 class TargetNetworkMixin:
-    """Assign the `update_target` method to the SimpleQTFPolicy
+    """Assign the `update_target` method to the policy.
 
     The function is called every `target_network_update_freq` steps by the
     master learner.
     """
 
-    def __init__(
-        self,
-        obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: AlgorithmConfigDict,
-    ):
-        trainable_q_func_vars = self.model.trainable_variables()
-        trainable_target_q_func_vars = self.target_model.trainable_variables()
+    def __init__(self):
+
+        model_vars = self.model.trainable_variables()
+        target_model_vars = self.target_model.trainable_variables()
 
         @make_tf_callable(self.get_session())
-        def do_update():
-            # update_target_fn will be called periodically to copy Q network to
-            # target Q network
+        def update_target_fn(tau):
+            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
             update_target_expr = []
-            assert len(trainable_q_func_vars) == len(trainable_target_q_func_vars), (
-                trainable_q_func_vars,
-                trainable_target_q_func_vars,
+            assert len(model_vars) == len(target_model_vars), (
+                model_vars,
+                target_model_vars,
             )
-            for var, var_target in zip(
-                trainable_q_func_vars, trainable_target_q_func_vars
-            ):
-                update_target_expr.append(var_target.assign(var))
+            for var, var_target in zip(model_vars, target_model_vars):
+                update_target_expr.append(
+                    var_target.assign(tau * var + (1.0 - tau) * var_target)
+                )
                 logger.debug("Update target op {}".format(var_target))
             return tf.group(*update_target_expr)
 
-        self.update_target = do_update
+        # Hard initial update.
+        self._do_update = update_target_fn
+        # TODO: The previous SAC implementation does an update(1.0) here.
+        # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
+        # Also the test is not very maintainable, we need to change that unittest
+        # anyway.
+        self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
 
     @property
     def q_func_vars(self):
@@ -240,6 +246,23 @@ class TargetNetworkMixin:
         if not hasattr(self, "_target_q_func_vars"):
             self._target_q_func_vars = self.target_model.variables()
         return self._target_q_func_vars
+
+    # Support both hard and soft sync.
+    def update_target(self, tau: int = None) -> None:
+        self._do_update(np.float32(tau or self.config.get("tau", 1.0)))
+
+    @override(TFPolicy)
+    def variables(self) -> List[TensorType]:
+        return self.model.variables()
+
+    def set_weights(self, weights):
+        if isinstance(self, TFPolicy):
+            TFPolicy.set_weights(self, weights)
+        elif isinstance(self, EagerTFPolicyV2):  # Handle TF2V2 policies.
+            EagerTFPolicyV2.set_weights(self, weights)
+        elif isinstance(self, EagerTFPolicy):  # Handle TF2 policies.
+            EagerTFPolicy.set_weights(self, weights)
+        self.update_target(self.config.get("tau", 1.0))
 
 
 class ValueNetworkMixin:

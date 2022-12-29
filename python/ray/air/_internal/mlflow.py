@@ -1,5 +1,6 @@
 import logging
 import os
+from packaging import version
 from copy import deepcopy
 from typing import TYPE_CHECKING, Dict, Optional
 
@@ -188,16 +189,25 @@ class _MLflowLoggerUtil:
         Returns:
             The newly created MLflow run.
         """
+        import mlflow
+        from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
+
+        if tags is None:
+            tags = {}
 
         if set_active:
             return self._start_active_run(run_name=run_name, tags=tags)
 
-        from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
-
         client = self._get_client()
-        tags = tags or {}
-        tags[MLFLOW_RUN_NAME] = run_name
-        run = client.create_run(experiment_id=self.experiment_id, tags=tags)
+        # If `mlflow==1.30.0` and we don't use `run_name`, then MLflow might error. For
+        # more information, see #29749.
+        if version.parse(mlflow.__version__) >= version.parse("1.30.0"):
+            run = client.create_run(
+                run_name=run_name, experiment_id=self.experiment_id, tags=tags
+            )
+        else:
+            tags[MLFLOW_RUN_NAME] = run_name
+            run = client.create_run(experiment_id=self.experiment_id, tags=tags)
 
         return run
 

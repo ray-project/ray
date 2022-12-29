@@ -18,8 +18,8 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._private.test_utils import (
     Semaphore,
     SignalActor,
-    fetch_prometheus,
     object_memory_usage,
+    get_metric_check_condition,
     wait_for_condition,
 )
 
@@ -702,12 +702,6 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
     indirect=True,
 )
 def test_scheduling_class_depth(ray_start_regular):
-
-    node_info = ray.nodes()[0]
-    metrics_export_port = node_info["MetricsExportPort"]
-    addr = node_info["NodeManagerAddress"]
-    prom_addr = f"{addr}:{metrics_export_port}"
-
     @ray.remote(num_cpus=1000)
     def infeasible():
         pass
@@ -723,25 +717,14 @@ def test_scheduling_class_depth(ray_start_regular):
 
     # We expect the 2 calls to `infeasible` to be separate scheduling classes
     # because one has depth=1, and the other has depth=2.
-
     metric_name = "ray_internal_num_infeasible_scheduling_classes"
 
-    def make_condition(n):
-        def condition():
-            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
-            if metric_name in metric_names:
-                for sample in metric_samples:
-                    if sample.name == metric_name and sample.value == n:
-                        return True
-            return False
-
-        return condition
-
-    wait_for_condition(make_condition(2))
+    # timeout=60 necessary to pass on windows debug/asan builds.
+    wait_for_condition(get_metric_check_condition({metric_name: 2}), timeout=60)
     start_infeasible.remote(2)
-    wait_for_condition(make_condition(3))
+    wait_for_condition(get_metric_check_condition({metric_name: 3}), timeout=60)
     start_infeasible.remote(4)
-    wait_for_condition(make_condition(4))
+    wait_for_condition(get_metric_check_condition({metric_name: 4}), timeout=60)
 
 
 if __name__ == "__main__":

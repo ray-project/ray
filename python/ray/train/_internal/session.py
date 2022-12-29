@@ -2,6 +2,7 @@ import os
 import logging
 import platform
 import queue
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ from ray.train.constants import (
     TIME_TOTAL_S,
     TIMESTAMP,
     TRAINING_ITERATION,
+    CHECKPOINT_METADATA_KEY,
 )
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
@@ -46,12 +48,15 @@ class TrialInfo:
     id: str
     resources: Dict[str, float]
     logdir: str
+    driver_ip: str
+    experiment_name: Optional[str] = None
 
 
 @dataclass
 class TrainingResult:
     type: TrainingResultType
-    data: Dict
+    data: Union[Dict, Checkpoint, str]
+    metadata: Optional[Dict] = None
 
 
 # TODO(xwjiang): This needs a better name.
@@ -63,24 +68,34 @@ class _TrainSession:
         training_func: Callable,
         world_rank: int,
         local_rank: int,
+        node_rank: int,
+        local_world_size: int,
         world_size: int,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        checkpoint: Optional[Union[Dict, Checkpoint]] = None,
-        encode_data_fn: Callable = None,
+        checkpoint: Optional[Checkpoint] = None,
+        # Deprecated
+        encode_data_fn: Optional[Callable] = None,
         detailed_autofilled_metrics: bool = False,
+        # If True and the worker is on the same node as driver,
+        # will send over checkpoint path and metadata instead of
+        # the whole checkpoint to avoid unnecessary serialization.
+        enable_lazy_checkpointing: bool = True,
     ):
 
         self.dataset_shard = dataset_shard
 
         self.world_rank = world_rank
         self.local_rank = local_rank
+        self.node_rank = node_rank
+        self.local_world_size = local_world_size
         self.world_size = world_size
         self.trial_info = trial_info
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        self.loaded_checkpoint: Optional[Union[Dict, Checkpoint]] = checkpoint
+        self.loaded_checkpoint = checkpoint
+        self.enable_lazy_checkpointing = enable_lazy_checkpointing
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
@@ -240,9 +255,9 @@ class _TrainSession:
         if self.ignore_report:
             return
 
-        kwargs = self._encode_data_fn(self._auto_fill_metrics(kwargs))
+        kwargs = self._auto_fill_metrics(kwargs)
 
-        result = TrainingResult(TrainingResultType.REPORT, kwargs)
+        result = TrainingResult(type=TrainingResultType.REPORT, data=kwargs)
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -269,22 +284,37 @@ class _TrainSession:
         except queue.Empty:
             pass
 
-    def checkpoint(self, **kwargs):
+    def checkpoint(self, checkpoint: Checkpoint):
         """Adds kwargs to the queue to be consumed by main thread.
 
         Also stores the checkpoint in ``self.loaded_checkpoint``.
         """
 
         # Update session checkpoint to latest checkpoint.
-        self.loaded_checkpoint = kwargs
+        self.loaded_checkpoint = checkpoint
 
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
-            kwargs = {}
-        else:
-            kwargs = self._encode_data_fn(self._auto_fill_checkpoint_metrics(kwargs))
+            checkpoint = None
+        elif checkpoint:
+            checkpoint = self._encode_data_fn(checkpoint)
 
-        result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
+        metadata = self._auto_fill_checkpoint_metrics({})
+
+        if (
+            checkpoint
+            and self.enable_lazy_checkpointing
+            and checkpoint._local_path
+            and self.get_current_ip() == self.trial_info.driver_ip
+        ):
+            metadata.update({CHECKPOINT_METADATA_KEY: checkpoint._metadata})
+            checkpoint = str(checkpoint._local_path)
+
+        result = TrainingResult(
+            type=TrainingResultType.CHECKPOINT,
+            data=checkpoint,
+            metadata=metadata,
+        )
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
 
@@ -294,9 +324,23 @@ class _TrainSession:
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
+
+        # Special case: early fail for Torch tensors
+        if "torch" in sys.modules:
+            from ray.air._internal.torch_utils import contains_tensor
+
+            if contains_tensor(metrics):
+                raise ValueError(
+                    "Passing objects containg Torch tensors as metrics "
+                    "is not supported as it will throw an exception on "
+                    "deserialization. You can either convert the tensors "
+                    "to Python objects or use a `TorchCheckpoint` as the "
+                    "`checkpoint` argument of `ray.air.session.report` to "
+                    "store your Torch objects."
+                )
+
         if checkpoint:
-            checkpoint_dict = checkpoint.to_dict()
-            self.checkpoint(**checkpoint_dict)
+            self.checkpoint(checkpoint)
         self._report_legacy(**metrics)
 
 
@@ -324,7 +368,9 @@ def get_session() -> Optional[_TrainSession]:
 def shutdown_session():
     """Shuts down the initialized session."""
     global _session
+    global _session_v2
     _session = None
+    _session_v2 = None
 
 
 def _raise_accelerator_session_misuse():

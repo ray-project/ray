@@ -19,31 +19,31 @@ class MockGcsJobManager : public GcsJobManager {
  public:
   MOCK_METHOD(void,
               HandleAddJob,
-              (const rpc::AddJobRequest &request,
+              (rpc::AddJobRequest request,
                rpc::AddJobReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
               HandleMarkJobFinished,
-              (const rpc::MarkJobFinishedRequest &request,
+              (rpc::MarkJobFinishedRequest request,
                rpc::MarkJobFinishedReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
               HandleGetAllJobInfo,
-              (const rpc::GetAllJobInfoRequest &request,
+              (rpc::GetAllJobInfoRequest request,
                rpc::GetAllJobInfoReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
               HandleReportJobError,
-              (const rpc::ReportJobErrorRequest &request,
+              (rpc::ReportJobErrorRequest request,
                rpc::ReportJobErrorReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
               HandleGetNextJobID,
-              (const rpc::GetNextJobIDRequest &request,
+              (rpc::GetNextJobIDRequest request,
                rpc::GetNextJobIDReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));

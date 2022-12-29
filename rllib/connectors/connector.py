@@ -5,7 +5,7 @@ import abc
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
-import gym
+import gymnasium as gym
 
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.typing import (
@@ -14,7 +14,6 @@ from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     TensorType,
 )
-from ray.tune.registry import RLLIB_CONNECTOR, _global_registry
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -33,7 +32,7 @@ class ConnectorContext:
     """
 
     # TODO(jungong) : figure out how to fetch these in a remote setting.
-    # Probably from a policy server when initializing a policy client.
+    #  Probably from a policy server when initializing a policy client.
 
     def __init__(
         self,
@@ -106,19 +105,23 @@ class Connector(abc.ABC):
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    def to_state(self) -> Tuple[str, List[Any]]:
+    def to_state(self) -> Tuple[str, Any]:
         """Serialize a connector into a JSON serializable Tuple.
 
         to_state is required, so that all Connectors are serializable.
 
         Returns:
             A tuple of connector's name and its serialized states.
+            String should match the name used to register the connector,
+            while state can be any single data structure that contains the
+            serialized state of the connector. If a connector is stateless,
+            state can simply be None.
         """
         # Must implement by each connector.
         return NotImplementedError
 
     @staticmethod
-    def from_state(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
+    def from_state(self, ctx: ConnectorContext, params: Any) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
         from_state is required, so that all Connectors are serializable.
@@ -441,7 +444,11 @@ class ConnectorPipeline(abc.ABC):
             elif isinstance(key, int):
                 return [self.connectors[key]]
             elif isinstance(key, type):
-                key = key.__name__
+                results = []
+                for c in self.connectors:
+                    if issubclass(c.__class__, key):
+                        results.append(c)
+                return results
             else:
                 raise NotImplementedError(
                     "Indexing by {} is currently not supported.".format(type(key))
@@ -452,37 +459,4 @@ class ConnectorPipeline(abc.ABC):
             if c.__class__.__name__ == key:
                 results.append(c)
 
-        if len(results) == 0:
-            return []
-
         return results
-
-
-@PublicAPI(stability="alpha")
-def register_connector(name: str, cls: Connector):
-    """Register a connector for use with RLlib.
-
-    Args:
-        name: Name to register.
-        cls: Callable that creates an env.
-    """
-    if not issubclass(cls, Connector):
-        raise TypeError("Can only register Connector type.", cls)
-    _global_registry.register(RLLIB_CONNECTOR, name, cls)
-
-
-@PublicAPI(stability="alpha")
-def get_connector(ctx: ConnectorContext, name: str, params: Tuple[Any]) -> Connector:
-    """Get a connector by its name and serialized config.
-
-    Args:
-        name: name of the connector.
-        params: serialized parameters of the connector.
-
-    Returns:
-        Constructed connector.
-    """
-    if not _global_registry.contains(RLLIB_CONNECTOR, name):
-        raise NameError("connector not found.", name)
-    cls = _global_registry.get(RLLIB_CONNECTOR, name)
-    return cls.from_state(ctx, params)

@@ -53,6 +53,13 @@ def skip_exceptions(exc: Optional[Exception]) -> Exception:
     return exc
 
 
+def exception_cause(exc: Optional[Exception]) -> Optional[Exception]:
+    if not exc:
+        return None
+
+    return getattr(exc, "__cause__", None)
+
+
 class RunnerThread(threading.Thread):
     """Supervisor thread that runs your script."""
 

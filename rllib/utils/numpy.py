@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from gym.spaces import Discrete, MultiDiscrete
+from gymnasium.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 from types import MappingProxyType
@@ -128,7 +128,7 @@ def convert_to_numpy(
     """
 
     if reduce_floats != DEPRECATED_VALUE:
-        deprecation_warning(old="reduce_floats", new="reduce_types", error=False)
+        deprecation_warning(old="reduce_floats", new="reduce_types", error=True)
         reduce_type = reduce_floats
 
     # The mapping function used to numpyize torch/tf Tensors (and move them
@@ -236,7 +236,7 @@ def flatten_inputs_to_1d_tensor(
     Examples:
         >>> # B=2
         >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
@@ -468,7 +468,7 @@ def one_hot(
 
     # Handle bool arrays correctly.
     if x.dtype == np.bool_:
-        x = x.astype(np.int)
+        x = x.astype(np.int_)
         depth = 2
 
     # If depth is not given, try to infer it from the values in the array.

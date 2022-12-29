@@ -46,6 +46,7 @@ struct CoreWorkerOptions {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
+      bool *is_application_error,
       // The following 2 parameters `defined_concurrency_groups` and
       // `name_of_concurrency_group_to_execute` are used for Python
       // asyncio actor only.
@@ -53,7 +54,8 @@ struct CoreWorkerOptions {
       // Defined concurrency groups of this actor. Note this is only
       // used for actor creation task.
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-      const std::string name_of_concurrency_group_to_execute)>;
+      const std::string name_of_concurrency_group_to_execute,
+      bool is_reattempt)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -82,7 +84,9 @@ struct CoreWorkerOptions {
         serialized_job_config(""),
         metrics_agent_port(-1),
         connect_on_start(true),
-        runtime_env_hash(0) {}
+        runtime_env_hash(0),
+        session_name(""),
+        entrypoint("") {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -145,8 +149,9 @@ struct CoreWorkerOptions {
   std::function<void(const RayObject &error)> unhandled_exception_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
-  // Function that tries to interrupt the currently running Python thread.
-  std::function<bool()> kill_main;
+  // Function that tries to interrupt the currently running Python thread if its
+  // task ID matches the one given.
+  std::function<bool(const TaskID &task_id)> kill_main;
   /// Is local mode being used.
   bool is_local_mode;
   /// The function to destroy asyncio event and loops.
@@ -175,6 +180,9 @@ struct CoreWorkerOptions {
   std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
                                                 const ObjectID &object_id)>
       object_allocator;
+  /// Session name (Cluster ID) of the cluster.
+  std::string session_name;
+  std::string entrypoint;
 };
 }  // namespace core
 }  // namespace ray

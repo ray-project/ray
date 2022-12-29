@@ -1,7 +1,7 @@
 from collections import OrderedDict
 import logging
 import numpy as np
-import gym
+import gymnasium as gym
 from typing import Any, List
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
@@ -104,6 +104,8 @@ class Preprocessor:
             OneHotPreprocessor,
             RepeatedValuesPreprocessor,
             TupleFlatteningPreprocessor,
+            AtariRamPreprocessor,
+            GenericPixelPreprocessor,
         )
         if isinstance(self, classes):
             obs_space.original_space = self._obs_space
@@ -353,8 +355,23 @@ def get_preprocessor(space: gym.Space) -> type:
     if isinstance(space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete)):
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:
+        logger.debug(
+            "Defaulting to RLlib's GenericPixelPreprocessor because input "
+            "space has the atari-typical shape {}. Turn this behaviour off by setting "
+            "`preprocessor_pref=None` or "
+            "`preprocessor_pref='deepmind'` or disabling the preprocessing API "
+            "altogether with `_disable_preprocessor_api=True`.".format(ATARI_OBS_SHAPE)
+        )
         preprocessor = GenericPixelPreprocessor
     elif obs_shape == ATARI_RAM_OBS_SHAPE:
+        logger.debug(
+            "Defaulting to RLlib's AtariRamPreprocessor because input "
+            "space has the atari-typical shape {}. Turn this behaviour off by setting "
+            "`preprocessor_pref=None` or "
+            "`preprocessor_pref='deepmind' or disabling the preprocessing API "
+            "altogether with `_disable_preprocessor_api=True`."
+            "`.".format(ATARI_OBS_SHAPE)
+        )
         preprocessor = AtariRamPreprocessor
     elif isinstance(space, gym.spaces.Tuple):
         preprocessor = TupleFlatteningPreprocessor
