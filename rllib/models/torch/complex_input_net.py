@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete, MultiDiscrete, MultiBinary
+from gym.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 

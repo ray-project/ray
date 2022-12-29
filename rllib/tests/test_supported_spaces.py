@@ -32,7 +32,9 @@ ACTION_SPACES_TO_TEST = {
             "yet_another_nested_dict": Dict({"a": Tuple([Discrete(2), Discrete(3)])}),
         }
     ),
-    # TODO: (Artur) Support "multi_binary": MultiBinary([...]),
+    # Test discrete twice here until we suppoert multi_binary action spaces
+    "discrete": Discrete(5),  # TODO: (Artur) Support "multi_binary": MultiBinary([
+    # ...]),
 }
 
 OBSERVATION_SPACES_TO_TEST = {
@@ -125,8 +127,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
     for _ in framework_iterator(config, frameworks=frameworks):
         # Zip through action- and obs-spaces.
         for a_name, o_name in zip(
-            ACTION_SPACES_TO_TEST.keys(),
-            list(OBSERVATION_SPACES_TO_TEST.keys()) + ["discrete"],
+            ACTION_SPACES_TO_TEST.keys(), OBSERVATION_SPACES_TO_TEST.keys()
         ):
             _do_check(alg, config, a_name, o_name)
         # Do the remaining obs spaces.
