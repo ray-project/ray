@@ -774,7 +774,10 @@ class TestTailLogs:
             job_manager.stop_job(job_id)
 
             async for lines in job_manager.tail_job_logs(job_id):
-                assert all(s == "Waiting..." for s in lines.strip().split("\n"))
+                assert all(
+                    s == "Waiting..." or s == "Terminated"
+                    for s in lines.strip().split("\n")
+                )
                 print(lines, end="")
 
             await async_wait_for_condition_async_predicate(
