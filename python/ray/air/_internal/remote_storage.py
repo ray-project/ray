@@ -106,7 +106,8 @@ def get_fs_and_path(
         return None, None
 
     if _is_local_path(uri):
-        # Append protocol such that the downstream methods work properly on Linux and Windows.
+        # Append protocol such that the downstream operations work
+        # properly on Linux and Windows.
         uri = "file://" + pathlib.Path(uri).as_posix()
 
     parsed = urllib.parse.urlparse(uri)

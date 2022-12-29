@@ -1,7 +1,6 @@
 import logging
 import pathlib
 import posixpath
-import string
 import sys
 import urllib.parse
 from typing import (
