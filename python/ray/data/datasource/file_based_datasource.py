@@ -731,10 +731,29 @@ def _decode_url(path):
     return urllib.parse.unquote(path)
 
 
+def _is_local_windows_path(uri: str) -> bool:
+    """Determines if path is a Windows file-system location."""
+    if len(uri) >= 1 and uri[0] == "\\":
+        return True
+    if (
+        len(uri) >= 3
+        and uri[1] == ":"
+        and (uri[2] == "/" or uri[2] == "\\")
+        and uri[0].isalpha()
+    ):
+        return True
+    return False
+
+
 def _unwrap_protocol(path):
     """
     Slice off any protocol prefixes on path.
     """
+    if sys.platform == "win32" and _is_local_windows_path(path):
+        # Represent as posix path such that downstream functions properly handle it.
+        # This is executed when 'file://' is NOT included in the path.
+        return pathlib.Path(path).as_posix()
+
     parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
     query = "?" + parsed.query if parsed.query else ""  # support '?' in path
     netloc = parsed.netloc
@@ -751,7 +770,7 @@ def _unwrap_protocol(path):
         and not netloc
         and len(parsed_path) >= 3
         and parsed_path[0] == "/"  # The problematic leading slash
-        and parsed_path[1] in string.ascii_letters  # Ensure it is a drive letter.
+        and parsed_path[1].isalpha()  # Ensure it is a drive letter.
         and parsed_path[2:4] in (":", ":/")
     ):
         parsed_path = parsed_path[1:]
