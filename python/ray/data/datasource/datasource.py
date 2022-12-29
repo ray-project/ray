@@ -11,7 +11,6 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
-    BlockPartitionMetadata,
     T,
 )
 from ray.data.context import DatasetContext
@@ -165,13 +164,11 @@ class ReadTask(Callable[[], Iterable[Block]]):
     contents of the block itself.
     """
 
-    def __init__(
-        self, read_fn: Callable[[], Iterable[Block]], metadata: BlockPartitionMetadata
-    ):
+    def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
         self._metadata = metadata
         self._read_fn = read_fn
 
-    def get_metadata(self) -> BlockPartitionMetadata:
+    def get_metadata(self) -> BlockMetadata:
         return self._metadata
 
     def __call__(self) -> Iterable[Block]:

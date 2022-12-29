@@ -9,12 +9,12 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
 from ray._private.test_utils import (
     Semaphore,
     check_call_ray,
     check_call_subprocess,
     kill_process_by_name,
+    start_redis_instance,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_children_of_pid,
@@ -132,8 +132,8 @@ def test_calling_start_ray_head(call_ray_stop_only):
     temp_dir = ray._private.utils.get_ray_temp_dir()
 
     # Test starting Ray with RAY_REDIS_ADDRESS env.
-    _, proc = _start_redis_instance(
-        REDIS_EXECUTABLE, temp_dir, 8888, password=ray_constants.REDIS_DEFAULT_PASSWORD
+    _, proc = start_redis_instance(
+        temp_dir, 8888, password=ray_constants.REDIS_DEFAULT_PASSWORD
     )
     os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:8888"
     check_call_ray(["start", "--head"])

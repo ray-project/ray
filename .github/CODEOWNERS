@@ -27,6 +27,9 @@
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
 /src/ray/stats/metric_defs.cc @ericl @scv119 @rkooo567
 
+# Telemetry
+/src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
+
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
 
@@ -66,6 +69,7 @@
 
 # Ray data.
 /python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @c21
+/python/ray/data/preprocessors/ @clarkzinzow @jiaodong @Yard1 @bveeramani @matthewdeng @amogkam
 /doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @maxpumperla @c21 @ray-project/ray-docs
 
 # Ray workflows.
@@ -77,7 +81,7 @@
 /doc/source/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke @ray-project/ray-docs
 
 # Cluster (docs)
-/doc/source/cluster/ @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz @ray-project/ray-docs
+/doc/source/cluster/ @architkulkarni @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz @ray-project/ray-docs
 
 # Tune (docs)
 /doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs
@@ -93,7 +97,7 @@
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
-/python/requirements_ml_docker.txt @amogkam @sven1977 @richardliaw @matthewdeng
+/python/requirements/ml/requirements_ml_docker.txt @amogkam @sven1977 @richardliaw @matthewdeng
 
 # Ray symbol export
 /src/ray/ray_version_script.lds @iycheng @ericl @scv119

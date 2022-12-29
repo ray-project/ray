@@ -42,8 +42,14 @@ namespace stats {
 /// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
 ///
 
-/// Task stats from core workers.
+/// Tasks stats, broken down by state.
 DECLARE_stats(tasks);
+
+/// Actor stats, broken down by state.
+DECLARE_stats(actors);
+
+/// Placement group stats, broken down by state.
+DECLARE_stats(placement_groups);
 
 /// Event stats
 DECLARE_stats(operation_count);
@@ -94,6 +100,10 @@ DECLARE_stats(spill_manager_throughput_mb);
 /// GCS Storage
 DECLARE_stats(gcs_storage_operation_latency_ms);
 DECLARE_stats(gcs_storage_operation_count);
+DECLARE_stats(gcs_task_manager_task_events_dropped);
+DECLARE_stats(gcs_task_manager_task_events_stored);
+DECLARE_stats(gcs_task_manager_task_events_stored_bytes);
+DECLARE_stats(gcs_task_manager_task_events_reported);
 
 /// Object Store
 DECLARE_stats(object_store_memory);

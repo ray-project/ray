@@ -18,13 +18,12 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 
 import logging
 import time
-from typing import Callable, Optional, Union
+from typing import Optional
 
-import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
@@ -38,12 +37,8 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import (
-    EnvType,
-    PartialAlgorithmConfigDict,
     ResultDict,
-    AlgorithmConfigDict,
 )
-from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +46,18 @@ logger = logging.getLogger(__name__)
 class DDPPOConfig(PPOConfig):
     """Defines a configuration class from which a DDPPO Algorithm can be built.
 
+    Note(jungong) : despite best efforts, DDPPO does not use fault tolerant and
+    elastic features of WorkerSet, because of the way Torch DDP is set up.
+
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
-        >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)\
-        ...             .resources(num_gpus=1)\
-        ...             .rollouts(num_workers=10)
-        >>> print(config.to_dict())
+        >>> config = DDPPOConfig().training(lr=0.003, keep_local_weights_in_sync=True)
+        >>> config = config.resources(num_gpus=1)
+        >>> config = config.rollouts(num_rollout_workers=10)
+        >>> print(config.to_dict())   # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
-        >>> trainer.train()
+        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
@@ -67,14 +65,15 @@ class DDPPOConfig(PPOConfig):
         >>> from ray import tune
         >>> config = DDPPOConfig()
         >>> # Print out some default values.
-        >>> print(config.kl_coeff)
+        >>> print(config.kl_coeff)   # doctest: +SKIP
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), num_sgd_iter=15)
+        >>> config.training( # doctest: +SKIP
+        ...     lr=tune.grid_search([0.001, 0.0001]), num_sgd_iter=15)
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="CartPole-v1") # doctest: +SKIP
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.Tuner(
+        >>> tune.Tuner( # doctest: +SKIP
         ...     "DDPPO",
         ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
@@ -92,9 +91,7 @@ class DDPPOConfig(PPOConfig):
         self.torch_distributed_backend = "gloo"
 
         # Override some of PPO/Algorithm's default values with DDPPO-specific values.
-        # During the sampling phase, each rollout worker will collect a batch
-        # `rollout_fragment_length * num_envs_per_worker` steps in size.
-        self.rollout_fragment_length = 100
+        self.num_rollout_workers = 2
         # Vectorize the env (should enable by default since each worker has
         # a GPU).
         self.num_envs_per_worker = 5
@@ -114,8 +111,10 @@ class DDPPOConfig(PPOConfig):
         self.num_gpus = 0
         # Each rollout worker gets a GPU.
         self.num_gpus_per_worker = 1
-        # This is auto set based on sample batch size.
-        self.train_batch_size = -1
+        # Note: This is the train_batch_size per worker (updates happen on worker
+        # side). `rollout_fragment_length` (if "auto") is computed as:
+        # `train_batch_size` // `num_envs_per_worker`.
+        self.train_batch_size = 500
         # Kl divergence penalty should be fixed to 0 in DDPPO because in order
         # for it to be used as a penalty, we would have to un-decentralize
         # DDPPO
@@ -128,8 +127,8 @@ class DDPPOConfig(PPOConfig):
     def training(
         self,
         *,
-        keep_local_weights_in_sync: Optional[bool] = None,
-        torch_distributed_backend: Optional[str] = None,
+        keep_local_weights_in_sync: Optional[bool] = NotProvided,
+        torch_distributed_backend: Optional[str] = NotProvided,
         **kwargs,
     ) -> "DDPPOConfig":
         """Sets the training related configuration.
@@ -147,89 +146,37 @@ class DDPPOConfig(PPOConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if keep_local_weights_in_sync is not None:
+        if keep_local_weights_in_sync is not NotProvided:
             self.keep_local_weights_in_sync = keep_local_weights_in_sync
-        if torch_distributed_backend is not None:
+        if torch_distributed_backend is not NotProvided:
             self.torch_distributed_backend = torch_distributed_backend
 
         return self
 
-
-class DDPPO(PPO):
-    def __init__(
-        self,
-        config: Optional[PartialAlgorithmConfigDict] = None,
-        env: Optional[Union[str, EnvType]] = None,
-        logger_creator: Optional[Callable[[], Logger]] = None,
-        **kwargs,
-    ):
-        """Initializes a DDPPO instance.
-
-        Args:
-            config: Algorithm-specific configuration dict.
-            env: Name of the environment to use (e.g. a gym-registered str),
-                a full class path (e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
-                class directly. Note that this arg can also be specified via
-                the "env" key in `config`.
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
-            **kwargs: Arguments passed to the Trainable base class
-
-        """
-        super().__init__(
-            config=config, env=env, logger_creator=logger_creator, **kwargs
-        )
-
-        if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
-            # Users should not define `train_batch_size` directly (always -1).
-            raise ValueError(
-                "Set rollout_fragment_length instead of train_batch_size for DDPPO."
-            )
-
-        # Auto-train_batch_size: Calculate from rollout len and
-        # envs-per-worker.
-        self.config["train_batch_size"] = (
-            self.config["rollout_fragment_length"] * self.config["num_envs_per_worker"]
-        )
-
-    @classmethod
-    @override(PPO)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return DDPPOConfig().to_dict()
-
-    @override(PPO)
-    def validate_config(self, config):
-        """Validates the Algorithm's config dict.
-
-        Args:
-            config: The Trainer's config to check.
-
-        Raises:
-            ValueError: In case something is wrong with the config.
-        """
+    @override(PPOConfig)
+    def validate(self) -> None:
         # Call (base) PPO's config validation function first.
         # Note that this will not touch or check on the train_batch_size=-1
         # setting.
-        super().validate_config(config)
+        super().validate()
 
-        # Must have `num_workers` >= 1.
-        if config["num_workers"] < 1:
+        # Must have `num_rollout_workers` >= 1.
+        if self.num_rollout_workers < 1:
             raise ValueError(
                 "Due to its distributed, decentralized nature, "
                 "DD-PPO requires `num_workers` to be >= 1!"
             )
 
         # Only supported for PyTorch so far.
-        if config["framework"] != "torch":
+        if self.framework_str != "torch":
             raise ValueError("Distributed data parallel is only supported for PyTorch")
-        if config["torch_distributed_backend"] not in ("gloo", "mpi", "nccl"):
+        if self.torch_distributed_backend not in ("gloo", "mpi", "nccl"):
             raise ValueError(
                 "Only gloo, mpi, or nccl is supported for "
                 "the backend of PyTorch distributed."
             )
         # `num_gpus` must be 0/None, since all optimization happens on Workers.
-        if config["num_gpus"]:
+        if self.num_gpus:
             raise ValueError(
                 "When using distributed data parallel, you should set "
                 "num_gpus=0 since all optimization "
@@ -237,91 +184,139 @@ class DDPPO(PPO):
                 "num_gpus_per_worker=1."
             )
         # `batch_mode` must be "truncate_episodes".
-        if config["batch_mode"] != "truncate_episodes":
+        if not self.in_evaluation and self.batch_mode != "truncate_episodes":
             raise ValueError(
                 "Distributed data parallel requires truncate_episodes batch mode."
             )
+
         # DDPPO doesn't support KL penalties like PPO-1.
         # In order to support KL penalties, DDPPO would need to become
         # undecentralized, which defeats the purpose of the algorithm.
         # Users can still tune the entropy coefficient to control the
         # policy entropy (similar to controlling the KL penalty).
-        if config["kl_coeff"] != 0.0 or config["kl_target"] != 0.0:
-            raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
+        if self.kl_coeff != 0.0 or self.kl_target != 0.0:
+            raise ValueError(
+                "Invalid zero-values for `kl_coeff` and/or `kl_target`! "
+                "DDPPO doesn't support KL penalties like PPO-1!"
+            )
+
+    @override(AlgorithmConfig)
+    def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
+        if self.rollout_fragment_length == "auto":
+            # Example:
+            # 2 workers (ignored as learning happens on workers),
+            # 2 envs per worker, 100 train batch size:
+            # -> 100 / 2 -> 50
+            # 4 workers (ignored), 3 envs per worker, 1500 train batch size:
+            # -> 1500 / 3 -> 500
+            rollout_fragment_length = self.train_batch_size // (
+                self.num_envs_per_worker
+            )
+            return rollout_fragment_length
+        else:
+            return self.rollout_fragment_length
+
+
+class DDPPO(PPO):
+    @classmethod
+    @override(PPO)
+    def get_default_config(cls) -> AlgorithmConfig:
+        return DDPPOConfig()
 
     @override(PPO)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
         # Initialize torch process group for
-        if self.config["_disable_execution_plan_api"] is True:
-            self._curr_learner_info = {}
-            ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
-            port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
-            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-            logger.info("Creating torch process group with leader {}".format(address))
+        self._curr_learner_info = {}
 
-            # Get setup tasks in order to throw errors on failure.
-            ray.get(
-                [
-                    worker.setup_torch_data_parallel.remote(
-                        url=address,
-                        world_rank=i,
-                        world_size=len(self.workers.remote_workers()),
-                        backend=self.config["torch_distributed_backend"],
-                    )
-                    for i, worker in enumerate(self.workers.remote_workers())
-                ]
+        worker_ids = self.workers.healthy_worker_ids()
+        assert worker_ids, "No healthy rollout workers."
+
+        # Find IP and Port of the first remote worker. This is our Rank 0  worker.
+        ip = self.workers.foreach_worker(
+            func=lambda w: w.get_node_ip(),
+            remote_worker_ids=[worker_ids[0]],
+            local_worker=False,
+        )[0]
+        port = self.workers.foreach_worker(
+            func=lambda w: w.find_free_port(),
+            remote_worker_ids=[worker_ids[0]],
+            local_worker=False,
+        )[0]
+        address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+        logger.info("Creating torch process group with leader {}".format(address))
+
+        # Get setup tasks in order to throw errors on failure.
+        world_size = self.workers.num_remote_workers()
+        backend = self.config.torch_distributed_backend
+
+        def get_setup_fn(world_rank):
+            return lambda w: w.setup_torch_data_parallel(
+                url=address,
+                world_rank=world_rank,
+                world_size=world_size,
+                backend=backend,
             )
-            logger.info("Torch process group init completed")
-            self._ddppo_worker_manager = AsyncRequestsManager(
-                self.workers.remote_workers(),
-                max_remote_requests_in_flight_per_worker=1,
-                ray_wait_timeout_s=0.03,
-            )
+
+        funcs = [get_setup_fn(i) for i in range(world_size)]
+        # Set up torch distributed on all workers. The assumption here is that
+        # all workers should be healthy at this point.
+        self.workers.foreach_worker(func=funcs, local_worker=False, healthy_only=False)
+
+        logger.info("Torch process group init completed")
 
     @override(PPO)
     def training_step(self) -> ResultDict:
-        # Shortcut.
-        first_worker = self.workers.remote_workers()[0]
-
-        self._ddppo_worker_manager.call_on_all_available(
-            self._sample_and_train_torch_distributed
+        self.workers.foreach_worker_async(
+            func=self._sample_and_train_torch_distributed,
+            healthy_only=False,
         )
-        sample_and_update_results = self._ddppo_worker_manager.get_ready()
+        sample_and_update_results = self.workers.fetch_ready_async_reqs(
+            timeout_seconds=0.03
+        )
 
         # For all results collected:
         # - Update our counters and timers.
         # - Update the worker's global_vars.
         # - Build info dict using a LearnerInfoBuilder object.
         learner_info_builder = LearnerInfoBuilder(num_devices=1)
-        for worker, results in sample_and_update_results.items():
-            for result in results:
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
-                self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
-                self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
-                self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
-                self._timers[LEARN_ON_BATCH_TIMER].push(result["learn_on_batch_time"])
-                self._timers[SAMPLE_TIMER].push(result["sample_time"])
+        sampled_workers = set()
+        for worker_id, result in sample_and_update_results:
+            sampled_workers.add(worker_id)
+
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
+            self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
+            self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
+            self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
+            self._timers[LEARN_ON_BATCH_TIMER].push(result["learn_on_batch_time"])
+            self._timers[SAMPLE_TIMER].push(result["sample_time"])
+
             # Add partial learner info to builder object.
             learner_info_builder.add_learn_on_batch_results_multi_agent(result["info"])
 
-            # Broadcast the local set of global vars.
-            global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
-            for worker in self.workers.remote_workers():
-                worker.set_global_vars.remote(global_vars)
+        # Broadcast the local set of global vars to this worker.
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
+        self.workers.foreach_worker(
+            func=lambda w: w.set_global_vars(global_vars),
+            local_worker=False,
+            remote_worker_ids=list(sampled_workers),
+            timeout_seconds=0,  # Don't wait for workers to finish.
+        )
 
         # Sync down the weights from 1st remote worker (only if we have received
         # some results from it).
         # As with the sync up, this is not really needed unless the user is
         # reading the local weights.
-        if (
-            self.config["keep_local_weights_in_sync"]
-            and first_worker in sample_and_update_results
-        ):
-            self.workers.local_worker().set_weights(
-                ray.get(first_worker.get_weights.remote())
+        worker_ids = self.workers.healthy_worker_ids()
+        assert worker_ids, "No healthy rollout workers?"
+        if self.config.keep_local_weights_in_sync and worker_ids[0] in sampled_workers:
+            weights = self.workers.foreach_worker(
+                func=lambda w: w.get_weights(),
+                local_worker=False,
+                remote_worker_ids=[worker_ids[0]],
             )
+            self.workers.local_worker().set_weights(weights[0])
         # Return merged laarner into results.
         new_learner_info = learner_info_builder.finalize()
         if new_learner_info:
@@ -331,14 +326,14 @@ class DDPPO(PPO):
     @staticmethod
     def _sample_and_train_torch_distributed(worker: RolloutWorker):
         # This function is applied remotely on each rollout worker.
-        config = worker.policy_config
+        config: AlgorithmConfig = worker.config
 
         # Generate a sample.
         start = time.perf_counter()
         batch = worker.sample()
         sample_time = time.perf_counter() - start
         expected_batch_size = (
-            config["rollout_fragment_length"] * config["num_envs_per_worker"]
+            config.get_rollout_fragment_length() * config.num_envs_per_worker
         )
         assert batch.count == expected_batch_size, (
             "Batch size possibly out of sync between workers, expected:",
@@ -353,8 +348,8 @@ class DDPPO(PPO):
             batch,
             worker.policy_map,
             worker,
-            config["num_sgd_iter"],
-            config["sgd_minibatch_size"],
+            config.num_sgd_iter,
+            config.sgd_minibatch_size,
             [Postprocessing.ADVANTAGES],
         )
         learn_on_batch_time = time.perf_counter() - start

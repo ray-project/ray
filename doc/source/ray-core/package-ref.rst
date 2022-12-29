@@ -25,6 +25,8 @@ ray.remote
 
 .. autofunction:: ray.remote
 
+.. _ray-options-ref:
+
 .. autofunction:: ray.remote_function.RemoteFunction.options
 
 .. autofunction:: ray.actor.ActorClass.options
@@ -235,13 +237,6 @@ Debugging APIs
 .. autofunction:: ray.util.pdb.set_trace
 
 .. autofunction:: ray.util.inspect_serializability
-
-.. toctree::
-    :maxdepth: 2
-
-    cli.rst
-    ../ray-observability/state/cli.rst
-    ../ray-observability/state/ray-state-api-reference.rst
 
 .. _ray-core-exceptions:
 

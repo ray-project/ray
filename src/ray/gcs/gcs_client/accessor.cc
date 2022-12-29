@@ -426,7 +426,11 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
 }
 
 Status NodeInfoAccessor::DrainSelf() {
-  RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
+  if (local_node_id_.IsNil()) {
+    RAY_LOG(INFO) << "The node is already drained.";
+    // This node is already drained.
+    return Status::OK();
+  }
   NodeID node_id = NodeID::FromBinary(local_node_info_.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::DrainNodeRequest request;
@@ -774,42 +778,32 @@ Status NodeResourceInfoAccessor::AsyncGetAllResourceUsage(
   return Status::OK();
 }
 
-StatsInfoAccessor::StatsInfoAccessor(GcsClient *client_impl)
-    : client_impl_(client_impl) {}
-
-Status StatsInfoAccessor::AsyncAddProfileData(
-    const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
-    const StatusCallback &callback) {
-  NodeID node_id = NodeID::FromBinary(data_ptr->component_id());
-  RAY_LOG(DEBUG) << "Adding profile data, component type = " << data_ptr->component_type()
-                 << ", node id = " << node_id;
-  rpc::AddProfileDataRequest request;
-  request.mutable_profile_data()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().AddProfileData(
-      request,
-      [data_ptr, node_id, callback](const Status &status,
-                                    const rpc::AddProfileDataReply &reply) {
+Status TaskInfoAccessor::AsyncAddTaskEventData(
+    std::unique_ptr<rpc::TaskEventData> data_ptr, StatusCallback callback) {
+  RAY_LOG(DEBUG) << "Adding task events." << data_ptr->DebugString();
+  rpc::AddTaskEventDataRequest request;
+  // Prevent copy here
+  request.mutable_data()->Swap(data_ptr.get());
+  client_impl_->GetGcsRpcClient().AddTaskEventData(
+      request, [callback](const Status &status, const rpc::AddTaskEventDataReply &reply) {
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished adding profile data, status = " << status
-                       << ", component type = " << data_ptr->component_type()
-                       << ", node id = " << node_id;
+        RAY_LOG(DEBUG) << "Accessor added task events grpc OK";
       });
   return Status::OK();
 }
 
-Status StatsInfoAccessor::AsyncGetAll(
-    const MultiItemCallback<rpc::ProfileTableData> &callback) {
-  RAY_LOG(DEBUG) << "Getting all profile info.";
+Status TaskInfoAccessor::AsyncGetTaskEvents(
+    const MultiItemCallback<rpc::TaskEvents> &callback) {
+  RAY_LOG(DEBUG) << "Getting all task events info.";
   RAY_CHECK(callback);
-  rpc::GetAllProfileInfoRequest request;
-  client_impl_->GetGcsRpcClient().GetAllProfileInfo(
-      request,
-      [callback](const Status &status, const rpc::GetAllProfileInfoReply &reply) {
-        callback(status, VectorFromProtobuf(reply.profile_info_list()));
-        RAY_LOG(DEBUG) << "Finished getting all job info.";
+  rpc::GetTaskEventsRequest request;
+  client_impl_->GetGcsRpcClient().GetTaskEvents(
+      request, [callback](const Status &status, const rpc::GetTaskEventsReply &reply) {
+        callback(status, VectorFromProtobuf(reply.events_by_task()));
       });
+
   return Status::OK();
 }
 

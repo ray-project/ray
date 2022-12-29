@@ -20,8 +20,8 @@ head_node_type:
 worker_node_types:
     - name: memory_node
       instance_type: i3.8xlarge
-      min_workers: 20
-      max_workers: 20
+      min_workers: 16
+      max_workers: 16
       use_spot: false
       resources:
         gpu: 1

@@ -1,13 +1,13 @@
 import logging
 from typing import Optional, Type
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn import DQN, DQNConfig
 from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
@@ -19,20 +19,19 @@ class R2D2Config(DQNConfig):
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
-        >>> print(config.h_function_epsilon)
+        >>> print(config.h_function_epsilon)  # doctest: +SKIP
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
         >>>         "capacity": 1000000,
         >>>         "replay_burn_in": 20,
         >>>     }
         >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
+        >>> config.training(replay_buffer_config=replay_config)\  # doctest: +SKIP
         >>>       .resources(num_gpus=1)\
         >>>       .rollouts(num_rollout_workers=30)\
         >>>       .environment("CartPole-v1")
-        >>> algo = R2D2(config=config)
-        >>> while True:
-        >>>     algo.train()
+        >>> algo = R2D2(config=config)  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
@@ -41,16 +40,16 @@ class R2D2Config(DQNConfig):
         >>> config = R2D2Config()
         >>> config.training(train_batch_size=tune.grid_search([256, 64])
         >>> config.environment(env="CartPole-v1")
-        >>> tune.Tuner(
-        >>>     "R2D2",
-        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        >>>     param_space=config.to_dict()
-        >>> ).fit()
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "R2D2",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "initial_epsilon": 1.0,
@@ -64,7 +63,7 @@ class R2D2Config(DQNConfig):
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
         >>> config = R2D2Config()
-        >>> print(config.exploration_config)
+        >>> print(config.exploration_config)  # doctest: +SKIP
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "type": "SoftQ",
@@ -124,7 +123,7 @@ class R2D2Config(DQNConfig):
         }
 
         # .rollouts()
-        self.num_workers = 2
+        self.num_rollout_workers = 2
         self.batch_mode = "complete_episodes"
 
         # fmt: on
@@ -135,9 +134,9 @@ class R2D2Config(DQNConfig):
     def training(
         self,
         *,
-        zero_init_states: Optional[bool] = None,
-        use_h_function: Optional[bool] = None,
-        h_function_epsilon: Optional[float] = None,
+        zero_init_states: Optional[bool] = NotProvided,
+        use_h_function: Optional[bool] = NotProvided,
+        h_function_epsilon: Optional[float] = NotProvided,
         **kwargs,
     ) -> "R2D2Config":
         """Sets the training related configuration.
@@ -161,14 +160,36 @@ class R2D2Config(DQNConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if zero_init_states is not None:
+        if zero_init_states is not NotProvided:
             self.zero_init_states = zero_init_states
-        if use_h_function is not None:
+        if use_h_function is not NotProvided:
             self.use_h_function = use_h_function
-        if h_function_epsilon is not None:
+        if h_function_epsilon is not NotProvided:
             self.h_function_epsilon = h_function_epsilon
 
         return self
+
+    @override(DQNConfig)
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if (
+            not self.in_evaluation
+            and self.replay_buffer_config.get("replay_sequence_length", -1) != -1
+        ):
+            raise ValueError(
+                "`replay_sequence_length` is calculated automatically to be "
+                "model->max_seq_len + burn_in!"
+            )
+        # Add the `burn_in` to the Model's max_seq_len.
+        # Set the replay sequence length to the max_seq_len of the model.
+        self.replay_buffer_config["replay_sequence_length"] = (
+            self.replay_buffer_config["replay_burn_in"] + self.model["max_seq_len"]
+        )
+
+        if self.batch_mode != "complete_episodes":
+            raise ValueError("`batch_mode` must be 'complete_episodes'!")
 
 
 class R2D2(DQN):
@@ -188,40 +209,18 @@ class R2D2(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfigDict:
-        return R2D2Config().to_dict()
+    def get_default_config(cls) -> AlgorithmConfig:
+        return R2D2Config()
 
+    @classmethod
     @override(DQN)
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        cls, config: AlgorithmConfig
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return R2D2TorchPolicy
         else:
             return R2D2TFPolicy
-
-    @override(DQN)
-    def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Checks and updates the config based on settings.
-
-        Rewrites rollout_fragment_length to take into account burn-in and
-        max_seq_len truncation.
-        """
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["replay_buffer_config"].get("replay_sequence_length", -1) != -1:
-            raise ValueError(
-                "`replay_sequence_length` is calculated automatically to be "
-                "model->max_seq_len + burn_in!"
-            )
-        # Add the `burn_in` to the Model's max_seq_len.
-        # Set the replay sequence length to the max_seq_len of the model.
-        config["replay_buffer_config"]["replay_sequence_length"] = (
-            config["replay_buffer_config"]["replay_burn_in"]
-            + config["model"]["max_seq_len"]
-        )
-
-        if config.get("batch_mode") != "complete_episodes":
-            raise ValueError("`batch_mode` must be 'complete_episodes'!")
 
 
 # Deprecated: Use ray.rllib.algorithms.r2d2.r2d2.R2D2Config instead!

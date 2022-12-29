@@ -66,6 +66,7 @@ class RuntimeEnvContext:
         else:
             executable = "exec "
 
+        passthrough_args = [s.replace(" ", "\ ") for s in passthrough_args]
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " ".join(self.command_prefix + [exec_command])
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't

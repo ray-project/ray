@@ -45,7 +45,7 @@ def chunk_put(req: ray_client_pb2.DataRequest):
     if total_size >= OBJECT_TRANSFER_WARNING_SIZE and log_once(
         "client_object_put_size_warning"
     ):
-        size_gb = total_size / 2 ** 30
+        size_gb = total_size / 2**30
         warnings.warn(
             "Ray Client is attempting to send a "
             f"{size_gb:.2f} GiB object over the network, which may "
@@ -134,7 +134,7 @@ class ChunkCollector:
         if get_resp.total_size > OBJECT_TRANSFER_WARNING_SIZE and log_once(
             "client_object_transfer_size_warning"
         ):
-            size_gb = get_resp.total_size / 2 ** 30
+            size_gb = get_resp.total_size / 2**30
             warnings.warn(
                 "Ray Client is attempting to retrieve a "
                 f"{size_gb:.2f} GiB object over the network, which may "

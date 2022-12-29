@@ -11,10 +11,10 @@ def test_basic(ray_start_regular_shared, pandas):
     ds = ray.data.range_table(100, parallelism=10)
     ds = ds.add_column("embedding", lambda b: b["value"] ** 2)
     if pandas:
-        assert ds._dataset_format() == "pandas"
+        assert ds.dataset_format() == "pandas"
     else:
         ds = ds.map_batches(lambda df: pyarrow.Table.from_pandas(df))
-        assert ds._dataset_format() == "arrow"
+        assert ds.dataset_format() == "arrow"
 
     rad = ds.to_random_access_dataset("value", num_workers=1)
 
@@ -22,10 +22,10 @@ def test_basic(ray_start_regular_shared, pandas):
     assert ray.get(rad.get_async(-1)) is None
     assert ray.get(rad.get_async(100)) is None
     for i in range(100):
-        assert ray.get(rad.get_async(i)) == {"value": i, "embedding": i ** 2}
+        assert ray.get(rad.get_async(i)) == {"value": i, "embedding": i**2}
 
     def expected(i):
-        return {"value": i, "embedding": i ** 2}
+        return {"value": i, "embedding": i**2}
 
     # Test multiget.
     results = rad.multiget([-1] + list(range(10)) + [100])

@@ -10,7 +10,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train._internal.dl_predictor import DLPredictor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -94,8 +94,9 @@ class TorchPredictor(DLPredictor):
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
+    @DeveloperAPI
     def call_model(
-        self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
+        self, inputs: Union[torch.Tensor, Dict[str, torch.Tensor]]
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """Runs inference on a single batch of tensor data.
 
@@ -105,36 +106,44 @@ class TorchPredictor(DLPredictor):
         Override this method to add custom logic for processing the model input or
         output.
 
+        Args:
+            inputs: A batch of data to predict on, represented as either a single
+                PyTorch tensor or for multi-input models, a dictionary of tensors.
+
+        Returns:
+            The model outputs, either as a single tensor or a dictionary of tensors.
+
         Example:
 
-            .. code-block:: python
+            .. testcode::
 
                 # List outputs are not supported by default TorchPredictor.
+                # So let's define a custom TorchPredictor and override call_model
                 class MyModel(torch.nn.Module):
                     def forward(self, input_tensor):
                         return [input_tensor, input_tensor]
 
                 # Use a custom predictor to format model output as a dict.
                 class CustomPredictor(TorchPredictor):
-                    def call_model(self, tensor):
-                        model_output = super().call_model(tensor)
+                    def call_model(self, inputs):
+                        model_output = super().call_model(inputs)
                         return {
                             str(i): model_output[i] for i in range(len(model_output))
                         }
 
+                # create our data batch
+                data_batch = np.array([1, 2])
+                # create custom predictor and predict
                 predictor = CustomPredictor(model=MyModel())
                 predictions = predictor.predict(data_batch)
+                print(f"Predictions: {predictions.get('0')}, {predictions.get('1')}")
 
-        Args:
-            tensor: A batch of data to predict on, represented as either a single
-                PyTorch tensor or for multi-input models, a dictionary of tensors.
+            .. testoutput::
 
-        Returns:
-            The model outputs, either as a single tensor or a dictionary of tensors.
-
+                Predictions: [1 2], [1 2]
         """
         with torch.no_grad():
-            output = self.model(tensor)
+            output = self.model(inputs)
         return output
 
     def predict(
@@ -158,42 +167,59 @@ class TorchPredictor(DLPredictor):
             dtype: The dtypes to use for the tensors. Either a single dtype for all
                 tensors or a mapping from column name to dtype.
 
-        Examples:
-            >>> import numpy as np
-            >>> import torch
-            >>> from ray.train.torch import TorchPredictor
-            >>>
-            >>> model = torch.nn.Linear(2, 1)
-            >>> predictor = TorchPredictor(model=model)
-            >>>
-            >>> data = np.array([[1, 2], [3, 4]])
-            >>> predictions = predictor.predict(data, dtype=torch.float)
-
-            >>> import pandas as pd
-            >>> import torch
-            >>> from ray.train.torch import TorchPredictor
-            >>>
-            >>> class CustomModule(torch.nn.Module):
-            ...     def __init__(self):
-            ...         super().__init__()
-            ...         self.linear1 = torch.nn.Linear(1, 1)
-            ...         self.linear2 = torch.nn.Linear(1, 1)
-            ...
-            ...     def forward(self, input_dict: dict):
-            ...         out1 = self.linear1(input_dict["A"].unsqueeze(1))
-            ...         out2 = self.linear2(input_dict["B"].unsqueeze(1))
-            ...         return out1 + out2
-            >>>
-            >>> predictor = TorchPredictor(model=CustomModule())
-            >>>
-            >>> # Pandas dataframe.
-            >>> data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-            >>>
-            >>> predictions = predictor.predict(data, dtype=torch.float)
-
         Returns:
             DataBatchType: Prediction result. The return type will be the same as the
                 input type.
+
+        Example:
+
+            .. testcode::
+
+                    import numpy as np
+                    import pandas as pd
+                    import torch
+                    import ray
+                    from ray.train.torch import TorchPredictor
+
+                    # Define a custom PyTorch module
+                    class CustomModule(torch.nn.Module):
+                        def __init__(self):
+                            super().__init__()
+                            self.linear1 = torch.nn.Linear(1, 1)
+                            self.linear2 = torch.nn.Linear(1, 1)
+
+                        def forward(self, input_dict: dict):
+                            out1 = self.linear1(input_dict["A"].unsqueeze(1))
+                            out2 = self.linear2(input_dict["B"].unsqueeze(1))
+                            return out1 + out2
+
+                    # Set manul seed so we get consistent output
+                    torch.manual_seed(42)
+
+                    # Use Standard PyTorch model
+                    model = torch.nn.Linear(2, 1)
+                    predictor = TorchPredictor(model=model)
+                    # Define our data
+                    data = np.array([[1, 2], [3, 4]])
+                    predictions = predictor.predict(data, dtype=torch.float)
+                    print(f"Standard model predictions: {predictions}")
+                    print("---")
+
+                    # Use Custom PyTorch model with TorchPredictor
+                    predictor = TorchPredictor(model=CustomModule())
+                    # Define our data and predict Customer model with TorchPredictor
+                    data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+                    predictions = predictor.predict(data, dtype=torch.float)
+                    print(f"Custom model predictions: {predictions}")
+
+            .. testoutput::
+
+                Standard model predictions: {'predictions': array([[1.5487633],
+                       [3.8037925]], dtype=float32)}
+                ---
+                Custom model predictions:     predictions
+                0  [0.61623406]
+                1    [2.857038]
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
 

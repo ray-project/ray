@@ -188,6 +188,23 @@ def test_fractional_resources(shutdown_only):
         Foo2._remote([], {}, resources={"Custom": 1.5})
 
 
+def test_fractional_memory_round_down(shutdown_only):
+    @ray.remote
+    def test():
+        pass
+
+    with ray.init(num_cpus=1, _memory=2):
+        ray.get(test.options(memory=2.9).remote(), timeout=2)
+
+    with ray.init(num_cpus=1, _memory=0.2):
+        ray.get(test.options(memory=0.5).remote(), timeout=2)
+
+    with ray.init(num_cpus=1, _memory=2.2):
+        ray.get(test.options(memory=2.9).remote(), timeout=2)
+        with pytest.raises(ray.exceptions.GetTimeoutError):
+            ray.get(test.options(memory=3.1).remote(), timeout=2)
+
+
 def test_multiple_raylets(ray_start_cluster):
     # This test will define a bunch of tasks that can only be assigned to
     # specific raylets, and we will check that they are assigned
@@ -501,6 +518,21 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
     # All cluster resources should be utilized and
     # cluster_resources must be empty
     assert cluster_resources == {}
+
+
+def test_ray_get_timeout_zero(monkeypatch):
+    # Check that ray.get(timeout=0) raises warnings on change of behavior.
+    # Removed when https://github.com/ray-project/ray/issues/28465 is resolved.
+    with pytest.warns(UserWarning):
+        ray.get(ray.put(1), timeout=0)
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "0")
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            ray.get(ray.put(1), timeout=0)
 
 
 if __name__ == "__main__":

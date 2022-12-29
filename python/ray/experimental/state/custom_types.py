@@ -62,6 +62,7 @@ WORKER_EXIT_TYPE = [
     "INTENDED_SYSTEM_EXIT",
     "USER_ERROR",
     "INTENDED_USER_EXIT",
+    "NODE_OUT_OF_MEMORY",
 ]
 TypeWorkerExitType = Literal[tuple(WORKER_EXIT_TYPE)]
 TASK_TYPE = [

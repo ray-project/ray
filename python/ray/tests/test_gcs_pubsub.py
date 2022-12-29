@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import threading
+import re
 
 from ray._private.gcs_pubsub import (
     GcsPublisher,
@@ -141,6 +142,9 @@ async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     await subscriber.close()
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 7, 0), reason="no asyncio.all_tasks in py3.6"
+)
 @pytest.mark.asyncio
 async def test_aio_poll_no_leaks(ray_start_regular):
     """Test that polling doesn't leak memory."""
@@ -184,10 +188,13 @@ def test_two_subscribers(ray_start_regular):
     # Make sure subscription is registered before publishing starts.
     log_subscriber.subscribe()
 
+    log_str_pattern = re.compile("^log ([0-9]+)$")
+
     def receive_logs():
         while len(logs) < num_messages:
             log_batch = log_subscriber.poll()
-            logs.append(log_batch)
+            if log_str_pattern.match(log_batch["lines"][0]):
+                logs.append(log_batch)
 
     t2 = threading.Thread(target=receive_logs)
     t2.start()

@@ -49,17 +49,28 @@ class MockObjectStore : public IObjectStore {
   MOCK_CONST_METHOD1(GetDebugDump, void(std::stringstream &buffer));
 };
 
+class MockObjectStatsCollector : public ObjectStatsCollector {
+ public:
+  MOCK_METHOD1(OnObjectCreated, void(const LocalObject &));
+  MOCK_METHOD1(OnObjectSealed, void(const LocalObject &));
+  MOCK_METHOD1(OnObjectDeleting, void(const LocalObject &));
+};
+
 struct ObjectLifecycleManagerTest : public Test {
   void SetUp() override {
     Test::SetUp();
     auto eviction_policy = std::make_unique<MockEvictionPolicy>();
     auto object_store = std::make_unique<MockObjectStore>();
+    auto stats_collector = std::make_unique<MockObjectStatsCollector>();
     eviction_policy_ = eviction_policy.get();
     object_store_ = object_store.get();
-    manager_ = std::make_unique<ObjectLifecycleManager>(ObjectLifecycleManager(
-        std::move(object_store), std::move(eviction_policy), [this](auto &id) {
-          notify_deleted_ids_.push_back(id);
-        }));
+    stats_collector_ = stats_collector.get();
+    auto delete_object_cb = [this](auto &id) { notify_deleted_ids_.push_back(id); };
+    manager_ = std::make_unique<ObjectLifecycleManager>(
+        ObjectLifecycleManager(std::move(object_store),
+                               std::move(eviction_policy),
+                               delete_object_cb,
+                               std::move(stats_collector)));
     sealed_object_.state = ObjectState::PLASMA_SEALED;
     not_sealed_object_.state = ObjectState::PLASMA_CREATED;
     one_ref_object_.state = ObjectState::PLASMA_SEALED;
@@ -70,6 +81,7 @@ struct ObjectLifecycleManagerTest : public Test {
 
   MockEvictionPolicy *eviction_policy_;
   MockObjectStore *object_store_;
+  MockObjectStatsCollector *stats_collector_;
   std::unique_ptr<ObjectLifecycleManager> manager_;
   std::vector<ObjectID> notify_deleted_ids_;
 

@@ -11,15 +11,24 @@ import pytest
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+from ray._private.ray_constants import (
+    RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+    KV_NAMESPACE_JOB,
+)
 from ray._private.test_utils import (
     SignalActor,
     async_wait_for_condition,
     async_wait_for_condition_async_predicate,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
-from ray.dashboard.modules.job.job_manager import JobManager, generate_job_id
+from ray.dashboard.modules.job.job_manager import (
+    JobManager,
+    JobSupervisor,
+    generate_job_id,
+)
+from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.job_submission import JobStatus
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.tests.conftest import call_ray_start  # noqa: F401
 
 TEST_NAMESPACE = "jobs_test_namespace"
@@ -28,17 +37,60 @@ TEST_NAMESPACE = "jobs_test_namespace"
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+@pytest.mark.parametrize("resources_specified", [True, False])
+async def test_get_scheduling_strategy(
+    call_ray_start, monkeypatch, resources_specified, tmp_path  # noqa: F811
+):
+    monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+
+    job_manager = JobManager(gcs_aio_client, tmp_path)
+
+    # If no head node id is found, we should use "DEFAULT".
+    await gcs_aio_client.internal_kv_del(
+        "head_node_id".encode(), del_by_prefix=False, namespace=KV_NAMESPACE_JOB
+    )
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    assert strategy == "DEFAULT"
+
+    # Add a head node id to the internal KV to simulate what is done in node_head.py.
+    await gcs_aio_client.internal_kv_put(
+        "head_node_id".encode(), "123456".encode(), True, namespace=KV_NAMESPACE_JOB
+    )
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    if resources_specified:
+        assert strategy == "DEFAULT"
+    else:
+        expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
+        assert expected_strategy.node_id == strategy.node_id
+        assert expected_strategy.soft == strategy.soft
+
+    # When the env var is set to 1, we should use DEFAULT.
+    monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
+    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    assert strategy == "DEFAULT"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
     ["""ray start --head --resources={"TestResourceKey":123}"""],
     indirect=True,
 )
-async def test_submit_no_ray_address(call_ray_start):  # noqa: F811
+async def test_submit_no_ray_address(call_ray_start, tmp_path):  # noqa: F811
     """Test that a job script with an unspecified Ray address works."""
 
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
-    job_manager = JobManager(gcs_aio_client)
+    job_manager = JobManager(gcs_aio_client, tmp_path)
 
     init_ray_no_address_script = """
 import ray
@@ -70,7 +122,13 @@ def shared_ray_instance():
     # submissions.
     old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
 
-    yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE, log_to_driver=True)
+    yield ray.init(
+        num_cpus=16,
+        num_gpus=1,
+        resources={"Custom": 1},
+        namespace=TEST_NAMESPACE,
+        log_to_driver=True,
+    )
 
     if old_ray_address is not None:
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
@@ -78,12 +136,12 @@ def shared_ray_instance():
 
 @pytest.mark.asyncio
 @pytest.fixture
-async def job_manager(shared_ray_instance):
+async def job_manager(shared_ray_instance, tmp_path):
     address_info = shared_ray_instance
     gcs_aio_client = GcsAioClient(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
-    yield JobManager(gcs_aio_client)
+    yield JobManager(gcs_aio_client, tmp_path)
 
 
 def _driver_script_path(file_name: str) -> str:
@@ -436,17 +494,14 @@ class TestRuntimeEnv:
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
-        assert (
-            dict_to_str(
-                {
-                    JOB_NAME_METADATA_KEY: job_id,
-                    JOB_ID_METADATA_KEY: job_id,
-                    "key1": "val1",
-                    "key2": "val2",
-                }
-            )
-            in job_manager.get_job_logs(job_id)
-        )
+        assert dict_to_str(
+            {
+                JOB_NAME_METADATA_KEY: job_id,
+                JOB_ID_METADATA_KEY: job_id,
+                "key1": "val1",
+                "key2": "val2",
+            }
+        ) in job_manager.get_job_logs(job_id)
 
         # Check that we can override job name.
         job_id = await job_manager.submit_job(
@@ -465,18 +520,35 @@ class TestRuntimeEnv:
         "env_vars",
         [None, {}, {"hello": "world"}],
     )
-    async def test_cuda_visible_devices(self, job_manager, env_vars):
-        """Check CUDA_VISIBLE_DEVICES behavior.
+    @pytest.mark.parametrize(
+        "resource_kwarg",
+        [
+            {},
+            {"entrypoint_num_cpus": 1},
+            {"entrypoint_num_gpus": 1},
+            {"entrypoint_resources": {"Custom": 1}},
+        ],
+    )
+    async def test_cuda_visible_devices(self, job_manager, resource_kwarg, env_vars):
+        """Check CUDA_VISIBLE_DEVICES behavior introduced in #24546.
 
         Should not be set in the driver, but should be set in tasks.
-
         We test a variety of `env_vars` parameters due to custom parsing logic
         that caused https://github.com/ray-project/ray/issues/25086.
+
+        If the user specifies a resource, we should not use the CUDA_VISIBLE_DEVICES
+        logic. Instead, the behavior should match that of the user specifying
+        resources for any other actor. So CUDA_VISIBLE_DEVICES should be set in the
+        driver and tasks.
         """
         run_cmd = f"python {_driver_script_path('check_cuda_devices.py')}"
         runtime_env = {"env_vars": env_vars}
+        if resource_kwarg:
+            run_cmd = "RAY_TEST_RESOURCES_SPECIFIED=1 " + run_cmd
         job_id = await job_manager.submit_job(
-            entrypoint=run_cmd, runtime_env=runtime_env
+            entrypoint=run_cmd,
+            runtime_env=runtime_env,
+            **resource_kwarg,
         )
 
         await async_wait_for_condition_async_predicate(
@@ -708,6 +780,76 @@ class TestTailLogs:
             await async_wait_for_condition_async_predicate(
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
+
+
+@pytest.mark.asyncio
+async def test_stop_job_gracefully(job_manager):
+    """
+    Stop job should send SIGTERM to child process (before trying to kill).
+    """
+    entrypoint = """python -c \"
+import sys
+import signal
+import time
+def handler(*args):
+    print('SIGTERM signal handled!');
+    sys.exit()
+signal.signal(signal.SIGTERM, handler)
+
+while True:
+    print('Waiting...')
+    time.sleep(1)\"
+"""
+    job_id = await job_manager.submit_job(entrypoint=entrypoint)
+
+    await async_wait_for_condition(
+        lambda: "Waiting..." in job_manager.get_job_logs(job_id)
+    )
+
+    assert job_manager.stop_job(job_id) is True
+
+    await async_wait_for_condition_async_predicate(
+        check_job_stopped, job_manager=job_manager, job_id=job_id
+    )
+
+    assert "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
+
+
+@pytest.mark.asyncio
+async def test_stop_job_timeout(job_manager):
+    """
+    Stop job should send SIGTERM first, then if timeout occurs, send SIGKILL.
+    """
+    entrypoint = """python -c \"
+import sys
+import signal
+import time
+def handler(*args):
+    print('SIGTERM signal handled!');
+    pass
+signal.signal(signal.SIGTERM, handler)
+
+while True:
+    print('Waiting...')
+    time.sleep(1)\"
+"""
+    job_id = await job_manager.submit_job(entrypoint=entrypoint)
+
+    await async_wait_for_condition(
+        lambda: "Waiting..." in job_manager.get_job_logs(job_id)
+    )
+
+    assert job_manager.stop_job(job_id) is True
+
+    await async_wait_for_condition(
+        lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
+    )
+    await async_wait_for_condition_async_predicate(
+        check_job_stopped,
+        job_manager=job_manager,
+        job_id=job_id,
+        timeout=JobSupervisor.WAIT_FOR_JOB_TERMINATION_S + 10,
+    )
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,7 @@ import re
 import traceback
 from typing import Tuple, Type, TYPE_CHECKING, Union
 
-from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
+from ray.rllib.utils.deprecation import Deprecated
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -15,49 +15,49 @@ if TYPE_CHECKING:
 def _import_a2c():
     import ray.rllib.algorithms.a2c as a2c
 
-    return a2c.A2C, a2c.A2CConfig().to_dict()
+    return a2c.A2C, a2c.A2C.get_default_config()
 
 
 def _import_a3c():
     import ray.rllib.algorithms.a3c as a3c
 
-    return a3c.A3C, a3c.A3CConfig().to_dict()
+    return a3c.A3C, a3c.A3C.get_default_config()
 
 
 def _import_alpha_star():
     import ray.rllib.algorithms.alpha_star as alpha_star
 
-    return alpha_star.AlphaStar, alpha_star.AlphaStarConfig().to_dict()
+    return alpha_star.AlphaStar, alpha_star.AlphaStar.get_default_config()
 
 
 def _import_alpha_zero():
     import ray.rllib.algorithms.alpha_zero as alpha_zero
 
-    return alpha_zero.AlphaZero, alpha_zero.AlphaZeroConfig().to_dict()
+    return alpha_zero.AlphaZero, alpha_zero.AlphaZero.get_default_config()
 
 
 def _import_apex():
     import ray.rllib.algorithms.apex_dqn as apex_dqn
 
-    return apex_dqn.ApexDQN, apex_dqn.ApexDQNConfig().to_dict()
+    return apex_dqn.ApexDQN, apex_dqn.ApexDQN.get_default_config()
 
 
 def _import_apex_ddpg():
     import ray.rllib.algorithms.apex_ddpg as apex_ddpg
 
-    return apex_ddpg.ApexDDPG, apex_ddpg.ApexDDPGConfig().to_dict()
+    return apex_ddpg.ApexDDPG, apex_ddpg.ApexDDPG.get_default_config()
 
 
 def _import_appo():
     import ray.rllib.algorithms.appo as appo
 
-    return appo.APPO, appo.APPOConfig().to_dict()
+    return appo.APPO, appo.APPO.get_default_config()
 
 
 def _import_ars():
     import ray.rllib.algorithms.ars as ars
 
-    return ars.ARS, ars.ARSConfig().to_dict()
+    return ars.ARS, ars.ARS.get_default_config()
 
 
 def _import_bandit_lints():
@@ -75,139 +75,145 @@ def _import_bandit_linucb():
 def _import_bc():
     import ray.rllib.algorithms.bc as bc
 
-    return bc.BC, bc.BCConfig().to_dict()
+    return bc.BC, bc.BC.get_default_config()
 
 
 def _import_cql():
     import ray.rllib.algorithms.cql as cql
 
-    return cql.CQL, cql.CQLConfig().to_dict()
+    return cql.CQL, cql.CQL.get_default_config()
 
 
 def _import_crr():
     from ray.rllib.algorithms import crr
 
-    return crr.CRR, crr.CRRConfig().to_dict()
+    return crr.CRR, crr.CRR.get_default_config()
 
 
 def _import_ddpg():
     import ray.rllib.algorithms.ddpg as ddpg
 
-    return ddpg.DDPG, ddpg.DDPGConfig().to_dict()
+    return ddpg.DDPG, ddpg.DDPG.get_default_config()
 
 
 def _import_ddppo():
     import ray.rllib.algorithms.ddppo as ddppo
 
-    return ddppo.DDPPO, ddppo.DDPPOConfig().to_dict()
+    return ddppo.DDPPO, ddppo.DDPPO.get_default_config()
 
 
 def _import_dqn():
     import ray.rllib.algorithms.dqn as dqn
 
-    return dqn.DQN, dqn.DQNConfig().to_dict()
+    return dqn.DQN, dqn.DQN.get_default_config()
 
 
 def _import_dreamer():
     import ray.rllib.algorithms.dreamer as dreamer
 
-    return dreamer.Dreamer, dreamer.DreamerConfig().to_dict()
+    return dreamer.Dreamer, dreamer.Dreamer.get_default_config()
 
 
 def _import_dt():
     import ray.rllib.algorithms.dt as dt
 
-    return dt.DT, dt.DTConfig().to_dict()
+    return dt.DT, dt.DT.get_default_config()
 
 
 def _import_es():
     import ray.rllib.algorithms.es as es
 
-    return es.ES, es.ESConfig().to_dict()
+    return es.ES, es.ES.get_default_config()
 
 
 def _import_impala():
     import ray.rllib.algorithms.impala as impala
 
-    return impala.Impala, impala.ImpalaConfig().to_dict()
+    return impala.Impala, impala.Impala.get_default_config()
 
 
 def _import_maddpg():
     import ray.rllib.algorithms.maddpg as maddpg
 
-    return maddpg.MADDPG, maddpg.MADDPGConfig().to_dict()
+    return maddpg.MADDPG, maddpg.MADDPG.get_default_config()
 
 
 def _import_maml():
     import ray.rllib.algorithms.maml as maml
 
-    return maml.MAML, maml.MAMLConfig().to_dict()
+    return maml.MAML, maml.MAML.get_default_config()
 
 
 def _import_marwil():
     import ray.rllib.algorithms.marwil as marwil
 
-    return marwil.MARWIL, marwil.MARWILConfig().to_dict()
+    return marwil.MARWIL, marwil.MARWIL.get_default_config()
 
 
 def _import_mbmpo():
     import ray.rllib.algorithms.mbmpo as mbmpo
 
-    return mbmpo.MBMPO, mbmpo.MBMPOConfig().to_dict()
+    return mbmpo.MBMPO, mbmpo.MBMPO.get_default_config()
 
 
 def _import_pg():
     import ray.rllib.algorithms.pg as pg
 
-    return pg.PG, pg.PGConfig().to_dict()
+    return pg.PG, pg.PG.get_default_config()
 
 
 def _import_ppo():
     import ray.rllib.algorithms.ppo as ppo
 
-    return ppo.PPO, ppo.PPOConfig().to_dict()
+    return ppo.PPO, ppo.PPO.get_default_config()
 
 
 def _import_qmix():
     import ray.rllib.algorithms.qmix as qmix
 
-    return qmix.QMix, qmix.QMixConfig().to_dict()
+    return qmix.QMix, qmix.QMix.get_default_config()
 
 
 def _import_r2d2():
     import ray.rllib.algorithms.r2d2 as r2d2
 
-    return r2d2.R2D2, r2d2.R2D2Config().to_dict()
+    return r2d2.R2D2, r2d2.R2D2.get_default_config()
 
 
-def _import_sac():
-    import ray.rllib.algorithms.sac as sac
+def _import_random_agent():
+    import ray.rllib.algorithms.random_agent as random_agent
 
-    return sac.SAC, sac.SACConfig().to_dict()
+    return random_agent.RandomAgent, random_agent.RandomAgent.get_default_config()
 
 
 def _import_rnnsac():
     from ray.rllib.algorithms import sac
 
-    return sac.RNNSAC, sac.RNNSACConfig().to_dict()
+    return sac.RNNSAC, sac.RNNSAC.get_default_config()
+
+
+def _import_sac():
+    import ray.rllib.algorithms.sac as sac
+
+    return sac.SAC, sac.SAC.get_default_config()
 
 
 def _import_simple_q():
     import ray.rllib.algorithms.simple_q as simple_q
 
-    return simple_q.SimpleQ, simple_q.SimpleQConfig().to_dict()
+    return simple_q.SimpleQ, simple_q.SimpleQ.get_default_config()
 
 
 def _import_slate_q():
     import ray.rllib.algorithms.slateq as slateq
 
-    return slateq.SlateQ, slateq.SlateQConfig().to_dict()
+    return slateq.SlateQ, slateq.SlateQ.get_default_config()
 
 
 def _import_td3():
     import ray.rllib.algorithms.td3 as td3
 
-    return td3.TD3, td3.TD3Config().to_dict()
+    return td3.TD3, td3.TD3.get_default_config()
 
 
 ALGORITHMS = {
@@ -239,6 +245,7 @@ ALGORITHMS = {
     "PPO": _import_ppo,
     "QMIX": _import_qmix,
     "R2D2": _import_r2d2,
+    "Random": _import_random_agent,
     "RNNSAC": _import_rnnsac,
     "SAC": _import_sac,
     "SimpleQ": _import_simple_q,
@@ -247,6 +254,11 @@ ALGORITHMS = {
 }
 
 
+@Deprecated(
+    new="ray.tune.registry.get_trainable_cls([algo name], return_config=False) and cls="
+    "ray.tune.registry.get_trainable_cls([algo name]); cls.get_default_config();",
+    error=False,
+)
 def get_algorithm_class(
     alg: str,
     return_config=False,
@@ -269,36 +281,29 @@ def get_algorithm_class(
 get_trainer_class = get_algorithm_class
 
 
-def _get_algorithm_class(alg: str, return_config=False) -> type:
+def _get_algorithm_class(alg: str) -> type:
+    # This helps us get around a circular import (tune calls rllib._register_all when
+    # checking if a rllib Trainable is registered)
     if alg in ALGORITHMS:
-        class_, config = ALGORITHMS[alg]()
-    elif alg in CONTRIBUTED_ALGORITHMS:
-        class_, config = CONTRIBUTED_ALGORITHMS[alg]()
+        return ALGORITHMS[alg]()[0]
     elif alg == "script":
         from ray.tune import script_runner
 
-        class_, config = script_runner.ScriptRunner, {}
+        return script_runner.ScriptRunner
     elif alg == "__fake":
         from ray.rllib.algorithms.mock import _MockTrainer
 
-        class_, config = _MockTrainer, _MockTrainer.get_default_config()
+        return _MockTrainer
     elif alg == "__sigmoid_fake_data":
         from ray.rllib.algorithms.mock import _SigmoidFakeData
 
-        class_, config = _SigmoidFakeData, _SigmoidFakeData.get_default_config()
+        return _SigmoidFakeData
     elif alg == "__parameter_tuning":
         from ray.rllib.algorithms.mock import _ParameterTuningTrainer
 
-        class_, config = (
-            _ParameterTuningTrainer,
-            _ParameterTuningTrainer.get_default_config(),
-        )
+        return _ParameterTuningTrainer
     else:
         raise Exception("Unknown algorithm {}.".format(alg))
-
-    if return_config:
-        return class_, config
-    return class_
 
 
 # Mapping from policy name to where it is located, relative to rllib.algorithms.

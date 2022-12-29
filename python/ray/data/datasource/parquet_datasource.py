@@ -169,6 +169,7 @@ class _ParquetDatasourceReader(Reader):
     def __init__(
         self,
         paths: Union[str, List[str]],
+        local_uri: bool = False,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         columns: Optional[List[str]] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
@@ -183,6 +184,15 @@ class _ParquetDatasourceReader(Reader):
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         if len(paths) == 1:
             paths = paths[0]
+
+        self._local_scheduling = None
+        if local_uri:
+            import ray
+            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+            self._local_scheduling = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(), soft=False
+            )
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
@@ -215,7 +225,15 @@ class _ParquetDatasourceReader(Reader):
             inferred_schema = schema
 
         try:
-            self._metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
+            prefetch_remote_args = {}
+            if self._local_scheduling:
+                prefetch_remote_args["scheduling_strategy"] = self._local_scheduling
+            self._metadata = (
+                meta_provider.prefetch_file_metadata(
+                    pq_ds.pieces, **prefetch_remote_args
+                )
+                or []
+            )
         except OSError as e:
             _handle_read_os_error(e, paths)
         self._pq_ds = pq_ds
@@ -309,13 +327,14 @@ class _ParquetDatasourceReader(Reader):
 
         sample_piece = cached_remote_fn(_sample_piece)
         futures = []
+        scheduling = self._local_scheduling or "SPREAD"
         for sample in file_samples:
             # Sample the first rows batch in i-th file.
             # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
             # same machine to cause OOM issue, as sampling can be memory-intensive.
             serialized_sample = _SerializedPiece(sample)
             futures.append(
-                sample_piece.options(scheduling_strategy="SPREAD").remote(
+                sample_piece.options(scheduling_strategy=scheduling).remote(
                     self._reader_args,
                     self._columns,
                     self._schema,
@@ -355,13 +374,14 @@ def _read_pieces(
 
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
+    batch_size = reader_args.pop("batch_size", PARQUET_READER_ROW_BATCH_SIZE)
     for piece in pieces:
         part = _get_partition_keys(piece.partition_expression)
         batches = piece.to_batches(
             use_threads=use_threads,
             columns=columns,
             schema=schema,
-            batch_size=PARQUET_READER_ROW_BATCH_SIZE,
+            batch_size=batch_size,
             **reader_args,
         )
         for batch in batches:
@@ -385,6 +405,7 @@ def _read_pieces(
 
 def _fetch_metadata_remotely(
     pieces: List["pyarrow._dataset.ParquetFileFragment"],
+    **ray_remote_args,
 ) -> List[ObjectRef["pyarrow.parquet.FileMetaData"]]:
 
     remote_fetch_metadata = cached_remote_fn(_fetch_metadata_serialization_wrapper)
@@ -394,7 +415,11 @@ def _fetch_metadata_remotely(
     for pcs in np.array_split(pieces, parallelism):
         if len(pcs) == 0:
             continue
-        metas.append(remote_fetch_metadata.remote([_SerializedPiece(p) for p in pcs]))
+        metas.append(
+            remote_fetch_metadata.options(**ray_remote_args).remote(
+                [_SerializedPiece(p) for p in pcs]
+            )
+        )
     metas = meta_fetch_bar.fetch_until_complete(metas)
     return list(itertools.chain.from_iterable(metas))
 
@@ -434,7 +459,12 @@ def _sample_piece(
 
     # Only sample the first row group.
     piece = piece.subset(row_group_ids=[0])
-    batch_size = min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS)
+    batch_size = max(
+        min(piece.metadata.num_rows, PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS), 1
+    )
+    # Use the batch_size calculated above, and ignore the one specified by user if set.
+    # This is to avoid sampling too few or too many rows.
+    reader_args.pop("batch_size", None)
     batches = piece.to_batches(
         columns=columns,
         schema=schema,
@@ -444,15 +474,19 @@ def _sample_piece(
     # Use first batch in-memory size as ratio estimation.
     try:
         batch = next(batches)
-        in_memory_size = batch.nbytes / batch.num_rows
-        metadata = piece.metadata
-        total_size = 0
-        for idx in range(metadata.num_row_groups):
-            total_size += metadata.row_group(idx).total_byte_size
-        file_size = total_size / metadata.num_rows
-        ratio = in_memory_size / file_size
     except StopIteration:
         ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+    else:
+        if batch.num_rows > 0:
+            in_memory_size = batch.nbytes / batch.num_rows
+            metadata = piece.metadata
+            total_size = 0
+            for idx in range(metadata.num_row_groups):
+                total_size += metadata.row_group(idx).total_byte_size
+            file_size = total_size / metadata.num_rows
+            ratio = in_memory_size / file_size
+        else:
+            ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
     logger.debug(
         f"Estimated Parquet encoding ratio is {ratio} for piece {piece} "
         f"with batch size {batch_size}."

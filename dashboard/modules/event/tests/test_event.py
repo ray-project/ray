@@ -10,11 +10,15 @@ import random
 import tempfile
 import socket
 
+from pprint import pprint
+
 import pytest
 import numpy as np
 
 import ray
+from ray.experimental.state.api import list_cluster_events
 from ray._private.utils import binary_to_hex
+from ray.cluster_utils import AutoscalingCluster
 from ray._private.event.event_logger import get_event_logger
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
@@ -27,6 +31,7 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
+from ray.job_submission import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +223,7 @@ async def test_monitor_events():
         )
         test_events1 = []
         monitor_task = monitor_events(
-            temp_dir, lambda x: test_events1.extend(x), scan_interval_seconds=0.01
+            temp_dir, lambda x: test_events1.extend(x), None, scan_interval_seconds=0.01
         )
         assert not monitor_task.done()
         count = 10
@@ -253,7 +258,7 @@ async def test_monitor_events():
         monitor_task.cancel()
         test_events2 = []
         monitor_task = monitor_events(
-            temp_dir, lambda x: test_events2.extend(x), scan_interval_seconds=0.1
+            temp_dir, lambda x: test_events2.extend(x), None, scan_interval_seconds=0.1
         )
 
         await _check_events([str(i) for i in range(count)], read_events=test_events2)
@@ -288,36 +293,192 @@ async def test_monitor_events():
         assert len(os.listdir(temp_dir)) > 1, "Event log should have rollovers."
 
 
-# TODO(sang): Enable it.
-# def test_autoscaler_cluster_events(shutdown_only):
-#     ray.init()
+def test_autoscaler_cluster_events(shutdown_only):
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 2},
+        worker_node_types={
+            "cpu_node": {
+                "resources": {
+                    "CPU": 4,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "gpu_node": {
+                "resources": {
+                    "CPU": 2,
+                    "GPU": 1,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+        idle_timeout_minutes=1,
+    )
 
-#     @ray.remote(num_gpus=1)
-#     def f():
-#         pass
+    try:
+        cluster.start()
+        ray.init("auto")
 
-#     f.remote()
+        # Triggers the addition of a GPU node.
+        @ray.remote(num_gpus=1)
+        def f():
+            print("gpu ok")
 
-#     wait_for_condition(lambda: len(list_cluster_events()) == 1)
-#     infeasible_event = list_cluster_events()[0]
-#     assert infeasible_event["source_type"] == "AUTOSCALER"
+        # Triggers the addition of a CPU node.
+        @ray.remote(num_cpus=3)
+        def g():
+            print("cpu ok")
+
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 2)
+        ray.get(f.remote())
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 4)
+        wait_for_condition(lambda: ray.cluster_resources()["GPU"] == 1)
+        ray.get(g.remote())
+        wait_for_condition(lambda: ray.cluster_resources()["CPU"] == 8)
+        wait_for_condition(lambda: ray.cluster_resources()["GPU"] == 1)
+
+        # Trigger an infeasible task
+        g.options(num_cpus=0, num_gpus=5).remote()
+
+        def verify():
+            cluster_events = list_cluster_events()
+            messages = {(e["message"], e["source_type"]) for e in cluster_events}
+
+            assert ("Resized to 2 CPUs.", "AUTOSCALER") in messages, cluster_events
+            assert (
+                "Adding 1 node(s) of type gpu_node.",
+                "AUTOSCALER",
+            ) in messages, cluster_events
+            assert (
+                "Resized to 4 CPUs, 1 GPUs.",
+                "AUTOSCALER",
+            ) in messages, cluster_events
+            assert (
+                "Adding 1 node(s) of type cpu_node.",
+                "AUTOSCALER",
+            ) in messages, cluster_events
+            assert (
+                "Resized to 8 CPUs, 1 GPUs.",
+                "AUTOSCALER",
+            ) in messages, cluster_events
+            assert (
+                (
+                    "Error: No available node types can fulfill resource "
+                    "request {'GPU': 5.0}. Add suitable node "
+                    "types to this cluster to resolve this issue."
+                ),
+                "AUTOSCALER",
+            ) in messages
+
+            return True
+
+        wait_for_condition(verify, timeout=30)
+        pprint(list_cluster_events())
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
 
 
-# def test_jobs_cluster_events(shutdown_only):
-#     ray.init()
-#     address = ray._private.worker._global_node.webui_url
-#     address = format_web_url(address)
-#     client = JobSubmissionClient(address)
-#     client.submit_job(entrypoint="ls")
+def test_jobs_cluster_events(shutdown_only):
+    ray.init()
+    address = ray._private.worker._global_node.webui_url
+    address = format_web_url(address)
+    client = JobSubmissionClient(address)
+    submission_id = client.submit_job(entrypoint="ls")
 
-#     def verify():
-#         assert len(list_cluster_events()) == 3
-#         for e in list_cluster_events():
-#             e["source_type"] = "JOBS"
-#         return True
+    def verify():
+        events = list_cluster_events()
+        assert len(list_cluster_events()) == 2
+        start_event = events[0]
+        completed_event = events[1]
 
-#     wait_for_condition(verify)
-#     print(list_cluster_events())
+        assert start_event["source_type"] == "JOBS"
+        assert f"Started a ray job {submission_id}" in start_event["message"]
+        assert start_event["severity"] == "INFO"
+        assert completed_event["source_type"] == "JOBS"
+        assert (
+            f"Completed a ray job {submission_id} with a status SUCCEEDED."
+            == completed_event["message"]
+        )
+        assert completed_event["severity"] == "INFO"
+        return True
+
+    print("Test successful job run.")
+    wait_for_condition(verify)
+    pprint(list_cluster_events())
+
+    # Test the failure case. In this part, job fails because the runtime env
+    # creation fails.
+    submission_id = client.submit_job(
+        entrypoint="ls",
+        runtime_env={"pip": ["nonexistent_dep"]},
+    )
+
+    def verify():
+        events = list_cluster_events(detail=True)
+        failed_events = []
+
+        for e in events:
+            if (
+                "submission_id" in e["custom_fields"]
+                and e["custom_fields"]["submission_id"] == submission_id
+            ):
+                failed_events.append(e)
+
+        assert len(failed_events) == 2
+        failed_start = failed_events[0]
+        failed_completed = failed_events[1]
+
+        assert failed_start["source_type"] == "JOBS"
+        assert f"Started a ray job {submission_id}" in failed_start["message"]
+        assert failed_completed["source_type"] == "JOBS"
+        assert failed_completed["severity"] == "ERROR"
+        assert (
+            f"Completed a ray job {submission_id} with a status FAILED."
+            in failed_completed["message"]
+        )
+
+        # Make sure the error message is included.
+        assert "ERROR: No matching distribution found" in failed_completed["message"]
+        return True
+
+    print("Test failed (runtime_env failure) job run.")
+    wait_for_condition(verify, timeout=30)
+    pprint(list_cluster_events())
+
+
+def test_cluster_events_retention(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        # defer for 5s for the second node.
+        # This will help the API not return until the node is killed.
+        m.setenv("RAY_DASHBOARD_MAX_EVENTS_TO_CACHE", "10")
+        ray.init()
+        address = ray._private.worker._global_node.webui_url
+        address = format_web_url(address)
+        client = JobSubmissionClient(address)
+
+        submission_ids = []
+        for _ in range(12):
+            submission_ids.append(client.submit_job(entrypoint="ls"))
+        print(submission_ids)
+
+        def verify():
+            events = list_cluster_events()
+            assert len(list_cluster_events()) == 10
+
+            messages = [event["message"] for event in events]
+
+            # Make sure the first two has been GC'ed.
+            for m in messages:
+                assert submission_ids[0] not in m
+                assert submission_ids[1] not in m
+            return True
+
+        wait_for_condition(verify)
+        pprint(list_cluster_events())
 
 
 if __name__ == "__main__":

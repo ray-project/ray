@@ -4,7 +4,9 @@ import numpy as np
 import copy
 import logging
 from functools import partial
-import pickle
+
+# Use cloudpickle instead of pickle to make lambda funcs in HyperOpt pickleable
+from ray import cloudpickle
 
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search.sample import (
@@ -321,7 +323,7 @@ class HyperOptSearch(Searcher):
                 new_ids,
                 self.domain,
                 self._hpopt_trials,
-                self.rstate.randint(2 ** 31 - 1),
+                self.rstate.randint(2**31 - 1),
             )
             self._hpopt_trials.insert_trial_docs(new_trials)
             self._hpopt_trials.refresh()
@@ -433,18 +435,21 @@ class HyperOptSearch(Searcher):
         self.rstate.set_state(state["rstate"])
 
     def save(self, checkpoint_path: str) -> None:
+        save_object = self.__dict__.copy()
+        save_object["__rstate"] = self.rstate.get_state()
         with open(checkpoint_path, "wb") as f:
-            pickle.dump(self.get_state(), f)
+            cloudpickle.dump(save_object, f)
 
     def restore(self, checkpoint_path: str) -> None:
         with open(checkpoint_path, "rb") as f:
-            trials_object = pickle.load(f)
+            save_object = cloudpickle.load(f)
 
-        if isinstance(trials_object, tuple):
-            self._hpopt_trials = trials_object[0]
-            self.rstate.set_state(trials_object[1])
+        if "__rstate" not in save_object:
+            # Backwards compatibility
+            self.set_state(save_object)
         else:
-            self.set_state(trials_object)
+            self.rstate.set_state(save_object.pop("__rstate"))
+            self.__dict__.update(save_object)
 
     @staticmethod
     def convert_search_space(spec: Dict, prefix: str = "") -> Dict:

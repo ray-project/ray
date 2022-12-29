@@ -14,8 +14,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 from ray._private.dict import flatten_dict
 
+import ray
 from ray.tune.callback import Callback
-from ray.tune.logger import logger, pretty_print
+from ray.tune.logger import pretty_print
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
     DEFAULT_METRIC,
@@ -34,9 +35,10 @@ from ray.tune.result import (
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
 from ray.tune.trainable import Trainable
 from ray.tune.utils import unflattened_lookup
-from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.node import _force_on_current_node
+from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.queue import Queue
+from ray.util.queue import Empty, Queue
 
 from ray.widgets import Template
 
@@ -429,10 +431,11 @@ class TuneReporterBase(ProgressReporter):
         for t in trials:
             if not t.last_result:
                 continue
-            if metric not in t.last_result:
+            metric_value = unflattened_lookup(metric, t.last_result, default=None)
+            if metric_value is None:
                 continue
-            if not best_trial or t.last_result[metric] * metric_op > best_metric:
-                best_metric = t.last_result[metric] * metric_op
+            if not best_trial or metric_value * metric_op > best_metric:
+                best_metric = metric_value * metric_op
                 best_trial = t
         return best_trial, metric
 
@@ -534,7 +537,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
         )
 
         if not IS_NOTEBOOK:
-            logger.warning(
+            warnings.warn(
                 "You are using the `JupyterNotebookReporter`, but not "
                 "IPython/Jupyter-compatible environment was detected. "
                 "If this leads to unformatted output (e.g. like "
@@ -704,8 +707,11 @@ class CLIReporter(TuneReporterBase):
             sort_by_metric=sort_by_metric,
         )
 
+    def _print(self, msg: str):
+        print(msg)
+
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
-        print(self._progress_str(trials, done, *sys_info))
+        self._print(self._progress_str(trials, done, *sys_info))
 
 
 def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
@@ -721,8 +727,8 @@ def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
 
         import psutil
 
-        total_gb = psutil.virtual_memory().total / (1024 ** 3)
-        used_gb = total_gb - psutil.virtual_memory().available / (1024 ** 3)
+        total_gb = psutil.virtual_memory().total / (1024**3)
+        used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
         if used_gb > total_gb * 0.9:
             message = (
                 ": ***LOW MEMORY*** less than 10% of the memory on "
@@ -982,7 +988,7 @@ def _get_progress_table_data(
         trials_by_state[Trial.TERMINATED] = sorted(
             trials_by_state[Trial.TERMINATED],
             reverse=(mode == "max"),
-            key=lambda t: t.last_result[metric],
+            key=lambda t: unflattened_lookup(metric, t.last_result, default=None),
         )
 
     state_tbl_order = [
@@ -1183,7 +1189,7 @@ def _best_trial_str(
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
 ):
     """Returns a readable message stating the current best trial."""
-    val = trial.last_result[metric]
+    val = unflattened_lookup(metric, trial.last_result, default=None)
     config = trial.last_result.get("config", {})
     parameter_columns = parameter_columns or list(config.keys())
     if isinstance(parameter_columns, Mapping):
@@ -1309,6 +1315,7 @@ class TrialProgressCallback(Callback):
         self, metric: Optional[str] = None, progress_metrics: Optional[List[str]] = None
     ):
         self._last_print = collections.defaultdict(float)
+        self._last_print_iteration = collections.defaultdict(int)
         self._completed_trials = set()
         self._last_result_str = {}
         self._metric = metric
@@ -1319,6 +1326,9 @@ class TrialProgressCallback(Callback):
             self._progress_metrics.add(self._metric)
         self._last_result = {}
         self._display_handle = None
+
+    def _print(self, msg: str):
+        print(msg)
 
     def on_trial_result(
         self,
@@ -1348,7 +1358,7 @@ class TrialProgressCallback(Callback):
             if print_result_str != last_result_str:
                 self.log_result(trial, trial.last_result, error=False)
             else:
-                print(f"Trial {trial} completed. " f"Last result: {print_result_str}")
+                self._print(f"Trial {trial} completed. Last result: {print_result_str}")
 
     def log_result(self, trial: "Trial", result: Dict, error: bool = False):
         done = result.get("done", False) is True
@@ -1365,6 +1375,8 @@ class TrialProgressCallback(Callback):
                 self.print_result(trial, result, error, done)
 
             self._last_print[trial] = time.time()
+            if TRAINING_ITERATION in result:
+                self._last_print_iteration[trial] = result[TRAINING_ITERATION]
 
     def print_result(self, trial: Trial, result: Dict, error: bool, done: bool):
         """Print the most recent results for the given trial to stdout.
@@ -1375,9 +1387,14 @@ class TrialProgressCallback(Callback):
             error: True if an error has occurred, False otherwise
             done: True if the trial is finished, False otherwise
         """
+        last_print_iteration = self._last_print_iteration[trial]
+
         if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
-            print("Result for {}:".format(trial))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            if result.get(TRAINING_ITERATION) != last_print_iteration:
+                self._print(f"Result for {trial}:")
+                self._print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            if done:
+                self._print(f"Trial {trial} completed.")
 
         elif has_verbosity(Verbosity.V2_TRIAL_NORM):
             metric_name = self._metric or "_metric"
@@ -1411,7 +1428,7 @@ class TrialProgressCallback(Callback):
                     f"with parameters={trial.config}.{info}"
                 )
 
-            print(message)
+            self._print(message)
 
     def generate_trial_table(
         self, trials: Dict[Trial, Dict], columns: List[str]
@@ -1532,3 +1549,61 @@ def _detect_progress_metrics(
         return None
 
     return getattr(trainable, "_progress_metrics", None)
+
+
+def _prepare_progress_reporter_for_ray_client(
+    progress_reporter: ProgressReporter,
+    verbosity: Union[int, Verbosity],
+    string_queue: Optional[Queue] = None,
+) -> Tuple[ProgressReporter, Queue]:
+    """Prepares progress reported for Ray Client by setting the string queue.
+
+    The string queue will be created if it's None."""
+    set_verbosity(verbosity)
+    progress_reporter = progress_reporter or _detect_reporter()
+
+    # JupyterNotebooks don't work with remote tune runs out of the box
+    # (e.g. via Ray client) as they don't have access to the main
+    # process stdout. So we introduce a queue here that accepts
+    # strings, which will then be displayed on the driver side.
+    if isinstance(progress_reporter, RemoteReporterMixin):
+        if string_queue is None:
+            string_queue = Queue(
+                actor_options={"num_cpus": 0, **_force_on_current_node(None)}
+            )
+        progress_reporter.output_queue = string_queue
+
+    return progress_reporter, string_queue
+
+
+def _stream_client_output(
+    remote_future: ray.ObjectRef,
+    progress_reporter: ProgressReporter,
+    string_queue: Queue,
+) -> Any:
+    """
+    Stream items from string queue to progress_reporter until remote_future resolves
+    """
+    if string_queue is None:
+        return
+
+    def get_next_queue_item():
+        try:
+            return string_queue.get(block=False)
+        except Empty:
+            return None
+
+    def _handle_string_queue():
+        string_item = get_next_queue_item()
+        while string_item is not None:
+            # This happens on the driver side
+            progress_reporter.display(string_item)
+            string_item = get_next_queue_item()
+
+    # ray.wait(...)[1] returns futures that are not ready, yet
+    while ray.wait([remote_future], timeout=0.2)[1]:
+        # Check if we have items to execute
+        _handle_string_queue()
+
+    # Handle queue one last time
+    _handle_string_queue()

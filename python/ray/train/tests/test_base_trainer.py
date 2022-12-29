@@ -5,6 +5,7 @@ import time
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
+import pandas as pd
 import numpy as np
 import pytest
 
@@ -14,6 +15,7 @@ from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.tune.impl import tuner_internal
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
@@ -25,11 +27,28 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
+def mock_tuner_internal_logger():
+    class MockLogger:
+        def __init__(self):
+            self.warnings = []
+
+        def warning(self, msg):
+            self.warnings.append(msg)
+
+        def warn(self, msg, **kwargs):
+            self.warnings.append(msg)
+
+        def info(self, msg):
+            print(msg)
+
+        def clear(self):
+            self.warnings = []
+
+    old = tuner_internal.warnings
+    tuner_internal.warnings = MockLogger()
+    yield tuner_internal.warnings
     # The code after the yield will run as teardown code.
-    ray.shutdown()
+    tuner_internal.warnings = old
 
 
 class DummyPreprocessor(Preprocessor):
@@ -216,90 +235,87 @@ def test_reserved_cpus(ray_start_4_cpus):
     tune.run(trainer.as_trainable(), num_samples=4)
 
 
-def test_reserved_cpu_warnings(ray_start_4_cpus):
+def test_reserved_cpu_warnings(ray_start_4_cpus, mock_tuner_internal_logger):
     def train_loop(config):
         pass
 
-    class MockLogger:
-        def __init__(self):
-            self.warnings = []
+    # Fraction correctly specified.
+    trainer = DummyTrainer(
+        train_loop,
+        scaling_config=ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.9),
+        datasets={"train": ray.data.range(10)},
+    )
+    trainer.fit()
+    assert not mock_tuner_internal_logger.warnings
 
-        def warning(self, msg):
-            self.warnings.append(msg)
+    # No datasets, no fraction.
+    trainer = DummyTrainer(
+        train_loop,
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    trainer.fit()
+    assert not mock_tuner_internal_logger.warnings
 
-        def warn(self, msg, **kwargs):
-            self.warnings.append(msg)
+    # Should warn.
+    trainer = DummyTrainer(
+        train_loop,
+        scaling_config=ScalingConfig(num_workers=3),
+        datasets={"train": ray.data.range(10)},
+    )
+    trainer.fit()
+    assert (
+        len(mock_tuner_internal_logger.warnings) == 1
+    ), mock_tuner_internal_logger.warnings
+    assert "_max_cpu_fraction_per_node" in mock_tuner_internal_logger.warnings[0]
+    mock_tuner_internal_logger.clear()
 
-        def info(self, msg):
-            print(msg)
+    # Warn if num_samples is configured
+    trainer = DummyTrainer(
+        train_loop,
+        scaling_config=ScalingConfig(num_workers=1),
+        datasets={"train": ray.data.range(10)},
+    )
+    tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
+    tuner.fit()
+    assert (
+        len(mock_tuner_internal_logger.warnings) == 1
+    ), mock_tuner_internal_logger.warnings
+    assert "_max_cpu_fraction_per_node" in mock_tuner_internal_logger.warnings[0]
+    mock_tuner_internal_logger.clear()
 
-        def clear(self):
-            self.warnings = []
+    # Don't warn if resources * samples < 0.8
+    trainer = DummyTrainer(
+        train_loop,
+        scaling_config=ScalingConfig(num_workers=1, trainer_resources={"CPU": 0}),
+        datasets={"train": ray.data.range(10)},
+    )
+    tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
+    tuner.fit()
+    assert not mock_tuner_internal_logger.warnings
 
-    try:
-        old = tuner_internal.warnings
-        tuner_internal.warnings = MockLogger()
+    # Don't warn if Trainer is not used
+    tuner = tune.Tuner(train_loop, tune_config=tune.TuneConfig(num_samples=3))
+    tuner.fit()
+    assert not mock_tuner_internal_logger.warnings
 
-        # Fraction correctly specified.
-        trainer = DummyTrainer(
-            train_loop,
-            scaling_config=ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.9),
-            datasets={"train": ray.data.range(10)},
-        )
-        trainer.fit()
-        assert not tuner_internal.warnings.warnings
 
-        # No datasets, no fraction.
-        trainer = DummyTrainer(
-            train_loop,
-            scaling_config=ScalingConfig(num_workers=1),
-        )
-        trainer.fit()
-        assert not tuner_internal.warnings.warnings
+def test_reserved_cpu_warnings_no_cpu_usage(
+    ray_start_1_cpu_1_gpu, mock_tuner_internal_logger
+):
+    """Ensure there is no divide by zero error if trial requires no CPUs."""
 
-        # Should warn.
-        trainer = DummyTrainer(
-            train_loop,
-            scaling_config=ScalingConfig(num_workers=3),
-            datasets={"train": ray.data.range(10)},
-        )
-        trainer.fit()
-        assert (
-            len(tuner_internal.warnings.warnings) == 1
-        ), tuner_internal.warnings.warnings
-        assert "_max_cpu_fraction_per_node" in tuner_internal.warnings.warnings[0]
-        tuner_internal.warnings.clear()
+    def train_loop(config):
+        pass
 
-        # Warn if num_samples is configured
-        trainer = DummyTrainer(
-            train_loop,
-            scaling_config=ScalingConfig(num_workers=1),
-            datasets={"train": ray.data.range(10)},
-        )
-        tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
-        tuner.fit()
-        assert (
-            len(tuner_internal.warnings.warnings) == 1
-        ), tuner_internal.warnings.warnings
-        assert "_max_cpu_fraction_per_node" in tuner_internal.warnings.warnings[0]
-        tuner_internal.warnings.clear()
-
-        # Don't warn if resources * samples < 0.8
-        trainer = DummyTrainer(
-            train_loop,
-            scaling_config=ScalingConfig(num_workers=1, trainer_resources={"CPU": 0}),
-            datasets={"train": ray.data.range(10)},
-        )
-        tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
-        tuner.fit()
-        assert not tuner_internal.warnings.warnings
-
-        # Don't warn if Trainer is not used
-        tuner = tune.Tuner(train_loop, tune_config=tune.TuneConfig(num_samples=3))
-        tuner.fit()
-        assert not tuner_internal.warnings.warnings
-    finally:
-        tuner_internal.warnings = old
+    trainer = DummyTrainer(
+        train_loop,
+        scaling_config=ScalingConfig(
+            num_workers=1, use_gpu=True, trainer_resources={"CPU": 0}
+        ),
+        datasets={"train": ray.data.range(10)},
+    )
+    trainer.fit()
+    assert not mock_tuner_internal_logger.warnings
 
 
 def test_setup(ray_start_4_cpus):
@@ -389,6 +405,31 @@ def test_large_params(ray_start_4_cpus):
     checkpoint = Checkpoint.from_dict({"ckpt": np.zeros(shape=array_size)})
     trainer = DummyTrainer(training_loop, resume_from_checkpoint=checkpoint)
     trainer.fit()
+
+
+def test_preprocess_datasets_context(ray_start_4_cpus):
+    """Tests if DatasetContext is propagated to preprocessors."""
+
+    def training_loop(self):
+        assert self.datasets["my_dataset"].take() == [{"a": i} for i in range(2, 5)]
+        session.report(dict(my_metric=1))
+
+    target_max_block_size = 100
+
+    def map_fn(batch):
+        ctx = ray.data.context.DatasetContext.get_current()
+        assert ctx.target_max_block_size == target_max_block_size
+        return batch + 1
+
+    preprocessor = BatchMapper(map_fn, batch_format="pandas")
+
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.target_max_block_size = target_max_block_size
+
+    datasets = {"my_dataset": ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3]}))}
+    trainer = DummyTrainer(training_loop, datasets=datasets, preprocessor=preprocessor)
+    result = trainer.fit()
+    assert result.metrics["my_metric"] == 1
 
 
 if __name__ == "__main__":

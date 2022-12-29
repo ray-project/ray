@@ -3,6 +3,7 @@ import os
 import resource
 import time
 from typing import List
+import traceback
 
 import numpy as np
 import psutil
@@ -134,7 +135,11 @@ if __name__ == "__main__":
     rss = int(process.memory_info().rss)
     print(f"rss: {rss / 1e9}/GB")
 
-    print(memory_summary(stats_only=True))
+    try:
+        print(memory_summary(stats_only=True))
+    except Exception:
+        print("Failed to retrieve memory summary")
+        print(traceback.format_exc())
     print("")
 
     print(ds.stats())

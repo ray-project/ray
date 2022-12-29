@@ -33,7 +33,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe"],
+    choices=["tf", "tf2"],
     default="tf",
     help="The DL framework specifier (torch not supported yet "
     "due to lack of model).",

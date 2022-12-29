@@ -10,8 +10,9 @@ import pyspiel
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import Policy
 from ray.tune import CLIReporter, register_env
 
 parser = argparse.ArgumentParser()
@@ -76,38 +77,36 @@ if __name__ == "__main__":
         # main policy plays against opponent policy.
         return "main" if episode.episode_id % 2 == agent_id else "opponent"
 
-    config = {
-        "env": "open_spiel_env",
-        "callbacks": AddPolicyCallback,
-        "model": {
-            "fcnet_hiddens": [512, 512],
-        },
-        "num_envs_per_worker": 5,
-        "multiagent": {
+    config = (
+        SACConfig()
+        .environment("open_spiel_env")
+        .framework("torch")
+        .callbacks(AddPolicyCallback)
+        .rollouts(
+            num_rollout_workers=1,
+            num_envs_per_worker=5,
+            # We will be restoring a TF2 policy.
+            # So tell the RolloutWorkers to enable TF eager exec as well, even if
+            # framework is set to torch.
+            enable_tf1_exec_eagerly=True,
+        )
+        .training(model={"fcnet_hiddens": [512, 512]})
+        .multi_agent(
             # Initial policy map: Random and PPO. This will be expanded
             # to more policy snapshots taken from "main" against which "main"
             # will then play (instead of "random"). This is done in the
             # custom callback defined above (`SelfPlayCallback`).
-            "policies": {
-                # Our main policy, we'd like to optimize.
-                "main": PolicySpec(),
-                # Note: We will add the "opponent" policy with callback.
-            },
+            # Note: We will add the "opponent" policy with callback.
+            policies={"main"},  # Our main policy, we'd like to optimize.
             # Assign agent 0 and 1 randomly to the "main" policy or
             # to the opponent ("random" at first). Make sure (via episode_id)
             # that "main" always plays against "random" (and not against
             # another "main").
-            "policy_mapping_fn": policy_mapping_fn,
+            policy_mapping_fn=policy_mapping_fn,
             # Always just train the "main" policy.
-            "policies_to_train": ["main"],
-        },
-        "num_workers": 1,
-        "framework": "torch",
-        # We will be restoring a TF2 policy.
-        # So tell the RolloutWorkers to enable TF eager exec as well, even if
-        # framework is set to torch.
-        "enable_tf1_exec_eagerly": True,
-    }
+            policies_to_train=["main"],
+        )
+    )
 
     stop = {
         "training_iteration": args.train_iteration,
@@ -116,7 +115,7 @@ if __name__ == "__main__":
     # Train the "main" policy to play really well using self-play.
     tuner = tune.Tuner(
         "SAC",
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop=stop,
             checkpoint_config=air.CheckpointConfig(

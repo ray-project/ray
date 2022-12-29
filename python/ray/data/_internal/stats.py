@@ -14,6 +14,8 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
 
+StatsDict = Dict[str, List[BlockMetadata]]
+
 
 def fmt(seconds: float) -> str:
     if seconds > 1:
@@ -57,9 +59,7 @@ class _DatasetStatsBuilder:
         self.parent = parent
         self.start_time = time.perf_counter()
 
-    def build_multistage(
-        self, stages: Dict[str, List[BlockMetadata]]
-    ) -> "DatasetStats":
+    def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
             if i == 0:
@@ -168,7 +168,7 @@ class DatasetStats:
     def __init__(
         self,
         *,
-        stages: Dict[str, List[BlockMetadata]],
+        stages: StatsDict,
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
         needs_stats_actor: bool = False,
         stats_uuid: str = None,
@@ -189,7 +189,7 @@ class DatasetStats:
             base_name: The name of the base operation for a multi-stage operation.
         """
 
-        self.stages: Dict[str, List[BlockMetadata]] = stages
+        self.stages: StatsDict = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
         self.parents: List["DatasetStats"] = parent
@@ -227,8 +227,16 @@ class DatasetStats:
         """Placeholder for ops not yet instrumented."""
         return DatasetStats(stages={"TODO": []}, parent=None)
 
-    def summary_string(self, already_printed: Set[str] = None) -> str:
-        """Return a human-readable summary of this Dataset's stats."""
+    def summary_string(
+        self, already_printed: Set[str] = None, include_parent: bool = True
+    ) -> str:
+        """Return a human-readable summary of this Dataset's stats.
+
+        Args:
+        already_printed: Set of stage IDs that have already had its stats printed out.
+        include_parent: If true, also include parent stats summary; otherwise, only
+        log stats of the latest stage.
+        """
         if already_printed is None:
             already_printed = set()
 
@@ -237,14 +245,17 @@ class DatasetStats:
             # TODO(chengsu): this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
             if DatasetContext.get_current().block_splitting_enabled:
-                self.stages["read"] = []
-                for _, blocks_metadata in sorted(stats_map.items()):
-                    self.stages["read"] += blocks_metadata
+                # Only populate stats when stats from all read tasks are ready at
+                # stats actor.
+                if len(stats_map.items()) == len(self.stages["read"]):
+                    self.stages["read"] = []
+                    for _, blocks_metadata in sorted(stats_map.items()):
+                        self.stages["read"] += blocks_metadata
             else:
                 for i, metadata in stats_map.items():
                     self.stages["read"][i] = metadata[0]
         out = ""
-        if self.parents:
+        if self.parents and include_parent:
             for p in self.parents:
                 parent_sum = p.summary_string(already_printed)
                 if parent_sum:

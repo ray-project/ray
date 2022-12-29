@@ -1,23 +1,15 @@
+import os
+from unittest.mock import patch
 import pytest
+
 import torch
 
 import ray
+from ray.air import session
+from ray.air.constants import MODEL_KEY
+from ray.air.config import ScalingConfig
+from ray.train.torch import TorchTrainer, TorchCheckpoint
 import ray.train.torch.train_loop_utils
-
-
-@pytest.fixture
-def ray_start_1_cpu_1_gpu():
-    address_info = ray.init(num_cpus=1, num_gpus=1)
-    yield address_info
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_4_cpus_2_gpus():
-    address_info = ray.init(num_cpus=4, num_gpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
 
 
 @pytest.mark.parametrize(
@@ -97,6 +89,61 @@ def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
 
     # Verify GPU memory usage increases on the right cuda device
     assert end_gpu_memory > start_gpu_memory
+
+
+@patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": ""})
+def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
+    """Tests if GPU tensors are auto converted to CPU on driver."""
+    num_workers = 2
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == ""
+
+    def train_func():
+        model = torch.nn.Linear(1, 1)
+
+        # Move to GPU device.
+        model = ray.train.torch.prepare_model(model)
+
+        assert next(model.parameters()).is_cuda
+
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
+    )
+    results = trainer.fit()
+
+    model_checkpoint = results.checkpoint.get_model()
+    assert not next(model_checkpoint.parameters()).is_cuda
+
+    # Test the same thing for state dict.
+
+    def train_func():
+        model = torch.nn.Linear(1, 1)
+
+        # Move to GPU device.
+        model = ray.train.torch.prepare_model(model)
+
+        assert next(model.parameters()).is_cuda
+
+        state_dict = model.state_dict()
+
+        for tensor in state_dict.values():
+            assert tensor.is_cuda
+
+        session.report(
+            {},
+            checkpoint=TorchCheckpoint.from_state_dict(state_dict),
+        )
+
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
+    )
+    results = trainer.fit()
+
+    state_dict_checkpoint = results.checkpoint.to_dict()[MODEL_KEY]
+
+    for tensor in state_dict_checkpoint.values():
+        assert not tensor.is_cuda
 
 
 if __name__ == "__main__":

@@ -14,8 +14,7 @@ from scipy.stats import sem
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms import slateq
-from ray.rllib.algorithms import dqn
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
     InterestExplorationRecSimEnv,
@@ -34,7 +33,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -123,20 +122,25 @@ def main():
         "convert_to_discrete_action_space": args.run == "DQN",
     }
 
-    config = {
-        "env": (
+    config = (
+        AlgorithmConfig(algo_class=args.run)
+        .environment(
             InterestEvolutionRecSimEnv
             if args.env == "interest-evolution"
             else InterestExplorationRecSimEnv
             if args.env == "interest-exploration"
-            else LongTermSatisfactionRecSimEnv
-        ),
-        "framework": args.framework,
-        "num_gpus": args.num_gpus,
-        "num_workers": args.num_workers,
-        "env_config": env_config,
-        "num_steps_sampled_before_learning_starts": args.num_steps_sampled_before_learning_starts,  # noqa E501
-    }
+            else LongTermSatisfactionRecSimEnv,
+            env_config=env_config,
+        )
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=args.num_workers)
+        .resources(num_gpus=args.num_gpus)
+    )
+
+    if args.run in ["DQN", "SlateQ"]:
+        config.num_steps_sampled_before_learning_starts = (
+            args.num_steps_sampled_before_learning_starts
+        )
 
     # Perform a test run on the env with a random agent to see, what
     # the random baseline reward is.
@@ -152,7 +156,7 @@ def main():
         episode_reward = 0.0
         while num_episodes < args.random_test_episodes:
             action = env.action_space.sample()
-            _, r, d, _ = env.step(action)
+            _, r, d, _, _ = env.step(action)
             episode_reward += r
             if d:
                 num_episodes += 1
@@ -188,14 +192,15 @@ def main():
             check_learning_achieved(results, args.stop_reward)
 
     else:
-        # Directly run using the trainer interface (good for debugging).
-        if args.run == "DQN":
-            trainer = dqn.DQN(config=config)
-        else:
-            trainer = slateq.SlateQ(config=config)
+        # Directly run using the Algorithm interface (good for debugging).
+        algo = config.build()
+
         for i in range(10):
-            result = trainer.train()
+            result = algo.train()
             print(pretty_print(result))
+
+        algo.stop()
+
     ray.shutdown()
 
 

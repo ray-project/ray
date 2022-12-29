@@ -9,7 +9,7 @@ Ray state APIs allow users to conveniently access the current state (snapshot) o
 
 .. note:: 
 
-    APIs are :ref:`alpha <api-stability-alpha>`. This feature requires a full installation of Ray using ``pip install "ray[default]"``.
+    APIs are :ref:`alpha <api-stability-alpha>`. This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature also requires the dashboard component to be available. The dashboard component needs to be included when starting the ray cluster, which is the default behavior for ``ray start`` and ``ray.init()``. For more in-depth debugging, you could check the dashboard log at ``<RAY_LOG_DIR>/dashboard.log``, which is usually ``/tmp/ray/session_latest/logs/dashboard.log``.
 
 Getting Started
 ---------------
@@ -139,7 +139,7 @@ You can also access logs through ``ray logs`` API.
 
         ray list actors
         # In this case, ACTOR_ID is 31405554844820381c2f0f8501000000
-        ray logs --actor-id <ACTOR_ID> 
+        ray logs actor --id <ACTOR_ID> 
 
 .. tabbed:: Python SDK
 
@@ -422,14 +422,14 @@ Logs
 State API also allows you to conveniently access ray logs. Note that you cannot access the logs from a dead node.
 By default, the API prints log from a head node.
 
-E.g., Get all retrievable log file names from a head node
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+E.g., Get all retrievable log file names from a head node in a cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabbed:: CLI
 
     .. code-block:: bash
 
-        ray logs 
+        ray logs cluster
 
 .. tabbed:: Python SDK
 
@@ -449,7 +449,9 @@ E.g., Get a particular log file from a node
 
     .. code-block:: bash
 
-        # You could get the node id / node ip from `ray list nodes` 
+        # You could get the node id / node ip from `ray list nodes`
+        ray logs cluster gcs_server.out --node-id <NODE_ID>
+        # `ray logs cluster` is alias to `ray logs` when querying with globs.
         ray logs gcs_server.out --node-id <NODE_ID> 
 
 .. tabbed:: Python SDK
@@ -470,7 +472,10 @@ E.g., Stream a log file from a node
     .. code-block:: bash
 
         # You could get the node id / node ip from `ray list nodes` 
-        ray logs -f raylet.out --node-ip <NODE_IP> 
+        ray logs raylet.out --node-ip <NODE_IP> --follow
+        # Or,
+        ray logs cluster raylet.out --node-ip <NODE_IP> --follow
+
 
 .. tabbed:: Python SDK
 
@@ -479,9 +484,29 @@ E.g., Stream a log file from a node
         from ray.experimental.state.api import get_log 
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
+        # The loop will block with `follow=True`
         for line in get_log(filename="raylet.out", node_ip=<NODE_IP>, follow=True):
             print(line)
 
+E.g., Stream log from an actor with actor id
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabbed:: CLI
+
+    .. code-block:: bash
+
+        ray logs actor --id=<ACTOR_ID> --follow
+
+.. tabbed:: Python SDK
+
+    .. code-block:: python
+
+        from ray.experimental.state.api import get_log
+
+        # You could get the actor's ID from the output of `ray list actors`.
+        # The loop will block with `follow=True`
+        for line in get_log(actor_id=<ACTOR_ID>, follow=True):
+            print(line)
 
 E.g., Stream log from a pid 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -490,7 +515,7 @@ E.g., Stream log from a pid
 
     .. code-block:: bash
 
-        ray logs --pid=<PID> --follow
+        ray logs worker --pid=<PID> --follow
 
 .. tabbed:: Python SDK
 

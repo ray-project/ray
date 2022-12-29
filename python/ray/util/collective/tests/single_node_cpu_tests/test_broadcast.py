@@ -32,7 +32,7 @@ def test_broadcast_different_name(ray_start_single_node, group_name, src_rank, b
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-@pytest.mark.parametrize("array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20])
+@pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 @pytest.mark.parametrize("src_rank", [0, 1])
 def test_broadcast_different_array_size(
     ray_start_single_node, array_size, src_rank, backend

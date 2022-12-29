@@ -23,13 +23,12 @@ from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn.parallel import DistributedDataParallel
 
 import ray
 from ray import train
 from ray.air import session, Checkpoint, RunConfig
 from ray.data.aggregate import Mean, Std
-from ray.air.callbacks.mlflow import MLflowLoggerCallback
+from ray.air.integrations.mlflow import MLflowLoggerCallback
 
 
 def make_and_upload_dataset(dir_path):
@@ -392,7 +391,6 @@ def test_epoch(dataset, model, device, criterion):
 
 
 def train_func(config):
-    use_gpu = config["use_gpu"]
     num_epochs = config["num_epochs"]
     batch_size = config["batch_size"]
     num_layers = config["num_layers"]
@@ -404,11 +402,7 @@ def train_func(config):
     print("Defining model, loss, and optimizer...")
 
     # Setup device.
-    device = torch.device(
-        f"cuda:{session.get_local_rank()}"
-        if use_gpu and torch.cuda.is_available()
-        else "cpu"
-    )
+    device = train.torch.get_device()
     print(f"Device: {device}")
 
     # Setup data.
@@ -460,8 +454,7 @@ def train_func(config):
         )
 
         # Checkpoint model.
-        module = net.module if isinstance(net, DistributedDataParallel) else net
-        checkpoint = Checkpoint.from_dict(dict(model=module.state_dict()))
+        checkpoint = Checkpoint.from_dict(dict(model=net.state_dict()))
 
         # Record and log stats.
         print(f"session report on {session.get_world_rank()}")
@@ -601,7 +594,6 @@ if __name__ == "__main__":
     datasets = {"train": train_dataset, "test": test_dataset}
 
     config = {
-        "use_gpu": use_gpu,
         "num_epochs": NUM_EPOCHS,
         "batch_size": BATCH_SIZE,
         "num_hidden": NUM_HIDDEN,

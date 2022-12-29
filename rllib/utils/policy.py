@@ -1,9 +1,23 @@
-import gym
+import gymnasium as gym
 import logging
+import numpy as np
 import re
-from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    TYPE_CHECKING,
+)
+import tree  # pip install dm_tree
+
 
 import ray.cloudpickle as pickle
+from ray.rllib.models.preprocessors import ATARI_OBS_SHAPE
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.deprecation import Deprecated
@@ -45,12 +59,13 @@ def validate_policy_id(policy_id: str, error: bool = False) -> None:
         ValueError: If the given `policy_id` is not a valid one and `error` is True.
     """
     if (
-        len(policy_id) == 0
+        not isinstance(policy_id, str)
+        or len(policy_id) == 0
         or re.search('[<>:"/\\\\|?]', policy_id)
         or policy_id[-1] in (" ", ".")
     ):
         msg = (
-            f"PolicyID `{policy_id}` not valid! IDs must not be an empty string, "
+            f"PolicyID `{policy_id}` not valid! IDs must be a non-empty string, "
             "must not contain characters that are also disallowed file- or directory "
             "names on Unix/Windows and must not end with a dot `.` or a space ` `."
         )
@@ -63,7 +78,7 @@ def validate_policy_id(policy_id: str, error: bool = False) -> None:
 @PublicAPI
 def create_policy_for_framework(
     policy_id: str,
-    policy_class: "Policy",
+    policy_class: Type["Policy"],
     merged_config: PartialAlgorithmConfigDict,
     observation_space: gym.Space,
     action_space: gym.Space,
@@ -83,22 +98,30 @@ def create_policy_for_framework(
         session_creator: An optional tf1.Session creation callable.
         seed: Optional random seed.
     """
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    if isinstance(merged_config, AlgorithmConfig):
+        merged_config = merged_config.to_dict()
+
     framework = merged_config.get("framework", "tf")
     # Tf.
-    if framework in ["tf2", "tf", "tfe"]:
+    if framework in ["tf2", "tf"]:
         var_scope = policy_id + (f"_wk{worker_index}" if worker_index else "")
         # For tf static graph, build every policy in its own graph
         # and create a new session for it.
         if framework == "tf":
             with tf1.Graph().as_default():
+                # Session creator function provided manually -> Use this one to
+                # create the tf1 session.
                 if session_creator:
                     sess = session_creator()
+                # Use a default session creator, based only on our `tf_session_args` in
+                # the config.
                 else:
                     sess = tf1.Session(
-                        config=tf1.ConfigProto(
-                            gpu_options=tf1.GPUOptions(allow_growth=True)
-                        )
+                        config=tf1.ConfigProto(**merged_config["tf_session_args"])
                     )
+
                 with sess.as_default():
                     # Set graph-level seed.
                     if seed is not None:
@@ -155,6 +178,10 @@ def local_policy_inference(
     env_id: str,
     agent_id: str,
     obs: TensorStructType,
+    reward: Optional[float] = None,
+    terminated: Optional[bool] = None,
+    truncated: Optional[bool] = None,
+    info: Optional[Mapping] = None,
 ) -> TensorStructType:
     """Run a connector enabled policy using environment observation.
 
@@ -167,10 +194,24 @@ def local_policy_inference(
     server-client deployment.
 
     Args:
-        policy: Policy.
-        env_id: Environment ID.
-        agent_id: Agent ID.
-        obs: Env obseration.
+        policy: Policy object used in inference.
+        env_id: Environment ID. RLlib builds environments' trajectories internally with
+            connectors based on this, i.e. one trajectory per (env_id, agent_id) tuple.
+        agent_id: Agent ID. RLlib builds agents' trajectories internally with connectors
+            based on this, i.e. one trajectory per (env_id, agent_id) tuple.
+        obs: Environment observation to base the action on.
+        reward: Reward that is potentially used during inference. If not required,
+            may be left empty. Some policies have ViewRequirements that require this.
+            This can be set to zero at the first inference step - for example after
+            calling gmy.Env.reset.
+        terminated: `Terminated` flag that is potentially used during inference. If not
+            required, may be left None. Some policies have ViewRequirements that
+            require this extra information.
+        truncated: `Truncated` flag that is potentially used during inference. If not
+            required, may be left None. Some policies have ViewRequirements that
+            require this extra information.
+        info: Info that is potentially used durin inference. If not required,
+            may be left empty. Some policies have ViewRequirements that require this.
 
     Returns:
         List of outputs from policy forward pass.
@@ -179,6 +220,8 @@ def local_policy_inference(
         policy.agent_connectors
     ), "policy_inference only works with connector enabled policies."
 
+    __check_atari_obs_space(obs)
+
     # Put policy in inference mode, so we don't spend time on training
     # only transformations.
     policy.agent_connectors.in_eval()
@@ -186,6 +229,15 @@ def local_policy_inference(
 
     # TODO(jungong) : support multiple env, multiple agent inference.
     input_dict = {SampleBatch.NEXT_OBS: obs}
+    if reward is not None:
+        input_dict[SampleBatch.REWARDS] = reward
+    if terminated is not None:
+        input_dict[SampleBatch.TERMINATEDS] = terminated
+    if truncated is not None:
+        input_dict[SampleBatch.TRUNCATEDS] = truncated
+    if info is not None:
+        input_dict[SampleBatch.INFOS] = info
+
     acd_list: List[AgentConnectorDataType] = [
         AgentConnectorDataType(env_id, agent_id, input_dict)
     ]
@@ -193,6 +245,10 @@ def local_policy_inference(
     outputs = []
     for ac in ac_outputs:
         policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
+
+        # Note (Kourosh): policy output is batched, the AgentConnectorDataType should
+        # not be batched during inference. This is the assumption made in AgentCollector
+        policy_output = tree.map_structure(lambda x: x[0], policy_output)
 
         action_connector_data = ActionConnectorDataType(
             env_id, agent_id, ac.data.raw_dict, policy_output
@@ -252,3 +308,21 @@ def load_policies_from_checkpoint(
 ) -> Dict[PolicyID, "Policy"]:
 
     return Policy.from_checkpoint(path, policy_ids)
+
+
+def __check_atari_obs_space(obs):
+    # TODO(Artur): Remove this after we have migrated deepmind style preprocessing into
+    #  connectors (and don't auto-wrap in RW anymore)
+    if any(
+        o.shape == ATARI_OBS_SHAPE if isinstance(o, np.ndarray) else False
+        for o in tree.flatten(obs)
+    ):
+        if log_once("warn_about_possibly_non_wrapped_atari_env"):
+            logger.warning(
+                "The observation you fed into local_policy_inference() has "
+                "dimensions (210, 160, 3), which is the standard for atari "
+                "environments. If RLlib raises an error including a related "
+                "dimensionality mismatch, you may need to use "
+                "ray.rllib.env.wrappers.atari_wrappers.wrap_deepmind to wrap "
+                "you environment."
+            )

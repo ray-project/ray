@@ -3,7 +3,7 @@
 # __reproducible_start__
 import numpy as np
 from ray import tune
-from ray.air import session
+from ray.air import session, ScalingConfig
 
 
 def train(config):
@@ -93,29 +93,32 @@ if not MOCK:
     tuner.fit()
     # __resources_pgf_end__
 
+    # __resources_scalingconfig_start__
+    tuner = tune.Tuner(
+        tune.with_resources(
+            train_fn,
+            resources=ScalingConfig(
+                trainer_resources={"CPU": 2, "GPU": 0.5, "hdd": 80},
+                num_workers=2,
+                resources_per_worker={"CPU": 1},
+            ),
+        )
+    )
+    tuner.fit()
+    # __resources_scalingconfig_end__
+
     # __resources_lambda_start__
     tuner = tune.Tuner(
         tune.with_resources(
             train_fn,
-            resources=lambda spec: {"GPU": 1} if spec.config.use_gpu else {"GPU": 0},
-        )
-    )
-    tuner.fit()
-    # __resources_lambda_end__
-
-    # __resources_scalingconfig_start__
-    tuner = tune.Tuner(
-        train_fn,
+            resources=lambda config: {"GPU": 1} if config["use_gpu"] else {"GPU": 0},
+        ),
         param_space={
-            "scaling_config": ScalingConfig(
-                trainer_resources=lambda spec: {"GPU": 1}
-                if spec.config.use_gpu
-                else {"GPU": 0}
-            )
+            "use_gpu": True,
         },
     )
     tuner.fit()
-    # __resources_scalingconfig_end__
+    # __resources_lambda_end__
 
     metric = None
 
@@ -411,3 +414,28 @@ tuner = tune.Tuner(
     ),
 )
 # __grid_search_2_end__
+
+if not MOCK:
+    import os
+    from pathlib import Path
+
+    # __no_chdir_start__
+    def train_func(config):
+        # Read from relative paths
+        print(open("./read.txt").read())
+
+        # The working directory shouldn't have changed from the original
+        # NOTE: The `TUNE_ORIG_WORKING_DIR` environment variable is deprecated.
+        assert os.getcwd() == os.environ["TUNE_ORIG_WORKING_DIR"]
+
+        # Write to the Tune trial directory, not the shared working dir
+        tune_trial_dir = Path(session.get_trial_dir())
+        with open(tune_trial_dir / "write.txt", "w") as f:
+            f.write("trial saved artifact")
+
+    tuner = tune.Tuner(
+        train_func,
+        tune_config=tune.TuneConfig(..., chdir_to_trial_dir=False),
+    )
+    tuner.fit()
+    # __no_chdir_end__

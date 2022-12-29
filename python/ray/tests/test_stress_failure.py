@@ -15,14 +15,14 @@ from ray.cluster_utils import Cluster, cluster_not_supported
 def ray_start_reconstruction(request):
     num_nodes = request.param
 
-    plasma_store_memory = int(0.5 * 10 ** 9)
+    plasma_store_memory = int(0.5 * 10**9)
 
     cluster = Cluster(
         initialize_head=True,
         head_node_args={
             "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
-            "redis_max_memory": 10 ** 8,
+            "redis_max_memory": 10**8,
             "_system_config": {"object_timeout_milliseconds": 200},
         },
     )
@@ -279,7 +279,7 @@ def test_nondeterministic_task(ray_start_reconstruction, error_pubsub):
 
 
 @pytest.mark.skip(reason="Failing with new GCS API on Linux.")
-@pytest.mark.parametrize("ray_start_object_store_memory", [10 ** 9], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**9], indirect=True)
 def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
     p = error_pubsub
     plasma_store_memory = ray_start_object_store_memory

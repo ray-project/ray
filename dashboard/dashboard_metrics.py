@@ -1,4 +1,5 @@
 from typing import Optional
+from ray.dashboard.consts import COMPONENT_METRICS_TAG_KEYS
 
 
 class NullMetric:
@@ -16,7 +17,7 @@ class NullMetric:
 
 try:
 
-    from prometheus_client import CollectorRegistry, Counter, Histogram
+    from prometheus_client import CollectorRegistry, Counter, Histogram, Gauge
 
     # The metrics in this class should be kept in sync with
     # python/ray/tests/test_metrics_agent.py
@@ -50,20 +51,36 @@ try:
                 60,
             ]
             self.metrics_request_duration = Histogram(
-                "api_requests_duration_seconds",
+                "dashboard_api_requests_duration_seconds",
                 "Total duration in seconds per endpoint",
-                ("endpoint", "http_status"),
+                ("endpoint", "http_status", "SessionName", "Component"),
                 unit="seconds",
-                namespace="dashboard",
+                namespace="ray",
                 registry=self.registry,
                 buckets=histogram_buckets_s,
             )
             self.metrics_request_count = Counter(
-                "api_requests_count",
+                "dashboard_api_requests_count",
                 "Total requests count per endpoint",
-                ("method", "endpoint", "http_status"),
+                ("method", "endpoint", "http_status", "SessionName", "Component"),
                 unit="requests",
-                namespace="dashboard",
+                namespace="ray",
+                registry=self.registry,
+            )
+            self.metrics_dashboard_cpu = Gauge(
+                "component_cpu",
+                "Dashboard CPU percentage usage.",
+                tuple(COMPONENT_METRICS_TAG_KEYS),
+                unit="percentage",
+                namespace="ray",
+                registry=self.registry,
+            )
+            self.metrics_dashboard_mem = Gauge(
+                "component_uss",
+                "USS usage of all components on the node.",
+                tuple(COMPONENT_METRICS_TAG_KEYS),
+                unit="mb",
+                namespace="ray",
                 registry=self.registry,
             )
 

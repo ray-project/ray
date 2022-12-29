@@ -21,7 +21,7 @@ class TestPolicy(unittest.TestCase):
     def test_policy_get_and_set_state(self):
         config = PPOConfig()
         for fw in framework_iterator(config):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
             policy = algo.get_policy()
             state1 = policy.get_state()
             algo.train()

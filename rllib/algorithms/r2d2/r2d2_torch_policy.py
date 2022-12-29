@@ -2,7 +2,7 @@
 
 from typing import Dict, Tuple
 
-import gym
+import gymnasium as gym
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS,
@@ -125,7 +125,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     )
 
     actions = train_batch[SampleBatch.ACTIONS].long()
-    dones = train_batch[SampleBatch.DONES].float()
+    dones = train_batch[SampleBatch.TERMINATEDS].float()
     rewards = train_batch[SampleBatch.REWARDS]
     weights = train_batch[PRIO_WEIGHTS]
 
@@ -233,12 +233,12 @@ def h_inverse(x, epsilon=1.0):
         two_epsilon * x
         + (two_epsilon + 1.0)
         - torch.sqrt(4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
-    ) / (2.0 * epsilon ** 2)
+    ) / (2.0 * epsilon**2)
     if_x_neg = (
         two_epsilon * x
         - (two_epsilon + 1.0)
         + torch.sqrt(-4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
-    ) / (2.0 * epsilon ** 2)
+    ) / (2.0 * epsilon**2)
     return torch.where(x < 0.0, if_x_neg, if_x_pos)
 
 
@@ -250,13 +250,13 @@ class ComputeTDErrorMixin:
 
     def __init__(self):
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             input_dict = self._lazy_tensor_dict({SampleBatch.CUR_OBS: obs_t})
             input_dict[SampleBatch.ACTIONS] = act_t
             input_dict[SampleBatch.REWARDS] = rew_t
             input_dict[SampleBatch.NEXT_OBS] = obs_tp1
-            input_dict[SampleBatch.DONES] = done_mask
+            input_dict[SampleBatch.TERMINATEDS] = terminateds_mask
             input_dict[PRIO_WEIGHTS] = importance_weights
 
             # Do forward pass on loss to update td error attribute

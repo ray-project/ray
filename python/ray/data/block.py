@@ -61,7 +61,7 @@ KeyFn = Union[None, str, Callable[[T], Any]]
 def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
     """Check the key function is valid on the given dataset."""
     try:
-        fmt = ds._dataset_format()
+        fmt = ds.dataset_format()
     except ValueError:
         # Dataset is empty/cleared, validation not possible.
         return
@@ -137,7 +137,7 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 
 # The metadata that describes the output of a BlockPartition. This has the
 # same type as the metadata that describes each block in the partition.
-BlockPartitionMetadata = "BlockMetadata"
+BlockPartitionMetadata = List["BlockMetadata"]
 
 # TODO(ekl/chengsu): replace this with just `ObjectRefGenerator` once block splitting
 # is on by default. When block splitting is off, the type is a plain block.

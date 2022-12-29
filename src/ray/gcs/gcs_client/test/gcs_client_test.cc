@@ -105,6 +105,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs_client_.reset();
 
     server_io_service_->stop();
+    rpc::DrainAndResetServerCallExecutor();
     server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();
@@ -138,8 +139,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       auto channel =
           grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
-      std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
-          rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+      auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
       context.set_deadline(std::chrono::system_clock::now() + 1s);
       const rpc::CheckAliveRequest request;
@@ -384,14 +384,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return resources;
   }
 
-  bool AddProfileData(const std::shared_ptr<rpc::ProfileTableData> &profile_table_data) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
-        profile_table_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool ReportJobError(const std::shared_ptr<rpc::ErrorTableData> &error_table_data) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
@@ -471,7 +463,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
 
   auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                                      grpc::InsecureChannelCredentials());
-  auto stub = rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+  auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
   rpc::CheckAliveRequest request;
   *(request.mutable_raylet_address()->Add()) = "172.1.2.3:31292";
   *(request.mutable_raylet_address()->Add()) = "172.1.2.4:31293";
@@ -703,13 +695,6 @@ TEST_P(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) 
   EXPECT_EQ(resources1[0].resources_available_size(), 2);
   EXPECT_EQ((*resources1[0].mutable_resources_available())["CPU"], 1.0);
   EXPECT_EQ((*resources1[0].mutable_resources_available())["GPU"], 10.0);
-}
-
-TEST_P(GcsClientTest, TestStats) {
-  // Add profile data to GCS.
-  NodeID node_id = NodeID::FromRandom();
-  auto profile_table_data = Mocker::GenProfileTableData(node_id);
-  ASSERT_TRUE(AddProfileData(profile_table_data));
 }
 
 TEST_P(GcsClientTest, TestWorkerInfo) {

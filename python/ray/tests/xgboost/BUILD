@@ -7,7 +7,7 @@ py_test(
  size = "small",
  srcs = ["simple_example.py"],
  deps = ["//:ray_lib"],
- tags = ["team:ml", "compat", "exclusive"],
+ tags = ["team:ml", "compat", "compat_py36", "exclusive"],
 )
 
 py_test(
@@ -15,7 +15,7 @@ py_test(
  size="small",
  srcs = ["simple_tune.py"],
  deps = ["//:ray_lib"],
- tags = ["team:ml", "compat", "exclusive"]
+ tags = ["team:ml", "compat", "compat_py36", "exclusive"]
 )
 
 

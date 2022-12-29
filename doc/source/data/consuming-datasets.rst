@@ -22,7 +22,7 @@ benefit that, if used right after reading, they will only trigger more files to 
 read if needed to retrieve rows from that file; if inspecting a small prefix of rows,
 often only the first file will need to be read.
 
-.. literalinclude:: ./doc_code/accessing_datasets.py
+.. literalinclude:: ./doc_code/consuming_datasets.py
   :language: python
   :start-after: __take_begin__
   :end-before: __take_end__
@@ -33,7 +33,7 @@ Iterating over Datasets
 Datasets can be consumed a row at a time using the
 :meth:`ds.iter_rows() <ray.data.Dataset.iter_rows>` API
 
-.. literalinclude:: ./doc_code/accessing_datasets.py
+.. literalinclude:: ./doc_code/consuming_datasets.py
   :language: python
   :start-after: __iter_rows_begin__
   :end-before: __iter_rows_end__
@@ -44,7 +44,7 @@ batch size as well as the desired batch format. By default, the batch format is
 ``"default"``. For tabular data, the default format is a Pandas DataFrame; for Python
 objects, it's a list.
 
-.. literalinclude:: ./doc_code/accessing_datasets.py
+.. literalinclude:: ./doc_code/consuming_datasets.py
   :language: python
   :start-after: __iter_batches_begin__
   :end-before: __iter_batches_end__
@@ -53,7 +53,7 @@ objects, it's a list.
 Datasets can be passed to Ray tasks or actors and accessed by these iteration methods.
 This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
 
-.. literalinclude:: ./doc_code/accessing_datasets.py
+.. literalinclude:: ./doc_code/consuming_datasets.py
   :language: python
   :start-after: __remote_iterators_begin__
   :end-before: __remote_iterators_end__
@@ -72,7 +72,7 @@ This is a common pattern useful for loading and sharding data between distribute
   If using :ref:`Ray Train <train-docs>` for distributed training, you do not need to split the dataset; Ray
   Train will automatically do locality-aware splitting into per-trainer shards for you!
 
-.. literalinclude:: ./doc_code/accessing_datasets.py
+.. literalinclude:: ./doc_code/consuming_datasets.py
   :language: python
   :start-after: __split_begin__
   :end-before: __split_end__
@@ -114,3 +114,10 @@ to repartition the Dataset before writing out.
     :language: python
     :start-after: __write_numpy_begin__
     :end-before: __write_numpy_end__
+
+.. tabbed:: TFRecords
+
+  .. literalinclude:: ./doc_code/saving_datasets.py
+    :language: python
+    :start-after: __write_tfrecords_begin__
+    :end-before: __write_tfrecords_end__

@@ -1,7 +1,7 @@
 from collections import OrderedDict
 import contextlib
-import gym
-from gym.spaces import Space
+import gymnasium as gym
+from gymnasium.spaces import Space
 import numpy as np
 from typing import Dict, List, Any, Union
 
@@ -367,7 +367,7 @@ class ModelV2:
 @DeveloperAPI
 def flatten(obs: TensorType, framework: str) -> TensorType:
     """Flatten the given tensor."""
-    if framework in ["tf2", "tf", "tfe"]:
+    if framework in ["tf2", "tf"]:
         return tf1.keras.layers.Flatten()(obs)
     elif framework == "torch":
         assert torch is not None
@@ -398,7 +398,7 @@ def restore_original_dimensions(
         observation space.
     """
 
-    if tensorlib in ["tf", "tfe", "tf2"]:
+    if tensorlib in ["tf", "tf2"]:
         assert tf is not None
         tensorlib = tf
     elif tensorlib == "torch":

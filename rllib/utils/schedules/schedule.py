@@ -37,7 +37,7 @@ class Schedule(metaclass=ABCMeta):
         Returns:
             The calculated value depending on the schedule and `t`.
         """
-        if self.framework in ["tf2", "tf", "tfe"]:
+        if self.framework in ["tf2", "tf"]:
             return self._tf_value_op(t)
         return self._value(t)
 

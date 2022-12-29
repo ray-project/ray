@@ -63,10 +63,23 @@ const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.SEVEN_DAYS]: "now-7d",
 };
 
+// NOTE: please keep the titles here in sync with grafana_dashboard_factory.py
 const METRICS_CONFIG = [
   {
     title: "Scheduler Task State",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=26",
+  },
+  {
+    title: "Active Tasks by Name",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=35",
+  },
+  {
+    title: "Scheduler Actor State",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=33",
+  },
+  {
+    title: "Active Actors by Name",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=36",
   },
   {
     title: "Scheduler CPUs (logical slots)",
@@ -81,11 +94,15 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
   },
   {
-    title: "Node CPU",
+    title: "Scheduler Placement Groups",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=40",
+  },
+  {
+    title: "Node CPU (hardware utilization)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
   },
   {
-    title: "Node GPU",
+    title: "Node GPU (hardware utilization)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=8",
   },
   {
@@ -93,11 +110,23 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=6",
   },
   {
-    title: "Node Memory",
+    title: "Node Disk IO Speed",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=32",
+  },
+  {
+    title: "Node Memory (heap + object store)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4",
   },
   {
-    title: "Node GPU Memory",
+    title: "Node Memory by Component",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=34",
+  },
+  {
+    title: "Node CPU by Component",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=37",
+  },
+  {
+    title: "Node GPU Memory (GRAM)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=18",
   },
   {
@@ -105,17 +134,17 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=20",
   },
   {
-    title: "Instance count",
+    title: "Node Count",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24",
   },
 ];
 
 export const Metrics = () => {
   const classes = useStyles();
-  const { grafanaHost } = useContext(GlobalContext);
+  const { grafanaHost, sessionName } = useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
-    TimeRangeOptions.ONE_HOUR,
+    TimeRangeOptions.THIRTY_MINS,
   );
   const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,
@@ -177,13 +206,18 @@ export const Metrics = () => {
               ))}
             </TextField>
           </Paper>
+          <Alert severity="info">
+            Tip: You can click on the legend to focus on a specific line in the
+            time-series graph. You can use control/cmd + click to filter out a
+            line in the time-series graph.
+          </Alert>
           <div className={classes.grafanaEmbedsContainer}>
             {METRICS_CONFIG.map(({ title, path }) => (
               <iframe
                 key={title}
                 className={classes.grafanaEmbed}
                 title={title}
-                src={`${grafanaHost}${path}&refresh${timeRangeParams}`}
+                src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
                 width="450"
                 height="400"
                 frameBorder="0"
