@@ -46,9 +46,9 @@ def try_import_open_spiel(error: bool = False):
         ImportError: If error=True and open_spiel is not installed.
     """
     try:
-        import pyspiel
+        import open_spiel
 
-        return pyspiel
+        return open_spiel
     except ImportError:
         if error:
             raise ImportError(
