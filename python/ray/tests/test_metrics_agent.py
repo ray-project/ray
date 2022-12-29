@@ -372,7 +372,7 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"raylet", "agent", "ray::IDLE"}
+        assert components == {"raylet", "agent", "workers"}
 
         avail_metrics = set(avail_metrics)
 
@@ -435,63 +435,6 @@ def test_operation_stats(monkeypatch, shutdown_only):
             return True
 
         wait_for_condition(verify, timeout=60)
-
-
-def test_per_func_name_stats(shutdown_only):
-    # Test operation stats are available when flag is on.
-    comp_metrics = [
-        "ray_component_cpu_percentage",
-    ]
-    if sys.platform == "linux" or sys.platform == "linux2":
-        # Uss only available from Linux
-        comp_metrics.append("ray_component_uss_mb")
-    addr = ray.init()
-
-    @ray.remote
-    class Actor:
-        pass
-
-    @ray.remote
-    class ActorB:
-        pass
-
-    a = Actor.remote()  # noqa
-    b = ActorB.remote()
-
-    def verify():
-        metrics = raw_metrics(addr)
-        metric_names = set(metrics.keys())
-        for metric in comp_metrics:
-            assert metric in metric_names
-            samples = metrics[metric]
-            components = set()
-            for sample in samples:
-                components.add(sample.labels["Component"])
-        assert {
-            "raylet",
-            "agent",
-            "ray::Actor",
-            "ray::ActorB",
-            "ray::IDLE",
-        } == components
-        return True
-
-    wait_for_condition(verify, timeout=30)
-
-    # Verify ActorB is reported as value 0 because it is killed.
-    ray.kill(b)
-
-    def verify():
-        metrics = raw_metrics(addr)
-        for metric in comp_metrics:
-            samples = metrics[metric]
-            for sample in samples:
-                if sample.labels["Component"] == "ray::ActorB":
-                    print("abc")
-                    assert sample.value == 0.0
-        return True
-
-    wait_for_condition(verify, timeout=30)
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):
