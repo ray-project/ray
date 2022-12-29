@@ -64,7 +64,7 @@ def setup_mlflow(
 
     Config keys:
         tracking_uri: The tracking URI for the MLflow tracking
-                server.
+            server.
         registry_uri: The registry URI for the MLflow model registry.
         experiment_id: The id of an already existing MLflow
             experiment to use for logging. If None is passed in
@@ -78,7 +78,7 @@ def setup_mlflow(
             If the experiment with the name already exists with MLflow,
             it will be reused.
         tracking_token: Tracking token used to authenticate with MLflow.
-        tags (Optional[Dict]): Tags to set for the new run.
+        tags: Tags to set for the new run.
 
     Example:
 

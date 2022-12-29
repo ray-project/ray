@@ -182,7 +182,7 @@ class _MLflowLoggerUtil:
         """Starts a new run and possibly sets it as the active run.
 
         Args:
-            tags (Optional[Dict]): Tags to set for the new run.
+            tags: Tags to set for the new run.
             set_active: Whether to set the new run as the active run.
                 If an active run already exists, then that run is returned.
 

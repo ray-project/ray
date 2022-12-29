@@ -79,7 +79,7 @@ py_test(
     name = "test_integration_comet",
     size = "small",
     srcs = ["tests/test_integration_comet.py"],
-    deps = [":tune_lib"],
+    deps = [":ml_lib"],
     tags = ["team:ml", "exclusive"],
 )
 
@@ -87,7 +87,7 @@ py_test(
     name = "test_integration_wandb",
     size = "small",
     srcs = ["tests/test_integration_wandb.py"],
-    deps = [":tune_lib"],
+    deps = [":ml_lib"],
     tags = ["team:ml", "exclusive"],
 )
 
@@ -95,7 +95,7 @@ py_test(
     name = "test_integration_mlflow",
     size = "small",
     srcs = ["tests/test_integration_mlflow.py"],
-    deps = [":tune_lib"],
+    deps = [":ml_lib"],
     tags = ["team:ml", "exclusive"]
 )
 
