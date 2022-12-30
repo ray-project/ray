@@ -150,7 +150,7 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
 class TestSupportedSpacesPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_gpus=1)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -201,6 +201,16 @@ class TestSupportedSpacesPG(unittest.TestCase):
             )
         )
         check_support("PPO", config, check_bounds=True, tf2=True)
+
+
+class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_gpus=1)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
     def test_ppo_no_preprocessors_gpu(self):
         # Same test as test_ppo, but also test if we are able to move models and tensors
