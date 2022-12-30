@@ -59,7 +59,7 @@ serve run local_dev:graph
 # 2022-08-11 11:31:57,383 SUCC scripts.py:315 -- Deployed successfully.
 ```
 
-The `serve run` command blocks the terminal and can be canceled with Ctrl-C.
+The `serve run` command blocks the terminal and can be canceled with Ctrl-C. Typically, `serve run` should not be run simultaneously from multiple terminals, unless each `serve run` is targeting a separate running Ray cluster.
 
 :::{note} 
 If you already have a local Ray Cluster running before executing `serve run`, make sure that the path to your Serve app is accessible from the working directory in which you started the Ray Cluster using `ray start --head`. Otherwise, you can pass in `app-dir` or `working-dir` when executing `serve run`. See the documentation for [serve run](serve_cli.html#serve-run) for more details.
