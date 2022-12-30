@@ -24,10 +24,10 @@ class DLPredictor(Predictor):
         array: np.ndarray,
         dtype: TensorDtype,
     ) -> TensorType:
-        """Converts a NumPy array batch to the tensor type for the DL framework.
+        """Converts a NumPy ndarray batch to the tensor type for the DL framework.
 
         Args:
-            array: The NumPy array to convert to a tensor.
+            array: The numpy array to convert to a tensor.
             dtype: The tensor dtype to use when creating the DL tensor.
 
         Returns:
@@ -38,13 +38,13 @@ class DLPredictor(Predictor):
     @abc.abstractmethod
     @DeveloperAPI
     def tensor_to_array(self, tensor: TensorType) -> np.ndarray:
-        """Converts tensor framework-specific tensor to a NumPy array.
+        """Converts tensor framework specific tensor to a NumPy array.
 
         Args:
-            tensor: A framework-specific tensor.
+            tensor: A framework specific tensor.
 
         Returns:
-            A NumPy array representing the input tensor.
+            A numpy array representing the input tensor.
         """
         raise NotImplementedError
 
