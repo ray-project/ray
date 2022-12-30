@@ -273,6 +273,30 @@ def test_status_error_msg_format(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_invalid_runtime_env(ray_start_stop):
+    """Deploys a config file with invalid runtime env and checks status.
+
+    get_status() should not throw error (meaning REST API returned 200 status code) and
+    the status be deploy failed."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "bad_runtime_env.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        app_status = ServeSubmissionClient("http://localhost:52365").get_status()
+        return (
+            app_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "Failed to set up runtime environment"
+            in app_status["app_status"]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_shutdown(ray_start_stop):
     """Deploys a config file and shuts down the Serve application."""
 
