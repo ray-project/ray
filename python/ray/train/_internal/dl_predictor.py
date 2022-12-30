@@ -37,19 +37,6 @@ class DLPredictor(Predictor):
 
     @abc.abstractmethod
     @DeveloperAPI
-    def call_model(self, inputs: Any) -> Any:
-        """Inputs the tensor to the model for this Predictor and returns the result.
-
-        Args:
-            inputs: The tensor to input to the model.
-
-        Returns:
-            A tensor or dictionary of tensors containing the model output.
-        """
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    @DeveloperAPI
     def tensor_to_array(self, tensor: TensorType) -> np.ndarray:
         """Converts tensor framework-specific tensor to a NumPy array.
 
@@ -58,6 +45,19 @@ class DLPredictor(Predictor):
 
         Returns:
             A NumPy array representing the input tensor.
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    @DeveloperAPI
+    def call_model(self, inputs: Any) -> Any:
+        """Inputs the tensor to the model for this Predictor and returns the result.
+
+        Args:
+            inputs: The tensor to input to the model.
+
+        Returns:
+            A tensor or dictionary of tensors containing the model output.
         """
         raise NotImplementedError
 
