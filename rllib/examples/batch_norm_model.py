@@ -43,8 +43,10 @@ parser.add_argument(
     "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
 )
 parser.add_argument(
-    "--time-total-s", type=float, default=60*60, help="Time after which we stop "
-                                                      "training in seconds."
+    "--time-total-s",
+    type=float,
+    default=60 * 60,
+    help="Time after which we stop " "training in seconds.",
 )
 
 if __name__ == "__main__":
@@ -75,7 +77,7 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
         "timesteps_total": args.stop_timesteps,
         "episode_reward_mean": args.stop_reward,
-        "time_total_s": args.time_total_s
+        "time_total_s": args.time_total_s,
     }
 
     tuner = tune.Tuner(
