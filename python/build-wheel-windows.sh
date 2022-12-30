@@ -102,7 +102,9 @@ build_wheel_windows() {
     # Start a subshell to prevent PATH and cd from affecting our shell environment
     (
       if ! is_python_version "${pyversion}"; then
-        conda install -y python="${pyversion}"
+        # Set strict channel priority so that offical packages get resolved rather than conda-forge.
+        conda config --set channel_priority strict
+        conda install -y python="${pyversion}" -c defaults -c conda-forge
       fi
       if ! is_python_version "${pyversion}"; then
         echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2
