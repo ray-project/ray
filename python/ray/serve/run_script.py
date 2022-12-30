@@ -112,8 +112,9 @@ def main():
 
     except Exception:
         traceback.print_exc()
-        cli_logger.info(
-            "Received unexpected error, see logs for more details. Shutting down..."
+        cli_logger.error(
+            "Received unexpected error, see console logs for more details. Shutting "
+            "down..."
         )
         serve.shutdown()
         sys.exit()
