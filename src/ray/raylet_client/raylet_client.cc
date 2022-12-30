@@ -113,7 +113,7 @@ raylet::RayletClient::RayletClient(
     std::string *serialized_job_config,
     StartupToken startup_token,
     const std::string &entrypoint)
-    : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
+    : grpc_client_(std::move(grpc_client)), worker_id_(worker_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
   flatbuffers::FlatBufferBuilder fbb;

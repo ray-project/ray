@@ -1634,7 +1634,7 @@ json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> par
 }
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
-    const std::string &serialized_runtime_env_info) {
+    const std::string &serialized_runtime_env_info) const {
   // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
   // yet, we will overwrite the filed eager_install when it did.
   std::shared_ptr<json> parent = nullptr;
@@ -1714,11 +1714,13 @@ void CoreWorker::BuildCommonTaskSpec(
     num_returns = 1;
   }
   RAY_CHECK(num_returns >= 0);
+  RAY_CHECK(job_config_ != nullptr);
   builder.SetCommonTaskSpec(task_id,
                             name,
                             function.GetLanguage(),
                             function.GetFunctionDescriptor(),
                             job_id,
+                            *job_config_,
                             current_task_id,
                             task_index,
                             caller_id,

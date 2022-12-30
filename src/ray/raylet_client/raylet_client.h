@@ -490,8 +490,6 @@ class RayletClient : public RayletClientInterface {
 
   WorkerID GetWorkerID() const { return worker_id_; }
 
-  JobID GetJobID() const { return job_id_; }
-
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
   int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
@@ -501,7 +499,6 @@ class RayletClient : public RayletClientInterface {
   /// request types.
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
-  const JobID job_id_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
