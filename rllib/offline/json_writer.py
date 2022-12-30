@@ -110,7 +110,7 @@ class JsonWriter(OutputWriter):
 
 def _to_jsonable(v, compress: bool) -> Any:
     if compress and compression_supported():
-        return str(pack(v))
+        return pack(v).decode("ascii")
     elif isinstance(v, np.ndarray):
         return v.tolist()
     return v
