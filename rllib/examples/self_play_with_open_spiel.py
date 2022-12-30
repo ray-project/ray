@@ -37,7 +37,8 @@ from ray.tune import CLIReporter, register_env
 open_spiel = try_import_open_spiel(error=True)
 pyspiel = try_import_pyspiel(error=True)
 
-Environment = open_spiel.python.rl_environment
+# Import after try_import_open_spiel, so we can error out with hints
+from open_spiel.python.rl_environment import Environment  # noqa: E402
 
 
 def get_cli_args():
