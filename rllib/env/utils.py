@@ -26,7 +26,7 @@ def try_import_pyspiel(error: bool = False):
         if error:
             raise ImportError(
                 "Could not import pyspiel! Pygame is not a dependency of RLlib "
-                "and Rllib requires you to install pygame separately: "
+                "and RLlib requires you to install pygame separately: "
                 "`pip install pygame`."
             )
         return None
@@ -53,7 +53,7 @@ def try_import_open_spiel(error: bool = False):
         if error:
             raise ImportError(
                 "Could not import open_spiel! open_spiel is not a dependency of RLlib "
-                "and Rllib requires you to install open_spiel separately: "
+                "and RLlib requires you to install open_spiel separately: "
                 "`pip install open_spiel`."
             )
         return None
