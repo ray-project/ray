@@ -326,25 +326,23 @@ class JobSupervisor:
                 # still running, yield control, 0.1s by default
                 await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
-    async def _poll_all(self, pid: int):
-        """Poll process and all its child processes until all are completed."""
-        parent_process = psutil.Process(pid)
-
+    async def _poll_all(self, processes: List[psutil.Process]):
+        """Poll processes until all are completed."""
         while True:
-            children = parent_process.children(recursive=True)
-            (_, alive) = psutil.wait_procs([parent_process] + children, timeout=0)
+            (_, alive) = psutil.wait_procs(processes, timeout=0)
             if len(alive) == 0:
                 return
             else:
                 await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
-    def _kill_job(self, entrypoint_pid: int, sig: signal.Signals):
-        """Kills job associated with pid of process from _exec_entrypoint."""
-        parent_process = psutil.Process(entrypoint_pid)
-        procs_to_kill = [parent_process] + parent_process.children(recursive=True)
-
-        for proc in procs_to_kill:
-            os.kill(proc.pid, sig)
+    def _kill_processes(self, processes: List[psutil.Process], sig: signal.Signals):
+        """Ensures each process is already finished or send a kill signal."""
+        for proc in processes:
+            try:
+                os.kill(proc.pid, sig)
+            except ProcessLookupError:
+                # Process is already dead
+                pass
 
     async def run(
         self,
@@ -414,9 +412,13 @@ class JobSupervisor:
                             "job with SIGTERM."
                         )
                         stop_signal = "SIGTERM"
-                    self._kill_job(child_pid, getattr(signal, stop_signal))
-                    # Wait for job to terminate gracefully, otherwise kill process
-                    # forcefully after timeout.
+                    
+                    job_process = psutil.Process(child_pid)
+                    proc_to_kill = [job_process] + job_process.children(recursive=True)
+
+                    # Send stop signal and wait for job to terminate gracefully, 
+                    # otherwise SIGKILL job forcefully after timeout.
+                    self._kill_processes(proc_to_kill, getattr(signal, stop_signal))
                     try:
                         stop_job_wait_time = int(
                             os.environ.get(
@@ -424,7 +426,7 @@ class JobSupervisor:
                                 self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
                             )
                         )
-                        poll_job_stop_task = create_task(self._poll_all(child_pid))
+                        poll_job_stop_task = create_task(self._poll_all(proc_to_kill))
                         await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
                         logger.info(
                             f"Job {self._job_id} has been terminated gracefully "
@@ -437,10 +439,7 @@ class JobSupervisor:
                             f"{stop_job_wait_time} seconds. Job is now being "
                             "force-killed."
                         )
-                        poll_job_stop_task.cancel()
-                        # Kill the entire process group in case the job spawned any
-                        # child processes of its own
-                        self._kill_job(child_pid, signal.SIGKILL)
+                        self._kill_processes(proc_to_kill, signal.SIGKILL)
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
