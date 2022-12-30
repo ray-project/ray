@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, TypeVar, Union
+from typing import Any, Dict, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -18,20 +18,17 @@ TensorDtype = TypeVar("TensorDtype")
 
 class DLPredictor(Predictor):
     @abc.abstractmethod
-    def _arrays_to_tensors(
+    @DeveloperAPI
+    def array_to_tensor(
         self,
-        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtype: Union[TensorDtype, Dict[str, TensorDtype]],
-    ) -> Union[TensorType, Dict[str, TensorType]]:
-        """Converts a NumPy ndarray batch to the tensor type for the DL framework.
+        array: np.ndarray,
+        dtype: TensorDtype,
+    ) -> TensorType:
+        """Converts a NumPy array batch to the tensor type for the DL framework.
 
         Args:
-            numpy_array: The numpy array to convert to a tensor.
+            array: The NumPy array to convert to a tensor.
             dtype: The tensor dtype to use when creating the DL tensor.
-            ndarray: A (dict of) NumPy ndarray(s) that we wish to convert to a (dict of)
-                tensor(s).
-            dtype: A (dict of) tensor dtype(s) to use when creating the DL tensor; if
-                None, the dtype will be inferred from the NumPy ndarray data.
 
         Returns:
             A deep learning framework specific tensor.
@@ -39,23 +36,8 @@ class DLPredictor(Predictor):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def _tensor_to_array(self, tensor: TensorType) -> np.ndarray:
-        """Converts tensor framework specific tensor to a numpy array.
-
-        Args:
-            tensor: A framework specific tensor.
-
-        Returns:
-            A numpy array representing the input tensor.
-        """
-
-        raise NotImplementedError
-
-    @abc.abstractmethod
     @DeveloperAPI
-    def call_model(
-        self, inputs: Union[TensorType, Dict[str, TensorType]]
-    ) -> Union[TensorType, Dict[str, TensorType]]:
+    def call_model(self, inputs: Any) -> Any:
         """Inputs the tensor to the model for this Predictor and returns the result.
 
         Args:
@@ -65,6 +47,49 @@ class DLPredictor(Predictor):
             A tensor or dictionary of tensors containing the model output.
         """
         raise NotImplementedError
+
+    @abc.abstractmethod
+    @DeveloperAPI
+    def tensor_to_array(self, tensor: TensorType) -> np.ndarray:
+        """Converts tensor framework-specific tensor to a NumPy array.
+
+        Args:
+            tensor: A framework-specific tensor.
+
+        Returns:
+            A NumPy array representing the input tensor.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def arrays_to_inputs(self, arrays: Union[np.ndarray, Dict[str, np.ndarray]]):
+        # Single column selection return numpy array so preprocessors can be
+        # reused in both training and prediction
+        if isinstance(arrays, dict) and len(arrays) == 1:
+            arrays = next(iter(arrays.values()))
+
+        if isinstance(arrays, np.ndarray):
+            inputs = self.array_to_tensor(arrays)
+        else:
+            assert isinstance(arrays, dict) and all(
+                isinstance(value, np.ndarray) for value in arrays.values()
+            )
+            inputs = {
+                column: self.array_to_tensor(array) for column, array in arrays.items()
+            }
+
+        return inputs
+
+    @DeveloperAPI
+    def outputs_to_arrays(
+        self, outputs: Any
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        # TODO (jiaodong): Investigate perf implication of this.
+        # Move DL Tensor to CPU and convert to numpy.
+        if isinstance(outputs, dict):
+            return {k: self.tensor_to_array(v) for k, v in outputs.items()}
+        else:
+            return {"predictions": self.tensor_to_array(outputs)}
 
     @classmethod
     @DeveloperAPI
@@ -87,15 +112,6 @@ class DLPredictor(Predictor):
         data: Union[np.ndarray, Dict[str, np.ndarray]],
         dtype: Union[TensorDtype, Dict[str, TensorDtype]],
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-        # Single column selection return numpy array so preprocessors can be
-        # reused in both training and prediction
-        if isinstance(data, dict) and len(data) == 1:
-            data = next(iter(data.values()))
-        model_input = self._arrays_to_tensors(data, dtype)
-        model_output = self.call_model(model_input)
-        # TODO (jiaodong): Investigate perf implication of this.
-        # Move DL Tensor to CPU and convert to numpy.
-        if isinstance(model_output, dict):
-            return {k: self._tensor_to_array(v) for k, v in model_output.items()}
-        else:
-            return {"predictions": self._tensor_to_array(model_output)}
+        model_inputs = self.arrays_to_inputs(data)
+        model_outputs = self.call_model(model_inputs)
+        return self.outputs_to_arrays(model_outputs)
