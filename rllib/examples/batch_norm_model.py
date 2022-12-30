@@ -42,6 +42,10 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
 )
+parser.add_argument(
+    "--time-total-s", type=float, default=60*60, help="Time after which we stop "
+                                                      "training in seconds."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -61,7 +65,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v1")
         .framework(args.framework)
-        .rollouts(num_rollout_workers=0)
+        .rollouts(num_rollout_workers=3)
         .training(model={"custom_model": "bn_model"}, lr=0.0003)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
@@ -71,6 +75,7 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
         "timesteps_total": args.stop_timesteps,
         "episode_reward_mean": args.stop_reward,
+        "time_total_s": args.time_total_s
     }
 
     tuner = tune.Tuner(

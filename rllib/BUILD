@@ -2651,18 +2651,18 @@ py_test(
     name = "examples/batch_norm_model_dqn_tf",
     main = "examples/batch_norm_model.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--run=DQN", "--stop-reward=70"]
+    args = ["--as-test", "--run=DQN", "--stop-reward=70", "--time-total-s=400"]
 )
 
 py_test(
     name = "examples/batch_norm_model_dqn_torch",
     main = "examples/batch_norm_model.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",  # DQN learns much slower with BatchNorm.
+    size = "large",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--framework=torch", "--run=DQN", "--stop-reward=70"]
+    args = ["--as-test", "--framework=torch", "--run=DQN", "--stop-reward=70", "--time-total-s=400"]
 )
 
 py_test(
