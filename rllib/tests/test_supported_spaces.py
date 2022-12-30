@@ -27,7 +27,9 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.test_utils import framework_iterator
 
 ACTION_SPACES_TO_TEST = {
-    "discrete": Discrete(5),
+    # Test discrete twice here until we support multi_binary action spaces
+    "discrete": Discrete(5),  # TODO: (Artur) Support "multi_binary"
+    "discrete2": Discrete(5),
     "vector1d": Box(-1.0, 1.0, (5,), dtype=np.float32),
     "vector2d": Box(-1.0, 1.0, (5,), dtype=np.float32),
     "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
@@ -40,9 +42,6 @@ ACTION_SPACES_TO_TEST = {
             "yet_another_nested_dict": Dict({"a": Tuple([Discrete(2), Discrete(3)])}),
         }
     ),
-    # Test discrete twice here until we suppoert multi_binary action spaces
-    "discrete": Discrete(5),  # TODO: (Artur) Support "multi_binary": MultiBinary([
-    # ...]),
 }
 
 OBSERVATION_SPACES_TO_TEST = {
