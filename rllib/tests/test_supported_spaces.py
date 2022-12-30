@@ -147,7 +147,37 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
             _do_check(alg, config, fixed_action_key, o_name)
 
 
-class TestSupportedSpacesPG(unittest.TestCase):
+class TestSupportedSpacesIMPALAAPPO(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_impala(self):
+        check_support(
+            "IMPALA",
+            (
+                ImpalaConfig()
+                .resources(num_gpus=0)
+                .training(model={"fcnet_hiddens": [10]})
+            ),
+        )
+
+    def test_appo(self):
+        config = (
+            APPOConfig()
+            .resources(num_gpus=0)
+            .training(vtrace=False, model={"fcnet_hiddens": [10]})
+        )
+        check_support("APPO", config, train=False)
+        config.training(vtrace=True)
+        check_support("APPO", config)
+
+
+class TestSupportedSpacesA3CPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -167,30 +197,10 @@ class TestSupportedSpacesPG(unittest.TestCase):
         )
         check_support("A3C", config, check_bounds=True)
 
-    def test_appo(self):
-        config = (
-            APPOConfig()
-            .resources(num_gpus=0)
-            .training(vtrace=False, model={"fcnet_hiddens": [10]})
-        )
-        check_support("APPO", config, train=False)
-        config.training(vtrace=True)
-        check_support("APPO", config)
-
-    def test_impala(self):
-        check_support(
-            "IMPALA",
-            (
-                ImpalaConfig()
-                .resources(num_gpus=0)
-                .training(model={"fcnet_hiddens": [10]})
-            ),
-        )
-
     def test_ppo(self):
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
+            .rollouts(num_rollout_workers=2, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
                 num_sgd_iter=1,
@@ -219,7 +229,7 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
         # obscure errors.
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
+            .rollouts(num_rollout_workers=2, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
                 num_sgd_iter=1,
