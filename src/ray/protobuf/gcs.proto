@@ -322,6 +322,11 @@ message JobConfig {
   repeated string py_driver_sys_path = 8;
 }
 
+message HeartbeatTableData {
+  // Node id.
+  bytes node_id = 1;
+}
+
 message JobTableData {
   // The job ID.
   bytes job_id = 1;
