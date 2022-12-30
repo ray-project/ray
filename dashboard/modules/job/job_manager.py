@@ -329,9 +329,9 @@ class JobSupervisor:
     async def _poll_all(self, pid: int):
         """Poll process and all its child processes until all are completed."""
         parent_process = psutil.Process(pid)
-        children = parent_process.children(recursive=True)
 
         while True:
+            children = parent_process.children(recursive=True)
             (_, alive) = psutil.wait_procs([parent_process] + children, timeout=0)
             if len(alive) == 0:
                 return
@@ -339,20 +339,9 @@ class JobSupervisor:
                 await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
     def _kill_job(self, entrypoint_pid: int, sig: signal.Signals):
-        """Kills job associated with pid of process from _exec_entrypoint (Unix only).
-        
-        On Mac OSX systems, this kills the parent process itself along with all of its
-        child processes.
-
-        On Linux systems, the parent process is a shell process used to start the actual
-        entrypoint command, so this kills all its child processes but not the parent
-        process itself.
-        """
+        """Kills job associated with pid of process from _exec_entrypoint."""
         parent_process = psutil.Process(entrypoint_pid)
-        procs_to_kill = parent_process.children(recursive=True)
-
-        if sys.platform == "darwin":
-            procs_to_kill += [parent_process]
+        procs_to_kill = [parent_process] + parent_process.children(recursive=True)
 
         for proc in procs_to_kill:
             os.kill(proc.pid, sig)
