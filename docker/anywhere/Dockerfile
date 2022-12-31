@@ -52,5 +52,6 @@ EXPOSE 5645
 EXPOSE 7654/udp
 EXPOSE 7654/tcp
 
-ENTRYPOINT ["/bin/bash"]
+COPY startup.sh ~/startup.sh
+ENTRYPOINT ["~/startup.sh"]
 CMD ["/bin/sh -c"]

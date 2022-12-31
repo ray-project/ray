@@ -1,13 +1,14 @@
 #!/bin/bash
 set -x
-edgepipe=/tmp/f$RANDOM
-dhcppipe=/tmp/d$RANDOM
+RANDOMSTRING=$(openssl rand -base64 8)
+export RANDOMSTRING=$RANDOMSTRING
+edgepipe=/tmp/f$RANDOMSTRING
+dhcppipe=/tmp/d$RANDOMSTRING
 mkfifo $edgepipe
 mkfifo $dhcppipe
+
 if [ "$NODETYPE" = "head" ]
 then
-    RANDOMSTRING=$(openssl rand -base64 8)
-    export RANDOMSTRING=$RANDOMSTRING
     supernode -l $N2N_SUPERNODE_PORT -f
     echo -e "dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom --urlping-dyndns\n" >> ~/.bashrc
 
