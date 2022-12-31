@@ -188,17 +188,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   RAY_CHECK(assigned_port >= 0);
 
-  // Parse job config from serialized string.
-  job_config_.reset(new rpc::JobConfig());
-  job_config_->ParseFromString(serialized_job_config);
-  auto job_serialized_runtime_env =
-      job_config_->runtime_env_info().serialized_runtime_env();
-  job_runtime_env_info_.reset(new rpc::RuntimeEnvInfo);
-  *job_runtime_env_info_ = job_config_->runtime_env_info();
-  if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
-    job_runtime_env_.reset(new json());
-    *job_runtime_env_ = json::parse(job_serialized_runtime_env);
-  }
+  rpc::JobConfig job_config;
+  job_config.ParseFromString(serialized_job_config);
+
+  worker_context_.InitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
@@ -1650,10 +1643,17 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
 
   if (options_.worker_type == WorkerType::DRIVER) {
     if (IsRuntimeEnvEmpty(runtime_env_info->serialized_runtime_env())) {
-      return job_runtime_env_info_;
+      return std::make_shared<rpc::RuntimeEnvInfo>(
+          worker_context_.GetCurrentJobConfig().runtime_env_info());
     }
-    parent = job_runtime_env_;
-    parent_runtime_env_info = job_runtime_env_info_;
+
+    auto job_serialized_runtime_env =
+        worker_context_.GetCurrentJobConfig().runtime_env_info().serialized_runtime_env();
+    if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
+      parent = std::make_shared<json>(json::parse(job_serialized_runtime_env));
+    }
+    parent_runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>(
+        worker_context_.GetCurrentJobConfig().runtime_env_info());
   } else {
     if (IsRuntimeEnvEmpty(runtime_env_info->serialized_runtime_env())) {
       return worker_context_.GetCurrentRuntimeEnvInfo();
@@ -1661,28 +1661,27 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     parent = worker_context_.GetCurrentRuntimeEnv();
     parent_runtime_env_info = worker_context_.GetCurrentRuntimeEnvInfo();
   }
-  if (parent) {
-    std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
-    json child_runtime_env = json::parse(serialized_runtime_env);
-    auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
-    auto serialized_override_runtime_env = override_runtime_env.dump();
-    runtime_env_info->set_serialized_runtime_env(serialized_override_runtime_env);
-    if (runtime_env_info->uris().working_dir_uri().empty() &&
-        !parent_runtime_env_info->uris().working_dir_uri().empty()) {
-      runtime_env_info->mutable_uris()->set_working_dir_uri(
-          parent_runtime_env_info->uris().working_dir_uri());
-    }
-    if (runtime_env_info->uris().py_modules_uris().size() == 0 &&
-        parent_runtime_env_info->uris().py_modules_uris().size() != 0) {
-      runtime_env_info->mutable_uris()->clear_py_modules_uris();
-      for (const std::string &uri : parent_runtime_env_info->uris().py_modules_uris()) {
-        runtime_env_info->mutable_uris()->add_py_modules_uris(uri);
-      }
-    }
-    return runtime_env_info;
-  } else {
+  if (!parent) {
     return runtime_env_info;
   }
+  std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
+  json child_runtime_env = json::parse(serialized_runtime_env);
+  auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
+  auto serialized_override_runtime_env = override_runtime_env.dump();
+  runtime_env_info->set_serialized_runtime_env(serialized_override_runtime_env);
+  if (runtime_env_info->uris().working_dir_uri().empty() &&
+      !parent_runtime_env_info->uris().working_dir_uri().empty()) {
+    runtime_env_info->mutable_uris()->set_working_dir_uri(
+        parent_runtime_env_info->uris().working_dir_uri());
+  }
+  if (runtime_env_info->uris().py_modules_uris().size() == 0 &&
+      parent_runtime_env_info->uris().py_modules_uris().size() != 0) {
+    runtime_env_info->mutable_uris()->clear_py_modules_uris();
+    for (const std::string &uri : parent_runtime_env_info->uris().py_modules_uris()) {
+      runtime_env_info->mutable_uris()->add_py_modules_uris(uri);
+    }
+  }
+  return runtime_env_info;
 }
 
 void CoreWorker::BuildCommonTaskSpec(
@@ -1714,13 +1713,12 @@ void CoreWorker::BuildCommonTaskSpec(
     num_returns = 1;
   }
   RAY_CHECK(num_returns >= 0);
-  RAY_CHECK(job_config_ != nullptr);
   builder.SetCommonTaskSpec(task_id,
                             name,
                             function.GetLanguage(),
                             function.GetFunctionDescriptor(),
                             job_id,
-                            *job_config_,
+                            worker_context_.GetCurrentJobConfig(),
                             current_task_id,
                             task_index,
                             caller_id,
@@ -1815,12 +1813,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
         "Async actor is currently not supported for the local mode");
   }
 
-  RAY_CHECK(job_config_ != nullptr);
   bool is_detached = false;
   if (!actor_creation_options.is_detached.has_value()) {
     /// Since this actor doesn't have a specified lifetime on creation, let's use
     /// the default value of the job.
-    is_detached = job_config_->default_actor_lifetime() ==
+    is_detached = worker_context_.GetCurrentJobConfig().default_actor_lifetime() ==
                   ray::rpc::JobConfig_ActorLifetime_DETACHED;
   } else {
     is_detached = actor_creation_options.is_detached.value();
@@ -1866,7 +1863,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
   // If the namespace is not specified, get it from the job.
   const auto &ray_namespace = (actor_creation_options.ray_namespace.empty()
-                                   ? job_config_->ray_namespace()
+                                   ? worker_context_.GetCurrentJobConfig().ray_namespace()
                                    : actor_creation_options.ray_namespace);
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id,
@@ -2235,7 +2232,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
 
   return actor_manager_->GetNamedActorHandle(
       name,
-      ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace,
+      ray_namespace.empty() ? worker_context_.GetCurrentJobConfig().ray_namespace()
+                            : ray_namespace,
       CurrentCallSite(),
       rpc_address_);
 }
@@ -2250,7 +2248,7 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
 
   // This call needs to be blocking because we can't return until we get the
   // response from the RPC.
-  const auto &ray_namespace = job_config_->ray_namespace();
+  const auto &ray_namespace = worker_context_.GetCurrentJobConfig().ray_namespace();
   const auto status =
       gcs_client_->Actors().SyncListNamedActors(all_namespaces, ray_namespace, actors);
   if (status.IsTimedOut()) {
@@ -3626,7 +3624,9 @@ void CoreWorker::SetActorTitle(const std::string &title) {
   actor_title_ = title;
 }
 
-const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
+const rpc::JobConfig &CoreWorker::GetJobConfig() const {
+  return worker_context_.GetCurrentJobConfig();
+}
 
 bool CoreWorker::IsExiting() const { return exiting_; }
 
