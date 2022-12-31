@@ -85,7 +85,6 @@ class DLPredictor(Predictor):
     def outputs_to_arrays(
         self, outputs: Any
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-
         try:
             # TODO (jiaodong): Investigate perf implication of this.
             # Move DL Tensor to CPU and convert to numpy.
