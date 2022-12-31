@@ -5,29 +5,28 @@ ENV MODIN_RAY_CLUSTER=True
 ENV TZ=America/Los_Angeles
 ENV NODETYPE=head
 ENV DDNS_LOGIN=username
-ENV KEY=randomstring
+ENV CFLAGS="-O3"
+
 ENV DDNS_PASSWORD=password
 ENV DDNS_HOST=nexus.usethetools.com
 
 ENV N2N_COMMUNITY=community
 ENV N2N_FEDERATION=clusteranywhere
-RUN RANDOMSTRING=$(openssl rand -base64 8)
-ENV RANDOMSTRING=$RANDOMSTRING
+ENV N2N_SUPERNODE_PORT=7654
+#the $RANDOMSTRING variable is defined in the startup script
+ENV N2N_KEY=$RANDOMSTRING
 
-RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends ca-certificates curl wget build-essential libssl-dev libzstd-dev git cmake linux-headers-virtual libpthread* net-tools openssl software-properties-common lsb-release libzstd1 dyndns && sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/* 
+RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends ca-certificates curl wget build-essential libssl-dev libzstd-dev git cmake linux-headers-virtual net-tools openssl software-properties-common lsb-release libzstd1 dyndns && sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/* 
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     pandas \
     modin \
     dask[dataframe]==2022.2.0
 
-RUN if [ "$NODETYPE" = "head" ]; then echo -e "dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom --urlping-dyndns\n" >> /home/ray/.bashrc; fi
-
-
 # building n2n
 RUN cd $HOME && \
 git clone --depth 1 --branch 3.1.1 https://github.com/ntop/n2n.git && \
 cd n2n && mkdir build && cd build && \
-cmake .. "-DN2N_OPTION_USE_OPENSSL=ON" "-DN2N_OPTION_USE_ZSTD=ON" "-DN2N_OPTION_USE_PTHREAD=ON" && \
+cmake .. "-DN2N_OPTION_USE_OPENSSL=ON" "-DN2N_OPTION_USE_ZSTD=ON" && \
 cmake --build . && \
 sudo cmake --install . && cd $HOME && rm -rf n2n
  
