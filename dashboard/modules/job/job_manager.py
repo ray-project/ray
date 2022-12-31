@@ -412,11 +412,11 @@ class JobSupervisor:
                             "job with SIGTERM."
                         )
                         stop_signal = "SIGTERM"
-                    
+
                     job_process = psutil.Process(child_pid)
                     proc_to_kill = [job_process] + job_process.children(recursive=True)
 
-                    # Send stop signal and wait for job to terminate gracefully, 
+                    # Send stop signal and wait for job to terminate gracefully,
                     # otherwise SIGKILL job forcefully after timeout.
                     self._kill_processes(proc_to_kill, getattr(signal, stop_signal))
                     try:
