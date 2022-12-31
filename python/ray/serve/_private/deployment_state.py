@@ -977,6 +977,10 @@ class DeploymentState:
         # DeploymentInfo and bring current deployment to meet new status.
         self._target_state: DeploymentTargetState = DeploymentTargetState.default()
         self._prev_startup_warning: float = time.time()
+        # Exponential backoff when retrying a consistently failing deployment
+        self._last_retry: float = 0.0
+        self._backoff_time: float = 1.0
+        self._max_backoff: float = 64.0
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
@@ -1103,6 +1107,7 @@ class DeploymentState:
             self._name, DeploymentStatus.UPDATING
         )
         self._replica_constructor_retry_counter = 0
+        self._backoff_time = 1
 
         logger.debug(f"Deploying new version of {self._name}: {target_state.version}.")
 
@@ -1307,28 +1312,40 @@ class DeploymentState:
             )
             to_add = max(delta_replicas - stopping_replicas, 0)
             if to_add > 0:
+                # Exponential backoff
+                if self._replica_constructor_retry_counter > 0:
+                    # Wait 1, 2, 4, ... seconds before consecutive retries
+                    if time.time() - self._last_retry < self._backoff_time:
+                        return replicas_stopped
+
+                    self._backoff_time = min(
+                        2 * (self._backoff_time + random.uniform(-1, 1)),
+                        self._max_backoff + random.uniform(-1, 1),
+                    )
+                    self._last_retry = time.time()
+
                 logger.info(
                     f"Adding {to_add} replica{'s' if to_add > 1 else ''} "
                     f"to deployment '{self._name}'."
                 )
-            for _ in range(to_add):
-                replica_name = ReplicaName(self._name, get_random_letters())
-                new_deployment_replica = DeploymentReplica(
-                    self._controller_name,
-                    self._detached,
-                    replica_name.replica_tag,
-                    replica_name.deployment_tag,
-                    self._target_state.version,
-                )
-                new_deployment_replica.start(
-                    self._target_state.info, self._target_state.version
-                )
+                for _ in range(to_add):
+                    replica_name = ReplicaName(self._name, get_random_letters())
+                    new_deployment_replica = DeploymentReplica(
+                        self._controller_name,
+                        self._detached,
+                        replica_name.replica_tag,
+                        replica_name.deployment_tag,
+                        self._target_state.version,
+                    )
+                    new_deployment_replica.start(
+                        self._target_state.info, self._target_state.version
+                    )
 
-                self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
-                logger.debug(
-                    "Adding STARTING to replica_tag: "
-                    f"{replica_name}, deployment: {self._name}"
-                )
+                    self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
+                    logger.debug(
+                        "Adding STARTING to replica_tag: "
+                        f"{replica_name}, deployment: {self._name}"
+                    )
 
         elif delta_replicas < 0:
             replicas_stopped = True
