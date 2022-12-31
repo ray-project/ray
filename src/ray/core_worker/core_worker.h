@@ -1539,12 +1539,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   friend class CoreWorkerTest;
 
-  std::unique_ptr<rpc::JobConfig> job_config_;
-
-  std::shared_ptr<json> job_runtime_env_;
-
-  std::shared_ptr<rpc::RuntimeEnvInfo> job_runtime_env_info_;
-
   TaskCounter task_counter_;
 
   /// Used to guarantee that submitting actor task is thread safe.

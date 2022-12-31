@@ -144,6 +144,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
     : worker_type_(worker_type),
       worker_id_(worker_id),
       current_job_id_(job_id),
+      job_config_(),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
@@ -152,10 +153,11 @@ WorkerContext::WorkerContext(WorkerType worker_type,
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
-                                          ? TaskID::ForDriverTask(job_id)
-                                          : TaskID::Nil(),
-                                      /*attempt_number=*/0);
+  if (worker_type_ == WorkerType::DRIVER) {
+    RAY_CHECK(!current_job_id_.IsNil());
+    GetThreadContext().SetCurrentTaskId(TaskID::ForDriverTask(job_id),
+                                        /*attempt_number=*/0);
+  }
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
@@ -172,12 +174,34 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
+void WorkerContext::InitializeJobInfo(const JobID &job_id,
+                                      const rpc::JobConfig &job_config) {
+  absl::WriterMutexLock lock(&mutex_);
+  RAY_CHECK(!job_id.IsNil());
+  if (current_job_id_.IsNil()) {
+    current_job_id_ = job_id;
+  }
+  if (job_config_ == nullptr) {
+    job_config_ = std::make_unique<rpc::JobConfig>(job_config);
+  }
+  RAY_CHECK(current_job_id_ == job_id);
+}
+
 int64_t WorkerContext::GetTaskDepth() const {
   absl::ReaderMutexLock lock(&mutex_);
   return task_depth_;
 }
 
-const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
+const JobID &WorkerContext::GetCurrentJobID() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return current_job_id_;
+}
+
+const rpc::JobConfig &WorkerContext::GetCurrentJobConfig() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  RAY_CHECK(job_config_ != nullptr);
+  return *job_config_;
+}
 
 const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
@@ -327,6 +351,9 @@ bool WorkerContext::CurrentActorDetached() const {
 
 WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
+    absl::ReaderMutexLock lock(&mutex_);
+    RAY_CHECK(!current_job_id_.IsNil())
+        << "can't access thread context when job_id is not assigned";
     thread_context_ = std::make_unique<WorkerThreadContext>(current_job_id_);
   }
 
