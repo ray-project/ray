@@ -63,8 +63,6 @@ OBSERVATION_SPACES_TO_TEST = {
 
 def check_support(alg, config, train=True, check_bounds=False, tf2=False):
     config["log_level"] = "ERROR"
-    config["train_batch_size"] = 50
-    config["rollout_fragment_length"] = 10
     config["env"] = RandomEnv
 
     def _do_check(alg, config, a_name, o_name):
