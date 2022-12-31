@@ -131,10 +131,10 @@ class PolicyMap(dict):
         # -> Load new policy's state into the one that just got removed from the cache.
         # This way, we save the costly re-creation step.
         if policy is not None and self.policy_states_are_swappable:
-            logger.info(f"restoring policy: {item}")
+            logger.debug(f"restoring policy: {item}")
             policy.set_state(policy_state)
         else:
-            logger.info(f"creating new policy: {item}")
+            logger.debug(f"creating new policy: {item}")
             policy = Policy.from_state(policy_state)
 
         self.cache[item] = policy

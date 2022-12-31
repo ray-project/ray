@@ -38,7 +38,7 @@ class StateBufferConnector(AgentConnector):
                 # like stashing then restoring a policy during the rollout of
                 # a single episode.
                 # It is ok to ignore the error for most of the cases here.
-                logger.warning(
+                logger.info(
                     "Can not restore StateBufferConnector states. This warning can "
                     "usually be ignore, unless it is from restoring a stashed policy."
                 )
@@ -65,9 +65,6 @@ class StateBufferConnector(AgentConnector):
         ), f"StateBufferConnector requires env_id(f{env_id}) and agent_id(f{agent_id})"
 
         action, states, fetches = self._states[env_id][agent_id]
-
-        if action is None:
-            assert d[SampleBatch.T] <= 0, f"dude ... {d[SampleBatch.T]}"
 
         if action is not None:
             d[SampleBatch.ACTIONS] = action  # Last action
