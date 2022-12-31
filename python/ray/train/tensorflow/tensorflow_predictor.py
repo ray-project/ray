@@ -7,7 +7,7 @@ import tensorflow as tf
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
+from ray.air._internal.tensorflow_utils import convert_ndarray_to_tf_tensor
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -222,14 +222,14 @@ class TensorflowPredictor(DLPredictor):
         """
         return super(TensorflowPredictor, self).predict(data=data, dtype=dtype)
 
-    def _arrays_to_tensors(
+    def array_to_tensor(
         self,
-        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtypes: Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]],
-    ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
-        return convert_ndarray_batch_to_tf_tensor_batch(numpy_arrays, dtypes=dtypes)
+        array: np.ndarray,
+        dtype: tf.dtypes.DType,
+    ) -> tf.Tensor:
+        return convert_ndarray_to_tf_tensor(array, dtypes=dtype)
 
-    def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
+    def tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
         if not isinstance(tensor, tf.Tensor):
             raise ValueError(
                 "Expected the model to return either a tf.Tensor or a "

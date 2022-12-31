@@ -7,7 +7,7 @@ import torch
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
+from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -223,18 +223,18 @@ class TorchPredictor(DLPredictor):
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
 
-    def _arrays_to_tensors(
+    def array_to_tensor(
         self,
-        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtypes: Union[torch.dtype, Dict[str, torch.dtype]],
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        return convert_ndarray_batch_to_torch_tensor_batch(
-            numpy_arrays,
-            dtypes=dtypes,
+        array: np.ndarray,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        return convert_ndarray_to_torch_tensor(
+            array,
+            dtypes=dtype,
             device="cuda" if self.use_gpu else None,
         )
 
-    def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
+    def tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
         if not isinstance(tensor, torch.Tensor):
             raise ValueError(
                 "Expected the model to return either a torch.Tensor or a "

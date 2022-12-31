@@ -38,7 +38,7 @@ class DLPredictor(Predictor):
     @abc.abstractmethod
     @DeveloperAPI
     def tensor_to_array(self, tensor: TensorType) -> np.ndarray:
-        """Converts tensor framework specific tensor to a NumPy array.
+        """Converts tensor framework specific tensor to a numpy array.
 
         Args:
             tensor: A framework specific tensor.
@@ -46,6 +46,7 @@ class DLPredictor(Predictor):
         Returns:
             A numpy array representing the input tensor.
         """
+
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -84,12 +85,19 @@ class DLPredictor(Predictor):
     def outputs_to_arrays(
         self, outputs: Any
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-        # TODO (jiaodong): Investigate perf implication of this.
-        # Move DL Tensor to CPU and convert to numpy.
-        if isinstance(outputs, dict):
-            return {k: self.tensor_to_array(v) for k, v in outputs.items()}
-        else:
-            return {"predictions": self.tensor_to_array(outputs)}
+
+        try:
+            # TODO (jiaodong): Investigate perf implication of this.
+            # Move DL Tensor to CPU and convert to numpy.
+            if isinstance(outputs, dict):
+                return {k: self.tensor_to_array(v) for k, v in outputs.items()}
+            else:
+                return {"predictions": self.tensor_to_array(outputs)}
+        except Exception:
+            raise ValueError(
+                "Your model returned a non-standard output. Implement a custom "
+                "predictor and override `outputs_to_arrays`."
+            )
 
     @classmethod
     @DeveloperAPI
