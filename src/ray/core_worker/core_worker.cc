@@ -161,6 +161,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   int assigned_port;
 
   if (!options_.serialized_job_config.empty()) {
+    // Driver populates job_config through worker startup options.
     rpc::JobConfig job_config;
     job_config.ParseFromString(options_.serialized_job_config);
     worker_context_.MayInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
