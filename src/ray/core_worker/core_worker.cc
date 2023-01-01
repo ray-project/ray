@@ -160,7 +160,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   NodeID local_raylet_id;
   int assigned_port;
 
-  if (!options_.serialized_job_config.empty()) {
+  if (options_.worker_type == WorkerType::DRIVER &&
+      !options_.serialized_job_config.empty()) {
     // Driver populates job_config through worker startup options.
     rpc::JobConfig job_config;
     job_config.ParseFromString(options_.serialized_job_config);
