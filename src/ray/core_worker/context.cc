@@ -263,8 +263,8 @@ void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mu
 void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
-  absl::WriterMutexLock lock(&mutex_);
   GetThreadContext().SetCurrentTask(task_spec);
+  absl::WriterMutexLock lock(&mutex_);
   SetTaskDepth(task_spec.GetDepth());
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
