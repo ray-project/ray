@@ -159,7 +159,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   Status raylet_client_status;
   NodeID local_raylet_id;
   int assigned_port;
-  std::string serialized_job_config = options_.serialized_job_config;
+
+  if (!options_.serialized_job_config.empty()) {
+    rpc::JobConfig job_config;
+    job_config.ParseFromString(options_.serialized_job_config);
+    worker_context_.MayInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
+  }
+
   local_raylet_client_ =
       std::make_shared<raylet::RayletClient>(io_service_,
                                              std::move(grpc_client),
@@ -173,7 +179,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              &raylet_client_status,
                                              &local_raylet_id,
                                              &assigned_port,
-                                             &serialized_job_config,
+                                             options_.serialized_job_config,
                                              options_.startup_token,
                                              options_.entrypoint);
 
@@ -187,11 +193,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   connected_ = true;
 
   RAY_CHECK(assigned_port >= 0);
-
-  rpc::JobConfig job_config;
-  job_config.ParseFromString(serialized_job_config);
-
-  worker_context_.InitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
@@ -2765,7 +2766,8 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                            send_reply_callback)) {
     return;
   }
-
+  worker_context_.MayInitializeJobInfo(JobID::FromBinary(request.task_spec().job_id()),
+                                       request.task_spec().job_config());
   // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
   std::string func_name =
