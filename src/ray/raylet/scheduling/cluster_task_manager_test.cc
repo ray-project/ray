@@ -151,12 +151,14 @@ RayTask CreateTask(
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
+  rpc::JobConfig config;
   rpc::Address address;
   spec_builder.SetCommonTaskSpec(id,
                                  "dummy_task",
                                  Language::PYTHON,
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id,
+                                 config,
                                  TaskID::Nil(),
                                  0,
                                  TaskID::Nil(),
