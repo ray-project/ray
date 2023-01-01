@@ -102,9 +102,6 @@ class WorkerContext {
 
   int64_t GetTaskDepth() const;
 
- private:
-  void InitJobID(JobID job_id) LOCKS_EXCLUDED(mutex_);
-
  protected:
   // allow unit test to set.
   bool current_actor_is_direct_call_ = false;
