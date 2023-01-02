@@ -166,6 +166,8 @@ class PolicyMap(dict):
     def __delitem__(self, key: PolicyID):
         # Make key invalid.
         self._valid_keys.remove(key)
+        # Remove policy from deque
+        self._deque.remove(key)
         # Remove policy from memory if currently cached.
         if key in self.cache:
             policy = self.cache[key]
