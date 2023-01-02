@@ -163,25 +163,25 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
+# NOTE: Python 3.11 is work in progress
+#- label: ":docker: Build Images: py311 (1/2)"
+#  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#  instance_size: medium
+#  commands:
+#    - LINUX_WHEELS=1 ./ci/ci.sh build
+#    - pip install -q docker aws_requests_auth boto3
+#    - ./ci/env/env_info.sh
+#    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#    - python ./ci/build/build-docker-images.py --py-versions py311 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
-- label: ":docker: Build Images: py311 (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: medium
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - ./ci/env/env_info.sh
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py311 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
-
-- label: ":docker: Build Images: py311 (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: medium
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py311 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
+#- label: ":docker: Build Images: py311 (2/2)"
+#  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#  instance_size: medium
+#  commands:
+#    - LINUX_WHEELS=1 ./ci/ci.sh build
+#    - pip install -q docker aws_requests_auth boto3
+#    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#    - python ./ci/build/build-docker-images.py --py-versions py311 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
