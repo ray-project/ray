@@ -130,16 +130,12 @@ def get_spark_application_driver_host(spark):
     return spark.conf.get("spark.driver.host")
 
 
-def get_max_num_concurrent_tasks(spark_context):
+def get_max_num_concurrent_tasks(spark_context, resource_profile):
     """Gets the current max number of concurrent tasks."""
-    # pylint: disable=protected-access
-    # spark version 3.1 and above have a different API for fetching max concurrent
-    # tasks
-    if spark_context._jsc.sc().version() >= "3.1":
-        return spark_context._jsc.sc().maxNumConcurrentTasks(
-            spark_context._jsc.sc().resourceProfileManager().resourceProfileFromId(0)
-        )
-    return spark_context._jsc.sc().maxNumConcurrentTasks()
+    # pylint: disable=protected-access=
+    return spark_context._jsc.sc().maxNumConcurrentTasks(
+        resource_profile._java_resource_profile
+    )
 
 
 def _get_total_physical_memory():

@@ -11,11 +11,23 @@ import ray
 
 import ray.util.spark.cluster_init
 from ray.util.spark import init_ray_cluster, shutdown_ray_cluster
-from ray.util.spark.cluster_init import _init_ray_cluster
 from ray.util.spark.utils import check_port_open
 from pyspark.sql import SparkSession
 import time
 import logging
+from contextlib import contextmanager
+
+
+@contextmanager
+def _init_ray_cluster(*args, **kwds):
+    # Code to acquire resource, e.g.:
+    init_ray_cluster(*args, **kwds)
+    try:
+        yield ray.util.spark.cluster_init._active_ray_cluster
+    finally:
+        # Code to release resource, e.g.:
+        ray.util.spark.cluster_init._active_ray_cluster.shutdown()
+
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
@@ -51,12 +63,20 @@ class RayOnSparkCPUClusterTestBase(ABC):
         return wr_list
 
     def test_cpu_allocation(self):
-        for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
-            with _init_ray_cluster(num_worker_nodes=num_spark_tasks, safe_mode=False):
+        for num_worker_nodes, num_cpus_per_node in [
+            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task),
+            (self.max_spark_tasks, self.num_cpus_per_spark_task),
+            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2),
+        ]:
+            with _init_ray_cluster(
+                num_worker_nodes=num_worker_nodes,
+                num_cpus_per_node=num_cpus_per_node,
+                safe_mode=False
+            ):
                 worker_res_list = self.get_ray_worker_resources_list()
-                assert len(worker_res_list) == num_spark_tasks
+                assert len(worker_res_list) == num_worker_nodes
                 for worker_res in worker_res_list:
-                    assert worker_res["CPU"] == self.num_cpus_per_spark_task
+                    assert worker_res["CPU"] == self.num_cpus_per_node
 
     def test_public_api(self):
         try:
@@ -64,6 +84,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             collect_log_to_path = tempfile.mkdtemp()
             init_ray_cluster(
                 num_worker_nodes=self.max_spark_tasks,
+                num_cpus_per_node=self.num_cpus_per_spark_task,
                 safe_mode=False,
                 collect_log_to_path=collect_log_to_path,
                 ray_temp_root_dir=ray_temp_root_dir,
@@ -103,7 +124,9 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     def test_ray_cluster_shutdown(self):
         with _init_ray_cluster(
-            num_worker_nodes=self.max_spark_tasks, safe_mode=False
+            num_worker_nodes=self.max_spark_tasks,
+            num_cpus_per_node=self.num_cpus_per_spark_task,
+            safe_mode=False,
         ) as cluster:
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
@@ -120,7 +143,9 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
         with _init_ray_cluster(
-            num_worker_nodes=self.max_spark_tasks, safe_mode=False
+            num_worker_nodes=self.max_spark_tasks,
+            num_cpus_per_node=self.num_cpus_per_spark_task,
+            safe_mode=False
         ) as cluster:
             # Mimic the case the job failed unexpectedly.
             cluster._cancel_background_spark_job()

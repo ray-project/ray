@@ -353,6 +353,8 @@ def _prepare_for_ray_worker_node_startup():
 
 def _init_ray_cluster(
     num_worker_nodes,
+    num_cpus_per_node=None,
+    num_gpus_per_node=None,
     object_store_memory_per_node=None,
     head_options=None,
     worker_options=None,
@@ -372,6 +374,8 @@ def _init_ray_cluster(
     scope, the ray cluster is disconnected and shut down.
     """
     from pyspark.util import inheritable_thread_target
+    from pyspark.resource.profile import ResourceProfileBuilder
+    from pyspark.resource.requests import TaskResourceRequests
 
     if RAY_ON_SPARK_START_HOOK in os.environ:
         start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
@@ -387,21 +391,45 @@ def _init_ray_cluster(
 
     # Environment configurations within the Spark Session that dictate how many cpus
     # and gpus to use for each submitted spark task.
-    num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
-    num_spark_task_gpus = int(
+    if num_cpus_per_node is None:
+        num_spark_task_cpus = \
+            int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
+        if num_spark_task_cpus < 4:
+            # If user does not specify `num_cpus_per_node`, and the default
+            # "spark.task.cpus" config value is less than 4, increase it to 4.
+            # because Ray worker node prefers config with cpu number >= 4.
+            num_spark_task_cpus = 4
+    else:
+        num_spark_task_cpus = num_cpus_per_node
+
+    num_spark_task_gpus = num_gpus_per_node or int(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
+    task_res_req = TaskResourceRequests() \
+        .cpus(num_spark_task_cpus)
+    if num_spark_task_gpus > 0:
+        task_res_req = task_res_req.resource("gpu", num_spark_task_gpus)
+    res_profile = ResourceProfileBuilder().require(task_res_req).build
 
     (
         ray_worker_node_heap_mem_bytes,
         ray_worker_node_object_store_mem_bytes,
     ) = get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node)
 
-    max_concurrent_tasks = get_max_num_concurrent_tasks(spark.sparkContext)
     if num_worker_nodes == MAX_NUM_WORKER_NODES:
         # num_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
         # spark task slots
-        num_worker_nodes = max_concurrent_tasks
+
+        def dummpy_mapper(x):
+            pass
+
+        # Runs a dummy spark job to register the `res_profile`
+        spark.sparkContext.parallelize([1], 1).withResources(res_profile) \
+            .map(dummpy_mapper).collect()
+
+        num_worker_nodes = get_max_num_concurrent_tasks(
+            spark.sparkContext, res_profile
+        )
     elif num_worker_nodes <= 0:
         raise ValueError(
             "The value of 'num_worker_nodes' argument must be either a positive "
@@ -673,7 +701,11 @@ def _init_ray_cluster(
             # slots available.
             spark.sparkContext.parallelize(
                 list(range(num_worker_nodes)), num_worker_nodes
-            ).mapPartitions(ray_cluster_job_mapper).collect()
+            ).withResources(
+                res_profile
+            ).mapPartitions(
+                ray_cluster_job_mapper
+            ).collect()
         except Exception as e:
             # NB:
             # The background spark job is designed to running forever until it is
@@ -724,6 +756,8 @@ _active_ray_cluster = None
 @PublicAPI(stability="alpha")
 def init_ray_cluster(
     num_worker_nodes: int,
+    num_cpus_per_node: Optional[int] = None,
+    num_gpus_per_node: Optional[int] = None,
     object_store_memory_per_node: Optional[int] = None,
     head_options: Optional[Dict] = None,
     worker_options: Optional[Dict] = None,
@@ -744,17 +778,19 @@ def init_ray_cluster(
     cluster.
 
     Args
-        num_worker_nodes: This argument represents how many concurrent spark tasks
-            for the background spark job will be created in the creation of the ray
-            cluster. The ray cluster's total available resources
-            (memory, CPU and/or GPU) is equal to the quantity of
-            resources allocated within these spark tasks.
-            Specifying the `num_worker_nodes` as `-1` represents a ray cluster
-            configuration that will use all available spark tasks slots (and resources
-            allocated to the spark application) on the spark cluster.
-            To create a spark cluster that is intended to be used exclusively as a
+        num_worker_nodes: This argument represents how many ray worker nodes to start
+            for the ray cluster.
+            Specifying the `num_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
+            represents a ray cluster
+            configuration that will use all available resources configured for the
+            spark application.
+            To create a spark application that is intended to exclusively run a
             shared ray cluster, it is recommended to set this argument to
             `ray.util.spark.MAX_NUM_WORKER_NODES`.
+        num_cpus_per_node: Number of cpus available to per-ray worker node, default 4.
+        num_gpus_per_node: Number of gpus available to per-ray worker node, default 1.
+            This argument is only available on spark cluster that is configured with
+            'gpu' resources.
         object_store_memory_per_node: Object store memory available to per-ray worker
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
@@ -800,6 +836,8 @@ def init_ray_cluster(
 
     cluster = _init_ray_cluster(
         num_worker_nodes=num_worker_nodes,
+        num_cpus_per_node=num_cpus_per_node,
+        num_gpus_per_node=num_gpus_per_node,
         object_store_memory_per_node=object_store_memory_per_node,
         head_options=head_options,
         worker_options=worker_options,
