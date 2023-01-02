@@ -8,11 +8,13 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_writer import _to_json_dict
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.offline import try_import_arrow
 from ray.rllib.utils.typing import SampleBatchType
 from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
+pa = try_import_arrow()
 
 @PublicAPI
 class DatasetWriter(OutputWriter):

@@ -42,5 +42,3 @@ onnxruntime==1.12.0
 tf2onnx==1.12.1
 typer==0.6.1
 rich==12.0.1
-# For using Ray Datasets in Offline API.
-pyarrow==6.0.1
