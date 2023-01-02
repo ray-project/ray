@@ -1,4 +1,3 @@
-# __quick_start_begin__
 import gymnasium as gym
 from ray.rllib.algorithms.ppo import PPOConfig
 
@@ -41,11 +40,11 @@ class SimpleCorridor(gym.Env):
         # Walk right.
         elif action == 1:
             self.cur_pos += 1
-        # Set `done` and `truncated` flags when end of corridor (goal) reached.
-        done = truncated = self.cur_pos >= self.end_pos
+        # Set `done` flag when end of corridor (goal) reached.
+        terminated = self.cur_pos >= self.end_pos
         # +1 when goal reached, otherwise -1.
-        reward = 1.0 if done else -0.1
-        return [self.cur_pos], reward, done, truncated, {}
+        reward = 1.0 if terminated else -0.1
+        return [self.cur_pos], reward, terminated, False, {}
 
 
 # Create an RLlib Algorithm instance from a PPOConfig object.
@@ -77,7 +76,7 @@ for i in range(5):
 # to "just always walk right!"
 env = SimpleCorridor({"corridor_length": 10})
 # Get the initial observation (should be: [0.0] for the starting position).
-obs, info = env.reset()
+obs = env.reset()
 done = False
 total_reward = 0.0
 # Play one episode.
@@ -86,9 +85,8 @@ while not done:
     # from the environment.
     action = algo.compute_single_action(obs)
     # Apply the computed action in the environment.
-    obs, reward, done, truncated, info = env.step(action)
+    obs, reward, done, info = env.step(action)
     # Sum up rewards for reporting purposes.
     total_reward += reward
 # Report results.
 print(f"Played 1 episode; total-reward={total_reward}")
-# __quick_start_end__
