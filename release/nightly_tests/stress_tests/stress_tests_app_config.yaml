@@ -5,7 +5,7 @@ python:
   pip_packages:
     - terminado
     - boto3
-    - cython==0.29.32
+    - cython==0.29.26
   conda_packages: []
 
 post_build_cmds:
