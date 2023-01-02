@@ -171,8 +171,6 @@ class AimCallback(LoggerCallback):
         trial_run.close()
         del trial_run
 
-        logger.info(f"trial {trial} aim logger closed")
-
     def _log_hparams(self, trial: "Trial", params: Dict):
         flat_params = flatten_dict(params)
 
