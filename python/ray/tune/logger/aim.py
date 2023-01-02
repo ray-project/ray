@@ -85,7 +85,6 @@ class AimCallback(LoggerCallback):
         return run
 
     def log_trial_start(self, trial: "Trial"):
-        logger.info(f"trial {trial} logger is started")
 
         if self._as_multirun:
             if trial in self._trial_run:
