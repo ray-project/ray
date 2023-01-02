@@ -61,7 +61,10 @@ class AimCallback(LoggerCallback):
         metrics: Optional[List[str]] = None,
         as_multirun: bool = False,
     ):
-
+        assert Run is not None, (
+            "aim must be installed!. You can install aim with"
+            " the command: `pip install aim`."
+        )
         self._repo_path = repo
         self._experiment_name = experiment
         self._system_tracking_interval = system_tracking_interval
