@@ -28,13 +28,13 @@ class SimpleCorridor(gym.Env):
 
          Returns:
             Initial observation of the new episode and an info dict
-        ."""
+        """
         self.cur_pos = 0
         # Return initial observation.
         return [self.cur_pos], {}
 
     def step(self, action):
-        """Takes a single step in the episode given `action`
+        """Takes a single step in the episode given `action`.
 
         Returns:
             New observation, reward, terminated-flag, truncated-flag, info-dict (empty).
@@ -46,10 +46,10 @@ class SimpleCorridor(gym.Env):
         elif action == 1:
             self.cur_pos += 1
         # Set `terminated` flag when end of corridor (goal) reached.
-        terminated = self.cur_pos >= self.end_pos
+        terminated = truncated = self.cur_pos >= self.end_pos
         # +1 when goal reached, otherwise -1.
         reward = 1.0 if terminated else -0.1
-        return [self.cur_pos], reward, terminated, False, {}
+        return [self.cur_pos], reward, terminated, truncated, {}
 
 
 # Create an RLlib Algorithm instance from a PPOConfig object.
@@ -95,3 +95,4 @@ while not terminated:
     total_reward += reward
 # Report results.
 print(f"Played 1 episode; total-reward={total_reward}")
+# __quick_start_end__
