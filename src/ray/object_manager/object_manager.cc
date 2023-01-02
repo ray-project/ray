@@ -585,6 +585,16 @@ void ObjectManager::HandlePush(rpc::PushRequest request,
                   << num_chunks_received_total_ << " failed";
   }
 
+  auto flag = std::getenv("DRIVER_NODE");
+  if (flag != nullptr) {
+    RAY_LOG(DEBUG) << "Receive push request on driver node, "
+                   << "object id: " << object_id << ", "
+                   << "chunk index: " << chunk_index << ", "
+                   << "from node: " << node_id << ", "
+                   << "will sleep 60s...";
+    std::this_thread::sleep_for(std::chrono::seconds(60));
+  }
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
