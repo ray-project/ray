@@ -1,9 +1,6 @@
 import logging
 import numpy as np
-
 from typing import TYPE_CHECKING, Dict, Optional, List
-from aim.ext.resource import DEFAULT_SYSTEM_TRACKING_INT
-from aim.sdk import Run
 
 from ray.tune.logger.logger import LoggerCallback
 from ray.tune.result import (
@@ -16,6 +13,12 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
+try:
+    from aim.ext.resource import DEFAULT_SYSTEM_TRACKING_INT
+    from aim.sdk import Run
+except ImportError:
+    DEFAULT_SYSTEM_TRACKING_INT = None
+    Run = None
 
 logger = logging.getLogger(__name__)
 
