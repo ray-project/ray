@@ -48,7 +48,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && $HOME/anaconda3/bin/conda init \ 
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc \
     && rm /tmp/miniconda.sh \
-    && $HOME/anaconda3/bin/conda install -c conda-forge -y \
+    && $HOME/anaconda3/bin/conda install -y \
         libgcc python=$PYTHON_VERSION \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
