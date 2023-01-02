@@ -35,7 +35,7 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
@@ -92,7 +92,7 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
         batches = [self.get_data()]
         batches.extend(self.get_extra_batches())
         if len(batches) > 1:
-            return batches[0].concat_samples(batches)
+            return concat_samples(batches)
         else:
             return batches[0]
 

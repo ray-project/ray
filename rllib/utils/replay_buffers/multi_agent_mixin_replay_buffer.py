@@ -315,7 +315,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             # Depending on the implementation of underlying buffers, samples
             # might be SampleBatches
             output_batches = [batch.as_multi_agent() for batch in output_batches]
-            return MultiAgentBatch.concat_samples(output_batches)
+            return concat_samples(output_batches)
 
         def check_buffer_is_ready(_policy_id):
             if (
@@ -344,7 +344,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                     if check_buffer_is_ready(policy_id):
                         samples.append(mix_batches(policy_id).as_multi_agent())
 
-            return MultiAgentBatch.concat_samples(samples)
+            return concat_samples(samples)
 
     @DeveloperAPI
     @override(MultiAgentPrioritizedReplayBuffer)
