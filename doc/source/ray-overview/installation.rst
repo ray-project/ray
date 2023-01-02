@@ -52,11 +52,12 @@ You can install the nightly Ray wheels via the following links. These daily rele
 ====================  ====================  =======================
        Linux                 MacOS          Windows (beta)
 ====================  ====================  =======================
-`Linux Python 3.10`_  `MacOS Python 3.10`_  `Windows Python 3.10`_
-`Linux Python 3.9`_   `MacOS Python 3.9`_   `Windows Python 3.9`_
-`Linux Python 3.8`_   `MacOS Python 3.8`_   `Windows Python 3.8`_
-`Linux Python 3.7`_   `MacOS Python 3.7`_   `Windows Python 3.7`_
-`Linux Python 3.6`_   `MacOS Python 3.6`_
+`Linux Python 3.11`_  `MacOS Python 3.10`_  `Windows Python 3.10`_
+`Linux Python 3.10`_   `MacOS Python 3.9`_   `Windows Python 3.9`_
+`Linux Python 3.9`_   `MacOS Python 3.8`_   `Windows Python 3.8`_
+`Linux Python 3.8`_   `MacOS Python 3.7`_   `Windows Python 3.7`_
+`Linux Python 3.7`_   `MacOS Python 3.6`_
+`Linux Python 3.6`_
 ====================  ====================  =======================
 
 .. note::
@@ -68,6 +69,11 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
   :ref:`Usage stats <ref-usage-stats>` collection is enabled by default (can be :ref:`disabled <usage-disable>`) for nightly wheels including both local clusters started via ``ray.init()`` and remote clusters via cli.
 
+.. note::
+
+  Python 3.11 support is experimental.
+
+.. _`Linux Python 3.11`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_x86_64.whl
 .. _`Linux Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl
 .. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
