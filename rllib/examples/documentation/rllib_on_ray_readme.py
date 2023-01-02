@@ -26,8 +26,8 @@ class SimpleCorridor(gym.Env):
     def reset(self, *, seed=None, options=None):
         """Resets the episode.
 
-         Returns:
-            Initial observation of the new episode and an info dict
+        Returns:
+           Initial observation of the new episode and an info dict
         """
         self.cur_pos = 0
         # Return initial observation.
