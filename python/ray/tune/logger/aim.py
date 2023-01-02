@@ -74,7 +74,7 @@ class AimCallback(LoggerCallback):
         self._run_cls = Run
         self._trial_run: Dict["Trial", Run] = {}
 
-    def _create_run(self, trial: "Trial"):
+    def _create_run(self, trial: "Trial") -> Run:
         """
         Returns: Run
         """
