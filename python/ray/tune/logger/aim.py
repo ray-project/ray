@@ -107,7 +107,7 @@ class AimCallback(LoggerCallback):
                 for k, value in flat_result.items()
                 if isinstance(value, tuple(VALID_SUMMARY_TYPES))
             }
-            self._try_log_hparams(trial, scrubbed_result)
+            self._log_hparams(trial, scrubbed_result)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         # create local copy to avoid problems
