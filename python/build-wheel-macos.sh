@@ -19,26 +19,30 @@ PY_VERSIONS=("3.6.2"
              "3.8.2"
              "3.9.1"
              "3.10.4"
-             "3.11.0")
+             # "3.11.0"
+             )
 PY_INSTS=("python-3.6.2-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg"
           "python-3.8.2-macosx10.9.pkg"
           "python-3.9.1-macosx10.9.pkg"
           "python-3.10.4-macos11.pkg"
-          "python-3.11.0-macos11.pkg")
+          # "python-3.11.0-macos11.pkg"
+          )
 PY_MMS=("3.6"
         "3.7"
         "3.8"
         "3.9"
         "3.10"
-        "3.11")
+        # "3.11"
+        )
 
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5"
                 "1.19.3"
                 "1.22.0"
-                "1.24.0")
+                # "1.24.0"
+                )
 
 ./ci/env/install-bazel.sh
 
