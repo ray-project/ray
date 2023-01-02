@@ -61,6 +61,9 @@ class AimCallback(LoggerCallback):
         as_multirun: Optional[bool] = False,
         **aim_run_kwargs
     ):
+        """
+        Please see help(AimCallback) for more information about parameters.
+        """
         assert Run is not None, (
             "aim must be installed!. You can install aim with"
             " the command: `pip install aim`."
