@@ -172,8 +172,9 @@ class AimCallback(LoggerCallback):
 
         logger.info(f"trial {trial} aim logger closed")
 
-    def _try_log_hparams(self, trial: "Trial", params):
+    def _log_hparams(self, trial: "Trial", params: Dict):
         flat_params = flatten_dict(params)
+
         scrubbed_params = {
             k: v for k, v in flat_params.items() if isinstance(v, self.VALID_HPARAMS)
         }
@@ -198,7 +199,6 @@ class AimCallback(LoggerCallback):
             )
 
         self._trial_run[trial]["hparams"] = scrubbed_params
-
 
     def _get_trial_run(self, trial):
         if not self._as_multirun:
