@@ -143,9 +143,6 @@ def test_pipeline_splitting_has_no_spilling(shutdown_only):
     tasks = [consume.remote(p1), consume.remote(p2)]
     ray.get(tasks)
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
-    from ray.data._internal.util import _leak_report
-
-    _leak_report()
     assert "Spilled" not in meminfo, meminfo
 
 
