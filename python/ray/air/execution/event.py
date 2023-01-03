@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
-from ray.air.execution.actor_request import ActorInfo
+from ray.air.execution.actor_spec import ActorInfo
 
 
 @dataclass

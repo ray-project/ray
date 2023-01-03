@@ -1,6 +1,7 @@
 from typing import Any, Dict, Iterable, Optional, Tuple, Type
 
-from ray.air.execution.actor_request import ActorRequest, ActorInfo
+from ray.air import AcquiredResources
+from ray.air.execution.actor_spec import ActorSpec, ActorInfo
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.air.execution.event import (
     ExecutionEvent,
@@ -18,7 +19,7 @@ class ActorManager:
     track task futures on these actors. The manager will then yield events related
     to the tracked entities.
 
-    For instance, when an actor is requested with ``request_actor()``, the event
+    For instance, when an actor is added with ``add_actor()``, the event
     ``ActorStarted`` will be emitted once the actor was successfully started.
     Likewise, after calling ``remove_actor()``, the event ``ActorStopped`` will
     be emitted once the actor stopped.
@@ -28,6 +29,15 @@ class ActorManager:
     when the future resolves. This is either a custom subclass provided when
     scheduling the future, or a ``FutureFailed`` event if resolving the future lead
     to a ``RayTaskError``.
+
+    Actor properties are defined via an ``ActorSpec`` object. This object specifies
+    the actor class, the keyword arguments used for initialization, and the resources
+    required to start the actor.
+
+    Once added, subsequent interaction with the actor via the manager uses an
+    ``ActorInfo`` object. This object can be used to remove the actor or to schedule
+    futures on it. It contains the original actor specification and an internal
+    actor ID (unrelated to the Ray actor ID).
 
     Args:
         resource_manager: Resource manager used to request resources for the actors.
@@ -70,15 +80,21 @@ class ActorManager:
         raise NotImplementedError
 
     @property
-    def num_actor_requests(self):
-        """Return number of active actor requests."""
+    def num_not_started_actors(self):
+        """Return number of not yet started actors."""
         raise NotImplementedError
 
-    def request_actor(self, actor_request: ActorRequest) -> None:
-        """Request to start an actor.
+    @property
+    def num_total_actors(self):
+        """Return number of total actors."""
+        raise NotImplementedError
+
+    def add_actor(self, actor_spec: ActorSpec) -> ActorInfo:
+        """Add an actor to be tracked.
+
 
         The actor class to start, the constructor arguments, and the resources to
-        start the actor with are provided in the ``actor_request`` argument.
+        start the actor with are provided in the ``actor_spec`` argument.
 
         This method will request resources to start the actor. Once the resources
         are available, the actor will be started and an event will be emitted.
@@ -87,18 +103,22 @@ class ActorManager:
             ``ActorStarted``: Emitted once the actor has been started.
 
         Args:
-            actor_request: Actor request to start once resources are available.
+            actor_spec: Spec for the actor to be started once resources are available.
+
+        Returns:
+            Actor info object that can be used to remove the actor or schedule futures
+                on it.
 
         """
         raise NotImplementedError
 
     def remove_actor(
         self,
-        actor_request: ActorRequest,
+        actor_info: ActorInfo,
         resolve_futures: bool = True,
         kill: bool = False,
     ) -> None:
-        """Request to remove an actor or cancel a pending actor request.
+        """Remove an actor given its spec.
 
         If the actor has already been started, this will remove the actor. If the
         actor has only been requested, but not started, yet, this will cancel
@@ -119,11 +139,29 @@ class ActorManager:
                 this event won't be emitted.
 
         Args:
-            actor_request: Actor request object relating to the actor to stop.
+            actor_info: Actor info object of the actor to be removed.
             resolve_futures: If True, will resolve associated futures (and emit
                 events) first before stopping the actor.
             kill: If set, will forcefully terminate the actor instead of gracefully
                 scheduling termination.
+        """
+        raise NotImplementedError
+
+    def is_actor_started(self, actor_info: ActorInfo) -> bool:
+        """Returns True if the actor has been started.
+
+        Args:
+            actor_info: Actor info object of the actor to inquire state about.
+        """
+        raise NotImplementedError
+
+    def get_actor_resources(self, actor_info: ActorInfo) -> Optional[AcquiredResources]:
+        """Returns the acquired resources of an actor that has been started.
+
+        This will return ``None`` if the actor has not been started, yet.
+
+        Args:
+            actor_info: Actor info object of the actor to get resources for.
         """
         raise NotImplementedError
 
