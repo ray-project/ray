@@ -41,3 +41,6 @@ class InputDataBuffer(PhysicalOperator):
 
     def get_stats(self) -> StatsDict:
         return {}
+
+    def add_input(self, refs, input_index) -> None:
+        raise ValueError("Inputs are not allowed for this operator.")
