@@ -838,7 +838,12 @@ def init_ray_cluster(
     (
         ray_worker_node_heap_mem_bytes,
         ray_worker_node_object_store_mem_bytes,
-    ) = get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node)
+    ) = get_avail_mem_per_ray_worker_node(
+        spark,
+        object_store_memory_per_node,
+        num_cpus_per_node,
+        num_gpus_per_node,
+    )
 
     if num_worker_nodes == MAX_NUM_WORKER_NODES:
         # num_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
