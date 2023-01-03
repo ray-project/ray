@@ -311,8 +311,6 @@ TEST_F(GcsServerTest, TestNodeInfo) {
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
 }
 
-}
-
 TEST_F(GcsServerTest, TestWorkerInfo) {
   // Report worker failure
   auto worker_failure_data = Mocker::GenWorkerTableData();
