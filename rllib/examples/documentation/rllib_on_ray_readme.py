@@ -27,7 +27,7 @@ class SimpleCorridor(gym.Env):
         """Resets the episode.
 
         Returns:
-           Initial observation of the new episode and an info dict
+           Initial observation of the new episode and an info dict.
         """
         self.cur_pos = 0
         # Return initial observation.
