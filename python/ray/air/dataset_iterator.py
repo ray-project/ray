@@ -9,7 +9,7 @@ class DatasetIterator:
         *,
         prefetch_blocks: int = 0,
         batch_size: int = 256,
-        batch_format: str = "default",
+        batch_format: Literal["default", "numpy", "pandas"] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
