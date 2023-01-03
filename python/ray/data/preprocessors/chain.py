@@ -1,10 +1,10 @@
 from typing import TYPE_CHECKING
+from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
 from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
     from ray.air.data_batch_type import DataBatchType
 
 
@@ -96,7 +96,7 @@ class Chain(Preprocessor):
         arguments = ", ".join(repr(preprocessor) for preprocessor in self.preprocessors)
         return f"{self.__class__.__name__}({arguments})"
 
-    def _determine_transform_to_use(self, data_format: "BlockFormat") -> "BatchFormat":
+    def _determine_transform_to_use(self, data_format: BlockFormat) -> BatchFormat:
         # This is relevant for BatchPrediction.
         # For Chain preprocessor, we picked the first one as entry point.
         # TODO (jiaodong): We should revisit if our Chain preprocessor is
