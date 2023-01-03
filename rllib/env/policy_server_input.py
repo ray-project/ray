@@ -94,7 +94,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
             address: Server addr (e.g., "localhost").
             port: Server port (e.g., 9900).
             max_queue_size: The maximum size for the sample queue. Once full, will
-                purge (throw away) 50% of all samples, oldest first.
+                purge (throw away) 50% of all samples, oldest first, and continue.
         """
 
         self.rollout_worker = ioctx.worker
