@@ -1819,6 +1819,13 @@ py_test(
     srcs = ["core/optim/tests/test_rl_optimizer_tf.py"]
 )
 
+py_test(
+    name = "test_tf_rl_trainer",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/tf/test_tf_rl_trainer.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
