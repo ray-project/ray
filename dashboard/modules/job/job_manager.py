@@ -336,7 +336,7 @@ class JobSupervisor:
                 await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
     def _kill_processes(self, processes: List[psutil.Process], sig: signal.Signals):
-        """Ensures each process is already finished or send a kill signal."""
+        """Ensure each process is already finished or send a kill signal."""
         for proc in processes:
             try:
                 os.kill(proc.pid, sig)
