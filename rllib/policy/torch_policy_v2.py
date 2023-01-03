@@ -182,7 +182,7 @@ class TorchPolicyV2(Policy):
 
         # Backward compatibility workaround so Policy will call self.loss() directly.
         # TODO(jungong): clean up after all policies are migrated to new sub-class
-        # implementation.
+        #  implementation.
         self._loss = None
 
         # Store, which params (by index within the model's list of
