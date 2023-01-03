@@ -314,6 +314,10 @@ def _driver_set_trace():
     pdb.set_trace(frame)
 
 
+def _is_ray_debugger_enabled():
+    return "RAY_PDB" in os.environ
+
+
 def _post_mortem():
     rdb = _connect_ray_pdb(
         host=None,
