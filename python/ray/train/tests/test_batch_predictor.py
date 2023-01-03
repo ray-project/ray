@@ -13,7 +13,6 @@ import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
-from ray.data.preprocessors import Chain
 from ray.tests.conftest import *  # noqa
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import Predictor
@@ -151,15 +150,9 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
         _ = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
 
 
-@pytest.mark.parametrize("use_nested_chain", (True,))
-def test_batch_prediction_simple(use_nested_chain):
-    # use_nested_chain is a special case to test _determine_preprocessor_batch_format
-    # being able to deal with a Chain nested inside a Chain
-    preprocessor = (
-        Chain(Chain(DummyPreprocessor())) if use_nested_chain else DummyPreprocessor()
-    )
+def test_batch_prediction_simple():
     batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: preprocessor}),
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
         DummyPredictor,
     )
 

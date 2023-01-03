@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
     BatchMapper,
@@ -187,6 +188,31 @@ def test_nested_chain():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+class PreprocessorWithoutTransform(Preprocessor):
+    pass
+
+
+@pytest.mark.parametrize("block_format", (BlockFormat.PANDAS, BlockFormat.ARROW))
+def test_determine_transform_to_use(block_format):
+    # Test that _determine_transform_to_use doesn't throw any exceptions
+    # and selects the transform function of the underlying preprocessor
+    # while dealing with the nested Chain case.
+
+    # Check that error is propagated correctly
+    with pytest.raises(NotImplementedError):
+        chain = Chain(PreprocessorWithoutTransform())
+        chain._determine_transform_to_use(block_format)
+
+    # Should have no errors from here on
+    chain1 = Chain(SimpleImputer(["A"]))
+    format1 = chain1._determine_transform_to_use(block_format)
+
+    chain2 = Chain(chain1)
+    format2 = chain2._determine_transform_to_use(block_format)
+
+    assert format1 == format2
 
 
 if __name__ == "__main__":
