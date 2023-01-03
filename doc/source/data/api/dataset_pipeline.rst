@@ -10,7 +10,6 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    DatasetPipeline
 
@@ -19,7 +18,6 @@ Basic Transformations
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    DatasetPipeline.map
    DatasetPipeline.map_batches
@@ -35,7 +33,6 @@ Sorting, Shuffling, Repartitioning
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    DatasetPipeline.sort_each_window
    DatasetPipeline.random_shuffle_each_window
@@ -47,7 +44,6 @@ Splitting DatasetPipelines
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    DatasetPipeline.split
    DatasetPipeline.split_at_indices
@@ -57,7 +53,6 @@ Creating DatasetPipelines
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    DatasetPipeline.repeat
    DatasetPipeline.rewindow
@@ -68,7 +63,6 @@ Consuming DatasetPipelines
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    DatasetPipeline.show
    DatasetPipeline.show_windows
@@ -84,7 +78,6 @@ I/O and Conversion
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    DatasetPipeline.write_json
    DatasetPipeline.write_csv
@@ -98,7 +91,6 @@ Inspecting Metadata
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    DatasetPipeline.schema
    DatasetPipeline.count

@@ -10,7 +10,6 @@ Synthetic Data
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    range
    range_table
@@ -21,7 +20,6 @@ Python Objects
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    from_items
 
@@ -30,7 +28,6 @@ Parquet
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    read_parquet
    read_parquet_bulk
@@ -41,7 +38,6 @@ CSV
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    read_csv
    Dataset.write_csv
@@ -51,7 +47,6 @@ JSON
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    read_json
    Dataset.write_json
@@ -61,7 +56,6 @@ Text
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    read_text
 
@@ -70,7 +64,6 @@ Images
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    read_images
 
@@ -79,7 +72,6 @@ Binary
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    read_binary_files
 
@@ -88,7 +80,6 @@ TFRecords
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    read_tfrecords
    Dataset.write_tfrecords
@@ -99,7 +90,6 @@ Pandas
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    from_pandas
    from_pandas_refs
@@ -111,7 +101,6 @@ NumPy
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    read_numpy
    from_numpy
@@ -124,7 +113,6 @@ Arrow
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    from_arrow
    from_arrow_refs
@@ -135,7 +123,6 @@ MongoDB
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    read_mongo
    Dataset.write_mongo
@@ -145,7 +132,6 @@ Dask
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    from_dask
    Dataset.to_dask
@@ -155,7 +141,6 @@ Spark
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    from_spark
    Dataset.to_spark
@@ -165,7 +150,6 @@ Modin
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    from_modin
    Dataset.to_modin
@@ -175,7 +159,6 @@ Mars
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    from_mars
    Dataset.to_mars
@@ -185,7 +168,6 @@ Torch
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    from_torch
 
@@ -194,7 +176,6 @@ HuggingFace
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    from_huggingface
 
@@ -203,7 +184,6 @@ TensorFlow
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    from_tf
 
@@ -214,7 +194,6 @@ Datasource API
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    read_datasource
    Dataset.write_datasource
@@ -228,7 +207,6 @@ Built-in Datasources
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    datasource.BinaryDatasource
    datasource.CSVDatasource
@@ -246,7 +224,6 @@ Partitioning API
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    datasource.Partitioning
    datasource.PartitionStyle
@@ -259,7 +236,6 @@ MetadataProvider API
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider

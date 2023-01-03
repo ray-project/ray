@@ -7,6 +7,5 @@ Utility
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    set_progress_bars

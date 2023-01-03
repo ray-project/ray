@@ -10,7 +10,6 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset
 
@@ -19,7 +18,6 @@ Basic Transformations
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset.map
    Dataset.map_batches
@@ -36,7 +34,6 @@ Sorting, Shuffling, Repartitioning
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset.sort
    Dataset.random_shuffle
@@ -48,7 +45,6 @@ Splitting and Merging Datasets
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset.split
    Dataset.split_at_indices
@@ -62,7 +58,6 @@ Grouped and Global Aggregations
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset.groupby
    Dataset.aggregate
@@ -77,7 +72,6 @@ Converting to Pipeline
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset.repeat
    Dataset.window
@@ -87,7 +81,6 @@ Consuming Datasets
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset.show
    Dataset.take
@@ -102,7 +95,6 @@ I/O and Conversion
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset.write_parquet
    Dataset.write_json
@@ -128,7 +120,6 @@ Inspecting Metadata
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset.count
    Dataset.schema
@@ -144,7 +135,6 @@ Execution
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset.fully_executed
    Dataset.is_fully_executed
@@ -155,7 +145,6 @@ Serialization
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    Dataset.has_serializable_lineage
    Dataset.serialize_lineage

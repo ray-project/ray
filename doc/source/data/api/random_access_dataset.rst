@@ -12,7 +12,6 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    random_access_dataset.RandomAccessDataset
 
@@ -21,7 +20,6 @@ Functions
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    random_access_dataset.RandomAccessDataset.get_async
    random_access_dataset.RandomAccessDataset.multiget

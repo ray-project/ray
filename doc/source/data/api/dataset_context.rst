@@ -10,7 +10,6 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    context.DatasetContext
 
@@ -19,6 +18,5 @@ Get DatasetContext
 
 .. autosummary::
    :toctree: doc/
-   :nosignatures:
 
    context.DatasetContext.get_current
