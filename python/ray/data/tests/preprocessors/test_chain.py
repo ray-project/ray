@@ -206,8 +206,10 @@ def test_determine_transform_to_use(block_format):
         chain._determine_transform_to_use(block_format)
 
     # Should have no errors from here on
-    chain1 = Chain(SimpleImputer(["A"]))
+    preprocessor = SimpleImputer(["A"])
+    chain1 = Chain(preprocessor)
     format1 = chain1._determine_transform_to_use(block_format)
+    assert format1 == preprocessor._determine_transform_to_use(block_format)
 
     chain2 = Chain(chain1)
     format2 = chain2._determine_transform_to_use(block_format)
