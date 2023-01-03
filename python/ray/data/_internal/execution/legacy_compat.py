@@ -141,7 +141,6 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             raise NotImplementedError
 
         block_fn = stage.block_fn
-        # TODO: pass the following via object store instead of closure capture
         # TODO: implement arg packing and passing for test_map_batches_extra_args
         fn_args = (stage.fn,) if stage.fn else ()
         fn_args = fn_args + (stage.fn_args or ())

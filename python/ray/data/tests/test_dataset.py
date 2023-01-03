@@ -2393,6 +2393,14 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
 
 
 def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
+    # TODO(ekl) decide if we want to support arg deref in the new backend.
+    def put(x):
+        context = DatasetContext.get_current()
+        if context.new_execution_backend:
+            return x
+        else:
+            return ray.put(x)
+
     # Test input validation
     ds = ray.data.range(5)
 
@@ -2444,7 +2452,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_args=(ray.put(1),),
+        fn_args=(put(1),),
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2463,7 +2471,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_kwargs={"b": ray.put(2)},
+        fn_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2483,8 +2491,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_args=(ray.put(1),),
-        fn_kwargs={"b": ray.put(2)},
+        fn_args=(put(1),),
+        fn_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2509,7 +2517,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_args=(ray.put(1),),
+        fn_constructor_args=(put(1),),
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2533,7 +2541,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_kwargs={"b": ray.put(2)},
+        fn_constructor_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2559,8 +2567,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_args=(ray.put(1),),
-        fn_constructor_kwargs={"b": ray.put(2)},
+        fn_constructor_args=(put(1),),
+        fn_constructor_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2571,8 +2579,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
 
     # Test callable chain.
     ds = ray.data.read_parquet(str(tmp_path))
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     ds2 = (
         ds.lazy()
         .map_batches(
@@ -2601,8 +2609,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
 
     # Test function + callable chain.
     ds = ray.data.read_parquet(str(tmp_path))
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     ds2 = (
         ds.lazy()
         .map_batches(
@@ -2610,8 +2618,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
             batch_size=1,
             batch_format="pandas",
             compute="actors",
-            fn_args=(ray.put(1),),
-            fn_kwargs={"b": ray.put(2)},
+            fn_args=(put(1),),
+            fn_kwargs={"b": put(2)},
         )
         .map_batches(
             CallableFn,

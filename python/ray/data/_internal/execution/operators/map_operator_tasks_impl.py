@@ -53,7 +53,9 @@ class _TaskState:
 
 class MapOperatorTasksImpl:
     def __init__(self, op: "MapOperator"):
-        self._transform_fn = op.get_transform_fn()
+        # Put the function def in the object store to avoid repeated serialization
+        # in case it's large (i.e., closure captures large objects).
+        self._transform_fn_ref = ray.put(op.get_transform_fn())
         self._ray_remote_args = op.ray_remote_args()
         self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
@@ -163,7 +165,7 @@ class MapOperatorTasksImpl:
             input_blocks.append(block)
         map_task = cached_remote_fn(_map_task, num_returns="dynamic")
         generator_ref = map_task.options(**self._ray_remote_args).remote(
-            self._transform_fn, *input_blocks
+            self._transform_fn_ref, *input_blocks
         )
         task = _TaskState(bundle)
         self._tasks[generator_ref] = task
