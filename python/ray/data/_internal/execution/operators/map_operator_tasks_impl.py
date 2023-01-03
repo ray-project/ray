@@ -6,8 +6,9 @@ from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
-from ray.data._internal.execution.util import _merge_ref_bundles
+from ray.data._internal.execution.util import merge_ref_bundles
 from ray.data.block import Block, BlockAccessor, BlockExecStats
+from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
@@ -53,29 +54,36 @@ class _TaskState:
 
 class MapOperatorTasksImpl:
     def __init__(self, op: "MapOperator"):
+        # Execution arguments.
+        self._op = op
+        self._ray_remote_args = op.ray_remote_args()
+
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
         self._transform_fn_ref = ray.put(op.get_transform_fn())
-        self._ray_remote_args = op.ray_remote_args()
+
+        # The temporary block bundle used to accumulate inputs until they meet the
+        # min_rows_per_batch requirement.
+        self._block_bundle: Optional[RefBundle] = None
+        self._min_rows_per_batch: int = op._min_rows_per_batch
+
+        # Execution state.
         self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
-        self._block_bundle = None
-        self._min_rows_per_batch = op._min_rows_per_batch
-        self._input_deps_done = 0
-        self._op = op
-        self._next_task_index = 0
-        self._next_output_index = 0
-        self._obj_store_mem_alloc = 0
-        self._obj_store_mem_freed = 0
-        self._obj_store_mem_cur = 0
-        self._obj_store_mem_peak = 0
+        self._input_deps_done: bool = 0
+        self._next_task_index: int = 0
+        self._next_output_index: int = 0
+        self._obj_store_mem_alloc: int = 0
+        self._obj_store_mem_freed: int = 0
+        self._obj_store_mem_cur: int = 0
+        self._obj_store_mem_peak: int = 0
 
     def add_input(self, bundle: RefBundle) -> None:
         if self._min_rows_per_batch is None:
             self._create_task(bundle)
             return
 
-        def get_num_rows(bundle: RefBundle):
+        def get_num_rows(bundle: Optional[RefBundle]):
             if bundle is None:
                 return 0
             if bundle.num_rows() is None:
@@ -94,7 +102,7 @@ class MapOperatorTasksImpl:
             else:
                 self._create_task(bundle)
         else:
-            self._block_bundle = _merge_ref_bundles(self._block_bundle, bundle)
+            self._block_bundle = merge_ref_bundles(self._block_bundle, bundle)
 
     def inputs_done(self, input_index: int) -> None:
         self._input_deps_done += 1
@@ -163,6 +171,9 @@ class MapOperatorTasksImpl:
         input_blocks = []
         for block, _ in bundle.blocks:
             input_blocks.append(block)
+        # TODO fix for Ray client: https://github.com/ray-project/ray/issues/30458
+        if not DatasetContext.get_current().block_splitting_enabled:
+            raise NotImplementedError("New backend requires block splitting")
         map_task = cached_remote_fn(_map_task, num_returns="dynamic")
         generator_ref = map_task.options(**self._ray_remote_args).remote(
             self._transform_fn_ref, *input_blocks
