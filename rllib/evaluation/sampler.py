@@ -91,10 +91,9 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
     def next(self) -> SampleBatchType:
         batches = [self.get_data()]
         batches.extend(self.get_extra_batches())
-        if len(batches) > 1:
-            return concat_samples(batches)
-        else:
-            return batches[0]
+        if len(batches) == 0:
+            raise RuntimeError("No data available from sampler.")
+        return concat_samples(batches)
 
     @abstractmethod
     @DeveloperAPI
