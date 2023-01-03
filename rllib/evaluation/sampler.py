@@ -22,6 +22,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv, convert_to_base_env
+from ray.rllib.env.wrappers.check_nan_wrapper import CheckNaNWrapper
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.env_runner_v2 import (
@@ -149,6 +150,8 @@ class SyncSampler(SamplerInput):
         *,
         worker: "RolloutWorker",
         env: BaseEnv,
+        check_nan_env: bool,
+        check_nan_env_config: Dict,
         clip_rewards: Union[bool, float],
         rollout_fragment_length: int,
         count_steps_by: str = "env_steps",
@@ -223,6 +226,11 @@ class SyncSampler(SamplerInput):
                 deprecation_warning(old="no_done_at_end", error=True)
 
         self.base_env = convert_to_base_env(env)
+        # Eventually check for NaNs/Infs in the environment.
+        self.check_nan_env = check_nan_env
+        self.check_nan_env_config = check_nan_env_config
+        if self.check_nan_env:
+            self.base_env = CheckNaNWrapper(self.base_env, self.check_nan_env_config)
         self.rollout_fragment_length = rollout_fragment_length
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats(

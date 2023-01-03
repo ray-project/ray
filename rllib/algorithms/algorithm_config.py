@@ -284,6 +284,16 @@ class AlgorithmConfig:
         self.normalize_actions = True
         self.clip_actions = False
         self.disable_env_checking = False
+        # If environment should be checked for NaNs/Infs.
+        self.check_nan_env = False,
+        self.check_nan_env_config = {
+            # If an NaN/Inf should raise an exception.
+            "raise_exception": False,
+            # Also check for Inf values. Otherwise only NaNs.
+            "check_inf": True,
+            # Warn only at the first occurrence.
+            "warn_once": False,
+        }
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
         self.is_atari = None
@@ -1125,6 +1135,8 @@ class AlgorithmConfig:
         normalize_actions: Optional[bool] = NotProvided,
         clip_actions: Optional[bool] = NotProvided,
         disable_env_checking: Optional[bool] = NotProvided,
+        check_nan_env: Optional[bool] = NotProvided,
+        check_nan_env_config: Optional[Dict] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
         auto_wrap_old_gym_envs: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -1206,6 +1218,10 @@ class AlgorithmConfig:
             self.clip_actions = clip_actions
         if disable_env_checking is not NotProvided:
             self.disable_env_checking = disable_env_checking
+        if check_nan_env is not NotProvided:
+            self.check_nan_env = check_nan_env
+        if check_nan_env_config is not NotProvided:
+            self.check_nan_env_config = check_nan_env_config
         if is_atari is not NotProvided:
             self.is_atari = is_atari
         if auto_wrap_old_gym_envs is not NotProvided:
@@ -1225,7 +1241,7 @@ class AlgorithmConfig:
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         remote_worker_envs: Optional[bool] = NotProvided,
-        remote_env_batch_wait_ms: Optional[float] = NotProvided,
+        remote_env_batch_wait_ms: Optional[float] =  NotProvided,
         validate_workers_after_construction: Optional[bool] = NotProvided,
         ignore_worker_failures: Optional[bool] = NotProvided,
         recreate_failed_workers: Optional[bool] = NotProvided,

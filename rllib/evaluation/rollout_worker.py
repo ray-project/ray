@@ -682,6 +682,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 env_creator, env_context, validate_env, wrap, self.seed
             )
 
+        # Eventually check the environment for NaNs/Infs.
+        self.check_nan_env = self.config.check_nan_env
+        self.check_nan_env_config = self.config.check_nan_env_config
+
         self.spaces = spaces
         self.default_policy_class = default_policy_class
         self.policy_dict, self.is_policy_to_train = self.config.get_multi_agent_setup(
@@ -829,6 +833,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             self.sampler = SyncSampler(
                 worker=self,
                 env=self.async_env,
+                check_nan_env=self.check_nan_env,
+                check_nan_env_config=self.check_nan_env_config,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length_for_sampler,
                 count_steps_by=self.config.count_steps_by,
