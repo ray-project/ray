@@ -69,9 +69,8 @@ class ReplicaState(Enum):
 class ReplicaStartupStatus(Enum):
     PENDING_ALLOCATION = 1
     PENDING_INITIALIZATION = 2
-    PENDING_INITIAL_HEALTH_CHECK = 3
-    SUCCEEDED = 4
-    FAILED = 5
+    SUCCEEDED = 3
+    FAILED = 4
 
 
 class ReplicaHealthCheckResponse(Enum):
@@ -376,10 +375,10 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.reconfigure.remote(user_config)
+            self._ready_obj_ref = self._actor_handle.is_ready.remote(user_config)
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+            self._ready_obj_ref = self._actor_handle.is_ready.remote(
                 user_config,
                 # Ensure that `is_allocated` will execute before `reconfigure`,
                 # because `reconfigure` runs user code that could block the replica
@@ -461,13 +460,6 @@ class ActorReplicaWrapper:
         if not replica_ready:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
 
-        # Once replica initialization completed, start initial health check
-        if self._health_check_ref is None:
-            self._health_check_ref = self._actor_handle.check_health.remote()
-        # Wait for health check to complete without blocking
-        if not self._check_obj_ref_ready(self._health_check_ref):
-            return ReplicaStartupStatus.PENDING_INITIAL_HEALTH_CHECK, None
-
         try:
             # TODO(simon): fully implement reconfigure for Java replicas.
             if self._is_cross_language:
@@ -483,18 +475,6 @@ class ActorReplicaWrapper:
             self._node_id = ray.get(self._allocated_obj_ref).hex()
         except Exception:
             logger.exception(f"Exception in deployment '{self._deployment_name}'")
-            return ReplicaStartupStatus.FAILED, None
-
-        # A new replica should not be considered healthy until it passes an initial
-        # health check. Before marking a replica as RUNNING, if an initial health check
-        # fails, mark deployment as UNHEALTHY and restart replica.
-        try:
-            ray.get(self._health_check_ref)
-            self._health_check_ref = None
-        except Exception:
-            logger.exception(
-                f"Deployment {self._deployment_name} failed initial health check."
-            )
             return ReplicaStartupStatus.FAILED, None
 
         if self._deployment_is_cross_language:
@@ -1491,7 +1471,6 @@ class DeploymentState:
             elif start_status in [
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
-                ReplicaStartupStatus.PENDING_INITIAL_HEALTH_CHECK,
             ]:
 
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
@@ -1569,15 +1548,12 @@ class DeploymentState:
 
             pending_allocation = []
             pending_initialization = []
-            pending_initial_health_check = []
 
             for replica, startup_status in slow_start_replicas:
                 if startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
                     pending_allocation.append(replica)
                 if startup_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
                     pending_initialization.append(replica)
-                if startup_status == ReplicaStartupStatus.PENDING_INITIAL_HEALTH_CHECK:
-                    pending_initial_health_check.append(replica)
 
             if len(pending_allocation) > 0:
                 required, available = pending_allocation[0].resource_requirements()
@@ -1615,21 +1591,6 @@ class DeploymentState:
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
-                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info = DeploymentStatusInfo(
-                        name=self._name,
-                        status=DeploymentStatus.UPDATING,
-                        message=message,
-                    )
-
-            if len(pending_initial_health_check) > 0:
-                message = (
-                    f"Deployment {self._name} has {len(pending_initial_health_check)} "
-                    f"replicas that have taken more than {SLOW_STARTUP_WARNING_S}s"
-                    f"to receive a health check response. This may be caused by a slow "
-                    f"check_health method."
-                )
-                logger.warning(message)
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
                     self._curr_status_info = DeploymentStatusInfo(
                         name=self._name,
