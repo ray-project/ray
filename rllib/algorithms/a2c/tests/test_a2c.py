@@ -13,20 +13,22 @@ from ray.rllib.utils.test_utils import (
 class TestA2C(unittest.TestCase):
     """Sanity tests for A2C exec impl."""
 
-    def setUp(self):
-        ray.init(num_cpus=4)
+    num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
 
-    def tearDown(self):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=4 if not cls.num_gpus else None)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_a2c_compilation(self):
         """Test whether an A2C can be built with both frameworks."""
         config = (
             a2c.A2CConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             .rollouts(num_rollout_workers=2, num_envs_per_worker=2)
         )
 
@@ -47,10 +49,8 @@ class TestA2C(unittest.TestCase):
     def test_a2c_exec_impl(self):
         config = (
             a2c.A2CConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             .environment(env="CartPole-v1")
             .reporting(min_time_s_per_iteration=0)
         )
@@ -66,10 +66,8 @@ class TestA2C(unittest.TestCase):
     def test_a2c_exec_impl_microbatch(self):
         config = (
             a2c.A2CConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             .environment(env="CartPole-v1")
             .reporting(min_time_s_per_iteration=0)
             .training(microbatch_size=10)
