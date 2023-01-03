@@ -212,10 +212,6 @@ class PPOConfig(PGConfig):
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
-            if isinstance(entropy_coeff, int):
-                entropy_coeff = float(entropy_coeff)
-            if entropy_coeff < 0.0:
-                raise ValueError("`entropy_coeff` must be >= 0.0")
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
@@ -264,6 +260,10 @@ class PPOConfig(PGConfig):
                 " trajectory). Consider setting "
                 "batch_mode=complete_episodes."
             )
+
+        # Check `entropy_coeff` for correctness.
+        if self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0")
 
 
 class UpdateKL:
