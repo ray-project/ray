@@ -122,7 +122,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                               rpc::ErrorType error_type,
                               const Status *status,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
-                              bool mark_task_object_failed = true) override {
+                              bool mark_task_object_failed = true,
+                              bool fail_immediately = false) override {
     num_tasks_failed++;
     return true;
   }

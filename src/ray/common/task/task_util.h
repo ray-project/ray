@@ -21,12 +21,20 @@
 
 namespace ray {
 
-/// Stores the task failure reason and when this entry was created.
+/// Stores the task failure reason.
 struct TaskFailureEntry {
+  /// The task failure details.
   rpc::RayErrorInfo ray_error_info;
+
+  /// The creation time of this entry.
   std::chrono::steady_clock::time_point creation_time;
-  TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info)
-      : ray_error_info(ray_error_info), creation_time(std::chrono::steady_clock::now()) {}
+
+  /// Whether this task should be retried.
+  bool should_retry;
+  TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info, bool should_retry)
+      : ray_error_info(ray_error_info),
+        creation_time(std::chrono::steady_clock::now()),
+        should_retry(should_retry) {}
 };
 
 /// Argument of a task.

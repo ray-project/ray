@@ -453,6 +453,58 @@ TEST_F(TaskManagerTest, TestTaskNotRetriableOomFailsImmediatelyEvenWithOomRetryC
   ASSERT_EQ(stored_error, rpc::ErrorType::OUT_OF_MEMORY);
 }
 
+TEST_F(TaskManagerTest, TestFailsImmediatelyOverridesRetry) {
+  RayConfig::instance().initialize(R"({"task_oom_retries": 1})");
+
+  {
+    ray::rpc::ErrorType error = rpc::ErrorType::OUT_OF_MEMORY;
+
+    rpc::Address caller_address;
+    auto spec = CreateTaskHelper(1, {});
+    manager_.AddPendingTask(caller_address, spec, "", /*max retries*/ 10);
+    auto return_id = spec.ReturnId(0);
+
+    manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                    error,
+                                    /*status*/ nullptr,
+                                    /*error info*/ nullptr,
+                                    /*mark object failed*/ true,
+                                    /*fail immediately*/ true);
+
+    std::vector<std::shared_ptr<RayObject>> results;
+    WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    ASSERT_EQ(results.size(), 1);
+    rpc::ErrorType stored_error;
+    ASSERT_TRUE(results[0]->IsException(&stored_error));
+    ASSERT_EQ(stored_error, error);
+  }
+
+  {
+    ray::rpc::ErrorType error = rpc::ErrorType::WORKER_DIED;
+
+    rpc::Address caller_address;
+    auto spec = CreateTaskHelper(1, {});
+    manager_.AddPendingTask(caller_address, spec, "", /*max retries*/ 10);
+    auto return_id = spec.ReturnId(0);
+
+    manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                    error,
+                                    /*status*/ nullptr,
+                                    /*error info*/ nullptr,
+                                    /*mark object failed*/ true,
+                                    /*fail immediately*/ true);
+
+    std::vector<std::shared_ptr<RayObject>> results;
+    WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+    RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+    ASSERT_EQ(results.size(), 1);
+    rpc::ErrorType stored_error;
+    ASSERT_TRUE(results[0]->IsException(&stored_error));
+    ASSERT_EQ(stored_error, error);
+  }
+}
+
 // Test to make sure that the task spec and dependencies for an object are
 // evicted when lineage pinning is disabled in the ReferenceCounter.
 TEST_F(TaskManagerTest, TestLineageEvicted) {
