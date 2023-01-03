@@ -373,6 +373,7 @@ def _init_ray_cluster(
     managed scope, the ray cluster is initiated and connected to. When exiting the
     scope, the ray cluster is disconnected and shut down.
     """
+    import pyspark
     from pyspark.util import inheritable_thread_target
     from pyspark.resource.profile import ResourceProfileBuilder
     from pyspark.resource.requests import TaskResourceRequests
@@ -389,27 +390,65 @@ def _init_ray_cluster(
 
     spark = get_spark_session()
 
+    spark_master = spark.sparkContext.master
+    if not (
+        spark_master.startswith("spark://") or spark_master.startswith("local-cluster[")
+    ):
+        raise RuntimeError(
+            "Ray on Spark only supports spark cluster in standalone mode or local-cluster mode"
+        )
+
+    if is_in_databricks_runtime() and os.environ["DATABRICKS_RUNTIME_VERSION"].startswith("12."):
+        support_stage_scheduling = True
+    elif Version(pyspark.__version__) >= Version("3.4"):
+        support_stage_scheduling = True
+    else:
+        support_stage_scheduling = False
+
     # Environment configurations within the Spark Session that dictate how many cpus
     # and gpus to use for each submitted spark task.
-    if num_cpus_per_node is None:
-        num_spark_task_cpus = \
-            int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
-        if num_spark_task_cpus < 4:
-            # If user does not specify `num_cpus_per_node`, and the default
-            # "spark.task.cpus" config value is less than 4, increase it to 4.
-            # because Ray worker node prefers config with cpu number >= 4.
-            num_spark_task_cpus = 4
-    else:
-        num_spark_task_cpus = num_cpus_per_node
+    num_spark_task_cpus = \
+        int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
 
-    num_spark_task_gpus = num_gpus_per_node or int(
+    if num_cpus_per_node is not None and num_cpus_per_node <= 0:
+        raise ValueError("Argument `num_cpus_per_node` value must be > 0.")
+
+    num_spark_task_gpus = int(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
-    task_res_req = TaskResourceRequests() \
-        .cpus(num_spark_task_cpus)
-    if num_spark_task_gpus > 0:
-        task_res_req = task_res_req.resource("gpu", num_spark_task_gpus)
-    res_profile = ResourceProfileBuilder().require(task_res_req).build
+
+    if num_gpus_per_node is not None and num_spark_task_gpus == 0:
+        raise ValueError(
+            "The spark cluster is not configured with 'gpu' resources, so that "
+            "you cannot specify the `num_gpus_per_node` argument."
+        )
+
+    if num_gpus_per_node is not None and num_gpus_per_node < 0:
+        raise ValueError("Argument `num_gpus_per_node` value must be >= 0.")
+
+    if num_cpus_per_node is not None or num_gpus_per_node is not None:
+        if support_stage_scheduling:
+            if num_cpus_per_node is not None:
+                num_spark_task_cpus = num_cpus_per_node
+            task_res_req = TaskResourceRequests() \
+                .cpus(num_spark_task_cpus)
+            if num_spark_task_gpus > 0:
+                if num_gpus_per_node is not None:
+                    num_spark_task_gpus = num_gpus_per_node
+                task_res_req = task_res_req.resource("gpu", num_spark_task_gpus)
+            res_profile = ResourceProfileBuilder().require(task_res_req).build
+        else:
+            res_profile = None
+            _logger.warning(
+                "Current spark version does not support stage scheduling, so that "
+                "the argument `num_cpus_per_node` and `num_gpus_per_node` values are "
+                "ignored and per-ray node will be assigned with number of "
+                f"'spark.task.cpus' (equals to {num_spark_task_cpus}) cpu cores "
+                "and number of 'spark.task.resource.gpu.amount' "
+                f"(equals to {num_spark_task_gpus}) GPUs. To enable spark stage "
+                "scheduling, you need to upgrade spark to 3.4 version or use "
+                "Databricks Runtime 12.x"
+            )
 
     (
         ray_worker_node_heap_mem_bytes,
@@ -419,14 +458,6 @@ def _init_ray_cluster(
     if num_worker_nodes == MAX_NUM_WORKER_NODES:
         # num_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
         # spark task slots
-
-        def dummpy_mapper(x):
-            pass
-
-        # Runs a dummy spark job to register the `res_profile`
-        spark.sparkContext.parallelize([1], 1).withResources(res_profile) \
-            .map(dummpy_mapper).collect()
-
         num_worker_nodes = get_max_num_concurrent_tasks(
             spark.sparkContext, res_profile
         )
@@ -444,8 +475,11 @@ def _init_ray_cluster(
             "a ray cluster. Based on the total cpu resources available and the "
             "configured task sizing, each ray worker would start with "
             f"{num_spark_task_cpus} CPU cores. This is less than the recommended "
-            "value of `4` CPUs per worker. Increasing the spark configuration "
-            "'spark.task.cpus' to a minimum of `4` addresses it."
+            "value of `4` CPUs per worker. On spark version >= 3.4 or Databricks "
+            "Runtime 12.x, you can set the argument `num_cpus_per_node` to "
+            "a value >= 4 to address it, otherwise you need to increase the spark"
+            "application configuration 'spark.task.cpus' to a minimum of `4` to "
+            "address it."
         )
 
     if ray_worker_node_heap_mem_bytes < 10 * 1024 * 1024 * 1024:
@@ -699,11 +733,14 @@ def _init_ray_cluster(
             # slots become available, it continues to launch tasks on new available
             # slots, and user can see the ray cluster worker number increases when more
             # slots available.
-            spark.sparkContext.parallelize(
+            job_rdd = spark.sparkContext.parallelize(
                 list(range(num_worker_nodes)), num_worker_nodes
-            ).withResources(
-                res_profile
-            ).mapPartitions(
+            )
+
+            if res_profile is not None:
+                job_rdd = job_rdd.withResources(res_profile)
+
+            job_rdd.mapPartitions(
                 ray_cluster_job_mapper
             ).collect()
         except Exception as e:
@@ -787,10 +824,17 @@ def init_ray_cluster(
             To create a spark application that is intended to exclusively run a
             shared ray cluster, it is recommended to set this argument to
             `ray.util.spark.MAX_NUM_WORKER_NODES`.
-        num_cpus_per_node: Number of cpus available to per-ray worker node, default 4.
-        num_gpus_per_node: Number of gpus available to per-ray worker node, default 1.
+        num_cpus_per_node: Number of cpus available to per-ray worker node, if not
+            provided, use spark application configuration 'spark.task.cpus' instead.
+            Limitation: Only spark version >= 3.4 or Databricks Runtime 12.x supports
+            this argument.
+        num_gpus_per_node: Number of gpus available to per-ray worker node, if not
+            provided, use spark application configuration
+            'spark.task.resource.gpu.amount' instead.
             This argument is only available on spark cluster that is configured with
             'gpu' resources.
+            Limitation: Only spark version >= 3.4 or Databricks Runtime 12.x supports
+            this argument.
         object_store_memory_per_node: Object store memory available to per-ray worker
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".

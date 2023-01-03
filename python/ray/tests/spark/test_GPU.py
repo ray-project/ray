@@ -22,30 +22,16 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
 
     def test_gpu_allocation(self):
 
-        for num_worker_nodes, num_cpus_per_node, num_gpus_per_node in [
-            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task, self.num_gpus_per_spark_task),
-            (self.max_spark_tasks, self.num_cpus_per_spark_task, self.num_gpus_per_spark_task),
-            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2, self.num_gpus_per_spark_task * 2),
-        ]:
-            with _init_ray_cluster(
-                num_worker_nodes=num_worker_nodes,
-                num_cpus_per_node=num_cpus_per_node,
-                num_gpus_per_node=num_gpus_per_node,
-                safe_mode=False
-            ):
+        for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
+            with _init_ray_cluster(num_worker_nodes=num_spark_tasks, safe_mode=False):
                 worker_res_list = self.get_ray_worker_resources_list()
-                assert len(worker_res_list) == num_worker_nodes
+                assert len(worker_res_list) == num_spark_tasks
                 for worker_res in worker_res_list:
-                    assert worker_res["GPU"] == self.num_gpus_per_node
+                    assert worker_res["GPU"] == self.num_gpus_per_spark_task
 
     def test_basic_ray_app_using_gpu(self):
 
-        with _init_ray_cluster(
-            num_worker_nodes=self.max_spark_tasks,
-            num_cpus_per_node=self.num_cpus_per_spark_task,
-            num_gpus_per_node=self.num_gpus_per_spark_task,
-            safe_mode=False,
-        ):
+        with _init_ray_cluster(num_worker_nodes=self.max_spark_tasks, safe_mode=False):
 
             @ray.remote(num_cpus=1, num_gpus=1)
             def f(_):
