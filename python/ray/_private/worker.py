@@ -2048,7 +2048,7 @@ def connect(
             current_directory = os.path.abspath(os.path.curdir)
             code_paths.append(current_directory)
         if len(code_paths) != 0:
-            job_config.code_search_path.extend(code_paths)
+            job_config._py_sys_path.extend(code_paths)
 
     serialized_job_config = job_config.serialize()
     if not node.should_redirect_logs():

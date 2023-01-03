@@ -322,6 +322,8 @@ message JobConfig {
   // If the lifetime of an actor is not specified explicitly at runtime, this
   // default value will be applied.
   ActorLifetime default_actor_lifetime = 7;
+  // Python worker should first try to load modules from local code path.
+  repeated string _py_sys_path= 8;
 }
 
 message JobTableData {

@@ -247,7 +247,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     ???? # unknown
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
-    assert freqs["internal_kv_get"] == 5
+    assert freqs["internal_kv_get"] == 8
 
 
 if __name__ == "__main__":

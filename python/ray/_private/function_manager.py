@@ -138,10 +138,10 @@ class FunctionActorManager:
 
     def load_function_or_class_from_local(self, module_name, function_or_class_name):
         """Try to load a function or class in the module from local."""
+        module = importlib.import_module(module_name)
+        parts = [part for part in function_or_class_name.split(".") if part]
+        object = module
         try:
-            module = importlib.import_module(module_name)
-            parts = [part for part in function_or_class_name.split(".") if part]
-            object = module
             for part in parts:
                 object = getattr(object, part)
             return object
@@ -356,7 +356,7 @@ class FunctionActorManager:
         )
 
         object = self.load_function_or_class_from_local(module_name, function_name)
-        if object is not None and hasattr(object, "_function"):
+        if object is not None:
             function = object._function
             self._function_execution_info[function_id] = FunctionExecutionInfo(
                 function=function,

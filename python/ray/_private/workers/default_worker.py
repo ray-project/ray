@@ -223,12 +223,18 @@ if __name__ == "__main__":
     code_search_path = core_worker.get_job_config().code_search_path
     load_code_from_local = False
     if code_search_path:
-        #load_code_from_local = True
+        load_code_from_local = True
         for p in code_search_path:
             if os.path.isfile(p):
                 p = os.path.dirname(p)
             sys.path.insert(0, p)
     ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
+    # Add driver sys path to sys.path
+    py_sys_path = core_worker.get_job_config()._py_sys_path
+    if py_sys_path:
+        for p in py_sys_path:
+            sys.path.insert(0, p)
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
