@@ -1,7 +1,6 @@
 # TODO (avnishn): Merge with the torch version of this test once the
 # RLTrainer has been merged.
 import gymnasium as gym
-import tensorflow as tf
 from typing import Any, Mapping, Union
 import unittest
 
@@ -12,7 +11,7 @@ from ray.rllib.offline.dataset_reader import (
     DatasetReader,
     get_dataset_and_shards,
 )
-
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_optimizer import BCTFOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -20,6 +19,9 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import TensorType
+
+tf1, tf, tfv = try_import_tf()
+tf1.enable_eager_execution()
 
 
 class BCTFTrainer:
@@ -32,7 +34,7 @@ class BCTFTrainer:
             env.action_space,
             model_config={"hidden_dim": 32},
         )
-        self._rl_optimizer = BCTFOptimizer(self._module, optimizer_config)
+        self._rl_optimizer = BCTFOptimizer.from_module(self._module, optimizer_config)
 
     @staticmethod
     def on_after_compute_gradients(
@@ -247,4 +249,7 @@ class TestRLOptimizerTF(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
