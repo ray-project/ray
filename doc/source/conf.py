@@ -344,6 +344,9 @@ def setup(app):
     # Create galleries on the fly
     app.connect("builder-inited", build_gallery)
 
+    # tag filtering system
+    app.add_js_file("js/tags.js")
+
 
 redoc = [
     {
