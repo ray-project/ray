@@ -444,11 +444,13 @@ class BatchPredictor:
         if preprocessor is None:
             # No preprocessor, just use the predictor format.
             return self._predictor_cls._batch_format_to_use()
-        elif hasattr(preprocessor, "preprocessors"):
-            # For Chain preprocessor, we picked the first one as entry point.
-            # TODO (jiaodong): We should revisit if our Chain preprocessor is
-            # still optimal with context of lazy execution.
-            preprocessor = preprocessor.preprocessors[0]
+        else:
+            # Use while to deal with nested Chain case
+            while hasattr(preprocessor, "preprocessors"):
+                # For Chain preprocessor, we picked the first one as entry point.
+                # TODO (jiaodong): We should revisit if our Chain preprocessor is
+                # still optimal with context of lazy execution.
+                preprocessor = preprocessor.preprocessors[0]
 
         # Use same batch format as first preprocessor to minimize data copies.
         return preprocessor._determine_transform_to_use(dataset_block_format)
