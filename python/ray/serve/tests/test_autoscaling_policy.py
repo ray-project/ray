@@ -58,7 +58,7 @@ class TestCalculateDesiredNumReplicas:
             )
             assert min_replicas <= desired_num_replicas <= max_replicas
 
-    @pytest.mark.parametrize("target_requests", [1.0, 1.5])
+    @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
     def test_scale_up(self, target_requests):
         config = AutoscalingConfig(
             min_replicas=0,
@@ -72,7 +72,7 @@ class TestCalculateDesiredNumReplicas:
         )
         assert 19 <= desired_num_replicas <= 21  # 10 * 2 = 20
 
-    @pytest.mark.parametrize("target_requests", [1.0, 1.5])
+    @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
     def test_scale_down(self, target_requests):
         config = AutoscalingConfig(
             min_replicas=0,
