@@ -16,6 +16,7 @@ prelude_commands: &prelude_commands |-
     export LANG="en_US.UTF-8"
     export BUILD="1"
     export DL="1"
+    export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
     powershell ci/pipeline/fix-windows-container-networking.ps1
     cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 

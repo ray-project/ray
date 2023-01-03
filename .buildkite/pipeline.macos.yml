@@ -9,6 +9,7 @@ common: &common
     LANG: en_US.UTF-8
     BUILD: "1"
     DL: "1"
+    RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER: "1"
 
 prelude_commands: &prelude_commands |-
   rm -rf /tmp/bazel_event_logs
