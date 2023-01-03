@@ -11,7 +11,6 @@ from ray.rllib.utils.test_utils import (
 
 
 class TestA2C(unittest.TestCase):
-    """Sanity tests for A2C exec impl."""
 
     num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
 

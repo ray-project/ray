@@ -13,20 +13,23 @@ from ray.rllib.utils.test_utils import (
 
 
 class TestApexDDPG(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=4)
 
-    def tearDown(self):
+    num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
+
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=4 if not cls.num_gpus else None)
+
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_apex_ddpg_compilation_and_per_worker_epsilon_values(self):
         """Test whether APEX-DDPG can be built on all frameworks."""
         config = (
             apex_ddpg.ApexDDPGConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             .environment(env="Pendulum-v1")
             .rollouts(num_rollout_workers=2)
             .reporting(min_sample_timesteps_per_iteration=100)
