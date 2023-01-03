@@ -306,11 +306,3 @@ class Executor:
         while iterating over `execute` results for streaming execution.
         """
         raise NotImplementedError
-
-    def get_resource_usage(self) -> ExecutionResources:
-        """Return the current resource usage of the executor.
-
-        This is the sum of resource usage for each operator being executed. If
-        execution has completed, the resource usages will be None.
-        """
-        raise NotImplementedError
