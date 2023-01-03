@@ -223,7 +223,7 @@ if __name__ == "__main__":
     code_search_path = core_worker.get_job_config().code_search_path
     load_code_from_local = False
     if code_search_path:
-        load_code_from_local = True
+        #load_code_from_local = True
         for p in code_search_path:
             if os.path.isfile(p):
                 p = os.path.dirname(p)
