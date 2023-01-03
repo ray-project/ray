@@ -3,7 +3,6 @@ import asyncio
 from importlib import import_module
 import inspect
 import logging
-import os
 import pickle
 import time
 from typing import Any, Callable, Optional, Tuple, Dict
@@ -460,8 +459,11 @@ class RayServeReplica:
         except Exception as e:
             logger.exception(f"Request failed due to {type(e).__name__}:")
             success = False
-            if "RAY_PDB" in os.environ:
-                ray.util.pdb.post_mortem()
+
+            # If the debugger is enabled, drop into the remote pdb here.
+            if ray.util.pdb._is_ray_debugger_enabled():
+                ray.util.pdb._post_mortem()
+
             function_name = "unknown"
             if method_to_call is not None:
                 function_name = method_to_call.__name__
