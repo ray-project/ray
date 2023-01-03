@@ -51,7 +51,7 @@ class WorkerContext {
 
   std::shared_ptr<json> GetCurrentRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
-  void MayInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
+  void MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
       LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
