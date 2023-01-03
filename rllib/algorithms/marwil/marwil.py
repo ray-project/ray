@@ -195,9 +195,6 @@ class MARWILConfig(AlgorithmConfig):
         if self.beta < 0.0 or self.beta > 1.0:
             raise ValueError("`beta` must be within 0.0 and 1.0!")
 
-        if self.num_gpus > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
-
         if self.postprocess_inputs is False and self.beta > 0.0:
             raise ValueError(
                 "`postprocess_inputs` must be True for MARWIL (to "

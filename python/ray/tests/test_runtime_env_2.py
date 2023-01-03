@@ -214,8 +214,13 @@ class TestNoUserInfoInLogs:
         using_ray_client = address.startswith("ray://")
 
         # Test Ray Jobs API codepath. Skip for ray_minimal because Ray Jobs API
-        # requires ray[default].
-        if not using_ray_client and os.environ.get("RAY_MINIMAL") != "1":
+        # requires ray[default]. Skip for Windows because Dashboard and Ray Jobs
+        # are not tested on Windows.
+        if (
+            not using_ray_client
+            and os.environ.get("RAY_MINIMAL") != "1"
+            and not sys.platform == "win32"
+        ):
             client = JobSubmissionClient()
             job_id_good_runtime_env = client.submit_job(
                 entrypoint="echo 'hello world'", runtime_env=runtime_env
