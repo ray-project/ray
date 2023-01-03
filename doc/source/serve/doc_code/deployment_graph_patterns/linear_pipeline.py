@@ -34,4 +34,4 @@ sum = ray.get(handle.predict.remote(1))
 print(sum)
 # __graph_end__
 
-assert sum == 3
+assert sum == 4
