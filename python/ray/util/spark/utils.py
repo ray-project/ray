@@ -160,47 +160,88 @@ def _get_total_shared_memory():
     return shutil.disk_usage("/dev/shm").total
 
 
-def _get_cpu_cores():
-    import multiprocessing
-
-    return multiprocessing.cpu_count()
-
-
 def _calc_mem_per_ray_worker_node(
     num_task_slots, physical_mem_bytes, shared_mem_bytes, object_store_memory_per_node
 ):
+    from ray._private.ray_constants import DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+
+    MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
+
     available_physical_mem_per_node = int(
         physical_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
     )
     available_shared_mem_per_node = int(
         shared_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
     )
-    if object_store_memory_per_node is None:
-        object_store_bytes = available_shared_mem_per_node
-    else:
-        object_store_bytes = int(
-            min(
-                object_store_memory_per_node,
-                available_shared_mem_per_node,
-            )
-        )
+
+    object_store_bytes = object_store_memory_per_node or (
+        available_physical_mem_per_node * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+    )
+
+    object_store_bytes = int(min(
+        object_store_bytes,
+        available_shared_mem_per_node,
+        available_physical_mem_per_node * MAX_OBJECT_STORE_MEMORY_PROPORTION,
+    ))
+
     heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
     return heap_mem_bytes, object_store_bytes
 
 
-def get_avail_mem_per_ray_worker_node(spark, object_store_memory_per_node):
+RAY_ON_SPARK_WORKER_CPU_CORES = 'RAY_ON_SPARK_WORKER_CPU_CORES'
+RAY_ON_SPARK_WORKER_GPU_CORES = 'RAY_ON_SPARK_WORKER_GPU_CORES'
+
+
+def _get_cpu_cores():
+    import multiprocessing
+    if RAY_ON_SPARK_WORKER_CPU_CORES in os.environ:
+        # In some cases, spark standalone cluster might configure virtual cpu cores
+        # for spark worker that different with number of physical cpu cores,
+        # but we cannot easily get the virtual cpu cores configured for spark
+        # worker, as a workaround, we provide an environmental variable config
+        # `RAY_ON_SPARK_WORKER_CPU_CORES` for user.
+        return int(os.environ[RAY_ON_SPARK_WORKER_CPU_CORES])
+
+    return multiprocessing.cpu_count()
+
+
+def _get_num_physical_gpus():
+    if RAY_ON_SPARK_WORKER_GPU_CORES in os.environ:
+        # In some cases, spark standalone cluster might configure part of physical
+        # GPUs for spark worker,
+        # but we cannot easily get related configuration,
+        # as a workaround, we provide an environmental variable config
+        # `RAY_ON_SPARK_WORKER_CPU_CORES` for user.
+        return int(os.environ[RAY_ON_SPARK_WORKER_GPU_CORES])
+
+    return int(
+        subprocess.run(
+            "nvidia-smi --query-gpu=name --format=csv,noheader | wc -l",
+            shell=True, check=True, text=True, capture_output=True
+        ).stdout.strip()
+    )
+
+
+def get_avail_mem_per_ray_worker_node(
+    spark,
+    object_store_memory_per_node,
+    num_cpus_per_node,
+    num_gpus_per_node,
+):
     """
     Return the available heap memory and object store memory for each ray worker.
     NB: We have one ray node per spark task.
     """
-    num_cpus_per_spark_task = int(
-        spark.sparkContext.getConf().get("spark.task.cpus", "1")
-    )
 
     def mapper(_):
         try:
             num_cpus = _get_cpu_cores()
-            num_task_slots = num_cpus // num_cpus_per_spark_task
+            num_task_slots = num_cpus // num_cpus_per_node
+
+            if num_gpus_per_node > 0:
+                num_gpus = _get_num_physical_gpus()
+                if num_task_slots > num_gpus // num_gpus_per_node:
+                    num_task_slots = num_gpus // num_gpus_per_node
 
             physical_mem_bytes = _get_total_physical_memory()
             shared_mem_bytes = _get_total_shared_memory()

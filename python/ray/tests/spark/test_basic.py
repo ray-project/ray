@@ -158,6 +158,7 @@ class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
             SparkSession.builder.master("local-cluster[1, 2, 1024]")
             .config("spark.task.cpus", "1")
             .config("spark.task.maxFailures", "1")
+            .config("spark.executorEnv.RAY_ON_SPARK_WORKER_CPU_CORES", "2")
             .getOrCreate()
         )
 

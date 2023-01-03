@@ -75,6 +75,8 @@ class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):
             .config(
                 "spark.worker.resource.gpu.discoveryScript", gpu_discovery_script_path
             )
+            .config("spark.executorEnv.RAY_ON_SPARK_WORKER_CPU_CORES", "2")
+            .config("spark.executorEnv.RAY_ON_SPARK_WORKER_GPU_CORES", "2")
             .getOrCreate()
         )
 

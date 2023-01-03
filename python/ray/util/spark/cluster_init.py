@@ -723,7 +723,7 @@ def init_ray_cluster(
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
             The default value equals to
-            "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
+            "0.3 * spark_worker_physical_memory * 0.8 / num_tasks_per_spark_worker".
         head_options: A dict representing Ray head node options.
         worker_options: A dict representing Ray worker node options.
         ray_temp_root_dir: A local disk path to store the ray temporary data. The
