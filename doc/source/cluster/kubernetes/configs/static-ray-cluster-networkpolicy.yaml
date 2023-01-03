@@ -1,3 +1,6 @@
+# If your Kubernetes has a default deny network policy for pods, you need to manually apply this network policy 
+# to allow the bidirectional communication among the head and worker nodes in the Ray cluster.
+
 # Ingress
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

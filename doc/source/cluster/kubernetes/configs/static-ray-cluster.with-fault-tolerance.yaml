@@ -155,7 +155,7 @@ spec:
           command: [ "/bin/bash", "-c", "--" ]
           # if there is no password for Redis, set --redis-password=''
           args:
-            - "ray start --head --port=6380 --num-cpus=$MY_CPU_REQUEST --dashboard-host=0.0.0.0 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=8079 --min-worker-port=10002 --max-worker-port=10020 --redis-password=<PASSWORD> --block"
+            - "ray start --head --port=6380 --num-cpus=$MY_CPU_REQUEST --dashboard-host=0.0.0.0 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=8079 --min-worker-port=10002 --max-worker-port=10020 --redis-password='' --block"
           ports:
             - containerPort: 6380 # GCS server
             - containerPort: 10001 # Used by Ray Client
