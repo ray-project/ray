@@ -62,7 +62,7 @@ def setup_mlflow(
         kwargs: Will be merged with the settings obtained from the ``mlflow`` config
             key.
 
-    Config keys:
+    Keyword Args:
         tracking_uri: The tracking URI for the MLflow tracking
             server.
         registry_uri: The registry URI for the MLflow model registry.

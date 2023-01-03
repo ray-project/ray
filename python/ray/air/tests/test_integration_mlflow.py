@@ -261,7 +261,8 @@ class MLflowTest(unittest.TestCase):
             setup_mlflow(trial_config)
 
         trial_config["mlflow"]["experiment_name"] = "existing_experiment"
-        setup_mlflow(trial_config)
+        mlflow = setup_mlflow(trial_config)
+        mlflow.end_run()
 
     def testMlFlowSetupRankNonRankZero(self):
         """Assert that non-rank-0 workers get a noop module"""
