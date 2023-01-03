@@ -10,9 +10,9 @@ Next steps
   To add another node to this Ray cluster, run
     ray start --address='.+'
 
-  To connect to this Ray cluster, run `ray\.init()` as usual:
+  To connect to this Ray cluster, run `ray.init\(\)` as usual:
     import ray
-    ray\.init\(address='auto'\)
+    ray\.init\(\)
 
   To connect to this Ray instance from outside of the cluster, for example
   when connecting to a remote cluster from your laptop, make sure the
@@ -31,3 +31,4 @@ Next steps
 
   To terminate the Ray runtime, run
     ray stop
+
