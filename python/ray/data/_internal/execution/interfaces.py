@@ -268,15 +268,9 @@ class PhysicalOperator:
         This method is called by the executor to allocate resources between different
         operators. Operators should ensure they make forward progress even if the limit
         is set to zero (i.e., should run at least one task).
-        """
-        pass
 
-    def release_unused_resources(self) -> None:
-        """Tell the operator to release unused resources, if possible.
-
-        For example, an ActorPool operator may remove idle actors from its internal
-        pool when this is called. This method is called by the executor to allocate
-        resources between different operators.
+        If this is called and the operator is currently using more than the specified
+        resource limit, it should gracefully scale down (i.e., when tasks complete).
         """
         pass
 
