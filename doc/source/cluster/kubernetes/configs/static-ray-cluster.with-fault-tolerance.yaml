@@ -143,7 +143,7 @@ spec:
 
       # This volume allocates shared memory for Ray to use for its plasma
       # object store. If you do not provide this, Ray will fall back to
-      # /tmp which cause slowdowns if is not a shared memory volume.
+      # /tmp which cause slowdowns if it's not a shared memory volume.
       volumes:
       - name: dshm
         emptyDir:
