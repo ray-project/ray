@@ -18,6 +18,8 @@ class JobConfig:
             ``runtime_env.py`` for detailed documentation).
         client_job: A boolean represent the source of the job.
         default_actor_lifetime: The default value of actor lifetime.
+        _py_driver_sys_path: A list of directories that
+            specify the search path for python workers.
     """
 
     def __init__(
@@ -29,7 +31,7 @@ class JobConfig:
         metadata: Optional[dict] = None,
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
-        _py_sys_path: List[str] = None,
+        _py_driver_sys_path: List[str] = None,
     ):
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
@@ -43,7 +45,7 @@ class JobConfig:
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
         self.set_default_actor_lifetime(default_actor_lifetime)
-        self._py_sys_path = _py_sys_path or []
+        self._py_driver_sys_path = _py_driver_sys_path or []
 
     def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
@@ -151,5 +153,5 @@ class JobConfig:
             client_job=job_config_json.get("client_job", False),
             metadata=job_config_json.get("metadata", None),
             ray_namespace=job_config_json.get("ray_namespace", None),
-            _py_sys_path=job_config_json.get("_py_sys_path", None),
+            _py_driver_sys_path=job_config_json.get("_py_driver_sys_path", None),
         )
