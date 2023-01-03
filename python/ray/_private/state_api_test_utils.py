@@ -45,6 +45,7 @@ def invoke_state_api(
     state_stats: StateAPIStats = GLOBAL_STATE_STATS,
     key_suffix: Optional[str] = None,
     print_result: Optional[bool] = False,
+    err_msg: Optional[str] = None,
     **kwargs,
 ):
     """Invoke a State API
@@ -80,7 +81,9 @@ def invoke_state_api(
         else:
             key = state_api_fn.__name__
         state_stats.calls[key].append(metric)
-        assert verify_cb(res), f"Calling State API failed. len(res)=({len(res)}): {res}"
+        assert verify_cb(
+            res
+        ), f"Calling State API failed. len(res)=({len(res)}): {err_msg}"
     except Exception as e:
         traceback.print_exc()
         assert (
