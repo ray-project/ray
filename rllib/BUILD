@@ -2526,12 +2526,30 @@ py_test(
 )
 
 py_test(
-     name = "tests/test_supported_spaces_pg",
+     name = "tests/test_supported_spaces_impala_appo",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "multi_gpu"],
+     tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesPG"]
+     args = ["TestSupportedSpacesIMPALAAPPO"]
+ )
+
+py_test(
+     name = "tests/test_supported_spaces_a3c_ppo",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:rllib", "tests_dir"],
+     size = "large",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesA3CPPO"]
+ )
+
+py_test(
+     name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:rllib", "tests_dir", "multi_gpu"],
+     size = "medium",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
  )
 
 py_test(
