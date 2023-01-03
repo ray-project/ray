@@ -135,14 +135,17 @@ class Block(nn.Module):
                 dropout=nn.Dropout(config.resid_pdrop),
             )
         )
-        m = self.mlp
-        # MLP forward
-        self.mlpf = lambda x: m.dropout(m.c_proj(m.act(m.c_fc(x))))
 
     def forward(self, x, attention_masks=None):
+        # Multi-head attention sub-layer.
         x_att, att = self.attn(self.ln_1(x), attention_masks=attention_masks)
+        # Residual of multi-head attention sub-layer.
         x = x + x_att
-        x = x + self.mlpf(self.ln_2(x))
+
+        # Position-wise FFN sub-layer: fc + activation + fc + dropout
+        x_ffn = self.mlp.dropout(self.mlp.c_proj(self.mlp.act(self.mlp.c_fc(x))))
+        # Residual of position-wise FFN sub-layer.
+        x = x + x_ffn
         return x, att
 
 
