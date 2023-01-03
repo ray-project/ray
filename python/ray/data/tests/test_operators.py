@@ -8,7 +8,7 @@ from ray.data._internal.execution.interfaces import RefBundle, PhysicalOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.util import _make_ref_bundles
+from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
 from ray._private.test_utils import wait_for_condition
 
@@ -34,7 +34,7 @@ def _take_outputs(op: PhysicalOperator) -> List[Any]:
 
 def test_input_data_buffer(ray_start_regular_shared):
     # Create with bundles.
-    inputs = _make_ref_bundles([[1, 2], [3], [4, 5]])
+    inputs = make_ref_bundles([[1, 2], [3], [4, 5]])
     op = InputDataBuffer(inputs)
 
     # Check we return all bundles in order.
@@ -43,9 +43,9 @@ def test_input_data_buffer(ray_start_regular_shared):
 
 def test_all_to_all_operator():
     def dummy_all_transform(bundles: List[RefBundle]):
-        return _make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
+        return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
-    input_op = InputDataBuffer(_make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = AllToAllOperator(
         dummy_all_transform, input_op=input_op, num_outputs=2, name="TestAll"
     )
@@ -63,7 +63,7 @@ def test_all_to_all_operator():
 
 def test_map_operator_bulk(ray_start_regular_shared):
     # Create with inputs.
-    input_op = InputDataBuffer(_make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = MapOperator(_mul2_transform, input_op=input_op, name="TestMapper")
 
     # Feed data and block on exec.
@@ -91,7 +91,7 @@ def test_map_operator_bulk(ray_start_regular_shared):
 
 def test_map_operator_streamed(ray_start_regular_shared):
     # Create with inputs.
-    input_op = InputDataBuffer(_make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = MapOperator(_mul2_transform, input_op=input_op, name="TestMapper")
 
     # Feed data and implement streaming exec.
@@ -124,7 +124,7 @@ def test_map_operator_min_rows_per_batch(ray_start_regular_shared):
             yield block
 
     # Create with inputs.
-    input_op = InputDataBuffer(_make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     op = MapOperator(
         _check_batch,
         input_op=input_op,
@@ -148,7 +148,7 @@ def test_map_operator_ray_args(shutdown_only):
     ray.shutdown()
     ray.init(num_cpus=0, num_gpus=1)
     # Create with inputs.
-    input_op = InputDataBuffer(_make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     op = MapOperator(
         _mul2_transform,
         input_op=input_op,
@@ -176,7 +176,7 @@ def test_map_operator_shutdown():
         time.sleep(999)
 
     # Create with inputs.
-    input_op = InputDataBuffer(_make_ref_bundles([[i] for i in range(10)]))
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     op = MapOperator(
         _sleep,
         input_op=input_op,
