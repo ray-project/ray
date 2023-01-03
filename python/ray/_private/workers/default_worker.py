@@ -231,9 +231,9 @@ if __name__ == "__main__":
     ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     # Add driver's system path to sys.path
-    _py_driver_sys_path = core_worker.get_job_config()._py_driver_sys_path
-    if _py_driver_sys_path:
-        for p in _py_driver_sys_path:
+    py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+    if py_driver_sys_path:
+        for p in py_driver_sys_path:
             sys.path.insert(0, p)
 
     # Setup log file.
