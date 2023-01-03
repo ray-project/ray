@@ -26,7 +26,8 @@ def test_get_spark_task_assigned_physical_gpus():
 def test_calc_mem_per_ray_worker_node():
     assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, 100000) == (120000, 80000)
     assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, 70000) == (130000, 70000)
-    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, None) == (120000, 80000)
+    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, None) == (140000, 60000)
+    assert _calc_mem_per_ray_worker_node(4, 1000000, 200000, None) == (160000, 40000)
 
 
 if __name__ == "__main__":

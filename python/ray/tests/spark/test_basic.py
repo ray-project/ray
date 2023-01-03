@@ -25,8 +25,7 @@ def _init_ray_cluster(*args, **kwds):
     try:
         yield ray.util.spark.cluster_init._active_ray_cluster
     finally:
-        # Code to release resource, e.g.:
-        ray.util.spark.cluster_init._active_ray_cluster.shutdown()
+        shutdown_ray_cluster()
 
 
 pytestmark = pytest.mark.skipif(

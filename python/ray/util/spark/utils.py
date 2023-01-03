@@ -165,8 +165,6 @@ def _calc_mem_per_ray_worker_node(
 ):
     from ray._private.ray_constants import DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
 
-    MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
-
     available_physical_mem_per_node = int(
         physical_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
     )
@@ -181,7 +179,6 @@ def _calc_mem_per_ray_worker_node(
     object_store_bytes = int(min(
         object_store_bytes,
         available_shared_mem_per_node,
-        available_physical_mem_per_node * MAX_OBJECT_STORE_MEMORY_PROPORTION,
     ))
 
     heap_mem_bytes = available_physical_mem_per_node - object_store_bytes

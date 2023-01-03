@@ -908,7 +908,6 @@ def init_ray_cluster(
         head_options=head_options,
         worker_options=worker_options,
         ray_temp_root_dir=ray_temp_root_dir,
-        safe_mode=safe_mode,
         collect_log_to_path=collect_log_to_path,
     )
     cluster.connect()  # NB: this line might raise error.
