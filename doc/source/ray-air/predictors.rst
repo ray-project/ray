@@ -143,14 +143,11 @@ Online Inference
 Check out the :ref:`air-serving-guide` for details on how to perform online inference with AIR.
 
 
-Writing your own predictor
---------------------------
+Developer Guide: Implementing your own Predictor
+------------------------------------------------
 
 If you're using an unsupported framework, or if built-in predictors are too inflexible,
 implement a custom predictor.
-
-How to implement a custom predictor
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To implement a custom :class:`~ray.train.predictor.Predictor`,
 subclass :class:`~ray.train.predictor.Predictor` and implement:
