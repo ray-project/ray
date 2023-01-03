@@ -14,8 +14,8 @@ else:
 
 def iter_batches(
     ds: Dataset,
-    batch_size: int,
-    batch_format: Literal["default", "pandas", "pyarrow", "numpy"],
+    batch_size: Optional[int] = None,
+    batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
     local_shuffle_buffer_size: Optional[int] = None,
     use_default_params: bool = False,
 ) -> Dataset:
@@ -47,13 +47,12 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
     batch_sizes = [128, 256, 512]
 
     # Test default args.
-    test_name = "iter-batches_default"
+    test_name = "iter-batches-default"
     benchmark.run(
         test_name,
         iter_batches,
         ds=ds,
         batch_format="INVALID",
-        batch_size=-1,
         use_default_params=True,
     )
 
@@ -64,7 +63,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
         ).fully_executed()
         for new_format in ["pyarrow", "pandas", "numpy"]:
             for batch_size in batch_sizes:
-                test_name = f"iter-batches-conversion_{current_format}-to-{new_format}-{batch_size}"  # noqa: E501
+                test_name = f"iter-batches-conversion-{current_format}-to-{new_format}-{batch_size}"  # noqa: E501
                 benchmark.run(
                     test_name,
                     iter_batches,
@@ -77,7 +76,7 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
     for batch_format in batch_formats:
         for batch_size in batch_sizes:
             for shuffle_buffer_size in [batch_size, 2 * batch_size, 4 * batch_size]:
-                test_name = f"iter-batches-shuffle_{batch_format}-{batch_size}-{shuffle_buffer_size}"  # noqa: E501
+                test_name = f"iter-batches-shuffle-{batch_format}-{batch_size}-{shuffle_buffer_size}"  # noqa: E501
                 benchmark.run(
                     test_name,
                     iter_batches,
