@@ -37,8 +37,7 @@ lxml==4.9.1
 moto[s3,server]==4.0.7
 mypy==0.982
 networkx==2.6.3
-numba==0.56.3; platform_system != "Windows"
-numba==0.51.2; platform_system == "Windows"
+numba==0.56.4
 openpyxl==3.0.10
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
