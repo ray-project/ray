@@ -1,12 +1,9 @@
+import tensorflow as tf
 from typing import Any, Mapping
 
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.nested_dict import NestedDict
-
-_, tf, _ = try_import_tf()
-tfp = try_import_tfp()
 
 
 class BCTFOptimizer(RLOptimizer):

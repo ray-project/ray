@@ -1,16 +1,13 @@
 import itertools
 import unittest
+import torch
 import numpy as np
+import tensorflow as tf
 
 from ray.rllib.utils.test_utils import check
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.specs.specs_np import NPTensorSpec
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp, try_import_torch
-
-torch = try_import_torch()
-_, tf, _ = try_import_tf()
-tfp = try_import_tfp()
 
 # TODO: add jax tests
 
