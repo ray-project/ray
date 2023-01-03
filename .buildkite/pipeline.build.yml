@@ -567,7 +567,7 @@
 
 - label: ":octopus: Tune multinode tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: small
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - mkdir -p ~/.docker/cli-plugins/ && curl -SL https://github.com/docker/compose/releases/download/v2.0.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && chmod +x ~/.docker/cli-plugins/docker-compose

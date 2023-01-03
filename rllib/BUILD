@@ -1819,6 +1819,13 @@ py_test(
     srcs = ["core/optim/tests/test_rl_optimizer_tf.py"]
 )
 
+py_test(
+    name = "test_tf_rl_trainer",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/tf/test_tf_rl_trainer.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -1916,10 +1923,10 @@ py_test(
 
 # test ModelSpec
 py_test(
-    name = "test_model_spec",
+    name = "test_spec_dict",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_model_spec.py"]
+    srcs = ["models/specs/tests/test_spec_dict.py"]
 )
 
 # test TorchVectorEncoder
@@ -2526,12 +2533,30 @@ py_test(
 )
 
 py_test(
-     name = "tests/test_supported_spaces_pg",
+     name = "tests/test_supported_spaces_impala_appo",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "multi_gpu"],
+     tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesPG"]
+     args = ["TestSupportedSpacesIMPALAAPPO"]
+ )
+
+py_test(
+     name = "tests/test_supported_spaces_a3c_ppo",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:rllib", "tests_dir"],
+     size = "large",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesA3CPPO"]
+ )
+
+py_test(
+     name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:rllib", "tests_dir", "multi_gpu"],
+     size = "medium",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
  )
 
 py_test(

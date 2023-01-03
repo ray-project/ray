@@ -76,12 +76,14 @@ class RayClusterOnSpark:
         spark_job_group_id,
         num_workers_node,
         temp_dir,
+        cluster_unique_id,
     ):
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
         self.num_worker_nodes = num_workers_node
         self.temp_dir = temp_dir
+        self.cluster_unique_id = cluster_unique_id
 
         self.ray_context = None
         self.is_shutdown = False
@@ -458,12 +460,12 @@ def _init_ray_cluster(
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
 
-    cluster_unique_suffix = uuid.uuid4().hex[:8]
+    cluster_unique_id = uuid.uuid4().hex[:8]
 
     if ray_temp_root_dir is None:
         ray_temp_root_dir = start_hook.get_default_temp_dir()
     ray_temp_dir = os.path.join(
-        ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_suffix}"
+        ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
     )
     os.makedirs(ray_temp_dir, exist_ok=True)
 
@@ -629,7 +631,7 @@ def _init_ray_cluster(
         # NB: Not reachable.
         yield 0
 
-    spark_job_group_id = f"ray-cluster-{ray_head_port}-{cluster_unique_suffix}"
+    spark_job_group_id = f"ray-cluster-{ray_head_port}-{cluster_unique_id}"
 
     ray_cluster_handler = RayClusterOnSpark(
         address=f"{ray_head_ip}:{ray_head_port}",
@@ -637,6 +639,7 @@ def _init_ray_cluster(
         spark_job_group_id=spark_job_group_id,
         num_workers_node=num_worker_nodes,
         temp_dir=ray_temp_dir,
+        cluster_unique_id=cluster_unique_id,
     )
 
     def background_job_thread_fn():
@@ -685,8 +688,10 @@ def _init_ray_cluster(
             #  In order to disconnect and kill the ray head node, a call to
             #  `ray_cluster_handler.shutdown()` is performed.
             if not ray_cluster_handler.spark_job_is_canceled:
-                ray_cluster_handler.shutdown(cancel_background_job=False)
+                # Set `background_job_exception` attribute before calling `shutdown`
+                # so inside `shutdown` we can get exception information easily.
                 ray_cluster_handler.background_job_exception = e
+                ray_cluster_handler.shutdown(cancel_background_job=False)
 
     try:
         threading.Thread(

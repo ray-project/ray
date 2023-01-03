@@ -68,6 +68,11 @@ pushd python/ray/dashboard/client
 popd
 set -x
 
+# Add the repo folder to the safe.dictory global variable to avoid the failure 
+# because of secruity check from git, when executing the following command 
+# `git clean ...`,  while building wheel locally.
+git config --global --add safe.directory /ray
+
 mkdir -p .whl
 for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   PYTHON=${PYTHONS[i]}
