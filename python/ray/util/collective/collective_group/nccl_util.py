@@ -25,7 +25,7 @@ NCCL_REDUCE_OP_MAP = {
 # cupy types are the same with numpy types
 NUMPY_NCCL_DTYPE_MAP = {
     # INT types
-    numpy.int: nccl.NCCL_INT64,
+    numpy.int_: nccl.NCCL_INT64,
     numpy.uint8: nccl.NCCL_UINT8,
     numpy.uint32: nccl.NCCL_UINT32,
     numpy.uint64: nccl.NCCL_UINT64,
