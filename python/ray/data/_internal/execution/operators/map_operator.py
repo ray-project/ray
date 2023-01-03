@@ -46,6 +46,7 @@ class MapOperator(PhysicalOperator):
             min_rows_per_batch: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
+                The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         self._transform_fn = transform_fn
@@ -58,7 +59,7 @@ class MapOperator(PhysicalOperator):
         elif isinstance(self._strategy, ActorPoolStrategy):
             self._execution_state = MapOperatorActorsImpl(self)
         else:
-            raise NotImplementedError
+            raise ValueError(f"Unsupported execution strategy {self._strategy}")
         super().__init__(name, [input_op])
 
     def get_transform_fn(
