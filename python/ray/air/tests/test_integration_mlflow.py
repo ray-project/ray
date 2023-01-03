@@ -8,7 +8,7 @@ from unittest.mock import patch
 from mlflow.tracking import MlflowClient
 
 from ray.train._internal.session import init_session
-from ray.tune.trainable import wrap_function
+from ray.tune.trainable import wrap_function, session as tune_session
 from ray.tune.integration.mlflow import (
     MLflowTrainableMixin,
     mlflow_mixin,
@@ -34,10 +34,8 @@ class Mock_MLflowLoggerUtil(_MLflowLoggerUtil):
 
 
 def clear_env_vars():
-    if "MLFLOW_EXPERIMENT_NAME" in os.environ:
-        del os.environ["MLFLOW_EXPERIMENT_NAME"]
-    if "MLFLOW_EXPERIMENT_ID" in os.environ:
-        del os.environ["MLFLOW_EXPERIMENT_ID"]
+    os.environ.pop("MLFLOW_EXPERIMENT_NAME", None)
+    os.environ.pop("MLFLOW_EXPERIMENT_ID", None)
 
 
 class MLflowTest(unittest.TestCase):
@@ -50,6 +48,11 @@ class MLflowTest(unittest.TestCase):
         )
         client.create_experiment(name="existing_experiment")
         assert client.get_experiment_by_name("existing_experiment").experiment_id == "0"
+
+    def tearDown(self) -> None:
+        # Remove tune session if initialized to clean up for next test
+        tune_session._session = None
+        tune_session._session_v2 = None
 
     def testMlFlowLoggerCallbackConfig(self):
         # Explicitly pass in all args.
@@ -229,7 +232,7 @@ class MLflowTest(unittest.TestCase):
 
         # This should now pass
         trial_config["mlflow"]["experiment_name"] = "existing_experiment"
-        wrap_function(train_fn)(trial_config)
+        wrap_function(train_fn)(trial_config).stop()
 
     def testMlFlowSetupConfig(self):
         clear_env_vars()

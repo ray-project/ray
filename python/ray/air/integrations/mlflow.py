@@ -85,7 +85,7 @@ def setup_mlflow(
         Per default, you can just call ``setup_mlflow`` and continue to use
         MLflow like you would normally do:
 
-        .. code-block: python
+        .. code-block:: python
 
             from ray.air.integrations.mlflow import setup_mflow
 
@@ -98,7 +98,7 @@ def setup_mlflow(
         ``setup_mlflow``. This will make sure it is only invoked on the first worker
         in distributed training runs.
 
-        .. code-block: python
+        .. code-block:: python
 
             from ray.air.integrations.mlflow import setup_mflow
 
