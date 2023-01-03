@@ -135,7 +135,7 @@ def create_replica_wrapper(name: str):
             # for allocation of this replica by using the `is_allocated`
             # method. After that, it calls `reconfigure` to trigger
             # user code initialization.
-            async def initialize_replica(user_config):
+            async def initialize_replica():
                 if is_function:
                     _callable = deployment_def
                 else:
@@ -157,7 +157,7 @@ def create_replica_wrapper(name: str):
                     deployment_name,
                     replica_tag,
                     deployment_config,
-                    user_config,
+                    deployment_config.user_config,
                     version,
                     is_function,
                     controller_handle,
@@ -215,7 +215,10 @@ def create_replica_wrapper(name: str):
             return ray.get_runtime_context().node_id
 
         async def is_ready(self, user_config, _after: Optional[Any] = None):
-            await self._initialize_replica(user_config)
+            await self._initialize_replica()
+
+            if user_config is not None:
+                await self.reconfigure(user_config)
 
             # A new replica should not be considered healthy until it passes an
             # initial health check. If an initial health check fails, consider
@@ -350,9 +353,6 @@ class RayServeReplica:
                 collection_callback=self._collect_autoscaling_metrics,
                 metrics_process_func=process_remote_func,
             )
-
-        if self.user_config is not None:
-            self.reconfigure(self.user_config)
 
         # NOTE(edoakes): we used to recommend that users use the "ray" logger
         # and tagged the logs with metadata as below. We now recommend using
