@@ -9,8 +9,11 @@ import tree
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.sample_batch import SampleBatch, attempt_count_timesteps, \
-    concat_samples
+from ray.rllib.policy.sample_batch import (
+    SampleBatch,
+    attempt_count_timesteps,
+    concat_samples,
+)
 from ray.rllib.utils.compression import is_compressed
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
