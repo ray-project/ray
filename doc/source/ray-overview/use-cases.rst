@@ -5,6 +5,39 @@ Ray Use Cases
 
 This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
 
+You can filter our use cases by the framework you are using, the use case category,
+and the type of workload you are running.
+You can select (and deselect) multiple values:
+
+.. raw:: html
+
+    <!--Frameworks-->
+    <ul>
+      <li type="button" class="tag btn btn-outline-primary">PyTorch</li>
+      <li type="button" class="tag btn btn-outline-primary">TensorFlow</li>
+      <li type="button" class="tag btn btn-outline-primary">XGBoost</li>
+      <li type="button" class="tag btn btn-outline-primary">LightGBM</li>
+      <li type="button" class="tag btn btn-outline-primary">Sklearn</li>
+    </ul>
+
+    <!--Domains-->
+    <ul>
+      <li type="button" class="tag btn btn-outline-primary">Classification</li>
+      <li type="button" class="tag btn btn-outline-primary">Regression</li>
+      <li type="button" class="tag btn btn-outline-primary">Object Detection</li>
+      <li type="button" class="tag btn btn-outline-primary">Image Segmentation</li>
+    </ul>
+
+    <!--Components-->
+    <ul>
+      <li type="button" class="tag btn btn-outline-primary">Preprocessing</li>
+      <li type="button" class="tag btn btn-outline-primary">Training</li>
+      <li type="button" class="tag btn btn-outline-primary">Tuning</li>
+      <li type="button" class="tag btn btn-outline-primary">Prediction</li>
+      <li type="button" class="tag btn btn-outline-primary">Serving</li>
+    </ul>
+
+
 Batch Inference
 ---------------
 
@@ -22,7 +55,7 @@ Batch inference refers to generating model predictions over a set of input obser
     .. link-button:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
         :type: url
         :text: [Tutorial] Architectures for Scalable Batch Inference with Ray
-        :classes: btn-link btn-block stretched-link
+        :classes: btn-link btn-block stretched-link scalableBatchInference
     ---
     :img-top: /images/ray_logo.png
 
@@ -30,7 +63,7 @@ Batch inference refers to generating model predictions over a set of input obser
     .. link-button:: https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets
         :type: url
         :text: [Blog] Batch Inference in Ray: Actors, ActorPool, and Datasets
-        :classes: btn-link btn-block stretched-link
+        :classes: btn-link btn-block stretched-link batchActorPool
     ---
     :img-top: /images/ray_logo.png
 
@@ -38,7 +71,7 @@ Batch inference refers to generating model predictions over a set of input obser
     .. link-button:: /ray-core/examples/batch_prediction
         :type: ref
         :text: [Example] Batch Prediction using Ray Core
-        :classes: btn-link btn-block stretched-link
+        :classes: btn-link btn-block stretched-link batchCore
     ---
     :img-top: /images/ray_logo.png
 
@@ -46,7 +79,7 @@ Batch inference refers to generating model predictions over a set of input obser
     .. link-button:: /data/examples/nyc_taxi_basic_processing
         :type: ref
         :text: [Example] Batch Inference on NYC taxi data using Ray Data
-        :classes: btn-link btn-block stretched-link
+        :classes: btn-link btn-block stretched-link nycTaxiData
 
     ---
     :img-top: /images/ray_logo.png
@@ -55,7 +88,7 @@ Batch inference refers to generating model predictions over a set of input obser
     .. link-button:: /data/examples/ocr_example
         :type: ref
         :text: [Example] Batch OCR processing using Ray Data
-        :classes: btn-link btn-block stretched-link
+        :classes: btn-link btn-block stretched-link batchOcr
 
 Many Model Training
 -------------------
