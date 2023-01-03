@@ -1356,7 +1356,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   absl::flat_hash_map<WorkerID, rpc::Address> addresses;
   // Group by owner id.
   for (const auto &obj_id : object_ids) {
-    auto owner_address = GetOwnerAddressOrDie(obj_id);
+    auto owner_address = GetOwnerAddress(obj_id);
     auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
     by_owner[worker_id].push_back(obj_id);
     addresses[worker_id] = owner_address;
