@@ -1,3 +1,4 @@
+from collections import deque
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import logging
 import queue
@@ -13,6 +14,7 @@ from ray.rllib.env.policy_client import (
     Commands,
 )
 from ray.rllib.offline.input_reader import InputReader
+from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.evaluation.metrics import RolloutMetrics
@@ -64,27 +66,42 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     """
 
     @PublicAPI
-    def __init__(self, ioctx, address, port, idle_timeout=3.0):
+    def __init__(
+        self,
+        ioctx: IOContext,
+        address: str,
+        port: int,
+        idle_timeout: float = 3.0,
+        max_sample_queue_size: int = 20,
+    ):
         """Create a PolicyServerInput.
 
         This class implements rllib.offline.InputReader, and can be used with
-        any Trainer by configuring
+        any Algorithm by configuring
 
-            {"num_workers": 0,
-             "input": lambda ioctx: PolicyServerInput(ioctx, addr, port)}
+        [AlgorithmConfig object]
+        .rollouts(num_rollout_workers=0)
+        .offline_data(input_=lambda ioctx: PolicyServerInput(ioctx, addr, port))
 
-        Note that by setting num_workers: 0, the trainer will only create one
+        Note that by setting num_rollout_workers: 0, the algorithm will only create one
         rollout worker / PolicyServerInput. Clients can connect to the launched
-        server using rllib.env.PolicyClient.
+        server using rllib.env.PolicyClient. You can increase the number of available
+        connections (ports) by setting num_rollout_workers to a larger number. The ports
+        used will then be `port` + the worker's index.
 
         Args:
             ioctx: IOContext provided by RLlib.
             address: Server addr (e.g., "localhost").
             port: Server port (e.g., 9900).
+            max_queue_size: The maximum size for the sample queue. Once full, will
+                purge (throw away) 50% of all samples, oldest first.
         """
 
         self.rollout_worker = ioctx.worker
-        self.samples_queue = queue.Queue()
+        # Protect ourselves from having a bottleneck on the server (learning) side.
+        # Once the queue (deque) is full, we throw away 50% (oldest
+        # samples first) of the samples, warn, and continue.
+        self.samples_queue = deque(maxlen=max_sample_queue_size)
         self.metrics_queue = queue.Queue()
         self.idle_timeout = idle_timeout
 
@@ -176,16 +193,22 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
 
     @override(InputReader)
     def next(self):
-        return self.samples_queue.get()
+        # Blocking wait until there is something in the deque.
+        while len(self.samples_queue) == 0:
+            time.sleep(0.1)
+        # Utilize last items first in order to remain as closely as possible
+        # to operating on-policy.
+        return self.samples_queue.pop()
 
     def _put_empty_sample_batch_every_n_sec(self):
         # Places an empty SampleBatch every `idle_timeout` seconds onto the
         # `samples_queue`. This avoids hanging of all RolloutWorkers parallel
         # to this one in case this PolicyServerInput does not have incoming
-        # data (e.g. no client connected).
+        # data (e.g. no client connected) and the driver algorithm uses parallel
+        # synchronous sampling (e.g. PPO).
         while True:
             time.sleep(self.idle_timeout)
-            self.samples_queue.put(SampleBatch())
+            self.samples_queue.append(SampleBatch())
 
 
 def _make_handler(rollout_worker, samples_queue, metrics_queue):
@@ -217,7 +240,14 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
 
         batch = data["samples"]
         batch.decompress_if_needed()
-        samples_queue.put(batch)
+        samples_queue.append(batch)
+        # Deque is full -> purge 50% (oldest samples)
+        if len(samples_queue) == samples_queue.maxlen:
+            logger.warning(
+                "PolicyServerInput queue is full! Purging half of the samples (oldest)."
+            )
+            for _ in range(samples_queue.maxlen // 2):
+                samples_queue.popleft()
         for rollout_metric in data["metrics"]:
             metrics_queue.put(rollout_metric)
 
