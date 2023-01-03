@@ -58,7 +58,7 @@ class MapOperatorTasksImpl:
         self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
         self._block_bundle = None
-        self._target_block_size = op.target_block_size
+        self._min_rows_per_batch = op._min_rows_per_batch
         self._input_deps_done = 0
         self._op = op
         self._next_task_index = 0
@@ -69,7 +69,7 @@ class MapOperatorTasksImpl:
         self._obj_store_mem_peak = 0
 
     def add_input(self, bundle: RefBundle) -> None:
-        if self._target_block_size is None:
+        if self._min_rows_per_batch is None:
             self._create_task(bundle)
             return
 
@@ -85,7 +85,7 @@ class MapOperatorTasksImpl:
             return
 
         num_rows = get_num_rows(self._block_bundle) + bundle_rows
-        if num_rows > self._target_block_size:
+        if num_rows > self._min_rows_per_batch:
             if self._block_bundle:
                 self._create_task(self._block_bundle)
                 self._block_bundle = bundle
@@ -133,10 +133,12 @@ class MapOperatorTasksImpl:
             and self._tasks_by_output_order[i].output is not None
         )
 
-    def get_next(self) -> bool:
+    def get_next(self) -> RefBundle:
         i = self._next_output_index
         self._next_output_index += 1
-        return self._tasks_by_output_order.pop(i).output
+        bundle = self._tasks_by_output_order.pop(i).output
+        self._obj_store_mem_cur -= bundle.size_bytes()
+        return bundle
 
     def get_work_refs(self) -> List[ray.ObjectRef]:
         return list(self._tasks)

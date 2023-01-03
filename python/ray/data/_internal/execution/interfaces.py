@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Iterable, Tuple
 
 import ray
-from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef

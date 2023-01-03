@@ -1,6 +1,6 @@
-from typing import List, Optional, Dict
+from typing import List, Optional
 
-from ray.data.block import BlockMetadata
+from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
@@ -8,9 +8,18 @@ from ray.data._internal.execution.interfaces import (
 
 
 class InputDataBuffer(PhysicalOperator):
-    """Defines the input data for the operator DAG."""
+    """Defines the input data for the operator DAG.
+
+    For example, this may hold cached blocks from a previous Dataset execution, or
+    the arguments for read tasks.
+    """
 
     def __init__(self, input_data: List[RefBundle]):
+        """Create an InputDataBuffer.
+
+        Args:
+            input_data: The list of bundles to output from this operator.
+        """
         self._input_data = input_data
         self._num_outputs = len(input_data)
         block_metadata = []
@@ -30,5 +39,5 @@ class InputDataBuffer(PhysicalOperator):
     def num_outputs_total(self) -> Optional[int]:
         return self._num_outputs
 
-    def get_stats(self) -> Dict[str, List[BlockMetadata]]:
+    def get_stats(self) -> StatsDict:
         return {}
