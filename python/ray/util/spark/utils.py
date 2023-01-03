@@ -134,14 +134,18 @@ def get_max_num_concurrent_tasks(spark_context, resource_profile):
     """Gets the current max number of concurrent tasks."""
     # pylint: disable=protected-access=
     if resource_profile is not None:
+
         def dummpy_mapper(x):
             pass
 
         # Runs a dummy spark job to register the `res_profile`
-        spark_context.parallelize([1], 1).withResources(resource_profile) \
-            .map(dummpy_mapper).collect()
+        spark_context.parallelize([1], 1).withResources(resource_profile).map(
+            dummpy_mapper
+        ).collect()
     else:
-        resource_profile = spark_context._jsc.sc().resourceProfileManager().defaultResourceProfile()
+        resource_profile = (
+            spark_context._jsc.sc().resourceProfileManager().defaultResourceProfile()
+        )
 
     return spark_context._jsc.sc().maxNumConcurrentTasks(
         resource_profile._java_resource_profile
@@ -176,21 +180,24 @@ def _calc_mem_per_ray_worker_node(
         available_physical_mem_per_node * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
     )
 
-    object_store_bytes = int(min(
-        object_store_bytes,
-        available_shared_mem_per_node,
-    ))
+    object_store_bytes = int(
+        min(
+            object_store_bytes,
+            available_shared_mem_per_node,
+        )
+    )
 
     heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
     return heap_mem_bytes, object_store_bytes
 
 
-RAY_ON_SPARK_WORKER_CPU_CORES = 'RAY_ON_SPARK_WORKER_CPU_CORES'
-RAY_ON_SPARK_WORKER_GPU_CORES = 'RAY_ON_SPARK_WORKER_GPU_CORES'
+RAY_ON_SPARK_WORKER_CPU_CORES = "RAY_ON_SPARK_WORKER_CPU_CORES"
+RAY_ON_SPARK_WORKER_GPU_CORES = "RAY_ON_SPARK_WORKER_GPU_CORES"
 
 
 def _get_cpu_cores():
     import multiprocessing
+
     if RAY_ON_SPARK_WORKER_CPU_CORES in os.environ:
         # In some cases, spark standalone cluster might configure virtual cpu cores
         # for spark worker that different with number of physical cpu cores,
@@ -214,7 +221,10 @@ def _get_num_physical_gpus():
     return int(
         subprocess.run(
             "nvidia-smi --query-gpu=name --format=csv,noheader | wc -l",
-            shell=True, check=True, text=True, capture_output=True
+            shell=True,
+            check=True,
+            text=True,
+            capture_output=True,
         ).stdout.strip()
     )
 

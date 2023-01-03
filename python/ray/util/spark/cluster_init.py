@@ -624,9 +624,7 @@ def _init_ray_cluster(
             if resource_profile is not None:
                 job_rdd = job_rdd.withResources(resource_profile)
 
-            job_rdd.mapPartitions(
-                ray_cluster_job_mapper
-            ).collect()
+            job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
         except Exception as e:
             # NB:
             # The background spark job is designed to running forever until it is
@@ -776,7 +774,9 @@ def init_ray_cluster(
             "Ray on Spark only supports spark cluster in standalone mode or local-cluster mode"
         )
 
-    if is_in_databricks_runtime() and os.environ["DATABRICKS_RUNTIME_VERSION"].startswith("12."):
+    if is_in_databricks_runtime() and os.environ[
+        "DATABRICKS_RUNTIME_VERSION"
+    ].startswith("12."):
         support_stage_scheduling = True
     elif Version(pyspark.__version__) >= Version("3.4"):
         support_stage_scheduling = True
@@ -785,8 +785,7 @@ def init_ray_cluster(
 
     # Environment configurations within the Spark Session that dictate how many cpus
     # and gpus to use for each submitted spark task.
-    num_spark_task_cpus = \
-        int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
+    num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
 
     if num_cpus_per_node is not None and num_cpus_per_node <= 0:
         raise ValueError("Argument `num_cpus_per_node` value must be > 0.")
@@ -848,9 +847,7 @@ def init_ray_cluster(
     if num_worker_nodes == MAX_NUM_WORKER_NODES:
         # num_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
         # spark task slots
-        num_worker_nodes = get_max_num_concurrent_tasks(
-            spark.sparkContext, res_profile
-        )
+        num_worker_nodes = get_max_num_concurrent_tasks(spark.sparkContext, res_profile)
     elif num_worker_nodes <= 0:
         raise ValueError(
             "The value of 'num_worker_nodes' argument must be either a positive "

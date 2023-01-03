@@ -7,4 +7,3 @@ class RayOnSparkStartHook:
 
     def on_spark_background_job_created(self, job_group):
         pass
-
