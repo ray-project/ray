@@ -206,7 +206,9 @@ def test_fit_transform_config(ray_start_4_cpus):
 
 class TestStream(DataParallelTrainer):
     _dataset_config = {
-        "train": DatasetConfig(split=True, required=True, max_object_store_memory_fraction=0.3),
+        "train": DatasetConfig(
+            split=True, required=True, max_object_store_memory_fraction=0.3
+        ),
     }
 
     def __init__(self, check_results_fn, **kwargs):
@@ -370,9 +372,9 @@ def test_randomize_block_order(ray_start_4_cpus):
 class DummyTrainer:
     pass
 
+
 def iterate_twice(trainer, dataset, prep=None, **kwargs):
-    dataset_config = DatasetConfig(split=True, required=True,
-            **kwargs).fill_defaults()
+    dataset_config = DatasetConfig(split=True, required=True, **kwargs).fill_defaults()
     spec = DataParallelIngestSpec({"train": dataset_config})
     spec.preprocess_datasets(prep, {"train": dataset})
     it = spec.get_dataset_shards([trainer])[0]["train"]
@@ -396,20 +398,30 @@ def test_per_epoch_preprocessor(ray_start_4_cpus):
 
     for max_object_store_memory_fraction in [None, 1, 0.3]:
         results = iterate_twice(
-                trainer, ds,
-                # Randomized preprocessor to check whether it is applied once
-                # per job or once on each epoch.
-                prep=BatchMapper(lambda x: x * int(10 * random.random()), batch_format="pandas"),
-                randomize_block_order=False,
-                per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
-                max_object_store_memory_fraction=max_object_store_memory_fraction)
+            trainer,
+            ds,
+            # Randomized preprocessor to check whether it is applied once
+            # per job or once on each epoch.
+            prep=BatchMapper(
+                lambda x: x * int(10 * random.random()), batch_format="pandas"
+            ),
+            randomize_block_order=False,
+            per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
+            max_object_store_memory_fraction=max_object_store_memory_fraction,
+        )
 
         assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
-        if max_object_store_memory_fraction == 1 or max_object_store_memory_fraction is None:
+        if (
+            max_object_store_memory_fraction == 1
+            or max_object_store_memory_fraction is None
+        ):
             # Windowed pipelined ingest also reapplies the base preprocessor on
             # every epoch.
             assert results[0] == results[1], (max_object_store_memory_fraction, results)
-        assert all(x % 2 == 0 for x in results[0]), (max_object_store_memory_fraction, results)
+        assert all(x % 2 == 0 for x in results[0]), (
+            max_object_store_memory_fraction,
+            results,
+        )
 
     # Use randomized per-epoch preprocessor to check that it gets applied once
     # per epoch.
@@ -418,10 +430,12 @@ def test_per_epoch_preprocessor(ray_start_4_cpus):
 
     for max_object_store_memory_fraction in [None, 1, 0.3]:
         results = iterate_twice(
-                trainer, ds,
-                randomize_block_order=False,
-                per_epoch_preprocessor=BatchMapper(rand, batch_format="pandas"),
-                max_object_store_memory_fraction=max_object_store_memory_fraction)
+            trainer,
+            ds,
+            randomize_block_order=False,
+            per_epoch_preprocessor=BatchMapper(rand, batch_format="pandas"),
+            max_object_store_memory_fraction=max_object_store_memory_fraction,
+        )
 
         assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
         assert results[0] != results[1], (max_object_store_memory_fraction, results)

@@ -12,7 +12,7 @@ class BulkDatasetIterator(DatasetIterator):
         self,
         # base_dataset: Dataset,
         base_dataset,
-        per_epoch_preprocessor: Optional["Preprocessor"] =None,
+        per_epoch_preprocessor: Optional["Preprocessor"] = None,
     ):
         self._base_dataset = base_dataset
         self._epoch = 0

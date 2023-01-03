@@ -4,7 +4,10 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 import ray
 from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
-from ray.air._internal.dataset_iterator_impl import BulkDatasetIterator, PipelinedDatasetIterator
+from ray.air._internal.dataset_iterator_impl import (
+    BulkDatasetIterator,
+    PipelinedDatasetIterator,
+)
 
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessors import Chain
@@ -190,7 +193,9 @@ class DataParallelIngestSpec:
             if config.max_object_store_memory_fraction >= 0:
                 if config.max_object_store_memory_fraction < 1:
                     object_store_memory = _estimate_avail_object_store_memory()
-                    stream_window_size = max(object_store_memory * config.max_object_store_memory_fraction, 1)
+                    stream_window_size = max(
+                        object_store_memory * config.max_object_store_memory_fraction, 1
+                    )
                     dataset = dataset.window(
                         bytes_per_window=stream_window_size
                     ).repeat()
@@ -199,7 +204,9 @@ class DataParallelIngestSpec:
                         if self.preprocessor is not None:
                             preprocessor = self.preprocessor
                             if config.per_epoch_preprocessor is not None:
-                                preprocessor = Chain(preprocessor, config.per_epoch_preprocessor)
+                                preprocessor = Chain(
+                                    preprocessor, config.per_epoch_preprocessor
+                                )
                         else:
                             preprocessor = config.per_epoch_preprocessor
                         # TODO: Replace with self.preprocessor.transform when possible.
@@ -237,8 +244,10 @@ class DataParallelIngestSpec:
 
             for i, dataset_split in enumerate(dataset_splits):
                 if isinstance(dataset_split, Dataset):
-                    dataset_splits[i] = BulkDatasetIterator(dataset_split,
-                            per_epoch_preprocessor=config.per_epoch_preprocessor)
+                    dataset_splits[i] = BulkDatasetIterator(
+                        dataset_split,
+                        per_epoch_preprocessor=config.per_epoch_preprocessor,
+                    )
                 elif isinstance(dataset_split, DatasetPipeline):
                     dataset_splits[i] = PipelinedDatasetIterator(dataset_split)
 

@@ -350,7 +350,8 @@ class DatasetConfig:
             fit=self.fit or False,
             split=self.split or False,
             required=self.required or False,
-            max_object_store_memory_fraction=self.max_object_store_memory_fraction or -1,
+            max_object_store_memory_fraction=self.max_object_store_memory_fraction
+            or -1,
             global_shuffle=self.global_shuffle or False,
             transform=self.transform if self.transform is not None else True,
             randomize_block_order=self.randomize_block_order

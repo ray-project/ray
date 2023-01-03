@@ -1,9 +1,12 @@
+import abc
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union, Iterator
+from typing_extensions import Literal
 
 from ray.air.data_batch_type import DataBatchType
 
 
-class DatasetIterator:
+class DatasetIterator(abc.ABC):
+    @abc.abstractmethod
     def iter_batches(
         self,
         *,
@@ -16,5 +19,6 @@ class DatasetIterator:
     ) -> Iterator[DataBatchType]:
         raise NotImplementedError
 
+    @abc.abstractmethod
     def stats(self) -> str:
         return NotImplementedError
