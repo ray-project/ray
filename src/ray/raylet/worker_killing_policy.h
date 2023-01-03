@@ -34,8 +34,8 @@ class WorkerKillingPolicy {
   /// \param workers the list of candidate workers.
   /// \param system_memory snapshot of memory usage.
   ///
-  /// \return the worker to kill, or nullptr if the worker list is empty.
-  virtual const std::shared_ptr<WorkerInterface> SelectWorkerToKill(
+  /// \return the worker to kill and whether the task on the worker should be retried.
+  virtual const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const = 0;
 
@@ -60,7 +60,7 @@ class WorkerKillingPolicy {
 class RetriableLIFOWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
   RetriableLIFOWorkerKillingPolicy();
-  const std::shared_ptr<WorkerInterface> SelectWorkerToKill(
+  const std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const;
 };

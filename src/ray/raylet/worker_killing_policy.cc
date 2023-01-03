@@ -27,13 +27,13 @@ namespace raylet {
 
 RetriableLIFOWorkerKillingPolicy::RetriableLIFOWorkerKillingPolicy() {}
 
-const std::shared_ptr<WorkerInterface>
+const std::pair<std::shared_ptr<WorkerInterface>, bool>
 RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const MemorySnapshot &system_memory) const {
   if (workers.empty()) {
     RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
-    return nullptr;
+    return std::make_pair(nullptr, /*should retry*/ false);
   }
 
   std::vector<std::shared_ptr<WorkerInterface>> sorted = workers;
@@ -57,7 +57,7 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
   RAY_LOG(INFO) << "The top 10 workers to be killed based on the worker killing policy:\n"
                 << WorkersDebugString(sorted, max_to_print, system_memory);
 
-  return sorted.front();
+  return std::make_pair(sorted.front(), /*should retry*/ true);
 }
 
 std::string WorkerKillingPolicy::WorkersDebugString(
