@@ -1,4 +1,6 @@
 import gymnasium as gym
+import tensorflow as tf
+import tensorflow_probability as tfp
 from typing import Any, Mapping, Union
 
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -7,12 +9,8 @@ from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-
-_, tf, _ = try_import_tf()
-tfp = try_import_tfp()
 
 
 class DiscreteBCTFModule(TfRLModule):
