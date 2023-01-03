@@ -88,7 +88,7 @@ class TestSampleBatch(unittest.TestCase):
         )
 
     def test_concat(self):
-        """Tests, SampleBatches.concat() and ...concat_samples()."""
+        """Tests, SampleBatches.concat() and concat_samples()."""
         s1 = SampleBatch(
             {
                 "a": np.array([1, 2, 3]),
