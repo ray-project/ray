@@ -28,7 +28,7 @@ class TestAPPO(unittest.TestCase):
             appo.APPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .rollouts(num_rollout_workers=1)
         )
@@ -68,7 +68,7 @@ class TestAPPO(unittest.TestCase):
             appo.APPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .rollouts(num_rollout_workers=1)
             .training(use_kl_loss=True)
@@ -91,7 +91,7 @@ class TestAPPO(unittest.TestCase):
             appo.APPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .rollouts(num_rollout_workers=1)
             .training(_separate_vf_optimizer=True, _lr_vf=0.002)
@@ -118,7 +118,7 @@ class TestAPPO(unittest.TestCase):
             appo.APPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -177,7 +177,7 @@ class TestAPPO(unittest.TestCase):
             appo.APPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -228,7 +228,7 @@ class TestAPPO(unittest.TestCase):
             appo.APPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .rollouts(
                 num_rollout_workers=1,

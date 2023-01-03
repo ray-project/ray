@@ -25,7 +25,7 @@ class TestA2C(unittest.TestCase):
             a2c.A2CConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .rollouts(num_rollout_workers=2, num_envs_per_worker=2)
         )
@@ -49,7 +49,7 @@ class TestA2C(unittest.TestCase):
             a2c.A2CConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment(env="CartPole-v1")
             .reporting(min_time_s_per_iteration=0)
@@ -68,7 +68,7 @@ class TestA2C(unittest.TestCase):
             a2c.A2CConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment(env="CartPole-v1")
             .reporting(min_time_s_per_iteration=0)

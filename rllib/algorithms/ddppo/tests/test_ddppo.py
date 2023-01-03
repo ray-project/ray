@@ -16,7 +16,7 @@ from ray.rllib.utils.test_utils import (
 
 class TestDDPPO(unittest.TestCase):
 
-    use_gpus = int(os.environ.get("RLLIB_NUM_GPUS", "0")) > 0
+    use_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0")) > 0
 
     @classmethod
     def setUpClass(cls):

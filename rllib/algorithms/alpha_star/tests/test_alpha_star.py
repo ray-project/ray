@@ -31,7 +31,7 @@ class TestAlphaStar(unittest.TestCase):
             alpha_star.AlphaStarConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment(env="connect_four")
             .training(

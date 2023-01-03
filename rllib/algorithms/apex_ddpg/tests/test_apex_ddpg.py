@@ -25,7 +25,7 @@ class TestApexDDPG(unittest.TestCase):
             apex_ddpg.ApexDDPGConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment(env="Pendulum-v1")
             .rollouts(num_rollout_workers=2)

@@ -61,7 +61,7 @@ if __name__ == "__main__":
         .framework(args.framework, eager_tracing=args.framework == "tf2")
         .rollouts(num_rollout_workers=args.num_workers)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
     if args.run == "PPO":
         config.training(vf_loss_coeff=0.01)

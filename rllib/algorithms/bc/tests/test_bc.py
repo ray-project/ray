@@ -38,7 +38,7 @@ class TestBC(unittest.TestCase):
             bc.BCConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .evaluation(
                 evaluation_interval=3,

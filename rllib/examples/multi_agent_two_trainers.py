@@ -118,7 +118,7 @@ if __name__ == "__main__":
             policies_to_train=["ppo_policy"],
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
     ppo = ppo_config.build()
 
@@ -140,7 +140,7 @@ if __name__ == "__main__":
             policies_to_train=["dqn_policy"],
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
     dqn = dqn_config.build()
 

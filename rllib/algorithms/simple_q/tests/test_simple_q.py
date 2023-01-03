@@ -40,7 +40,7 @@ class TestSimpleQ(unittest.TestCase):
             simple_q.SimpleQConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .rollouts(num_rollout_workers=0, compress_observations=True)
             .training(num_steps_sampled_before_learning_starts=0)
@@ -66,7 +66,7 @@ class TestSimpleQ(unittest.TestCase):
             simple_q.SimpleQConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .rollouts(num_rollout_workers=0)
             # Use very simple net (layer0=10 nodes, q-layer=2 nodes (2 actions)).
@@ -168,7 +168,7 @@ class TestSimpleQ(unittest.TestCase):
             simple_q.SimpleQConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .reporting(
                 min_sample_timesteps_per_iteration=10,

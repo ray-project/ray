@@ -66,7 +66,7 @@ def main(debug, stop_iters=2000, tf=False, asymmetric_env=False):
         },
         "lr": 5e-3,
         "seed": tune.grid_search(seeds),
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        "num_gpus": float(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": "tf" if tf else "torch",
     }
 

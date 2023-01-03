@@ -1065,7 +1065,7 @@ def check_reproducibilty(
     """Check if the algorithm is reproducible across different testing conditions:
 
         frameworks: all input frameworks
-        num_gpus: int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+        num_gpus: float(os.environ.get("RLLIB_NUM_GPUS", "0"))
         num_workers: 0 (only local workers) or
                      4 ((1) local workers + (4) remote workers)
         num_envs_per_worker: 2
@@ -1093,7 +1093,7 @@ def check_reproducibilty(
     for num_workers in [0, 2]:
         algo_config = (
             algo_config.debugging(seed=42)
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+            .resources(num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0")))
             .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
         )
 

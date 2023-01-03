@@ -28,7 +28,7 @@ class TestTD3(unittest.TestCase):
         """Test whether TD3 can be built with both frameworks."""
         config = td3.TD3Config().resources(
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+            num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
         )
 
         # Test against all frameworks.

@@ -69,7 +69,7 @@ if __name__ == "__main__":
         )
         .debugging(log_level="DEBUG")
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
     # NOTE: Does this have consequences?
     # I use it for not loading tensorflow/pytorch.

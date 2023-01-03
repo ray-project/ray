@@ -42,7 +42,7 @@ if __name__ == "__main__":
             lr=tune.grid_search([0.01, 0.001, 0.0001]), train_batch_size=2341
         )  # TEST
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
     stop = {

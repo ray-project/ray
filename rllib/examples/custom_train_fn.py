@@ -56,7 +56,7 @@ if __name__ == "__main__":
         # Special flag signalling `my_train_fn` how many iters to do.
         "train-iterations": 2,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        "num_gpus": float(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "framework": args.framework,
     }

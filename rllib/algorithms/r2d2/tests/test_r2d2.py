@@ -60,7 +60,7 @@ class TestR2D2(unittest.TestCase):
             r2d2.R2D2Config()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)

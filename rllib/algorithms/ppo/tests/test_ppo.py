@@ -101,7 +101,7 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .training(
                 num_sgd_iter=2,
@@ -169,7 +169,7 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .training(
                 # Setup lr schedule for testing.
@@ -243,7 +243,7 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment(
                 "FrozenLake-v1",
@@ -297,7 +297,7 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment("CartPole-v1")
             .rollouts(
@@ -360,7 +360,7 @@ class TestPPO(unittest.TestCase):
             ppo.PPOConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment("CartPole-v1")
             .rollouts(

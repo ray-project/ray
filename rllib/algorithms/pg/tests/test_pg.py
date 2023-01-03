@@ -40,7 +40,7 @@ class TestPG(unittest.TestCase):
             pg.PGConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             # Test with filter to see whether they work w/o preprocessing.
             .rollouts(
@@ -107,7 +107,7 @@ class TestPG(unittest.TestCase):
             pg.PGConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .rollouts(num_rollout_workers=0)
             .training(
@@ -199,7 +199,7 @@ class TestPG(unittest.TestCase):
             pg.PGConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .reporting(
                 min_sample_timesteps_per_iteration=10,

@@ -10,7 +10,7 @@ from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 
 
 param_space = {
-    "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+    "num_gpus": float(os.environ.get("RLLIB_NUM_GPUS", "0")),
     "framework": "torch",
     "num_workers": 4,
     "num_envs_per_worker": 1,

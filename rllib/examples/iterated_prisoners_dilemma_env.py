@@ -77,7 +77,7 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, framework="tf"):
             "policy_mapping_fn": lambda agent_id, episode, worker, **kwargs: agent_id,
         },
         "seed": tune.grid_search(seeds),
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        "num_gpus": float(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": framework,
     }
 

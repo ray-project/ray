@@ -112,7 +112,7 @@ if __name__ == "__main__":
         .rollouts(num_rollout_workers=0)
         .training(model={"custom_model": "eager_model"})
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
     stop = {

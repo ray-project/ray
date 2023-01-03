@@ -29,7 +29,7 @@ class TestDQN(unittest.TestCase):
             dqn.dqn.DQNConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=2)
@@ -72,7 +72,7 @@ class TestDQN(unittest.TestCase):
             dqn.dqn.DQNConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment("Taxi-v3")
             .rollouts(num_rollout_workers=2)
@@ -112,7 +112,7 @@ class TestDQN(unittest.TestCase):
             dqn.dqn.DQNConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment("FrozenLake-v1")
             .rollouts(num_rollout_workers=0)

@@ -92,7 +92,7 @@ if __name__ == "__main__":
             sgd_minibatch_size=256,
             train_batch_size=4000,
         )
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .reporting(min_time_s_per_iteration=5)
     )
 

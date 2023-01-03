@@ -26,7 +26,7 @@ class TestApexDQN(unittest.TestCase):
             apex_dqn.ApexDQNConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
@@ -55,7 +55,7 @@ class TestApexDQN(unittest.TestCase):
             apex_dqn.ApexDQNConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=3)
@@ -98,7 +98,7 @@ class TestApexDQN(unittest.TestCase):
             apex_dqn.ApexDQNConfig()
             .resources(
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
             )
             .environment("CartPole-v1")
             .rollouts(

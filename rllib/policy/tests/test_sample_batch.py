@@ -371,7 +371,7 @@ class TestSampleBatch(unittest.TestCase):
         #   a float64 tensor with possibly wrong device (depends on if cuda available)
         #   repeated value object with np.array leaves (f)
 
-        cuda_available = int(os.environ.get("RLLIB_NUM_GPUS", "0")) > 0
+        cuda_available = float(os.environ.get("RLLIB_NUM_GPUS", "0")) > 0
         cuda_if_possible = torch.device("cuda:0" if cuda_available else "cpu")
         s = SampleBatch(
             {

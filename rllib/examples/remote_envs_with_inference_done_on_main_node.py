@@ -128,7 +128,7 @@ if __name__ == "__main__":
         )
         .resources(
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0")),
             # Set the number of CPUs used by the (local) worker, aka "driver"
             # to match the number of ray remote envs.
             num_cpus_for_local_worker=args.num_envs_per_worker + 1,
