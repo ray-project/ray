@@ -216,8 +216,7 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *env,
                                                                    jclass,
                                                                    jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ObjectID>(env, objectId);
-  const auto &rpc_address =
-      CoreWorkerProcess::GetCoreWorker().GetOwnerAddressOrDie(object_id);
+  const auto &rpc_address = CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(object_id);
   return NativeStringToJavaByteArray(env, rpc_address.SerializeAsString());
 }
 
@@ -229,7 +228,7 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *env,
   rpc::Address address;
   // TODO(ekl) send serialized object status to Java land.
   std::string serialized_object_status;
-  CoreWorkerProcess::GetCoreWorker().GetOwnershipInfoOrDie(
+  CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(
       object_id, &address, &serialized_object_status);
   auto address_str = address.SerializeAsString();
   auto arr = NativeStringToJavaByteArray(env, address_str);

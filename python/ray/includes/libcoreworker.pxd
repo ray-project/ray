@@ -177,14 +177,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void PutObjectIntoPlasma(const CRayObject &object,
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
-        CRayStatus GetOwnerAddress(const CObjectID &object_id,
-                                   CAddress *owner_address) const
+        CAddress GetOwnerAddress(const CObjectID &object_id) const
         c_vector[CObjectReference] GetObjectRefs(
                 const c_vector[CObjectID] &object_ids) const
 
-        CRayStatus GetOwnershipInfo(const CObjectID &object_id,
-                                    CAddress *owner_address,
-                                    c_string *object_status)
+        void GetOwnershipInfo(const CObjectID &object_id,
+                              CAddress *owner_address,
+                              c_string *object_status)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,

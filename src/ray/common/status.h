@@ -112,7 +112,6 @@ enum class StatusCode : char {
   // Object store is both out of memory and
   // out of disk.
   OutOfDisk = 28,
-  ObjectUnknownOwner = 29,
 };
 
 #if defined(__clang__)
@@ -208,10 +207,6 @@ class RAY_EXPORT Status {
     return Status(StatusCode::ObjectNotFound, msg);
   }
 
-  static Status ObjectUnknownOwner(const std::string &msg) {
-    return Status(StatusCode::ObjectUnknownOwner, msg);
-  }
-
   static Status ObjectAlreadySealed(const std::string &msg) {
     return Status(StatusCode::ObjectAlreadySealed, msg);
   }
@@ -269,7 +264,6 @@ class RAY_EXPORT Status {
   bool IsSchedulingCancelled() const { return code() == StatusCode::SchedulingCancelled; }
   bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
   bool IsObjectNotFound() const { return code() == StatusCode::ObjectNotFound; }
-  bool IsObjectUnknownOwner() const { return code() == StatusCode::ObjectUnknownOwner; }
   bool IsObjectAlreadySealed() const { return code() == StatusCode::ObjectAlreadySealed; }
   bool IsObjectStoreFull() const { return code() == StatusCode::ObjectStoreFull; }
   bool IsTransientObjectStoreFull() const {
