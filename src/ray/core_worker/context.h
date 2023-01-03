@@ -35,8 +35,8 @@ class WorkerContext {
 
   const WorkerID &GetWorkerID() const;
 
-  const JobID &GetCurrentJobID() const LOCKS_EXCLUDED(mutex_);
-  const rpc::JobConfig &GetCurrentJobConfig() const LOCKS_EXCLUDED(mutex_);
+  JobID GetCurrentJobID() const LOCKS_EXCLUDED(mutex_);
+  rpc::JobConfig GetCurrentJobConfig() const LOCKS_EXCLUDED(mutex_);
 
   const TaskID &GetCurrentTaskID() const;
 

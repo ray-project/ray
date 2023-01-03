@@ -195,12 +195,12 @@ int64_t WorkerContext::GetTaskDepth() const {
   return task_depth_;
 }
 
-const JobID &WorkerContext::GetCurrentJobID() const {
+JobID WorkerContext::GetCurrentJobID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_job_id_;
 }
 
-const rpc::JobConfig &WorkerContext::GetCurrentJobConfig() const {
+rpc::JobConfig WorkerContext::GetCurrentJobConfig() const {
   absl::ReaderMutexLock lock(&mutex_);
   return job_config_;
 }
