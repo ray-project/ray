@@ -66,20 +66,32 @@ class RefBundle:
 
 
 @dataclass
+class ExecutionResources:
+    """Specifies resources usage or resource limits for execution.
+
+    The value `None` represents unknown resource usage or an unspecified limit.
+    """
+
+    # CPU usage in cores (Ray logical CPU slots).
+    cpu: Optional[int] = None
+
+    # GPU usage in devices (Ray logical GPU slots).
+    gpu: Optional[int] = None
+
+    # Object store memory usage in bytes.
+    object_store_memory: Optional[int] = None
+
+
+@dataclass
 class ExecutionOptions:
     """Common options for execution.
 
-    Some options may not be supported on all executors (e.g., parallelism limit).
+    Some options may not be supported on all executors (e.g., resource limits).
     """
 
-    # Max number of in flight tasks. This is a soft limit, and is not supported in
-    # bulk execution mode.
-    parallelism_limit: Optional[int] = None
-
-    # Example: set to 1GB and executor will try to limit object store
-    # memory usage to 1GB. This is a soft limit, and is not supported in
-    # bulk execution mode.
-    memory_limit_bytes: Optional[int] = None
+    # Set a soft limit on the resource usage during execution. This is not supported
+    # in bulk execution mode.
+    resource_limits: ExecutionResources = ExecutionResources()
 
     # Set this to prefer running tasks on the same node as the output
     # node (node driving the execution).
@@ -150,6 +162,8 @@ class PhysicalOperator:
 
         These should be instant values that can be queried at any time, e.g.,
         obj_store_mem_allocated, obj_store_mem_freed.
+
+        These metrics should not overlap with those returned by get_resource_usage().
         """
         return {}
 
@@ -240,6 +254,32 @@ class PhysicalOperator:
         """
         pass
 
+    def get_resource_usage(self) -> ExecutionResources:
+        """Returns the current estimated resource usage of this operator.
+
+        This method is called by the executor to decide how to allocate resources
+        between different operators.
+        """
+        return ExecutionResources()
+
+    def set_resource_limits(self, limits: ExecutionResources) -> None:
+        """Set soft limits on the resource usage of this operator.
+
+        This method is called by the executor to allocate resources between different
+        operators. Operators should ensure they make forward progress even if the limit
+        is set to zero (i.e., should run at least one task).
+        """
+        pass
+
+    def release_unused_resources(self) -> None:
+        """Tell the operator to release unused resources, if possible.
+
+        For example, an ActorPool operator may remove idle actors from its internal
+        pool when this is called. This method is called by the executor to allocate
+        resources between different operators.
+        """
+        pass
+
 
 class Executor:
     """Abstract class for executors, which implement physical operator execution.
@@ -270,5 +310,13 @@ class Executor:
 
         This is generally called after `execute` has completed, but may be called
         while iterating over `execute` results for streaming execution.
+        """
+        raise NotImplementedError
+
+    def get_resource_usage(self) -> ExecutionResources:
+        """Return the current resource usage of the executor.
+
+        This is the sum of resource usage for each operator being executed. If
+        execution has completed, the resource usages will be None.
         """
         raise NotImplementedError
