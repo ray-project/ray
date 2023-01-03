@@ -165,7 +165,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     // Driver populates job_config through worker startup options.
     rpc::JobConfig job_config;
     job_config.ParseFromString(options_.serialized_job_config);
-    worker_context_.MayInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
+    worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
   }
 
   local_raylet_client_ =
@@ -2778,8 +2778,8 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                            send_reply_callback)) {
     return;
   }
-  worker_context_.MayInitializeJobInfo(JobID::FromBinary(request.task_spec().job_id()),
-                                       request.task_spec().job_config());
+  worker_context_.MaybeInitializeJobInfo(JobID::FromBinary(request.task_spec().job_id()),
+                                         request.task_spec().job_config());
   // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
   std::string func_name =

@@ -178,8 +178,8 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
-void WorkerContext::MayInitializeJobInfo(const JobID &job_id,
-                                         const rpc::JobConfig &job_config) {
+void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
+                                           const rpc::JobConfig &job_config) {
   absl::WriterMutexLock lock(&mutex_);
   if (current_job_id_.IsNil()) {
     current_job_id_ = job_id;
