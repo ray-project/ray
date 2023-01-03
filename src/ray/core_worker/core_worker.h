@@ -326,7 +326,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
-  const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
+  JobID GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
   const int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
 
@@ -1086,7 +1086,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 void *python_future);
 
   // Get serialized job configuration.
-  const rpc::JobConfig &GetJobConfig() const;
+  rpc::JobConfig GetJobConfig() const;
 
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;

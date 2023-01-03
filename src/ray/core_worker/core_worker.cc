@@ -3638,7 +3638,7 @@ void CoreWorker::SetActorTitle(const std::string &title) {
   actor_title_ = title;
 }
 
-const rpc::JobConfig &CoreWorker::GetJobConfig() const {
+rpc::JobConfig CoreWorker::GetJobConfig() const {
   return worker_context_.GetCurrentJobConfig();
 }
 
