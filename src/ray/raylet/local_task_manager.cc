@@ -334,10 +334,9 @@ void LocalTaskManager::SpillWaitingTasks() {
     if (!task.GetTaskSpecification().IsSpreadSchedulingStrategy()) {
       scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
           task.GetTaskSpecification(),
-          /*prioritize_local_node*/ true,
+          /*preferred_node_id*/ self_node_id_.Binary(),
           /*exclude_local_node*/ task_dependencies_blocked,
           /*requires_object_store_memory*/ true,
-          /*preferred_node_id*/ task.GetPreferredNodeID(),
           &is_infeasible);
     } else {
       // If scheduling strategy is spread, we prefer honoring spread decision
@@ -380,10 +379,9 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
       // We should prefer to stay local if possible
       // to avoid unnecessary spillback
       // since this node is already selected by the cluster scheduler.
-      /*prioritize_local_node*/ true,
+      /*preferred_node_id*/ self_node_id_.Binary(),
       /*exclude_local_node*/ false,
       /*requires_object_store_memory*/ false,
-      /*preferred_node_id*/ work->task.GetPreferredNodeID(),
       &is_infeasible);
 
   if (is_infeasible || scheduling_node_id.IsNil() ||

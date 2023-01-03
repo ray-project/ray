@@ -97,10 +97,10 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
                      << task.GetTaskSpecification().TaskId();
       auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
           task.GetTaskSpecification(),
-          work->PrioritizeLocalNode(),
+          /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
+                                                            : task.GetPreferredNodeID(),
           /*exclude_local_node*/ false,
           /*requires_object_store_memory*/ false,
-          /*preferred_node_id*/ task.GetPreferredNodeID(),
           &is_infeasible);
 
       // There is no node that has available resources to run the request.
@@ -192,10 +192,10 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
     bool is_infeasible;
     cluster_resource_scheduler_->GetBestSchedulableNode(
         task.GetTaskSpecification(),
-        work->PrioritizeLocalNode(),
+        /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
+                                                          : task.GetPreferredNodeID(),
         /*exclude_local_node*/ false,
         /*requires_object_store_memory*/ false,
-        /*preferred_node_id*/ task.GetPreferredNodeID(),
         &is_infeasible);
 
     // There is no node that has available resources to run the request.
