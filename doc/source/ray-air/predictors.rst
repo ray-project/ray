@@ -143,10 +143,119 @@ Online Inference
 Check out the :ref:`air-serving-guide` for details on how to perform online inference with AIR.
 
 
-Developer Guide: Implementing your own Predictor
-------------------------------------------------
-To implement a new Predictor for your particular framework, you should subclass the base ``Predictor`` and implement the following two methods:
+Writing your own predictor
+--------------------------
 
-1. ``_predict_pandas``: Given a pandas.DataFrame input, return a pandas.DataFrame containing predictions.
-2. ``from_checkpoint``: Logic for creating a Predictor from an :ref:`AIR Checkpoint <air-checkpoint-ref>`.
-3. Optionally ``_predict_numpy`` for better performance when working with tensor data to avoid extra copies from Pandas conversions.
+If you're using an unsupported framework, or if built-in predictors are too inflexible,
+implement a custom predictor.
+
+How to implement a custom predictor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To implement a custom :class:`~ray.train.predictor.Predictor`,
+subclass :class:`~ray.train.predictor.Predictor` and implement:
+
+* :meth:`~ray.train.predictor.Predictor.__init__`
+* :meth:`~ray.train.predictor.Predictor._predict_numpy` or :meth:`~ray.train.predictor.Predictor._predict_pandas`
+* :meth:`~ray.train.predictor.Predictor.from_checkpoint`
+
+.. tip::
+    You don't need to implement both
+    :meth:`~ray.train.predictor.Predictor._predict_numpy` and
+    :meth:`~ray.train.predictor.Predictor._predict_pandas`. Pick the method that's
+    easiest to implement. In general, if your model accepts a tensor as input, implement
+    :meth:`~ray.train.predictor.Predictor._predict_numpy`; otherwise, implement
+    :meth:`~ray.train.predictor.Predictor._predict_pandas`.
+
+Overview of required methods
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+__init__
+********
+
+Use the constructor to set instance attributes like ``self.model``.
+
+You must call the base class' constructor; otherwise, `Predictor.predict <ray.train.predictor.Predict.predict>` raises a
+``NotImplementedError``.
+
+.. testsetup::
+
+    from typing import Optional
+    from ray.data.preprocessor import Preprocessor
+    from ray.train.predictor import Predictor
+
+.. testcode::
+
+    class CustomPredictor(Predictor):
+        def __init__(self, preprocessor: Optional[Preprocessor] = None):
+            ...
+            super().__init__(self, preprocessor)
+
+
+_predict_numpy
+**************
+
+This method performs inference on a batch of NumPy data. It accepts a ``np.ndarray``
+or ``dict[str, np.ndarray]`` as input and returns a ``np.ndarray`` or
+``dict[str, np.ndarray]`` as output.
+
+The input type is determined by the type of :class:`~ray.data.Dataset` passed to
+:meth:`BatchPredictor.predict <ray.train.batch_predictor.BatchPredictor.predict>`:
+
+* If the input dataset is a tabular dataset, then the input type is ``dict[str, np.ndarray]``.
+* If the input dataset is a tensor dataset, then the input type is ``np.ndarray``.
+* If the input dataset is a simple dataset, then
+  :class:`~ray.train.batch_predictor.BatchPredictor` raises an error.
+
+Your output determines the type of dataset returned by
+:meth:`BatchPredictor.predict <ray.train.batch_predictor.BatchPredictor.predict>`:
+
+* If :meth:`~ray.train.predictor.Predictor._predict_numpy` returns a ``np.ndarray``, then :class:`~ray.train.batch_predictor.BatchPredictor` returns a tensor dataset
+* If :meth:`~ray.train.predictor.Predictor._predict_numpy` returns a ``dict[str, np.ndarray]``, then :class:`~ray.train.batch_predictor.BatchPredictor` returns a tabular dataset.
+
+_predict_pandas
+***************
+
+This method performs inference on a batch of pandas data. It accepts a
+``pandas.DataFrame`` as input and return a ``pandas.DataFrame`` as output.
+
+If you implement this method, :meth:`BatchPredictor.predict <ray.train.batch_predictor.BatchPredictor.predict>`
+returns a tabular dataset.
+
+from_checkpoint
+***************
+
+This method creates an :class:`~ray.train.predictor.Predictor` from a
+:class:`~ray.air.checkpoint.Checkpoint`.
+
+Examples of custom predictors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+MXNet Predictor
+***************
+
+MXNet is a deep learning framework like Torch. The code snippet below demonstrates how to implement
+a predictor for MXNet. Since MXNet models accept tensors as input, ``MXNetPredictor``
+implements the :meth:`~ray.train.predictor.Predictor._predict_numpy` method.
+
+.. literalinclude:: doc_code/mxnet_predictor.py
+    :language: python
+    :start-after: __mxnetpredictor_impl_start__
+    :end-before: __mxnetpredictor_impl_end__
+
+statsmodel Predictor
+********************
+
+statsmodel is a Python library that provides regression and linear models. The code snippet below demonstrates how to
+implement a predictor for statsmodel. Since statsmodels integrates well with pandas, ``StatsmodelPredictor`` implements the :meth:`~ray.train.predictor.Predictor._predict_pandas` method.
+
+.. literalinclude:: doc_code/statsmodel_predictor.py
+    :language: python
+    :start-after: __statsmodelpredictor_impl_start__
+    :end-before: __statsmodelpredictor_impl_end__
+
+Built-in Predictors
+*******************
+
+For more predictor examples, read the source code of built-in predictors like
+:class:`~ray.train.torch.TorchPredictor`, :class:`~ray.train.xgboost.XGBoostPredictor`, and :class:`~ray.train.sklearn.SklearnPredictor`.
