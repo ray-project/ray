@@ -190,7 +190,7 @@ spec:
             - mountPath: /dev/shm
               name: dshm
           env:
-            # RAY_REDIS_ADDRESS can force ray to use external redis for fault tolerance purposes
+            # RAY_REDIS_ADDRESS lets ray use external Redis for fault tolerance
             - name: RAY_REDIS_ADDRESS
               value: <REDIS IP ADDRESS> # ip address for the external Redis
             # This is used in the ray start command so that Ray can spawn the
