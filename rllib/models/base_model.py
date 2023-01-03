@@ -50,7 +50,7 @@ class ModelIOMapping(Mapping):
             return self._name + "_" + str(item) + "_" + self._init_idx
         else:
             raise KeyError(
-                "`{}` is not a key of ModelIOKeyGenerator with name `{}` "
+                "`{}` is not a key of ModelIOMapping for model_name `{}` "
                 "and index `{}`. Valid keys are `{}`".format(
                     item, self._name, self._init_idx, self._valid_keys
                 )
@@ -60,9 +60,8 @@ class ModelIOMapping(Mapping):
         self._valid_keys.add(key)
 
     def __repr__(self):
-        return (
-            "ModelIOKeyGenerator for model {} with index {} and valid keys {"
-            "}".format(self._name, self._init_idx, self._valid_keys)
+        return "ModelIOMapping for model {} with index {} and valid keys {" "}".format(
+            self._name, self._init_idx, self._valid_keys
         )
 
     def __iter__(self):
