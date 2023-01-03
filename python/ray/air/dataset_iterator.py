@@ -8,7 +8,7 @@ class DatasetIterator:
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 256,
+        batch_size: int = 256,
         batch_format: str = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
