@@ -18,7 +18,7 @@ class InputDataBuffer(PhysicalOperator):
         """Create an InputDataBuffer.
 
         Args:
-            input_data: The list of bundles to output from this operaotr.
+            input_data: The list of bundles to output from this operator.
         """
         self._input_data = input_data
         self._num_outputs = len(input_data)
