@@ -246,8 +246,8 @@ def get_tf_eager_cls_if_necessary(
     cls = orig_cls
     framework = config.get("framework", "tf")
 
-    if framework in ["tf2", "tf"] and not tf1:
-        raise ImportError("Could not import tensorflow!")
+    if framework in ["tf2", "tf"]:
+        try_import_tf(error=True)
 
     if framework == "tf2":
         if not tf1.executing_eagerly():
