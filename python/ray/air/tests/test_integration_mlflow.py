@@ -8,7 +8,8 @@ from unittest.mock import patch
 from mlflow.tracking import MlflowClient
 
 from ray.train._internal.session import init_session
-from ray.tune.trainable import wrap_function, session as tune_session
+from ray.tune.trainable import wrap_function
+from ray.tune.trainable.session import _shutdown as tune_session_shutdown
 from ray.tune.integration.mlflow import (
     MLflowTrainableMixin,
     mlflow_mixin,
@@ -51,8 +52,7 @@ class MLflowTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         # Remove tune session if initialized to clean up for next test
-        tune_session._session = None
-        tune_session._session_v2 = None
+        tune_session_shutdown()
 
     def testMlFlowLoggerCallbackConfig(self):
         # Explicitly pass in all args.
