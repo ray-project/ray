@@ -133,4 +133,4 @@ Please note that the parsing is extremely simple (regex replace) and will not su
 
 ## Testing changes locally
 
-If you want to run the preprocessing locally on a specific file (to eg. see how it will render after docs have been built), run `source/preprocess_github_markdown.py PATH_TO_MARKDOWN_FILE PATH_TO_PREPROCESSED_MARKDOWN_FILE`. Make sure to also edit `EXTERNAL_MARKDOWN_FILES` in `source/custom_directives.py` so that your file does not get overwriten by one downloaded form GitHub.
+If you want to run the preprocessing locally on a specific file (to eg. see how it will render after docs have been built), run `source/preprocess_github_markdown.py PATH_TO_MARKDOWN_FILE PATH_TO_PREPROCESSED_MARKDOWN_FILE`. Make sure to also edit `EXTERNAL_MARKDOWN_FILES` in `source/custom_directives.py` so that your file does not get overwritten by one downloaded form GitHub.
