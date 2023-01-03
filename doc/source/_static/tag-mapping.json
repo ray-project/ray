@@ -1,0 +1,7 @@
+{
+  "scalableBatchInference": "PyTorch,Image Segmentation,Prediction",
+  "batchActorPool": "Prediction",
+  "batchCore": "Prediction",
+  "nycTaxiData": "Prediction",
+  "batchOcr": ""
+}
