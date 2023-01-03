@@ -437,7 +437,7 @@ class JobSupervisor:
                             f"Attempt to gracefully terminate job {self._job_id} "
                             f"through {stop_signal} has timed out after "
                             f"{stop_job_wait_time} seconds. Job is now being "
-                            "force-killed."
+                            "force-killed with SIGKILL."
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
