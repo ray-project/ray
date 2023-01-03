@@ -18,8 +18,10 @@ Use the generated file(s) as "input" in the CQL config below
 """
 
 import argparse
+import logging
 import numpy as np
 
+import ray
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.algorithms import cql as cql
 from ray.rllib.utils.framework import try_import_torch
@@ -46,6 +48,8 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    ray.init(logging_level=logging.INFO)
 
     # See rllib/tuned_examples/cql/pendulum-cql.yaml for comparison.
     config = (
@@ -76,7 +80,6 @@ if __name__ == "__main__":
             num_steps_sampled_before_learning_starts=256,
         )
         .reporting(min_train_timesteps_per_iteration=1000)
-        .debugging(log_level="INFO")
         .environment(normalize_actions=True, env="Pendulum-v1")
         .offline_data(
             input_config={

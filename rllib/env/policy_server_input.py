@@ -5,8 +5,8 @@ from socketserver import ThreadingMixIn
 import threading
 import time
 import traceback
-
 from typing import List
+
 import ray.cloudpickle as pickle
 from ray.rllib.env.policy_client import (
     _create_embedded_rollout_worker,
@@ -20,6 +20,9 @@ from ray.rllib.evaluation.sampler import SamplerInput
 from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
+print("__name__.log level=", logger.level)
+ray_logger = logging.getLogger("ray")
+print("ray.log level=", ray_logger.level)
 
 
 @PublicAPI
@@ -154,7 +157,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
             time.sleep(1)
             raise
 
-        logger.info(
+        logging.info(
             "Starting connector server at " f"{self.server_name}:{self.server_port}"
         )
 
@@ -242,20 +245,26 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             except Exception:
                 self.send_error(500, traceback.format_exc())
 
+        def log_error(self, format, *args) -> None:
+            logging.error(format)
+
+        def log_message(self, format, *args) -> None:
+            logging.info(format)
+
         def execute_command(self, args):
             command = args["command"]
             response = {}
 
             # Local inference commands:
             if command == Commands.GET_WORKER_ARGS:
-                logger.info("Sending worker creation args to client.")
+                logging.info("Sending worker creation args to client.")
                 response["worker_args"] = rollout_worker.creation_args()
             elif command == Commands.GET_WEIGHTS:
-                logger.info("Sending worker weights to client.")
+                logging.info("Sending worker weights to client.")
                 response["weights"] = rollout_worker.get_weights()
                 response["global_vars"] = rollout_worker.get_global_vars()
             elif command == Commands.REPORT_SAMPLES:
-                logger.info(
+                logging.info(
                     "Got sample batch of size {} from client.".format(
                         args["samples"].count
                     )

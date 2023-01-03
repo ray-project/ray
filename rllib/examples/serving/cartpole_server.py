@@ -24,6 +24,7 @@ You may connect more than one policy client to any open listen port.
 
 import argparse
 import gymnasium as gym
+import logging
 import os
 
 import ray
@@ -133,7 +134,7 @@ def get_cli_args():
 
 if __name__ == "__main__":
     args = get_cli_args()
-    ray.init()
+    ray.init(logging_level=logging.WARN)
 
     # `InputReader` generator (returns None if no input reader is needed on
     # the respective worker).
@@ -173,8 +174,6 @@ if __name__ == "__main__":
         .rollouts(num_rollout_workers=args.num_workers)
         # Disable OPE, since the rollouts are coming from online clients.
         .evaluation(off_policy_estimation_methods={})
-        # Set to INFO so we'll see the server's actual address:port.
-        .debugging(log_level="INFO")
     )
 
     # DQN.
