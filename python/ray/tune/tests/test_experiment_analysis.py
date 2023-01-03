@@ -55,7 +55,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             name="testing_nan",
             local_dir=self.test_dir,
             stop={"training_iteration": 1},
-            checkpoint_freq=1,
             num_samples=self.num_samples,
             config={
                 "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
