@@ -11,6 +11,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
     get_gcs_memory_used,
+    run_string_as_driver_nonblocking,
 )
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
@@ -254,6 +255,42 @@ assert ray.get_runtime_context().job_id.hex() == '02000000'
 """
     run_string_as_driver(script.format(address=call_ray_start, val=1))
     run_string_as_driver(script.format(address=call_ray_start_2, val=2))
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --num-gpus=2"],
+    indirect=True,
+)
+def test_demands_when_driver_exits(call_ray_start):
+    script = f"""
+import ray
+ray.init(address='{call_ray_start}')
+
+import os
+import time
+@ray.remote(num_gpus=3)
+def use_gpu():
+    time.sleep(1)
+
+print(ray.get([use_gpu.remote(), use_gpu.remote()]))
+"""
+
+    proc = run_string_as_driver_nonblocking(script)
+    gcs_cli = ray._private.gcs_utils.GcsClient(address=f"{call_ray_start}")
+
+    def check_demands(n):
+        status = gcs_cli.internal_kv_get(
+            ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS.encode(), namespace=None
+        )
+        import json
+
+        status = json.loads(status.decode())
+        return len(status["load_metrics_report"]["resource_demand"]) == n
+
+    wait_for_condition(lambda: check_demands(1))
+    proc.terminate()
+    wait_for_condition(lambda: check_demands(0))
 
 
 if __name__ == "__main__":
