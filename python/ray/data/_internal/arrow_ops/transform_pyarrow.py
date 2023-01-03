@@ -1,10 +1,5 @@
 from typing import TYPE_CHECKING, List, Union
 
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorType,
-    ArrowVariableShapedTensorType,
-)
-
 try:
     import pyarrow
 except ImportError:
@@ -55,6 +50,11 @@ def unify_schemas(
 ) -> "pyarrow.Schema":
     """Version of `pyarrow.unify_schemas()` which also handles checks for
     variable-shaped tensors in the given schemas."""
+    from ray.air.util.tensor_extensions.arrow import (
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
+    )
+
     schemas_to_unify = []
     schema_tensor_field_overrides = {}
 
