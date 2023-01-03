@@ -39,7 +39,8 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
                rpc::ErrorType error_type,
                const Status *status,
                const rpc::RayErrorInfo *ray_error_info,
-               bool mark_task_object_failed),
+               bool mark_task_object_failed,
+               bool fail_immediately),
               (override));
   MOCK_METHOD(void,
               OnTaskDependenciesInlined,
