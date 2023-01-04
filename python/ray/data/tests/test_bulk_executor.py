@@ -1,6 +1,5 @@
 import pytest
 
-import time
 from typing import List, Any
 
 import ray
