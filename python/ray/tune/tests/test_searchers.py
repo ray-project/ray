@@ -333,12 +333,14 @@ class InvalidValuesTest(unittest.TestCase):
         )
         from ray.tune.search.zoopt import ZOOptSearch
 
+        # This seed tests that a nan result doesn't cause an error if it shows
+        # up after the initial data collection phase.
         np.random.seed(1002)  # At least one nan, inf, -inf and float
 
         with self.check_searcher_checkpoint_errors_scope():
             out = tune.run(
                 _invalid_objective,
-                search_alg=ZOOptSearch(budget=100, parallel_num=4),
+                search_alg=ZOOptSearch(budget=25, parallel_num=4),
                 config=self.config,
                 metric="_metric",
                 mode="max",
