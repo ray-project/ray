@@ -7,10 +7,10 @@ import argparse
 from pathlib import Path
 
 import ray
-from ray.rllib.env.utils import try_import_pyspiel
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.sac import SACConfig
+from ray.rllib.env.utils import try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import Policy
 from ray.tune import CLIReporter, register_env
