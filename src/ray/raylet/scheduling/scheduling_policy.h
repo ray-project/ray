@@ -89,8 +89,7 @@ class SchedulingPolicy {
  private:
   /// Identifier of local node.
   const scheduling::NodeID local_node_id_;
-  /// List of nodes in the clusters and their resources organized as a map.
-  /// The key of the map is the node ID.
+  /// Map of all nodes in the clusters to their resources.
   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
   // The node to start round robin if it's spread scheduling.
   // The index may be inaccurate when nodes are added or removed dynamically,
@@ -105,14 +104,13 @@ class SchedulingPolicy {
     /// Schedule on GPU only nodes.
     kGPU,
     /// Schedule on nodes that don't have GPU. Since GPUs are more scarce resources, we
-    /// need
-    /// special handling for this.
+    /// need special handling for this.
     kNonGpu
   };
 
-  /// \param resource_request: The resource request we're attempting to schedule.
-  /// \param node_filter: defines the subset of nodes were are allowed to schedule on.
-  /// can be one of kAny (can schedule on all nodes), kGPU (can only schedule on kGPU
+  /// \param resource_request: The resource request we are attempting to schedule.
+  /// \param node_filter: Defines the subset of nodes we are are allowed to schedule on.
+  /// Can be one of kAny (can schedule on all nodes), kGPU (can only schedule on kGPU
   /// nodes), kNonGpu (can only schedule on non-GPU nodes.
   ///
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to

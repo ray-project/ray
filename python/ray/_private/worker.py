@@ -2281,7 +2281,13 @@ def get(
         object_refs: Object ref of the object to get or a list of object refs
             to get.
         timeout (Optional[float]): The maximum amount of time in seconds to
-            wait before returning.
+            wait before returning. Set this to None will block until the
+            corresponding object becomes available.
+            WARNING: In future ray releases ``timeout=0`` will return the object
+            immediately if it's available, else raise GetTimeoutError in accordance with
+            the above docstring. The current behavior of blocking until objects become
+            available of ``timeout=0`` is considered to be a bug, see
+            https://github.com/ray-project/ray/issues/28465.
 
     Returns:
         A Python object or a list of Python objects.
@@ -2292,6 +2298,21 @@ def get(
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
+    if timeout == 0:
+        if os.environ.get("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "1") == "1":
+            import warnings
+
+            warnings.warn(
+                (
+                    "Please use timeout=None if you expect ray.get() to block. "
+                    "Setting timeout=0 in future ray releases will raise "
+                    "GetTimeoutError if the objects references are not available. "
+                    "You could suppress this warning by setting "
+                    "RAY_WARN_RAY_GET_TIMEOUT_ZERO=0."
+                ),
+                UserWarning,
+            )
+
     worker = global_worker
     worker.check_connected()
 

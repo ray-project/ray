@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
 import tree  # pip install dm_tree
@@ -362,7 +362,7 @@ class QMixTorchPolicy(TorchPolicy):
             action_mask,
             next_action_mask,
             samples[SampleBatch.ACTIONS],
-            samples[SampleBatch.DONES],
+            samples[SampleBatch.TERMINATEDS],
             obs_batch,
             next_obs_batch,
         ]
@@ -385,7 +385,7 @@ class QMixTorchPolicy(TorchPolicy):
                 action_mask,
                 next_action_mask,
                 act,
-                dones,
+                terminateds,
                 obs,
                 next_obs,
                 env_global_state,
@@ -397,7 +397,7 @@ class QMixTorchPolicy(TorchPolicy):
                 action_mask,
                 next_action_mask,
                 act,
-                dones,
+                terminateds,
                 obs,
                 next_obs,
             ) = output_list
@@ -423,7 +423,9 @@ class QMixTorchPolicy(TorchPolicy):
 
         # TODO(ekl) this treats group termination as individual termination
         terminated = (
-            to_batches(dones, torch.float).unsqueeze(2).expand(B, T, self.n_agents)
+            to_batches(terminateds, torch.float)
+            .unsqueeze(2)
+            .expand(B, T, self.n_agents)
         )
 
         # Create mask for where index is < unpadded sequence length

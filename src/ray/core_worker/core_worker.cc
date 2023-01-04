@@ -224,10 +224,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
 
-  // Initialize profiler.
-  profiler_ = std::make_shared<worker::Profiler>(
-      worker_context_, options_.node_ip_address, io_service_, gcs_client_);
-
   // Initialize the task state event buffer.
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
   task_event_buffer_ =
@@ -1108,6 +1104,11 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                             });
     // Block until the remote call `AssignObjectOwner` returns.
     status = status_promise.get_future().get();
+    // Must call `AddNestedObjectIds` after finished assign owner.
+    // Otherwise, it will cause the reference count of those contained objects
+    // to be less than expected. Details: https://github.com/ray-project/ray/issues/30341
+    reference_counter_->AddNestedObjectIds(
+        *object_id, contained_object_ids, real_owner_address);
   }
 
   if (options_.is_local_mode && owned_by_us && inline_small_object) {
@@ -1435,23 +1436,34 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
 }
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {
-  // Release the object from plasma. This does not affect the object's ref
-  // count. If this was called from a non-owning worker, then a warning will be
-  // logged and the object will not get released.
-  reference_counter_->FreePlasmaObjects(object_ids);
-
-  // Store an error in the in-memory store to indicate that the plasma value is
-  // no longer reachable.
-  memory_store_->Delete(object_ids);
-  for (const auto &object_id : object_ids) {
-    RAY_LOG(DEBUG) << "Freeing object " << object_id;
-    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED), object_id));
+  absl::flat_hash_map<WorkerID, std::vector<ObjectID>> by_owner;
+  absl::flat_hash_map<WorkerID, rpc::Address> addresses;
+  // Group by owner id.
+  for (const auto &obj_id : object_ids) {
+    auto owner_address = GetOwnerAddressOrDie(obj_id);
+    auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
+    by_owner[worker_id].push_back(obj_id);
+    addresses[worker_id] = owner_address;
   }
-
-  // We only delete from plasma, which avoids hangs (issue #7105). In-memory
-  // objects can only be deleted once the ref count goes to 0.
-  absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
-  return plasma_store_provider_->Delete(plasma_object_ids, local_only);
+  // Send a batch delete call per owner id.
+  for (const auto &entry : by_owner) {
+    if (entry.first != worker_context_.GetWorkerID()) {
+      RAY_LOG(INFO) << "Deleting remote objects " << entry.second.size() << " "
+                    << entry.first;
+      auto conn = core_worker_client_pool_->GetOrConnect(addresses[entry.first]);
+      rpc::DeleteObjectsRequest request;
+      for (const auto &obj_id : entry.second) {
+        request.add_object_ids(obj_id.Binary());
+      }
+      request.set_local_only(local_only);
+      conn->DeleteObjects(request,
+                          [](const Status &status, const rpc::DeleteObjectsReply &reply) {
+                            RAY_LOG(INFO) << "Completed object delete request " << status;
+                          });
+    }
+  }
+  // Also try to delete all objects locally.
+  return DeleteImpl(object_ids, local_only);
 }
 
 Status CoreWorker::GetLocationFromOwner(
@@ -2280,8 +2292,9 @@ const ResourceMappingType CoreWorker::GetResourceIDs() const {
 }
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
-    const std::string &event_type) {
-  return std::make_unique<worker::ProfileEvent>(profiler_, event_type);
+    const std::string &event_name) {
+  return std::make_unique<worker::ProfileEvent>(
+      *task_event_buffer_, worker_context_, options_.node_ip_address, event_name);
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
@@ -2356,17 +2369,8 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-    // Make task event
-    if (task_event_buffer_->Enabled()) {
-      rpc::TaskEvents task_event;
-      task_event.set_task_id(task_spec.TaskId().Binary());
-      task_event.set_attempt_number(task_spec.AttemptNumber());
-      task_event.set_job_id(task_spec.JobId().Binary());
-
-      auto state_updates = task_event.mutable_state_updates();
-      state_updates->set_running_ts(absl::GetCurrentTimeNanos());
-      task_event_buffer_->AddTaskEvent(std::move(task_event));
-    }
+    task_manager_->RecordTaskStatusEvent(
+        task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -3365,6 +3369,37 @@ void CoreWorker::HandleLocalGC(rpc::LocalGCRequest request,
     send_reply_callback(
         Status::NotImplemented("GC callback not defined"), nullptr, nullptr);
   }
+}
+
+void CoreWorker::HandleDeleteObjects(rpc::DeleteObjectsRequest request,
+                                     rpc::DeleteObjectsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  std::vector<ObjectID> object_ids;
+  for (const auto &obj_id : request.object_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(obj_id));
+  }
+  auto status = DeleteImpl(object_ids, request.local_only());
+  send_reply_callback(status, nullptr, nullptr);
+}
+
+Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only) {
+  // Release the object from plasma. This does not affect the object's ref
+  // count. If this was called from a non-owning worker, then a warning will be
+  // logged and the object will not get released.
+  reference_counter_->FreePlasmaObjects(object_ids);
+
+  // Store an error in the in-memory store to indicate that the plasma value is
+  // no longer reachable.
+  memory_store_->Delete(object_ids);
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Freeing object " << object_id;
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED), object_id));
+  }
+
+  // We only delete from plasma, which avoids hangs (issue #7105). In-memory
+  // objects can only be deleted once the ref count goes to 0.
+  absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
+  return plasma_store_provider_->Delete(plasma_object_ids, local_only);
 }
 
 void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,

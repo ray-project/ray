@@ -1,6 +1,6 @@
 # TODO (avnishn): Merge with the tensorflow version of this test once the
 # RLTrainer has been merged.
-import gym
+import gymnasium as gym
 import pytest
 import torch
 from typing import Any, Mapping, Union
@@ -53,7 +53,9 @@ class BCTorchTrainer:
             env.action_space,
             model_config={"hidden_dim": 32},
         )
-        self._rl_optimizer = BCTorchOptimizer(self._module, optimizer_config)
+        self._rl_optimizer = BCTorchOptimizer.from_module(
+            self._module, optimizer_config
+        )
 
     @staticmethod
     def on_after_compute_gradients(
@@ -227,8 +229,8 @@ class TestRLOptimizer(unittest.TestCase):
             env.action_space,
             model_config={"hidden_dim": 32},
         )
-        optim1 = BCTorchOptimizer(module, {"lr": 0.1})
-        optim2 = BCTorchOptimizer(module, {"lr": 0.2})
+        optim1 = BCTorchOptimizer.from_module(module, {"lr": 0.1})
+        optim2 = BCTorchOptimizer.from_module(module, {"lr": 0.2})
 
         self.assertIsInstance(optim1.get_state(), dict)
         check(
