@@ -1,4 +1,5 @@
 # Deprecate: Remove whole file in 2.4
+import warnings
 from typing import List, Dict, Callable, Optional
 
 from ray.air.integrations.wandb import _setup_wandb
@@ -125,6 +126,12 @@ def wandb_mixin(func: Callable):
         tuner.fit()
 
     """
+    warnings.warn(
+        "The WandbTrainableMixin is deprecated. "
+        "Use `ray.air.integrations.wandb.setup_wandb` instead.",
+        DeprecationWarning,
+    )
+
     if hasattr(func, "__mixins__"):
         func.__mixins__ = func.__mixins__ + (WandbTrainableMixin,)
     else:

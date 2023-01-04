@@ -1,3 +1,5 @@
+import warnings
+
 from ray.air.integrations.mlflow import MLflowLoggerCallback as _MLflowLoggerCallback
 
 import logging
@@ -138,6 +140,12 @@ def mlflow_mixin(func: Callable):
         tuner.fit()
 
     """
+    warnings.warn(
+        "The MLflowTrainableMixin is deprecated. "
+        "Use `ray.air.integrations.mlflow.setup_mlflow` instead.",
+        DeprecationWarning,
+    )
+
     if ray.util.client.ray.is_connected():
         logger.warning(
             "When using mlflow_mixin with Ray Client, "
