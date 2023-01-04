@@ -82,10 +82,10 @@ for i in range(5):
 env = SimpleCorridor({"corridor_length": 10})
 # Get the initial observation (should be: [0.0] for the starting position).
 obs, info = env.reset()
-terminated = False
+terminated = truncated = False
 total_reward = 0.0
 # Play one episode.
-while not terminated:
+while not terminated and not truncated:
     # Compute a single action, given the current observation
     # from the environment.
     action = algo.compute_single_action(obs)
