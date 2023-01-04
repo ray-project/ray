@@ -4,6 +4,7 @@ from typing import Optional, Union
 
 import pandas as pd
 
+from ray.air import Checkpoint
 from ray.air.result import Result
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
@@ -11,6 +12,26 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.util import PublicAPI
+
+
+def _convert_dir_checkpoint_to_cloud_checkpoint_if_needed(
+    checkpoint: Checkpoint, trial: Trial
+) -> Checkpoint:
+    """
+    If checkpoint is backed by local dir and trial has remote_checkpoint_dir,
+    return a new URI-backed checkpoint.
+    """
+    if (
+        checkpoint.uri
+        and checkpoint.uri.startswith("file://")
+        and trial.remote_checkpoint_dir
+    ):
+        return checkpoint.__class__.from_uri(
+            checkpoint.uri[len("file://") :].replace(
+                str(trial.logdir), str(trial.remote_checkpoint_dir)
+            )
+        )
+    return checkpoint
 
 
 @PublicAPI(stability="beta")
@@ -221,9 +242,16 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        checkpoint = trial.checkpoint.to_air_checkpoint()
+        checkpoint = _convert_dir_checkpoint_to_cloud_checkpoint_if_needed(
+            trial.checkpoint.to_air_checkpoint(), trial
+        )
         best_checkpoints = [
-            (checkpoint.to_air_checkpoint(), checkpoint.metrics)
+            (
+                _convert_dir_checkpoint_to_cloud_checkpoint_if_needed(
+                    checkpoint.to_air_checkpoint(), trial
+                ),
+                checkpoint.metrics,
+            )
             for checkpoint in trial.get_trial_checkpoints()
         ]
 

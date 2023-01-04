@@ -144,6 +144,9 @@ class _TrackedCheckpoint:
         if isinstance(checkpoint_data, ray.ObjectRef):
             checkpoint_data = ray.get(checkpoint_data)
 
+        if isinstance(checkpoint_data, Checkpoint):
+            return checkpoint_data
+
         if isinstance(checkpoint_data, str):
             try:
                 checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
