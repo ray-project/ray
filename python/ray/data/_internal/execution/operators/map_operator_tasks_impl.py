@@ -91,11 +91,8 @@ class MapOperatorTasksImpl:
             return bundle.num_rows()
 
         bundle_rows = get_num_rows(bundle)
-        if bundle_rows == 0:
-            return
-
-        num_rows = get_num_rows(self._block_bundle) + bundle_rows
-        if num_rows > self._min_rows_per_bundle:
+        acc_num_rows = get_num_rows(self._block_bundle) + bundle_rows
+        if acc_num_rows > self._min_rows_per_bundle:
             if self._block_bundle:
                 bundle, self._block_bundle = self._block_bundle, bundle
             self._create_task(bundle)
