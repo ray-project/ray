@@ -59,7 +59,7 @@ class MapOperatorTasksImpl:
         # Execution arguments.
         self._transform_fn = transform_fn
         self._ray_remote_args = (ray_remote_args or {}).copy()
-        self._min_rows_per_batch: Optional[int] = min_rows_per_batch
+        self._min_rows_per_batch: int = min_rows_per_batch or 0
 
         # The temporary block bundle used to accumulate inputs until they meet the
         # min_rows_per_batch requirement.
@@ -76,9 +76,6 @@ class MapOperatorTasksImpl:
         self._obj_store_mem_peak: int = 0
 
     def add_input(self, bundle: RefBundle) -> None:
-        if self._min_rows_per_batch is None:
-            self._create_task(bundle)
-            return
 
         def get_num_rows(bundle: Optional[RefBundle]):
             if bundle is None:
