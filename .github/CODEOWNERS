@@ -70,6 +70,7 @@
 # Ray data.
 /python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @c21
 /python/ray/data/preprocessors/ @clarkzinzow @jiaodong @Yard1 @bveeramani @matthewdeng @amogkam
+/python/ray/data/tests/preprocessors/ @clarkzinzow @jiaodong @Yard1 @bveeramani @matthewdeng @amogkam
 /doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @maxpumperla @c21 @ray-project/ray-docs
 
 # Ray workflows.

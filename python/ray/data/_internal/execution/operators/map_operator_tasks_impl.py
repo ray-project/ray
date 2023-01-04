@@ -60,7 +60,6 @@ class MapOperatorTasksImpl:
         min_rows_per_bundle: Optional[int],
     ):
         # Execution arguments.
-        self._transform_fn = transform_fn
         self._ray_remote_args = (ray_remote_args or {}).copy()
         self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
 
