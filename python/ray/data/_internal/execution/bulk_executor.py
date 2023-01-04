@@ -24,7 +24,7 @@ class BulkExecutor(Executor):
 
     def __init__(self, options: ExecutionOptions):
         super().__init__(options)
-        self._stats = DatasetStats(stages={}, parent=None)
+        self._stats: Optional[DatasetStats] = DatasetStats(stages={}, parent=None)
         self._executed = False
 
     def execute(
@@ -74,8 +74,6 @@ class BulkExecutor(Executor):
         return execute_recursive(dag)
 
     def get_stats(self) -> DatasetStats:
-        if self._stats is None:
-            raise ValueError("Execution stats not available, did execution finish?")
         return self._stats
 
 
