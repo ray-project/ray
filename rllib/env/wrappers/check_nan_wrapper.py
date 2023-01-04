@@ -169,16 +169,18 @@ class CheckNaNWrapper:
         resetted_obs, resetted_infos = self.env.try_reset(
             env_id=env_id, seed=seed, options=options,
         )
+        
         self._last_observations = resetted_obs
 
-        # Check observations.
-        for env_id, all_agent_obs in resetted_obs.items():
-            for agent_id, agent_obs in all_agent_obs.items():
-                self._check_val(
-                    env_id=env_id,
-                    agent_id=agent_id,                                 
-                    observation=agent_obs,        
-                )
+        if resetted_obs:
+            # Check observations.
+            for env_id, all_agent_obs in resetted_obs.items():
+                for agent_id, agent_obs in all_agent_obs.items():
+                    self._check_val(
+                        env_id=env_id,
+                        agent_id=agent_id,                                 
+                        observation=agent_obs,        
+                    )
 
         # Reset is done.
         self._reset = False
