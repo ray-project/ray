@@ -3821,7 +3821,7 @@ py_test(
     name = "examples/documentation/replay_buffer_demo",
     main = "examples/documentation/replay_buffer_demo.py",
     tags = ["team:rllib", "documentation", "no_main"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/documentation/replay_buffer_demo.py"],
 )
 
