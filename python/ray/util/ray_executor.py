@@ -48,8 +48,8 @@ class RayExecutor(Executor):
 
         if max_workers is None:
             @ray.remote
-            def remote_fn(fn, *args, **kwargs):
-                return fn(*args, **kwargs)
+            def remote_fn(fn):
+                return fn()
 
             self.__remote_fn = remote_fn
         else:
@@ -68,11 +68,6 @@ class RayExecutor(Executor):
             self.__actor_pool = ray.util.ActorPool(actors)
 
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
-
-
-    @staticmethod
-    def __actor_fn(fn, *args, **kwargs):
-        return fn.remote(*args, **kwargs)
 
     def submit(self, fn, *args, **kwargs):
         """Submits a callable to be executed with the given arguments.
@@ -94,48 +89,12 @@ class RayExecutor(Executor):
                 result_1 = future_1.result()
         """
         self._check_shutdown_lock()
+        fn_curried = partial(fn, *args, **kwargs)
         if self.__actor_pool:
-            fn_curried = partial(fn, *args, **kwargs)
             self.__actor_pool.submit(lambda a, _: a.actor_function.remote(fn_curried), None)
             oref = self.__actor_pool._index_to_future[self.__actor_pool._next_task_index - 1]
         else:
-            oref = self.__remote_fn.options(name=fn.__name__).remote(fn, *args, **kwargs)
-        future = oref.future()
-        self._futures.append(future)
-        return future
-
-    def submit_actor_function(self, fn, *args, **kwargs):
-        """Submits a callable Actor function (see
-        https://docs.ray.io/en/latest/ray-core/actors.html) to be executed with
-        the given arguments.
-
-        Schedules the callable to be executed as `fn(*args, **kwargs)` and returns
-        a Future instance representing the execution of the callable.
-
-        Returns:
-            A Future representing the given call.
-
-
-        Usage example:
-
-        .. code-block:: python
-
-            @ray.remote
-            class Actor0:
-                def __init__(self, name):
-                    self.name = name
-
-                def actor_function(self, arg):
-                    return f"{self.name}-Actor-{arg}"
-
-            a = Actor0.options(name="A", get_if_exists=True).remote("A")
-            with RayExecutor() as ex:
-                future = ex.submit_actor_function(a.actor_function, 0)
-                result = future.result()
-
-        """
-        self._check_shutdown_lock()
-        oref = self.__actor_fn(fn, *args, **kwargs)
+            oref = self.__remote_fn.options(name=fn.__name__).remote(fn_curried)
         future = oref.future()
         self._futures.append(future)
         return future
@@ -172,51 +131,10 @@ class RayExecutor(Executor):
         self._check_shutdown_lock()
         results_list = []
         for chunk in self._get_chunks(*iterables, chunksize=chunksize):
-            results = self._map(self.submit, fn, chunk, timeout)
-            results_list.append(results)
-        return itertools.chain(*results_list)
-
-    def map_actor_function(self, fn, *iterables, timeout=None, chunksize=1):
-        """Returns an iterator equivalent to `map(fn, iter)`.
-
-        Args:
-            fn: A callable Actor function (see
-                https://docs.ray.io/en/latest/ray-core/actors.html) that will take
-                as many arguments as there are passed iterables.
-            timeout: The maximum number of seconds to wait. If None, then there
-                is no limit on the wait time.
-            chunksize: The size of the chunks the iterable will be broken into
-                before being passed to a child process.
-
-        Returns:
-            An iterator equivalent to: `map(func, *iterables)` but the calls may
-            be evaluated out-of-order.
-
-        Raises:
-            TimeoutError: If the entire result iterator could not be generated
-                before the given timeout.
-            Exception: If `fn(*args)` raises for any values.
-
-        Usage example:
-
-        .. code-block:: python
-
-            @ray.remote
-            class Actor0:
-                def __init__(self, name):
-                    self.name = name
-
-                def actor_function(self, arg):
-                    return f"{self.name}-Actor-{arg}"
-
-            a = Actor0.options(name="A", get_if_exists=True).remote("A")
-            with RayExecutor(address=call_ray_start) as ex:
-                futures = ex.map_actor_function(a.actor_function, [0, 0, 0])
-                results = [future.result() for future in futures]
-        """
-        results_list = []
-        for chunk in self._get_chunks(*iterables, chunksize=chunksize):
-            results = self._map(self.submit_actor_function, fn, chunk, timeout=None)
+            if self.__actor_pool:
+                results = self.__actor_pool.map(lambda a, v: a.actor_function.remote(partial(fn, *v)), chunk)
+            else:
+                results = self._map(self.submit, fn, chunk, timeout)
             results_list.append(results)
         return itertools.chain(*results_list)
 
