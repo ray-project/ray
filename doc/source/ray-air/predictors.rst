@@ -116,33 +116,6 @@ Text
 
 Coming soon!
 
-.. _pipelined-prediction:
-
-Lazy/Pipelined Prediction (experimental)
-----------------------------------------
-
-If you have a large dataset but not a lot of available memory, you can use the
-:meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
-
-Unlike :py:meth:`predict` which will load the entire data into memory, ``predict_pipelined`` will create a
-:class:`DatasetPipeline` object, which will *lazily* load the data and perform inference on a smaller batch of data at a time.
-
-The lazy loading of the data will allow you to operate on datasets much greater than your available memory.
-Execution can be triggered by pulling from the pipeline, as shown in the example below.
-
-
-.. literalinclude:: doc_code/predictors.py
-    :language: python
-    :start-after: __pipelined_prediction_start__
-    :end-before: __pipelined_prediction_end__
-
-
-Online Inference
-----------------
-
-Check out the :ref:`air-serving-guide` for details on how to perform online inference with AIR.
-
-
 Developer Guide: Implementing your own Predictor
 ------------------------------------------------
 
@@ -256,3 +229,29 @@ Built-in Predictors
 
 For more predictor examples, read the source code of built-in predictors like
 :class:`~ray.train.torch.TorchPredictor`, :class:`~ray.train.xgboost.XGBoostPredictor`, and :class:`~ray.train.sklearn.SklearnPredictor`.
+
+.. _pipelined-prediction:
+
+Lazy/Pipelined Prediction (experimental)
+----------------------------------------
+
+If you have a large dataset but not a lot of available memory, you can use the
+:meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
+
+Unlike :py:meth:`predict` which will load the entire data into memory, ``predict_pipelined`` will create a
+:class:`DatasetPipeline` object, which will *lazily* load the data and perform inference on a smaller batch of data at a time.
+
+The lazy loading of the data will allow you to operate on datasets much greater than your available memory.
+Execution can be triggered by pulling from the pipeline, as shown in the example below.
+
+
+.. literalinclude:: doc_code/predictors.py
+    :language: python
+    :start-after: __pipelined_prediction_start__
+    :end-before: __pipelined_prediction_end__
+
+
+Online Inference
+----------------
+
+Check out the :ref:`air-serving-guide` for details on how to perform online inference with AIR.
