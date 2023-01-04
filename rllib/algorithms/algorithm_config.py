@@ -285,7 +285,7 @@ class AlgorithmConfig:
         self.clip_actions = False
         self.disable_env_checking = False
         # If environment should be checked for NaNs/Infs.
-        self.check_nan_env = False,
+        self.check_nan_env = (False,)
         self.check_nan_env_config = {
             # If an NaN/Inf should raise an exception.
             "raise_exception": False,
@@ -1241,7 +1241,7 @@ class AlgorithmConfig:
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         remote_worker_envs: Optional[bool] = NotProvided,
-        remote_env_batch_wait_ms: Optional[float] =  NotProvided,
+        remote_env_batch_wait_ms: Optional[float] = NotProvided,
         validate_workers_after_construction: Optional[bool] = NotProvided,
         ignore_worker_failures: Optional[bool] = NotProvided,
         recreate_failed_workers: Optional[bool] = NotProvided,

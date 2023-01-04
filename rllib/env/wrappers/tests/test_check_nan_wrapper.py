@@ -1,5 +1,4 @@
 import unittest
-import logging
 
 import gymnasium as gym
 import numpy as np
@@ -8,14 +7,16 @@ from ray import air, tune
 from ray.rllib.env.base_env import convert_to_base_env
 from ray.rllib.env.wrappers.check_nan_wrapper import CheckNaNWrapper
 
+
 class TestNaNEnv(gym.Env):
-    
     def __init__(self, render_mode=None, check_inf=False):
         self.check_inf = check_inf
         self.action_space = gym.spaces.Discrete(10)
-        self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(10,), dtype=np.float32)
+        self.observation_space = gym.spaces.Box(
+            -np.inf, np.inf, shape=(10,), dtype=np.float32
+        )
         self.counter = 0
-        self.max_episode_steps=1000
+        self.max_episode_steps = 1000
 
     def step(self, action):
         self.counter += 1
@@ -23,22 +24,23 @@ class TestNaNEnv(gym.Env):
         reward = np.sum(obs) * action
         if np.random.rand() > 0.0 and self.counter > 20:
             if self.check_inf:
-                obs[2] = np.inf 
+                obs[2] = np.inf
             else:
                 obs[2] = np.nan
             print("*****************************************")
             print("=========================================")
             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             print(f"Now its {obs[2]}.")
-        terminated = self.counter == 100                   
+        terminated = self.counter == 100
         return obs.astype(np.float32), reward, terminated, False, {}
-    
+
     def reset(self, *, seed=None, options=None):
 
         obs = np.random.rand(10)
         self.counter = 0
 
         return obs.astype(np.float32), {}
+
 
 class TestCheckNaNWrapper(unittest.TestCase):
     @classmethod
@@ -62,20 +64,20 @@ class TestCheckNaNWrapper(unittest.TestCase):
 
         obs, infos = wrapped_env.try_reset()
 
-        def run(iters):        
-            for i in range(iters):            
+        def run(iters):
+            for i in range(iters):
                 action = np.random.randint(0, 10)
-                action_to_send = {0: {"agent0": action}}            
+                action_to_send = {0: {"agent0": action}}
                 wrapped_env.send_actions(action_to_send)
                 (
-                    obs, 
-                    rewards, 
-                    terminateds, 
-                    truncateds, 
-                    infos, 
-                    offpolicy_actions
+                    obs,
+                    rewards,
+                    terminateds,
+                    truncateds,
+                    infos,
+                    offpolicy_actions,
                 ) = wrapped_env.poll()
-        
+
         self.assertLogs("check_nan_wrapper", level="WARNING")
 
     def test_check_nan_wrapper_inf(self):
@@ -91,20 +93,20 @@ class TestCheckNaNWrapper(unittest.TestCase):
 
         obs, infos = wrapped_env.try_reset()
 
-        def run(iters):        
-            for i in range(iters):            
+        def run(iters):
+            for i in range(iters):
                 action = np.random.randint(0, 10)
-                action_to_send = {0: {"agent0": action}}            
+                action_to_send = {0: {"agent0": action}}
                 wrapped_env.send_actions(action_to_send)
                 (
-                    obs, 
-                    rewards, 
-                    terminateds, 
-                    truncateds, 
-                    infos, 
-                    offpolicy_actions
+                    obs,
+                    rewards,
+                    terminateds,
+                    truncateds,
+                    infos,
+                    offpolicy_actions,
                 ) = wrapped_env.poll()
-        
+
         self.assertLogs("check_nan_wrapper", level="WARNING")
 
     def test_check_nan_wrapper_exception(self):
@@ -120,30 +122,32 @@ class TestCheckNaNWrapper(unittest.TestCase):
 
         obs, infos = wrapped_env.try_reset()
 
-        def run(iters):        
-            for i in range(iters):            
+        def run(iters):
+            for i in range(iters):
                 action = np.random.randint(0, 10)
-                action_to_send = {0: {"agent0": action}}            
+                action_to_send = {0: {"agent0": action}}
                 wrapped_env.send_actions(action_to_send)
                 (
-                    obs, 
-                    rewards, 
-                    terminateds, 
-                    truncateds, 
-                    infos, 
-                    offpolicy_actions
+                    obs,
+                    rewards,
+                    terminateds,
+                    truncateds,
+                    infos,
+                    offpolicy_actions,
                 ) = wrapped_env.poll()
 
         self.assertRaises(ValueError, run, iters=100)
-    
+
     def test_check_nan_wrapper_with_tune(self):
         """Regression test.
-        
+
         Checks if the Wrapper runs smoothly with RLlib algorithms.
         """
         tune.Tuner(
             "PPO",
-            run_config=air.RunConfig(stop={"num_env_steps_sampled": 200},),
+            run_config=air.RunConfig(
+                stop={"num_env_steps_sampled": 200},
+            ),
             param_space={
                 "env": TestNaNEnv,
                 "check_nan_env": True,
@@ -161,6 +165,7 @@ class TestCheckNaNWrapper(unittest.TestCase):
         ).fit()
 
         self.assertLogs("check_nan_env", level="WARNING")
+
 
 if __name__ == "__main__":
     import sys

@@ -8,8 +8,8 @@ from ray.rllib.utils.typing import EnvID, MultiEnvDict
 
 logger = logging.getLogger(__name__)
 
-class CheckNaNWrapper:
 
+class CheckNaNWrapper:
     def __init__(
         self,
         env: BaseEnv,
@@ -21,7 +21,7 @@ class CheckNaNWrapper:
 
         # Whether the wrapper should raise an exception when finding
         # an NaN or Inf value.
-        self.raise_exception: bool = config.get("raise_exception", False)    
+        self.raise_exception: bool = config.get("raise_exception", False)
         # Whether it should be checked also for Inf values. Otherwise only NaN
         # values are checked for.
         self.check_inf: bool = config.get("check_inf", True)
@@ -37,11 +37,11 @@ class CheckNaNWrapper:
 
     def __getattr__(self, name):
         """Uses all attributes of the wrapped environment.
-        
-        This ensures that all attributes of the BaseEnv are available 
+
+        This ensures that all attributes of the BaseEnv are available
         upon calling.
 
-        Args: 
+        Args:
             name: Name of the attribute.
 
         Returns:
@@ -62,7 +62,7 @@ class CheckNaNWrapper:
         MultiEnvDict,
     ]:
         """Checks for Nan and Inf values in observations and rewards.
-    
+
         The `poll()` method of the BaseEnv is wrapped here.
 
         Returns:
@@ -95,14 +95,14 @@ class CheckNaNWrapper:
             for agent_id, agent_obs in all_agent_obs.items():
                 self._check_val(
                     env_id=env_id,
-                    agent_id=agent_id,                                 
-                    observation=agent_obs,        
+                    agent_id=agent_id,
+                    observation=agent_obs,
                 )
         # Check rewards.
         for env_id, all_agent_rewards in rewards.items():
             for agent_id, agent_reward in all_agent_rewards.items():
                 self._check_val(
-                    env_id = env_id,
+                    env_id=env_id,
                     agent_id=agent_id,
                     reward=agent_reward,
                 )
@@ -122,8 +122,8 @@ class CheckNaNWrapper:
         )
 
     def send_actions(self, action_dict: MultiEnvDict) -> None:
-        """Checking for NaNs and Inf in actions. 
-        
+        """Checking for NaNs and Inf in actions.
+
         The `send_actions()` of the BaseEnv is wrapped here.
 
         Args:
@@ -151,7 +151,7 @@ class CheckNaNWrapper:
         options: Optional[dict] = None,
     ) -> Tuple[MultiEnvDict, MultiEnvDict]:
         """Checks values from the environment at reset.
-        
+
         The `try_reset()` of the BaseEnv is wrapped here.
 
         Args:
@@ -162,24 +162,26 @@ class CheckNaNWrapper:
                 integer, the PRNG will be reset even if it already exists.
             options: An options dict to be passed to the sub-environment(s) when
                 resetting it.
-        
+
         Returns:
             The wrapped environment's reset observations and infos.
         """
         resetted_obs, resetted_infos = self.env.try_reset(
-            env_id=env_id, seed=seed, options=options,
+            env_id=env_id,
+            seed=seed,
+            options=options,
         )
-        
+
         self._last_observations = resetted_obs
 
-        if resetted_obs:
+        if isinstance(resetted_obs, dict):
             # Check observations.
             for env_id, all_agent_obs in resetted_obs.items():
                 for agent_id, agent_obs in all_agent_obs.items():
                     self._check_val(
                         env_id=env_id,
-                        agent_id=agent_id,                                 
-                        observation=agent_obs,        
+                        agent_id=agent_id,
+                        observation=agent_obs,
                     )
 
         # Reset is done.
@@ -188,10 +190,10 @@ class CheckNaNWrapper:
         # Finally return the BaseEnv's resetted observations and infos.
         return resetted_obs, resetted_infos
 
-    def _check_val(self, env_id, agent_id,  **kwargs) -> None:
+    def _check_val(self, env_id, agent_id, **kwargs) -> None:
         """Checks values from the environment for NaN or Inf.
-        
-        Values get assigned to their corresponding names and a 
+
+        Values get assigned to their corresponding names and a
         message is printed that includes also the last intact action.
 
         Args:
@@ -199,8 +201,8 @@ class CheckNaNWrapper:
             agent_id: The agent's ID, if applicable.
 
         Returns:
-            A message containing information about the detected NaN/Inf values 
-            or None, if all values are proper numbers.                        
+            A message containing information about the detected NaN/Inf values
+            or None, if all values are proper numbers.
         """
 
         # Only execute value checking if False.
@@ -209,15 +211,9 @@ class CheckNaNWrapper:
 
         found = []
         for name, val in kwargs.items():
-            has_nan = np.any(
-                np.isnan(
-                    flatten_to_single_ndarray(val)
-                )
-            )
+            has_nan = np.any(np.isnan(flatten_to_single_ndarray(val)))
             has_inf = self.check_inf and np.any(
-                np.isinf(
-                    flatten_to_single_ndarray(val)
-                )
+                np.isinf(flatten_to_single_ndarray(val))
             )
             if has_inf:
                 found.append((name, "inf"))
@@ -226,7 +222,11 @@ class CheckNaNWrapper:
 
         if found:
             self._user_warned = True
-            msg = "" if len(found) == 0 else "Sub-Env '{}', agent '{}': ".format(env_id, agent_id)
+            msg = (
+                ""
+                if len(found) == 0
+                else "Sub-Env '{}', agent '{}': ".format(env_id, agent_id)
+            )
             for i, (name, val) in enumerate(found):
                 msg += "found '{}' in '{}'".format(val, name)
                 if i != len(found) - 1:
@@ -235,7 +235,8 @@ class CheckNaNWrapper:
             msg += ".\r\nOriginated from the "
             if self._reset:
                 # At reset no last action was recorded.
-                msg += "environment (at reset). Environment returned: \r\n'observation'={}.".format(
+                msg += "environment (at reset). "
+                msg += "Environment returned: \r\n'observation'={}.".format(
                     self._last_observations[env_id]
                 )
             elif found[0][0] == "observation":
@@ -245,10 +246,12 @@ class CheckNaNWrapper:
                 msg += "\r\nStep result was: \r\n'observation'={}".format(
                     self._last_observations[env_id]
                 )
-            else: 
-                msg += "Policy model. Last given value was: \r\n'observation'={}.".format(
-                    self._last_observations[env_id]
-                )                
+            else:
+                msg += (
+                    "Policy model. Last given value was: \r\n'observation'={}.".format(
+                        self._last_observations[env_id]
+                    )
+                )
                 msg += "\r\nResult was: \r\n'action'={}".format(
                     self._last_action[env_id]
                 )
