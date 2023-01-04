@@ -1313,7 +1313,11 @@ class DeploymentState:
             to_add = max(delta_replicas - stopping_replicas, 0)
             if to_add > 0:
                 # Exponential backoff
-                if self._replica_constructor_retry_counter > 0:
+                failed_to_start_threshold = min(
+                    MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+                    self._target_state.num_replicas * 3,
+                )
+                if self._replica_constructor_retry_counter > failed_to_start_threshold:
                     # Wait 1, 2, 4, ... seconds before consecutive retries
                     if time.time() - self._last_retry < self._backoff_time:
                         return replicas_stopped
@@ -1423,9 +1427,9 @@ class DeploymentState:
                     name=self._name,
                     status=DeploymentStatus.UNHEALTHY,
                     message=(
-                        "The Deployment constructor failed "
-                        f"{failed_to_start_count} times in a row. See "
-                        "logs for details."
+                        f"The Deployment constructor failed {failed_to_start_count}"
+                        f"times in a row. See logs for details. Retrying after "
+                        f"{self._backoff_time} seconds."
                     ),
                 )
                 return False
