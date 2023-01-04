@@ -14,7 +14,7 @@ from ray._private.test_utils import wait_for_condition
 
 
 def _get_blocks(bundle: RefBundle, output_list: List[Block]):
-    for (block, _) in bundle.blocks:
+    for block, _ in bundle.blocks:
         output_list.append(ray.get(block))
 
 
