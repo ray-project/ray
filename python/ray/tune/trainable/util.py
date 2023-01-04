@@ -185,6 +185,15 @@ class TrainableUtil:
         )
         return chkpt_df
 
+    @staticmethod
+    def get_remote_storage_path(
+        local_path: str, logdir: str, remote_checkpoint_dir: str
+    ) -> str:
+        """Converts a ``local_path`` to be based off of
+        ``remote_checkpoint_dir`` instead of ``logdir``."""
+        rel_local_path = os.path.relpath(local_path, logdir)
+        return os.path.join(remote_checkpoint_dir, rel_local_path)
+
 
 @DeveloperAPI
 class PlacementGroupUtil:
