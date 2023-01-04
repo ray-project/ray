@@ -20,10 +20,12 @@ class RayExecutor(Executor):
         a Ray cluster.
 
         Args:
-            max_workers: The maximum number of Ray workers to distribute the
-                         tasks over. This is achieved by creating a fixed pool
-                         of Actors
-                         (see https://docs.ray.io/en/latest/ray-core/actors/actor-utils.html#actor-pool).
+            max_workers:
+                The maximum number of Ray workers to distribute the
+                tasks over. This is achieved by creating a fixed pool
+                of Actors (see
+                https://docs.ray.io/en/latest/ray-core/actors/
+                actor-utils.html#actor-pool).
 
             All additional keyword arguments are passed to ray.init()
             (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).

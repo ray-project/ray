@@ -1,5 +1,4 @@
 import os
-import ray
 import sys
 import pytest
 from ray.util.ray_executor import RayExecutor
@@ -28,7 +27,7 @@ def test_remote_function_runs_on_local_instance_with_map():
             assert result == 10_000
 
 
-def test_remote_function_runs_on_local_instance_with_map_with_actor_pool_using_max_workers():
+def test_remote_function_map_using_max_workers():
     with RayExecutor(max_workers=3) as ex:
         futures_iter = ex.map(lambda x: x * x, [100, 100, 100])
         for result in futures_iter:
@@ -59,7 +58,7 @@ def test_map_times_out():
             i1.__next__()
 
 
-def test_remote_function_runs_multiple_tasks_on_local_instance_with_actor_pool_using_max_workers():
+def test_remote_function_runs_multiple_tasks_using_max_workers():
     with RayExecutor(max_workers=2) as ex:
         result0 = ex.submit(lambda x: x * x, 100).result()
         result1 = ex.submit(lambda x: x * x, 100).result()
