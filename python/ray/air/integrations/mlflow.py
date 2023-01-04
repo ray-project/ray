@@ -66,21 +66,24 @@ def setup_mlflow(
             key.
 
     Keyword Args:
-        tracking_uri: The tracking URI for the MLflow tracking
-            server.
+        tracking_uri: The tracking URI for MLflow tracking. If using
+            Tune in a multi-node setting, make sure to use a remote server for
+            tracking.
         registry_uri: The registry URI for the MLflow model registry.
-        experiment_id: The id of an already existing MLflow
-            experiment to use for logging. If None is passed in
-            here and the MFLOW_EXPERIMENT_ID is not set, or the
-            experiment with this id does not exist,
-            ``experiment_name`` will be used instead. This argument takes
-            precedence over ``experiment_name`` if both are passed in.
-        experiment_name: The experiment name to use for logging.
-            If None is passed in here, the MLFLOW_EXPERIMENT_NAME environment variable
-            is used to determine the experiment name.
-            If the experiment with the name already exists with MLflow,
-            it will be reused.
-        tracking_token: Tracking token used to authenticate with MLflow.
+        experiment_id: The id of an already created MLflow experiment.
+            All logs from all trials in ``tune.Tuner()`` will be reported to this
+            experiment. If this is not provided or the experiment with this
+            id does not exist, you must provide an``experiment_name``. This
+            parameter takes precedence over ``experiment_name``.
+        experiment_name: The name of an already existing MLflow
+            experiment. All logs from all trials in ``tune.Tuner()`` will be
+            reported to this experiment. If this is not provided, you must
+            provide a valid ``experiment_id``.
+        tracking_token: A token to use for HTTP authentication when
+            logging to a remote tracking server. This is useful when you
+            want to log to a Databricks server, for example. This value will
+            be used to set the MLFLOW_TRACKING_TOKEN environment variable on
+            all the remote training processes.
         tags: Tags to set for the new run.
 
     Example:
@@ -109,6 +112,21 @@ def setup_mlflow(
                 mlflow = setup_mflow()
                 # ...
                 mlflow.log_metric(key="loss", val=0.123, step=0)
+
+
+        You can also use MlFlow's autologging feature if using a training
+        framework like Pytorch Lightning, XGBoost, etc. More information can be
+        found here
+        (https://mlflow.org/docs/latest/tracking.html#automatic-logging).
+
+        .. code-block:: python
+
+            from ray.tune.integration.mlflow import setup_mlflow
+
+            def train_fn(config):
+                mlflow = setup_mlflow(config)
+                mlflow.autolog()
+                xgboost_results = xgb.train(config, ...)
 
     """
     if not mlflow:
