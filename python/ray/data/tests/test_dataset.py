@@ -4150,6 +4150,13 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=10)
+    ds = ds.map_batches(lambda x: [])
+    ds = ds.map_batches(lambda x: x)
+    assert ds.num_blocks() == 10, ds
+
+
 def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
     xs = [x % 3 for x in list(range(100))]
 
