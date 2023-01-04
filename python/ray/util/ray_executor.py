@@ -1,9 +1,11 @@
 import itertools
 import time
 from concurrent.futures import Executor
+from functools import partial
 
 import ray
 from ray.util.annotations import PublicAPI
+
 
 
 @PublicAPI(stability="alpha")
@@ -14,37 +16,59 @@ class RayExecutor(Executor):
     threads.
     """
 
-    _shutdown_lock = False
-    """A dictionary of futures and associated Ray object references generated
-    by the current instance of RayExecutor"""
-    _futures = {}
-
-    def __init__(self, **kwargs):
+    def __init__(self, max_workers=None, **kwargs):
         """Initialises a new RayExecutor instance which distributes tasks over
         a Ray cluster.
 
         Args:
-            All keyword arguments are passed to ray.init() (see
-            https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
+            max_workers: The maximum number of Ray workers to distribute the
+                         tasks over. This is achieved by creating a fixed pool
+                         of Actors
+                         (see https://docs.ray.io/en/latest/ray-core/actors/actor-utils.html#actor-pool).
+
+            All additional keyword arguments are passed to ray.init()
+            (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
+
             For example, this will connect to a cluster at the specified address:
             .. code-block:: python
 
                 RayExecutor(address='192.168.0.123:25001')
 
             Note: excluding an address will initialise a local Ray cluster.
-
         """
+        self._shutdown_lock = False
+        self._futures = []
+        self.__actor_pool = None
+        self.__remote_fn = None
+        self.context = None
 
         """
         The following is necessary because `@ray.remote` is only available at runtime.
         """
 
-        @ray.remote
-        def remote_fn(fn, *args, **kwargs):
-            return fn(*args, **kwargs)
+        if max_workers is None:
+            @ray.remote
+            def remote_fn(fn, *args, **kwargs):
+                return fn(*args, **kwargs)
 
-        self.__remote_fn = remote_fn
+            self.__remote_fn = remote_fn
+        else:
+            if max_workers < 1:
+                raise ValueError("max_workers must be >= 1")
+
+            @ray.remote
+            class ExecutorActor:
+                def __init__(self):
+                    pass
+
+                def actor_function(self, fn):
+                    return fn()
+
+            actors = [ExecutorActor.options(name=f"actor-{i}").remote() for i in range(max_workers)]
+            self.__actor_pool = ray.util.ActorPool(actors)
+
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
+
 
     @staticmethod
     def __actor_fn(fn, *args, **kwargs):
@@ -64,13 +88,20 @@ class RayExecutor(Executor):
         .. code-block:: python
 
             with RayExecutor() as ex:
-                future = ex.submit(lambda x: x * x, 100)
-                result = future.result()
+                future_0 = ex.submit(lambda x: x * x, 100)
+                future_1 = ex.submit(lambda x: x + x, 100)
+                result_0 = future_0.result()
+                result_1 = future_1.result()
         """
         self._check_shutdown_lock()
-        oref = self.__remote_fn.options(name=fn.__name__).remote(fn, *args, **kwargs)
+        if self.__actor_pool:
+            fn_curried = partial(fn, *args, **kwargs)
+            self.__actor_pool.submit(lambda a, _: a.actor_function.remote(fn_curried), None)
+            oref = self.__actor_pool._index_to_future[self.__actor_pool._next_task_index - 1]
+        else:
+            oref = self.__remote_fn.options(name=fn.__name__).remote(fn, *args, **kwargs)
         future = oref.future()
-        self._futures[oref] = future
+        self._futures.append(future)
         return future
 
     def submit_actor_function(self, fn, *args, **kwargs):
@@ -106,7 +137,7 @@ class RayExecutor(Executor):
         self._check_shutdown_lock()
         oref = self.__actor_fn(fn, *args, **kwargs)
         future = oref.future()
-        self._futures[oref] = future
+        self._futures.append(future)
         return future
 
     def map(self, fn, *iterables, timeout=None, chunksize=1):
@@ -262,11 +293,11 @@ class RayExecutor(Executor):
         self._shutdown_lock = True
 
         if cancel_futures:
-            for future in self._futures.values():
+            for future in self._futures:
                 _ = future.cancel()
 
         if wait:
-            for future in self._futures.values():
+            for future in self._futures:
                 if future.running():
                     _ = future.result()
 

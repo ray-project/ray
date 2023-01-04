@@ -50,6 +50,11 @@ def test_map_times_out():
         with pytest.raises(TimeoutError):
             i1.__next__()
 
+def test_remote_function_runs_multiple_tasks_on_local_instance_with_actor_pool_using_max_workers():
+    with RayExecutor(max_workers=2) as ex:
+        result0 = ex.submit(lambda x: x * x, 100).result()
+        result1 = ex.submit(lambda x: x * x, 100).result()
+        assert result0 == result1 == 10_000
 
 @ray.remote
 class ActorTest0:
