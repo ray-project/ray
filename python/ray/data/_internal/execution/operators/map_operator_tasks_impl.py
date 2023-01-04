@@ -94,8 +94,11 @@ class MapOperatorTasksImpl:
         acc_num_rows = get_num_rows(self._block_bundle) + bundle_rows
         if acc_num_rows > self._min_rows_per_bundle:
             if self._block_bundle:
-                bundle, self._block_bundle = self._block_bundle, bundle
-            self._create_task(bundle)
+                if get_num_rows(self._block_bundle) > 0:
+                    self._create_task(self._block_bundle)
+                self._block_bundle = bundle
+            else:
+                self._create_task(bundle)
         else:
             # TODO(ekl) add a warning if we merge 10+ blocks per bundle.
             self._block_bundle = merge_ref_bundles(self._block_bundle, bundle)
