@@ -2,6 +2,7 @@ import enum
 import os
 import pickle
 import urllib
+import warnings
 
 import numpy as np
 from numbers import Number
@@ -57,7 +58,11 @@ WANDB_PROCESS_RUN_INFO_HOOK = "WANDB_PROCESS_RUN_INFO_HOOK"
 
 @PublicAPI(stability="alpha")
 def setup_wandb(
-    config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs
+    config: Optional[Dict] = None,
+    api_key: Optional[str] = None,
+    api_key_file: Optional[str] = None,
+    rank_zero_only: bool = True,
+    **kwargs,
 ) -> Union[Run, RunDisabled]:
     """Set up a Weights & Biases session.
 
@@ -76,23 +81,19 @@ def setup_wandb(
     worker.
 
     The ``config`` argument will be passed to Weights and Biases and will be logged
-    as the run configuration. If wandb-specific settings are found, they will
-    be used to initialize the session. These settings can be
+    as the run configuration.
 
-    - api_key_file: Path to locally available file containing a W&B API key
-    - api_key: API key to authenticate with W&B
-
-    If no API information is found in the config, wandb will try to authenticate
+    If no API key or key file are passed, wandb will try to authenticate
     using locally stored credentials, created for instance by running ``wandb login``.
 
-    All other keys found in the ``wandb`` config parameter will be passed to
-    ``wandb.init()``. If the same keys are present in multiple locations, the
-    ``kwargs`` passed to ``setup_wandb()`` will take precedence over those passed
-    as config keys.
+    Keyword arguments passed to ``setup_wandb()`` will be passed to
+    ``wandb.init()`` and take precedence over any potential default settings.
 
     Args:
-        config: Configuration dict to be logged to weights and biases. Can contain
+        config: Configuration dict to be logged to Weights and Biases. Can contain
             arguments for ``wandb.init()`` as well as authentication information.
+        api_key: API key to use for authentication with Weights and Biases.
+        api_key_file: File pointing to API key for with Weights and Biases.
         rank_zero_only: If True, will return an initialized session only for the
             rank 0 worker in distributed training. If False, will initialize a
             session for all workers.
@@ -130,20 +131,26 @@ def setup_wandb(
         default_trial_name = None
         default_experiment_name = None
 
-    default_kwargs = {
+    # Default init kwargs
+    wandb_init_kwargs = {
         "trial_id": kwargs.get("trial_id") or default_trial_id,
         "trial_name": kwargs.get("trial_name") or default_trial_name,
         "group": kwargs.get("group") or default_experiment_name,
     }
-    default_kwargs.update(kwargs)
+    # Passed kwargs take precedence over default kwargs
+    wandb_init_kwargs.update(kwargs)
 
-    return _setup_wandb(config=config, **default_kwargs)
+    return _setup_wandb(
+        config=config, api_key=api_key, api_key_file=api_key_file, **wandb_init_kwargs
+    )
 
 
 def _setup_wandb(
     trial_id: str,
     trial_name: str,
     config: Optional[Dict] = None,
+    api_key: Optional[str] = None,
+    api_key_file: Optional[str] = None,
     _wandb: Optional[ModuleType] = None,
     **kwargs,
 ) -> Union[Run, RunDisabled]:
@@ -151,12 +158,21 @@ def _setup_wandb(
 
     wandb_config = _config.pop("wandb", {}).copy()
 
+    # Deprecate: 2.4
+    if wandb_config:
+        warnings.warn(
+            "Passing a `wandb` configuration key is deprecated and will raise an "
+            "error in the future. Please pass the actual arguments to `setup_wandb()` "
+            "instead.",
+            DeprecationWarning,
+        )
+
     # If key file is specified, set
-    api_key_file = wandb_config.pop("api_key_file", None)
+    api_key_file = api_key_file or wandb_config.pop("api_key_file", None)
     if api_key_file:
         api_key_file = os.path.expanduser(api_key_file)
 
-    _set_api_key(api_key_file, wandb_config.pop("api_key", None))
+    _set_api_key(api_key_file, api_key or wandb_config.pop("api_key", None))
     wandb_config["project"] = _get_wandb_project(wandb_config.get("project"))
     wandb_config["group"] = (
         os.environ.get(WANDB_GROUP_ENV_VAR)
