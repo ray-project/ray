@@ -136,7 +136,7 @@ class DataParallelIngestSpec:
             conf = self._config(key)
             # If globally shuffling, don't randomize unless using the stream API.
             local_window = 1 > conf.max_object_store_memory_fraction >= 0
-            if conf.randomize_block_order and (not conf.global_shuffle or local_window):
+            if conf.shuffle > 0 or (conf.shuffle == -1 and local_window):
                 datasets[key] = dataset.randomize_block_order()
 
         if prep:
@@ -222,18 +222,21 @@ class DataParallelIngestSpec:
                 # Always re-randomize each window; this doesn't help with reducing
                 # cluster hot-spots since we already randomized the based blocks, but
                 # can help with improving randomness in combination with local shuffle.
-                if config.randomize_block_order and not config.global_shuffle:
+                if config.shuffle > 0:
                     # TODO(swang): Should randomize block order across the
                     # original dataset, not the window.
                     dataset = dataset.randomize_block_order_each_window()
 
-            if config.global_shuffle:
+            if config.shuffle == -1:
                 if config.max_object_store_memory_fraction >= 0:
                     dataset = dataset.random_shuffle_each_window()
                 else:
                     dataset = dataset.random_shuffle()
 
-            if config.split:
+            if config.max_object_store_memory_fraction == -1:
+                dataset = dataset.fully_executed()
+
+            if config.split and len(training_worker_handles) > 1:
                 dataset_splits = dataset.split(
                     len(training_worker_handles),
                     equal=True,

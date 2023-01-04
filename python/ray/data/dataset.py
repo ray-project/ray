@@ -1068,6 +1068,10 @@ class Dataset(Generic[T]):
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["Dataset[T]"]:
+        # NOTE:
+        # - don't split if n == 1
+        # - locality_hints reverses the dataset
+        # - check that locality hints are unique
         """Split the dataset into ``n`` disjoint pieces.
 
         This returns a list of sub-datasets that can be passed to Ray tasks

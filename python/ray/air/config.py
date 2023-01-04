@@ -312,16 +312,8 @@ class DatasetConfig:
             that the absolute memory capacity used is based on the object store
             capacity at invocation time; this does not currently cover
             autoscaling cases where the size of the cluster may change.
-        global_shuffle: Whether to enable global shuffle (per pipeline window
-            in streaming mode). Note that this is an expensive all-to-all operation,
-            and most likely you want to use local shuffle instead.
-            See https://docs.ray.io/en/master/data/faq.html and
-            https://docs.ray.io/en/master/ray-air/check-ingest.html.
-            False by default.
-        randomize_block_order: Whether to randomize the iteration order over blocks.
-            The main purpose of this is to prevent data fetching hotspots in the
-            cluster when running many parallel workers / trials on the same data.
-            We recommend enabling it always. True by default.
+        shuffle: TODO
+        shuffle_seed: TODO
     """
 
     # TODO(ekl) could we unify DataParallelTrainer and Trainer so the same data ingest
@@ -332,8 +324,8 @@ class DatasetConfig:
     required: Optional[bool] = None
     transform: Optional[bool] = None
     max_object_store_memory_fraction: Optional[float] = None
-    global_shuffle: Optional[bool] = None
-    randomize_block_order: Optional[bool] = None
+    shuffle: Optional[int] = None
+    shuffle_seed: Optional[int] = None
     per_epoch_preprocessor: Optional["Preprocessor"] = None
 
     def __repr__(self):
@@ -350,13 +342,10 @@ class DatasetConfig:
             fit=self.fit or False,
             split=self.split or False,
             required=self.required or False,
-            max_object_store_memory_fraction=self.max_object_store_memory_fraction
-            or -1,
-            global_shuffle=self.global_shuffle or False,
+            max_object_store_memory_fraction=self.max_object_store_memory_fraction if self.max_object_store_memory_fraction is not None else -1,
+            shuffle=self.shuffle if self.shuffle is not None else 1,
+            shuffle_seed=self.shuffle_seed or None,
             transform=self.transform if self.transform is not None else True,
-            randomize_block_order=self.randomize_block_order
-            if self.randomize_block_order is not None
-            else True,
             per_epoch_preprocessor=self.per_epoch_preprocessor
             if self.per_epoch_preprocessor is not None
             else None,
@@ -433,12 +422,8 @@ class DatasetConfig:
             max_object_store_memory_fraction=self.max_object_store_memory_fraction
             if other.max_object_store_memory_fraction is None
             else other.max_object_store_memory_fraction,
-            global_shuffle=self.global_shuffle
-            if other.global_shuffle is None
-            else other.global_shuffle,
-            randomize_block_order=self.randomize_block_order
-            if other.randomize_block_order is None
-            else other.randomize_block_order,
+            shuffle=self.shuffle if other.shuffle is None else other.shuffle,
+            shuffle_seed=self.shuffle_seed if other.shuffle_seed is None else other.shuffle_seed,
             per_epoch_preprocessor=self.per_epoch_preprocessor
             if other.per_epoch_preprocessor is None
             else other.per_epoch_preprocessor,

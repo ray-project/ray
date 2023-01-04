@@ -303,7 +303,7 @@ def test_global_shuffle(ray_start_4_cpus):
     test = TestStream(
         checker,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(global_shuffle=True)},
+        dataset_config={"train": DatasetConfig(shuffle=-1)},
     )
     test.fit()
 
@@ -319,7 +319,7 @@ def test_global_shuffle(ray_start_4_cpus):
     test = TestBatch(
         checker,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(global_shuffle=True)},
+        dataset_config={"train": DatasetConfig(shuffle=-1)},
     )
     test.fit()
 
@@ -346,7 +346,7 @@ def test_randomize_block_order(ray_start_4_cpus):
     test = TestStream(
         checker,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(randomize_block_order=False)},
+        dataset_config={"train": DatasetConfig(shuffle=0)},
     )
     test.fit()
 
@@ -405,7 +405,7 @@ def test_per_epoch_preprocessor(ray_start_4_cpus):
             prep=BatchMapper(
                 lambda x: x * int(10 * random.random()), batch_format="pandas"
             ),
-            randomize_block_order=False,
+            shuffle=0,
             per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
             max_object_store_memory_fraction=max_object_store_memory_fraction,
         )
@@ -432,13 +432,62 @@ def test_per_epoch_preprocessor(ray_start_4_cpus):
         results = iterate_twice(
             trainer,
             ds,
-            randomize_block_order=False,
+            shuffle=0,
             per_epoch_preprocessor=BatchMapper(rand, batch_format="pandas"),
             max_object_store_memory_fraction=max_object_store_memory_fraction,
         )
 
         assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
         assert results[0] != results[1], (max_object_store_memory_fraction, results)
+
+
+def test_shuffle(ray_start_4_cpus):
+    trainer = DummyTrainer.remote()
+    ds = ray.data.range_table(5)
+
+    for max_object_store_memory_fraction in [None, 1, 0.3]:
+        results = iterate_twice(
+            trainer,
+            ds,
+            max_object_store_memory_fraction=max_object_store_memory_fraction,
+        )
+
+        assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
+        if max_object_store_memory_fraction is not None:
+            assert results[0] != results[1], (max_object_store_memory_fraction, results)
+        else:
+            assert results[0] == results[1], (max_object_store_memory_fraction, results)
+        assert results[0] != list(range(5))
+
+    for max_object_store_memory_fraction in [None, 1, 0.3]:
+        results = iterate_twice(
+            trainer,
+            ds,
+            max_object_store_memory_fraction=max_object_store_memory_fraction,
+            shuffle=0,
+        )
+
+        assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
+        assert results[0] == results[1], (max_object_store_memory_fraction, results)
+        assert results[0] == list(range(5))
+
+    # TODO: Add a better test for global vs. local shuffle and block vs. local
+    # shuffle.
+    for max_object_store_memory_fraction in [None, 1, 0.3]:
+        results = iterate_twice(
+            trainer,
+            ds,
+            max_object_store_memory_fraction=max_object_store_memory_fraction,
+            shuffle=-1,
+        )
+
+        assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
+        if max_object_store_memory_fraction is not None:
+            assert results[0] != results[1], (max_object_store_memory_fraction, results)
+        else:
+            assert results[0] == results[1], (max_object_store_memory_fraction, results)
+        assert results[0] != list(range(5))
+
 
 
 if __name__ == "__main__":
