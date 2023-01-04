@@ -1095,6 +1095,13 @@ py_test(
     srcs = ["algorithms/ppo/tests/test_ppo_with_rl_module.py"]
 )
 
+py_test(
+    name = "test_ppo_rl_module",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_ppo_rl_module.py"]
+)
+
 # PPO Reproducibility
 py_test(
     name = "test_repro_ppo",
