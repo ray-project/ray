@@ -1,4 +1,5 @@
 import logging
+import warnings
 from types import ModuleType
 from typing import Dict, Optional, Union
 
@@ -30,7 +31,15 @@ class _NoopModule:
 
 @PublicAPI(stability="alpha")
 def setup_mlflow(
-    config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs
+    config: Optional[Dict] = None,
+    tracking_uri: Optional[str] = None,
+    registry_uri: Optional[str] = None,
+    experiment_id: Optional[str] = None,
+    experiment_name: Optional[str] = None,
+    tracking_token: Optional[str] = None,
+    create_experiment_if_not_exists: bool = False,
+    tags: Optional[Dict] = None,
+    rank_zero_only: bool = True,
 ) -> Union[ModuleType, _NoopModule]:
     """Set up a MLflow session.
 
@@ -57,15 +66,7 @@ def setup_mlflow(
     calls the mlflow API.
 
     Args:
-        config: Configuration dict to be logged to mlflow. Can contain
-            mlflow experiment setting under a ``mlflow`` key.
-        rank_zero_only: If True, will return an initialized session only for the
-            rank 0 worker in distributed training. If False, will initialize a
-            session for all workers. Defaults to True.
-        kwargs: Will be merged with the settings obtained from the ``mlflow`` config
-            key.
-
-    Keyword Args:
+        config: Configuration dict to be logged to mlflow as parameters.
         tracking_uri: The tracking URI for MLflow tracking. If using
             Tune in a multi-node setting, make sure to use a remote server for
             tracking.
@@ -84,7 +85,13 @@ def setup_mlflow(
             want to log to a Databricks server, for example. This value will
             be used to set the MLFLOW_TRACKING_TOKEN environment variable on
             all the remote training processes.
+        create_experiment_if_not_exists: Whether to create an
+            experiment with the provided name if it does not already
+            exist. Defaults to False.
         tags: Tags to set for the new run.
+        rank_zero_only: If True, will return an initialized session only for the
+            rank 0 worker in distributed training. If False, will initialize a
+            session for all workers. Defaults to True.
 
     Example:
 
@@ -93,10 +100,10 @@ def setup_mlflow(
 
         .. code-block:: python
 
-            from ray.air.integrations.mlflow import setup_mflow
+            from ray.air.integrations.mlflow import setup_mlflow
 
             def training_loop(config):
-                setup_mflow()
+                setup_mlflow(config)
                 # ...
                 mlflow.log_metric(key="loss", val=0.123, step=0)
 
@@ -106,10 +113,10 @@ def setup_mlflow(
 
         .. code-block:: python
 
-            from ray.air.integrations.mlflow import setup_mflow
+            from ray.air.integrations.mlflow import setup_mlflow
 
             def training_loop(config):
-                mlflow = setup_mflow()
+                mlflow = setup_mlflow(config)
                 # ...
                 mlflow.log_metric(key="loss", val=0.123, step=0)
 
@@ -150,47 +157,32 @@ def setup_mlflow(
     _config = config.copy() if config else {}
     mlflow_config = _config.pop("mlflow", {}).copy()
 
-    # Valid parameters we can pass to _MLflowLoggerUtil.setup_mlflow():
-    valid_kwarg_keys = [
-        "tracking_uri",
-        "registry_uri",
-        "experiment_id",
-        "experiment_name",
-        "tracking_token",
-        "tags",
-    ]
-
-    # Check if **kwargs contain invalid keys
-    if any(key not in valid_kwarg_keys for key in kwargs):
-        raise RuntimeError(
-            "An invalid key was found in the keyword arguments passed to "
-            f"`setup_mlflow`. Only these keys are allowed: {valid_kwarg_keys}. Found: "
-            f"{list(kwargs.keys())}"
+    # Deprecate: 2.4
+    if mlflow_config:
+        warnings.warn(
+            "Passing a `mlflow` configuration key is deprecated and will raise an "
+            "error in the future. Please pass the actual arguments to `setup_mlflow()` "
+            "instead.",
+            DeprecationWarning,
         )
 
-    # Get keys from config. Merge with kwargs.
-    setup_kwargs = {key: mlflow_config.get(key, None) for key in valid_kwarg_keys}
-    setup_kwargs.update(kwargs)
-
-    # Set some default values
-    setup_kwargs["experiment_id"] = setup_kwargs["experiment_id"] or default_trial_id
-    setup_kwargs["experiment_name"] = (
-        setup_kwargs["experiment_name"] or default_trial_name
-    )
-
-    # The `tags` key actually gets passed to start_run
-    tags = setup_kwargs.pop("tags", None)
+    experiment_id = experiment_id or default_trial_id
+    experiment_name = experiment_name or default_trial_name
 
     # Setup mlflow
     mlflow_util = _MLflowLoggerUtil()
     mlflow_util.setup_mlflow(
-        **setup_kwargs,
-        create_experiment_if_not_exists=False,
+        tracking_uri=tracking_uri or mlflow_config.get("tracking_uri", None),
+        registry_uri=tracking_uri or mlflow_config.get("registry_uri", None),
+        experiment_id=experiment_id or mlflow_config.get("experiment_id", None),
+        experiment_name=experiment_name or mlflow_config.get("experiment_name", None),
+        tracking_token=tracking_token or mlflow_config.get("tracking_token", None),
+        create_experiment_if_not_exists=create_experiment_if_not_exists,
     )
 
     mlflow_util.start_run(
-        run_name=setup_kwargs["experiment_name"] or default_trial_name,
-        tags=tags,
+        run_name=experiment_name,
+        tags=tags or mlflow_config.get("tags", None),
         set_active=True,
     )
     mlflow_util.log_params(_config)

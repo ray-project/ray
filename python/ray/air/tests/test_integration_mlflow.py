@@ -264,6 +264,35 @@ class MLflowTest(unittest.TestCase):
         mlflow = setup_mlflow(trial_config)
         mlflow.end_run()
 
+    def testMlFlowSetupExplicit(self):
+        clear_env_vars()
+        trial_config = {"par1": 4, "par2": 9.0}
+
+        # No MLflow config passed in.
+        with self.assertRaises(ValueError):
+            setup_mlflow(trial_config)
+
+        # Invalid experiment-id
+        with self.assertRaises(ValueError):
+            setup_mlflow(trial_config, experiment_id="500")
+
+        # Set to experiment that does not already exist.
+        with self.assertRaises(ValueError):
+            setup_mlflow(
+                trial_config,
+                experiment_id="500",
+                experiment_name="new_experiment",
+                tracking_uri=self.tracking_uri,
+            )
+
+        mlflow = setup_mlflow(
+            trial_config,
+            experiment_id="500",
+            experiment_name="existing_experiment",
+            tracking_uri=self.tracking_uri,
+        )
+        mlflow.end_run()
+
     def testMlFlowSetupRankNonRankZero(self):
         """Assert that non-rank-0 workers get a noop module"""
         init_session(
