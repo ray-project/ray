@@ -62,7 +62,7 @@ class MapOperatorTasksImpl:
         # Execution arguments.
         self._transform_fn = transform_fn
         self._ray_remote_args = (ray_remote_args or {}).copy()
-        self._min_rows_per_bundle: int = min_rows_per_bundle or 0
+        self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
 
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
@@ -83,6 +83,10 @@ class MapOperatorTasksImpl:
         self._obj_store_mem_peak: int = 0
 
     def add_input(self, bundle: RefBundle) -> None:
+        if self._min_rows_per_bundle is None:
+            self._create_task(bundle)
+            return
+
         def get_num_rows(bundle: Optional[RefBundle]):
             if bundle is None:
                 return 0
