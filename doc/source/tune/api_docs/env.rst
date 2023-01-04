@@ -48,11 +48,6 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
   to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1``
   for any other search algorithms.
-* **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
-  with the ``_tune__`` prefix in their name before starting a run. This is used to make sure
-  that scheduled placement groups are removed when multiple calls to ``Tuner.fit()`` are
-  done in the same script. You might want to disable this if you run multiple Tune runs in
-  parallel from different scripts. Set to 1 to disable.
 * **TUNE_PLACEMENT_GROUP_PREFIX**: Prefix for placement groups created by Ray Tune. This prefix is used
   e.g. to identify placement groups that should be cleaned up on start/stop of the tuning run. This is
   initialized to a unique name at the start of the first run.
