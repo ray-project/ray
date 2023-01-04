@@ -88,24 +88,25 @@ class CheckNaNWrapper:
             off_policy_actions,
         ) = self.env.poll()
 
-        self._last_observations = unfiltered_obs
+        if isinstance(unfiltered_obs, dict):
+            self._last_observations = unfiltered_obs
 
-        # Check observations.
-        for env_id, all_agent_obs in unfiltered_obs.items():
-            for agent_id, agent_obs in all_agent_obs.items():
-                self._check_val(
-                    env_id=env_id,
-                    agent_id=agent_id,
-                    observation=agent_obs,
-                )
-        # Check rewards.
-        for env_id, all_agent_rewards in rewards.items():
-            for agent_id, agent_reward in all_agent_rewards.items():
-                self._check_val(
-                    env_id=env_id,
-                    agent_id=agent_id,
-                    reward=agent_reward,
-                )
+            # Check observations.
+            for env_id, all_agent_obs in unfiltered_obs.items():
+                for agent_id, agent_obs in all_agent_obs.items():
+                    self._check_val(
+                        env_id=env_id,
+                        agent_id=agent_id,
+                        observation=agent_obs,
+                    )
+            # Check rewards.
+            for env_id, all_agent_rewards in rewards.items():
+                for agent_id, agent_reward in all_agent_rewards.items():
+                    self._check_val(
+                        env_id=env_id,
+                        agent_id=agent_id,
+                        reward=agent_reward,
+                    )
 
         # If it was a reset it will not in the next iterations.
         self._reset = False
@@ -129,16 +130,17 @@ class CheckNaNWrapper:
         Args:
             action_dict: Actions values keyed by env_id and agent_id.
         """
-        self._last_actions = action_dict
+        if isinstance(action_dict, dict):
+            self._last_actions = action_dict
 
-        # Check actions.
-        for env_id, all_agent_actions in action_dict.items():
-            for agent_id, agent_actions in all_agent_actions.items():
-                self._check_val(
-                    env_id=env_id,
-                    agent_id=agent_id,
-                    action=agent_actions,
-                )
+            # Check actions.
+            for env_id, all_agent_actions in action_dict.items():
+                for agent_id, agent_actions in all_agent_actions.items():
+                    self._check_val(
+                        env_id=env_id,
+                        agent_id=agent_id,
+                        action=agent_actions,
+                    )
 
         # Finally return the actions to the wrapped BaseEnv for evaluation.
         return self.env.send_actions(action_dict)
