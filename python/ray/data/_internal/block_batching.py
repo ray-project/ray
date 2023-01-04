@@ -75,9 +75,21 @@ def batch_blocks(
         An iterator over record batches.
     """
 
+    context = DatasetContext.get_current()
+
+    if (
+        prefetch_blocks > 0
+        and context.actor_prefetcher_enabled
+        and not ray.util.client.ray.is_connected()
+    ):
+        prefetcher = ActorBlockPrefetcher()
+    else:
+        prefetcher = WaitBlockPrefetcher()
+
     block_iter = _resolve_blocks(
         _prefetch_blocks(
             block_ref_iter=blocks,
+            prefetcher=prefetcher,
             stats=stats,
             num_blocks_to_prefetch=prefetch_blocks,
             clear_block_after_read=clear_block_after_read,
@@ -131,6 +143,7 @@ def _resolve_blocks(
 
 def _prefetch_blocks(
     block_ref_iter: Iterator[ObjectRef[Block]],
+    prefetcher: "BlockPrefetcher",
     num_blocks_to_prefetch: int,
     clear_block_after_read: bool = False,
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
@@ -154,17 +167,6 @@ def _prefetch_blocks(
     if num_blocks_to_prefetch == 0:
         yield from block_ref_iter
 
-    context = DatasetContext.get_current()
-
-    if (
-        num_blocks_to_prefetch > 0
-        and context.actor_prefetcher_enabled
-        and not ray.util.client.ray.is_connected()
-    ):
-        prefetcher = ActorBlockPrefetcher()
-    else:
-        prefetcher = WaitBlockPrefetcher()
-
     window_size = num_blocks_to_prefetch
     sliding_window = queue.Queue(maxsize=window_size)
 
@@ -174,13 +176,15 @@ def _prefetch_blocks(
             sliding_window.put(next(block_ref_iter))
         except StopIteration:
             break
-    prefetcher.prefetch_blocks(list(sliding_window.queue))
+    with stats.iter_wait_s.timer() if stats else nullcontext():
+        prefetcher.prefetch_blocks(list(sliding_window.queue))
 
     while not sliding_window.empty():
         block_ref = sliding_window.get()
         try:
             sliding_window.put(next(block_ref_iter))
-            prefetcher.prefetch_blocks(list(sliding_window.queue))
+            with stats.iter_wait_s.timer() if stats else nullcontext():
+                prefetcher.prefetch_blocks(list(sliding_window.queue))
         except StopIteration:
             pass
         yield block_ref
