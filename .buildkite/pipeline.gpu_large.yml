@@ -17,6 +17,20 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=datasets_train doc/...
 
+- label: ":tv: :brain: RLlib: GPU Tests (algo compilation)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --jobs 2
+      --test_tag_filters=algorithms_dir_gpu
+      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      --test_env=RLLIB_NUM_GPUS=1 rllib/...
+
 - label: ":tv: :brain: RLlib: Multi-GPU Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
