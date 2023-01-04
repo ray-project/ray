@@ -25,8 +25,9 @@ def test_uniform_kbins_discretizer(
     """Tests basic UniformKBinsDiscretizer functionality."""
 
     col_a = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
-    col_b = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    col_b = col_a.copy()
+    col_c = col_a.copy()
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df).repartition(2)
 
     discretizer = UniformKBinsDiscretizer(
@@ -74,6 +75,8 @@ def test_uniform_kbins_discretizer(
             include_lowest=include_lowest,
         )
     )
+    # Check that the remaining column was not modified
+    assert out_df["C"].equals(in_df["C"])
 
 
 @pytest.mark.parametrize(
@@ -98,8 +101,9 @@ def test_custom_kbins_discretizer(
     """Tests basic CustomKBinsDiscretizer functionality."""
 
     col_a = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
-    col_b = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    col_b = col_a.copy()
+    col_c = col_a.copy()
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df).repartition(2)
 
     discretizer = CustomKBinsDiscretizer(
@@ -147,6 +151,8 @@ def test_custom_kbins_discretizer(
             include_lowest=include_lowest,
         )
     )
+    # Check that the remaining column was not modified
+    assert out_df["C"].equals(in_df["C"])
 
 
 if __name__ == "__main__":
