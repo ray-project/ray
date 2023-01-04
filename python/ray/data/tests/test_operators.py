@@ -14,7 +14,7 @@ from ray._private.test_utils import wait_for_condition
 
 
 def _get_blocks(bundle: RefBundle, output_list: List[Block]):
-    for (block, _) in bundle.blocks:
+    for block, _ in bundle.blocks:
         output_list.append(ray.get(block))
 
 
@@ -115,7 +115,7 @@ def test_map_operator_streamed(ray_start_regular_shared):
     assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
 
 
-def test_map_operator_min_rows_per_batch(ray_start_regular_shared):
+def test_map_operator_min_rows_per_bundle(ray_start_regular_shared):
     # Simple sanity check of batching behavior.
     def _check_batch(block_iter: Iterable[Block]) -> Iterable[Block]:
         block_iter = list(block_iter)
@@ -129,7 +129,7 @@ def test_map_operator_min_rows_per_batch(ray_start_regular_shared):
         _check_batch,
         input_op=input_op,
         name="TestMapper",
-        min_rows_per_batch=5,
+        min_rows_per_bundle=5,
     )
 
     # Feed data and block on exec.
