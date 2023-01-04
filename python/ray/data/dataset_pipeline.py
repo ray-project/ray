@@ -20,7 +20,7 @@ import warnings
 import ray
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal import progress_bar
-from ray.data._internal.block_batching import BatchType, batch_blocks
+from ray.data._internal.block_batching import BatchType, batch_block_refs
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.pipeline_executor import (
@@ -201,7 +201,7 @@ class DatasetPipeline(Generic[T]):
             )
         else:
             blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
-        yield from batch_blocks(
+        yield from batch_block_refs(
             self._iter_blocks(),
             self._stats,
             prefetch_blocks=prefetch_blocks,

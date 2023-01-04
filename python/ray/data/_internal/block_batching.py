@@ -29,8 +29,8 @@ BatchType = Union[
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
-def batch_blocks(
-    blocks: Iterator[ObjectRef[Block]],
+def batch_block_refs(
+    block_refs: Iterator[ObjectRef[Block]],
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     *,
     prefetch_blocks: int = 0,
@@ -40,8 +40,9 @@ def batch_blocks(
     drop_last: bool = False,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
+    ensure_copy: bool = False,
 ) -> Iterator[BatchType]:
-    """Create formatted batches of data from 1 or more blocks.
+    """Create formatted batches of data from 1 or more block object references.
 
     This takes a block iterator and creates batch_size batches, slicing,
     unioning, shuffling, prefetching, and formatting blocks as needed.
@@ -50,7 +51,7 @@ def batch_blocks(
     and Dataset.map_batches()/DatasetPipeline.map_batches().
 
     Args:
-        blocks: An iterator over block object references.
+        block_refs: An iterator over block object references.
         prefetch_blocks: The number of blocks to prefetch ahead of the
             current block during the scan.
         clear_block_after_read: Whether to clear the block from object store
@@ -70,6 +71,8 @@ def batch_blocks(
             number of rows that must be in the local in-memory shuffle buffer in order
             to yield a batch.
         shuffle_seed: The seed to use for the local random shuffle.
+        ensure_copy: Whether batches are always copied from the underlying base
+            blocks (not zero-copy views).
 
     Returns:
         An iterator over record batches.
@@ -88,7 +91,7 @@ def batch_blocks(
 
     block_iter = _resolve_blocks(
         _prefetch_blocks(
-            block_ref_iter=blocks,
+            block_ref_iter=block_refs,
             prefetcher=prefetcher,
             stats=stats,
             num_blocks_to_prefetch=prefetch_blocks,
@@ -97,14 +100,45 @@ def batch_blocks(
         stats=stats,
     )
 
+    yield from batch_blocks(
+        block_iter,
+        stats=stats,
+        batch_size=batch_size,
+        batch_format=batch_format,
+        drop_last=drop_last,
+        shuffle_buffer_min_size=shuffle_buffer_min_size,
+        shuffle_seed=shuffle_seed,
+        ensure_copy=ensure_copy,
+    )
+
+
+def batch_blocks(
+    blocks: Iterator[Block],
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
+    *,
+    batch_size: Optional[int] = None,
+    batch_format: str = "default",
+    drop_last: bool = False,
+    shuffle_buffer_min_size: Optional[int] = None,
+    shuffle_seed: Optional[int] = None,
+    ensure_copy: bool = False,
+):
+    """Create formatted batches of data from 1 or more blocks.
+
+    This is equivalent to batch_block_refs, except
+    it takes in an iterator consisting of already fetched blocks.
+    This means that this function does not support block prefetching.
+    """
+
     batch_iter = _format_batches(
         _blocks_to_batches(
-            block_iter=block_iter,
+            block_iter=blocks,
             stats=stats,
             batch_size=batch_size,
             drop_last=drop_last,
             shuffle_buffer_min_size=shuffle_buffer_min_size,
             shuffle_seed=shuffle_seed,
+            ensure_copy=ensure_copy,
         ),
         batch_format=batch_format,
     )
@@ -199,6 +233,7 @@ def _blocks_to_batches(
     drop_last: bool = False,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
+    ensure_copy: bool = False,
 ) -> Iterator[Block]:
     """Given an iterator over blocks, returns an iterator over blocks
     of the appropriate bacth size.
@@ -211,6 +246,8 @@ def _blocks_to_batches(
         stats: Dataset stats object used to store block batching time.
         batch_size: Record batch size, or None to let the system pick.
         drop_last: Whether to drop the last batch if it's incomplete.
+        ensure_copy: Whether batches are always copied from the underlying base
+            blocks (not zero-copy views).
 
     Returns:
         An iterator over blocks of the given size that are potentially shuffled.
@@ -222,7 +259,7 @@ def _blocks_to_batches(
             shuffle_seed=shuffle_seed,
         )
     else:
-        batcher = Batcher(batch_size=batch_size)
+        batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
 
     for block in block_iter:
         batcher.add(block)
