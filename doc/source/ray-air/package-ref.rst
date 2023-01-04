@@ -83,6 +83,12 @@ K-Bins Discretizers
 .. autoclass:: ray.data.preprocessors.UniformKBinsDiscretizer
     :show-inheritance:
 
+Image Preprocessors
+###################
+
+.. autoclass:: ray.data.preprocessors.TorchVisionPreprocessor
+    :show-inheritance:
+    
 Text Encoders
 #############
 
