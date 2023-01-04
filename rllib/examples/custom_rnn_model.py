@@ -1,11 +1,11 @@
 """Example of using a custom RNN keras model."""
 
 import argparse
+import gymnasium as gym
 import os
 
 import ray
 from ray import air, tune
-from ray.tune.registry import register_env
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.models.rnn_model import RNNModel, TorchRNNModel
@@ -54,8 +54,8 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model(
         "rnn", TorchRNNModel if args.framework == "torch" else RNNModel
     )
-    register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
-    register_env("RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
+    gym.register("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
+    gym.register("RepeatInitialObsEnv", lambda: RepeatInitialObsEnv())
 
     config = (
         get_trainable_cls(args.run)

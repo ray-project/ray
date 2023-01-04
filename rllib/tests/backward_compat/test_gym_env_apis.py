@@ -3,7 +3,6 @@ import unittest
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.gym import try_import_gymnasium_and_gym
-from ray.tune.registry import register_env
 
 gym, old_gym = try_import_gymnasium_and_gym()
 
@@ -112,7 +111,7 @@ class TestGymEnvAPIs(unittest.TestCase):
 
         from gymnasium.wrappers import EnvCompatibility
 
-        register_env(
+        gym.register(
             "test",
             lambda env_ctx: EnvCompatibility(GymnasiumOldAPI(env_ctx)),
         )

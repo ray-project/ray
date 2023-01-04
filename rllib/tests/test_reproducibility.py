@@ -5,7 +5,6 @@ import unittest
 import ray
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.utils.test_utils import framework_iterator
-from ray.tune.registry import register_env
 
 
 class TestReproducibility(unittest.TestCase):
@@ -32,7 +31,7 @@ class TestReproducibility(unittest.TestCase):
             trajs = list()
             for trial in range(3):
                 ray.init()
-                register_env("PickLargest", env_creator)
+                gym.register("PickLargest", env_creator)
                 config = (
                     DQNConfig()
                     .environment("PickLargest")

@@ -29,9 +29,10 @@ Other options for running this example:
 $ python attention_net.py --help
 """
 import argparse
+import gymnasium as gym
+import numpy as np
 import os
 
-import numpy as np
 
 import ray
 from ray import air, tune
@@ -42,7 +43,6 @@ from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune import registry
 from ray.tune.logger import pretty_print
 
 tf1, tf, tfv = try_import_tf()
@@ -121,10 +121,10 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # register custom environments
-    registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
-    registry.register_env("RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
-    registry.register_env("LookAndPush", lambda _: OneHot(LookAndPush()))
-    registry.register_env("StatelessCartPole", lambda _: StatelessCartPole())
+    gym.register("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
+    gym.register("RepeatInitialObsEnv", lambda: RepeatInitialObsEnv())
+    gym.register("LookAndPush", lambda: OneHot(LookAndPush()))
+    gym.register("StatelessCartPole", lambda: StatelessCartPole())
 
     # main part: RLlib config with AttentionNet model
     config = (

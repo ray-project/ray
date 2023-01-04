@@ -1,3 +1,4 @@
+import gymnasium as gym
 import pyspiel
 import unittest
 
@@ -9,10 +10,9 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
-from ray.tune import register_env
 
 # Connect-4 OpenSpiel env.
-register_env("connect_four", lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
+gym.register("connect_four", lambda: OpenSpielEnv(pyspiel.load_game("connect_four")))
 
 
 class TestAlphaStar(unittest.TestCase):

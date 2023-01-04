@@ -1,9 +1,8 @@
-import unittest
+import gymnasium as gym
 import os
+import unittest
 
 import ray
-
-from ray.tune import register_env
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.examples.env.deterministic_envs import create_cartpole_deterministic
 from ray.rllib.utils.test_utils import check_reproducibilty
@@ -22,7 +21,7 @@ class TestReproDQN(unittest.TestCase):
         """Tests whether the algorithm is reproducible within 3 iterations
         on discrete env cartpole."""
 
-        register_env("DeterministicCartPole-v1", create_cartpole_deterministic)
+        gym.register("DeterministicCartPole-v1", create_cartpole_deterministic)
         config = dqn.DQNConfig().environment(
             env="DeterministicCartPole-v1", env_config={"seed": 42}
         )

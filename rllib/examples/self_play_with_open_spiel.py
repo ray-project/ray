@@ -19,6 +19,7 @@ be played by the user against the "main" agent on the command line.
 """
 
 import argparse
+import gymnasium as gym
 import numpy as np
 import os
 import pyspiel
@@ -32,7 +33,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
-from ray.tune import CLIReporter, register_env
+from ray.tune import CLIReporter
 
 
 def get_cli_args():
@@ -181,7 +182,7 @@ if __name__ == "__main__":
     args = get_cli_args()
     ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
-    register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
+    gym.register("open_spiel_env", lambda: OpenSpielEnv(pyspiel.load_game(args.env)))
 
     def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         # agent_id = [0|1] -> policy depends on episode ID

@@ -5,7 +5,6 @@ import tree  # pip install dm-tree
 import unittest
 
 import ray
-from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.pg import PGConfig
@@ -256,7 +255,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertTrue(ag0_ts[-1] == ag1_ts[-1])
 
     def test_multi_agent_with_flex_agents(self):
-        register_env("flex_agents_multi_agent", lambda _: FlexAgentsMultiAgent())
+        gym.register("flex_agents_multi_agent", lambda: FlexAgentsMultiAgent())
         config = (
             PGConfig()
             .environment("flex_agents_multi_agent")
@@ -274,8 +273,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         algo.stop()
 
     def test_multi_agent_with_sometimes_zero_agents_observing(self):
-        register_env(
-            "sometimes_zero_agents", lambda _: SometimesZeroAgentsMultiAgent(num=4)
+        gym.register(
+            "sometimes_zero_agents", lambda: SometimesZeroAgentsMultiAgent(num=4)
         )
         config = (
             PPOConfig()
@@ -469,8 +468,8 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_train_multi_agent_cartpole_single_policy(self):
         n = 10
-        register_env(
-            "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
+        gym.register(
+            "multi_agent_cartpole", lambda: MultiAgentCartPole({"num_agents": n})
         )
         config = (
             PGConfig()
@@ -493,8 +492,8 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_train_multi_agent_cartpole_multi_policy(self):
         n = 10
-        register_env(
-            "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
+        gym.register(
+            "multi_agent_cartpole", lambda: MultiAgentCartPole({"num_agents": n})
         )
 
         def gen_policy():

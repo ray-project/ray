@@ -1,5 +1,6 @@
 from collections import defaultdict
 import copy
+import gymnasium as gym
 from gymnasium.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
@@ -746,6 +747,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if not isinstance(
                 self.env,
                 (BaseEnv, ExternalMultiAgentEnv, MultiAgentEnv, ray.actor.ActorHandle),
+            ) and not (
+                isinstance(self.env, gym.Env)
+                and isinstance(self.env.unwrapped, MultiAgentEnv)
             ):
                 raise ValueError(
                     f"Have multiple policies {self.policy_map}, but the "

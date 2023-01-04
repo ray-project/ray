@@ -1,5 +1,6 @@
+import gymnasium as gym
+
 from ray import air, tune
-from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v3
 
@@ -12,7 +13,7 @@ if __name__ == "__main__":
     # RDQN - Rainbow DQN
     # ADQN - Apex DQN
 
-    register_env("waterworld", lambda _: PettingZooEnv(waterworld_v3.env()))
+    gym.register("waterworld", lambda: PettingZooEnv(waterworld_v3.env()))
 
     tune.Tuner(
         "APEX_DDPG",

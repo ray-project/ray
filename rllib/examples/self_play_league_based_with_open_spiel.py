@@ -31,6 +31,7 @@ be played by the user against the "main" agent on the command line.
 """
 
 import argparse
+import gymnasium as gym
 import numpy as np
 import os
 from open_spiel.python.rl_environment import Environment
@@ -45,7 +46,6 @@ from ray.rllib.examples.self_play_with_open_spiel import ask_user_for_action
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
-from ray.tune import register_env
 
 
 def get_cli_args():
@@ -292,7 +292,7 @@ if __name__ == "__main__":
         include_dashboard=False,
     )
 
-    register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
+    gym.register("open_spiel_env", lambda: OpenSpielEnv(pyspiel.load_game(args.env)))
 
     def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         # At first, only have main play against the random main exploiter.

@@ -9,13 +9,13 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 """
 
 import argparse
+import gymnasium as gym
 from gymnasium.spaces import Dict, Discrete, Tuple, MultiDiscrete
 import logging
 import os
 
 import ray
 from ray import air, tune
-from ray.tune import register_env
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
@@ -93,7 +93,7 @@ if __name__ == "__main__":
             TwoStepGame.action_space,
         ]
     )
-    register_env(
+    gym.register(
         "grouped_twostep",
         lambda config: TwoStepGame(config).with_agent_groups(
             grouping, obs_space=obs_space, act_space=act_space

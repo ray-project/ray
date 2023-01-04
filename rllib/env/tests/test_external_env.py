@@ -14,7 +14,6 @@ from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.evaluation.tests.test_rollout_worker import BadPolicy, MockPolicy
 from ray.rllib.examples.env.mock_env import MockEnv
 from ray.rllib.utils.test_utils import framework_iterator
-from ray.tune.registry import register_env
 
 
 def make_simple_serving(multiagent, superclass):
@@ -185,9 +184,9 @@ class TestExternalEnv(unittest.TestCase):
         self.assertRaises(Exception, lambda: ev.sample())
 
     def test_train_cartpole_off_policy(self):
-        register_env(
+        gym.register(
             "test3",
-            lambda _: PartOffPolicyServing(gym.make("CartPole-v1"), off_pol_frac=0.2),
+            lambda: PartOffPolicyServing(gym.make("CartPole-v1"), off_pol_frac=0.2),
         )
         config = (
             DQNConfig()
@@ -212,7 +211,7 @@ class TestExternalEnv(unittest.TestCase):
                 raise Exception("failed to improve reward")
 
     def test_train_cartpole(self):
-        register_env("test", lambda _: SimpleServing(gym.make("CartPole-v1")))
+        gym.register("test", lambda: SimpleServing(gym.make("CartPole-v1")))
         config = (
             PGConfig()
             .environment("test")
@@ -235,7 +234,7 @@ class TestExternalEnv(unittest.TestCase):
                 raise Exception("failed to improve reward")
 
     def test_train_cartpole_multi(self):
-        register_env("test2", lambda _: MultiServing(lambda: gym.make("CartPole-v1")))
+        gym.register("test2", lambda: MultiServing(lambda: gym.make("CartPole-v1")))
         config = (
             PGConfig()
             .environment("test2")

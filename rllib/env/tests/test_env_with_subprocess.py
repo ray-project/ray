@@ -1,11 +1,11 @@
 """Tests that envs clean up after themselves on agent exit."""
+import gymnasium as gym
 import os
 import subprocess
 import tempfile
 
 import ray
 from ray.tune import run_experiments
-from ray.tune.registry import register_env
 from ray.rllib.examples.env.env_with_subprocess import EnvWithSubprocess
 from ray._private.test_utils import wait_for_condition
 
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     _, tmp2 = tempfile.mkstemp("test_env_with_subprocess")
     _, tmp3 = tempfile.mkstemp("test_env_with_subprocess")
     _, tmp4 = tempfile.mkstemp("test_env_with_subprocess")
-    register_env("subproc", lambda c: EnvWithSubprocess(c))
+    gym.register("subproc", lambda c: EnvWithSubprocess(c))
 
     ray.init()
     # Check whether everything is ok.

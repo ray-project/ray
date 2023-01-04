@@ -4,6 +4,7 @@ RecSim is a configurable recommender systems simulation platform.
 Source: https://github.com/google-research/recsim
 """
 
+import gymnasium as gym
 from recsim import choice_model
 from recsim.environments import (
     long_term_satisfaction as lts,
@@ -12,7 +13,6 @@ from recsim.environments import (
 )
 
 from ray.rllib.env.wrappers.recsim import make_recsim_env
-from ray.tune import register_env
 
 # Some built-in RecSim envs to test with.
 # ---------------------------------------
@@ -103,6 +103,6 @@ InterestEvolutionRecSimEnv = make_recsim_env(
 
 
 # Backward compatibility.
-register_env(
+gym.register(
     name="RecSim-v1", env_creator=lambda env_ctx: InterestEvolutionRecSimEnv(env_ctx)
 )

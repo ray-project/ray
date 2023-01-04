@@ -11,6 +11,7 @@
 
 import argparse
 from copy import deepcopy
+import gymnasium as gym
 import logging
 import os
 import pathlib
@@ -74,7 +75,7 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
-    tune.register_env("sumo_test_env", marlenvironment.env_creator)
+    gym.register("sumo_test_env", marlenvironment.env_creator)
 
     # Algorithm.
     policy_class = ppo.PPOTF1Policy

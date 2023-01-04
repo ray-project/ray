@@ -1,3 +1,4 @@
+import gymnasium as gym
 import numpy as np
 import pickle
 import unittest
@@ -10,7 +11,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
-from ray.tune.registry import register_env
 
 
 class TestLSTMUtils(unittest.TestCase):
@@ -175,7 +175,7 @@ class TestRNNSequencing(unittest.TestCase):
 
     def test_simple_optimizer_sequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
-        register_env("counter", lambda _: DebugCounterEnv())
+        gym.register("counter", lambda: DebugCounterEnv())
         config = (
             PPOConfig()
             .environment("counter")
@@ -246,7 +246,7 @@ class TestRNNSequencing(unittest.TestCase):
 
     def test_minibatch_sequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
-        register_env("counter", lambda _: DebugCounterEnv())
+        gym.register("counter", lambda: DebugCounterEnv())
         config = (
             PPOConfig()
             .environment("counter")

@@ -1,3 +1,4 @@
+import gymnasium as gym
 import os
 import importlib
 from pathlib import Path
@@ -14,7 +15,6 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils.checkpoints import get_checkpoint_info
 from ray.rllib.utils.test_utils import framework_iterator
-from ray.tune.registry import register_env
 
 
 class TestBackwardCompatibility(unittest.TestCase):
@@ -133,7 +133,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         self.assertTrue(eval_config.in_evaluation)
         self.assertTrue(eval_config.lr == 0.1)
 
-        register_env(
+        gym.register(
             "test",
             lambda ctx: MultiAgentCartPole(config={"num_agents": ctx["num_agents"]}),
         )

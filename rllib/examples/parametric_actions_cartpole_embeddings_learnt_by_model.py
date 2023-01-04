@@ -15,6 +15,7 @@ Working configurations are given below.
 """
 
 import argparse
+import gymnasium as gym
 import os
 
 import ray
@@ -27,7 +28,6 @@ from ray.rllib.examples.models.parametric_actions_model import (
 )
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    register_env("pa_cartpole", lambda _: ParametricActionsCartPoleNoEmbeddings(10))
+    gym.register("pa_cartpole", lambda: ParametricActionsCartPoleNoEmbeddings(10))
 
     ModelCatalog.register_custom_model(
         "pa_model", ParametricActionsModelThatLearnsEmbeddings

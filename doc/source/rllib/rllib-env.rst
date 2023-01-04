@@ -7,7 +7,8 @@
 Environments
 ============
 
-RLlib works with several different types of environments, including `OpenAI Gym <https://www.gymlibrary.dev/>`__, user-defined, multi-agent, and also batched environments.
+RLlib supports several different environment APIs, including the one most popular
+in RL, called `gymnasium <https://github.com/Farama-Foundation/Gymnasium/>`__ by the `Farama Foundation <https://farama.org/>`__.
 
 .. tip::
 
@@ -20,16 +21,17 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 Configuring Environments
 ------------------------
 
-You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://www.gymlibrary.dev/>`__.
+You can pass either a string name or a Python class to specify an environment.
+By default, strings will be interpreted as a gym `environment name <https://www.gymlibrary.dev/>`__.
 Custom env classes passed directly to the algorithm must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
 
     import gym, ray
-    from ray.rllib.algorithms import ppo
+    from ray.rllib.algorithms.ppo import PPOConfig
 
     class MyEnv(gym.Env):
-        def __init__(self, env_config):
+        def __init__(self, env_config=None):
             self.action_space = <gym.Space>
             self.observation_space = <gym.Space>
         def reset(self):
@@ -37,10 +39,11 @@ Custom env classes passed directly to the algorithm must take a single ``env_con
         def step(self, action):
             return <obs>, <reward: float>, <done: bool>, <info: dict>
 
-    ray.init()
-    algo = ppo.PPO(env=MyEnv, config={
-        "env_config": {},  # config to pass to env class
-    })
+    config = (
+        PPOConfig()
+        .environment(MyEnv, env_config={})  # config dict to be pass to env class's c'tor
+    )
+    algo = config.build()
 
     while True:
         print(algo.train())
@@ -51,17 +54,18 @@ You can also register a custom env creator function with a string name. This fun
 
     from ray.tune.registry import register_env
 
-    def env_creator(env_config):
+    def env_creator(env_config: dict):
         return MyEnv(...)  # return an env instance
 
     register_env("my_env", env_creator)
-    algo = ppo.PPO(env="my_env")
+    algo = PPOConfig.environment("my_env").build()
 
-For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__.
+For a full runnable code example using the gymnasium environment API,
+see `custom_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__.
 
 .. warning::
 
-   The gym registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
+   The gymnasium registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
 
 In the above example, note that the ``env_creator`` function takes in an ``env_config`` object.
 This is a dict containing options passed in through your algorithm.

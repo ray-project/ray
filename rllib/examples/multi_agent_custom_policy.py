@@ -14,6 +14,7 @@ Result for PPO_multi_cartpole_0:
 """
 
 import argparse
+import gymnasium as gym
 import os
 
 import ray
@@ -23,7 +24,6 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -53,9 +53,7 @@ if __name__ == "__main__":
     ray.init()
 
     # Simple environment with 4 independent cartpole entities
-    register_env(
-        "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
-    )
+    gym.register("multi_agent_cartpole", lambda: MultiAgentCartPole({"num_agents": 4}))
 
     config = (
         PPOConfig()

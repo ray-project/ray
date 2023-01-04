@@ -100,7 +100,7 @@ if __name__ == "__main__":
     ray.init(local_mode=args.local_mode)
 
     # Can also register the env creator function explicitly with:
-    # register_env(
+    # gym.register(
     #     "curriculum_env", lambda config: CurriculumCapableEnv(config))
 
     config = (

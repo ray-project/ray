@@ -1,9 +1,10 @@
+import gymnasium as gym
+
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
-from ray.tune.registry import register_env
 
 
-register_env("multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents": 1}))
+gym.register("multi_agent_pendulum", lambda: MultiAgentPendulum({"num_agents": 1}))
 
 config = (
     PPOConfig()

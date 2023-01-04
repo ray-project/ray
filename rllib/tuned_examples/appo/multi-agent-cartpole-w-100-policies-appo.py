@@ -1,11 +1,11 @@
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.tune.registry import register_env
 
 
-register_env("multi_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
+gym.register("multi_cartpole", lambda: MultiAgentCartPole({"num_agents": 2}))
 
 # Number of policies overall in the PolicyMap.
 num_policies = 100

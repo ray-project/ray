@@ -8,6 +8,7 @@ This demonstrates running the following policies in competition:
 """
 
 import argparse
+import gymnasium as gym
 import os
 from pettingzoo.classic import rps_v2
 import random
@@ -30,7 +31,6 @@ from ray.rllib.examples.policy.rock_paper_scissors_dummies import (
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune.registry import register_env
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -67,7 +67,7 @@ def env_creator(args):
     return env
 
 
-register_env("RockPaperScissors", lambda config: PettingZooEnv(env_creator(config)))
+gym.register("RockPaperScissors", lambda config: PettingZooEnv(env_creator(config)))
 
 
 def run_same_policy(args, stop):

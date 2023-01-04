@@ -2173,7 +2173,9 @@ class Algorithm(Trainable):
             # Try gym/PyBullet/Vizdoom.
             else:
                 return env_specifier, functools.partial(
-                    _gym_env_creator, env_descriptor=env_specifier
+                    _gym_env_creator,
+                    env_descriptor=env_specifier,
+                    gym_registry=config._gym_registry,
                 )
 
         elif isinstance(env_specifier, type):

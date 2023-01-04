@@ -1,10 +1,10 @@
 import argparse
+import gymnasium as gym
 from gymnasium.spaces import Dict, Tuple, Box, Discrete
 import os
 
 import ray
 from ray import air, tune
-from ray.tune.registry import register_env
 from ray.rllib.examples.env.nested_space_repeat_after_me_env import (
     NestedSpaceRepeatAfterMeEnv,
 )
@@ -46,7 +46,7 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
-    register_env(
+    gym.register(
         "NestedSpaceRepeatAfterMeEnv", lambda c: NestedSpaceRepeatAfterMeEnv(c)
     )
 

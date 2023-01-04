@@ -1,9 +1,8 @@
 from abc import ABC
-
-import ray
-
+import gymnasium as gym
 import numpy as np
 
+import ray
 from ray.rllib import Policy
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
@@ -11,7 +10,6 @@ from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActions
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.utils import override
 from ray.rllib.utils.typing import ResultDict
-from ray.tune.registry import register_env
 
 
 class RandomParametricPolicy(Policy, ABC):
@@ -79,7 +77,7 @@ class RandomParametricAlgorithm(Algorithm):
 
 
 def main():
-    register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
+    gym.register("pa_cartpole", lambda: ParametricActionsCartPole(10))
     algo = RandomParametricAlgorithm(env="pa_cartpole")
     result = algo.train()
     assert result["episode_reward_mean"] > 10, result

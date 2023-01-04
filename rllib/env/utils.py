@@ -4,7 +4,9 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 
 
-def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
+def _gym_env_creator(
+    env_context: EnvContext, env_descriptor: str, gym_registry: dict
+) -> gym.Env:
     """Tries to create a gym env given an EnvContext object and descriptor.
 
     Note: This function tries to construct the env from a string descriptor
@@ -57,6 +59,26 @@ def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
                 make_kwargs=env_context,
             )
         else:
+            # `env_descriptor` not registered. Try to re-register with the given
+            # registry.
+            if (
+                env_descriptor not in gym.envs.registry
+                and env_descriptor in gym_registry
+            ):
+                r = gym_registry[env_descriptor]
+                gym.register(
+                    env_descriptor,
+                    r.entry_point,
+                    reward_threshold=r.reward_threshold,
+                    nondeterministic=r.nondeterministic,
+                    max_episode_steps=r.max_episode_steps,
+                    order_enforce=r.order_enforce,
+                    autoreset=r.autoreset,
+                    apply_api_compatibility=r.apply_api_compatibility,
+                    disable_env_checker=True,
+                    kwargs=r.kwargs,
+                )
+            print(gym.envs.registry[env_descriptor].entry_point, gym.envs.registry[env_descriptor].kwargs)
             return gym.make(env_descriptor, **env_context)
     except gym.error.Error:
         raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))

@@ -4,6 +4,7 @@ The checkpointed policy may be trained with a different algorithm too.
 """
 
 import argparse
+import gymnasium as gym
 from pathlib import Path
 import pyspiel
 
@@ -13,7 +14,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import Policy
-from ray.tune import CLIReporter, register_env
+from ray.tune import CLIReporter
 
 parser = argparse.ArgumentParser()
 # This should point to a checkpointed policy that plays connect_four.
@@ -69,8 +70,8 @@ class AddPolicyCallback(DefaultCallbacks):
 if __name__ == "__main__":
     ray.init()
 
-    register_env(
-        "open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game("connect_four"))
+    gym.register(
+        "open_spiel_env", lambda: OpenSpielEnv(pyspiel.load_game("connect_four"))
     )
 
     def policy_mapping_fn(agent_id, episode, worker, **kwargs):

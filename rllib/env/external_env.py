@@ -38,10 +38,10 @@ class ExternalEnv(threading.Thread):
     This env is thread-safe, but individual episodes must be executed serially.
 
     Examples:
-        >>> from ray.tune import register_env
+        >>> import gymnasium as gym
         >>> from ray.rllib.algorithms.dqn import DQN # doctest: +SKIP
         >>> YourExternalEnv = ... # doctest: +SKIP
-        >>> register_env("my_env", # doctest: +SKIP
+        >>> gym.register("my_env", # doctest: +SKIP
         ...     lambda config: YourExternalEnv(config))
         >>> trainer = DQN(env="my_env") # doctest: +SKIP
         >>> while True: # doctest: +SKIP

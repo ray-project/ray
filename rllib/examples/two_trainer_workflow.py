@@ -6,6 +6,7 @@ via a custom training workflow.
 """
 
 import argparse
+import gymnasium as gym
 import os
 
 import ray
@@ -36,7 +37,6 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.utils.typing import ResultDict
-from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")
@@ -159,9 +159,7 @@ if __name__ == "__main__":
     ray.init(local_mode=args.local_mode)
 
     # Simple environment with 4 independent cartpole entities
-    register_env(
-        "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
-    )
+    gym.register("multi_agent_cartpole", lambda: MultiAgentCartPole({"num_agents": 4}))
 
     # Note that since the algorithm below does not include a default policy or
     # policy configs, we have to explicitly set it in the multiagent config:

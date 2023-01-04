@@ -1,19 +1,18 @@
+import gymnasium as gym
 import unittest
 
 import ray
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, MultiAgentMountainCar
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_train_results, framework_iterator
-from ray.tune.registry import get_trainable_cls, register_env
+from ray.tune.registry import get_trainable_cls
 
 
 def check_support_multiagent(alg, config):
-    register_env(
-        "multi_agent_mountaincar", lambda _: MultiAgentMountainCar({"num_agents": 2})
+    gym.register(
+        "multi_agent_mountaincar", lambda: MultiAgentMountainCar({"num_agents": 2})
     )
-    register_env(
-        "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2})
-    )
+    gym.register("multi_agent_cartpole", lambda: MultiAgentCartPole({"num_agents": 2}))
 
     # Simulate a simple multi-agent setup.
     policies = {

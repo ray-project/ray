@@ -79,7 +79,10 @@ def check_env(env: EnvType) -> None:
         elif isinstance(env, VectorEnv):
             check_vector_env(env)
         elif isinstance(env, gym.Env) or old_gym and isinstance(env, old_gym.Env):
-            check_gym_environments(env)
+            if isinstance(env.unwrapped, MultiAgentEnv):
+                check_multiagent_environments(env.unwrapped)
+            else:
+                check_gym_environments(env)
         elif isinstance(env, BaseEnv):
             check_base_env(env)
         else:

@@ -156,7 +156,7 @@ if __name__ == "__main__":
     ray.init(local_mode=args.local_mode)
 
     # Can also register the env creator function explicitly with:
-    # register_env("corridor", lambda config: SimpleCorridor(config))
+    # gym.register("corridor", lambda config: SimpleCorridor(config))
     ModelCatalog.register_custom_model(
         "my_model", TorchCustomModel if args.framework == "torch" else CustomModel
     )

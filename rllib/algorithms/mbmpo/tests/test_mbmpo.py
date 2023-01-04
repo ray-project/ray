@@ -1,3 +1,4 @@
+import gymnasium as gym
 from gymnasium.wrappers import TimeLimit
 import unittest
 
@@ -9,16 +10,15 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
-from ray.tune.registry import register_env
 
 
 class TestMBMPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
-        register_env(
+        gym.register(
             "cartpole-mbmpo",
-            lambda env_ctx: TimeLimit(CartPoleWrapper(), max_episode_steps=200),
+            lambda: TimeLimit(CartPoleWrapper(), max_episode_steps=200),
         )
 
     @classmethod

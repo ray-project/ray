@@ -11,7 +11,6 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
 from ray.rllib.utils.numpy import one_hot
-from ray.tune import register_env
 
 
 class MyCallBack(DefaultCallbacks):
@@ -126,7 +125,7 @@ def env_maker(config):
     return env
 
 
-register_env("mini-grid", env_maker)
+gym.register("mini-grid", env_maker)
 CONV_FILTERS = [[16, [11, 11], 3], [32, [9, 9], 3], [64, [5, 5], 3]]
 
 

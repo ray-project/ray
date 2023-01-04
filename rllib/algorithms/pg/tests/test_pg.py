@@ -1,3 +1,4 @@
+import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import unittest
@@ -47,9 +48,9 @@ class TestPG(unittest.TestCase):
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
         simple_space = Box(-1.0, 1.0, shape=(3,))
 
-        tune.register_env(
+        tune.gym.register(
             "random_dict_env",
-            lambda _: RandomEnv(
+            lambda: RandomEnv(
                 {
                     "observation_space": Dict(
                         {
@@ -62,9 +63,9 @@ class TestPG(unittest.TestCase):
                 }
             ),
         )
-        tune.register_env(
+        gym.register(
             "random_tuple_env",
-            lambda _: RandomEnv(
+            lambda: RandomEnv(
                 {
                     "observation_space": Tuple(
                         [simple_space, Discrete(2), image_space]

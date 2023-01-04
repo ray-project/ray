@@ -27,7 +27,6 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray import tune
 from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
@@ -96,9 +95,9 @@ class TestSAC(unittest.TestCase):
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
         simple_space = Box(-1.0, 1.0, shape=(3,))
 
-        tune.register_env(
+        gym.register(
             "random_dict_env",
-            lambda _: RandomEnv(
+            lambda: RandomEnv(
                 {
                     "observation_space": Dict(
                         {
@@ -111,9 +110,9 @@ class TestSAC(unittest.TestCase):
                 }
             ),
         )
-        tune.register_env(
+        gym.register(
             "random_tuple_env",
-            lambda _: RandomEnv(
+            lambda: RandomEnv(
                 {
                     "observation_space": Tuple(
                         [simple_space, Discrete(2), image_space]
@@ -532,7 +531,7 @@ class TestSAC(unittest.TestCase):
                 truncated = self.steps >= 5
                 return dict_samples[self.steps], 1, terminated, truncated, {}
 
-        tune.register_env("nested", lambda _: NestedDictEnv())
+        gym.register("nested", lambda: NestedDictEnv())
         config = (
             sac.SACConfig()
             .environment("nested")

@@ -1,5 +1,6 @@
-import unittest
+import gymnasium as gym
 import numpy as np
+import unittest
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -10,13 +11,12 @@ from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent, GuessTheNumberGame
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
-from ray.tune import register_env
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 
 from ray.rllib.utils.test_utils import check
 
 
-register_env("basic_multiagent", lambda _: BasicMultiAgent(2))
+gym.register("basic_multiagent", lambda: BasicMultiAgent(2))
 
 
 class TestEnvRunnerV2(unittest.TestCase):
@@ -107,7 +107,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         before it wins or loses.
         """
 
-        register_env("env_under_test", lambda config: GuessTheNumberGame(config))
+        gym.register("env_under_test", lambda config: GuessTheNumberGame(config))
 
         def mapping_fn(agent_id, *args, **kwargs):
             return "pol1" if agent_id == 0 else "pol2"

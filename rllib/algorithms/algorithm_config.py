@@ -305,6 +305,7 @@ class AlgorithmConfig:
 
         # `self.environment()`
         self.env = None
+        self._gym_registry = None
         self.env_config = {}
         self.observation_space = None
         self.action_space = None
@@ -1104,12 +1105,15 @@ class AlgorithmConfig:
         """Sets the config's RL-environment settings.
 
         Args:
-            env: The environment specifier. This can either be a tune-registered env,
-                via `tune.register_env([name], lambda env_ctx: [env object])`,
-                or a string specifier of an RLlib supported type. In the latter case,
-                RLlib will try to interpret the specifier as either an openAI gym env,
-                a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
-                Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+            env: The environment specifier. This can either be a gym-registered env
+                via `gym.register([name], [Callable returning env object])`,
+                a tune-registered env via
+                `tune.register_env([name], lambda env_ctx: [env object])`, or a string
+                specifier of an RLlib supported type. In the latter case,
+                RLlib will try to interpret the specifier as either a built-in gym env
+                (e.g. "CartPole-v1"), a PyBullet env, a ViZDoomGym env, or a fully
+                qualified classpath to an Env class, e.g.
+                "ray.rllib.examples.env.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
@@ -1149,6 +1153,7 @@ class AlgorithmConfig:
         """
         if env is not NotProvided:
             self.env = env
+            self._gym_registry = gym.envs.registry
         if env_config is not NotProvided:
             deep_update(
                 self.env_config,

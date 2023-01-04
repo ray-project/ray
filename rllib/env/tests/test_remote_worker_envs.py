@@ -9,7 +9,6 @@ from ray.rllib.algorithms.pg import pg
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 
 # from ray.rllib.examples.env.random_env import RandomEnv
-from ray import tune
 
 
 # Function that outputs the environment you wish to register.
@@ -21,9 +20,9 @@ def env_creator(config):
     return env
 
 
-tune.register_env("cartpole", lambda env_ctx: gym.make("CartPole-v1"))
+gym.register("cartpole", lambda: gym.make("CartPole-v1"))
 
-tune.register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
+gym.register("pistonball", lambda config: PettingZooEnv(env_creator(config)))
 
 
 class TestRemoteWorkerEnvSetting(unittest.TestCase):

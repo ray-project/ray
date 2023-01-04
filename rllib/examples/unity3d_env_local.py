@@ -22,6 +22,7 @@ $ python unity3d_env_local.py --env 3DBall --stop-reward [..]
 """
 
 import argparse
+import gymnasium as gym
 import os
 
 import ray
@@ -104,7 +105,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    tune.register_env(
+    gym.register(
         "unity3d",
         lambda c: Unity3DEnv(
             file_name=c["file_name"],

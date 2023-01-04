@@ -1,9 +1,9 @@
+import gymnasium as gym
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import unittest
 
 import ray
-from ray.tune import register_env
 from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
@@ -89,7 +89,7 @@ class TestQMix(unittest.TestCase):
         act_space = Tuple(
             [AvailActionsTestEnv.action_space, AvailActionsTestEnv.action_space]
         )
-        register_env(
+        gym.register(
             "action_mask_test",
             lambda config: AvailActionsTestEnv(config).with_agent_groups(
                 grouping, obs_space=obs_space, act_space=act_space

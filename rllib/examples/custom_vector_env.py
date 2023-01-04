@@ -1,4 +1,5 @@
 import argparse
+import gymnasium as gym
 import os
 
 import ray
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     # episode-len=100
     # num-envs=4 (note that these are fake-envs as the MockVectorEnv only
     # carries a single CartPole sub-env in it).
-    tune.register_env("custom_vec_env", lambda env_ctx: MockVectorEnv(100, 4))
+    gym.register("custom_vec_env", lambda: MockVectorEnv(100, 4))
 
     config = (
         get_trainable_cls(args.run)

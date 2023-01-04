@@ -21,7 +21,6 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import framework_iterator
-from ray.tune.registry import register_env
 
 
 @ray.remote
@@ -189,8 +188,8 @@ class TestWorkerFailures(unittest.TestCase):
     def setUpClass(cls) -> None:
         ray.init()
 
-        register_env("fault_env", lambda c: FaultInjectEnv(c))
-        register_env(
+        gym.register("fault_env", lambda c: FaultInjectEnv(c))
+        gym.register(
             "multi-agent-fault_env", lambda c: make_multi_agent(FaultInjectEnv)(c)
         )
 

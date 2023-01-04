@@ -22,7 +22,6 @@ from ray.rllib.algorithms.ppo import (
 )
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.tune.logger import pretty_print
-from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 # Use torch for both policies.
@@ -54,9 +53,7 @@ if __name__ == "__main__":
     ray.init()
 
     # Simple environment with 4 independent cartpole entities
-    register_env(
-        "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
-    )
+    gym.register("multi_agent_cartpole", lambda: MultiAgentCartPole({"num_agents": 4}))
     single_dummy_env = gym.make("CartPole-v1")
     obs_space = single_dummy_env.observation_space
     act_space = single_dummy_env.action_space

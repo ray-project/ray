@@ -37,7 +37,6 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.test_utils import check, framework_iterator
-from ray.tune.registry import register_env
 
 
 class MockPolicy(RandomPolicy):
@@ -193,7 +192,7 @@ class TestRolloutWorker(unittest.TestCase):
             algo.stop()
 
     def test_no_step_on_init(self):
-        register_env("fail", lambda _: FailOnStepEnv())
+        gym.register("fail", lambda: FailOnStepEnv())
         config = PGConfig().environment("fail").rollouts(num_rollout_workers=2)
         for _ in framework_iterator(config):
             # We expect this to fail already on Algorithm init due
@@ -205,10 +204,9 @@ class TestRolloutWorker(unittest.TestCase):
             )
 
     def test_query_evaluators(self):
-        register_env("test", lambda _: gym.make("CartPole-v1"))
         config = (
             PGConfig()
-            .environment("test")
+            .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=2,
                 num_envs_per_worker=2,

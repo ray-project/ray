@@ -1,3 +1,4 @@
+import gymnasium as gym
 from numpy import float32
 from pettingzoo.butterfly import pistonball_v6
 from pettingzoo.mpe import simple_spread_v2
@@ -7,7 +8,6 @@ import unittest
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import PettingZooEnv
-from ray.tune.registry import register_env
 
 
 # TODO(sven): Move into rllib/env/wrappers/tests/.
@@ -27,7 +27,7 @@ class TestPettingZooEnv(unittest.TestCase):
             return env
 
         # Register env
-        register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
+        gym.register("pistonball", lambda config: PettingZooEnv(env_creator(config)))
 
         config = (
             PPOConfig()
@@ -55,7 +55,7 @@ class TestPettingZooEnv(unittest.TestCase):
         algo.stop()
 
     def test_pettingzoo_env(self):
-        register_env("simple_spread", lambda _: PettingZooEnv(simple_spread_v2.env()))
+        gym.register("simple_spread", lambda: PettingZooEnv(simple_spread_v2.env()))
 
         config = (
             PPOConfig()

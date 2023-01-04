@@ -16,7 +16,6 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.evaluate import rollout
-from ray.tune.registry import register_env
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.spaces.repeated import Repeated
@@ -391,7 +390,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
 
     def do_test_nested_dict(self, make_env, test_lstm=False, disable_connectors=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
-        register_env("nested", make_env)
+        gym.register("nested", make_env)
         config = (
             PGConfig()
             .environment("nested", disable_env_checking=True)
@@ -426,7 +425,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
 
     def do_test_nested_tuple(self, make_env, disable_connectors=False):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
-        register_env("nested2", make_env)
+        gym.register("nested2", make_env)
         config = (
             PGConfig()
             .environment("nested2", disable_env_checking=True)
@@ -497,7 +496,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
     def test_multi_agent_complex_spaces(self):
         ModelCatalog.register_custom_model("dict_spy", DictSpyModel)
         ModelCatalog.register_custom_model("tuple_spy", TupleSpyModel)
-        register_env("nested_ma", lambda _: NestedMultiAgentEnv())
+        gym.register("nested_ma", lambda: NestedMultiAgentEnv())
         act_space = spaces.Discrete(2)
         config = (
             PGConfig()
@@ -559,7 +558,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
             check(seen[2][0], task_i)
 
     def test_rollout_dict_space(self):
-        register_env("nested", lambda _: NestedDictEnv())
+        gym.register("nested", lambda: NestedDictEnv())
 
         config = PGConfig().environment("nested").framework("tf")
         algo = config.build()
@@ -577,7 +576,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
 
     def test_py_torch_model(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)
-        register_env("nested", lambda _: NestedDictEnv())
+        gym.register("nested", lambda: NestedDictEnv())
 
         config = (
             A2CConfig()
@@ -613,7 +612,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
     # TODO(ekl) should probably also add a test for TF/eager
     def test_torch_repeated(self):
         ModelCatalog.register_custom_model("r1", TorchRepeatedSpyModel)
-        register_env("repeat", lambda _: RepeatedSpaceEnv())
+        gym.register("repeat", lambda: RepeatedSpaceEnv())
 
         config = (
             A2CConfig()

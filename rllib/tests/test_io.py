@@ -1,4 +1,5 @@
 import glob
+import gymnasium as gym
 import json
 import numpy as np
 import os
@@ -9,7 +10,6 @@ import unittest
 
 import ray
 from ray.tune.registry import (
-    register_env,
     register_input,
     registry_get_input,
     registry_contains_input,
@@ -220,8 +220,8 @@ class AgentIOTest(unittest.TestCase):
             algo.stop()
 
     def test_multi_agent(self):
-        register_env(
-            "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 10})
+        gym.register(
+            "multi_agent_cartpole", lambda: MultiAgentCartPole({"num_agents": 10})
         )
 
         config = (

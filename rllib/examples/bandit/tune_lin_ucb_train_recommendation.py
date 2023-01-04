@@ -2,6 +2,7 @@
     actions. """
 
 import argparse
+import gymnasium as gym
 from matplotlib import pyplot as plt
 import os
 import pandas as pd
@@ -10,7 +11,6 @@ import time
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.bandit import BanditLinUCBConfig
-from ray.tune import register_env
 from ray.rllib.env.wrappers.recsim import (
     MultiDiscreteToDiscreteActionWrapper,
     RecSimObservationBanditWrapper,
@@ -21,7 +21,7 @@ from ray.rllib.examples.env.bandit_envs_recommender_system import (
 
 # Because ParametricRecSys follows RecSim's API, we have to wrap it before
 # it can work with our Bandits agent.
-register_env(
+gym.register(
     "ParametricRecSysEnv",
     lambda cfg: MultiDiscreteToDiscreteActionWrapper(
         RecSimObservationBanditWrapper(ParametricRecSys(**cfg))

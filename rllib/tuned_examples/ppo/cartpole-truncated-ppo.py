@@ -2,9 +2,8 @@ import gymnasium as gym
 from gymnasium.wrappers import TimeLimit
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.tune.registry import register_env
 
-register_env(
+gym.register(
     "cartpole_truncated",
     lambda _: TimeLimit(gym.make("CartPole-v1"), max_episode_steps=50),
 )

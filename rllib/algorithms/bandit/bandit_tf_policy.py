@@ -95,8 +95,8 @@ def validate_spaces(
             msg += (
                 " Try to wrap your environment with the "
                 "`ray.rllib.env.wrappers.recsim::"
-                "MultiDiscreteToDiscreteActionWrapper` class: `tune.register_env("
-                "[some str], lambda ctx: MultiDiscreteToDiscreteActionWrapper("
+                "MultiDiscreteToDiscreteActionWrapper` class: `gym.register("
+                "[some str], lambda: MultiDiscreteToDiscreteActionWrapper("
                 "[your gym env])); config = {'env': [some str]}`"
             )
         raise UnsupportedSpaceException(msg)

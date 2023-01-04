@@ -1,3 +1,4 @@
+import gymnasium as gym
 from gymnasium.wrappers import TimeLimit
 import unittest
 
@@ -10,20 +11,19 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
-from ray.tune.registry import register_env
 
 
 class TestMAML(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
-        register_env(
+        gym.register(
             "cartpole",
-            lambda env_cfg: TimeLimit(CartPoleMassEnv(), max_episode_steps=200),
+            lambda: TimeLimit(CartPoleMassEnv(), max_episode_steps=200),
         )
-        register_env(
+        gym.register(
             "pendulum",
-            lambda env_cfg: TimeLimit(PendulumMassEnv(), max_episode_steps=200),
+            lambda: TimeLimit(PendulumMassEnv(), max_episode_steps=200),
         )
 
     @classmethod
