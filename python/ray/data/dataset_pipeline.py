@@ -890,7 +890,20 @@ class DatasetPipeline(Generic[T]):
         """Apply :py:meth:`Dataset.randomize_block_order
         <ray.data.Dataset.randomize_block_order>` to each dataset/window in this
         pipeline."""
-        return self.foreach_window(lambda ds: ds.randomize_block_order(seed=seed))
+        class RandomSeed:
+            def __init__(self, seed):
+                self.seed = seed
+
+            def randomize(self, ds):
+                ds = self.ds.randomize_block_order(seed=self.seed)
+                self.seed += 1
+                return ds
+
+        if seed is not None:
+            r = RandomSeed(ds, seed)
+            return self.foreach_window(lambda ds: r.randomize(ds))
+
+        return self.foreach_window(lambda ds: ds.randomize_block_order())
 
     def write_json(
         self,

@@ -443,44 +443,48 @@ def test_per_epoch_preprocessor(ray_start_4_cpus):
 
 def test_shuffle(ray_start_4_cpus):
     trainer = DummyTrainer.remote()
-    ds = ray.data.range_table(5)
+    ds = ray.data.range_table(100)
 
+    shuffle = None
     for max_object_store_memory_fraction in [None, 1, 0.3]:
         results = iterate_twice(
             trainer,
             ds,
             max_object_store_memory_fraction=max_object_store_memory_fraction,
+            shuffle=shuffle,
         )
 
-        assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
-        assert results[0] != results[1], (max_object_store_memory_fraction, results)
-        assert results[0] != list(range(5))
+        assert len(results[0]) == 100, (max_object_store_memory_fraction, shuffle, results)
+        assert results[0] != results[1], (max_object_store_memory_fraction, shuffle, results)
+        assert results[0] != list(range(100))
 
+    shuffle = 0
     for max_object_store_memory_fraction in [None, 1, 0.3]:
         results = iterate_twice(
             trainer,
             ds,
             max_object_store_memory_fraction=max_object_store_memory_fraction,
-            shuffle=0,
+            shuffle=shuffle,
         )
 
-        assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
-        assert results[0] == results[1], (max_object_store_memory_fraction, results)
-        assert results[0] == list(range(5))
+        assert len(results[0]) == 100, (max_object_store_memory_fraction, shuffle, results)
+        assert results[0] == results[1], (max_object_store_memory_fraction, shuffle, results)
+        assert results[0] == list(range(100))
 
     # TODO: Add a better test for global vs. local shuffle and block vs. local
     # shuffle.
+    shuffle = -1
     for max_object_store_memory_fraction in [None, 1, 0.3]:
         results = iterate_twice(
             trainer,
             ds,
             max_object_store_memory_fraction=max_object_store_memory_fraction,
-            shuffle=-1,
+            shuffle=shuffle,
         )
 
-        assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
-        assert results[0] != results[1], (max_object_store_memory_fraction, results)
-        assert results[0] != list(range(5))
+        assert len(results[0]) == 100, (max_object_store_memory_fraction, shuffle, results)
+        assert results[0] != results[1], (max_object_store_memory_fraction, shuffle, results)
+        assert results[0] != list(range(100))
 
 
 if __name__ == "__main__":

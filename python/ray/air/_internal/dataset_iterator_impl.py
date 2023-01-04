@@ -30,8 +30,6 @@ class BulkDatasetIterator(DatasetIterator):
         batch_format: str = "default",
         drop_last: bool = False,
     ) -> Iterator[DataBatchType]:
-        self._epoch += 1
-
         ds = self._base_dataset
         if self._per_epoch_preprocessor is not None:
             ds = self._per_epoch_preprocessor.transform(ds)
@@ -39,9 +37,13 @@ class BulkDatasetIterator(DatasetIterator):
         local_shuffle_buffer_size = None
         if self._shuffle > 0:
             local_shuffle_buffer_size = self._shuffle
+        local_shuffle_seed = None
+        if self._shuffle_seed is not None:
+            local_shuffle_seed = self._shuffle_seed + self._epoch
         if self._shuffle != 0:
-            ds = ds.randomize_block_order()
+            ds = ds.randomize_block_order(seed=local_shuffle_seed)
 
+        self._epoch += 1
         return ds.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
@@ -50,7 +52,7 @@ class BulkDatasetIterator(DatasetIterator):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             # Can also use this to generate a new deterministic seed on each
             # epoch.
-            local_shuffle_seed=self._shuffle_seed,
+            local_shuffle_seed=local_shuffle_seed,
         )
 
     def stats(self) -> str:
@@ -89,6 +91,9 @@ class PipelinedDatasetIterator(DatasetIterator):
         local_shuffle_buffer_size = None
         if self._shuffle > 0:
             local_shuffle_buffer_size = self._shuffle
+        local_shuffle_seed = None
+        if self._shuffle_seed is not None:
+            local_shuffle_seed = self._shuffle_seed + self._epoch
 
         return ds.iter_batches(
             prefetch_blocks=prefetch_blocks,
@@ -96,7 +101,7 @@ class PipelinedDatasetIterator(DatasetIterator):
             batch_format=batch_format,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
-            local_shuffle_seed=self._shuffle_seed,
+            local_shuffle_seed=local_shuffle_seed,
         )
 
     def stats(self) -> str:

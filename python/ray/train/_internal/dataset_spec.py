@@ -137,7 +137,7 @@ class DataParallelIngestSpec:
             # If globally shuffling, don't randomize unless using the stream API.
             local_window = 1 > conf.max_object_store_memory_fraction >= 0
             if conf.shuffle > 0 or (conf.shuffle == -1 and local_window):
-                datasets[key] = dataset.randomize_block_order()
+                datasets[key] = dataset.randomize_block_order(seed=conf.shuffle_seed)
 
         if prep:
             ds_to_fit = None
@@ -225,13 +225,13 @@ class DataParallelIngestSpec:
                 if config.shuffle > 0:
                     # TODO(swang): Should randomize block order across the
                     # original dataset, not the window.
-                    dataset = dataset.randomize_block_order_each_window()
+                    dataset = dataset.randomize_block_order_each_window(seed=config.shuffle_seed)
 
             if config.shuffle == -1:
                 if config.max_object_store_memory_fraction >= 0:
-                    dataset = dataset.random_shuffle_each_window()
+                    dataset = dataset.random_shuffle_each_window(seed=config.shuffle_seed)
                 else:
-                    dataset = dataset.random_shuffle()
+                    dataset = dataset.random_shuffle(seed=config.shuffle_seed)
 
             if config.max_object_store_memory_fraction == -1:
                 dataset = dataset.fully_executed()
