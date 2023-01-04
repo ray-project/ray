@@ -37,6 +37,7 @@ class StatsmodelPredictor(Predictor):
 # fmt: on
 
 # __statsmodelpredictor_usage_start__
+import numpy as np
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 
