@@ -105,7 +105,6 @@ def run_iter_batches_benchmark(benchmark: Benchmark):
     new_ds = new_ds.map_batches(
         lambda ds: ds, batch_format="pandas", batch_size=None
     ).fully_executed()
-    print("ds:", new_ds)
     for batch_size in [32 * 1024, 64 * 1024, 256 * 1024]:
         test_name = f"iter-batches-block-concat-to-batch-{batch_size}"
         benchmark.run(
