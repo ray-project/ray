@@ -27,21 +27,27 @@ Custom env classes passed directly to the algorithm must take a single ``env_con
 
 .. code-block:: python
 
-    import gym, ray
+    import gymnasium as gym
+
+    import ray
     from ray.rllib.algorithms.ppo import PPOConfig
 
     class MyEnv(gym.Env):
-        def __init__(self, env_config=None):
-            self.action_space = <gym.Space>
-            self.observation_space = <gym.Space>
-        def reset(self):
-            return <obs>
+        def __init__(self, fixed_reward=1.0):
+            self.action_space = gym.spaces.Discrete(2)
+            self.observation_space = gym.spaces.Box(-1.0, 1.0, (1,))
+            self.fixed_reward = fixed_reward
+
+        def reset(self, *, seed=None, options=None):
+            return self.observation_space.sample(), {}
+
         def step(self, action):
-            return <obs>, <reward: float>, <done: bool>, <info: dict>
+            return self.observation_space.sample(), self.fixed_reward, False, False, {}
 
     config = (
         PPOConfig()
-        .environment(MyEnv, env_config={})  # config dict to be pass to env class's c'tor
+        # ctor_kwargs: kwargs to be passed to env class's (MyEnv) c'tor.
+        .environment(MyEnv, kwargs={"fixed_reward": -0.5})
     )
     algo = config.build()
 
@@ -52,13 +58,18 @@ You can also register a custom env creator function with a string name. This fun
 
 .. code-block:: python
 
-    from ray.tune.registry import register_env
+    # Define an env creator callable with any arbitrary signature:
+    def env_creator(r=2.0):
+        return MyEnv(fixed_reward=r)  # return an env instance
 
-    def env_creator(env_config: dict):
-        return MyEnv(...)  # return an env instance
-
-    register_env("my_env", env_creator)
+    # Register a string (Env ID) with the above env creator callable
+    # (including a set of kwargs to be passed in).
+    gym.register("my_env", env_creator, kwargs={"r": 1.5})
     algo = PPOConfig.environment("my_env").build()
+
+    # Alternatively:
+    gym.register("my_env_2", env_creator)
+    algo = PPOConfig.environment("my_env", kwargs={"r": 1.5}).build()
 
 For a full runnable code example using the gymnasium environment API,
 see `custom_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__.
@@ -74,19 +85,25 @@ This can be useful if you want to train over an ensemble of different environmen
 
 .. code-block:: python
 
+    import gymnasium as gym
+
+    from tune.registry import register_env
+
     class MultiEnv(gym.Env):
-        def __init__(self, env_config):
+        def __init__(self, env_ctx):
             # pick actual env based on worker and env indexes
             self.env = gym.make(
                 choose_env_for(env_config.worker_index, env_config.vector_index))
             self.action_space = self.env.action_space
             self.observation_space = self.env.observation_space
-        def reset(self):
-            return self.env.reset()
+
+        def reset(self, *, seed=None, options=None):
+            return self.env.reset(seed=seed, options=options)
+
         def step(self, action):
             return self.env.step(action)
 
-    register_env("multienv", lambda config: MultiEnv(config))
+    register_env("multi_env", lambda env_ctx: MultiEnv(env_ctx))
 
 .. tip::
 
@@ -361,18 +378,19 @@ PettingZoo Multi-Agent Environments
 
 .. code-block:: python
 
-    from ray.tune.registry import register_env
-    # import the pettingzoo environment
+    import gymnasium as gym
     from pettingzoo.butterfly import prison_v3
-    # import rllib pettingzoo interface
+
+    from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.env import PettingZooEnv
-    # define how to make the environment. This way takes an optional environment config, num_floors
-    env_creator = lambda config: prison_v3.env(num_floors=config.get("num_floors", 4))
-    # register that way to make the environment under an rllib name
-    register_env('prison', lambda config: PettingZooEnv(env_creator(config)))
-    # now you can use `prison` as an environment
-    # you can pass arguments to the environment creator with the env_config option in the config
-    config['env_config'] = {"num_floors": 5}
+
+    # Register that way to make the environment under a gym ID.
+    gym.register("prison", lambda floors=4: PettingZooEnv(
+        prison_v3.env(num_floors=floors)
+    )
+    # Now you can use `prison` as an environment.
+    # You can pass kwargs to the environment creator with the kwargs option in the config.
+    config = PPOConfig().environment("prison", kwargs={"floors": 10})
 
 A more complete example is here: `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__
 
