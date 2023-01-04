@@ -17,7 +17,7 @@ class CommandRunner(abc.ABC):
         self.working_dir = working_dir
 
         self.result_output_json = "/tmp/release_test_out.json"
-        self.metrics_output_json = "/tmp/metrics_test_out.json"
+        self.metrics_output_json = "/tmp/metrics_test_out.json.gz"  # will be compressed
 
     @property
     def command_env(self):

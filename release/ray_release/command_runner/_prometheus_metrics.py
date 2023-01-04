@@ -1,19 +1,34 @@
 import asyncio
 import aiohttp
+import gzip
 import os
 import time
 import traceback
-from urllib.parse import quote
-from typing import Optional
 import logging
 import json
 import argparse
+from pathlib import Path
+from urllib.parse import quote
+from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 RETRIES = 3
+
+
+# Duplicated from ray_release.util
+def write_json(data, path: Union[str, Path], **json_dump_kwargs) -> Path:
+    """Supports both .gz and .json files."""
+    pathlib_path = Path(path)
+    if pathlib_path.suffix == ".gz":
+        with gzip.open(pathlib_path, "w") as f:
+            f.write(json.dumps(data).encode("utf-8"), **json_dump_kwargs)
+    else:
+        with open(pathlib_path, "w") as f:
+            json.dump(data, f, **json_dump_kwargs)
+    return pathlib_path
 
 
 class PrometheusQueryError(Exception):
@@ -141,8 +156,7 @@ def save_prometheus_metrics(
             metrics = ray.get(ref, timeout=900)
         else:
             metrics = get_prometheus_metrics(start_time, end_time)
-        with open(path, "w") as metrics_output_file:
-            json.dump(metrics, metrics_output_file)
+        write_json(metrics, path)
         return path
     return None
 

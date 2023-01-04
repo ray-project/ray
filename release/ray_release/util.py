@@ -1,10 +1,12 @@
 import collections
 import hashlib
+import gzip
 import json
 import os
 import subprocess
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import requests
 from ray_release.logger import logger
@@ -153,3 +155,39 @@ def get_pip_packages() -> List[str]:
 def python_version_str(python_version: Tuple[int, int]) -> str:
     """From (X, Y) to XY"""
     return "".join([str(x) for x in python_version])
+
+
+# Duplicated in ray_release.command_runner._prometheus_metrics
+def write_json(
+    data: Dict[str, Any], path: Union[str, Path], **json_dump_kwargs
+) -> Path:
+    """Supports both .gz and .json files."""
+    pathlib_path = Path(path)
+    if pathlib_path.suffix == ".gz":
+        with gzip.open(pathlib_path, "w") as f:
+            f.write(json.dumps(data).encode("utf-8"), **json_dump_kwargs)
+    else:
+        with open(pathlib_path, "wt") as f:
+            json.dump(data, f, **json_dump_kwargs)
+    return pathlib_path
+
+
+def _read_gzip_json(path: str, **json_load_kwargs) -> Dict[str, Any]:
+    with gzip.open(path, "r") as f:
+        return json.loads(f.read().decode("utf-8"), **json_load_kwargs)
+
+
+def read_json(path: Union[str, Path], **json_load_kwargs) -> Dict[str, Any]:
+    """Supports both .gz and .json files."""
+    pathlib_path = Path(path)
+    if pathlib_path.suffix == ".gz":
+        data = _read_gzip_json(pathlib_path, **json_load_kwargs)
+    else:
+        try:
+            with open(pathlib_path, "rt") as f:
+                data = json.load(f, **json_load_kwargs)
+        except UnicodeDecodeError:
+            # If we fail due to UnicodeDecodeError, maybe this is a
+            # gzip
+            data = _read_gzip_json(pathlib_path, **json_load_kwargs)
+    return data

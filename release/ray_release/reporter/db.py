@@ -38,7 +38,7 @@ class DBReporter(Reporter):
             "extra_tags": result.extra_tags or {},
         }
 
-        logger.debug(f"Result json: {json.dumps(result_json)}")
+        print(f"Result json: {json.dumps(result_json)}")
 
         try:
             self.firehose.put_record(

@@ -1,6 +1,6 @@
-import json
 import os
 import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -17,7 +17,7 @@ from ray_release.exception import (
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
 from ray_release.logger import logger
-from ray_release.util import format_link, get_anyscale_sdk
+from ray_release.util import format_link, get_anyscale_sdk, read_json
 from ray_release.wheels import install_matching_ray_locally
 
 if TYPE_CHECKING:
@@ -130,13 +130,13 @@ class JobRunner(CommandRunner):
             raise LogsError(f"Could not get last logs: {e}") from e
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:
+        pathlib_path = Path(path)
         try:
-            tmpfile = tempfile.mkstemp(suffix=".json")[1]
+            tmpfile = tempfile.mkstemp(suffix=pathlib_path.suffix)[1]
             logger.info(tmpfile)
             self.file_manager.download(path, tmpfile)
 
-            with open(tmpfile, "rt") as f:
-                data = json.load(f)
+            data = read_json(tmpfile)
 
             os.unlink(tmpfile)
             return data

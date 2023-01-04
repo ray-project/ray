@@ -1,4 +1,3 @@
-import json
 import os
 import re
 from typing import Dict, List, Optional, Tuple, Any
@@ -8,7 +7,7 @@ import yaml
 from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
-from ray_release.util import DeferredEnvVar, deep_update
+from ray_release.util import DeferredEnvVar, deep_update, read_json
 
 
 class Test(dict):
@@ -53,8 +52,7 @@ def read_and_validate_release_test_collection(config_file: str) -> List[Test]:
 
 def load_schema_file(path: Optional[str] = None) -> Dict:
     path = path or RELEASE_TEST_SCHEMA_FILE
-    with open(path, "rt") as fp:
-        return json.load(fp)
+    return read_json(path)
 
 
 def validate_release_test_collection(test_collection: List[Test]):

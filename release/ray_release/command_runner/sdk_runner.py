@@ -1,4 +1,3 @@
-import json
 import os
 import tempfile
 import time
@@ -22,6 +21,7 @@ from ray_release.util import (
     format_link,
     get_anyscale_sdk,
     ANYSCALE_HOST,
+    read_json,
 )
 
 if TYPE_CHECKING:
@@ -183,8 +183,7 @@ class SDKRunner(CommandRunner):
             tmpfile = tempfile.mktemp()
             self.file_manager.download(path, tmpfile)
 
-            with open(tmpfile, "rt") as f:
-                data = json.load(f)
+            data = read_json(tmpfile)
 
             os.unlink(tmpfile)
             return data

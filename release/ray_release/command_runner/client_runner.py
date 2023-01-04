@@ -1,4 +1,3 @@
-import json
 import os
 import shlex
 import subprocess
@@ -24,6 +23,7 @@ from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.wheels import install_matching_ray_locally
+from ray_release.util import read_json
 
 
 def install_cluster_env_packages(cluster_env: Dict[Any, Any]):
@@ -118,8 +118,7 @@ class ClientRunner(CommandRunner):
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:
-            with open(path, "rt") as fp:
-                return json.load(fp)
+            return read_json(path)
         except Exception as e:
             raise ResultsError(
                 f"Could not load local results from client command: {e}"

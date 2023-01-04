@@ -1,10 +1,10 @@
-import json
 import os
 
 from ray_release.config import Test
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
+from ray_release.util import write_json
 
 # Write to this directory. run_release_tests.sh will copy the content
 # overt to DEFAULT_ARTIFACTS_DIR_HOST
@@ -23,12 +23,10 @@ class ArtifactsReporter(Reporter):
             os.makedirs(self.artifacts_dir, 0o755)
 
         test_config_file = os.path.join(self.artifacts_dir, ARTIFACT_TEST_CONFIG_FILE)
-        with open(test_config_file, "wt") as fp:
-            json.dump(test, fp, sort_keys=True, indent=4)
+        write_json(test, test_config_file, sort_keys=True, indent=4)
 
         result_file = os.path.join(self.artifacts_dir, ARTIFACT_RESULT_FILE)
-        with open(result_file, "wt") as fp:
-            json.dump(result.__dict__, fp, sort_keys=True, indent=4)
+        write_json(result.__dict__, result_file, sort_keys=True, indent=4)
 
         logger.info(
             f"Wrote test config and result to artifacts directory: {self.artifacts_dir}"
