@@ -10,8 +10,16 @@ import pytest
 
 import ray
 from ray import tune
-from ray.air import Checkpoint, CheckpointConfig, FailureConfig, RunConfig, session
+from ray.air import (
+    Checkpoint,
+    CheckpointConfig,
+    FailureConfig,
+    RunConfig,
+    ScalingConfig,
+    session,
+)
 from ray.air._internal.remote_storage import delete_at_uri, download_from_uri
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune import Callback, Trainable
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
@@ -803,7 +811,8 @@ def test_custom_searcher_and_scheduler_restore(ray_start_2_cpus, tmpdir):
     )
 
 
-def test_checkpoints_saved_after_resume(tmp_path):
+@pytest.mark.parametrize("use_air_trainer", [True, False])
+def test_checkpoints_saved_after_resume(tmp_path, use_air_trainer):
     """Checkpoints saved after experiment restore should pick up at the correct
     iteration and should not overwrite the checkpoints from the original run.
     Old checkpoints should still be deleted if the total number of checkpoints
@@ -831,19 +840,30 @@ def test_checkpoints_saved_after_resume(tmp_path):
     fail_marker = tmp_path / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 
+    trainable = (
+        DataParallelTrainer(
+            _train_fn_sometimes_failing, scaling_config=ScalingConfig(num_workers=1)
+        )
+        if use_air_trainer
+        else _train_fn_sometimes_failing
+    )
+    param_space = {
+        "failing_hanging": (fail_marker, None),
+        "num_epochs": 2,
+    }
+    if use_air_trainer:
+        param_space = {"train_loop_config": param_space}
+
     num_to_keep = 4
     tuner = Tuner(
-        _train_fn_sometimes_failing,
+        trainable,
         tune_config=TuneConfig(num_samples=1),
         run_config=RunConfig(
             name="exp_name",
             local_dir=str(tmp_path),
             checkpoint_config=CheckpointConfig(num_to_keep=num_to_keep),
         ),
-        param_space={
-            "failing_hanging": (fail_marker, None),
-            "num_epochs": 2,
-        },
+        param_space=param_space,
     )
     results = tuner.fit()
     training_iteration = results[0].metrics["training_iteration"]
