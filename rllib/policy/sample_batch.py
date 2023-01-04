@@ -48,7 +48,7 @@ def attempt_count_timesteps(tensor_dict: dict):
             (tf and not tf.is_tensor(v)) or (torch and not torch.is_tensor(v))
         ) and not isinstance(v, np.ndarray):
             raise ValueError(
-                f"SampleBatch must be a dict of ndarrays/tensors, " f"not `{type(v)}.`"
+                f"SampleBatch must be a dict of ndarrays/tensors, not `{type(v)}.`"
             )
 
     # Skip manual counting routine if we can directly infer count from sequence lengths
