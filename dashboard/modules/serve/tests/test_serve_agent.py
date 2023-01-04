@@ -94,6 +94,14 @@ def test_put_get(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_put_bad_schema(ray_start_stop):
+    config = {"not_a_real_field": "value"}
+
+    put_response = requests.put(GET_OR_PUT_URL, json=config, timeout=5)
+    assert put_response.status_code == 400
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_delete(ray_start_stop):
     config = {
         "import_path": "dir.subdir.a.add_and_sub.serve_dag",
