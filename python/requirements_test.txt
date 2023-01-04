@@ -30,7 +30,7 @@ google-cloud-storage==2.5.0
 gradio==3.5; platform_system != "Windows"
 jsonpatch==1.32
 kubernetes==24.2.0
-llvmlite==0.39.1
+llvmlite==0.39.1; python_version < '3.11'
 lxml==4.9.1
 moto[s3,server]==4.0.7
 mypy==0.982
