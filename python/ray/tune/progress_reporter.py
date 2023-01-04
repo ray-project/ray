@@ -12,9 +12,10 @@ import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from ray._private.dict import flatten_dict
+import pandas as pd
 
 import ray
+from ray._private.dict import flatten_dict
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
 from ray.tune.result import (
@@ -432,7 +433,7 @@ class TuneReporterBase(ProgressReporter):
             if not t.last_result:
                 continue
             metric_value = unflattened_lookup(metric, t.last_result, default=None)
-            if metric_value is None:
+            if pd.isnull(metric_value):
                 continue
             if not best_trial or metric_value * metric_op > best_metric:
                 best_metric = metric_value * metric_op
