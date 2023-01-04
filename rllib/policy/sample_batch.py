@@ -44,11 +44,12 @@ def attempt_count_timesteps(tensor_dict: dict):
     copy_ = {k: v for k, v in tensor_dict.items() if k != SampleBatch.SEQ_LENS}
 
     for k, v in copy_.items():
-        # TODO: Drop support for lists and Numbers as values.
-        # Convert lists of int|float into numpy arrays make sure all data
-        # has same length.
-        if isinstance(v, (Number, list)):
-            copy_[k] = np.array(v)
+        if not (
+            (tf and not tf.is_tensor(v)) or (torch and not torch.is_tensor(v))
+        ) and not isinstance(v, np.ndarray):
+            raise ValueError(
+                f"SampleBatch must be a dict of ndarrays/tensors, " f"not `{type(v)}.`"
+            )
 
     # Skip manual counting routine if we can directly infer count from sequence lengths
     if (
