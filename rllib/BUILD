@@ -869,7 +869,7 @@ py_test(
 # AlphaZero
 py_test(
     name = "test_alpha_zero",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "medium",
     srcs = ["algorithms/alpha_zero/tests/test_alpha_zero.py"]
 )
@@ -901,7 +901,7 @@ py_test(
 # ARS
 py_test(
     name = "test_ars",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "medium",
     srcs = ["algorithms/ars/tests/test_ars.py"]
 )
@@ -927,7 +927,7 @@ py_test(
 # CQL
 py_test(
     name = "test_cql",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "large",
     data = ["tests/data/pendulum/small.json"],
     srcs = ["algorithms/cql/tests/test_cql.py"]
@@ -984,32 +984,29 @@ py_test(
 
 # DT
 py_test(
-    name = "test_segmentation_buffer",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "small",
-    srcs = ["algorithms/dt/tests/test_segmentation_buffer.py"]
-)
-
-py_test(
-    name = "test_dt_model",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "small",
-    srcs = ["algorithms/dt/tests/test_dt_model.py"]
-)
-
-py_test(
-    name = "test_dt_policy",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "small",
-    srcs = ["algorithms/dt/tests/test_dt_policy.py"]
-)
-
-py_test(
     name = "test_dt",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "medium",
     srcs = ["algorithms/dt/tests/test_dt.py"],
     data = ["tests/data/pendulum/large.json"],
+)
+py_test(
+    name = "test_dt_segmentation_buffer",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
+    size = "small",
+    srcs = ["algorithms/dt/tests/test_segmentation_buffer.py"]
+)
+py_test(
+    name = "test_dt_model",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
+    size = "small",
+    srcs = ["algorithms/dt/tests/test_dt_model.py"]
+)
+py_test(
+    name = "test_dt_policy",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
+    size = "small",
+    srcs = ["algorithms/dt/tests/test_dt_policy.py"]
 )
 
 # ES
@@ -1029,7 +1026,7 @@ py_test(
 )
 py_test(
     name = "test_vtrace",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace.py"]
 )
@@ -1051,7 +1048,7 @@ py_test(
 # MADDPG
 py_test(
     name = "test_maddpg",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "medium",
     srcs = ["algorithms/maddpg/tests/test_maddpg.py"]
 )
@@ -1059,7 +1056,7 @@ py_test(
 # MAML
 py_test(
     name = "test_maml",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "medium",
     srcs = ["algorithms/maml/tests/test_maml.py"]
 )
@@ -1067,7 +1064,7 @@ py_test(
 # MBMPO
 py_test(
     name = "test_mbmpo",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "medium",
     srcs = ["algorithms/mbmpo/tests/test_mbmpo.py"]
 )
@@ -1087,21 +1084,18 @@ py_test(
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
 )
-
 py_test(
     name = "test_ppo_with_rl_module",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_with_rl_module.py"]
 )
-
 py_test(
     name = "test_ppo_rl_module",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_rl_module.py"]
 )
-
 # PPO Reproducibility
 py_test(
     name = "test_repro_ppo",
@@ -1130,7 +1124,7 @@ py_test(
 py_test(
     name = "test_random_agent",
     main = "algorithms/random_agent/random_agent.py",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "small",
     srcs = ["algorithms/random_agent/random_agent.py"]
 )
@@ -1146,7 +1140,7 @@ py_test(
 # SAC
 py_test(
     name = "test_sac",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "large",
     srcs = ["algorithms/sac/tests/test_sac.py"]
 )
@@ -1154,11 +1148,10 @@ py_test(
 # SimpleQ
 py_test(
     name = "test_simple_q",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_gpu"],
     size = "medium",
     srcs = ["algorithms/simple_q/tests/test_simple_q.py"]
 )
-
 # SimpleQ Reproducibility
 py_test(
     name = "test_repro_simple_q",
