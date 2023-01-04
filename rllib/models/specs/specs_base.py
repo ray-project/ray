@@ -10,11 +10,11 @@ _INVALID_INPUT_UNKNOWN_DIM = "Unknown dimension name {} in shape ({})"
 _INVALID_INPUT_POSITIVE = "Dimension {} in ({}) must be positive, got {}"
 _INVALID_INPUT_INT_DIM = "Dimension {} in ({}) must be integer, got {}"
 _INVALID_SHAPE = "Expected shape {} but found {}"
-_INVALID_TYPE = "Expected tensor type {} but found {}"
+_INVALID_TYPE = "Expected data type {} but found {}"
 
 
 @DeveloperAPI
-class SpecsAbstract(abc.ABC):
+class Spec(abc.ABC):
     @DeveloperAPI
     @abc.abstractstaticmethod
     def validate(self, data: Any) -> None:
@@ -29,7 +29,37 @@ class SpecsAbstract(abc.ABC):
 
 
 @DeveloperAPI
-class TensorSpec(SpecsAbstract):
+class TypeSpec(Spec):
+    """A base class that checks the type of the input data.
+
+    Args:
+        dtype: The type of the object.
+
+    Examples:
+        >>> spec = TypeSpec(tf.Tensor)
+        >>> spec.validate(tf.ones((2, 3))) # passes
+        >>> spec.validate(torch.ones((2, 3))) # ValueError
+    """
+
+    def __init__(self, dtype: Type) -> None:
+        self.dtype = dtype
+
+    @override(Spec)
+    def validate(self, data: Any) -> None:
+        if not isinstance(data, self.dtype):
+            raise ValueError(_INVALID_TYPE.format(self.dtype, type(data)))
+
+    def __eq__(self, other: "TypeSpec") -> bool:
+        if not isinstance(other, TypeSpec):
+            return False
+        return self.dtype == other.dtype
+
+    def __ne__(self, other: "TypeSpec") -> bool:
+        return not self == other
+
+
+@DeveloperAPI
+class TensorSpec(Spec):
     """A base class that specifies the shape and dtype of a tensor.
 
     Args:
@@ -125,7 +155,7 @@ class TensorSpec(SpecsAbstract):
         """Returns a dtype specifying the tensor dtype."""
         return self._dtype
 
-    @override(SpecsAbstract)
+    @override(Spec)
     def validate(self, tensor: TensorType) -> None:
         """Checks if the shape and dtype of the tensor matches the specification.
 

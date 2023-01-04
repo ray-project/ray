@@ -1104,6 +1104,11 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                             });
     // Block until the remote call `AssignObjectOwner` returns.
     status = status_promise.get_future().get();
+    // Must call `AddNestedObjectIds` after finished assign owner.
+    // Otherwise, it will cause the reference count of those contained objects
+    // to be less than expected. Details: https://github.com/ray-project/ray/issues/30341
+    reference_counter_->AddNestedObjectIds(
+        *object_id, contained_object_ids, real_owner_address);
   }
 
   if (options_.is_local_mode && owned_by_us && inline_small_object) {
@@ -2364,17 +2369,8 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-    // Make task event
-    if (task_event_buffer_->Enabled()) {
-      rpc::TaskEvents task_event;
-      task_event.set_task_id(task_spec.TaskId().Binary());
-      task_event.set_attempt_number(task_spec.AttemptNumber());
-      task_event.set_job_id(task_spec.JobId().Binary());
-
-      auto state_updates = task_event.mutable_state_updates();
-      state_updates->set_running_ts(absl::GetCurrentTimeNanos());
-      task_event_buffer_->AddTaskEvent(std::move(task_event));
-    }
+    task_manager_->RecordTaskStatusEvent(
+        task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());

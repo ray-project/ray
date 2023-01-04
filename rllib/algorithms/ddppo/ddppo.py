@@ -155,9 +155,7 @@ class DDPPOConfig(PPOConfig):
 
     @override(PPOConfig)
     def validate(self) -> None:
-        # Call (base) PPO's config validation function first.
-        # Note that this will not touch or check on the train_batch_size=-1
-        # setting.
+        # Call super's validation method.
         super().validate()
 
         # Must have `num_rollout_workers` >= 1.
