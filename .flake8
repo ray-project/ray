@@ -47,3 +47,5 @@ avoid-escape = no
 per-file-ignores =
     rllib/evaluation/worker_set.py:E731
     rllib/evaluation/sampler.py:E731
+    doc/source/ray-air/doc_code/mxnet_predictor.py:E402
+    doc/source/ray-air/doc_code/statsmodel_predictor.py:E402

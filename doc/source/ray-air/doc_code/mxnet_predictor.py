@@ -1,3 +1,4 @@
+# fmt: off
 # __mxnetpredictor_impl_start__
 from typing import Dict, Optional, Union
 
@@ -47,6 +48,7 @@ class MXNetPredictor(Predictor):
             net.load_parameters(path)
         return cls(net, preprocessor=preprocessor)
 # __mxnetpredictor_impl_end__
+# fmt: on
 
 
 def preprocess_batch(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
