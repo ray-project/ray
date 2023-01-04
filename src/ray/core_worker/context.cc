@@ -22,7 +22,7 @@
 namespace ray {
 namespace core {
 namespace {
-const rpc::JobConfig kDefaultJobConfig;
+const rpc::JobConfig kDefaultJobConfig{};
 }
 
 /// per-thread context for core worker.
