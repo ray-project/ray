@@ -166,6 +166,7 @@ class DatasetStats:
     This object contains a reference to the parent Dataset's stats as well,
     but not the Dataset object itself, to allow its blocks to be dropped from
     memory."""
+
     def __init__(
         self,
         *,
