@@ -214,7 +214,9 @@ def create_replica_wrapper(name: str):
             """
             return ray.get_runtime_context().node_id
 
-        async def is_ready(self, user_config, _after: Optional[Any] = None):
+        async def is_ready(
+            self, user_config: Optional[Any] = None, _after: Optional[Any] = None
+        ):
             await self._initialize_replica()
 
             if user_config is not None:

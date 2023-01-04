@@ -4,7 +4,6 @@ import ray
 from ray.exceptions import RayError
 from ray._private.test_utils import wait_for_condition
 from ray import serve
-from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 
 
@@ -225,7 +224,11 @@ def test_health_check_failure_makes_deployment_unhealthy(serve_instance):
 
 
 def test_health_check_failure_makes_deployment_unhealthy2(serve_instance):
-    """If a deployment always fails health check, the deployment should be unhealthy."""
+    """
+    If a deployment continues to fail health check after being restarted, the
+    deployment should be unhealthy.
+    """
+
     class Toggle:
         def __init__(self):
             self._should_fail = False
@@ -247,7 +250,7 @@ def test_health_check_failure_makes_deployment_unhealthy2(serve_instance):
 
         def __call__(self, *args):
             return ray.get_runtime_context().current_actor
-    
+
     def check_status(expected_status):
         app_status = serve_instance.get_serve_status()
         return (

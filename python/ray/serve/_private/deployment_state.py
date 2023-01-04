@@ -445,7 +445,7 @@ class ActorReplicaWrapper:
                     - replica initialization succeeded.
             version:
                 None:
-                    - replica is waiting for a worker to start, or replica 
+                    - replica is waiting for a worker to start, or replica
                       initialization hasn't finished, or replica initialization failed.
                 version:
                     - replica initialization succeeded.
@@ -461,24 +461,23 @@ class ActorReplicaWrapper:
         # surface exception to each update() cycle.
         if not replica_ready:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
+        else:
+            try:
+                # TODO(simon): fully implement reconfigure for Java replicas.
+                if self._is_cross_language:
+                    return ReplicaStartupStatus.SUCCEEDED, None
 
-        try:
-            # TODO(simon): fully implement reconfigure for Java replicas.
-            if self._is_cross_language:
-                return ReplicaStartupStatus.SUCCEEDED, None
-
-            deployment_config, version = ray.get(self._ready_obj_ref)
-            self._max_concurrent_queries = deployment_config.max_concurrent_queries
-            self._graceful_shutdown_timeout_s = (
-                deployment_config.graceful_shutdown_timeout_s
-            )
-            self._health_check_period_s = deployment_config.health_check_period_s
-            self._health_check_timeout_s = deployment_config.health_check_timeout_s
-            self._node_id = ray.get(self._allocated_obj_ref).hex()
-        except Exception:
-            logger.exception(f"Exception in deployment '{self._deployment_name}'")
-            return ReplicaStartupStatus.FAILED, None
-
+                deployment_config, version = ray.get(self._ready_obj_ref)
+                self._max_concurrent_queries = deployment_config.max_concurrent_queries
+                self._graceful_shutdown_timeout_s = (
+                    deployment_config.graceful_shutdown_timeout_s
+                )
+                self._health_check_period_s = deployment_config.health_check_period_s
+                self._health_check_timeout_s = deployment_config.health_check_timeout_s
+                self._node_id = ray.get(self._allocated_obj_ref).hex()
+            except Exception:
+                logger.exception(f"Exception in deployment '{self._deployment_name}'")
+                return ReplicaStartupStatus.FAILED, None
         if self._deployment_is_cross_language:
             # todo: The replica's userconfig whitch java client created
             #  is different from the controller's userconfig
