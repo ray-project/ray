@@ -13,6 +13,12 @@ def test_remote_function_runs_on_local_instance():
         result = ex.submit(lambda x: x * x, 100).result()
         assert result == 10_000
 
+def test_remote_function_runs_multiple_tasks_on_local_instance():
+    with RayExecutor() as ex:
+        result0 = ex.submit(lambda x: x * x, 100).result()
+        result1 = ex.submit(lambda x: x * x, 100).result()
+        assert result0 == result1 == 10_000
+
 
 def test_remote_function_runs_on_local_instance_with_map():
     with RayExecutor() as ex:
