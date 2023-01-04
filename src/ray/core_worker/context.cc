@@ -188,6 +188,8 @@ void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
                                                          kDefaultJobConfig)) {
     job_config_ = job_config;
   }
+  RAY_CHECK(current_job_id_ == job_id);
+  RAY_CHECK(google::protobuf::util::MessageDifferencer::Equals(job_config_, job_config_));
 }
 
 int64_t WorkerContext::GetTaskDepth() const {
