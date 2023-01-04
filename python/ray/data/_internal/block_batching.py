@@ -272,8 +272,15 @@ def _blocks_to_batches(
     # Signal to the batcher that there are no more blocks to add.
     batcher.done_adding()
 
+    # Get any leftover batches in ShufflingBatcher.
+    while batcher.has_batch():
+        timer = stats.iter_next_batch_s.timer() if stats else nullcontext()
+        with timer:
+            batch = batcher.next_batch()
+        yield batch
+
     # Get any remaining data.
-    if batcher.has_any() and not drop_last:
+    if not drop_last and batcher.has_any():
         timer = stats.iter_next_batch_s.timer() if stats else nullcontext()
         with timer:
             batch = batcher.next_batch()
