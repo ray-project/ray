@@ -431,22 +431,24 @@ class ActorReplicaWrapper:
         Check if current replica has started by making ray API calls on
         relevant actor / object ref.
 
+        Replica initialization calls __init__(), reconfigure(), and check_health().
+
         Returns:
             state (ReplicaStartupStatus):
                 PENDING_ALLOCATION:
                     - replica is waiting for a worker to start
                 PENDING_INITIALIZATION
-                    - replica reconfigure() haven't returned.
+                    - replica initialization hasn't finished.
                 FAILED:
-                    - replica __init__() failed.
+                    - replica initialization failed.
                 SUCCEEDED:
-                    - replica __init__() and reconfigure() succeeded.
+                    - replica initialization succeeded.
             version:
                 None:
-                    - replica reconfigure() haven't returned OR
-                    - replica __init__() failed.
+                    - replica is waiting for a worker to start, or replica 
+                      initialization hasn't finished, or replica initialization failed.
                 version:
-                    - replica __init__() and reconfigure() succeeded.
+                    - replica initialization succeeded.
         """
 
         # Check whether the replica has been allocated.
