@@ -4,10 +4,12 @@ import pickle
 from typing import Any
 
 import numpy as np
+from ray.rllib.utils.annotations import override
 import tree  # dm_tree
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
+    Connector,
     ConnectorContext,
 )
 from ray import cloudpickle
@@ -42,6 +44,11 @@ class StateBufferConnector(AgentConnector):
                     "Can not restore StateBufferConnector states. This warning can "
                     "usually be ignore, unless it is from restoring a stashed policy."
                 )
+
+    @override(Connector)
+    def in_eval(self):
+        self._states.clear()
+        super().in_eval()
 
     def reset(self, env_id: str):
         # States should not be carried over between episodes.
