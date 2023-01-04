@@ -166,16 +166,6 @@ class DatasetStats:
     This object contains a reference to the parent Dataset's stats as well,
     but not the Dataset object itself, to allow its blocks to be dropped from
     memory."""
-
-    # Keys/labels used in internal self.stage_stats
-    # BLOCK_EXECUTION_SUMMARY = "block_execution_summary_str"
-    # WALL_TIME = "wall_time"
-    # CPU_TIME = "cpu_time"
-    # PEAK_HEAP_MEMORY = "memory"
-    # OUTPUT_NUM_ROWS = "output_num_rows"
-    # OUTPUT_SIZE_BYTES = "output_size_bytes"
-    # NODE_COUNT = "node_count"
-
     def __init__(
         self,
         *,
@@ -383,6 +373,7 @@ class DatasetStatsSummary:
 
 @dataclass
 class StageStatsSummary:
+    # Keys used in initialization params
     BLOCK_EXECUTION_SUMMARY = "block_execution_summary_str"
     WALL_TIME = "wall_time"
     CPU_TIME = "cpu_time"
