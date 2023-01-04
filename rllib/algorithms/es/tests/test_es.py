@@ -8,9 +8,11 @@ from ray.rllib.utils.test_utils import check_compute_single_action, framework_it
 
 
 class TestES(unittest.TestCase):
+    num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
+
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4 if not cls.num_gpus else None)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -20,10 +22,8 @@ class TestES(unittest.TestCase):
         """Test whether an ESAlgorithm can be built on all frameworks."""
         config = (
             es.ESConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             # Keep it simple.
             .training(
                 model={

@@ -17,9 +17,11 @@ register_env("connect_four", lambda _: OpenSpielEnv(pyspiel.load_game("connect_f
 
 
 class TestAlphaStar(unittest.TestCase):
+    num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
+
     @classmethod
-    def setUpClass(cls):
-        ray.init(num_cpus=20)
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=20 if not cls.num_gpus else None)
 
     @classmethod
     def tearDownClass(cls):
@@ -29,10 +31,8 @@ class TestAlphaStar(unittest.TestCase):
         """Test whether AlphaStar can be built with all frameworks."""
         config = (
             alpha_star.AlphaStarConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             .environment(env="connect_four")
             .training(
                 gamma=1.0,

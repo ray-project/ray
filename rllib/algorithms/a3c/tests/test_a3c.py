@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import ray
@@ -14,10 +15,14 @@ from ray.rllib.utils.test_utils import (
 class TestA3C(unittest.TestCase):
     """Sanity tests for A2C exec impl."""
 
-    def setUp(self):
-        ray.init(num_cpus=4)
+    num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
 
-    def tearDown(self):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=4 if not cls.num_gpus else None)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_a3c_compilation(self):

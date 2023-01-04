@@ -15,11 +15,11 @@ class TestA2C(unittest.TestCase):
     num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
 
     @classmethod
-    def setUpClass(cls) -> None:
+    def setUpClass(cls):
         ray.init(num_cpus=4 if not cls.num_gpus else None)
 
     @classmethod
-    def tearDownClass(cls) -> None:
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_a2c_compilation(self):

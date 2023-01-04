@@ -7,9 +7,11 @@ from ray.rllib.utils.test_utils import framework_iterator, check_compute_single_
 
 
 class TestARS(unittest.TestCase):
+    num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
+
     @classmethod
-    def setUpClass(cls):
-        ray.init(num_cpus=3)
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=3 if not cls.num_gpus else None)
 
     @classmethod
     def tearDownClass(cls):
@@ -18,10 +20,9 @@ class TestARS(unittest.TestCase):
     def test_ars_compilation(self):
         """Test whether an ARSAlgorithm can be built on all frameworks."""
         config = (
-            ars.ARSConfig().resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            ars.ARSConfig()
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             # Keep it simple.
             .training(
                 model={
