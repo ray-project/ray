@@ -1,9 +1,13 @@
-from typing import TYPE_CHECKING
+from typing import Callable, Optional, Iterator, Dict, Any
 
-if TYPE_CHECKING:
-    from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data.block import Block
 
 
 class MapOperatorActorsImpl:
-    def __init__(self, op: "MapOperator"):
+    def __init__(
+        self,
+        transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
+        ray_remote_args: Optional[Dict[str, Any]],
+        min_rows_per_batch: Optional[int],
+    ):
         pass

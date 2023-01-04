@@ -1,4 +1,4 @@
-from typing import Callable, Optional, List, Dict, TYPE_CHECKING
+from typing import Callable, Optional, List, Dict, Any, Iterator
 
 import ray
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -11,9 +11,6 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
-
-if TYPE_CHECKING:
-    from ray.data._internal.execution.operators.map_operator import MapOperator
 
 
 def _map_task(fn: Callable, *blocks: List[Block]):
@@ -53,21 +50,24 @@ class _TaskState:
 
 
 class MapOperatorTasksImpl:
-    def __init__(self, op: "MapOperator"):
+    def __init__(
+        self,
+        transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
+        ray_remote_args: Optional[Dict[str, Any]],
+        min_rows_per_batch: Optional[int],
+    ):
         # Execution arguments.
-        self._op = op
-        self._transform_fn = op.get_transform_fn()
-        self._ray_remote_args = op.ray_remote_args()
+        self._transform_fn = transform_fn
+        self._ray_remote_args = (ray_remote_args or {}).copy()
+        self._min_rows_per_batch: Optional[int] = min_rows_per_batch
 
         # The temporary block bundle used to accumulate inputs until they meet the
         # min_rows_per_batch requirement.
         self._block_bundle: Optional[RefBundle] = None
-        self._min_rows_per_batch: int = op._min_rows_per_batch
 
         # Execution state.
         self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
-        self._input_deps_done: bool = 0
         self._next_task_index: int = 0
         self._next_output_index: int = 0
         self._obj_store_mem_alloc: int = 0
@@ -102,12 +102,8 @@ class MapOperatorTasksImpl:
             self._block_bundle = merge_ref_bundles(self._block_bundle, bundle)
 
     def inputs_done(self, input_index: int) -> None:
-        self._input_deps_done += 1
-        assert self._input_deps_done <= len(self._op._input_dependencies)
-        if (
-            self._input_deps_done == len(self._op._input_dependencies)
-            and self._block_bundle
-        ):
+        assert input_index == 0, "Map operator only supports one input."
+        if self._block_bundle:
             self._create_task(self._block_bundle)
             self._block_bundle = None
 

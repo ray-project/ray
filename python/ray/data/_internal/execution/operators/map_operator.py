@@ -32,6 +32,8 @@ class MapOperator(PhysicalOperator):
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         input_op: PhysicalOperator,
         name: str = "Map",
+        # TODO(ekl): slim down ComputeStrategy to only specify the compute
+        # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_batch: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -49,45 +51,19 @@ class MapOperator(PhysicalOperator):
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
-        self._transform_fn = transform_fn
-        self._strategy = compute_strategy or TaskPoolStrategy()
-        self._remote_args = (ray_remote_args or {}).copy()
-        self._output_metadata: List[BlockMetadata] = []
-        self._min_rows_per_batch = min_rows_per_batch
-        if isinstance(self._strategy, TaskPoolStrategy):
-            self._execution_state = MapOperatorTasksImpl(self)
-        elif isinstance(self._strategy, ActorPoolStrategy):
-            self._execution_state = MapOperatorActorsImpl(self)
+        compute_strategy = compute_strategy or TaskPoolStrategy()
+        if isinstance(compute_strategy, TaskPoolStrategy):
+            self._execution_state = MapOperatorTasksImpl(
+                transform_fn, ray_remote_args, min_rows_per_batch
+            )
+        elif isinstance(compute_strategy, ActorPoolStrategy):
+            self._execution_state = MapOperatorActorsImpl(
+                transform_fn, ray_remote_args, min_rows_per_batch
+            )
         else:
-            raise ValueError(f"Unsupported execution strategy {self._strategy}")
+            raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        self._output_metadata: List[BlockMetadata] = []
         super().__init__(name, [input_op])
-
-    def get_transform_fn(
-        self,
-    ) -> Callable[[Iterator[Block]], Iterator[Block]]:
-        """Return the block transformation to run on a worker process.
-
-        This callable must be serializable as it will be sent to remote processes.
-
-        Returns:
-            A callable taking an iterator over input blocks of a RefBundle. Typically,
-            this will yield only a single block, unless the transformation has
-            multiple inputs. It is an iterator for memory efficiency.
-        """
-        return self._transform_fn
-
-    # TODO(ekl): slim down ComputeStrategy to only specify the compute
-    # config and not contain implementation code.
-    def compute_strategy(self) -> ComputeStrategy:
-        """Return the compute strategy to use for executing these tasks.
-
-        Supported strategies: {TaskPoolStrategy, ActorPoolStrategy}.
-        """
-        return self._strategy
-
-    def ray_remote_args(self) -> Dict[str, Any]:
-        """Return extra ray remote args to use for execution."""
-        return self._remote_args
 
     def get_metrics(self) -> Dict[str, int]:
         return {
