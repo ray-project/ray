@@ -195,7 +195,7 @@ returns a tabular dataset.
 from_checkpoint
 ***************
 
-This method creates an :class:`~ray.train.predictor.Predictor` from a
+This method creates a :class:`~ray.train.predictor.Predictor` from a
 :class:`~ray.air.checkpoint.Checkpoint`.
 
 Examples of custom predictors
