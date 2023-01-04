@@ -23,7 +23,7 @@ using --flat in this example.
 """
 
 import argparse
-from gym.spaces import Discrete, Tuple
+from gymnasium.spaces import Discrete, Tuple
 import logging
 import os
 
@@ -106,13 +106,13 @@ if __name__ == "__main__":
                         None,
                         maze.observation_space,
                         Discrete(4),
-                        {"gamma": 0.9},
+                        PPOConfig.overrides(gamma=0.9),
                     ),
                     "low_level_policy": (
                         None,
                         Tuple([maze.observation_space, Discrete(4)]),
                         maze.action_space,
-                        {"gamma": 0.0},
+                        PPOConfig.overrides(gamma=0.0),
                     ),
                 },
                 policy_mapping_fn=policy_mapping_fn,

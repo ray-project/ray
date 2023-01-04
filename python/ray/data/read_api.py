@@ -459,7 +459,7 @@ def read_parquet(
         Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, ...})
 
         For further arguments you can pass to pyarrow as a keyword argument, see
-        https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
+        https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
 
     Args:
         paths: A single file path or directory, or a list of file paths. Multiple
@@ -479,7 +479,7 @@ def read_parquet(
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         arrow_parquet_args: Other parquet read options to pass to pyarrow, see
-            https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
+            https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -500,7 +500,7 @@ def read_parquet(
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def read_images(
     paths: Union[str, List[str]],
     *,

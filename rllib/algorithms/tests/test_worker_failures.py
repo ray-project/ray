@@ -1,5 +1,5 @@
 from collections import defaultdict
-import gym
+import gymnasium as gym
 import numpy as np
 import time
 import unittest
@@ -138,7 +138,7 @@ class FaultInjectEnv(gym.Env):
             f"worker-idx={self.config.worker_index}!"
         )
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self._increment_count()
         self._maybe_raise_error()
         return self.env.reset()
@@ -509,12 +509,12 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=1,
                 evaluation_interval=1,
-                evaluation_config={
-                    "ignore_worker_failures": False,
-                    "recreate_failed_workers": True,
+                evaluation_config=PGConfig.overrides(
+                    ignore_worker_failures=False,
+                    recreate_failed_workers=True,
                     # Restart the entire eval worker.
-                    "restart_failed_sub_environments": False,
-                    "env_config": {
+                    restart_failed_sub_environments=False,
+                    env_config={
                         "evaluation": True,
                         # Make eval worker (index 1) fail.
                         "bad_indices": [1],
@@ -522,7 +522,7 @@ class TestWorkerFailures(unittest.TestCase):
                         "failure_stop_count": 4,
                         "counter": COUNTER_NAME,
                     },
-                },
+                ),
             )
             .callbacks(callbacks_class=AddPolicyCallback)
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
@@ -592,10 +592,10 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_config={
-                    "env_config": {
+                evaluation_config=PGConfig.overrides(
+                    env_config={
                         "evaluation": True,
-                        "p_done": 0.0,
+                        "p_terminated": 0.0,
                         "max_episode_len": 20,
                         # Make both eval workers fail.
                         "bad_indices": [1, 2],
@@ -604,7 +604,7 @@ class TestWorkerFailures(unittest.TestCase):
                         "failure_stop_count": 4,
                         "counter": COUNTER_NAME,
                     },
-                },
+                ),
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -658,18 +658,18 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_config={
-                    "ignore_worker_failures": True,
-                    "recreate_failed_workers": True,
+                evaluation_config=PGConfig.overrides(
+                    ignore_worker_failures=True,
+                    recreate_failed_workers=True,
                     # Now instead of recreating failed workers,
                     # we want to recreate the failed sub env instead.
-                    "restart_failed_sub_environments": True,
-                    "env_config": {
+                    restart_failed_sub_environments=True,
+                    env_config={
                         "evaluation": True,
                         # Make eval worker (index 1) fail.
                         "bad_indices": [1],
                     },
-                },
+                ),
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -738,13 +738,13 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_config={
+                evaluation_config=PGConfig.overrides(
                     # Now instead of recreating failed workers,
                     # we want to recreate the failed sub env instead.
-                    "restart_failed_sub_environments": True,
-                    "env_config": {
+                    restart_failed_sub_environments=True,
+                    env_config={
                         "evaluation": True,
-                        "p_done": 0.0,
+                        "p_terminated": 0.0,
                         "max_episode_len": 20,
                         # Make eval worker (index 1) fail.
                         "bad_indices": [1],
@@ -752,7 +752,7 @@ class TestWorkerFailures(unittest.TestCase):
                         "failure_start_count": 3,
                         "failure_stop_count": 5,
                     },
-                },
+                ),
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -803,7 +803,7 @@ class TestWorkerFailures(unittest.TestCase):
                 env="fault_env",
                 env_config={
                     "restart_failed_sub_environments": True,
-                    "p_done": 0.0,
+                    "p_terminated": 0.0,
                     "max_episode_len": 100,
                     "bad_indices": [1],
                     # Env throws error between steps 30 and 80.
@@ -815,11 +815,11 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=1,
                 evaluation_interval=1,
-                evaluation_config={
-                    "env_config": {
+                evaluation_config=PGConfig.overrides(
+                    env_config={
                         "evaluation": True,
                     }
-                },
+                ),
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
@@ -867,7 +867,7 @@ class TestWorkerFailures(unittest.TestCase):
                 # Workers do not fault and no fault tolerance.
                 env_config={
                     "restart_failed_sub_environments": True,
-                    "p_done": 0.0,
+                    "p_terminated": 0.0,
                     "max_episode_len": 10,
                     "init_delay": 10,  # 10 sec init delay.
                     # Make both worker idx=1 and 2 fail.
@@ -912,7 +912,7 @@ class TestWorkerFailures(unittest.TestCase):
         # horizon -> Expect warning and no proper evaluation results.
         config = (
             PGConfig()
-            .environment(env=RandomEnv, env_config={"p_done": 0.0})
+            .environment(env=RandomEnv, env_config={"p_terminated": 0.0})
             .rollouts(num_rollout_workers=2)
             .reporting(metrics_episode_collection_timeout_s=5.0)
             .evaluation(

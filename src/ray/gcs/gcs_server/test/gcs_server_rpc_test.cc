@@ -58,8 +58,9 @@ class GcsServerTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    gcs_server_->Stop();
     io_service_.stop();
+    rpc::DrainAndResetServerCallExecutor();
+    gcs_server_->Stop();
     thread_io_service_->join();
     gcs_server_.reset();
   }
@@ -171,16 +172,6 @@ class GcsServerTest : public ::testing::Test {
                           });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return resources;
-  }
-
-  bool AddProfileData(const rpc::AddProfileDataRequest &request) {
-    std::promise<bool> promise;
-    client_->AddProfileData(
-        request, [&promise](const Status &status, const rpc::AddProfileDataReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool ReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request) {
@@ -380,14 +371,6 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
   ASSERT_EQ(1, node_info_list.size());
   ASSERT_EQ(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD,
             node_info_list[0].state());
-}
-
-TEST_F(GcsServerTest, TestStats) {
-  rpc::ProfileTableData profile_table_data;
-  profile_table_data.set_component_id(NodeID::FromRandom().Binary());
-  rpc::AddProfileDataRequest add_profile_data_request;
-  add_profile_data_request.mutable_profile_data()->CopyFrom(profile_table_data);
-  ASSERT_TRUE(AddProfileData(add_profile_data_request));
 }
 
 TEST_F(GcsServerTest, TestWorkerInfo) {

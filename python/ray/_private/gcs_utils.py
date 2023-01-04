@@ -3,6 +3,7 @@ import logging
 import time
 import traceback
 import inspect
+import os
 import asyncio
 from functools import wraps
 from typing import List, Optional
@@ -23,7 +24,6 @@ from ray.core.generated.gcs_pb2 import (
     JobTableData,
     ObjectTableData,
     PlacementGroupTableData,
-    ProfileTableData,
     PubSubMessage,
     ResourceDemand,
     ResourceLoad,
@@ -33,6 +33,7 @@ from ray.core.generated.gcs_pb2 import (
     ResourceUsageBatchData,
     TablePrefix,
     TablePubsub,
+    TaskEvents,
     WorkerTableData,
 )
 
@@ -50,9 +51,9 @@ __all__ = [
     "ResourceUsageBatchData",
     "ResourcesData",
     "ObjectTableData",
-    "ProfileTableData",
     "TablePrefix",
     "TablePubsub",
+    "TaskEvents",
     "ResourceDemand",
     "ResourceLoad",
     "ResourceMap",
@@ -140,11 +141,24 @@ def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     return True
 
 
+# This global variable is used for testing only
+_called_freq = {}
+
+
 def _auto_reconnect(f):
+    # This is for testing to count the frequence
+    # of gcs call
     if inspect.iscoroutinefunction(f):
 
         @wraps(f)
         async def wrapper(self, *args, **kwargs):
+            if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+                global _called_freq
+                name = f.__name__
+                if name not in _called_freq:
+                    _called_freq[name] = 0
+                _called_freq[name] += 1
+
             remaining_retry = self._nums_reconnect_retry
             while True:
                 try:
@@ -173,6 +187,12 @@ def _auto_reconnect(f):
 
         @wraps(f)
         def wrapper(self, *args, **kwargs):
+            if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+                global _called_freq
+                name = f.__name__
+                if name not in _called_freq:
+                    _called_freq[name] = 0
+                _called_freq[name] += 1
             remaining_retry = self._nums_reconnect_retry
             while True:
                 try:
