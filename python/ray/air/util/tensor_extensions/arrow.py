@@ -79,6 +79,11 @@ class ArrowTensorType(pa.PyExtensionType):
         """
         return self._shape
 
+    @property
+    def scalar_type(self):
+        """Returns the type of the underlying tensor elements."""
+        return self.storage_type.value_type
+
     def to_pandas_dtype(self):
         """
         Convert Arrow extension type to corresponding Pandas dtype.
@@ -131,6 +136,48 @@ class ArrowTensorType(pa.PyExtensionType):
 
     def __repr__(self) -> str:
         return str(self)
+
+    @classmethod
+    def _need_variable_shaped_tensor_array(
+        cls,
+        array_types: Sequence[
+            Union["ArrowTensorType", "ArrowVariableShapedTensorType"]
+        ],
+    ) -> bool:
+        """
+        Whether the provided list of tensor types needs a variable-shaped
+        representation (i.e. `ArrowVariableShapedTensorType`) when concatenating
+        or chunking. If one or more of the tensor types in `array_types` are
+        variable-shaped and/or any of the tensor arrays have a different shape
+        than the others, a variable-shaped tensor array representation will be
+        required and this method will return True.
+
+        Args:
+            array_types: List of tensor types to check if a variable-shaped
+            representation is required for concatenation
+
+        Returns:
+            True if concatenating arrays with types `array_types` requires
+            a variable-shaped representation
+        """
+        shape = None
+        for arr_type in array_types:
+            # If at least one of the arrays is variable-shaped, we can immediately
+            # short-circuit since we require a variable-shaped representation.
+            if isinstance(arr_type, ArrowVariableShapedTensorType):
+                return True
+            if not isinstance(arr_type, ArrowTensorType):
+                raise ValueError(
+                    "All provided array types must be an instance of either "
+                    "ArrowTensorType or ArrowVariableShapedTensorType, but "
+                    f"got {arr_type}"
+                )
+            # We need variable-shaped representation if any of the tensor arrays have
+            # different shapes.
+            if shape is not None and arr_type.shape != shape:
+                return True
+            shape = arr_type.shape
+        return False
 
 
 if _arrow_extension_scalars_are_subclassable():
@@ -410,7 +457,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         of the tensor arrays have a different shape than the others, a variable-shaped
         tensor array will be returned.
         """
-        if cls._need_variable_shaped_tensor_array(to_concat):
+        to_concat_types = [arr.type for arr in to_concat]
+        if ArrowTensorType._need_variable_shaped_tensor_array(to_concat_types):
             # Need variable-shaped tensor array.
             # TODO(Clark): Eliminate this NumPy roundtrip by directly constructing the
             # underlying storage array buffers (NumPy roundtrip will not be zero-copy
@@ -432,7 +480,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         """
         Create a ChunkedArray from multiple tensor arrays.
         """
-        if cls._need_variable_shaped_tensor_array(arrs):
+        arrs_types = [arr.type for arr in arrs]
+        if ArrowTensorType._need_variable_shaped_tensor_array(arrs_types):
             new_arrs = []
             for a in arrs:
                 if isinstance(a.type, ArrowTensorType):
@@ -441,31 +490,6 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                 new_arrs.append(a)
             arrs = new_arrs
         return pa.chunked_array(arrs)
-
-    @classmethod
-    def _need_variable_shaped_tensor_array(
-        cls, arrs: Sequence[Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]]
-    ) -> bool:
-        """
-        Whether the provided tensor arrays need a variable-shaped representation when
-        concatenating or chunking.
-
-        If one or more of the tensor arrays in arrs are variable-shaped and/or any of
-        the tensor arrays have a different shape than the others, a variable-shaped
-        tensor array representation will be required and this method will return True.
-        """
-        needs_variable_shaped = False
-        shape = None
-        for a in arrs:
-            a_type = a.type
-            if isinstance(a_type, ArrowVariableShapedTensorType) or (
-                shape is not None and a_type.shape != shape
-            ):
-                needs_variable_shaped = True
-                break
-            if shape is None:
-                shape = a_type.shape
-        return needs_variable_shaped
 
     def to_variable_shaped_tensor_array(self) -> "ArrowVariableShapedTensorArray":
         """
@@ -528,6 +552,12 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
     def ndim(self) -> int:
         """Return the number of dimensions in the tensor elements."""
         return self._ndim
+
+    @property
+    def scalar_type(self):
+        """Returns the type of the underlying tensor elements."""
+        data_field_index = self.storage_type.get_field_index("data")
+        return self.storage_type[data_field_index].type.value_type
 
     def __reduce__(self):
         return (
