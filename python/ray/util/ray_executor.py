@@ -7,7 +7,6 @@ import ray
 from ray.util.annotations import PublicAPI
 
 
-
 @PublicAPI(stability="alpha")
 class RayExecutor(Executor):
     """`RayExecutor` is a drop-in replacement for `ProcessPoolExecutor` and
@@ -47,6 +46,7 @@ class RayExecutor(Executor):
         """
 
         if max_workers is None:
+
             @ray.remote
             def remote_fn(fn):
                 return fn()
@@ -64,7 +64,10 @@ class RayExecutor(Executor):
                 def actor_function(self, fn):
                     return fn()
 
-            actors = [ExecutorActor.options(name=f"actor-{i}").remote() for i in range(max_workers)]
+            actors = [
+                ExecutorActor.options(name=f"actor-{i}").remote()
+                for i in range(max_workers)
+            ]
             self.__actor_pool = ray.util.ActorPool(actors)
 
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
@@ -91,8 +94,12 @@ class RayExecutor(Executor):
         self._check_shutdown_lock()
         fn_curried = partial(fn, *args, **kwargs)
         if self.__actor_pool:
-            self.__actor_pool.submit(lambda a, _: a.actor_function.remote(fn_curried), None)
-            oref = self.__actor_pool._index_to_future[self.__actor_pool._next_task_index - 1]
+            self.__actor_pool.submit(
+                lambda a, _: a.actor_function.remote(fn_curried), None
+            )
+            oref = self.__actor_pool._index_to_future[
+                self.__actor_pool._next_task_index - 1
+            ]
         else:
             oref = self.__remote_fn.options(name=fn.__name__).remote(fn_curried)
         future = oref.future()
@@ -132,7 +139,9 @@ class RayExecutor(Executor):
         results_list = []
         for chunk in self._get_chunks(*iterables, chunksize=chunksize):
             if self.__actor_pool:
-                results = self.__actor_pool.map(lambda a, v: a.actor_function.remote(partial(fn, *v)), chunk)
+                results = self.__actor_pool.map(
+                    lambda a, v: a.actor_function.remote(partial(fn, *v)), chunk
+                )
             else:
                 results = self._map(self.submit, fn, chunk, timeout)
             results_list.append(results)

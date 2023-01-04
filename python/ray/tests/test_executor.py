@@ -13,6 +13,7 @@ def test_remote_function_runs_on_local_instance():
         result = ex.submit(lambda x: x * x, 100).result()
         assert result == 10_000
 
+
 def test_remote_function_runs_multiple_tasks_on_local_instance():
     with RayExecutor() as ex:
         result0 = ex.submit(lambda x: x * x, 100).result()
@@ -25,6 +26,7 @@ def test_remote_function_runs_on_local_instance_with_map():
         futures_iter = ex.map(lambda x: x * x, [100, 100, 100])
         for result in futures_iter:
             assert result == 10_000
+
 
 def test_remote_function_runs_on_local_instance_with_map_with_actor_pool_using_max_workers():
     with RayExecutor(max_workers=3) as ex:
@@ -56,11 +58,13 @@ def test_map_times_out():
         with pytest.raises(TimeoutError):
             i1.__next__()
 
+
 def test_remote_function_runs_multiple_tasks_on_local_instance_with_actor_pool_using_max_workers():
     with RayExecutor(max_workers=2) as ex:
         result0 = ex.submit(lambda x: x * x, 100).result()
         result1 = ex.submit(lambda x: x * x, 100).result()
         assert result0 == result1 == 10_000
+
 
 def test_cannot_submit_after_shutdown():
     ex = RayExecutor()
@@ -76,6 +80,7 @@ def test_cannot_map_after_shutdown():
     ex.shutdown()
     with pytest.raises(RuntimeError):
         ex.submit(lambda: True).result()
+
 
 def test_pending_task_is_cancelled_after_shutdown():
     ex = RayExecutor()
@@ -167,6 +172,7 @@ def test_conformity_with_threadpool_map():
     assert type(ray_result) == type(tpe_result)
     assert sorted(ray_result) == sorted(tpe_result)
 
+
 def test_conformity_with_processpool_using_max_workers():
     with RayExecutor(max_workers=2) as ex:
         ray_result = ex.submit(f_process, 100).result()
@@ -213,6 +219,7 @@ def test_conformity_with_threadpool_map_using_max_workers():
     assert hasattr(tpe_iter, "__next__")
     assert type(ray_result) == type(tpe_result)
     assert sorted(ray_result) == sorted(tpe_result)
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
