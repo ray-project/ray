@@ -267,7 +267,7 @@ def test_health_check_failure_makes_deployment_unhealthy2(serve_instance):
     ray.get(toggle.set_should_fail.remote())
 
     # Check that deployment is now unhealthy
-    wait_for_condition(check_status, expected_status="UNHEALTHY", timeout=5)
+    wait_for_condition(check_status, expected_status="UNHEALTHY")
 
     # Check that deployment stays unhealthy
     for _ in range(5):

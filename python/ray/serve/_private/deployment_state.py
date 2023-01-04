@@ -445,10 +445,9 @@ class ActorReplicaWrapper:
                     - replica initialization succeeded.
             version:
                 None:
-                    - replica is waiting for a worker to start, or replica
-                      initialization hasn't finished, or replica initialization failed.
+                    - for PENDING_ALLOCATION, PENDING_INITIALIZATION, or FAILED states
                 version:
-                    - replica initialization succeeded.
+                    - for SUCCEEDED state
         """
 
         # Check whether the replica has been allocated.
