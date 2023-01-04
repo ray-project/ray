@@ -57,15 +57,15 @@ class MapOperatorTasksImpl:
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         ray_remote_args: Optional[Dict[str, Any]],
-        min_rows_per_batch: Optional[int],
+        min_rows_per_bundle: Optional[int],
     ):
         # Execution arguments.
         self._transform_fn = transform_fn
         self._ray_remote_args = (ray_remote_args or {}).copy()
-        self._min_rows_per_batch: int = min_rows_per_batch or 0
+        self._min_rows_per_bundle: int = min_rows_per_bundle or 0
 
         # The temporary block bundle used to accumulate inputs until they meet the
-        # min_rows_per_batch requirement.
+        # min_rows_per_bundle requirement.
         self._block_bundle: Optional[RefBundle] = None
 
         # Execution state.
@@ -91,7 +91,7 @@ class MapOperatorTasksImpl:
             return
 
         num_rows = get_num_rows(self._block_bundle) + bundle_rows
-        if num_rows > self._min_rows_per_batch:
+        if num_rows > self._min_rows_per_bundle:
             if self._block_bundle:
                 bundle, self._block_bundle = self._block_bundle, bundle
             self._create_task(bundle)

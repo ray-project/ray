@@ -8,6 +8,6 @@ class MapOperatorActorsImpl:
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         ray_remote_args: Optional[Dict[str, Any]],
-        min_rows_per_batch: Optional[int],
+        min_rows_per_bundle: Optional[int],
     ):
         pass

@@ -35,7 +35,7 @@ class MapOperator(PhysicalOperator):
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
-        min_rows_per_batch: Optional[int] = None,
+        min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create a MapOperator.
@@ -45,7 +45,7 @@ class MapOperator(PhysicalOperator):
             input_op: Operator generating input data for this op.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
-            min_rows_per_batch: The number of rows to gather per batch passed to the
+            min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
@@ -54,11 +54,11 @@ class MapOperator(PhysicalOperator):
         compute_strategy = compute_strategy or TaskPoolStrategy()
         if isinstance(compute_strategy, TaskPoolStrategy):
             self._execution_state = MapOperatorTasksImpl(
-                transform_fn, ray_remote_args, min_rows_per_batch
+                transform_fn, ray_remote_args, min_rows_per_bundle
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             self._execution_state = MapOperatorActorsImpl(
-                transform_fn, ray_remote_args, min_rows_per_batch
+                transform_fn, ray_remote_args, min_rows_per_bundle
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
