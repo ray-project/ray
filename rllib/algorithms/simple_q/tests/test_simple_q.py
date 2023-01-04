@@ -25,23 +25,16 @@ tf1, tf, tfv = try_import_tf()
 
 
 class TestSimpleQ(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init()
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        ray.shutdown()
+    num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
 
     def test_simple_q_compilation(self):
         """Test whether SimpleQ can be built on all frameworks."""
         # Run locally and with compression
         config = (
             simple_q.SimpleQConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             .rollouts(num_rollout_workers=0, compress_observations=True)
             .training(num_steps_sampled_before_learning_starts=0)
         )
@@ -62,6 +55,11 @@ class TestSimpleQ(unittest.TestCase):
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
+
+        # Don't run this test on the GPU (non-deterministic on GPU).
+        if self.num_gpus:
+            return
+
         config = (
             simple_q.SimpleQConfig()
             .resources(
@@ -166,10 +164,8 @@ class TestSimpleQ(unittest.TestCase):
         """Test PG with learning rate schedule."""
         config = (
             simple_q.SimpleQConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             .reporting(
                 min_sample_timesteps_per_iteration=10,
                 # Make sure that results contain info on default policy

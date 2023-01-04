@@ -27,8 +27,9 @@ class TestA2C(unittest.TestCase):
         config = (
             a2c.A2CConfig()
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            .resources(num_gpus=self.num_gpus)
-            .rollouts(num_rollout_workers=2, num_envs_per_worker=2)
+            .resources(num_gpus=self.num_gpus).rollouts(
+                num_rollout_workers=2, num_envs_per_worker=2
+            )
         )
 
         num_iterations = 1

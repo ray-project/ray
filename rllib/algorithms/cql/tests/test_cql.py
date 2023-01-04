@@ -17,6 +17,8 @@ torch, _ = try_import_torch()
 
 class TestCQL(unittest.TestCase):
 
+    num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
+
     def test_cql_compilation(self):
         """Test whether CQL can be built with all frameworks."""
 
@@ -32,10 +34,8 @@ class TestCQL(unittest.TestCase):
 
         config = (
             cql.CQLConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             .environment(
                 env="Pendulum-v1",
             )
@@ -49,7 +49,7 @@ class TestCQL(unittest.TestCase):
             )
             .training(
                 clip_actions=False,
-                train_batch_size=2000,
+                train_batch_size=500,
                 twin_q=True,
                 num_steps_sampled_before_learning_starts=0,
                 bc_iters=2,

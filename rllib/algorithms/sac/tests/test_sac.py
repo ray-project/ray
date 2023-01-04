@@ -63,24 +63,20 @@ class SimpleEnv(gym.Env):
 
 
 class TestSAC(unittest.TestCase):
+
+    num_gpus = float(os.environ.get("RLLIB_NUM_GPUS", "0"))
+
     @classmethod
     def setUpClass(cls) -> None:
         np.random.seed(42)
         torch.manual_seed(42)
-        ray.init()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        ray.shutdown()
 
     def test_sac_compilation(self):
         """Tests whether SAC can be built with all frameworks."""
         config = (
             sac.SACConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             .training(
                 n_step=3,
                 twin_q=True,
@@ -172,6 +168,11 @@ class TestSAC(unittest.TestCase):
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
+
+        # Don't run this test on the GPU (non-deterministic on GPU).
+        if self.num_gpus:
+            return
+
         config = (
             sac.SACConfig()
             .resources(
@@ -544,10 +545,8 @@ class TestSAC(unittest.TestCase):
         tune.register_env("nested", lambda _: NestedDictEnv())
         config = (
             sac.SACConfig()
-            .resources(
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                num_gpus=float(os.environ.get("RLLIB_NUM_GPUS", "0"))
-            )
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            .resources(num_gpus=self.num_gpus)
             .environment("nested")
             .training(
                 replay_buffer_config={

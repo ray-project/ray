@@ -33,8 +33,7 @@ class TestES(unittest.TestCase):
                 noise_size=2500000,
                 episodes_per_batch=10,
                 train_batch_size=100,
-            )
-            .rollouts(num_rollout_workers=1)
+            ).rollouts(num_rollout_workers=1)
             # Test eval workers ("normal" WorkerSet, unlike ES' list of
             # RolloutWorkers used for collecting train batches).
             .evaluation(evaluation_interval=1, evaluation_num_workers=2)
