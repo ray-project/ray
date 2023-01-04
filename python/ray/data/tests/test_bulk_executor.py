@@ -57,6 +57,7 @@ def test_basic_stats():
     assert "Stage 0 read:" in stats_str, stats_str
     assert "Stage 1 Foo:" in stats_str, stats_str
     assert "Stage 2 Bar:" in stats_str, stats_str
+    assert "Extra metrics:" in stats_str, stats_str
 
 
 if __name__ == "__main__":
