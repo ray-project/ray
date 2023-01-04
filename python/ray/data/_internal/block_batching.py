@@ -1,5 +1,7 @@
 import collections
+from contextlib import nullcontext
 import itertools
+import queue
 from typing import TYPE_CHECKING, Iterable, Iterator, Optional, Union, Dict
 
 import numpy as np
@@ -27,6 +29,132 @@ BatchType = Union[
     list,
 ]
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
+
+
+def _resolve_blocks(block_ref_iter: Iterator[ObjectRef[Block]], stats: Union[DatasetStats, DatasetPipelineStats]=None) -> Iterator[Block]:
+    """Given an iterator of unresolved blocks (as Ray object references), returns an
+    iterator of resolved blocks. 
+        
+    The length of the returned iterator may be less than the length of the original
+    if any of the references in the original iterator are None.
+
+    Args:
+        block_ref_iter: An iterator over block object references.
+        stats: Dataset stats object used to store block fetching time.
+    
+    Returns:
+        An iterator over resolved blocks.
+    """
+
+    
+    for block_ref in block_ref_iter:
+        if block_ref is not None:
+            stats_timer = stats.iter_get_s.timer() if stats else nullcontext()
+            with stats_timer:
+                block = ray.get(block_ref)
+            yield block
+
+def _prefetch_blocks(block_ref_iter: Iterator[ObjectRef[Block]], num_blocks_to_prefetch: int, clear_block_after_read: bool = False) -> Iterator[ObjectRef[Block]]:
+    """Given an iterable of Block Object References, returns an iterator 
+    over these object reference while prefetching `num_block_to_prefetch` blocks in advance.
+
+    Args:
+        block_ref_iter: An iterator over block object references.
+        num_blocks_to_prefetch: The number of blocks to prefetch ahead of the
+            current block during the scan.
+        clear_block_after_read: Whether to clear the block from object store
+            manually (i.e. without waiting for Python's automatic GC) after it
+            is read. Doing so will reclaim memory faster and hence reduce the
+            memory footprint. However, the caller has to ensure the safety, i.e.
+            the block will never be accessed again.
+    """
+
+    if num_blocks_to_prefetch == 0:
+        yield from block_ref_iter
+    
+    context = DatasetContext.get_current()
+
+    if (
+        num_blocks_to_prefetch > 0
+        and context.actor_prefetcher_enabled
+        and not ray.util.client.ray.is_connected()
+    ):
+        prefetcher = ActorBlockPrefetcher()
+    else:
+        prefetcher = WaitBlockPrefetcher()
+
+    window_size = num_blocks_to_prefetch
+    sliding_window = queue.Queue(maxsize=window_size)
+
+    # Create the initial set of blocks to prefetch.
+    while not sliding_window.full():
+        try:
+            sliding_window.put(next(block_ref_iter))
+        except StopIteration:
+            break
+    prefetcher.prefetch_blocks(list(sliding_window.queue))
+
+    while not sliding_window.empty():
+        block_ref = sliding_window.get()
+        try:
+            sliding_window.put(next(block_ref_iter))
+            prefetcher.prefetch_blocks(list(sliding_window.queue))
+        except StopIteration:
+            pass
+        yield block_ref
+        if clear_block_after_read:
+            ray._private.internal_api.free(block_ref, local_only=False)
+
+def _batch_blocks(block_iter: Iterator[Block], stats: Union[DatasetStats, DatasetPipelineStats]=None, batch_size: Optional[int] = None, drop_last: bool = False, shuffle_buffer_min_size: Optional[int]=None, shuffle_seed: Optional[int] = None) -> Iterator[Block]:
+    """Given an iterator over blocks, returns an iterator over blocks with each blockas the with the given batch size. 
+    
+    If the shuffling configurations are specified, then the output batches are shuffled.
+
+    Args:
+        block_iter: An iterator over blocks.
+        stats: Dataset stats object used to store block batching time.
+        batch_size: Record batch size, or None to let the system pick.
+        drop_last: Whether to drop the last batch if it's incomplete.
+    
+    Returns:
+        An iterator over data batches.
+    """
+    if shuffle_buffer_min_size is not None:
+        batcher = ShufflingBatcher(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
+        )
+    else:
+        batcher = Batcher(batch_size=batch_size)
+
+   
+    for block in block_iter:
+         batcher.add(block)
+         while batcher.has_batch():
+            timer = stats.iter_next_batch_s.timer() if stats else nullcontext()
+            with timer:
+                batch = batcher.next_batch()
+            yield batch
+    
+    # Signal to the batcher that there are no more blocks to add.
+    batcher.done_adding()
+
+    # Get any remaining data.
+    if batcher.has_any() and not drop_last:
+        timer = stats.iter_next_batch_s.timer() if stats else nullcontext()
+        with timer:
+            batch = batcher.next_batch()
+        yield batch
+
+
+def _format_batches(batch_iter: Iterator[BatchType]) -> Iterator[]
+
+
+
+def _format_batches():
+    pass
+
 
 
 def batch_blocks(
