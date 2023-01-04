@@ -327,10 +327,6 @@ class ExecutionPlan:
                     stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
 
-                # When generating the summary string for each stage's stats, we only
-                # want to include that stage, and not its parents' info, since otherwise
-                # we will be duplicating parents recursively each time we generate a
-                # child DatasetStatsSummary object.
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False
                 )
