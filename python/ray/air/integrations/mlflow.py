@@ -54,11 +54,11 @@ def setup_mlflow(
     calls the mlflow API.
 
     Args:
-        config: Configuration dict to be logged to weights and biases. Can contain
+        config: Configuration dict to be logged to mlflow. Can contain
             mlflow experiment setting under a ``mlflow`` key.
         rank_zero_only: If True, will return an initialized session only for the
             rank 0 worker in distributed training. If False, will initialize a
-            session for all workers.
+            session for all workers. Defaults to True.
         kwargs: Will be merged with the settings obtained from the ``mlflow`` config
             key.
 
@@ -73,7 +73,7 @@ def setup_mlflow(
             ``experiment_name`` will be used instead. This argument takes
             precedence over ``experiment_name`` if both are passed in.
         experiment_name: The experiment name to use for logging.
-            If None is passed in here, th  MLFLOW_EXPERIMENT_NAME environment variable
+            If None is passed in here, the MLFLOW_EXPERIMENT_NAME environment variable
             is used to determine the experiment name.
             If the experiment with the name already exists with MLflow,
             it will be reused.
