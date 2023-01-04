@@ -35,11 +35,11 @@ def main(data_size_gb: int, smoke_test: bool = False):
 
     model = resnet18(pretrained=True)
 
-    transform = transforms.Compose(
+    transform = transforms.Compose([
         transforms.Lambda(lambda batch: torch.as_tensor(batch).permute(0, 3, 1, 2)),
         transforms.CenterCrop(224),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    )
+    ])
     preprocessor = TorchVisionPreprocessor(
         columns=["image"], transform=transform, batched=True
     )
