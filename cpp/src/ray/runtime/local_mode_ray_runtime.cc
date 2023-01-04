@@ -23,8 +23,12 @@
 namespace ray {
 namespace internal {
 
+namespace {
+const JobID kUnusedJobId = JobID::FromInt(1);
+}
+
 LocalModeRayRuntime::LocalModeRayRuntime()
-    : job_id_(JobID::FromInt(1)),
+    : job_id_(kUnusedJobId),
       worker_(ray::core::WorkerType::DRIVER, ComputeDriverIdFromJob(job_id_), job_id_) {
   object_store_ = std::unique_ptr<ObjectStore>(new LocalModeObjectStore(*this));
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new LocalModeTaskSubmitter(*this));
