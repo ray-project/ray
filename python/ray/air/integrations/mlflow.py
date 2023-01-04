@@ -42,6 +42,9 @@ def setup_mlflow(
     entries in the ``mlflow`` key of the ``config`` dict.
     Any keyword arguments will be merged into this configuration.
 
+    The ``config`` dict is automatically logged as the run parameters (excluding the
+    mlflow settings).
+
     In distributed training with Ray Train, only the zero-rank worker will initialize
     mlflow. All other workers will return a noop client, so that logging is not
     duplicated in a distributed run. This can be disabled by passing
@@ -126,7 +129,8 @@ def setup_mlflow(
         default_trial_id = None
         default_trial_name = None
 
-    mlflow_config = config.get("mlflow", {}).copy()
+    _config = config.copy() if config else {}
+    mlflow_config = _config.pop("mlflow", {}).copy()
 
     # Valid parameters we can pass to _MLflowLoggerUtil.setup_mlflow():
     valid_kwarg_keys = [
@@ -171,6 +175,7 @@ def setup_mlflow(
         tags=tags,
         set_active=True,
     )
+    mlflow_util.log_params(_config)
     return mlflow_util._mlflow
 
 
