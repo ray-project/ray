@@ -166,6 +166,9 @@ class PolicyMap(dict):
     def __delitem__(self, key: PolicyID):
         # Make key invalid.
         self._valid_keys.remove(key)
+        # Remove policy from deque if contained
+        if key in self._deque:
+            self._deque.remove(key)
         # Remove policy from memory if currently cached.
         if key in self.cache:
             policy = self.cache[key]
@@ -239,6 +242,15 @@ class PolicyMap(dict):
     @override(dict)
     def __contains__(self, item: PolicyID):
         return item in self._valid_keys
+
+    @override(dict)
+    def __str__(self) -> str:
+        # Only print out our keys (policy IDs), not values as this could trigger
+        # the LRU caching.
+        return (
+            f"<PolicyMap lru-caching-capacity={self.capacity} policy-IDs="
+            f"{list(self.keys())}>"
+        )
 
     def _stash_least_used_policy(self) -> Policy:
         """Writes the least-recently used policy's state to the Ray object store.

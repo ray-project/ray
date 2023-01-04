@@ -3,18 +3,31 @@ from typing import Any, List, Mapping
 import torch
 
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
 
 class BCTorchOptimizer(RLOptimizer):
-    def __init__(self, module, config):
-        super().__init__(module, config)
+    def __init__(self, module: RLModule, config: Mapping[str, Any]):
+        """A simple Behavior Cloning optimizer for testing purposes
+
+        Args:
+            rl_module: The RLModule that will be optimized.
+            config: The configuration for the optimizer.
+        """
+        super().__init__()
+        self._module = module
+        self._config = config
+
+    @classmethod
+    def from_module(cls, module: RLModule, config: Mapping[str, Any]):
+        return cls(module, config)
 
     @override(RLOptimizer)
     def compute_loss(
-        self, batch: NestedDict, fwd_out: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
+        self, batch: NestedDict[torch.Tensor], fwd_out: Mapping[str, Any]
+    ) -> torch.Tensor:
         """Compute a loss"""
         action_dist = fwd_out["action_dist"]
         actions = batch["actions"]
@@ -24,7 +37,7 @@ class BCTorchOptimizer(RLOptimizer):
     def _configure_optimizers(self) -> List[torch.optim.Optimizer]:
         return {
             "module": torch.optim.Adam(
-                self.module.parameters(), lr=self._config.get("lr", 1e-3)
+                self._module.parameters(), lr=self._config.get("lr", 1e-3)
             )
         }
 

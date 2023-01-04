@@ -1584,8 +1584,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // Return the resources that were being used by this worker.
     local_task_manager_->ReleaseWorkerResources(worker);
 
-    local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
-
     // Since some resources may have been released, we can try to dispatch more tasks.
     cluster_task_manager_->ScheduleAndDispatchTasks();
   } else if (is_driver) {
@@ -1607,6 +1605,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
           << ", JobId: " << worker->GetAssignedJobId();
     }
   }
+
+  local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
 
   client->Close();
 
@@ -2941,8 +2941,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           return;
         }
         RetriableLIFOWorkerKillingPolicy worker_killing_policy;
-        auto worker_to_kill =
+        auto worker_to_kill_and_should_retry =
             worker_killing_policy.SelectWorkerToKill(workers, system_memory);
+        auto worker_to_kill = worker_to_kill_and_should_retry.first;
+        bool should_retry = worker_to_kill_and_should_retry.second;
         if (worker_to_kill == nullptr) {
           RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
                                              "kill even though memory usage is high.";
@@ -2950,8 +2952,12 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           high_memory_eviction_target_ = worker_to_kill;
 
           /// TODO: (clarng) expose these strings in the frontend python error as well.
-          std::string oom_kill_details = this->CreateOomKillMessageDetails(
-              worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
+          std::string oom_kill_details =
+              this->CreateOomKillMessageDetails(worker_to_kill,
+                                                this->self_node_id_,
+                                                system_memory,
+                                                usage_threshold,
+                                                should_retry);
           std::string oom_kill_suggestions =
               this->CreateOomKillMessageSuggestions(worker_to_kill);
 
@@ -2973,7 +2979,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
           SetTaskFailureReason(worker_to_kill->GetAssignedTaskId(),
-                               std::move(task_failure_reason));
+                               std::move(task_failure_reason),
+                               should_retry);
 
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
@@ -2999,7 +3006,8 @@ const std::string NodeManager::CreateOomKillMessageDetails(
     const std::shared_ptr<WorkerInterface> &worker,
     const NodeID &node_id,
     const MemorySnapshot &system_memory,
-    float usage_threshold) const {
+    float usage_threshold,
+    bool should_retry) const {
   float usage_fraction =
       static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
   std::string used_bytes_gb =
@@ -3069,9 +3077,10 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
 }
 
 void NodeManager::SetTaskFailureReason(const TaskID &task_id,
-                                       const rpc::RayErrorInfo &failure_reason) {
+                                       const rpc::RayErrorInfo &failure_reason,
+                                       bool should_retry) {
   RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
-  ray::TaskFailureEntry entry(failure_reason);
+  ray::TaskFailureEntry entry(failure_reason, should_retry);
   auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
   if (!result.second) {
     RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "

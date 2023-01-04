@@ -27,6 +27,9 @@
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
 /src/ray/stats/metric_defs.cc @ericl @scv119 @rkooo567
 
+# Telemetry
+/src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
+
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
 
@@ -67,6 +70,7 @@
 # Ray data.
 /python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @c21
 /python/ray/data/preprocessors/ @clarkzinzow @jiaodong @Yard1 @bveeramani @matthewdeng @amogkam
+/python/ray/data/tests/preprocessors/ @clarkzinzow @jiaodong @Yard1 @bveeramani @matthewdeng @amogkam
 /doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @maxpumperla @c21 @ray-project/ray-docs
 
 # Ray workflows.

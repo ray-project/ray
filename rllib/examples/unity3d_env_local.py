@@ -131,7 +131,6 @@ if __name__ == "__main__":
         # one Unity running)!
         .rollouts(
             num_rollout_workers=args.num_workers if args.file_name else 0,
-            no_done_at_end=True,
             rollout_fragment_length=200,
         )
         .training(
