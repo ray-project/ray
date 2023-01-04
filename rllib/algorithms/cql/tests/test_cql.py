@@ -17,13 +17,6 @@ torch, _ = try_import_torch()
 
 
 class TestCQL(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        ray.init()
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
 
     def test_cql_compilation(self):
         """Test whether CQL can be built with all frameworks."""
