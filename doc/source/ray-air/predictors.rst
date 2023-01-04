@@ -133,9 +133,12 @@ subclass :class:`~ray.train.predictor.Predictor` and implement:
     You don't need to implement both
     :meth:`~ray.train.predictor.Predictor._predict_numpy` and
     :meth:`~ray.train.predictor.Predictor._predict_pandas`. Pick the method that's
-    easiest to implement. In general, if your model accepts a tensor as input, implement
-    :meth:`~ray.train.predictor.Predictor._predict_numpy`; otherwise, implement
-    :meth:`~ray.train.predictor.Predictor._predict_pandas`.
+    easiest to implement.
+
+    If both are implemented, you can also override
+    :meth:`~ray.train.predictor.Predictor.preferred_batch_format`` to specify which
+    format should be preferred for performance reasons so that upstream producers can
+    yield the best format for this predictor.
 
 Overview of required methods
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
