@@ -19,8 +19,6 @@ class ActorSpec:
     The remote object will be initialized with ``kwargs`` as the constructor
     arguments.
 
-    Actor specs are
-
     Attributes:
         cls: Actor class to be scheduled. This should not be a regular class
             (not a remote Ray task).
@@ -52,24 +50,25 @@ class ActorSpec:
 
 
 @dataclass
-class ActorInfo:
-    """Info class for a scheduled actor tracked by an actor manager.
+class TrackedActor:
+    """Actor tracked by an actor manager.
 
     This object is returned when an actor is added. It is also returned as part of
     the ``ActorStarted``, ``ActorStopped``, and ``ActorFailed`` events.
 
+    Existence of this object does not mean that the Ray actor has already been started.
+    Actor state can be inquired from the actor manager tracking the Ray actor.
+
     Attributes:
         actor_id: ID for identification of the actor within the actor manager. This
             ID is not related to the Ray actor ID.
-        actor_spec: Request used to start this actor.
 
     """
 
     actor_id: int
-    actor_spec: ActorSpec
 
     def __hash__(self):
         return hash(id(self))
 
     def __eq__(self, other):
-        return self.__hash__() == other.__hash__()
+        return self.actor_id == other.actor_id

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
-from ray.air.execution.actor_spec import ActorInfo
+from ray.air.execution.actor_spec import TrackedActor
 
 
 @dataclass
@@ -18,7 +18,7 @@ class ExecutionEvent:
 class FutureResult(ExecutionEvent):
     """Event emitted when a future successfully resolves."""
 
-    actor_info: ActorInfo
+    tracked_actor: TrackedActor
 
 
 @dataclass
@@ -54,19 +54,19 @@ class MultiFutureFailed(MultiFutureResult):
 class ActorStarted(ExecutionEvent):
     """Event emitted when an actor started."""
 
-    actor_info: ActorInfo
+    tracked_actor: TrackedActor
 
 
 @dataclass
 class ActorStopped(ExecutionEvent):
     """Event emitted when an actor stopped."""
 
-    actor_info: ActorInfo
+    tracked_actor: TrackedActor
 
 
 @dataclass
 class ActorFailed(ExecutionEvent):
     """Event emitted when an actor failed."""
 
-    actor_info: ActorInfo
+    tracked_actor: TrackedActor
     exception: Optional[Exception] = None

@@ -1,7 +1,7 @@
 from typing import Any, Dict, Iterable, Optional, Tuple, Type
 
 from ray.air import AcquiredResources
-from ray.air.execution.actor_spec import ActorSpec, ActorInfo
+from ray.air.execution.actor_spec import ActorSpec, TrackedActor
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.air.execution.event import (
     ExecutionEvent,
@@ -35,9 +35,10 @@ class ActorManager:
     required to start the actor.
 
     Once added, subsequent interaction with the actor via the manager uses an
-    ``ActorInfo`` object. This object can be used to remove the actor or to schedule
-    futures on it. It contains the original actor specification and an internal
-    actor ID (unrelated to the Ray actor ID).
+    ``TrackedActor`` object. This object can be used to remove the actor or to schedule
+    futures on it. Existence of this object does not guarantee that the actual Ray actor
+    has been scheduled. This status can be inquired from the actor manager using the
+    ``TrackedActor`` object.
 
     Args:
         resource_manager: Resource manager used to request resources for the actors.
@@ -60,8 +61,6 @@ class ActorManager:
     def get_next_event(self, block: bool = True) -> Optional[ExecutionEvent]:
         """Get next event, if available.
 
-        An event can
-
         If ``block=False`` and there is no event immediately available, this
         method will return ``None``.
 
@@ -80,8 +79,8 @@ class ActorManager:
         raise NotImplementedError
 
     @property
-    def num_not_started_actors(self):
-        """Return number of not yet started actors."""
+    def num_pending_actors(self):
+        """Return number of pending (not yet started) actors."""
         raise NotImplementedError
 
     @property
@@ -89,9 +88,8 @@ class ActorManager:
         """Return number of total actors."""
         raise NotImplementedError
 
-    def add_actor(self, actor_spec: ActorSpec) -> ActorInfo:
+    def add_actor(self, actor_spec: ActorSpec) -> TrackedActor:
         """Add an actor to be tracked.
-
 
         The actor class to start, the constructor arguments, and the resources to
         start the actor with are provided in the ``actor_spec`` argument.
@@ -106,15 +104,14 @@ class ActorManager:
             actor_spec: Spec for the actor to be started once resources are available.
 
         Returns:
-            Actor info object that can be used to remove the actor or schedule futures
-                on it.
+            Tracked actor to be used to schedule futures or remove the actor.
 
         """
         raise NotImplementedError
 
     def remove_actor(
         self,
-        actor_info: ActorInfo,
+        tracked_actor: TrackedActor,
         resolve_futures: bool = True,
         kill: bool = False,
     ) -> None:
@@ -139,7 +136,7 @@ class ActorManager:
                 this event won't be emitted.
 
         Args:
-            actor_info: Actor info object of the actor to be removed.
+            tracked_actor: Tracked actor to be removed.
             resolve_futures: If True, will resolve associated futures (and emit
                 events) first before stopping the actor.
             kill: If set, will forcefully terminate the actor instead of gracefully
@@ -147,27 +144,29 @@ class ActorManager:
         """
         raise NotImplementedError
 
-    def is_actor_started(self, actor_info: ActorInfo) -> bool:
+    def is_actor_started(self, tracked_actor: TrackedActor) -> bool:
         """Returns True if the actor has been started.
 
         Args:
-            actor_info: Actor info object of the actor to inquire state about.
+            tracked_actor: Tracked actor to inquire state about.
         """
         raise NotImplementedError
 
-    def get_actor_resources(self, actor_info: ActorInfo) -> Optional[AcquiredResources]:
+    def get_actor_resources(
+        self, tracked_actor: TrackedActor
+    ) -> Optional[AcquiredResources]:
         """Returns the acquired resources of an actor that has been started.
 
         This will return ``None`` if the actor has not been started, yet.
 
         Args:
-            actor_info: Actor info object of the actor to get resources for.
+            tracked_actor: Tracked actor to get resources for.
         """
         raise NotImplementedError
 
     def schedule_task(
         self,
-        actor_info: ActorInfo,
+        tracked_actor: TrackedActor,
         task_spec: Tuple[str, Iterable[Any], Dict[str, Any]],
         result_cls: Type[FutureResult],
     ) -> None:
@@ -190,7 +189,7 @@ class ActorManager:
                 ``RayActorError``, indicating the actor died.
 
         Args:
-            actor_info: Actor info object to track future for.
+            tracked_actor: Tracked actor to schedule task for.
             task_spec: Tuple of ``(method_name, args, kwargs)`` to be scheduled as
                 task futures on the actor.
             result_cls: Class extending ``FutureResult`` to emit when the future
@@ -201,7 +200,7 @@ class ActorManager:
 
     def schedule_sync_tasks(
         self,
-        actors_tasks: Dict[ActorInfo, Tuple[str, Iterable[Any], Dict[str, Any]]],
+        actors_tasks: Dict[TrackedActor, Tuple[str, Iterable[Any], Dict[str, Any]]],
         result_cls: Type[FutureResult],
     ) -> None:
         """Track synchronous futures associated to multiple tracked actors.
@@ -237,7 +236,7 @@ class ActorManager:
                 in addition to the ``MultiFutureFailed`` event.
 
         Args:
-            actors_tasks: Actor info objects mapping to actor method specifications.
+            actors_tasks: Tracked actors mapping to actor method specifications.
             result_cls: Class extending ``FutureResult`` to emit as sub results of
                 ``MultiFutureResult`` when the futures resolve successfully.
         """
