@@ -431,27 +431,27 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
         stages={"read": block_meta_list},
         parent=None,
     )
-    calculated_stats = stats._calculate_blocks_stats(block_meta_list, False)
+    calculated_stats = stats.to_summary().stages_stats[0]
 
-    assert calculated_stats[DatasetStats.OUTPUT_NUM_ROWS] == {
+    assert getattr(calculated_stats, DatasetStats.OUTPUT_NUM_ROWS) == {
         "min": min(block_params["num_rows"]),
         "max": max(block_params["num_rows"]),
         "mean": np.mean(block_params["num_rows"]),
         "sum": sum(block_params["num_rows"]),
     }
-    assert calculated_stats[DatasetStats.OUTPUT_SIZE_BYTES] == {
+    assert getattr(calculated_stats, DatasetStats.OUTPUT_SIZE_BYTES) == {
         "min": min(block_params["size_bytes"]),
         "max": max(block_params["size_bytes"]),
         "mean": np.mean(block_params["size_bytes"]),
         "sum": sum(block_params["size_bytes"]),
     }
-    assert calculated_stats[DatasetStats.WALL_TIME] == {
+    assert getattr(calculated_stats, DatasetStats.WALL_TIME) == {
         "min": min(block_params["wall_time"]),
         "max": max(block_params["wall_time"]),
         "mean": np.mean(block_params["wall_time"]),
         "sum": sum(block_params["wall_time"]),
     }
-    assert calculated_stats[DatasetStats.CPU_TIME] == {
+    assert getattr(calculated_stats, DatasetStats.CPU_TIME) == {
         "min": min(block_params["cpu_time"]),
         "max": max(block_params["cpu_time"]),
         "mean": np.mean(block_params["cpu_time"]),
@@ -459,7 +459,7 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
     }
 
     node_counts = Counter(block_params["node_id"])
-    assert calculated_stats[DatasetStats.NODE_COUNT] == {
+    assert getattr(calculated_stats, DatasetStats.NODE_COUNT) == {
         "min": min(node_counts.values()),
         "max": max(node_counts.values()),
         "mean": np.mean(list(node_counts.values())),
@@ -476,12 +476,15 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
         stages={"read": block_meta_list},
         parent=None,
     )
-    calculated_stats = stats._calculate_blocks_stats(block_meta_list, False)
-    summarized_str = DatasetStats._summarize_blocks(calculated_stats, False)
-    summarized_lines = summarized_str.split("\n")
+    stats.dataset_uuid = "test-uuid"
+
+    calculated_stats = stats.to_summary()
+    summarized_lines = calculated_stats.to_string().split("\n")
 
     assert (
-        "2/2 blocks executed in {}s".format(max(round(stats.time_total_s, 2), 0))
+        "Stage 0 read: 2/2 blocks executed in {}s".format(
+            max(round(stats.time_total_s, 2), 0)
+        )
         == summarized_lines[0]
     )
     assert (
@@ -555,21 +558,17 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
         stages={"read": block_meta_list},
         parent=None,
     )
-    calculated_stats = stats._calculate_blocks_stats(block_meta_list, False)
-    wall_time_stats = calculated_stats.get(DatasetStats.WALL_TIME)
-    assert DatasetStats.get_total_wall_time(
-        [calculated_stats],
-    ) == wall_time_stats.get("max")
 
-    cpu_time_stats = calculated_stats.get(DatasetStats.CPU_TIME)
-    assert DatasetStats.get_total_cpu_time(
-        [calculated_stats],
-    ) == cpu_time_stats.get("sum")
+    dataset_stats_summary = stats.to_summary()
+    stage_stats = dataset_stats_summary.stages_stats[0]
+    wall_time_stats = stage_stats.wall_time
+    assert dataset_stats_summary.get_total_wall_time() == wall_time_stats.get("max")
 
-    peak_memory_stats = calculated_stats.get(DatasetStats.PEAK_HEAP_MEMORY)
-    assert DatasetStats.get_max_heap_memory(
-        [calculated_stats],
-    ) == peak_memory_stats.get("max")
+    cpu_time_stats = stage_stats.cpu_time
+    assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.get("sum")
+
+    peak_memory_stats = stage_stats.memory
+    assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
 if __name__ == "__main__":

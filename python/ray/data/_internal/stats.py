@@ -1,7 +1,8 @@
 import collections
+from dataclasses import dataclass
 import time
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Set, Tuple, Union, Any
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
@@ -9,6 +10,7 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
+from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
@@ -236,20 +238,9 @@ class DatasetStats:
         """Placeholder for ops not yet instrumented."""
         return DatasetStats(stages={"TODO": []}, parent=None)
 
-    def summary_string(
-        self, already_printed: Set[str] = None, include_parent: bool = True
-    ) -> str:
-        """Return a human-readable summary of this Dataset's stats.
-
-        Args:
-            already_printed: Set of stage IDs that have already had its stats printed
-            out.
-            include_parent: If true, also include parent stats summary; otherwise, only
-            log stats of the latest stage.
-        """
-        if already_printed is None:
-            already_printed = set()
-
+    def to_summary(self) -> "DatasetStatsSummary":
+        """Generate a `DatasetStatsSummary` object from the given `DatasetStats`
+        object, which can be used to generate a summary string."""
         if self.needs_stats_actor:
             ac = self.stats_actor
             # TODO(chengsu): this is a super hack, clean it up.
@@ -264,25 +255,86 @@ class DatasetStats:
             else:
                 for i, metadata in stats_map.items():
                     self.stages["read"][i] = metadata[0]
+
+        stages_stats = []
+        is_substage = len(self.stages) > 1
+        for stage_name, metadata in self.stages.items():
+            stages_stats.append(
+                StageStatsSummary.from_block_metadata(
+                    metadata,
+                    self.time_total_s,
+                    stage_name,
+                    is_substage=is_substage,
+                )
+            )
+
+        iter_stats = IterStatsSummary(
+            self.iter_wait_s,
+            self.iter_get_s,
+            self.iter_next_batch_s,
+            self.iter_format_batch_s,
+            self.iter_user_s,
+            self.iter_total_s,
+        )
+        stats_summary_parents = []
+        if self.parents is not None:
+            stats_summary_parents = [p.to_summary() for p in self.parents]
+        return DatasetStatsSummary(
+            stages_stats,
+            iter_stats,
+            stats_summary_parents,
+            self.number,
+            self.dataset_uuid,
+            self.time_total_s,
+            self.base_name,
+        )
+
+
+@DeveloperAPI
+@dataclass
+class DatasetStatsSummary:
+    stages_stats: List["StageStatsSummary"]
+    iter_stats: "IterStatsSummary"
+    parents: List["DatasetStatsSummary"]
+    number: int
+    dataset_uuid: str
+    time_total_s: float
+    base_name: str
+
+    def to_string(
+        self, already_printed: Optional[Set[str]] = None, include_parent: bool = True
+    ) -> str:
+        """Return a human-readable summary of this Dataset's stats.
+
+        Args:
+            already_printed: Set of stage IDs that have already had its stats printed
+            out.
+            include_parent: If true, also include parent stats summary; otherwise, only
+            log stats of the latest stage.
+        Returns:
+            String with summary statistics for executing the Dataset.
+        """
+        if already_printed is None:
+            already_printed = set()
+
         out = ""
         if self.parents and include_parent:
             for p in self.parents:
-                parent_sum = p.summary_string(already_printed)
+                parent_sum = p.to_string(already_printed)
                 if parent_sum:
                     out += parent_sum
                     out += "\n"
-        if len(self.stages) == 1:
-            stage_name, metadata = next(iter(self.stages.items()))
+        if len(self.stages_stats) == 1:
+            stage_stats_summary = next(iter(self.stages_stats))
+            stage_name = stage_stats_summary.stage_name
             stage_uuid = self.dataset_uuid + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
             else:
                 already_printed.add(stage_uuid)
-                block_stats = self._calculate_blocks_stats(metadata, is_substage=False)
-                blocks_stats_str = DatasetStats._summarize_blocks(block_stats, is_substage=False)
-                out += blocks_stats_str
-        elif len(self.stages) > 1:
+                out += str(stage_stats_summary)
+        elif len(self.stages_stats) > 1:
             rounded_total = round(self.time_total_s, 2)
             if rounded_total <= 0:
                 # Handle -0.0 case.
@@ -290,7 +342,8 @@ class DatasetStats:
             out += "Stage {} {}: executed in {}s\n".format(
                 self.number, self.base_name, rounded_total
             )
-            for n, (stage_name, metadata) in enumerate(self.stages.items()):
+            for n, stage_stats_summary in enumerate(self.stages_stats):
+                stage_name = stage_stats_summary.stage_name
                 stage_uuid = self.dataset_uuid + stage_name
                 out += "\n"
                 out += "\tSubstage {} {}: ".format(n, stage_name)
@@ -298,75 +351,98 @@ class DatasetStats:
                     out += "\t[execution cached]\n"
                 else:
                     already_printed.add(stage_uuid)
-                    block_stats = self._calculate_blocks_stats(metadata, is_substage=True)
-                    blocks_stats_str = DatasetStats._summarize_blocks(block_stats, is_substage=True)
-                    out += blocks_stats_str
-        out += self._summarize_iter()
+                    out += str(stage_stats_summary)
+        out += str(self.iter_stats)
         return out
 
-    def _summarize_iter(self) -> str:
-        out = ""
-        if (
-            self.iter_total_s.get()
-            or self.iter_wait_s.get()
-            or self.iter_next_batch_s.get()
-            or self.iter_format_batch_s.get()
-            or self.iter_get_s.get()
-        ):
-            out += "\nDataset iterator time breakdown:\n"
-            out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
-            out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))
-            out += "* In next_batch(): {}\n".format(fmt(self.iter_next_batch_s.get()))
-            out += "* In format_batch(): {}\n".format(
-                fmt(self.iter_format_batch_s.get())
-            )
-            out += "* In user code: {}\n".format(fmt(self.iter_user_s.get()))
-            out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
-        return out
+    def get_total_wall_time(self) -> float:
+        parent_sum = sum(p.get_total_wall_time() for p in self.parents)
+        return parent_sum + sum(
+            getattr(ss, DatasetStats.WALL_TIME).get("max", 0)
+            for ss in self.stages_stats
+        )
 
-    def _calculate_blocks_stats(
-        self, blocks: List[BlockMetadata], is_substage: bool
-    ) -> Dict[str, Union[str, Dict[str, Any]]]:
-        """Calculate the stats for a given list of blocks from a stage.
+    def get_total_cpu_time(self) -> float:
+        parent_sum = sum(p.get_total_cpu_time() for p in self.parents)
+        return parent_sum + sum(
+            getattr(ss, DatasetStats.CPU_TIME).get("sum", 0) for ss in self.stages_stats
+        )
+
+    def get_max_heap_memory(self) -> float:
+        parent_memory = [p.get_max_heap_memory() for p in self.parents]
+        parent_max = max(parent_memory) if parent_memory else 0
+        return max(
+            parent_max,
+            *[
+                getattr(ss, DatasetStats.PEAK_HEAP_MEMORY).get("max", 0)
+                for ss in self.stages_stats
+            ],
+        )
+
+
+@dataclass
+class StageStatsSummary:
+    stage_name: str
+    is_substage: bool
+    time_total_s: float
+    block_execution_summary_str: str
+    wall_time: Optional[Dict[str, float]] = None
+    cpu_time: Optional[Dict[str, float]] = None
+    memory: Optional[Dict[str, float]] = None
+    output_num_rows: Optional[Dict[str, float]] = None
+    output_size_bytes: Optional[Dict[str, float]] = None
+    node_count: Optional[Dict[str, float]] = None
+
+    @classmethod
+    def from_block_metadata(
+        cls,
+        block_metas: List[BlockMetadata],
+        time_total_s: float,
+        stage_name: str,
+        is_substage: bool,
+    ) -> "StageStatsSummary":
+        """Calculate the stats for a given list of blocks from a stage,
+        and generates a `StageStatsSummary` object with the results.
 
         Args:
+            block_metas: List of `BlockMetadata` to calculate stats of
+            time_total_s: Total execution time of stage
             stage_name: Name of stage associated with `blocks`
-            blocks: List of `BlockMetadata` to calculate stats of
             is_substage: Whether this set of blocks belongs to a substage.
         Returns:
-            A dictionary with keys being the statistic names
-            (e.g. `DatasetStats.WALL_TIME`), and values being either a
-            singular statistic value or a dict of multiple statistic values.
+            A `StageStatsSummary` object initialized with the calculated statistics
         """
-        exec_stats = [m.exec_stats for m in blocks if m.exec_stats is not None]
-        stage_summary_stats = {}
+        exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
+        stage_summary_stats_args = {}
 
         if is_substage:
             exec_summary_str = "{}/{} blocks executed\n".format(
-                len(exec_stats), len(blocks)
+                len(exec_stats), len(block_metas)
             )
         else:
-            rounded_total = round(self.time_total_s, 2)
+            rounded_total = round(time_total_s, 2)
             if rounded_total <= 0:
                 # Handle -0.0 case.
                 rounded_total = 0
             if exec_stats:
                 exec_summary_str = "{}/{} blocks executed in {}s".format(
-                    len(exec_stats), len(blocks), rounded_total
+                    len(exec_stats), len(block_metas), rounded_total
                 )
             else:
                 exec_summary_str = ""
-            if len(exec_stats) < len(blocks):
+            if len(exec_stats) < len(block_metas):
                 if exec_stats:
                     exec_summary_str += ", "
-                num_inherited = len(blocks) - len(exec_stats)
+                num_inherited = len(block_metas) - len(exec_stats)
                 exec_summary_str += "{}/{} blocks split from parent".format(
-                    num_inherited, len(blocks)
+                    num_inherited, len(block_metas)
                 )
                 if not exec_stats:
                     exec_summary_str += " in {}s".format(rounded_total)
             exec_summary_str += "\n"
-        stage_summary_stats[DatasetStats.BLOCK_EXECUTION_SUMMARY] = exec_summary_str
+        stage_summary_stats_args[
+            DatasetStats.BLOCK_EXECUTION_SUMMARY
+        ] = exec_summary_str
 
         if exec_stats:
             wall_time_stats = {
@@ -375,7 +451,7 @@ class DatasetStats:
                 "mean": np.mean([e.wall_time_s for e in exec_stats]),
                 "sum": sum([e.wall_time_s for e in exec_stats]),
             }
-            stage_summary_stats[DatasetStats.WALL_TIME] = wall_time_stats
+            stage_summary_stats_args[DatasetStats.WALL_TIME] = wall_time_stats
 
             cpu_stats = {
                 "min": min([e.cpu_time_s for e in exec_stats]),
@@ -383,7 +459,7 @@ class DatasetStats:
                 "mean": np.mean([e.cpu_time_s for e in exec_stats]),
                 "sum": sum([e.cpu_time_s for e in exec_stats]),
             }
-            stage_summary_stats[DatasetStats.CPU_TIME] = cpu_stats
+            stage_summary_stats_args[DatasetStats.CPU_TIME] = cpu_stats
 
             memory_stats_mb = [
                 round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
@@ -393,9 +469,9 @@ class DatasetStats:
                 "max": max(memory_stats_mb),
                 "mean": int(np.mean(memory_stats_mb)),
             }
-            stage_summary_stats[DatasetStats.PEAK_HEAP_MEMORY] = memory_stats
+            stage_summary_stats_args[DatasetStats.PEAK_HEAP_MEMORY] = memory_stats
 
-        output_num_rows = [m.num_rows for m in blocks if m.num_rows is not None]
+        output_num_rows = [m.num_rows for m in block_metas if m.num_rows is not None]
         output_num_rows_stats = {}
         if output_num_rows:
             output_num_rows_stats = {
@@ -404,9 +480,11 @@ class DatasetStats:
                 "mean": int(np.mean(output_num_rows)),
                 "sum": sum(output_num_rows),
             }
-        stage_summary_stats[DatasetStats.OUTPUT_NUM_ROWS] = output_num_rows_stats
+        stage_summary_stats_args[DatasetStats.OUTPUT_NUM_ROWS] = output_num_rows_stats
 
-        output_size_bytes = [m.size_bytes for m in blocks if m.size_bytes is not None]
+        output_size_bytes = [
+            m.size_bytes for m in block_metas if m.size_bytes is not None
+        ]
         output_size_bytes_stats = {}
         if output_size_bytes:
             output_size_bytes_stats = {
@@ -415,7 +493,9 @@ class DatasetStats:
                 "mean": int(np.mean(output_size_bytes)),
                 "sum": sum(output_size_bytes),
             }
-        stage_summary_stats[DatasetStats.OUTPUT_SIZE_BYTES] = output_size_bytes_stats
+        stage_summary_stats_args[
+            DatasetStats.OUTPUT_SIZE_BYTES
+        ] = output_size_bytes_stats
 
         if exec_stats:
             node_counts = collections.defaultdict(int)
@@ -427,27 +507,27 @@ class DatasetStats:
                 "mean": int(np.mean(list(node_counts.values()))),
                 "count": len(node_counts),
             }
-            stage_summary_stats[DatasetStats.NODE_COUNT] = node_counts_stats
+            stage_summary_stats_args[DatasetStats.NODE_COUNT] = node_counts_stats
 
-        return stage_summary_stats
+        return StageStatsSummary(
+            stage_name=stage_name,
+            is_substage=is_substage,
+            time_total_s=time_total_s,
+            **stage_summary_stats_args,
+        )
 
-    @staticmethod
-    def _summarize_blocks(stage_stats: Dict[str, Any], is_substage: bool) -> str:
-        """For a given (pre-calculated) statistics dict from 
-        `self._calculate_block_stats(...)`, returns a human-friendly string
+    def __str__(self) -> str:
+        """For a given (pre-calculated) `StageStatsSummary` object (e.g. generated from
+        `StageStatsSummary.from_block_metadata()`), returns a human-friendly string
         that summarizes stage execution statistics.
-
-        Args:
-            stage_name: Name of the stage
-            is_substage: Whether this set of blocks belongs to a substage.
 
         Returns:
             String with summary statistics for executing the given stage.
         """
-        indent = "\t" if is_substage else ""
-        out = stage_stats.get(DatasetStats.BLOCK_EXECUTION_SUMMARY, "")
+        indent = "\t" if self.is_substage else ""
+        out = getattr(self, DatasetStats.BLOCK_EXECUTION_SUMMARY, "")
 
-        wall_time_stats = stage_stats.get(DatasetStats.WALL_TIME, {})
+        wall_time_stats = getattr(self, DatasetStats.WALL_TIME, {})
         if wall_time_stats:
             out += indent
             out += "* Remote wall time: {} min, {} max, {} mean, {} total\n".format(
@@ -457,7 +537,7 @@ class DatasetStats:
                 fmt(wall_time_stats["sum"]),
             )
 
-        cpu_stats = stage_stats.get(DatasetStats.CPU_TIME, {})
+        cpu_stats = getattr(self, DatasetStats.CPU_TIME, {})
         if cpu_stats:
             out += indent
             out += "* Remote cpu time: {} min, {} max, {} mean, {} total\n".format(
@@ -467,7 +547,7 @@ class DatasetStats:
                 fmt(cpu_stats["sum"]),
             )
 
-        memory_stats = stage_stats.get(DatasetStats.PEAK_HEAP_MEMORY, {})
+        memory_stats = getattr(self, DatasetStats.PEAK_HEAP_MEMORY, {})
         if memory_stats:
             out += indent
             out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
@@ -476,7 +556,7 @@ class DatasetStats:
                 memory_stats["mean"],
             )
 
-        output_num_rows_stats = stage_stats.get(DatasetStats.OUTPUT_NUM_ROWS, {})
+        output_num_rows_stats = getattr(self, DatasetStats.OUTPUT_NUM_ROWS, {})
         if output_num_rows_stats:
             out += indent
             out += "* Output num rows: {} min, {} max, {} mean, {} total\n".format(
@@ -486,7 +566,7 @@ class DatasetStats:
                 output_num_rows_stats["sum"],
             )
 
-        output_size_bytes_stats = stage_stats.get(DatasetStats.OUTPUT_SIZE_BYTES, {})
+        output_size_bytes_stats = getattr(self, DatasetStats.OUTPUT_SIZE_BYTES, {})
         if output_size_bytes_stats:
             out += indent
             out += "* Output size bytes: {} min, {} max, {} mean, {} total\n".format(
@@ -496,7 +576,7 @@ class DatasetStats:
                 output_size_bytes_stats["sum"],
             )
 
-        node_count_stats = stage_stats.get(DatasetStats.NODE_COUNT, {})
+        node_count_stats = getattr(self, DatasetStats.NODE_COUNT, {})
         if node_count_stats:
             out += indent
             out += "* Tasks per node: {} min, {} max, {} mean; {} nodes used\n".format(
@@ -507,43 +587,33 @@ class DatasetStats:
             )
         return out
 
-    @staticmethod
-    def get_total_wall_time(list_of_stage_stats: List[Dict[str, Any]]) -> float:
-        """ For a given list of pre-calculated stage statistics, e.g. from
-        self._calculate_blocks_stats(...), returns the sum of maximum 
-        wall time per stage over all stages."""
-        total_wall_time = 0
-        for stage_idx, stage_stats in enumerate(list_of_stage_stats):
-            stage_wall_time_stats = stage_stats.get(DatasetStats.WALL_TIME)
-            if stage_wall_time_stats:
-                total_wall_time += stage_wall_time_stats.get("max", 0)
-        return total_wall_time
 
-    @staticmethod
-    def get_total_cpu_time(list_of_stage_stats: List[Dict[str, Any]]) -> float:
-        """ For a given list of pre-calculated stage statistics, e.g. from
-        self._calculate_blocks_stats(...), returns the sum of total 
-        CPU time per stage over all stages."""
-        total_cpu_time = 0
-        for stage_idx, stage_stats in enumerate(list_of_stage_stats):
-            stage_cpu_time_stats = stage_stats.get(DatasetStats.CPU_TIME)
-            if stage_cpu_time_stats:
-                total_cpu_time += stage_cpu_time_stats.get("sum", 0)
-        return total_cpu_time
+@dataclass
+class IterStatsSummary:
+    wait_time: Timer
+    get_time: Timer
+    next_time: Timer
+    format_time: Timer
+    user_time: Timer
+    total_time: Timer
 
-    @staticmethod
-    def get_max_heap_memory(list_of_stage_stats: List[Dict[str, Any]]) -> float:
-        """ For a given list of pre-calculated stage statistics, e.g. from
-        self._calculate_blocks_stats(...), returns the maximum heap memory usage
-        per stage over all stages."""
-        max_heap_memory = 0
-        for stage_idx, stage_stats in enumerate(list_of_stage_stats):
-            stage_heap_memory_stats = stage_stats.get(DatasetStats.PEAK_HEAP_MEMORY)
-            if stage_heap_memory_stats:
-                max_heap_memory = max(
-                    max_heap_memory, stage_heap_memory_stats.get("max", 0)
-                )
-        return max_heap_memory
+    def __str__(self) -> str:
+        out = ""
+        if (
+            self.total_time.get()
+            or self.wait_time.get()
+            or self.next_time.get()
+            or self.format_time.get()
+            or self.get_time.get()
+        ):
+            out += "\nDataset iterator time breakdown:\n"
+            out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
+            out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
+            out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
+            out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
+            out += "* In user code: {}\n".format(fmt(self.user_time.get()))
+            out += "* Total time: {}\n".format(fmt(self.total_time.get()))
+        return out
 
 
 class DatasetPipelineStats:

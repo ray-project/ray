@@ -28,7 +28,7 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block
 from ray.data.context import DatasetContext
 
@@ -327,7 +327,13 @@ class ExecutionPlan:
                     stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
 
-                stats_summary_string = stats.summary_string(include_parent=False)
+                # When generating the summary string for each stage's stats, we only
+                # want to include that stage, and not its parents' info, since otherwise
+                # we will be duplicating parents recursively each time we generate a
+                # child DatasetStatsSummary object.
+                stats_summary_string = stats.to_summary().to_string(
+                    include_parent=False
+                )
                 logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                     stats_summary_string,
                 )
@@ -359,6 +365,10 @@ class ExecutionPlan:
         """Return stats for this plan, forcing execution if needed."""
         self.execute()
         return self._snapshot_stats
+
+    def stats_summary(self) -> DatasetStatsSummary:
+        self.execute()
+        return self._snapshot_stats.to_summary()
 
     def _should_clear_input_blocks(
         self,
