@@ -30,15 +30,12 @@ google-cloud-storage==2.5.0
 gradio==3.5; platform_system != "Windows"
 jsonpatch==1.32
 kubernetes==24.2.0
-# higher version of llvmlite breaks windows
-llvmlite==0.39.1; platform_system != "Windows" and python_version < '3.11'
-llvmlite==0.34.0; platform_system == "Windows" and python_version < '3.11'
+llvmlite==0.39.1
 lxml==4.9.1
 moto[s3,server]==4.0.7
 mypy==0.982
 networkx==2.6.3
-numba==0.56.3; platform_system != "Windows" and python_version < '3.11'
-numba==0.51.2; platform_system == "Windows" and python_version < '3.11'
+numba==0.56.4
 openpyxl==3.0.10
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
