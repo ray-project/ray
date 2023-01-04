@@ -250,9 +250,15 @@ class DataParallelIngestSpec:
                     dataset_splits[i] = BulkDatasetIterator(
                         dataset_split,
                         per_epoch_preprocessor=config.per_epoch_preprocessor,
+                        shuffle=config.shuffle,
+                        shuffle_seed=config.shuffle_seed,
                     )
                 elif isinstance(dataset_split, DatasetPipeline):
-                    dataset_splits[i] = PipelinedDatasetIterator(dataset_split)
+                    dataset_splits[i] = PipelinedDatasetIterator(
+                        dataset_split,
+                        shuffle=config.shuffle,
+                        shuffle_seed=config.shuffle_seed,
+                    )
 
             for i in range(len(dataset_splits)):
                 dataset_dict_splits[i][key] = dataset_splits[i]

@@ -13,13 +13,13 @@ class BulkDatasetIterator(DatasetIterator):
         # base_dataset: Dataset,
         base_dataset,
         per_epoch_preprocessor: Optional["Preprocessor"] = None,
-        shuffle: Optional[int] = None,
+        shuffle: int = 0,
         shuffle_seed: Optional[int] = None,
     ):
         self._base_dataset = base_dataset
         self._epoch = 0
         self._per_epoch_preprocessor = per_epoch_preprocessor
-        self._shuffle = shuffle if shuffle is not None else 0
+        self._shuffle = shuffle
         self._shuffle_seed = shuffle_seed
 
     def iter_batches(
@@ -38,7 +38,9 @@ class BulkDatasetIterator(DatasetIterator):
 
         local_shuffle_buffer_size = None
         if self._shuffle > 0:
-            local_shuffle_buffer_size = shuffle
+            local_shuffle_buffer_size = self._shuffle
+        if self._shuffle != 0:
+            ds = ds.randomize_block_order()
 
         return ds.iter_batches(
             prefetch_blocks=prefetch_blocks,
@@ -60,7 +62,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         self,
         # base_dataset: Dataset,
         base_dataset_pipeline,
-        shuffle: Optional[int] = None,
+        shuffle: int = None,
         shuffle_seed: Optional[int] = None,
     ):
         self._base_dataset_pipeline = base_dataset_pipeline
@@ -86,7 +88,7 @@ class PipelinedDatasetIterator(DatasetIterator):
 
         local_shuffle_buffer_size = None
         if self._shuffle > 0:
-            local_shuffle_buffer_size = shuffle
+            local_shuffle_buffer_size = self._shuffle
 
         return ds.iter_batches(
             prefetch_blocks=prefetch_blocks,

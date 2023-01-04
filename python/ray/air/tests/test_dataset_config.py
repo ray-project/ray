@@ -453,10 +453,7 @@ def test_shuffle(ray_start_4_cpus):
         )
 
         assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
-        if max_object_store_memory_fraction is not None:
-            assert results[0] != results[1], (max_object_store_memory_fraction, results)
-        else:
-            assert results[0] == results[1], (max_object_store_memory_fraction, results)
+        assert results[0] != results[1], (max_object_store_memory_fraction, results)
         assert results[0] != list(range(5))
 
     for max_object_store_memory_fraction in [None, 1, 0.3]:
@@ -482,12 +479,8 @@ def test_shuffle(ray_start_4_cpus):
         )
 
         assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
-        if max_object_store_memory_fraction is not None:
-            assert results[0] != results[1], (max_object_store_memory_fraction, results)
-        else:
-            assert results[0] == results[1], (max_object_store_memory_fraction, results)
+        assert results[0] != results[1], (max_object_store_memory_fraction, results)
         assert results[0] != list(range(5))
-
 
 
 if __name__ == "__main__":

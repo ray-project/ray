@@ -342,7 +342,9 @@ class DatasetConfig:
             fit=self.fit or False,
             split=self.split or False,
             required=self.required or False,
-            max_object_store_memory_fraction=self.max_object_store_memory_fraction if self.max_object_store_memory_fraction is not None else -1,
+            max_object_store_memory_fraction=self.max_object_store_memory_fraction
+            if self.max_object_store_memory_fraction is not None
+            else -1,
             shuffle=self.shuffle if self.shuffle is not None else 1,
             shuffle_seed=self.shuffle_seed or None,
             transform=self.transform if self.transform is not None else True,
@@ -423,7 +425,9 @@ class DatasetConfig:
             if other.max_object_store_memory_fraction is None
             else other.max_object_store_memory_fraction,
             shuffle=self.shuffle if other.shuffle is None else other.shuffle,
-            shuffle_seed=self.shuffle_seed if other.shuffle_seed is None else other.shuffle_seed,
+            shuffle_seed=self.shuffle_seed
+            if other.shuffle_seed is None
+            else other.shuffle_seed,
             per_epoch_preprocessor=self.per_epoch_preprocessor
             if other.per_epoch_preprocessor is None
             else other.per_epoch_preprocessor,
