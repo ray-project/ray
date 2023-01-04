@@ -233,9 +233,6 @@ class DataParallelIngestSpec:
                 else:
                     dataset = dataset.random_shuffle(seed=config.shuffle_seed)
 
-            if config.max_object_store_memory_fraction == -1:
-                dataset = dataset.fully_executed()
-
             if config.split and len(training_worker_handles) > 1:
                 dataset_splits = dataset.split(
                     len(training_worker_handles),

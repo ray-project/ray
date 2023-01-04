@@ -376,7 +376,7 @@ class DummyTrainer:
 def iterate_twice(trainer, dataset, prep=None, **kwargs):
     dataset_config = DatasetConfig(split=True, required=True, **kwargs).fill_defaults()
     spec = DataParallelIngestSpec({"train": dataset_config})
-    spec.preprocess_datasets(prep, {"train": dataset})
+    datasets = spec.preprocess_datasets(prep, {"train": dataset})
     it = spec.get_dataset_shards([trainer])[0]["train"]
 
     results = []
@@ -391,7 +391,7 @@ def iterate_twice(trainer, dataset, prep=None, **kwargs):
 
 def test_per_epoch_preprocessor(ray_start_4_cpus):
     trainer = DummyTrainer.remote()
-    ds = ray.data.range_table(5)
+    ds = ray.data.range_table(5).fully_executed()
 
     def multiply(x):
         return x * 2
