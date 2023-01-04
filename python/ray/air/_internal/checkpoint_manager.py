@@ -56,7 +56,9 @@ class _TrackedCheckpoint:
         node_ip: IP of the node where the checkpoint was generated. Defaults
             to the current node.
         local_to_remote_path_fn: Function replacing the local path with a remote path.
-            If specified, it means the data was synced to cloud.
+            If specified, it means the data was synced to cloud. Only applied during
+            conversion to AIR checkpoint and only if ``dir_or_data`` is or
+            resolves to a directory path.
     """
 
     def __init__(
