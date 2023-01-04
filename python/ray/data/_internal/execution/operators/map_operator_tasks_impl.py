@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Callable, Optional, List, Dict, Any, Iterator
 
 import ray
@@ -13,7 +14,9 @@ from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
 
-def _map_task(fn: Callable, *blocks: List[Block]):
+def _map_task(
+    fn: Callable[[Iterator[Block]], Iterator[Block]], *blocks: Block
+) -> Iterator[Block]:
     """Remote function for a single operator task.
 
     Args:
@@ -27,7 +30,7 @@ def _map_task(fn: Callable, *blocks: List[Block]):
     """
     output_metadata = []
     stats = BlockExecStats.builder()
-    for b_out in fn(blocks):
+    for b_out in fn(iter(blocks)):
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
         m_out.exec_stats = stats.build()
         output_metadata.append(m_out)
@@ -36,6 +39,7 @@ def _map_task(fn: Callable, *blocks: List[Block]):
     yield output_metadata
 
 
+@dataclass
 class _TaskState:
     """Tracks the driver-side state for an MapOperator task.
 
@@ -44,9 +48,8 @@ class _TaskState:
         output: The output ref bundle that is set when the task completes.
     """
 
-    def __init__(self, inputs: RefBundle):
-        self.inputs: RefBundle = inputs
-        self.output: Optional[RefBundle] = None
+    inputs: RefBundle
+    output: Optional[RefBundle] = None
 
 
 class MapOperatorTasksImpl:
@@ -76,7 +79,6 @@ class MapOperatorTasksImpl:
         self._obj_store_mem_peak: int = 0
 
     def add_input(self, bundle: RefBundle) -> None:
-
         def get_num_rows(bundle: Optional[RefBundle]):
             if bundle is None:
                 return 0
@@ -91,10 +93,8 @@ class MapOperatorTasksImpl:
         num_rows = get_num_rows(self._block_bundle) + bundle_rows
         if num_rows > self._min_rows_per_batch:
             if self._block_bundle:
-                self._create_task(self._block_bundle)
-                self._block_bundle = bundle
-            else:
-                self._create_task(bundle)
+                bundle, self._block_bundle = self._block_bundle, bundle
+            self._create_task(bundle)
         else:
             self._block_bundle = merge_ref_bundles(self._block_bundle, bundle)
 
@@ -107,9 +107,9 @@ class MapOperatorTasksImpl:
     def work_completed(self, ref: ObjectRef[ObjectRefGenerator]) -> None:
         task = self._tasks.pop(ref)
         all_refs = list(ray.get(ref))
+        del ref
         block_refs = all_refs[:-1]
         block_metas = ray.get(all_refs[-1])
-        del ref
         assert len(block_metas) == len(block_refs), (block_refs, block_metas)
         for ref in block_refs:
             trace_allocation(ref, "map_operator_work_completed")

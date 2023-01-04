@@ -64,15 +64,10 @@ class RefBundle:
         Returns:
             The number of bytes freed.
         """
-        if self.owns_blocks and DatasetContext.get_current().eager_free:
-            size = self.size_bytes()
-            for b in self.blocks:
-                trace_deallocation(b[0], "RefBundle.destroy_if_owned")
-            return size
-        else:
-            for b in self.blocks:
-                trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=False)
-            return 0
+        should_free = self.owns_blocks and DatasetContext.get_current().eager_free
+        for b in self.blocks:
+            trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
+        return self.size_bytes() if should_free else 0
 
 
 @dataclass
