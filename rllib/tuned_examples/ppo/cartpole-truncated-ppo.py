@@ -5,7 +5,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 
 gym.register(
     "cartpole_truncated",
-    lambda _: TimeLimit(gym.make("CartPole-v1"), max_episode_steps=50),
+    lambda: TimeLimit(gym.make("CartPole-v1"), max_episode_steps=50),
 )
 
 config = (

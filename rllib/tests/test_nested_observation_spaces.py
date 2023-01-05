@@ -457,41 +457,41 @@ class TestNestedObservationSpaces(unittest.TestCase):
             check(seen[2][0], task_i)
 
     def test_nested_dict_gym(self):
-        self.do_test_nested_dict(lambda _: NestedDictEnv())
+        self.do_test_nested_dict(lambda: NestedDictEnv())
 
     def test_nested_dict_gym_lstm(self):
-        self.do_test_nested_dict(lambda _: NestedDictEnv(), test_lstm=True)
+        self.do_test_nested_dict(lambda: NestedDictEnv(), test_lstm=True)
 
     def test_nested_dict_vector(self):
         self.do_test_nested_dict(
-            lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedDictEnv())
+            lambda: VectorEnv.vectorize_gym_envs(lambda i: NestedDictEnv())
         )
 
     def test_nested_dict_serving(self):
         # TODO: (Artur) Enable this test again for connectors if discrepancies
         #  between EnvRunnerV2 and ExternalEnv are resolved
         if not PGConfig().enable_connectors:
-            self.do_test_nested_dict(lambda _: SimpleServing(NestedDictEnv()))
+            self.do_test_nested_dict(lambda: SimpleServing(NestedDictEnv()))
 
     def test_nested_dict_async(self):
-        self.do_test_nested_dict(lambda _: convert_to_base_env(NestedDictEnv()))
+        self.do_test_nested_dict(lambda: convert_to_base_env(NestedDictEnv()))
 
     def test_nested_tuple_gym(self):
-        self.do_test_nested_tuple(lambda _: NestedTupleEnv())
+        self.do_test_nested_tuple(lambda: NestedTupleEnv())
 
     def test_nested_tuple_vector(self):
         self.do_test_nested_tuple(
-            lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedTupleEnv())
+            lambda: VectorEnv.vectorize_gym_envs(lambda i: NestedTupleEnv())
         )
 
     def test_nested_tuple_serving(self):
         # TODO: (Artur) Enable this test again for connectors if discrepancies
         #  between EnvRunnerV2 and ExternalEnv are resolved
         if not PGConfig().enable_connectors:
-            self.do_test_nested_tuple(lambda _: SimpleServing(NestedTupleEnv()))
+            self.do_test_nested_tuple(lambda: SimpleServing(NestedTupleEnv()))
 
     def test_nested_tuple_async(self):
-        self.do_test_nested_tuple(lambda _: convert_to_base_env(NestedTupleEnv()))
+        self.do_test_nested_tuple(lambda: convert_to_base_env(NestedTupleEnv()))
 
     def test_multi_agent_complex_spaces(self):
         ModelCatalog.register_custom_model("dict_spy", DictSpyModel)
