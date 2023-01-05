@@ -256,6 +256,15 @@ py_test(
     ],
     args = ["--dir=tuned_examples/cql"]
 )
+py_test(
+    name = "learning_tests_pendulum_cql_fake_gpus",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
+    size = "medium",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/cql/pendulum-cql-fake-gpus.yaml"],
+    args = ["--dir=tuned_examples/cql"]
+)
 
 
 # CRR

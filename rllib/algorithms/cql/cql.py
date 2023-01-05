@@ -134,12 +134,6 @@ class CQLConfig(SACConfig):
         # Call super's validation method.
         super().validate()
 
-        # CQL-torch performs the optimizer steps inside the loss function.
-        # Using the multi-GPU optimizer will therefore not work (see multi-GPU
-        # check above) and we must use the simple optimizer for now.
-        if self.simple_optimizer is not True and self.framework_str == "torch":
-            self.simple_optimizer = True
-
         if self.framework_str in ["tf", "tf2"] and tfp is None:
             logger.warning(
                 "You need `tensorflow_probability` in order to run CQL! "

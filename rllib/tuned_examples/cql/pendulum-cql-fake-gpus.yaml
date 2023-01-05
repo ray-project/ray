@@ -23,9 +23,13 @@ pendulum-cql:
         clip_actions: true
 
         twin_q: true
-        train_batch_size: 2000
+        train_batch_size: 4000
+        optimization:
+            actor_learning_rate: 0.001
+            critic_learning_rate: 0.001
+            entropy_learning_rate: 0.001
         bc_iters: 100
-        num_workers: 2
+        num_workers: 0 #TODO
         min_time_s_per_iteration: 10
 
         metrics_num_episodes_for_smoothing: 5
@@ -38,3 +42,7 @@ pendulum-cql:
         evaluation_config:
             input: sampler
             explore: false
+
+        # Fake 2 GPUs.
+        num_gpus: 2
+        _fake_gpus: true
