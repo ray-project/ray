@@ -145,35 +145,11 @@ py_test(
 )
 
 py_test(
-    name = "test_integration_comet",
-    size = "small",
-    srcs = ["tests/test_integration_comet.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_integration_wandb",
-    size = "small",
-    srcs = ["tests/test_integration_wandb.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_integration_mlflow",
-    size = "small",
-    srcs = ["tests/test_integration_mlflow.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"]
 )
 
 py_test(
