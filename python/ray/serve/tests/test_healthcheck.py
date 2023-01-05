@@ -224,10 +224,10 @@ def test_health_check_failure_makes_deployment_unhealthy(serve_instance):
     )
 
 
-def test_health_check_failure_makes_deployment_unhealthy2(serve_instance):
+def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instance):
     """
-    If a deployment continues to fail health check after being restarted, the
-    deployment should be unhealthy.
+    If a deployment transitions to unhealthy, then continues to fail health check after
+    being restarted, the deployment should be unhealthy.
     """
 
     class Toggle:
