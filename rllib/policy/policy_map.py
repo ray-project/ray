@@ -1,6 +1,7 @@
 from collections import deque
 import threading
 from typing import Dict, Set
+import logging
 
 import ray
 from ray.rllib.policy.policy import Policy
@@ -12,6 +13,7 @@ from ray.rllib.utils.typing import PolicyID
 from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
@@ -129,9 +131,10 @@ class PolicyMap(dict):
         # -> Load new policy's state into the one that just got removed from the cache.
         # This way, we save the costly re-creation step.
         if policy is not None and self.policy_states_are_swappable:
+            logger.debug(f"restoring policy: {item}")
             policy.set_state(policy_state)
-        #
         else:
+            logger.debug(f"creating new policy: {item}")
             policy = Policy.from_state(policy_state)
 
         self.cache[item] = policy

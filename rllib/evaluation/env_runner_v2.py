@@ -1124,7 +1124,7 @@ class EnvRunnerV2:
 
                 # Notify agent connectors with this new policy output.
                 # Necessary for state buffering agent connectors, for example.
-                ac_data: AgentConnectorDataType = ActionConnectorDataType(
+                ac_data: ActionConnectorDataType = ActionConnectorDataType(
                     env_id,
                     agent_id,
                     input_dict,

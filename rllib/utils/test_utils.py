@@ -219,7 +219,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         else:
             assert x == y, f"ERROR: x ({x}) is not the same as y ({y})!"
     # String/byte comparisons.
-    elif hasattr(x, "dtype") and (x.dtype == object or str(x.dtype).startswith("<U")):
+    elif (
+        hasattr(x, "dtype") and (x.dtype == object or str(x.dtype).startswith("<U"))
+    ) or isinstance(x, bytes):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
