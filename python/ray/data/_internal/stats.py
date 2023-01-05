@@ -267,7 +267,9 @@ class DatasetStats:
                     out += "\n"
         if len(self.stages) == 1:
             stage_name, metadata = next(iter(self.stages.items()))
-            stage_uuid = self.dataset_uuid + stage_name
+            # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
+            # fully to streaming execution.
+            stage_uuid = (self.dataset_uuid or "unknown_uuid") + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
@@ -400,8 +402,9 @@ class DatasetStats:
                 len(node_counts),
             )
 
-        out += indent
-        out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
+        if self.extra_metrics:
+            out += indent
+            out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
 
         return out
 

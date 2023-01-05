@@ -16,9 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 class BulkExecutor(Executor):
+    """A bulk (BSP) operator executor.
+
+    This implementation emulates the behavior of the legacy Datasets backend. It
+    is intended to be replaced by default by StreamingExecutor in the future.
+    """
+
     def __init__(self, options: ExecutionOptions):
         super().__init__(options)
-        self._stats = DatasetStats(stages={}, parent=None)
+        self._stats: Optional[DatasetStats] = DatasetStats(stages={}, parent=None)
         self._executed = False
 
     def execute(
@@ -68,7 +74,6 @@ class BulkExecutor(Executor):
         return execute_recursive(dag)
 
     def get_stats(self) -> DatasetStats:
-        assert self._stats is not None, self._stats
         return self._stats
 
 
@@ -86,7 +91,9 @@ def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
     if tasks:
         bar = ProgressBar(op.name, total=op.num_outputs_total())
         while tasks:
-            done, _ = ray.wait(tasks, fetch_local=True, timeout=0.1)
+            done, _ = ray.wait(
+                tasks, num_returns=len(tasks), fetch_local=True, timeout=0.1
+            )
             for ready in done:
                 op.notify_work_completed(ready)
             tasks = op.get_work_refs()
