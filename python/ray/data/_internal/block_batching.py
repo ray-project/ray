@@ -1,5 +1,5 @@
-from contextlib import nullcontext
 import queue
+import sys
 from typing import TYPE_CHECKING, Iterator, Optional, Union, Dict
 
 import numpy as np
@@ -16,6 +16,16 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 if TYPE_CHECKING:
     import pandas
     import pyarrow
+
+
+if sys.version_info >= (3, 7):
+    from contextlib import nullcontext
+else:
+    from contextlib import contextmanager
+
+    @contextmanager
+    def nullcontext(enter_result=None):
+        yield enter_result
 
 
 # An output type of iter_batches() determined by the batch_format parameter.
