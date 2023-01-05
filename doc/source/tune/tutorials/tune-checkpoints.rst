@@ -105,7 +105,7 @@ to start from where the experiment left off.
 
 To enable this fault tolerance functionality, Ray Tune
 comes with facilities to synchronize checkpoints between nodes to provide a
-consolidated directory that experiment and all trial checkpoints can be accessed from.
+consolidated directory containing the experiment checkpoint and all trial checkpoints.
 
 Synchronization Options
 -----------------------
@@ -113,7 +113,7 @@ Synchronization Options
 Generally, we consider three cases:
 
 1. When using a shared directory (e.g. via NFS)
-2. When using cloud storage (e.g. S3 or GCS)
+2. When using cloud storage (e.g. S3 or GS)
 3. When using neither
 
 The default option here is 3, which will be automatically used if nothing else is configured.
@@ -123,7 +123,7 @@ The default option here is 3, which will be automatically used if nothing else i
     Although we are considering shared filesystem and cloud storage and solutions to
     synchronization between multiple nodes, these can also be used for single-node
     experiments. This can be useful to persist your experiment results in external storage
-    if, for example, the instance you run your experiment on clears its local directory
+    if, for example, the instance you run your experiment on clears its local storage
     after termination.
 
 .. seealso::
@@ -164,7 +164,7 @@ in the shared filesystem.
 
 Using cloud storage
 ~~~~~~~~~~~~~~~~~~~
-Using cloud storage (e.g. S3 or GCS) is similar to using a shared filesystem: the only difference is
+Using cloud storage (e.g. S3 or GS) is similar to using a shared filesystem: the only difference is
 that the consolidated directory (including all logs and checkpoints) lives in the cloud.
 
 Because all nodes have access to cloud storage, **remote trials will directly upload their
