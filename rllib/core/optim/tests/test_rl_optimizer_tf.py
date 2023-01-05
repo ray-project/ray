@@ -87,7 +87,7 @@ class BCTFTrainer:
     def _do_update_fn(self, batch: SampleBatch) -> Mapping[str, Any]:
         with tf.GradientTape() as tape:
             fwd_out = self._module.forward_train(batch)
-            loss = self._rl_optimizer.compute_loss(batch, fwd_out)
+            loss = self._rl_optimizer.compute_loss(batch=batch, fwd_out=fwd_out)
             if isinstance(loss, tf.Tensor):
                 loss = {"total_loss": loss}
         gradients = self.compute_gradients(loss, tape)

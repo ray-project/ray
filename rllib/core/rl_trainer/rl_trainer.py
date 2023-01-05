@@ -131,7 +131,7 @@ class RLTrainer:
         """
         if not self.distributed:
             fwd_out = self._module.forward_train(batch)
-            loss = self._rl_optimizer.compute_loss(batch, fwd_out)
+            loss = self._rl_optimizer.compute_loss(batch=batch, fwd_out=fwd_out)
             gradients = self.compute_gradients(loss)
             post_processed_gradients = self.on_after_compute_gradients(gradients)
             self.apply_gradients(post_processed_gradients)
