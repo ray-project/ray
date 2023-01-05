@@ -116,7 +116,7 @@ class BCTorchTrainer:
         """
         torch_batch = convert_to_torch_tensor(batch)
         fwd_out = self._module.forward_train(torch_batch)
-        loss = self._rl_optimizer.compute_loss(torch_batch=batch, fwd_out=fwd_out)
+        loss = self._rl_optimizer.compute_loss(batch=torch_batch, fwd_out=fwd_out)
 
         # if loss is a tensor, wrap it in a dict
         if isinstance(loss, torch.Tensor):

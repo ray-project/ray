@@ -1814,14 +1814,14 @@ py_test(
 
 py_test(
     name = "test_rl_optimizer_torch",
-    tags = ["team:rllib", "core"],
+    tags = ["team:rllib", "core", "exclusive"],
     size = "medium",
     srcs = ["core/optim/tests/test_rl_optimizer_torch.py"]
 )
 
 py_test(
     name = "test_marl_optimizer_torch",
-    tags = ["team:rllib", "core"],
+    tags = ["team:rllib", "core", "exclusive"],
     size = "medium",
     srcs = ["core/optim/tests/test_marl_optimizer_torch.py"]
 )
