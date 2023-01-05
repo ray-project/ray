@@ -668,7 +668,7 @@ def _check_done_and_truncated(done, truncated, base_env=False, agent_ids=None):
         if base_env:
             for _, multi_agent_dict in data.items():
                 for agent_id, done_ in multi_agent_dict.items():
-                    if not isinstance(done_, (bool, np.bool, np.bool_)):
+                    if not isinstance(done_, (bool, np.bool_)):
                         raise ValueError(
                             f"Your step function must return `{what}s` that are "
                             f"boolean. But instead was a {type(data)}"
