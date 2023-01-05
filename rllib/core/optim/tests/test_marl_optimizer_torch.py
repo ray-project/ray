@@ -12,6 +12,7 @@ from ray.rllib.core.optim.marl_optimizer import MultiAgentRLOptimizer
 
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.torch.bc_optimizer import BCTorchOptimizer
+from ray.rllib.core.testing.torch.marl_module_obs_encoder import MaModuleWObsEncoder
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -151,7 +152,6 @@ class TestRLOptimizer(unittest.TestCase):
 
     def test_marl_optimizer_shared_encoder_torch(self):
         # check that using a shared observation encoder also just works
-        from rllib.core.testing.torch.marl_module_obs_encoder import MaModuleWObsEncoder
 
         env = gym.make("CartPole-v1")
         output_dim_encoder = 3
