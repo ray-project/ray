@@ -89,11 +89,14 @@ def test_simple_imputer():
 
     # Test "constant" strategy.
     constant_col_a = ["apple", None]
-    constant_df = pd.DataFrame.from_dict({"A": constant_col_a})
+    constant_col_b = constant_col_a.copy()
+    constant_df = pd.DataFrame.from_dict({"A": constant_col_a, "B": constant_col_b})
+    # category dtype requires special handling
+    constant_df["B"] = constant_df["B"].astype("category")
     constant_ds = ray.data.from_pandas(constant_df)
 
     with pytest.raises(ValueError):
-        SimpleImputer(["A"], strategy="constant")
+        SimpleImputer(["A", "B"], strategy="constant")
 
     constant_imputer = SimpleImputer(
         ["A", "B"], strategy="constant", fill_value="missing"
@@ -102,7 +105,11 @@ def test_simple_imputer():
     constant_out_df = constant_transformed.to_pandas()
 
     constant_processed_col_a = ["apple", "missing"]
-    constant_expected_df = pd.DataFrame.from_dict({"A": constant_processed_col_a})
+    constant_processed_col_b = constant_processed_col_a.copy()
+    constant_expected_df = pd.DataFrame.from_dict(
+        {"A": constant_processed_col_a, "B": constant_processed_col_b}
+    )
+    constant_expected_df["B"] = constant_expected_df["B"].astype("category")
 
     assert constant_out_df.equals(constant_expected_df)
 
