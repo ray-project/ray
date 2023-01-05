@@ -12,7 +12,7 @@ num_policies = 20
 # Number of those policies that should be trained. These are a subset of `num_policies`.
 num_trainable = 10
 
-num_envs_per_worker = 2
+num_envs_per_worker = 5
 
 # Define the config as an APPOConfig object.
 config = (
