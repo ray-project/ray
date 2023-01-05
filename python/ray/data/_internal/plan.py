@@ -452,11 +452,6 @@ class ExecutionPlan:
             # beginning.
             blocks = self._in_blocks
             stats = self._in_stats
-            if not self.has_lazy_input():
-                # If not a lazy datasource, unlink the input blocks from the plan so we
-                # can eagerly reclaim the input block memory after the first stage is
-                # done executing.
-                self._in_blocks = None
         return blocks, stats, stages
 
     def has_lazy_input(self) -> bool:

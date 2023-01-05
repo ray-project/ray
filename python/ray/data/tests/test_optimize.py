@@ -254,6 +254,22 @@ def test_lazy_fanout(shutdown_only, local_path):
     # Test that first map is executed twice.
     assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
 
+    ray.get(map_counter.reset.remote())
+    # The source data shouldn't be cleared since it's non-lazy.
+    ds = ray.data.from_items(list(range(10)))
+    # Add extra transformation before being lazy.
+    ds = ds.map(inc)
+    ds = ds.lazy()
+    ds1 = ds.map(inc)
+    ds2 = ds.map(inc)
+    # Test content.
+    assert ds1.fully_executed().take() == list(range(2, 12))
+    assert ds2.fully_executed().take() == list(range(2, 12))
+    # Test that first map is executed twice, because ds1.fully_executed()
+    # clears up the previous snapshot blocks, and ds2.fully_executed()
+    # has to re-execute ds.map(inc) again.
+    assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
+
 
 def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ray.data.range(10).lazy()
