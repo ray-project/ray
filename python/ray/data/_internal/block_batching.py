@@ -209,7 +209,10 @@ def _prefetch_blocks(
     """
 
     if num_blocks_to_prefetch == 0:
-        yield from block_ref_iter
+        for block_ref in block_ref_iter:
+            yield block_ref
+            if clear_block_after_read:
+                ray._private.internal_api.free(block_ref, local_only=False)
 
     window_size = num_blocks_to_prefetch
     sliding_window = queue.Queue(maxsize=window_size)
