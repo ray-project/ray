@@ -141,7 +141,7 @@ def mlflow_mixin(func: Callable):
 
     """
     warnings.warn(
-        "The MLflowTrainableMixin is deprecated. "
+        "The mlflow_mixin/MLflowTrainableMixin is deprecated. "
         "Use `ray.air.integrations.mlflow.setup_mlflow` instead.",
         DeprecationWarning,
     )

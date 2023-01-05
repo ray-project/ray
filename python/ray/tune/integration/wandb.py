@@ -127,7 +127,7 @@ def wandb_mixin(func: Callable):
 
     """
     warnings.warn(
-        "The WandbTrainableMixin is deprecated. "
+        "The wandb_mixin/WandbTrainableMixin is deprecated. "
         "Use `ray.air.integrations.wandb.setup_wandb` instead.",
         DeprecationWarning,
     )
