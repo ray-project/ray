@@ -60,9 +60,12 @@ class MapOperatorTasksImpl:
         min_rows_per_bundle: Optional[int],
     ):
         # Execution arguments.
-        self._transform_fn = transform_fn
         self._ray_remote_args = (ray_remote_args or {}).copy()
         self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
+
+        # Put the function def in the object store to avoid repeated serialization
+        # in case it's large (i.e., closure captures large objects).
+        self._transform_fn_ref = ray.put(transform_fn)
 
         # The temporary block bundle used to accumulate inputs until they meet the
         # min_rows_per_bundle requirement.
@@ -171,7 +174,7 @@ class MapOperatorTasksImpl:
             raise NotImplementedError("New backend requires block splitting")
         map_task = cached_remote_fn(_map_task, num_returns="dynamic")
         generator_ref = map_task.options(**self._ray_remote_args).remote(
-            self._transform_fn, *input_blocks
+            self._transform_fn_ref, *input_blocks
         )
         task = _TaskState(bundle)
         self._tasks[generator_ref] = task
