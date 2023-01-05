@@ -4,8 +4,6 @@ import os
 import warnings
 from functools import wraps
 
-RAY_DISABLE_DEPRECATION_WARNING = "RAY_DISABLE_DEPRECATION_WARNING"
-
 
 def PublicAPI(*args, **kwargs):
     """Annotation for documenting public APIs.
@@ -120,7 +118,7 @@ def Deprecated(*args, **kwargs):
     warning_message = (
         "This API is deprecated and may be removed in future Ray releases. "
         "You could suppress this warning by setting env variable "
-        "RAY_DISABLE_DEPRECATION_WARNING=0."
+        'PYTHONWARNINGS="ignore::DeprecationWarning"'
     )
 
     warning = kwargs.pop("warning", False)
@@ -144,8 +142,7 @@ def Deprecated(*args, **kwargs):
             obj_init = obj.__init__
 
             def patched_init(*args, **kwargs):
-                if os.environ.get(RAY_DISABLE_DEPRECATION_WARNING, "0") != "1":
-                    warnings.warn(warning_message, DeprecationWarning, stacklevel=2)
+                warnings.warn(warning_message, DeprecationWarning, stacklevel=2)
                 return obj_init(*args, **kwargs)
 
             obj.__init__ = patched_init
@@ -154,8 +151,7 @@ def Deprecated(*args, **kwargs):
             # class method or function.
             @wraps(obj)
             def wrapper(*args, **kwargs):
-                if os.environ.get(RAY_DISABLE_DEPRECATION_WARNING, "0") != "1":
-                    warnings.warn(warning_message, DeprecationWarning, stacklevel=2)
+                warnings.warn(warning_message, DeprecationWarning, stacklevel=2)
                 return obj(*args, **kwargs)
 
             return wrapper
