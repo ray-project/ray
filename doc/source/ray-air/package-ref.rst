@@ -129,7 +129,21 @@ Abstract Classes
 
     .. automethod:: __init__
 
+.. autoclass:: ray.air.util.check_ingest.DummyTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
 .. _air-results-ref:
+
+Dataset Iteration
+#################
+
+.. autoclass:: ray.air.DatasetIterator
+    :members:
+
+.. autofunction:: ray.air.util.check_ingest.make_local_dataset_iterator
 
 Training Result
 ###############

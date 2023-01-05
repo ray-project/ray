@@ -8,7 +8,7 @@ from ray.air import session, DatasetIterator
 from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train._internal.dataset_spec import make_dummy_dataset_iterator
+from ray.air.util.check_ingest import make_local_dataset_iterator
 
 
 @pytest.fixture
@@ -368,7 +368,7 @@ def test_randomize_block_order(ray_start_4_cpus):
 def test_tf_torch(ray_start_4_cpus):
     ds = ray.data.range_table(5)
 
-    it = make_dummy_dataset_iterator(
+    it = make_local_dataset_iterator(
         ds,
         BatchMapper(lambda x: x, batch_format="pandas"),
         DatasetConfig(randomize_block_order=False),
@@ -380,7 +380,7 @@ def test_tf_torch(ray_start_4_cpus):
     for batch1, batch2 in zip(ds.to_tf("value", "value"), it.to_tf("value", "value")):
         assert batch1 == batch2
 
-    it = make_dummy_dataset_iterator(
+    it = make_local_dataset_iterator(
         ds,
         BatchMapper(lambda x: x, batch_format="pandas"),
         DatasetConfig(

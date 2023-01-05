@@ -15,6 +15,18 @@ TorchTensorBatchType = Union["torch.Tensor", Dict[str, "torch.Tensor"]]
 
 @PublicAPI(stability="beta")
 class DatasetIterator(abc.ABC):
+    """An iterator for reading a preprocessed dataset.
+
+    Each iteration call represents one pass (epoch) over the dataset. During
+    training, each trainer actor should get its own iterator by calling
+    `session.get_dataset_shard("train")`.
+
+    Tip: For debugging purposes, use
+    :py:meth:`~ray.air.util.check_ingest.make_local_dataset_iterator`
+    to create a local DatasetIterator from a Dataset, a
+    Preprocessor, and a DatasetConfig.
+    """
+
     @abc.abstractmethod
     def iter_batches(
         self,

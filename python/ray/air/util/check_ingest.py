@@ -7,10 +7,11 @@ from typing import Optional, Union
 import numpy as np
 
 import ray
-from ray.air import session
+from ray.air import session, DatasetIterator
 from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import DatasetPipeline, Dataset
+from ray.data import DatasetPipeline, Dataset, Preprocessor
 from ray.data.preprocessors import BatchMapper, Chain
+from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import DeveloperAPI
 
@@ -131,6 +132,28 @@ class DummyTrainer(DataParallelTrainer):
                 print("Ingest stats from rank=0:\n\n{}".format(data_shard.stats()))
 
         return train_loop_per_worker
+
+
+def make_local_dataset_iterator(
+    dataset: Dataset,
+    preprocessor: Preprocessor,
+    dataset_config: DatasetConfig,
+) -> DatasetIterator:
+    """A helper function to create a local
+    :py:class:`DatasetIterator <ray.air.DatasetIterator>`,
+    like the one returned by session.get_dataset_shard().
+
+    Args:
+        dataset: The input Dataset.
+        preprocessor: The preprocessor that will be applied to the input dataset.
+        dataset_config: The dataset config normally passed to the trainer.
+    """
+    dataset_config = dataset_config.fill_defaults()
+    spec = DataParallelIngestSpec({"train": dataset_config})
+    spec.preprocess_datasets(preprocessor, {"train": dataset})
+    training_worker_handles = [None]
+    it = spec.get_dataset_shards(training_worker_handles)[0]["train"]
+    return it
 
 
 if __name__ == "__main__":

@@ -10,7 +10,6 @@ from ray.data import Dataset, DatasetPipeline
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
-    from ray.air import DatasetIterator
     from ray.data.preprocessor import Preprocessor
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
@@ -240,14 +239,3 @@ class DataParallelIngestSpec:
         if key in self.dataset_config:
             return self.dataset_config[key]
         return self.dataset_config["*"]
-
-
-def make_dummy_dataset_iterator(
-    dataset: RayDataset, prep: "Preprocessor", dataset_config: DatasetConfig
-) -> "DatasetIterator":
-    dataset_config = dataset_config.fill_defaults()
-    spec = DataParallelIngestSpec({"train": dataset_config})
-    spec.preprocess_datasets(prep, {"train": dataset})
-    training_worker_handles = [None]
-    it = spec.get_dataset_shards(training_worker_handles)[0]["train"]
-    return it
