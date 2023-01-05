@@ -66,10 +66,11 @@ file_manager_str_to_file_manager = {
 command_runner_to_file_manager = {
     SDKRunner: SessionControllerFileManager,
     ClientRunner: RemoteTaskFileManager,
-    JobFileManager: JobFileManager,
+    JobRunner: JobFileManager,
 }
 
-uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
+
+DEFAULT_RUN_TYPE = "sdk_command"
 
 
 def _get_extra_tags() -> dict:
@@ -98,6 +99,8 @@ def run_release_test(
 
     validate_test(test)
 
+    logger.info(f"Test config: {test}")
+
     result.wheels_url = ray_wheels_url
     result.stable = test.get("stable", True)
     result.smoke_test = smoke_test
@@ -119,7 +122,7 @@ def run_release_test(
 
     start_time = time.monotonic()
 
-    run_type = test["run"].get("type", "sdk_command")
+    run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
 
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
@@ -140,6 +143,9 @@ def run_release_test(
         file_manager_cls = file_manager_str_to_file_manager[file_manager_str]
     else:
         file_manager_cls = command_runner_to_file_manager[command_runner_cls]
+
+    logger.info(f"Got command runner cls: {command_runner_cls}")
+    logger.info(f"Got file manager cls: {file_manager_cls}")
 
     # Extra tags to be set on resources on cloud provider's side
     extra_tags = _get_extra_tags()
