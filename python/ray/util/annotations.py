@@ -92,7 +92,8 @@ class RayDeprecationWarning(DeprecationWarning):
     ...
 
 
-# By default only warn ray deprecation warning once.
+# By default, print the first occurrence of matching warnings for
+# each module where the warning is issued (regardless of line number)
 if not sys.warnoptions:
     warnings.filterwarnings("module", category=RayDeprecationWarning)
 
