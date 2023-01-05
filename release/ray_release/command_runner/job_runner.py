@@ -11,7 +11,6 @@ from ray_release.exception import (
     CommandTimeout,
     LocalEnvSetupError,
     LogsError,
-    RemoteEnvSetupError,
     ResultsError,
 )
 from ray_release.file_manager.file_manager import FileManager
@@ -43,6 +42,9 @@ class JobRunner(CommandRunner):
         self.last_command_scd_id = None
 
     def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
+        if not os.environ.get("BUILDKITE"):
+            return
+
         # Install matching Ray for job submission
         try:
             install_matching_ray_locally(
@@ -68,13 +70,8 @@ class JobRunner(CommandRunner):
             os.unlink("prometheus_metrics.py")
         os.link(metrics_script, "prometheus_metrics.py")
 
-        try:
-            self.file_manager.upload()
-        except Exception as e:
-            logger.exception(e)
-            raise RemoteEnvSetupError(
-                f"Error setting up remote environment: {e}"
-            ) from e
+        # Do not upload the files here. Instead, we use the job runtime environment
+        # to automatically upload the local working dir.
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Wait script should be uploaded already. Kick off command
@@ -115,7 +112,7 @@ class JobRunner(CommandRunner):
         )
 
         status_code, time_taken = self.job_manager.run_and_wait(
-            full_command, full_env, timeout=timeout
+            full_command, full_env, working_dir=".", timeout=int(timeout)
         )
 
         if status_code != 0:

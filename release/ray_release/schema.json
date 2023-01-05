@@ -132,7 +132,6 @@
 				"file_manager": {
 					"type": "string",
 					"enum": [
-
 						"sdk",
 						"client",
 						"job"
