@@ -24,7 +24,7 @@ def write_json(data, path: Union[str, Path], **json_dump_kwargs) -> Path:
     pathlib_path = Path(path)
     if pathlib_path.suffix == ".gz":
         with gzip.open(pathlib_path, "w") as f:
-            f.write(json.dumps(data).encode("utf-8"), **json_dump_kwargs)
+            f.write(json.dumps(data, **json_dump_kwargs).encode("utf-8"))
     else:
         with open(pathlib_path, "w") as f:
             json.dump(data, f, **json_dump_kwargs)

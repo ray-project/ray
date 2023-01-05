@@ -7,6 +7,7 @@ import pytest
 
 from ray_release.util import read_json, write_json
 
+
 @pytest.mark.parametrize("file_format", (".json", ".gz", ".gz_bad_extension"))
 def test_read_json(tmpdir, file_format):
     file = Path(tmpdir) / f"file{file_format}"
@@ -21,6 +22,7 @@ def test_read_json(tmpdir, file_format):
 
     loaded_data = read_json(file)
     assert data == loaded_data
+
 
 @pytest.mark.parametrize("file_format", (".json", ".gz"))
 def test_write_json(tmpdir, file_format):
