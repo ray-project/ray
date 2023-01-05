@@ -34,6 +34,7 @@ Algorithm                      Frameworks Discrete Actions              Continuo
 `APEX-DQN`_                    tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   torch
 `IMPALA`_                      tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
 `LeelaChessZero`_              torch      **Yes** `+parametric`_        No                 **Yes**                                                                   torch
+`LeelaChessZero`_              torch      **Yes** `+parametric`_        No                 **Yes**                                                                   torch
 `MAML`_                        tf + torch No                            **Yes**            No                                                                        torch
 `MARWIL`_                      tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `MBMPO`_                       torch      No                            **Yes**            No                                                                        torch
@@ -855,7 +856,7 @@ Tuned examples: tbd
 .. autoclass:: ray.rllib.algorithms.leela_chess_zero.leela_chess_zero.LeelaChessZeroConfig
    :members: training
 
-   
+
 .. _curiosity:
 
 Curiosity (ICM: Intrinsic Curiosity Module)
