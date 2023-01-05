@@ -27,11 +27,6 @@ spec:
     - podSelector: {}
     ports:
     - protocol: TCP
-      port: 52365
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
       port: 8265
   - from:
     - podSelector: {}
@@ -177,11 +172,6 @@ spec:
     ports:
     - protocol: TCP
       port: 6380
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 52365
   - to:
     - podSelector: {}
     ports:
