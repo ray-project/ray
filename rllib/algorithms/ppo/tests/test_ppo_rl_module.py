@@ -18,6 +18,7 @@ from ray.rllib.core.rl_module.encoder import (
     STATE_IN,
     STATE_OUT,
 )
+from ray.rllib.models.base_model import BaseModelIOKeys, ModelIOKeyHelper
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
@@ -43,17 +44,24 @@ def get_expected_model_config(
     obs_dim = env.observation_space.shape[0]
 
     if shared_encoder:
+        shared_encoder_kh = ModelIOKeyHelper("shared_encoder")
         assert not lstm, "LSTM can only be used in PI"
         shared_encoder_config = FCConfig(
             input_dim=obs_dim,
             hidden_layers=[32],
             activation="ReLU",
             output_dim=32,
+            input_key=SampleBatch.OBS,
+            output_key=shared_encoder_kh.create(BaseModelIOKeys.OUT),
         )
         pi_encoder_config = IdentityConfig(output_dim=32)
         vf_encoder_config = IdentityConfig(output_dim=32)
+        pi_input_key = shared_encoder_config.output_key
+        vf_input_key = shared_encoder_config.output_key
     else:
         shared_encoder_config = IdentityConfig(output_dim=obs_dim)
+        pi_encoder_kh = ModelIOKeyHelper("pi_encoder")
+        vf_encoder_kh = ModelIOKeyHelper("vf_encoder")
         if lstm:
             pi_encoder_config = LSTMConfig(
                 input_dim=obs_dim,
@@ -61,6 +69,10 @@ def get_expected_model_config(
                 batch_first=True,
                 output_dim=32,
                 num_layers=1,
+                input_key=SampleBatch.OBS,
+                state_in_key="state_in_0",
+                output_key=pi_encoder_kh.create(BaseModelIOKeys.OUT),
+                state_out_key="state_out_0",
             )
         else:
             pi_encoder_config = FCConfig(
@@ -68,16 +80,36 @@ def get_expected_model_config(
                 output_dim=32,
                 hidden_layers=[32],
                 activation="ReLU",
+                input_key=SampleBatch.OBS,
+                output_key=pi_encoder_kh.create(BaseModelIOKeys.OUT),
             )
         vf_encoder_config = FCConfig(
             input_dim=obs_dim,
             output_dim=32,
             hidden_layers=[32],
             activation="ReLU",
+            input_key=SampleBatch.OBS,
+            output_key=vf_encoder_kh.create(BaseModelIOKeys.OUT),
         )
-
-    pi_config = FCConfig()
-    vf_config = FCConfig()
+        pi_input_key = pi_encoder_config.output_key
+        vf_input_key = vf_encoder_config.output_key
+    pi_kh = ModelIOKeyHelper("pi_encoder")
+    pi_config = FCConfig(
+        input_dim=pi_encoder_config.output_dim,
+        hidden_layers=[32],
+        activation="ReLU",
+        input_key=pi_input_key,
+        output_key=pi_kh.create(BaseModelIOKeys.OUT),
+    )
+    vf_kh = ModelIOKeyHelper("pi_encoder")
+    vf_config = FCConfig(
+        input_dim=vf_encoder_config.output_dim,
+        output_dim=1,
+        hidden_layers=[32],
+        activation="ReLU",
+        input_key=vf_input_key,
+        output_key=vf_kh.create(BaseModelIOKeys.OUT),
+    )
 
     if isinstance(env.action_space, gym.spaces.Discrete):
         pi_config.output_dim = env.action_space.n

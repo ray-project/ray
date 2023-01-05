@@ -16,12 +16,11 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchDiagGaussian,
 )
 from ray.rllib.core.rl_module.encoder import (
-    FCNet,
     FCConfig,
     LSTMConfig,
     IdentityConfig,
     LSTMEncoder,
-    ENCODER_OUT,
+    STATE_OUT,
 )
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 
@@ -79,20 +78,8 @@ class PPOTorchRLModule(TorchRLModule):
         self.shared_encoder = self.config.shared_encoder_config.build()
         self.pi_encoder = self.config.pi_encoder_config.build()
         self.vf_encoder = self.config.vf_encoder_config.build()
-
-        self.pi = FCNet(
-            input_dim=self.config.pi_encoder_config.output_dim,
-            output_dim=self.config.pi_config.output_dim,
-            hidden_layers=self.config.pi_config.hidden_layers,
-            activation=self.config.pi_config.activation,
-        )
-
-        self.vf = FCNet(
-            input_dim=self.config.vf_encoder_config.output_dim,
-            output_dim=1,
-            hidden_layers=self.config.vf_config.hidden_layers,
-            activation=self.config.vf_config.activation,
-        )
+        self.pi = self.config.pi_config.build()
+        self.vf = self.config.vf_config.build()
 
         self._is_discrete = isinstance(
             convert_old_gym_space_to_gymnasium_space(self.config.action_space),
@@ -222,10 +209,10 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        shared_enc_out = self.shared_encoder(batch)
-        pi_enc_out = self.pi_encoder(shared_enc_out)
-
-        action_logits = self.pi(pi_enc_out[ENCODER_OUT])
+        encoder_out = self.shared_encoder(batch)
+        encoder_out_pi = self.pi_encoder(encoder_out)
+        pi_out = self.pi(encoder_out_pi)
+        action_logits = pi_out[self.pi.config.output_key]
 
         if self._is_discrete:
             action = torch.argmax(action_logits, dim=-1)
@@ -234,12 +221,17 @@ class PPOTorchRLModule(TorchRLModule):
 
         action_dist = TorchDeterministic(action)
         output = {SampleBatch.ACTION_DIST: action_dist}
-        output["state_out"] = pi_enc_out.get("state_out", {})
+
+        if hasattr(self.shared_encoder.config, "state_out_key"):
+            output[STATE_OUT] = encoder_out[self.shared_encoder.config.state_out_key]
+        if hasattr(self.pi_encoder.config, "state_out_key"):
+            output[STATE_OUT] = encoder_out_pi[self.pi_encoder.config.state_out_key]
+
         return output
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return self.shared_encoder.input_spec()
+        return self.shared_encoder.input_spec
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
@@ -267,7 +259,9 @@ class PPOTorchRLModule(TorchRLModule):
         encoder_out = self.shared_encoder(batch)
         encoder_out_pi = self.pi_encoder(encoder_out)
         encoder_out_vf = self.vf_encoder(encoder_out)
-        action_logits = self.pi(encoder_out_pi[ENCODER_OUT])
+        pi_out = self.pi(encoder_out_pi)
+        action_logits = pi_out[self.pi.config.output_key]
+        vf_out = self.vf(encoder_out_vf)
 
         output = {}
         if self._is_discrete:
@@ -280,9 +274,13 @@ class PPOTorchRLModule(TorchRLModule):
             output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
         output[SampleBatch.ACTION_DIST] = action_dist
 
+        if hasattr(self.shared_encoder.config, "state_out_key"):
+            output[STATE_OUT] = encoder_out[self.shared_encoder.config.state_out_key]
+        if hasattr(self.pi_encoder.config, "state_out_key"):
+            output[STATE_OUT] = encoder_out_pi[self.pi_encoder.config.state_out_key]
+
         # compute the value function
-        output[SampleBatch.VF_PREDS] = self.vf(encoder_out_vf[ENCODER_OUT]).squeeze(-1)
-        output["state_out"] = encoder_out_pi.get("state_out", {})
+        output[SampleBatch.VF_PREDS] = vf_out[self.vf.config.output_key].squeeze(-1)
         return output
 
     @override(RLModule)
@@ -293,7 +291,7 @@ class PPOTorchRLModule(TorchRLModule):
             action_dim = self.config.action_space.shape[0]
             action_spec = TorchTensorSpec("b, h", h=action_dim)
 
-        spec_dict = self.shared_encoder.input_spec()
+        spec_dict = self.shared_encoder.input_spec
         spec_dict.update({SampleBatch.ACTIONS: action_spec})
         if SampleBatch.OBS in spec_dict:
             spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
@@ -317,9 +315,9 @@ class PPOTorchRLModule(TorchRLModule):
         encoder_out = self.shared_encoder(batch)
         encoder_out_pi = self.pi_encoder(encoder_out)
         encoder_out_vf = self.vf_encoder(encoder_out)
-
-        action_logits = self.pi(encoder_out_pi[ENCODER_OUT])
-        vf = self.vf(encoder_out_vf[ENCODER_OUT])
+        pi_out = self.pi(encoder_out_pi)
+        action_logits = pi_out[self.pi.config.output_key]
+        vf_out = self.vf(encoder_out_vf)
 
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
@@ -333,11 +331,15 @@ class PPOTorchRLModule(TorchRLModule):
         output = {
             SampleBatch.ACTION_DIST: action_dist,
             SampleBatch.ACTION_LOGP: logp,
-            SampleBatch.VF_PREDS: vf.squeeze(-1),
+            SampleBatch.VF_PREDS: vf_out[self.vf.config.output_key].squeeze(-1),
             "entropy": entropy,
         }
 
-        output["state_out"] = encoder_out_pi.get("state_out", {})
+        if hasattr(self.shared_encoder.config, "state_out_key"):
+            output[STATE_OUT] = encoder_out[self.shared_encoder.config.state_out_key]
+        if hasattr(self.pi_encoder.config, "state_out_key"):
+            output[STATE_OUT] = encoder_out_pi[self.pi_encoder.config.state_out_key]
+
         return output
 
     def __get_action_dist_type(self):

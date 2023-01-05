@@ -1,22 +1,11 @@
-# Copyright 2021 DeepMind Technologies Limited.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-
 import abc
+from enum import Enum
 from typing import Optional, Tuple
+from collections import defaultdict
+from typing import Mapping
+from ray.rllib.models.specs.specs_dict import SpecDict
 
-from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict, ModelConfig
+from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     OverrideToImplementCustomLogic,
@@ -28,6 +17,34 @@ from ray.rllib.utils.annotations import (
 ForwardOutputType = TensorDict
 # [Output, Recurrent State(s)]
 UnrollOutputType = Tuple[TensorDict, TensorDict]
+
+
+@ExperimentalAPI
+class BaseModelIOKeys(Enum):
+    IN: str = "in"
+    OUT: str = "out"
+    STATE_IN: str = "state_in"
+    STATE_OUT: str = "state_out"
+
+
+class ModelIOKeyHelper:
+    """Creates unique IO keys for models.
+
+    In order to distinguish keys in input- and outputs-specs of multiple instances of
+    a give model, each instance is supposed to have distinct keys.
+    This helper provides a way to generate distinct keys per instance of
+    ModelIOMapping.
+    """
+
+    __init_counters__ = defaultdict(lambda: 0)
+
+    def __init__(self, model_name: str):
+        self._name: str = model_name
+        self._init_idx: str = str(self.__init_counters__[model_name])
+        self.__init_counters__[model_name] += 1
+
+    def create(self, key):
+        return self._name + "_" + str(key) + "_" + self._init_idx
 
 
 @ExperimentalAPI
@@ -271,6 +288,16 @@ class Model(RecurrentModel):
     ) -> UnrollOutputType:
         outputs = self._forward(inputs, **kwargs)
         return outputs, TensorDict()
+
+    def forward(
+        self, input_dict, input_mapping: Mapping = None, **kwargs
+    ) -> ForwardOutputType:
+        if input_mapping:
+            for forward_key, input_dict_key in input_mapping.items():
+                if input_dict_key in input_dict:
+                    input_dict[forward_key] = input_dict[input_dict_key]
+        input_dict.update(self._forward(input_dict, **kwargs))
+        return input_dict
 
     @abc.abstractmethod
     def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
