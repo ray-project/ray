@@ -52,6 +52,6 @@ EXPOSE 5645
 EXPOSE 7654/udp
 EXPOSE 7654/tcp
 
-COPY startup.sh ~/startup.sh
-ENTRYPOINT ["sh" "-c" "~/startup.sh"]
-CMD ["/bin/sh" "-c"]
+COPY --chown=1000:100 startup.sh ~/startup.sh
+ENTRYPOINT ["/bin/sh", "-c", "~/startup.sh"]
+#CMD ["/bin/sh" "-c"]
