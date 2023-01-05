@@ -1991,6 +1991,51 @@ def test_deploy_with_transient_constructor_failure(
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
+@pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_exponential_backoff(mock_get_all_node_ids, mock_deployment_state):
+    """Test exponential backoff."""
+    deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [(str(i), str(i)) for i in range(2)]
+
+    b_info_1, b_version_1 = deployment_info(num_replicas=2)
+    updating = deployment_state.deploy(b_info_1)
+    assert updating
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    _constructor_failure_loop_two_replica(deployment_state, 3)
+    assert deployment_state._replica_constructor_retry_counter == 6
+    last_retry = timer.time()
+
+    for i in range(6):
+        while timer.time() - last_retry < 2**i:
+            deployment_state.update()
+            assert deployment_state._replica_constructor_retry_counter == 6 + 2 * i
+            # Check that during backoff time, no replicas are created
+            assert deployment_state._replicas.count() == 0
+            timer.advance(0.1)
+
+        # Skip past random time
+        timer.advance(5)
+
+        # Set new replicas to fail consecutively
+        deployment_state.update()
+        replica_1 = deployment_state._replicas.get()[0]
+        replica_2 = deployment_state._replicas.get()[1]
+        replica_1._actor.set_failed_to_start()
+        replica_2._actor.set_failed_to_start()
+        # Now the replica should be marked STOPPING after failure.
+        deployment_state.update()
+        check_counts(deployment_state, total=2, by_state=[(ReplicaState.STOPPING, 2)])
+        # Once it's done stopping, replica should be removed.
+        replica_1._actor.set_done_stopping()
+        replica_2._actor.set_done_stopping()
+        deployment_state.update()
+        check_counts(deployment_state, total=0)
+
+        last_retry = timer.time()
+
+
 @pytest.fixture
 def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock]:
     ray.init()

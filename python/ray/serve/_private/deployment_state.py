@@ -1317,17 +1317,17 @@ class DeploymentState:
                     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
                     self._target_state.num_replicas * 3,
                 )
-                if self._replica_constructor_retry_counter > failed_to_start_threshold:
+                if self._replica_constructor_retry_counter >= failed_to_start_threshold:
                     # Wait 1, 2, 4, ... seconds before consecutive retries
-                    if time.time() - self._last_retry < self._backoff_time:
+                    if (
+                        time.time() - self._last_retry
+                        < self._backoff_time + random.uniform(0, 3)
+                    ):
                         return replicas_stopped
 
-                    self._backoff_time = min(
-                        2 * (self._backoff_time + random.uniform(-1, 1)),
-                        self._max_backoff + random.uniform(-1, 1),
-                    )
-                    self._last_retry = time.time()
+                    self._backoff_time = min(2 * self._backoff_time, self._max_backoff)
 
+                self._last_retry = time.time()
                 logger.info(
                     f"Adding {to_add} replica{'s' if to_add > 1 else ''} "
                     f"to deployment '{self._name}'."
