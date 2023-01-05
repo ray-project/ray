@@ -8,11 +8,11 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 gym.register("multi_cartpole", lambda: MultiAgentCartPole({"num_agents": 2}))
 
 # Number of policies overall in the PolicyMap.
-num_policies = 100
+num_policies = 20
 # Number of those policies that should be trained. These are a subset of `num_policies`.
-num_trainable = 20
+num_trainable = 10
 
-num_envs_per_worker = 5
+num_envs_per_worker = 2
 
 # Define the config as an APPOConfig object.
 config = (
