@@ -83,7 +83,7 @@ def standardize(data):
     return np.clip(data, -2, 2)
 
 
-def UCB(m, m1, x, fixed, kappa=0.5):
+def UCB(m, m1, x, fixed, kappa=None):
     """UCB acquisition function. Interesting points to note:
     1) We concat with the fixed points, because we are not optimizing wrt
        these. This is the Reward and Time, which we can't change. We want
@@ -99,7 +99,7 @@ def UCB(m, m1, x, fixed, kappa=0.5):
     c1 = 0.2
     c2 = 0.4
     beta_t = c1 + max(0, np.log(c2 * m.X.shape[0]))
-    kappa = np.sqrt(beta_t)
+    kappa = np.sqrt(beta_t) if kappa is None else kappa
 
     xtest = np.concatenate((fixed.reshape(-1, 1), np.array(x).reshape(-1, 1))).T
 

@@ -1,3 +1,4 @@
+from functools import partial
 import numpy as np
 import os
 import pickle
@@ -19,6 +20,8 @@ from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
+from ray.tune.schedulers.pb2 import PB2
+from ray.tune.schedulers.pb2_utils import UCB
 from ray.tune.tune_config import TuneConfig
 from ray._private.test_utils import object_memory_usage
 
@@ -776,6 +779,61 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
             },
             resample_probability=0,
         )
+
+
+def create_pb2_scheduler(
+    metric="score",
+    mode="max",
+    perturbation_interval=1,
+    hyperparam_bounds=None,
+) -> PB2:
+    hyperparam_bounds = hyperparam_bounds or {"a": [0.0, 1.0]}
+    return PB2(
+        metric=metric,
+        mode=mode,
+        time_attr="training_iteration",
+        perturbation_interval=perturbation_interval,
+        quantile_fraction=0.25,
+        hyperparam_bounds=hyperparam_bounds,
+    )
+
+
+def test_pb2_perturbation(monkeypatch):
+    hyperparam_bounds = {"a": [1.0, 2.0]}
+    pb2 = create_pb2_scheduler(
+        metric="score", mode="max", hyperparam_bounds=hyperparam_bounds
+    )
+
+    mock_runner = MagicMock()
+
+    def save_trial_result(trial, time, result):
+        pb2._save_trial_state(pb2._trial_state[trial], time, result, trial)
+
+    def result(time, val):
+        return {"training_iteration": time, "score": val}
+
+    # One trial at each end of the hyperparam bounds, one performing better than the
+    # other. We expect a perturbed value to be closer to the better performing one.
+    trials = [
+        Trial("pb2_test", stub=True, config={"a": 1.0}),
+        Trial("pb2_test", stub=True, config={"a": 2.0}),
+    ]
+    for trial in trials:
+        pb2.on_trial_add(mock_runner, trial)
+
+    # Collect 10 timesteps of data
+    # PB2 fits a model to estimate the increase in score between timesteps
+    # Each timestep, trial 1's score increases by 10, trial 2's score increases by 20
+    for t in range(1, 11):
+        for i, trial in enumerate(trials):
+            save_trial_result(trial, t, result(time=t, val=t * (i + 1) * 10))
+
+    # Ignoring variance (kappa=0) and only optimizing for exploitation,
+    # we expect the next point suggested to be close to higher-performing trial
+    monkeypatch.setattr(ray.tune.schedulers.pb2_utils, "UCB", partial(UCB, kappa=0.0))
+    new_config, _ = pb2._get_new_config(trials[0], trials[-1])
+    assert new_config["a"] > 1.5
+    assert pb2._quantiles() == ([trials[0]], [trials[1]])
 
 
 if __name__ == "__main__":
