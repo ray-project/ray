@@ -9,6 +9,10 @@ from ray.air.execution.event import (
 )
 
 
+# Tuple of (method_name, args, kwargs)
+TaskSpec = Tuple[str, Iterable[Any], Dict[str, Any]]
+
+
 class ActorManager:
     """Management class for actors and actor task futures.
 
@@ -167,7 +171,7 @@ class ActorManager:
     def schedule_task(
         self,
         tracked_actor: TrackedActor,
-        task_spec: Tuple[str, Iterable[Any], Dict[str, Any]],
+        task_spec: TaskSpec,
         result_cls: Type[FutureResult],
     ) -> None:
         """Track (asynchronous) future associated to a tracked actor.
@@ -200,7 +204,7 @@ class ActorManager:
 
     def schedule_sync_tasks(
         self,
-        actors_tasks: Dict[TrackedActor, Tuple[str, Iterable[Any], Dict[str, Any]]],
+        actors_tasks: Dict[TrackedActor, TaskSpec],
         result_cls: Type[FutureResult],
     ) -> None:
         """Track synchronous futures associated to multiple tracked actors.
