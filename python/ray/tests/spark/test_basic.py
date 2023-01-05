@@ -69,7 +69,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         ]:
             with _init_ray_cluster(
                 num_worker_nodes=num_worker_nodes,
-                num_cpu_per_node=num_cpus_per_node,
+                num_cpus_per_node=num_cpus_per_node,
                 safe_mode=False
             ):
                 worker_res_list = self.get_ray_worker_resources_list()

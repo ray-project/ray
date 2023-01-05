@@ -29,8 +29,8 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
         ]:
             with _init_ray_cluster(
                 num_worker_nodes=num_spark_tasks,
-                num_cpus_per_spark_task=num_cpus_per_node,
-                num_gpus_per_spark_task=num_gpus_per_node,
+                num_cpus_per_node=num_cpus_per_node,
+                num_gpus_per_node=num_gpus_per_node,
                 safe_mode=False,
             ):
                 worker_res_list = self.get_ray_worker_resources_list()

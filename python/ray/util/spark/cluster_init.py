@@ -48,7 +48,7 @@ def _check_system_environment():
     try:
         import pyspark
 
-        if Version(pyspark.__version__) < Version("3.3"):
+        if Version(pyspark.__version__).release < (3, 3, 0):
             raise RuntimeError(spark_dependency_error)
     except ImportError:
         raise RuntimeError(spark_dependency_error)
@@ -774,11 +774,12 @@ def init_ray_cluster(
             "Ray on Spark only supports spark cluster in standalone mode or local-cluster mode"
         )
 
-    if is_in_databricks_runtime() and os.environ[
-        "DATABRICKS_RUNTIME_VERSION"
-    ].startswith("12."):
+    if (
+        is_in_databricks_runtime() and
+        Version(os.environ["DATABRICKS_RUNTIME_VERSION"]).major >= 12
+    ):
         support_stage_scheduling = True
-    elif Version(pyspark.__version__) >= Version("3.4"):
+    elif Version(pyspark.__version__).release >= (3, 4, 0):
         support_stage_scheduling = True
     else:
         support_stage_scheduling = False
@@ -856,12 +857,12 @@ def init_ray_cluster(
 
     insufficient_resources = []
 
-    if num_spark_task_cpus < 4:
+    if num_cpus_per_node < 4:
         insufficient_resources.append(
             "The provided CPU resources for each ray worker are inadequate to start "
             "a ray cluster. Based on the total cpu resources available and the "
             "configured task sizing, each ray worker would start with "
-            f"{num_spark_task_cpus} CPU cores. This is less than the recommended "
+            f"{num_cpus_per_node} CPU cores. This is less than the recommended "
             "value of `4` CPUs per worker. On spark version >= 3.4 or Databricks "
             "Runtime 12.x, you can set the argument `num_cpus_per_node` to "
             "a value >= 4 to address it, otherwise you need to increase the spark "
