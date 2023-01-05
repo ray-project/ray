@@ -93,23 +93,40 @@ class CheckNaNWrapper:
 
             # Check observations.
             for env_id, all_agent_obs in unfiltered_obs.items():
-                for agent_id, agent_obs in all_agent_obs.items():
-                    self._check_val(
-                        env_id=env_id,
-                        agent_id=agent_id,
-                        observation=agent_obs,
+                if not isinstance(all_agent_obs, Exception):
+                    for agent_id, agent_obs in all_agent_obs.items():
+                        self._check_val(
+                            env_id=env_id,
+                            agent_id=agent_id,
+                            observation=agent_obs,
+                        )
+                else:
+                    return (
+                        unfiltered_obs,
+                        rewards,
+                        terminateds,
+                        truncateds,
+                        infos,
+                        off_policy_actions,
                     )
             # Check rewards.
             for env_id, all_agent_rewards in rewards.items():
-                for agent_id, agent_reward in all_agent_rewards.items():
-                    self._check_val(
-                        env_id=env_id,
-                        agent_id=agent_id,
-                        reward=agent_reward,
+                if not isinstance(all_agent_rewards, Exception):
+                    for agent_id, agent_reward in all_agent_rewards.items():
+                        self._check_val(
+                            env_id=env_id,
+                            agent_id=agent_id,
+                            reward=agent_reward,
+                        )
+                else:
+                    return (
+                        unfiltered_obs,
+                        rewards,
+                        terminateds,
+                        truncateds,
+                        infos,
+                        off_policy_actions,
                     )
-
-        # If it was a reset it will not in the next iterations.
-        self._reset = False
 
         # Finally, return the polled results from the BaseEnv back to the
         # sampler.
@@ -179,12 +196,15 @@ class CheckNaNWrapper:
         if isinstance(resetted_obs, dict):
             # Check observations.
             for env_id, all_agent_obs in resetted_obs.items():
-                for agent_id, agent_obs in all_agent_obs.items():
-                    self._check_val(
-                        env_id=env_id,
-                        agent_id=agent_id,
-                        observation=agent_obs,
-                    )
+                if not isinstance(all_agent_obs, Exception):
+                    for agent_id, agent_obs in all_agent_obs.items():
+                        self._check_val(
+                            env_id=env_id,
+                            agent_id=agent_id,
+                            observation=agent_obs,
+                        )
+                else:
+                    return resetted_obs, resetted_infos
 
         # Reset is done.
         self._reset = False
