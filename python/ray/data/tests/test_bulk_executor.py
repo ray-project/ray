@@ -5,6 +5,7 @@ from typing import List, Any
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.bulk_executor import BulkExecutor
+from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
@@ -32,9 +33,15 @@ def test_multi_stage_execution():
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
-    it = executor.execute(o3)
+
+    def reverse_sort(inputs: List[RefBundle]):
+        reversed_list = inputs[::-1]
+        return reversed_list, {}
+
+    o4 = AllToAllOperator(reverse_sort, o3)
+    it = executor.execute(o4)
     output = ref_bundles_to_list(it)
-    expected = [[x * -2] for x in range(20)]
+    expected = [[x * -2] for x in range(20)][::-1]
     assert output == expected, (output, expected)
 
 
