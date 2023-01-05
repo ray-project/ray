@@ -874,6 +874,14 @@ py_test(
     srcs = ["algorithms/alpha_zero/tests/test_alpha_zero.py"]
 )
 
+# LeelaChessZero
+py_test(
+    name = "test_leela_chess_zero",
+    tags = ["team:rllib","torch_only", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/leela_chess_zero/tests/test_leela_chess_zero.py"]
+)
+
 # APEX-DQN
 py_test(
     name = "test_apex_dqn",

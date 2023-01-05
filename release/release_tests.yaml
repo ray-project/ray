@@ -3438,6 +3438,30 @@
 
   alert: default
 
+- name: rllib_learning_tests_leela_chess_zero
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml  
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=leela_chess_zero
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 ########################
 # Core Nightly Tests
 ########################
