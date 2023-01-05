@@ -623,6 +623,11 @@ message GetTaskEventsRequest {
     // Get task events from a set of tasks.
     TaskIDs task_ids = 2;
   }
+
+  // Maximum number of TaskEvents to return.
+  // If set, the exact `limit` TaskEvents returned do not have any ordering or selection
+  // guarantee.
+  optional int64 limit = 3;
 }
 
 message GetTaskEventsReply {

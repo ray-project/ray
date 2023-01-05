@@ -12,6 +12,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import (
     flatten_to_single_ndarray,
+    flatten_space,
     get_dummy_batch_for_space,
 )
 from ray.rllib.utils.typing import (
@@ -153,11 +154,21 @@ class AgentCollector:
             #  space that is not a gym.Space
             if (
                 hasattr(vr.space, "shape")
-                and not vr.space.shape == np.shape(data)
                 and log_once(
                     f"view_requirement"
                     f"_{view_requirement_name}_checked_in_agent_collector"
                 )
+                and not (
+                    np.sum(
+                        (
+                            tree.map_structure(
+                                lambda x: np.product(getattr(x, "shape")),
+                                flatten_space(vr.space),
+                            )
+                        )
+                    ),
+                )
+                == np.shape(data)
             ):
 
                 # TODO (Artur): Enforce VR shape
@@ -409,7 +420,7 @@ class AgentCollector:
         return batch
 
     # TODO: @kouorsh we don't really need view_requirements anymore since it's already
-    # and attribute of the class
+    # an attribute of the class
     def build_for_training(
         self, view_requirements: ViewRequirementsDict
     ) -> SampleBatch:
