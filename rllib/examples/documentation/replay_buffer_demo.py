@@ -144,8 +144,6 @@ config = (
 tune.Tuner(
     "DQN",
     param_space=config.to_dict(),
-    run_config=air.RunConfig(
-        stop={"episode_reward_mean": 40, "training_iteration": 7}
-    ),
+    run_config=air.RunConfig(stop={"episode_reward_mean": 40, "training_iteration": 7}),
 ).fit()
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__
