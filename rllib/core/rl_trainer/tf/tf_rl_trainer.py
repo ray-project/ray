@@ -63,7 +63,7 @@ class TfRLTrainer(RLTrainer):
             module_id: self._module[module_id].trainable_variables()
             for module_id in self._module.keys()
         }
-        for module_id, rl_optimizer in self._rl_optimizer.get_optimizers().items():
+        for module_id, rl_optimizer in self._rl_optimizer.get_rl_optimizers().items():
             for key, optimizer in rl_optimizer.get_optimizers().items():
                 optimizer.apply_gradients(
                     zip(gradients[module_id][key], trainable_variables[module_id][key])

@@ -4,6 +4,7 @@ from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 
@@ -40,7 +41,7 @@ class MultiAgentRLOptimizer(RLOptimizer):
                     net_optim.zero_grad()
 
         """
-        self._optimizers = rl_optimizers
+        self._rl_optimizers = rl_optimizers
 
     @classmethod
     def from_marl_module(
@@ -77,19 +78,16 @@ class MultiAgentRLOptimizer(RLOptimizer):
         fwd_out: Mapping[ModuleID, Mapping[str, Any]],
         batch: Mapping[ModuleID, Mapping[str, Any]],
     ) -> Union[TensorType, Mapping[str, Any]]:
-        total_loss = None
         ret = {}
+        total_losses = []
         for module_id in batch.keys():
-            optimizer = self._optimizers[module_id]
-            loss = optimizer.compute_loss(fwd_out[module_id], batch[module_id])
+            optimizer = self._rl_optimizers[module_id]
+            loss = optimizer.compute_loss(batch[module_id], fwd_out[module_id])
             if not isinstance(loss, collections_mapping):
                 loss = {"total_loss": loss}
-            if total_loss is None:
-                total_loss = loss["total_loss"]
-            else:
-                total_loss += loss["total_loss"]
+            total_losses.append(loss["total_loss"])
             ret[module_id] = loss
-        ret["total_loss"] = total_loss
+        ret["total_loss"] = sum(total_losses)
         return ret
 
     @override(RLOptimizer)
@@ -101,7 +99,7 @@ class MultiAgentRLOptimizer(RLOptimizer):
         """
         return {
             module_id: optimizer.get_state()
-            for module_id, optimizer in self._optimizers.items()
+            for module_id, optimizer in self._rl_optimizers.items()
         }
 
     @override(RLOptimizer)
@@ -112,8 +110,16 @@ class MultiAgentRLOptimizer(RLOptimizer):
             state: The optimizer state to set.
         """
         for module_id, sub_optimizer_state in state.items():
-            optimizer = self._optimizers[module_id]
+            optimizer = self._rl_optimizers[module_id]
             optimizer.set_state(sub_optimizer_state)
+
+    def get_rl_optimizers(self) -> Mapping[ModuleID, RLOptimizer]:
+        """Get the named mapping of RLOptimizers.
+
+        Returns:
+            The named mapping of RLOptimizers.
+        """
+        return self._rl_optimizers
 
     @override(RLOptimizer)
     def as_multi_agent(self) -> "MultiAgentRLOptimizer":
@@ -126,7 +132,7 @@ class MultiAgentRLOptimizer(RLOptimizer):
             module_id: The module id of the optimizer.
             optimizer: The optimizer to add.
         """
-        self._optimizers[module_id] = optimizer
+        self._rl_optimizers[module_id] = optimizer
 
     def remove_optimizer(self, module_id: ModuleID) -> None:
         """Remove an optimizer from the multi-agent optimizer.
@@ -134,11 +140,14 @@ class MultiAgentRLOptimizer(RLOptimizer):
         Args:
             module_id: The module id of the optimizer to remove.
         """
-        del self._optimizers[module_id]
+        del self._rl_optimizers[module_id]
 
-    def _configure_optimizers(self) -> None:
-        # Do not override this.
-        return self._optimizers
+    @override(RLOptimizer)
+    def _configure_optimizers(self) -> NestedDict[Any]:
+        optimizers_mapping = {}
+        for module_id, optimizer in self._rl_optimizers.items():
+            optimizers_mapping[module_id] = optimizer.get_optimizers()
+        return NestedDict(optimizers_mapping)
 
     def __getitem__(self, module_id: ModuleID) -> RLOptimizer:
         """Returns the optimizer with the given module ID.
