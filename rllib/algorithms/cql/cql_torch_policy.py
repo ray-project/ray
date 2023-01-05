@@ -191,7 +191,7 @@ def cql_loss(
         torch.FloatTensor(actions.shape[0] * num_actions, actions.shape[-1]).uniform_(
             action_low, action_high
         ),
-        policy.device,
+        actions.device,
     )
     curr_actions, curr_logp = policy_actions_repeat(
         model, action_dist_class, model_out_t, num_actions
