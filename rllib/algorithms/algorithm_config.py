@@ -1,6 +1,7 @@
 import copy
 import logging
 import math
+import os
 from typing import (
     Any,
     Callable,
@@ -323,7 +324,7 @@ class AlgorithmConfig:
         self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
         self.sample_async = False
-        self.enable_connectors = False
+        self.enable_connectors = True
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
@@ -684,13 +685,32 @@ class AlgorithmConfig:
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:
-        """Validates all values in this config.
+        """Validates all values in this config."""
 
-        Note: This should NOT include immediate checks on single value
-        correctness, e.g. "batch_mode" = [complete_episodes|truncate_episodes].
-        Those simgular, independent checks should instead go directly into their
-        respective methods.
-        """
+        # Validate rollout settings.
+        if not (
+            (
+                isinstance(self.rollout_fragment_length, int)
+                and self.rollout_fragment_length > 0
+            )
+            or self.rollout_fragment_length == "auto"
+        ):
+            raise ValueError("`rollout_fragment_length` must be int >0 or 'auto'!")
+        if self.batch_mode not in ["truncate_episodes", "complete_episodes"]:
+            raise ValueError(
+                "`config.batch_mode` must be one of [truncate_episodes|"
+                "complete_episodes]! Got {}".format(self.batch_mode)
+            )
+        if self.preprocessor_pref not in ["rllib", "deepmind", None]:
+            raise ValueError(
+                "`config.preprocessor_pref` must be either 'rllib', 'deepmind' or None!"
+            )
+        if self.num_envs_per_worker <= 0:
+            raise ValueError(
+                f"`num_envs_per_worker` ({self.num_envs_per_worker}) must be "
+                f"larger than 0!"
+            )
+
         # Check correct framework settings, and whether configured framework is
         # installed.
         _tf1, _tf, _tfv = None, None, None
@@ -773,6 +793,12 @@ class AlgorithmConfig:
                 "Please enable connectors via "
                 "`config.rollouts(enable_connectors=True)`."
             )
+
+        if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
+            # enable RLModule API and connectors if env variable is set
+            # (to be used in unittesting)
+            self._enable_rl_module_api = True
+            self.enable_connectors = True
 
         # TODO: Deprecate self.simple_optimizer!
         # Multi-GPU settings.
@@ -1295,11 +1321,6 @@ class AlgorithmConfig:
         if num_rollout_workers is not NotProvided:
             self.num_rollout_workers = num_rollout_workers
         if num_envs_per_worker is not NotProvided:
-            if num_envs_per_worker <= 0:
-                raise ValueError(
-                    f"`num_envs_per_worker` ({num_envs_per_worker}) must be "
-                    f"larger than 0!"
-                )
             self.num_envs_per_worker = num_envs_per_worker
         if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
@@ -1310,25 +1331,9 @@ class AlgorithmConfig:
         if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
         if rollout_fragment_length is not NotProvided:
-            if not (
-                (
-                    isinstance(rollout_fragment_length, int)
-                    and rollout_fragment_length > 0
-                )
-                or rollout_fragment_length == "auto"
-            ):
-                raise ValueError("`rollout_fragment_length` must be int >0 or 'auto'!")
             self.rollout_fragment_length = rollout_fragment_length
-
-        # Check batching/sample collection settings.
         if batch_mode is not NotProvided:
-            if batch_mode not in ["truncate_episodes", "complete_episodes"]:
-                raise ValueError(
-                    "`config.batch_mode` must be one of [truncate_episodes|"
-                    "complete_episodes]! Got {}".format(batch_mode)
-                )
             self.batch_mode = batch_mode
-
         if remote_worker_envs is not NotProvided:
             self.remote_worker_envs = remote_worker_envs
         if remote_env_batch_wait_ms is not NotProvided:
@@ -1348,7 +1353,6 @@ class AlgorithmConfig:
                 num_consecutive_worker_failures_tolerance
             )
         if preprocessor_pref is not NotProvided:
-            assert preprocessor_pref in ("rllib", "deepmind", None)
             self.preprocessor_pref = preprocessor_pref
         if observation_filter is not NotProvided:
             self.observation_filter = observation_filter

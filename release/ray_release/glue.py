@@ -66,10 +66,22 @@ file_manager_str_to_file_manager = {
 command_runner_to_file_manager = {
     SDKRunner: SessionControllerFileManager,
     ClientRunner: RemoteTaskFileManager,
-    JobFileManager: JobFileManager,
+    JobRunner: JobFileManager,
 }
 
-uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
+
+DEFAULT_RUN_TYPE = "sdk_command"
+
+
+def _get_extra_tags() -> dict:
+    env_vars = (
+        "BUILDKITE_JOB_ID",
+        "BUILDKITE_PULL_REQUEST",
+        "BUILDKITE_PIPELINE_SLUG",
+        "BUILDKITE_SOURCE",
+        "RELEASE_FREQUENCY",
+    )
+    return {key.lower(): os.getenv(key, "") for key in env_vars}
 
 
 def run_release_test(
@@ -87,14 +99,20 @@ def run_release_test(
 
     validate_test(test)
 
+    logger.info(f"Test config: {test}")
+
     result.wheels_url = ray_wheels_url
     result.stable = test.get("stable", True)
     result.smoke_test = smoke_test
 
     buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
+    buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
+
     if buildkite_url:
-        buildkite_url += "#" + os.getenv("BUILDKITE_JOB_ID", "")
+        buildkite_url += "#" + buildkite_job_id
+
     result.buildkite_url = buildkite_url
+    result.buildkite_job_id = buildkite_job_id
 
     working_dir = test["working_dir"]
 
@@ -104,7 +122,7 @@ def run_release_test(
 
     start_time = time.monotonic()
 
-    run_type = test["run"].get("type", "sdk_command")
+    run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
 
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
@@ -126,10 +144,19 @@ def run_release_test(
     else:
         file_manager_cls = command_runner_to_file_manager[command_runner_cls]
 
+    logger.info(f"Got command runner cls: {command_runner_cls}")
+    logger.info(f"Got file manager cls: {file_manager_cls}")
+
+    # Extra tags to be set on resources on cloud provider's side
+    extra_tags = _get_extra_tags()
+    result.extra_tags = extra_tags
+
     # Instantiate managers and command runner
     try:
         cluster_manager = cluster_manager_cls(
-            test["name"], anyscale_project, smoke_test=smoke_test
+            test["name"],
+            anyscale_project,
+            smoke_test=smoke_test,
         )
         file_manager = file_manager_cls(cluster_manager=cluster_manager)
         command_runner = command_runner_cls(cluster_manager, file_manager, working_dir)
@@ -194,7 +221,10 @@ def run_release_test(
 
         # Set cluster compute here. Note that this may use timeouts provided
         # above.
-        cluster_manager.set_cluster_compute(cluster_compute)
+        cluster_manager.set_cluster_compute(
+            cluster_compute,
+            extra_tags=extra_tags,
+        )
 
         buildkite_group(":nut_and_bolt: Setting up local environment")
         driver_setup_script = test.get("driver_setup", None)
@@ -235,6 +265,7 @@ def run_release_test(
             cluster_manager.start_cluster(timeout=cluster_timeout)
 
         result.cluster_url = cluster_manager.get_cluster_url()
+        result.cluster_id = cluster_manager.cluster_id
 
         # Upload files
         buildkite_group(":wrench: Preparing remote environment")

@@ -142,8 +142,9 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
-    WAIT_FOR_JOB_TERMINATION_S = 3
+    DEFAULT_RAY_JOB_STOP_WAIT_TIME_S = 3
     SUBPROCESS_POLL_PERIOD_S = 0.1
+    VALID_STOP_SIGNALS = ["SIGINT", "SIGTERM"]
 
     def __init__(
         self,
@@ -225,6 +226,14 @@ class JobSupervisor:
                 start_new_session=True,
                 stdout=logs_file,
                 stderr=subprocess.STDOUT,
+                # Ray intentionally blocks SIGINT in all processes, so if the user wants
+                # to stop job through SIGINT, we need to unblock it in the child process
+                preexec_fn=lambda: signal.pthread_sigmask(
+                    signal.SIG_UNBLOCK, {signal.SIGINT}
+                )
+                if sys.platform != "win32"
+                and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
+                else None,
             )
             parent_pid = os.getpid()
             child_pid = child_process.pid
@@ -377,7 +386,17 @@ class JobSupervisor:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
                     try:
-                        os.killpg(os.getpgid(child_process.pid), signal.SIGTERM)
+                        stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
+                        if stop_signal not in self.VALID_STOP_SIGNALS:
+                            logger.warning(
+                                f"{stop_signal} not a valid stop signal. Terminating "
+                                "job with SIGTERM."
+                            )
+                            stop_signal = "SIGTERM"
+                        os.killpg(
+                            os.getpgid(child_process.pid),
+                            getattr(signal, stop_signal),
+                        )
                     except ProcessLookupError:
                         # Process already completed.
                         logger.info(
@@ -386,21 +405,26 @@ class JobSupervisor:
                         )
                         pass
                     else:
-                        # Wait for job to terminate gracefully, otherwise kill process
+                        # Wait for job to exit gracefully, otherwise kill process
                         # forcefully after timeout.
                         try:
-                            await asyncio.wait_for(
-                                polling_task, self.WAIT_FOR_JOB_TERMINATION_S
+                            stop_job_wait_time = int(
+                                os.environ.get(
+                                    "RAY_JOB_STOP_WAIT_TIME_S",
+                                    self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
+                                )
                             )
+                            await asyncio.wait_for(polling_task, stop_job_wait_time)
                             logger.info(
-                                f"Job {self._job_id} has been terminated gracefully."
+                                f"Job {self._job_id} has been terminated gracefully "
+                                f"with {stop_signal}."
                             )
                         except asyncio.TimeoutError:
                             logger.warning(
                                 f"Attempt to gracefully terminate job {self._job_id} "
-                                "through SIGTERM has timed out after "
-                                f"{self.WAIT_FOR_JOB_TERMINATION_S} seconds. Job is "
-                                "now being force-killed."
+                                f"through {stop_signal} has timed out after "
+                                f"{stop_job_wait_time} seconds. Job is now being "
+                                "force-killed."
                             )
                             polling_task.cancel()
                             child_process.kill()
@@ -601,7 +625,7 @@ class JobManager:
 
         It can be used for actor placement.
         """
-        current_node_id = ray.get_runtime_context().node_id.hex()
+        current_node_id = ray.get_runtime_context().get_node_id()
         for node in ray.nodes():
             if node["NodeID"] == current_node_id:
                 # Found the node.
