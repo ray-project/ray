@@ -398,40 +398,35 @@ class StateAPIManager:
                 for key in keys:
                     task_state[key] = src.get(key)
 
-            # Get the most updated scheduling_state by state transition ordering.
-            def _get_most_recent_status(state_updates: dict) -> str:
-                # Reverse the order as defined in protobuf for the most recent state.
-                for status_name in reversed(common_pb2.TaskStatus.keys()):
-                    key = f"{status_name.lower()}_ts"
-                    if state_updates.get(key):
-                        return status_name
-                return common_pb2.TaskStatus.Name(common_pb2.NIL)
-
-            task_state["state"] = _get_most_recent_status(state_updates)
-
-            from datetime import datetime
-
+            task_state["start_time_ms"] = None
+            task_state["end_time_ms"] = None
             events = []
-            if "node_id" in state_updates:
-                state_updates.pop("node_id")
-            for state, ts_ns in state_updates.items():
-                events.append(
-                    {
-                        "state": state.split("_ts")[0],
-                        "created": str(
-                            datetime.fromtimestamp(int(ts_ns) // 1000000000)
-                        ),
-                    }
-                )
+            
+            for state in common_pb2.TaskStatus.keys():
+                key = f"{state.lower()}_ts"
+                if key in state_updates:
+                    # timestamp is recorded as nanosecond from the backend.
+                    # We need to convert it to the second.
+                    ts_ms = int(state_updates[key]) // 1e6
+                    events.append(
+                        {
+                            "state": state,
+                            "created": str(
+                                datetime.fromtimestamp(ts_ms // 1e3)
+                            ),
+                        }
+                    )
+                    if state == "RUNNING":
+                        task_state["start_time_ms"] = ts_ms
+                    if state == "FINISHED" or state == "FAILED":
+                        task_state["end_time_ms"] = ts_ms
+
             task_state["events"] = events
-            task_state["duration_s"] = None
-            done = state_updates.get("finished_ts") or state_updates.get("failed_ts")
-            if done:
-                done_ts = datetime.fromtimestamp(int(done) // 1000000000)
-                start_ts = datetime.fromtimestamp(
-                    int(state_updates["running_ts"]) // 1000000000
-                )
-                task_state["duration_s"] = (done_ts - start_ts).seconds
+            if len(events) > 0:
+                latest_state = events[-1]["state"]
+            else:
+                latest_state = common_pb2.TaskStatus.Name(common_pb2.NIL)
+            task_state["state"] = latest_state
 
             return task_state
 

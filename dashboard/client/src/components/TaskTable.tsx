@@ -13,6 +13,7 @@ import {
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import React, { useState } from "react";
+import { DurationText } from "../common/DurationText";
 import rowStyles from "../common/RowStyles";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
@@ -146,12 +147,14 @@ const TaskTable = ({
               name,
               job_id,
               state,
-              duration_s,
               func_or_class_name,
               node_id,
               actor_id,
               type,
               required_resources,
+              events,
+              start_time_ms,
+              end_time_ms
             }) => (
               <TableRow>
                 <TableCell align="center">
@@ -170,7 +173,11 @@ const TaskTable = ({
                   <StatusChip type="actor" status={state} />
                 </TableCell>
                 <TableCell align="center">
-                  {duration_s ? `${duration_s}s` : "-"}
+                  {start_time_ms && start_time_ms > 0 ? (
+                    <DurationText startTime={start_time_ms} endTime={end_time_ms} />
+                  ) : (
+                    "-"
+                  )}
                 </TableCell>
                 <TableCell align="center">{func_or_class_name}</TableCell>
                 <TableCell align="center">{node_id ? node_id : "-"}</TableCell>

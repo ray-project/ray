@@ -486,7 +486,6 @@ class TaskState(StateSchema):
     #: breakdowns and typical state transition flow.
     #:
     state: TypeTaskStatus = state_column(filterable=True)
-    duration_s: int = state_column(detail=False, filterable=False)
     #: The job id of this task.
     job_id: str = state_column(filterable=True)
     #: Id of the node that runs the task. If the task is retried, it could
@@ -513,7 +512,14 @@ class TaskState(StateSchema):
     required_resources: dict = state_column(detail=True, filterable=False)
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
+    #: The list of events of the given task.
+    #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
+    #: breakdowns and typical state transition flow.
     events: List[dict] = state_column(detail=True, filterable=False)
+    #: The time when the task was started. A Unix timestamp in ms.
+    start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    #: The time when the task is finished. A Unix timestamp in ms.
+    end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
