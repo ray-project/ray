@@ -4,6 +4,7 @@ import ray
 from ray.exceptions import RayError
 from ray._private.test_utils import wait_for_condition
 from ray import serve
+from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 
 
@@ -219,7 +220,7 @@ def test_health_check_failure_makes_deployment_unhealthy(serve_instance):
     app_status = serve_instance.get_serve_status()
     assert (
         app_status.deployment_statuses[0].name == "AlwaysUnhealthy"
-        and app_status.deployment_statuses[0].status == "UNHEALTHY"
+        and app_status.deployment_statuses[0].status == DeploymentStatus.UNHEALTHY
     )
 
 
@@ -251,7 +252,7 @@ def test_health_check_failure_makes_deployment_unhealthy2(serve_instance):
         def __call__(self, *args):
             return ray.get_runtime_context().current_actor
 
-    def check_status(expected_status):
+    def check_status(expected_status: DeploymentStatus):
         app_status = serve_instance.get_serve_status()
         return (
             app_status.deployment_statuses[0].name == "WillBeUnhealthy"
@@ -262,16 +263,16 @@ def test_health_check_failure_makes_deployment_unhealthy2(serve_instance):
     serve.run(WillBeUnhealthy.bind(toggle))
 
     # Check that deployment is healthy initially
-    assert check_status("HEALTHY")
+    assert check_status(DeploymentStatus.HEALTHY)
 
     ray.get(toggle.set_should_fail.remote())
 
     # Check that deployment is now unhealthy
-    wait_for_condition(check_status, expected_status="UNHEALTHY")
+    wait_for_condition(check_status, expected_status=DeploymentStatus.UNHEALTHY)
 
     # Check that deployment stays unhealthy
     for _ in range(5):
-        assert check_status("UNHEALTHY")
+        assert check_status(DeploymentStatus.UNHEALTHY)
 
 
 if __name__ == "__main__":
