@@ -70,7 +70,7 @@ def test_basic_stats():
 
 # TODO(ekl) remove this test once we have the new backend on by default.
 def test_e2e_bulk_sanity():
-    context = DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().new_execution_backend = True
     result = ray.data.range(5).map(lambda x: x + 1)
     assert result.take_all() == [1, 2, 3, 4, 5], result
 
