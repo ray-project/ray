@@ -127,7 +127,6 @@ assert len(less_sampled_buffer._storage) == 0
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
 config = (
     DQNConfig()
-    .rollouts(num_rollout_workers=3)
     .training(
         replay_buffer_config={
             "type": "MultiAgentReplayBuffer",
@@ -146,7 +145,7 @@ tune.Tuner(
     "DQN",
     param_space=config.to_dict(),
     run_config=air.RunConfig(
-        stop={"episode_reward_mean": 50, "training_iteration": 10}
+        stop={"episode_reward_mean": 40, "training_iteration": 7}
     ),
 ).fit()
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__
