@@ -1072,6 +1072,15 @@ class DatasetPipeline(Generic[T]):
             local_shuffle_seed=local_shuffle_seed,
         )
 
+    def _is_tensor_dataset(self) -> bool:
+        """Return ``True`` if this dataset is a tensor dataset."""
+        from ray.air.constants import TENSOR_COLUMN_NAME
+
+        schema = self.schema()
+        if schema is None or isinstance(schema, type):
+            return False
+        return schema.names == [TENSOR_COLUMN_NAME]
+
     def to_tf(
         self,
         *,

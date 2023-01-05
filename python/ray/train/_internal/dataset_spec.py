@@ -3,9 +3,17 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
+<<<<<<< HEAD
+=======
+from ray.air._internal.bulk_dataset_iterator import BulkDatasetIterator
+from ray.air._internal.pipelined_dataset_iterator import PipelinedDatasetIterator
+
+from ray.data import Dataset, DatasetPipeline
+from ray.air._internal.util import _estimate_avail_object_store_memory
+>>>>>>> f3781a5855... DatasetIterator
 
 if TYPE_CHECKING:
-    from ray.data import Dataset, DatasetPipeline
+    from ray.air import DatasetIterator
     from ray.data.preprocessor import Preprocessor
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
@@ -126,7 +134,7 @@ class DataParallelIngestSpec:
         for key, dataset in list(datasets.items()):
             conf = self._config(key)
             # If globally shuffling, don't randomize unless using the stream API.
-            local_window = conf.use_stream_api and conf.stream_window_size > 0
+            local_window = 1 > conf.max_object_store_memory_fraction >= 0
             if conf.randomize_block_order and (not conf.global_shuffle or local_window):
                 datasets[key] = dataset.randomize_block_order()
 
@@ -145,7 +153,7 @@ class DataParallelIngestSpec:
             for key, dataset in datasets.items():
                 conf = self._config(key)
                 if conf.transform:
-                    if conf.use_stream_api and conf.stream_window_size > 0:
+                    if 1 > conf.max_object_store_memory_fraction >= 0:
                         # In windowed mode, preprocessor is applied in streaming way.
                         new_datasets[key] = dataset
                     else:
@@ -178,10 +186,14 @@ class DataParallelIngestSpec:
         for key, dataset in self.preprocessed_datasets.items():
             config = self._config(key)
 
-            if config.use_stream_api:
-                if config.stream_window_size > 0:
+            if config.max_object_store_memory_fraction >= 0:
+                if config.max_object_store_memory_fraction < 1:
+                    object_store_memory = _estimate_avail_object_store_memory()
+                    stream_window_size = max(
+                        object_store_memory * config.max_object_store_memory_fraction, 1
+                    )
                     dataset = dataset.window(
-                        bytes_per_window=config.stream_window_size
+                        bytes_per_window=stream_window_size
                     ).repeat()
                     # In windowed mode, we re-apply the preprocessor on each iteration.
                     if self.preprocessor:
@@ -196,10 +208,12 @@ class DataParallelIngestSpec:
                 # cluster hot-spots since we already randomized the based blocks, but
                 # can help with improving randomness in combination with local shuffle.
                 if config.randomize_block_order and not config.global_shuffle:
+                    # TODO(swang): Should randomize block order across the
+                    # original dataset, not the window.
                     dataset = dataset.randomize_block_order_each_window()
 
             if config.global_shuffle:
-                if config.use_stream_api:
+                if config.max_object_store_memory_fraction >= 0:
                     dataset = dataset.random_shuffle_each_window()
                 else:
                     dataset = dataset.random_shuffle()
@@ -213,6 +227,12 @@ class DataParallelIngestSpec:
             else:
                 dataset_splits = [dataset] * len(training_worker_handles)
 
+            for i, dataset_split in enumerate(dataset_splits):
+                if isinstance(dataset_split, Dataset):
+                    dataset_splits[i] = BulkDatasetIterator(dataset_split)
+                elif isinstance(dataset_split, DatasetPipeline):
+                    dataset_splits[i] = PipelinedDatasetIterator(dataset_split)
+
             for i in range(len(dataset_splits)):
                 dataset_dict_splits[i][key] = dataset_splits[i]
 
@@ -223,3 +243,14 @@ class DataParallelIngestSpec:
         if key in self.dataset_config:
             return self.dataset_config[key]
         return self.dataset_config["*"]
+
+
+def make_dummy_dataset_iterator(
+    dataset: RayDataset, prep: "Preprocessor", dataset_config: DatasetConfig
+) -> "DatasetIterator":
+    dataset_config = dataset_config.fill_defaults()
+    spec = DataParallelIngestSpec({"train": dataset_config})
+    spec.preprocess_datasets(prep, {"train": dataset})
+    training_worker_handles = [None]
+    it = spec.get_dataset_shards(training_worker_handles)[0]["train"]
+    return it

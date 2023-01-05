@@ -28,7 +28,9 @@ Let's walk through the stages of what happens when ``Trainer.fit()`` is called.
 on the train dataset passed to the Trainer, followed by :py:meth:`prep.transform() <ray.data.preprocessor.Preprocessor.transform>`
 on remaining datasets.
 
-**Training**: Then, AIR passes the preprocessed dataset to Train workers (Ray actors) launched by the Trainer. Each worker calls :py:func:`get_dataset_shard <ray.air.session.get_dataset_shard>` to get a handle to its assigned data shard, and then calls one of :py:meth:`iter_batches() <ray.data.Dataset.iter_batches>`, :py:meth:`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`, or :meth:`~ray.data.Dataset.to_tf` to loop over the data.
+**Training**: Then, AIR passes the preprocessed dataset to Train workers (Ray actors) launched by the Trainer. Each worker calls :py:func:`get_dataset_shard <ray.air.session.get_dataset_shard>` to get a handle to its assigned data shard.
+This returns a `DatasetIterator`, which can be used to loop over the data with :py:meth:`iter_batches() <ray.data.Dataset.iter_batches>`, :py:meth:`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`, or :meth:`~ray.data.Dataset.to_tf`.
+Each of these returns a batch iterator for one epoch (a full pass over the original dataset).
 
 Getting Started
 ---------------
@@ -83,20 +85,31 @@ Enabling Streaming Ingest
 
     You should use bulk ingest when:
 
-     * you have enough memory to fit data blocks in cluster object store;
-     * your preprocessing step is expensive per each epoch; and
-     * you want best performance when both or either the above conditions are met.
+    * you have enough memory to fit data blocks in cluster object store; or
+    * your preprocessing step is expensive to recompute on each epoch
 
 .. tabbed:: Streaming Ingest (experimental)
 
-    In streaming ingest mode, :py:func:`~ray.air.session.get_dataset_shard` returns a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline` pipeline that
-    can be used to read data in a streaming way.
-    To enable streaming ingest, set ``use_stream_api=True`` in the dataset config.
+    In streaming ingest mode, instead of loading the entire dataset into the
+    Ray object store at once, AIR will load a fraction of the dataset at a
+    time. This can be desirable when the dataset is very large, and caching it
+    all at once would cause expensive disk spilling. The downside is that the
+    dataset will have to be recomputed on each epoch, which can add overhead if
+    the computation is expensive.
 
-    By default, this will tell AIR to load *windows* of 1GiB of data into memory at a time.
-    Performance can be increased with larger window sizes, which can be adjusted using the
-    ``stream_window_size`` config.
-    A reasonable stream window size is something like 20% of available object store memory.
+    To enable this mode, use the :py:meth:`max_object_store_memory_fraction
+    <ray.air.config.DatasetConfig>` argument. This argument defaults to -1,
+    meaning that bulk ingest should be used and the entire dataset should be
+    computed and cached before execution.
+
+    Use a float value between 0 and 1 to indicate the "window" size, i.e. the
+    maximum fraction of object store memory that should be used at once. A
+    reasonable value is 0.2, meaning 20% of available object store memory.
+    Larger window sizes can improve performance by increasing parallelism.
+
+    The value 1 means that the window size is the full dataset. In other words,
+    Ray will compute a full copy of the dataset in parallel with the current
+    copy that is being iterated upon.
 
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
@@ -105,10 +118,11 @@ Enabling Streaming Ingest
 
     Use streaming ingest when:
 
-     * you have large datasets that don't fit into memory;
-     * you want to process small chunks or blocks per window;
-     * you can use small windows with small data blocks minimizing or avoiding memory starvation or OOM errors; and
-     * your preprocessing step is not a bottleneck or not an expensive operation since it's re-executed on each pass over the data.
+    * you have large datasets that don't fit into memory; and
+    * reading the preprocessed dataset from disk is slower than re-executing the preprocessing step on each epoch
+
+    Note that this feature is experimental and the actual object store memory
+    usage may vary. Please file a `GitHub issue <https://github.com/ray-project/ray/issues>`_ if you run into problems.
 
 .. _air-shuffle:
 
@@ -394,4 +408,3 @@ How do I shard validation and test datasets?
 By default only the `"train"` Dataset is sharded. To also shard validation and test datasets, you can configure the ``dataset_config``
 that is passed to your ``Trainer``.
 See the :ref:`Splitting Auxiliary Datasets <air-splitting-aux-datasets>` section for a full example.
-
