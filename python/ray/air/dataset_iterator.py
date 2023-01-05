@@ -28,11 +28,6 @@ class DatasetIterator(abc.ABC):
     ) -> Iterator[DataBatchType]:
         """Return a local batched iterator over the dataset.
 
-        Examples:
-            >>> import ray
-            >>> for batch in ray.data.range(1000000).iter_batches(): # doctest: +SKIP
-            ...     print(batch) # doctest: +SKIP
-
         Time complexity: O(1)
 
         Args:
@@ -80,16 +75,6 @@ class DatasetIterator(abc.ABC):
         column-tensors. If looking for more flexibility in the tensor conversion (e.g.
         casting dtypes) or the batch format, try using `.iter_batches` directly.
 
-        Examples:
-            >>> import ray
-            >>> for batch in ray.data.range( # doctest: +SKIP
-            ...     12,
-            ... ).iter_torch_batches(batch_size=4):
-            ...     print(batch.shape) # doctest: +SKIP
-            torch.Size([4, 1])
-            torch.Size([4, 1])
-            torch.Size([4, 1])
-
         Time complexity: O(1)
 
         Args:
@@ -136,34 +121,6 @@ class DatasetIterator(abc.ABC):
             If your dataset contains ragged tensors, this method errors. To prevent
             errors, resize tensors or
             :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
-
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-            >>> ds
-            Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
-
-            If your model accepts a single tensor as input, specify a single feature column.
-
-            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")  # doctest: +SKIP
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
-
-            If your model accepts a dictionary as input, specify a list of feature columns.
-
-            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")  # doctest: +SKIP
-            <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
-
-            If your dataset contains multiple features but your model accepts a single
-            tensor as input, combine features with
-            :class:`~ray.data.preprocessors.Concatenator`.
-
-            >>> from ray.data.preprocessors import Concatenator
-            >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
-            >>> ds = preprocessor.transform(ds)
-            >>> ds
-            Dataset(num_blocks=1, num_rows=150, schema={target: int64, features: TensorDtype(shape=(4,), dtype=float64)})
-            >>> ds.to_tf("features", "target")  # doctest: +SKIP
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
         Args:
             feature_columns: Columns that correspond to model inputs. If this is a

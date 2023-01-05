@@ -326,6 +326,8 @@ class DatasetConfig:
             The main purpose of this is to prevent data fetching hotspots in the
             cluster when running many parallel workers / trials on the same data.
             We recommend enabling it always. True by default.
+        use_stream_api: Deprecated. Use max_object_store_memory_fraction instead.
+        stream_window_size: Deprecated. Use max_object_store_memory_fraction instead.
     """
 
     # TODO(ekl) could we unify DataParallelTrainer and Trainer so the same data ingest
