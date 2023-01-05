@@ -234,7 +234,7 @@ class _RandomAccessWorker:
         return result
 
     def ping(self):
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     def stats(self) -> dict:
         return {
