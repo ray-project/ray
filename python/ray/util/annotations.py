@@ -1,6 +1,6 @@
 from typing import Optional
 import inspect
-import os
+import sys
 import warnings
 from functools import wraps
 
@@ -88,6 +88,15 @@ def DeveloperAPI(*args, **kwargs):
     return wrap
 
 
+class RayDeprecationWarning(DeprecationWarning):
+    ...
+
+
+# By default only warn ray deprecation warning once.
+if not sys.warnoptions:
+    warnings.filterwarnings("module", category=RayDeprecationWarning)
+
+
 def Deprecated(*args, **kwargs):
     """Annotation for documenting a deprecated API.
 
@@ -124,8 +133,8 @@ def Deprecated(*args, **kwargs):
     warning = kwargs.pop("warning", False)
 
     if "message" in kwargs:
-        doc_message = doc_message + " " + kwargs["message"]
-        warning_message = warning_message + " " + kwargs["message"]
+        doc_message = doc_message + "\n" + kwargs["message"]
+        warning_message = warning_message + "\n" + kwargs["message"]
         del kwargs["message"]
 
     if kwargs:
@@ -142,7 +151,7 @@ def Deprecated(*args, **kwargs):
             obj_init = obj.__init__
 
             def patched_init(*args, **kwargs):
-                warnings.warn(warning_message, DeprecationWarning, stacklevel=2)
+                warnings.warn(warning_message, RayDeprecationWarning, stacklevel=2)
                 return obj_init(*args, **kwargs)
 
             obj.__init__ = patched_init
@@ -151,7 +160,7 @@ def Deprecated(*args, **kwargs):
             # class method or function.
             @wraps(obj)
             def wrapper(*args, **kwargs):
-                warnings.warn(warning_message, DeprecationWarning, stacklevel=2)
+                warnings.warn(warning_message, RayDeprecationWarning, stacklevel=2)
                 return obj(*args, **kwargs)
 
             return wrapper
