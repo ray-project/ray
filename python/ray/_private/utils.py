@@ -39,6 +39,7 @@ from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
+import pkg_resources
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -85,6 +86,16 @@ def get_user_temp_dir():
 
 def get_ray_temp_dir():
     return os.path.join(get_user_temp_dir(), "ray")
+
+
+def get_ray_cpp_worker_path(default_worker_path):
+    """Return the path to the ray cpp executable."""
+    if not os.path.exists(default_worker_path):
+        default_worker_path = None
+    for i in pkg_resources.working_set:
+        if i.key == "ray-cpp":
+            default_worker_path = os.path.join(i.location, "ray/cpp/default_worker")
+    return default_worker_path
 
 
 def get_ray_address_file(temp_dir: Optional[str]):

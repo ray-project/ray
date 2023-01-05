@@ -26,6 +26,7 @@ import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsClient
 from ray._raylet import GcsClientOptions
 from ray.core.generated.common_pb2 import Language
+from ray._private.utils import get_ray_cpp_worker_path
 
 resource = None
 if sys.platform != "win32":
@@ -53,7 +54,9 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 )
 
 # Location of the cpp default worker executables.
-DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
+DEFAULT_WORKER_EXECUTABLE = get_ray_cpp_worker_path(
+    os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
+)
 
 # Location of the native libraries.
 DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp", "lib")
