@@ -1,6 +1,15 @@
 import unittest
 
+import gym
+
 from ray.rllib.connectors.connector import Connector, ConnectorPipeline
+from ray.rllib.connectors.connector import ConnectorContext
+from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
+from ray.rllib.connectors.agent.mean_std_filter import (
+    MeanStdObservationFilterAgentConnector,
+)
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 
 
 class TestConnectorPipeline(unittest.TestCase):
