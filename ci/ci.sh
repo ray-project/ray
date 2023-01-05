@@ -414,7 +414,7 @@ validate_wheels_commit_str() {
       continue
     fi
 
-    WHL_COMMIT=$(unzip -p "$whl" | grep "__commit__" | awk -F'"' '{print $2}')
+    WHL_COMMIT=$(unzip -p "$whl" | grep "^__commit__" | awk -F'"' '{print $2}')
 
     if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
       echo "Error: Observed wheel commit (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
