@@ -4,6 +4,7 @@ from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.utils import is_wrapped_multi_agent_env
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -599,9 +600,8 @@ class MultiAgentEnvWrapper(BaseEnv):
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
         for env in self.envs:
-            assert isinstance(env, MultiAgentEnv)
+            assert is_wrapped_multi_agent_env(env)
         self._init_env_state(idx=None)
-        self._unwrapped_env = self.envs[0].unwrapped
 
     @override(BaseEnv)
     def poll(
@@ -792,7 +792,7 @@ class MultiAgentEnvWrapper(BaseEnv):
 
 class _MultiAgentEnvState:
     def __init__(self, env: MultiAgentEnv, return_error_as_obs: bool = False):
-        assert isinstance(env, MultiAgentEnv)
+        assert is_wrapped_multi_agent_env(env)
         self.env = env
         self.return_error_as_obs = return_error_as_obs
 

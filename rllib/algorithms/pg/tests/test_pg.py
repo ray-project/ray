@@ -48,7 +48,7 @@ class TestPG(unittest.TestCase):
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
         simple_space = Box(-1.0, 1.0, shape=(3,))
 
-        tune.gym.register(
+        gym.register(
             "random_dict_env",
             lambda: RandomEnv(
                 {

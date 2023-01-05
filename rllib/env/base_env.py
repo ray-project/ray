@@ -3,6 +3,7 @@ from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING, Un
 
 import gymnasium as gym
 import ray
+from ray.rllib.env.utils import is_wrapped_multi_agent_env
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiEnvDict
 
@@ -472,6 +473,14 @@ def convert_to_base_env(
     # Given `env` has a `to_base_env` method -> Call that to convert to a BaseEnv type.
     if isinstance(env, (BaseEnv, MultiAgentEnv, VectorEnv, ExternalEnv)):
         return env.to_base_env(
+            make_env=make_env,
+            num_envs=num_envs,
+            remote_envs=remote_envs,
+            remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+            restart_failed_sub_environments=restart_failed_sub_environments,
+        )
+    elif is_wrapped_multi_agent_env(env):
+        return env.unwrapped.to_base_env(
             make_env=make_env,
             num_envs=num_envs,
             remote_envs=remote_envs,

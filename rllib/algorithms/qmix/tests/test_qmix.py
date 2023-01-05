@@ -23,12 +23,12 @@ class AvailActionsTestEnv(MultiAgentEnv):
         }
     )
 
-    def __init__(self, env_config):
+    def __init__(self, avail_actions=(3,)):
         super().__init__()
         self.state = None
-        self.avail = env_config.get("avail_actions", [3])
+        self.avail_actions = avail_actions
         self.action_mask = np.array([0] * 10)
-        for a in self.avail:
+        for a in self.avail_actions:
             self.action_mask[a] = 1
 
     def reset(self, *, seed=None, options=None):
@@ -47,8 +47,8 @@ class AvailActionsTestEnv(MultiAgentEnv):
     def step(self, action_dict):
         if self.state > 0:
             assert (
-                action_dict["agent_1"] in self.avail
-                and action_dict["agent_2"] in self.avail
+                action_dict["agent_1"] in self.avail_actions
+                and action_dict["agent_2"] in self.avail_actions
             ), "Failed to obey available actions mask!"
         self.state += 1
         rewards = {"agent_1": 1, "agent_2": 0.5}
@@ -91,7 +91,7 @@ class TestQMix(unittest.TestCase):
         )
         gym.register(
             "action_mask_test",
-            lambda config: AvailActionsTestEnv(config).with_agent_groups(
+            lambda avail_actions: AvailActionsTestEnv(avail_actions).with_agent_groups(
                 grouping, obs_space=obs_space, act_space=act_space
             ),
         )

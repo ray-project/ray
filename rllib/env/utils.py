@@ -82,3 +82,8 @@ def _gym_env_creator(
             return gym.make(env_descriptor, **env_context)
     except gym.error.Error:
         raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))
+
+
+def is_wrapped_multi_agent_env(env):
+    from ray.rllib.env.multi_agent_env import MultiAgentEnv
+    return isinstance(env, gym.Env) and isinstance(env.unwrapped, MultiAgentEnv)
