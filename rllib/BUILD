@@ -1023,7 +1023,7 @@ py_test(
 # Impala
 py_test(
     name = "test_impala",
-    tags = ["team:rllib", "algorithms_dir"],
+    tags = ["team:rllib", "algorithms_dir", "multi_gpu"],
     size = "large",
     srcs = ["algorithms/impala/tests/test_impala.py"]
 )

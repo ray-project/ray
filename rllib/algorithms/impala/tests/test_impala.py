@@ -31,6 +31,7 @@ class TestIMPALA(unittest.TestCase):
             impala.ImpalaConfig()
             .environment("CartPole-v1")
             .resources(num_gpus=0)
+            .rollouts(num_rollout_workers=2)
             .training(
                 model={
                     "lstm_use_prev_action": True,
@@ -56,8 +57,6 @@ class TestIMPALA(unittest.TestCase):
                     results = algo.train()
                     print(results)
                     check_train_results(results)
-                    off_policy_ness = check_off_policyness(results, upper_limit=2.0)
-                    print(f"off-policy'ness={off_policy_ness}")
 
                 check_compute_single_action(
                     algo,
@@ -114,6 +113,31 @@ class TestIMPALA(unittest.TestCase):
                 assert lr3 <= lr2, (lr2, lr3)
                 assert lr3 < lr1, (lr1, lr3)
             finally:
+                algo.stop()
+
+    def test_impala_off_policyness(self):
+        """Test whether Impala can be built with both frameworks."""
+        config = (
+            impala.ImpalaConfig()
+            .environment("CartPole-v1")
+            .resources(num_gpus=1)
+            .rollouts(num_rollout_workers=2)
+        )
+        num_iterations = 4
+
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            for num_aggregation_workers in [0, 1]:
+                config.num_aggregation_workers = num_aggregation_workers
+                print("aggregation-workers={}".format(config.num_aggregation_workers))
+                algo = config.build()
+                for i in range(num_iterations):
+                    results = algo.train()
+                    off_policy_ness = check_off_policyness(results, upper_limit=2.0)
+                    print(f"off-policy'ness={off_policy_ness}")
+
+                check_compute_single_action(
+                    algo,
+                )
                 algo.stop()
 
 
