@@ -970,14 +970,14 @@ class Policy(metaclass=ABCMeta):
             self.agent_connectors = restore_connectors_for_policy(
                 self, connector_configs["agent"]
             )
-            logger.info("restoring agent connectors:")
-            logger.info(self.agent_connectors.__str__(indentation=4))
+            logger.debug("restoring agent connectors:")
+            logger.debug(self.agent_connectors.__str__(indentation=4))
         if "action" in connector_configs:
             self.action_connectors = restore_connectors_for_policy(
                 self, connector_configs["action"]
             )
-            logger.info("restoring action connectors:")
-            logger.info(self.action_connectors.__str__(indentation=4))
+            logger.debug("restoring action connectors:")
+            logger.debug(self.action_connectors.__str__(indentation=4))
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
