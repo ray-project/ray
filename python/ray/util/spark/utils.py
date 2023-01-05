@@ -7,9 +7,6 @@ import collections
 import logging
 
 
-_MEMORY_BUFFER_OFFSET = 0.8
-
-
 _logger = logging.getLogger("ray.util.spark.utils")
 
 
@@ -155,28 +152,36 @@ def get_max_num_concurrent_tasks(spark_context, resource_profile):
 def _get_total_physical_memory():
     import psutil
 
+    if RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES in os.environ:
+        return int(os.environ[RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES])
     return psutil.virtual_memory().total
 
 
 def _get_total_shared_memory():
     import shutil
 
+    if RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES in os.environ:
+        return int(os.environ[RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES])
+
     return shutil.disk_usage("/dev/shm").total
 
 
+_RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
+
+
 def _calc_mem_per_ray_worker_node(
-    num_task_slots, physical_mem_bytes, shared_mem_bytes, object_store_memory_per_node
+    num_task_slots, physical_mem_bytes, shared_mem_bytes, configured_object_store_bytes
 ):
     from ray._private.ray_constants import DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
 
     available_physical_mem_per_node = int(
-        physical_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
+        physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET
     )
     available_shared_mem_per_node = int(
-        shared_mem_bytes / num_task_slots * _MEMORY_BUFFER_OFFSET
+        shared_mem_bytes / num_task_slots * _RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET
     )
 
-    object_store_bytes = object_store_memory_per_node or (
+    object_store_bytes = configured_object_store_bytes or (
         available_physical_mem_per_node * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
     )
 
@@ -184,6 +189,7 @@ def _calc_mem_per_ray_worker_node(
         min(
             object_store_bytes,
             available_shared_mem_per_node,
+            available_physical_mem_per_node * _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION
         )
     )
 
@@ -191,8 +197,18 @@ def _calc_mem_per_ray_worker_node(
     return heap_mem_bytes, object_store_bytes
 
 
+# User can manually set these environment variables
+# if ray on spark code accessing corresponding information failed.
+# Note these environment variables must be set in spark executor side,
+# you should set them via setting spark config of
+# `spark.executorEnv.[EnvironmentVariableName]`
 RAY_ON_SPARK_WORKER_CPU_CORES = "RAY_ON_SPARK_WORKER_CPU_CORES"
-RAY_ON_SPARK_WORKER_GPU_CORES = "RAY_ON_SPARK_WORKER_GPU_CORES"
+RAY_ON_SPARK_WORKER_GPU_NUM = "RAY_ON_SPARK_WORKER_GPU_NUM"
+RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES = 'RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES'
+RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES = 'RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES'
+
+
+_RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET = 0.8
 
 
 def _get_cpu_cores():
@@ -210,13 +226,13 @@ def _get_cpu_cores():
 
 
 def _get_num_physical_gpus():
-    if RAY_ON_SPARK_WORKER_GPU_CORES in os.environ:
+    if RAY_ON_SPARK_WORKER_GPU_NUM in os.environ:
         # In some cases, spark standalone cluster might configure part of physical
         # GPUs for spark worker,
         # but we cannot easily get related configuration,
         # as a workaround, we provide an environmental variable config
         # `RAY_ON_SPARK_WORKER_CPU_CORES` for user.
-        return int(os.environ[RAY_ON_SPARK_WORKER_GPU_CORES])
+        return int(os.environ[RAY_ON_SPARK_WORKER_GPU_NUM])
 
     return int(
         subprocess.run(
@@ -283,7 +299,12 @@ def get_avail_mem_per_ray_worker_node(
 
     if err is not None:
         raise RuntimeError(
-            f"Inferring ray worker available memory failed, error: {err}"
+            f"Inferring ray worker node available memory failed, error: {err}. "
+            "You can bypass this error by setting following spark configs: "
+            "spark.executorEnv.RAY_ON_SPARK_WORKER_CPU_CORES, "
+            "spark.executorEnv.RAY_ON_SPARK_WORKER_GPU_NUM, "
+            "spark.executorEnv.RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES, "
+            "spark.executorEnv.RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES."
         )
     return (
         inferred_ray_worker_node_heap_mem_bytes,
