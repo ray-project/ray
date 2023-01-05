@@ -24,6 +24,7 @@ from ray.rllib.utils.typing import (
     AgentID,
     EnvActionType,
     EnvID,
+    EnvInfoDict,
     EnvObsType,
     MultiAgentDict,
     MultiEnvDict,
@@ -36,7 +37,7 @@ from ray.rllib.utils.typing import (
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from gym.envs.classic_control.rendering import SimpleImageViewer
+    from gymnasium.envs.classic_control.rendering import SimpleImageViewer
 
     from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -205,7 +206,6 @@ class EnvRunnerV2:
         multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         perf_stats: _PerfStats,
-        no_done_at_end: bool,
         rollout_fragment_length: int = 200,
         count_steps_by: str = "env_steps",
         render: bool = None,
@@ -219,8 +219,6 @@ class EnvRunnerV2:
                 `rollout_fragment_length` in size.
             callbacks: User callbacks to run on episode events.
             perf_stats: Record perf stats into this object.
-            no_done_at_end: Ignore the done=True at the end of the episode
-                and instead record done=False.
             rollout_fragment_length: The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
@@ -242,7 +240,6 @@ class EnvRunnerV2:
         self._multiple_episodes_in_batch = multiple_episodes_in_batch
         self._callbacks = callbacks
         self._perf_stats = perf_stats
-        self._no_done_at_end = no_done_at_end
         self._rollout_fragment_length = rollout_fragment_length
         self._count_steps_by = count_steps_by
         self._render = render
@@ -271,14 +268,14 @@ class EnvRunnerV2:
             return None
 
         try:
-            from gym.envs.classic_control.rendering import SimpleImageViewer
+            from gymnasium.envs.classic_control.rendering import SimpleImageViewer
 
             return SimpleImageViewer()
         except (ImportError, ModuleNotFoundError):
             self._render = False  # disable rendering
             logger.warning(
-                "Could not import gym.envs.classic_control."
-                "rendering! Try `pip install gym[all]`."
+                "Could not import gymnasium.envs.classic_control."
+                "rendering! Try `pip install gymnasium[all]`."
             )
 
         return None
@@ -338,7 +335,8 @@ class EnvRunnerV2:
         (
             unfiltered_obs,
             rewards,
-            dones,
+            terminateds,
+            truncateds,
             infos,
             off_policy_actions,
         ) = self._base_env.poll()
@@ -351,7 +349,8 @@ class EnvRunnerV2:
         active_envs, to_eval, outputs = self._process_observations(
             unfiltered_obs=unfiltered_obs,
             rewards=rewards,
-            dones=dones,
+            terminateds=terminateds,
+            truncateds=truncateds,
             infos=infos,
         )
         self._perf_stats.incr("raw_obs_processing_time", time.time() - t1)
@@ -410,7 +409,8 @@ class EnvRunnerV2:
         self,
         unfiltered_obs: MultiEnvDict,
         rewards: MultiEnvDict,
-        dones: MultiEnvDict,
+        terminateds: MultiEnvDict,
+        truncateds: MultiEnvDict,
         infos: MultiEnvDict,
     ) -> Tuple[
         Set[EnvID],
@@ -422,10 +422,13 @@ class EnvRunnerV2:
         Group data for active agents by policy. Reset environments that are done.
 
         Args:
-            unfiltered_obs: obs
-            rewards: rewards
-            dones: dones
-            infos: infos
+            unfiltered_obs: The unfiltered, raw observations from the BaseEnv
+                (vectorized, possibly multi-agent). Dict of dict: By env index,
+                then agent ID, then mapped to actual obs.
+            rewards: The rewards MultiEnvDict of the BaseEnv.
+            terminateds: The `terminated` flags MultiEnvDict of the BaseEnv.
+            truncateds: The `truncated` flags MultiEnvDict of the BaseEnv.
+            infos: The MultiEnvDict of infos dicts of the BaseEnv.
 
         Returns:
             A tuple of:
@@ -453,9 +456,10 @@ class EnvRunnerV2:
             # one of its sub-environments is faulty and should be restarted (and the
             # ongoing episode should not be used for training).
             if isinstance(env_obs, Exception):
-                assert dones[env_id]["__all__"] is True, (
+                assert terminateds[env_id]["__all__"] is True, (
                     f"ERROR: When a sub-environment (env-id {env_id}) returns an error "
-                    "as observation, the dones[__all__] flag must also be set to True!"
+                    "as observation, the terminateds[__all__] flag must also be set to "
+                    "True!"
                 )
                 # all_agents_obs is an Exception here.
                 # Drop this episode and skip to next.
@@ -480,7 +484,7 @@ class EnvRunnerV2:
                 self._call_on_episode_start(episode, env_id)
 
             # Check episode termination conditions.
-            if dones[env_id]["__all__"]:
+            if terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"]:
                 all_agents_done = True
             else:
                 all_agents_done = False
@@ -492,18 +496,28 @@ class EnvRunnerV2:
             # Agent sample batches grouped by policy. Each set of sample batches will
             # go through agent connectors together.
             sample_batches_by_policy = defaultdict(list)
-            # Whether an agent is done.
-            agent_dones = {}
+            # Whether an agent is terminated or truncated.
+            agent_terminateds = {}
+            agent_truncateds = {}
             for agent_id, obs in env_obs.items():
                 assert agent_id != "__all__"
 
                 policy_id: PolicyID = episode.policy_for(agent_id)
 
-                agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
-                agent_dones[agent_id] = agent_done
+                agent_terminated = bool(
+                    terminateds[env_id]["__all__"] or terminateds[env_id].get(agent_id)
+                )
+                agent_terminateds[agent_id] = agent_terminated
+                agent_truncated = bool(
+                    truncateds[env_id]["__all__"]
+                    or truncateds[env_id].get(agent_id, False)
+                )
+                agent_truncateds[agent_id] = agent_truncated
 
                 # A completely new agent is already done -> Skip entirely.
-                if not episode.has_init_obs(agent_id) and agent_done:
+                if not episode.has_init_obs(agent_id) and (
+                    agent_terminated or agent_truncated
+                ):
                     continue
 
                 values_dict = {
@@ -517,7 +531,10 @@ class EnvRunnerV2:
                     # Reward received after taking action at timestep t.
                     SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
                     # After taking action=a, did we reach terminal?
-                    SampleBatch.DONES: False if self._no_done_at_end else agent_done,
+                    SampleBatch.TERMINATEDS: agent_terminated,
+                    # Was the episode truncated artificially
+                    # (e.g. b/c of some time limit)?
+                    SampleBatch.TRUNCATEDS: agent_truncated,
                     SampleBatch.INFOS: infos[env_id].get(agent_id, {}),
                     SampleBatch.NEXT_OBS: obs,
                 }
@@ -528,13 +545,17 @@ class EnvRunnerV2:
             # The entire episode is done.
             if all_agents_done:
                 # Let's check to see if there are any agents that haven't got the
-                # last "done" obs yet. If there are, we have to create fake-last
+                # last obs yet. If there are, we have to create fake-last
                 # observations for them. (the environment is not required to do so if
-                # dones[__all__]=True).
+                # terminateds[__all__]==True or truncateds[__all__]==True).
                 for agent_id in episode.get_agents():
                     # If the latest obs we got for this agent is done, or if its
                     # episode state is already done, nothing to do.
-                    if agent_dones.get(agent_id, False) or episode.is_done(agent_id):
+                    if (
+                        agent_terminateds.get(agent_id, False)
+                        or agent_truncateds.get(agent_id, False)
+                        or episode.is_done(agent_id)
+                    ):
                         continue
 
                     policy_id: PolicyID = episode.policy_for(agent_id)
@@ -543,13 +564,23 @@ class EnvRunnerV2:
                     # Create a fake observation by sampling the original env
                     # observation space.
                     obs_space = get_original_space(policy.observation_space)
+                    # Although there is no obs for this agent, there may be
+                    # good rewards and info dicts for it.
+                    # This is the case for e.g. OpenSpiel games, where a reward
+                    # is only earned with the last step, but the obs for that
+                    # step is {}.
+                    reward = rewards[env_id].get(agent_id, 0.0)
+                    info = infos[env_id].get(agent_id, {})
                     values_dict = {
                         SampleBatch.T: episode.length,
                         SampleBatch.ENV_ID: env_id,
                         SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
-                        SampleBatch.REWARDS: 0.0,
-                        SampleBatch.DONES: True,
-                        SampleBatch.INFOS: {},
+                        # TODO(sven): These should be the summed-up(!) rewards since the
+                        #  last observation received for this agent.
+                        SampleBatch.REWARDS: reward,
+                        SampleBatch.TERMINATEDS: True,
+                        SampleBatch.TRUNCATEDS: truncateds[env_id].get(agent_id, False),
+                        SampleBatch.INFOS: info,
                         SampleBatch.NEXT_OBS: obs_space.sample(),
                     }
 
@@ -580,6 +611,7 @@ class EnvRunnerV2:
                         episode.add_init_obs(
                             agent_id=d.agent_id,
                             init_obs=d.data.raw_dict[SampleBatch.NEXT_OBS],
+                            init_infos=d.data.raw_dict[SampleBatch.INFOS],
                             t=d.data.raw_dict[SampleBatch.T],
                         )
                     else:
@@ -590,7 +622,8 @@ class EnvRunnerV2:
                     # Need to evaluate next actions.
                     if not (
                         all_agents_done
-                        or agent_dones.get(d.agent_id, False)
+                        or agent_terminateds.get(d.agent_id, False)
+                        or agent_truncateds.get(d.agent_id, False)
                         or episode.is_done(d.agent_id)
                     ):
                         # Add to eval set if env is not done and this particular agent
@@ -615,8 +648,8 @@ class EnvRunnerV2:
                     env_index=env_id,
                 )
 
-            # Episode is terminated/truncated for all agents:
-            # dones[__all__] == True.
+            # Episode is terminated/truncated for all agents
+            # (terminateds[__all__] == True or truncateds[__all__] == True).
             if all_agents_done:
                 # _handle_done_episode will build a MultiAgentBatch for all
                 # the agents that are done during this step of rollout in
@@ -624,7 +657,7 @@ class EnvRunnerV2:
                 self._handle_done_episode(
                     env_id,
                     env_obs,
-                    dones[env_id]["__all__"],
+                    terminateds[env_id]["__all__"] or truncateds[env_id]["__all__"],
                     active_envs,
                     to_eval,
                     outputs,
@@ -660,12 +693,10 @@ class EnvRunnerV2:
         episode: EpisodeV2 = self._active_episodes[env_id]
         batch_builder = self._batch_builders[env_id]
 
-        check_dones = is_done and not self._no_done_at_end
-
         episode.postprocess_episode(
             batch_builder=batch_builder,
             is_done=is_done,
-            check_dones=check_dones,
+            check_dones=is_done,
         )
 
         # If, we are not allowed to pack the next episode into the same
@@ -691,6 +722,7 @@ class EnvRunnerV2:
         self,
         env_id: EnvID,
         obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
+        infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
         episode: EpisodeV2,
         to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
     ):
@@ -716,6 +748,7 @@ class EnvRunnerV2:
                     agent_id,
                     {
                         SampleBatch.NEXT_OBS: obs,
+                        SampleBatch.INFOS: infos,
                         SampleBatch.T: episode.length,
                     },
                 )
@@ -728,6 +761,7 @@ class EnvRunnerV2:
                 episode.add_init_obs(
                     agent_id=d.agent_id,
                     init_obs=d.data.raw_dict[SampleBatch.NEXT_OBS],
+                    init_infos=d.data.raw_dict[SampleBatch.INFOS],
                     t=d.data.raw_dict[SampleBatch.T],
                 )
                 to_eval[policy_id].append(d)
@@ -735,7 +769,7 @@ class EnvRunnerV2:
     def _handle_done_episode(
         self,
         env_id: EnvID,
-        env_obs_or_exception: Union[MultiAgentDict, Exception],
+        env_obs_or_exception: MultiAgentDict,
         is_done: bool,
         active_envs: Set[EnvID],
         to_eval: Dict[PolicyID, List[AgentConnectorDataType]],
@@ -748,6 +782,7 @@ class EnvRunnerV2:
         Args:
             env_id: Environment ID.
             env_obs_or_exception: Last per-environment observation or Exception.
+            env_infos: Last per-environment infos.
             is_done: If all agents are done.
             active_envs: Set of active env ids.
             to_eval: Output container for policy eval data.
@@ -782,7 +817,7 @@ class EnvRunnerV2:
         # This would be ok, b/c the alternative would be the worker crashing
         # entirely.
         while True:
-            resetted_obs = self._base_env.try_reset(env_id)
+            resetted_obs, resetted_infos = self._base_env.try_reset(env_id)
 
             if resetted_obs is None or not isinstance(resetted_obs[env_id], Exception):
                 break
@@ -803,6 +838,7 @@ class EnvRunnerV2:
             self.__process_resetted_obs_for_eval(
                 env_id,
                 resetted_obs,
+                resetted_infos,
                 new_episode,
                 to_eval,
             )
@@ -1088,7 +1124,7 @@ class EnvRunnerV2:
 
                 # Notify agent connectors with this new policy output.
                 # Necessary for state buffering agent connectors, for example.
-                ac_data: AgentConnectorDataType = ActionConnectorDataType(
+                ac_data: ActionConnectorDataType = ActionConnectorDataType(
                     env_id,
                     agent_id,
                     input_dict,

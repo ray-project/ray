@@ -191,7 +191,7 @@ class _RemotePdb(Pdb):
         # Tell the debug loop to connect to the next task.
         data = json.dumps(
             {
-                "job_id": ray.get_runtime_context().job_id.hex(),
+                "job_id": ray.get_runtime_context().get_job_id(),
             }
         )
         _internal_kv_put(
@@ -259,7 +259,7 @@ def _connect_ray_pdb(
         "lineno": parentframeinfo.lineno,
         "traceback": "\n".join(traceback.format_exception(*sys.exc_info())),
         "timestamp": time.time(),
-        "job_id": ray.get_runtime_context().job_id.hex(),
+        "job_id": ray.get_runtime_context().get_job_id(),
     }
     _internal_kv_put(
         "RAY_PDB_{}".format(breakpoint_uuid),
@@ -312,6 +312,10 @@ def _driver_set_trace():
     pdb = _PdbWrap(enable_logging)
     frame = sys._getframe().f_back
     pdb.set_trace(frame)
+
+
+def _is_ray_debugger_enabled():
+    return "RAY_PDB" in os.environ
 
 
 def _post_mortem():

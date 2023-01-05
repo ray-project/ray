@@ -39,6 +39,7 @@ def setup_component_logger(
     max_bytes,
     backup_count,
     logger_name=None,
+    propagate=True,
 ):
     """Configure the root logger that is used for Ray's python components.
 
@@ -54,8 +55,9 @@ def setup_component_logger(
             to stderr.
         max_bytes: Same argument as RotatingFileHandler's maxBytes.
         backup_count: Same argument as RotatingFileHandler's backupCount.
-        logger_name: used to create or get the correspoding
+        logger_name: Used to create or get the correspoding
             logger in getLogger call. It will get the root logger by default.
+        propagate: Whether to propagate the log to the parent logger.
     Returns:
         the created or modified logger.
     """
@@ -74,6 +76,7 @@ def setup_component_logger(
     logger.setLevel(logging_level)
     handler.setFormatter(logging.Formatter(logging_format))
     logger.addHandler(handler)
+    logger.propagate = propagate
     return logger
 
 

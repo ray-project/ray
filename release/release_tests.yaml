@@ -489,7 +489,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 64 --use-gpu
+    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -2654,7 +2654,7 @@
 # RLlib tests
 ########################
 
-- name: rllib_learning_tests_a2c
+- name: rllib_learning_tests_a2c_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2668,15 +2668,38 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=a2c
+    script: python learning_tests/run.py --yaml-sub-dir=a2c --framework=tf
+
 
   alert: default
 
-- name: rllib_learning_tests_a3c
+- name: rllib_learning_tests_a2c_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=a2c --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_a3c_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2694,11 +2717,306 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=a3c
+    script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=tf
+
 
   alert: default
 
-- name: rllib_learning_tests_apex
+# TODO(sven, jungong, Kourosh): fix A3C on torch and tf2 and re-enable.
+#- name: rllib_learning_tests_a3c_torch
+#  group: RLlib tests
+#  working_dir: rllib_tests
+
+#  legacy:
+#    test_name: learning_tests
+#    test_suite: rllib_tests
+
+#  frequency: nightly
+#  team: rl
+#  env: staging
+
+#  cluster:
+#    cluster_env: app_config.yaml
+#    cluster_compute: 32cpus.yaml
+
+#  run:
+#    timeout: 18000
+#    script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=torch
+#    type: sdk_command
+#    file_manager: job
+
+#  alert: default
+
+- name: rllib_learning_tests_apex_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_24cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=apex --framework=tf
+
+
+  alert: default
+
+- name: rllib_learning_tests_apex_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_24cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=apex --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_appo_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf
+
+  alert: default
+
+- name: rllib_learning_tests_appo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_bc_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=bc --framework=tf
+
+  alert: default
+
+- name: rllib_learning_tests_bc_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=bc --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_cql_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=cql --framework=tf
+
+  alert: default
+
+- name: rllib_learning_tests_cql_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=cql --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_ddpg_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ddpg --framework=tf
+
+
+  alert: default
+
+- name: rllib_learning_tests_ddpg_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ddpg --framework=torch
+
+
+  alert: default
+
+- name: rllib_learning_tests_dqn_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=dqn --framework=tf
+
+
+  alert: default
+
+- name: rllib_learning_tests_dqn_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=dqn --framework=torch
+
+
+  alert: default
+
+- name: rllib_learning_tests_es_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2716,11 +3034,12 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=apex
+    script: python learning_tests/run.py --yaml-sub-dir=es --framework=tf
+
 
   alert: default
 
-- name: rllib_learning_tests_appo
+- name: rllib_learning_tests_es_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2734,37 +3053,16 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 2gpus_64cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo
+    script: python learning_tests/run.py --yaml-sub-dir=es --framework=torch
+
 
   alert: default
 
-- name: rllib_learning_tests_ppo
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
-  frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo
-
-  alert: default
-
-- name: rllib_learning_tests_bc
+- name: rllib_learning_tests_impala_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2782,11 +3080,12 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=bc
+    script: python learning_tests/run.py --yaml-sub-dir=impala --framework=tf
+
 
   alert: default
 
-- name: rllib_learning_tests_cql
+- name: rllib_learning_tests_impala_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2804,99 +3103,12 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=cql
+    script: python learning_tests/run.py --yaml-sub-dir=impala --framework=torch
+
 
   alert: default
 
-- name: rllib_learning_tests_ddpg
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
-  frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ddpg
-
-  alert: default
-
-- name: rllib_learning_tests_dqn
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
-  frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=dqn
-
-  alert: default
-
-- name: rllib_learning_tests_es
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
-  frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 4gpus_64cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=es
-
-  alert: default
-
-- name: rllib_learning_tests_impala
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: learning_tests
-    test_suite: rllib_tests
-
-  frequency: nightly
-  team: rl
-  env: staging
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=impala
-
-  alert: default
-
-- name: rllib_learning_tests_marwil
+- name: rllib_learning_tests_marwil_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2914,12 +3126,35 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=marwil
+    script: python learning_tests/run.py --yaml-sub-dir=marwil --framework=tf
+
 
   alert: default
 
+- name: rllib_learning_tests_marwil_torch
+  group: RLlib tests
+  working_dir: rllib_tests
 
-- name: rllib_learning_tests_sac
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=marwil --framework=torch
+
+
+  alert: default
+
+- name: rllib_learning_tests_ppo_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2937,11 +3172,12 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=sac
+    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf
+
 
   alert: default
 
-- name: rllib_learning_tests_slateq
+- name: rllib_learning_tests_ppo_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2959,12 +3195,12 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=slateq
+    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=torch
+
 
   alert: default
 
-
-- name: rllib_learning_tests_td3
+- name: rllib_learning_tests_sac_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2978,14 +3214,128 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=td3
+    script: python learning_tests/run.py --yaml-sub-dir=sac --framework=tf
+
 
   alert: default
 
+- name: rllib_learning_tests_sac_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=sac --framework=torch
+
+  alert: default
+
+- name: rllib_learning_tests_slateq_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=tf
+
+
+  alert: default
+
+- name: rllib_learning_tests_slateq_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=torch
+
+
+  alert: default
+
+- name: rllib_learning_tests_td3_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=td3 --framework=tf
+
+
+  alert: default
+
+- name: rllib_learning_tests_td3_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=td3 --framework=torch
+
+
+  alert: default
 
 - name: rllib_multi_gpu_learning_tests
   group: RLlib tests
@@ -3029,6 +3379,7 @@
     timeout: 7200
     script: python multi_gpu_with_lstm_learning_tests/run.py
 
+
   alert: default
 
 - name: rllib_multi_gpu_with_attention_learning_tests
@@ -3050,6 +3401,7 @@
   run:
     timeout: 7200
     script: python multi_gpu_with_attention_learning_tests/run.py
+
 
   alert: default
 
@@ -3077,6 +3429,7 @@
       num_nodes: 6
 
 
+
   smoke_test:
     frequency: nightly
 
@@ -3088,64 +3441,6 @@
 ########################
 # Core Nightly Tests
 ########################
-
-- name: shuffle_10gb
-  group: core-multi-test
-
-  team: core
-  frequency: nightly
-  working_dir: nightly_tests
-  env: staging
-
-  legacy:
-    test_name: shuffle_10gb
-    test_suite: nightly_tests
-
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_single.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
-
-    type: job
-
-- name: shuffle_50gb
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: shuffle_50gb
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_single.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=1e9
-
-- name: shuffle_50gb_large_partition
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: shuffle_50gb_large_partition
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_single.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6
 
 - name: shuffle_100gb
   group: core-multi-test
@@ -3168,69 +3463,6 @@
       num_nodes: 4
 
 
-- name: non_streaming_shuffle_100gb
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: non_streaming_shuffle_100gb
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_multi.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6
-      --no-streaming
-
-    wait_for_nodes:
-      num_nodes: 4
-
-
-- name: non_streaming_shuffle_50gb_large_partition
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: non_streaming_shuffle_50gb_large_partition
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_single.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6
-      --no-streaming
-
-
-- name: non_streaming_shuffle_50gb
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: non_streaming_shuffle_50gb
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_single.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=1e9
-      --no-streaming
-
-
 - name: stress_test_placement_group
   group: core-multi-test
   working_dir: nightly_tests
@@ -3248,27 +3480,8 @@
   run:
     timeout: 7200
     script: python stress_tests/test_placement_group.py
-
-- name: shuffle_1tb_1000_partition
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: shuffle_1tb_1000_partition
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  env: staging
-  cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
-
-  run:
-    timeout: 3000
-    script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
-    wait_for_nodes:
-      num_nodes: 20
-
+    type: sdk_command
+    file_manager: sdk
 
 - name: shuffle_1tb_5000_partitions
   group: core-multi-test
@@ -3290,23 +3503,6 @@
     wait_for_nodes:
       num_nodes: 20
 
-
-- name: decision_tree_autoscaling
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: decision_tree_autoscaling
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  cluster:
-    cluster_env: decision_tree/decision_tree_app_config.yaml
-    cluster_compute: decision_tree/autoscaling_compute.yaml
-
-  run:
-    timeout: 3000
-    script: python decision_tree/cart_with_tree.py
 
 - name: decision_tree_autoscaling_20_runs
   group: core-multi-test
@@ -3344,28 +3540,6 @@
     timeout: 4000
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
       --no-streaming
-
-
-- name: pg_long_running_performance_test
-  group: core-multi-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: pg_long_running_performance_test
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  cluster:
-    cluster_env: placement_group_tests/app_config.yaml
-    cluster_compute: placement_group_tests/long_running_test_compute.yaml
-
-  run:
-    timeout: 3600
-    script: python placement_group_tests/long_running_performance_test.py --num-stages
-      2000
-
-    wait_for_nodes:
-      num_nodes: 2
 
 
 - name: microbenchmark
@@ -3424,25 +3598,6 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
-- name: dask_on_ray_10gb_sort
-  group: core-daily-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: dask_on_ray_10gb_sort
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  cluster:
-    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
-    cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
-
-  run:
-    timeout: 7200
-    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions
-      50 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
-
-
 - name: dask_on_ray_100gb_sort
   group: core-daily-test
   working_dir: nightly_tests
@@ -3461,42 +3616,6 @@
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 100_000_000_000 --npartitions
       200 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
-
-- name: dask_on_ray_large_scale_test_no_spilling
-  group: core-daily-test
-  working_dir: nightly_tests
-  legacy:
-    test_name: dask_on_ray_large_scale_test_no_spilling
-    test_suite: nightly_tests
-
-  frequency: nightly
-  team: core
-  cluster:
-    cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
-    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
-      20 --error_rate 0  --data_save_path /tmp/ray
-
-    wait_for_nodes:
-      num_nodes: 21
-
-
-  smoke_test:
-    frequency: nightly
-    cluster:
-      app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
-      cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
-
-    run:
-      timeout: 7200
-      script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb
-        20 --error_rate 0  --data_save_path /tmp/ray
-
-      wait_for_nodes:
-        num_nodes: 5
 
 - name: dask_on_ray_large_scale_test_spilling
   group: core-daily-test
@@ -3988,28 +4107,6 @@
       num_nodes: 250
 
 
-- name: scheduling_test_many_0s_tasks_single_node
-  group: core-scalability-test
-  working_dir: benchmarks
-  legacy:
-    test_name: scheduling_test_many_0s_tasks_single_node
-    test_suite: benchmark_tests
-
-  frequency: nightly
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: scheduling.yaml
-
-  run:
-    timeout: 3600
-    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
-      --task-duration-s=0 --total-num-actors=1 --num-actors-per-nodes=1
-
-    wait_for_nodes:
-      num_nodes: 32
-
-
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
   working_dir: benchmarks
@@ -4221,6 +4318,26 @@
     timeout: 1800
     script: python read_tfrecords_benchmark.py
 
+    type: sdk_command
+    file_manager: sdk
+
+- name: map_batches_benchmark_single_node
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python map_batches_benchmark.py
+
+    type: sdk_command
+    file_manager: sdk
 
 - name: pipelined_training_50_gb
   group: core-dataset-tests
