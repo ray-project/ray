@@ -4455,7 +4455,7 @@
     timeout: 7200
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 21
 
 - name: dataset_shuffle_sort_1tb
   group: core-dataset-tests
@@ -4474,7 +4474,7 @@
     timeout: 7200
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 21
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
   group: core-dataset-tests
@@ -4493,7 +4493,7 @@
     timeout: 7200
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 21
 
 - name: dataset_shuffle_push_based_sort_1tb
   group: core-dataset-tests
@@ -4512,7 +4512,7 @@
     timeout: 7200
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 21
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
   group: core-dataset-tests
@@ -4665,7 +4665,7 @@
     prepare: ' python setup_chaos.py --node-kill-interval 1200 --max-nodes-to-kill 3'
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 21
 
 - name: chaos_dataset_shuffle_sort_1tb
   group: core-dataset-tests
@@ -4685,7 +4685,7 @@
     prepare: 'python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 21
 
 - name: chaos_dataset_shuffle_random_shuffle_1tb
   group: core-dataset-tests
@@ -4708,7 +4708,7 @@
     prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 21
 
 - name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
   group: core-dataset-tests
@@ -4731,7 +4731,7 @@
     prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 21
 
 #####################
 # Observability tests
