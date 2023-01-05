@@ -13,6 +13,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
+from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorType
 from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
@@ -4150,6 +4151,13 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=10)
+    ds = ds.map_batches(lambda x: [])
+    ds = ds.map_batches(lambda x: x)
+    assert ds.num_blocks() == 10, ds
+
+
 def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
     xs = [x % 3 for x in list(range(100))]
 
@@ -5389,6 +5397,23 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
     schema = ds.schema()
     ds.stats()
     assert schema == ds.schema()
+
+
+def test_ragged_tensors(ray_start_regular_shared):
+    """Test Arrow type promotion between ArrowTensorType and
+    ArrowVariableShapedTensorType when a column contains ragged tensors."""
+    import numpy as np
+
+    ds = ray.data.from_items(
+        [
+            {"spam": np.zeros((32, 32, 5))},
+            {"spam": np.zeros((64, 64, 5))},
+        ]
+    )
+    new_type = ds.schema().types[0].scalar_type
+    assert ds.schema().types == [
+        ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
+    ]
 
 
 if __name__ == "__main__":
