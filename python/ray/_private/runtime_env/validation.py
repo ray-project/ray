@@ -148,7 +148,7 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
         if set(pip.keys()) - {"packages", "pip_check", "pip_version"}:
             raise ValueError(
                 "runtime_env['pip'] can only have these fields: "
-                "packages, pip_check and pip_check, but got: "
+                "packages, pip_check and pip_version, but got: "
                 f"{list(pip.keys())}"
             )
 
@@ -231,18 +231,39 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, 
     This is validated to verify that all keys and vals are strings.
 
     If an empty dictionary is passed, we return `None` for consistency.
+
+    Args:
+        env_vars: A dictionary of environment variables to set in the
+            runtime environment.
+
+    Returns:
+        The validated env_vars dictionary, or None if it was empty.
+
+    Raises:
+        TypeError: If the env_vars is not a dictionary of strings. The error message
+            will include the type of the invalid value.
     """
     assert env_vars is not None
     if len(env_vars) == 0:
         return None
 
-    if not (
-        isinstance(env_vars, dict)
-        and all(
-            isinstance(k, str) and isinstance(v, str) for (k, v) in env_vars.items()
+    if not isinstance(env_vars, dict):
+        raise TypeError(
+            "runtime_env['env_vars'] must be of type "
+            f"Dict[str, str], got {type(env_vars)}"
         )
-    ):
-        raise TypeError("runtime_env['env_vars'] must be of type Dict[str, str]")
+
+    for key, val in env_vars.items():
+        if not isinstance(key, str):
+            raise TypeError(
+                "runtime_env['env_vars'] must be of type "
+                f"Dict[str, str], but the key {key} is of type {type(key)}"
+            )
+        if not isinstance(val, str):
+            raise TypeError(
+                "runtime_env['env_vars'] must be of type "
+                f"Dict[str, str], but the value {val} is of type {type(val)}"
+            )
 
     return env_vars
 

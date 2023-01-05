@@ -326,7 +326,9 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
         RAY_CHECK_OK(status);
 
         if (RescheduleIfStillHasUnplacedBundles(placement_group_id)) {
-          // Don't do callback if it still has unplaced bundles.
+          // If all the bundles are not created yet, don't complete
+          // the creation and invoke a callback.
+          // The call back will be called when all bundles are created.
           return;
         }
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
@@ -341,6 +343,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
           placement_group_to_create_callbacks_.erase(pg_to_create_iter);
         }
       }));
+  lifetime_num_placement_groups_created_++;
   io_context_.post([this] { SchedulePendingPlacementGroups(); },
                    "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
   MarkSchedulingDone();
@@ -928,6 +931,10 @@ void GcsPlacementGroupManager::RecordMetrics() const {
                                                      "Registered");
   ray::stats::STATS_gcs_placement_group_count.Record(infeasible_placement_groups_.size(),
                                                      "Infeasible");
+  if (usage_stats_client_) {
+    usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::PG_NUM_CREATED,
+                                                 lifetime_num_placement_groups_created_);
+  }
   placement_group_state_counter_->FlushOnChangeCallbacks();
 }
 

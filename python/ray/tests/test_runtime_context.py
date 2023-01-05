@@ -305,6 +305,13 @@ def test_no_auto_init(shutdown_only):
     assert not ray.is_initialized()
 
 
+def test_errors_when_ray_not_initialized():
+    with pytest.raises(AssertionError, match="Ray has not been initialized"):
+        ray.get_runtime_context().get_job_id()
+    with pytest.raises(AssertionError, match="Ray has not been initialized"):
+        ray.get_runtime_context().get_node_id()
+
+
 if __name__ == "__main__":
     import pytest
 

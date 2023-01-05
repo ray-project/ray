@@ -13,7 +13,7 @@ const useStyles = makeStyles((theme) =>
       backgroundColor: theme.palette.background.paper,
       border: "1px solid #dadde9",
       color: theme.palette.text.primary,
-      padding: theme.spacing(1.5),
+      padding: theme.spacing(1),
     },
   }),
 );

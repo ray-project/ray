@@ -36,14 +36,14 @@ if not os.environ.get("CI"):
     # packages and fall back all the dependencies to current python's site.
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
-REQUEST_VERSIONS = ["2.2.0", "2.3.0"]
+EMOJI_VERSIONS = ["2.1.0", "2.2.0"]
 
 _WIN32 = os.name == "nt"
 
 
 @pytest.fixture(scope="session")
 def conda_envs(tmp_path_factory):
-    """Creates two conda env with different requests versions."""
+    """Creates two conda env with different `emoji` package versions."""
     conda_path = get_conda_bin_executable("conda")
     init_cmd = f". {os.path.dirname(conda_path)}" f"/../etc/profile.d/conda.sh"
 
@@ -72,7 +72,7 @@ def conda_envs(tmp_path_factory):
 
         _inject_ray_to_conda_site(get_conda_env_dir(env_name))
         ray_deps: List[str] = _resolve_install_from_source_ray_dependencies()
-        ray_deps.append(f"requests=={package_version}")
+        ray_deps.append(f"emoji=={package_version}")
 
         reqs = tmp_path_factory.mktemp("reqs") / "requirements.txt"
         with reqs.open("wt") as fid:
@@ -105,30 +105,30 @@ def conda_envs(tmp_path_factory):
             print(proc.stderr.decode())
             assert False
 
-    for package_version in REQUEST_VERSIONS:
+    for package_version in EMOJI_VERSIONS:
         create_package_env(
             env_name=f"package-{package_version}", package_version=package_version
         )
 
     yield
 
-    for package_version in REQUEST_VERSIONS:
+    for package_version in EMOJI_VERSIONS:
         delete_env(env_name=f"package-{package_version}")
 
 
 @ray.remote
-def get_requests_version():
-    import requests  # noqa: E811
+def get_emoji_version():
+    import emoji  # noqa: E811
 
-    return requests.__version__
+    return emoji.__version__
 
 
 @ray.remote
 class VersionActor:
-    def get_requests_version(self):
-        import requests  # noqa: E811
+    def get_emoji_version(self):
+        import emoji  # noqa: E811
 
-        return requests.__version__
+        return emoji.__version__
 
 
 check_remote_client_conda = """
@@ -138,8 +138,8 @@ context = (ray.client("localhost:24001")
               .connect())
 @ray.remote
 def get_package_version():
-    import requests
-    return requests.__version__
+    import emoji
+    return emoji.__version__
 
 assert ray.get(get_package_version.remote()) == "{package_version}"
 context.disconnect()
@@ -160,18 +160,16 @@ context.disconnect()
     indirect=True,
 )
 def test_client_tasks_and_actors_inherit_from_driver(conda_envs, call_ray_start):
-    for i, package_version in enumerate(REQUEST_VERSIONS):
+    for i, package_version in enumerate(EMOJI_VERSIONS):
         runtime_env = {"conda": f"package-{package_version}"}
         with ray.client("localhost:24001").env(runtime_env).connect():
-            assert ray.get(get_requests_version.remote()) == package_version
+            assert ray.get(get_emoji_version.remote()) == package_version
             actor_handle = VersionActor.remote()
-            assert (
-                ray.get(actor_handle.get_requests_version.remote()) == package_version
-            )
+            assert ray.get(actor_handle.get_emoji_version.remote()) == package_version
 
             # Ensure that we can have a second client connect using the other
             # conda environment.
-            other_package_version = REQUEST_VERSIONS[(i + 1) % 2]
+            other_package_version = EMOJI_VERSIONS[(i + 1) % 2]
             run_string_as_driver(
                 check_remote_client_conda.format(package_version=other_package_version)
             )
@@ -185,26 +183,26 @@ def test_task_actor_conda_env(conda_envs, shutdown_only):
     ray.init()
 
     # Basic conda runtime env
-    for package_version in REQUEST_VERSIONS:
+    for package_version in EMOJI_VERSIONS:
         runtime_env = {"conda": f"package-{package_version}"}
 
-        task = get_requests_version.options(runtime_env=runtime_env)
+        task = get_emoji_version.options(runtime_env=runtime_env)
         assert ray.get(task.remote()) == package_version
 
         actor = VersionActor.options(runtime_env=runtime_env).remote()
-        assert ray.get(actor.get_requests_version.remote()) == package_version
+        assert ray.get(actor.get_emoji_version.remote()) == package_version
 
     # Runtime env should inherit to nested task
     @ray.remote
     def wrapped_version():
-        return ray.get(get_requests_version.remote())
+        return ray.get(get_emoji_version.remote())
 
     @ray.remote
     class Wrapper:
         def wrapped_version(self):
-            return ray.get(get_requests_version.remote())
+            return ray.get(get_emoji_version.remote())
 
-    for package_version in REQUEST_VERSIONS:
+    for package_version in EMOJI_VERSIONS:
         runtime_env = {"conda": f"package-{package_version}"}
 
         task = wrapped_version.options(runtime_env=runtime_env)
@@ -219,10 +217,10 @@ def test_task_actor_conda_env(conda_envs, shutdown_only):
     reason="must be run from within a conda environment",
 )
 def test_job_config_conda_env(conda_envs, shutdown_only):
-    for package_version in REQUEST_VERSIONS:
+    for package_version in EMOJI_VERSIONS:
         runtime_env = {"conda": f"package-{package_version}"}
         ray.init(runtime_env=runtime_env)
-        assert ray.get(get_requests_version.remote()) == package_version
+        assert ray.get(get_emoji_version.remote()) == package_version
         ray.shutdown()
 
 
@@ -752,23 +750,23 @@ def test_simultaneous_install(shutdown_only):
             self.key = key
 
         def get(self):
-            import requests
+            import emoji
 
-            return (self.key, requests.__version__)
+            return (self.key, emoji.__version__)
 
     # Before we used a global lock on conda installs, these two envs would be
     # installed concurrently, leading to errors:
     # https://github.com/ray-project/ray/issues/17086
     # Now we use a global lock, so the envs are installed sequentially.
     worker_1 = VersionWorker.options(
-        runtime_env={"pip": {"packages": ["requests==2.2.0"], "pip_check": False}}
+        runtime_env={"pip": {"packages": ["emoji==2.1.0"], "pip_check": False}}
     ).remote(key=1)
     worker_2 = VersionWorker.options(
-        runtime_env={"pip": {"packages": ["requests==2.3.0"], "pip_check": False}}
+        runtime_env={"pip": {"packages": ["emoji==2.2.0"], "pip_check": False}}
     ).remote(key=2)
 
-    assert ray.get(worker_1.get.remote()) == (1, "2.2.0")
-    assert ray.get(worker_2.get.remote()) == (2, "2.3.0")
+    assert ray.get(worker_1.get.remote()) == (1, "2.1.0")
+    assert ray.get(worker_2.get.remote()) == (2, "2.2.0")
 
 
 CLIENT_SERVER_PORT = 24001

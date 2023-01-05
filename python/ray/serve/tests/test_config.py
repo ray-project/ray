@@ -28,9 +28,27 @@ def test_autoscaling_config_validation():
         # max_replicas must be nonnegative
         AutoscalingConfig(target_num_ongoing_requests_per_replica=-1)
 
+    # max_replicas must be greater than or equal to min_replicas
     with pytest.raises(ValueError):
-        # max_replicas must be greater than or equal to min_replicas
         AutoscalingConfig(min_replicas=100, max_replicas=1)
+    AutoscalingConfig(min_replicas=1, max_replicas=100)
+    AutoscalingConfig(min_replicas=10, max_replicas=10)
+
+    # initial_replicas must be greater than or equal to min_replicas
+    with pytest.raises(ValueError):
+        AutoscalingConfig(min_replicas=10, initial_replicas=1)
+    with pytest.raises(ValueError):
+        AutoscalingConfig(min_replicas=10, initial_replicas=1, max_replicas=15)
+    AutoscalingConfig(min_replicas=5, initial_replicas=10, max_replicas=15)
+    AutoscalingConfig(min_replicas=5, initial_replicas=5, max_replicas=15)
+
+    # initial_replicas must be less than or equal to max_replicas
+    with pytest.raises(ValueError):
+        AutoscalingConfig(initial_replicas=10, max_replicas=8)
+    with pytest.raises(ValueError):
+        AutoscalingConfig(min_replicas=1, initial_replicas=10, max_replicas=8)
+    AutoscalingConfig(min_replicas=1, initial_replicas=4, max_replicas=5)
+    AutoscalingConfig(min_replicas=1, initial_replicas=5, max_replicas=5)
 
     # Default values should not raise an error
     AutoscalingConfig()

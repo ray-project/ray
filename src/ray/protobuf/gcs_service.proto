@@ -236,29 +236,6 @@ service HeartbeatInfoGcsService {
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
 }
 
-message AddProfileDataRequest {
-  ProfileTableData profile_data = 1;
-}
-
-message AddProfileDataReply {
-  GcsStatus status = 1;
-}
-
-message GetAllProfileInfoRequest {}
-
-message GetAllProfileInfoReply {
-  GcsStatus status = 1;
-  repeated ProfileTableData profile_info_list = 2;
-}
-
-// Service for stats access.
-service StatsGcsService {
-  // Add profile data to GCS Service.
-  rpc AddProfileData(AddProfileDataRequest) returns (AddProfileDataReply);
-  // Get information of all profiles from GCS Service.
-  rpc GetAllProfileInfo(GetAllProfileInfoRequest) returns (GetAllProfileInfoReply);
-}
-
 message ReportWorkerFailureRequest {
   WorkerTableData worker_failure = 1;
 }
@@ -622,4 +599,50 @@ service NodeInfoGcsService {
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
+
+message AddTaskEventDataRequest {
+  // Task event data from core worker.
+  TaskEventData data = 1;
+}
+
+message AddTaskEventDataReply {
+  GcsStatus status = 1;
+}
+
+message GetTaskEventsRequest {
+  message TaskIDs {
+    repeated string vals = 1;
+  }
+  oneof select_by {
+    // Get task events from a job.
+    string job_id = 1;
+    // Get task events from a set of tasks.
+    TaskIDs task_ids = 2;
+  }
+
+  // Maximum number of TaskEvents to return.
+  // If set, the exact `limit` TaskEvents returned do not have any ordering or selection
+  // guarantee.
+  optional int64 limit = 3;
+}
+
+message GetTaskEventsReply {
+  GcsStatus status = 1;
+  // Task events returned.
+  repeated TaskEvents events_by_task = 2;
+  // Number of profile events dropped at GCS and worker for the queried events.
+  int32 num_profile_task_events_dropped = 3;
+  // Number of status events dropped at GCS and worker for the queried events.
+  int32 num_status_task_events_dropped = 4;
+}
+
+// Service for task info access.
+service TaskInfoGcsService {
+  // Add task event data to GCS.
+  rpc AddTaskEventData(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
+
+  // Get task events.
+  rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
+}
+
 ///////////////////////////////////////////////////////////////////////////////

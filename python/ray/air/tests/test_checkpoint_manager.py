@@ -30,7 +30,15 @@ def test_limited_persistent_checkpoints():
 
 
 def test_no_persistent_checkpoints():
-    cpm = _CheckpointManager(checkpoint_strategy=CheckpointConfig(num_to_keep=0))
+    # Remove argument validation in order to test `num_to_keep=0` in the common
+    # AIR checkpoint manager
+    # CheckpointConfig doesn't allow this since Tune + Train both use Tune's
+    # checkpoint manager, which requires `num_to_keep >= 1`
+    class _CheckpointConfig(CheckpointConfig):
+        def __post_init__(self):
+            pass
+
+    cpm = _CheckpointManager(checkpoint_strategy=_CheckpointConfig(num_to_keep=0))
 
     for i in range(10):
         cpm.register_checkpoint(

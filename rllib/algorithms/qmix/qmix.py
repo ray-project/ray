@@ -79,6 +79,12 @@ class QMixConfig(SimpleQConfig):
         self.optim_eps = 0.00001
         self.grad_clip = 10
 
+        # QMix-torch overrides the TorchPolicy's learn_on_batch w/o specifying a
+        # alternative `learn_on_loaded_batch` alternative for the GPU.
+        # TODO: This hack will be resolved once we move all algorithms to the new
+        #  RLModule/RLTrainer APIs.
+        self.simple_optimizer = True
+
         # Override some of AlgorithmConfig's default values with QMix-specific values.
         # .training()
         self.lr = 0.0005
@@ -134,10 +140,8 @@ class QMixConfig(SimpleQConfig):
         # .evaluation()
         # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
         # The evaluation stats will be reported under the "evaluation" metric key.
-        # Note that evaluation is currently not parallelized, and that for Ape-X
-        # metrics are already only reported for the lowest epsilon workers.
         self.evaluation(
-            evaluation_config={"explore": False}
+            evaluation_config=AlgorithmConfig.overrides(explore=False)
         )
         # __sphinx_doc_end__
         # fmt: on

@@ -3,7 +3,7 @@ import concurrent
 import copy
 from datetime import datetime
 import functools
-import gym
+import gymnasium as gym
 import importlib
 import json
 import logging
@@ -11,8 +11,10 @@ import numpy as np
 import os
 from packaging import version
 import pkg_resources
+import re
 import tempfile
 import time
+import tree  # pip install dm_tree
 from typing import (
     Callable,
     Container,
@@ -25,9 +27,6 @@ from typing import (
     Type,
     Union,
 )
-from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
-import tree
 
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -60,6 +59,8 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
+from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
@@ -381,7 +382,8 @@ class Algorithm(Trainable):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
+            env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
+            logdir_prefix = f"{str(self)}_{env_descr_for_dir}_{timestr}"
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 # Possible race condition if dir is created several times on
                 # rollout workers
@@ -491,15 +493,6 @@ class Algorithm(Trainable):
         self._record_usage(self.config)
 
         self.callbacks = self.config["callbacks"]()
-        log_level = self.config.get("log_level")
-        if log_level in ["WARN", "ERROR"]:
-            logger.info(
-                "Current log_level is {}. For more information, "
-                "set 'log_level': 'INFO' / 'DEBUG' or use the -v and "
-                "-vv flags.".format(log_level)
-            )
-        if self.config.get("log_level"):
-            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # Create local replay buffer if necessary.
         self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
@@ -523,9 +516,9 @@ class Algorithm(Trainable):
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
                 old="config.input_evaluation={}".format(input_evaluation),
-                new="config.evaluation(evaluation_config={"
-                f"'off_policy_estimation_methods'={ope_dict}"
-                "})",
+                new="config.evaluation(evaluation_config=config.overrides("
+                f"off_policy_estimation_methods={ope_dict}"
+                "))",
                 error=True,
                 help="Running OPE during training is not recommended.",
             )
@@ -981,7 +974,7 @@ class Algorithm(Trainable):
                         for ma_batch in batches:
                             ma_batch = ma_batch.as_multi_agent()
                             for batch in ma_batch.policy_batches.values():
-                                assert np.sum(batch[SampleBatch.DONES])
+                                assert batch.is_terminated_or_truncated()
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
@@ -1191,7 +1184,7 @@ class Algorithm(Trainable):
                 for ma_batch in batches:
                     ma_batch = ma_batch.as_multi_agent()
                     for batch in ma_batch.policy_batches.values():
-                        assert np.sum(batch[SampleBatch.DONES])
+                        assert batch.is_terminated_or_truncated()
             # n timesteps per returned batch.
             else:
                 num_units_done += (

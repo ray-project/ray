@@ -1,28 +1,56 @@
 from collections import defaultdict
+import logging
+import pickle
 from typing import Any
 
 import numpy as np
+from ray.rllib.utils.annotations import override
 import tree  # dm_tree
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
+    Connector,
     ConnectorContext,
-    register_connector,
 )
+from ray import cloudpickle
+from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
 from ray.util.annotations import PublicAPI
 
 
+logger = logging.getLogger(__name__)
+
+
 @PublicAPI(stability="alpha")
 class StateBufferConnector(AgentConnector):
-    def __init__(self, ctx: ConnectorContext):
+    def __init__(self, ctx: ConnectorContext, states: Any = None):
         super().__init__(ctx)
 
         self._initial_states = ctx.initial_states
         self._action_space_struct = get_base_struct_from_space(ctx.action_space)
+
         self._states = defaultdict(lambda: defaultdict(lambda: (None, None, None)))
+        # TODO(jungong) : we would not need this if policies are never stashed
+        # during the rollout of a single episode.
+        if states:
+            try:
+                self._states = cloudpickle.loads(states)
+            except pickle.UnpicklingError:
+                # StateBufferConnector states are only needed for rare cases
+                # like stashing then restoring a policy during the rollout of
+                # a single episode.
+                # It is ok to ignore the error for most of the cases here.
+                logger.info(
+                    "Can not restore StateBufferConnector states. This warning can "
+                    "usually be ignore, unless it is from restoring a stashed policy."
+                )
+
+    @override(Connector)
+    def in_eval(self):
+        self._states.clear()
+        super().in_eval()
 
     def reset(self, env_id: str):
         # States should not be carried over between episodes.
@@ -70,11 +98,18 @@ class StateBufferConnector(AgentConnector):
         return ac_data
 
     def to_state(self):
-        return StateBufferConnector.__name__, None
+        # Note(jungong) : it is ok to use cloudpickle here for stats because:
+        # 1. self._states may contain arbitary data objects, and will be hard
+        #     to serialize otherwise.
+        # 2. seriazlized states are only useful if a policy is stashed and
+        #     restored during the rollout of a single episode. So it is ok to
+        #     use cloudpickle for such non-persistent data bits.
+        states = cloudpickle.dumps(self._states)
+        return StateBufferConnector.__name__, states
 
     @staticmethod
     def from_state(ctx: ConnectorContext, params: Any):
-        return StateBufferConnector(ctx)
+        return StateBufferConnector(ctx, params)
 
 
 register_connector(StateBufferConnector.__name__, StateBufferConnector)

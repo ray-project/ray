@@ -1,15 +1,20 @@
 import base64
+import numpy as np
 import io
 import zlib
 from typing import Dict
 
-import gym
-import numpy as np
-
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.gym import try_import_gymnasium_and_gym
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
+
+gym, old_gym = try_import_gymnasium_and_gym()
+
+old_gym_text_class = None
+if old_gym:
+    old_gym_text_class = getattr(old_gym.spaces, "Text", None)
 
 
 def _serialize_ndarray(array: np.ndarray) -> str:
@@ -45,7 +50,7 @@ def _deserialize_ndarray(b64_string: str) -> np.ndarray:
 
 @DeveloperAPI
 def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
-    """Serialize a gym Space into JSON-serializable dict.
+    """Serialize a gym Space into a JSON-serializable dict.
 
     Args:
         space: gym.spaces.Space
@@ -72,6 +77,13 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         if hasattr(sp, "start"):
             d["start"] = sp.start
         return d
+
+    def _multi_binary(sp: gym.spaces.MultiBinary) -> Dict:
+        return {
+            "space": "multi-binary",
+            "n": sp.n,
+            "dtype": sp.dtype.str,
+        }
 
     def _multi_discrete(sp: gym.spaces.MultiDiscrete) -> Dict:
         return {
@@ -115,22 +127,55 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
             d[k] = gym_space_to_dict(s)
         return d
 
+    def _text(sp: "gym.spaces.Text") -> Dict:
+        # Note (Kourosh): This only works in gym >= 0.25.0
+        charset = getattr(sp, "character_set", None)
+        if charset is None:
+            charset = getattr(sp, "charset", None)
+        if charset is None:
+            raise ValueError(
+                "Text space must have a character_set or charset attribute"
+            )
+        return {
+            "space": "text",
+            "min_length": sp.min_length,
+            "max_length": sp.max_length,
+            "charset": charset,
+        }
+
     if isinstance(space, gym.spaces.Box):
         return _box(space)
     elif isinstance(space, gym.spaces.Discrete):
         return _discrete(space)
+    elif isinstance(space, gym.spaces.MultiBinary):
+        return _multi_binary(space)
     elif isinstance(space, gym.spaces.MultiDiscrete):
         return _multi_discrete(space)
     elif isinstance(space, gym.spaces.Tuple):
         return _tuple(space)
     elif isinstance(space, gym.spaces.Dict):
         return _dict(space)
+    elif isinstance(space, gym.spaces.Text):
+        return _text(space)
     elif isinstance(space, Simplex):
         return _simplex(space)
     elif isinstance(space, Repeated):
         return _repeated(space)
     elif isinstance(space, FlexDict):
         return _flex_dict(space)
+    # Old gym Spaces.
+    elif old_gym and isinstance(space, old_gym.spaces.Box):
+        return _box(space)
+    elif old_gym and isinstance(space, old_gym.spaces.Discrete):
+        return _discrete(space)
+    elif old_gym and isinstance(space, old_gym.spaces.MultiDiscrete):
+        return _multi_discrete(space)
+    elif old_gym and isinstance(space, old_gym.spaces.Tuple):
+        return _tuple(space)
+    elif old_gym and isinstance(space, old_gym.spaces.Dict):
+        return _dict(space)
+    elif old_gym and old_gym_text_class and isinstance(space, old_gym_text_class):
+        return _text(space)
     else:
         raise ValueError("Unknown space type for serialization, ", type(space))
 
@@ -175,7 +220,10 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     def _discrete(d: Dict) -> gym.spaces.Discrete:
         return gym.spaces.Discrete(**__common(d))
 
-    def _multi_discrete(d: Dict) -> gym.spaces.Discrete:
+    def _multi_binary(d: Dict) -> gym.spaces.MultiBinary:
+        return gym.spaces.MultiBinary(**__common(d))
+
+    def _multi_discrete(d: Dict) -> gym.spaces.MultiDiscrete:
         ret = d.copy()
         ret.update(
             {
@@ -203,15 +251,20 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         spaces = {k: gym_space_from_dict(s) for k, s in d.items() if k != "space"}
         return FlexDict(spaces=spaces)
 
+    def _text(d: Dict) -> "gym.spaces.Text":
+        return gym.spaces.Text(**__common(d))
+
     space_map = {
         "box": _box,
         "discrete": _discrete,
+        "multi-binary": _multi_binary,
         "multi-discrete": _multi_discrete,
         "tuple": _tuple,
         "dict": _dict,
         "simplex": _simplex,
         "repeated": _repeated,
         "flex_dict": _flex_dict,
+        "text": _text,
     }
 
     space_type = d["space"]

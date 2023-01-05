@@ -13,6 +13,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
+from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorType
 from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
@@ -552,12 +553,13 @@ def test_tensors_basic(ray_start_regular_shared):
     np.testing.assert_equal(res, [np.array([2]), np.array([3])])
 
     # Arrow columns in NumPy format.
-    def mapper(col_arrs):
+    def multi_mapper(col_arrs):
         assert isinstance(col_arrs, dict)
         assert list(col_arrs.keys()) == ["a", "b", "c"]
         assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
         return {"a": col_arrs["a"] + 1, "b": col_arrs["b"] + 1, "c": col_arrs["c"] + 1}
 
+    # Multiple columns.
     t = pa.table(
         {
             "a": [1, 2, 3],
@@ -567,7 +569,7 @@ def test_tensors_basic(ray_start_regular_shared):
     )
     res = (
         ray.data.from_arrow(t)
-        .map_batches(mapper, batch_size=2, batch_format="numpy")
+        .map_batches(multi_mapper, batch_size=2, batch_format="numpy")
         .take()
     )
     np.testing.assert_equal(
@@ -579,8 +581,30 @@ def test_tensors_basic(ray_start_regular_shared):
         ],
     )
 
+    def single_mapper(col_arrs):
+        assert isinstance(col_arrs, dict)
+        assert list(col_arrs.keys()) == ["c"]
+        assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
+        return {"c": col_arrs["c"] + 1}
+
+    # Single column (should still yield ndarray dict batches).
+    t = t.select(["c"])
+    res = (
+        ray.data.from_arrow(t)
+        .map_batches(single_mapper, batch_size=2, batch_format="numpy")
+        .take()
+    )
+    np.testing.assert_equal(
+        [r.as_pydict() for r in res],
+        [
+            {"c": np.array([2, 3])},
+            {"c": np.array([4, 5])},
+            {"c": np.array([6, 7])},
+        ],
+    )
+
     # Pandas columns in NumPy format.
-    def mapper(col_arrs):
+    def multi_mapper(col_arrs):
         assert isinstance(col_arrs, dict)
         assert list(col_arrs.keys()) == ["a", "b", "c"]
         assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
@@ -592,6 +616,7 @@ def test_tensors_basic(ray_start_regular_shared):
             }
         )
 
+    # Multiple columns.
     df = pd.DataFrame(
         {
             "a": [1, 2, 3],
@@ -601,7 +626,7 @@ def test_tensors_basic(ray_start_regular_shared):
     )
     res = (
         ray.data.from_pandas(df)
-        .map_batches(mapper, batch_size=2, batch_format="numpy")
+        .map_batches(multi_mapper, batch_size=2, batch_format="numpy")
         .take()
     )
     np.testing.assert_equal(
@@ -610,6 +635,28 @@ def test_tensors_basic(ray_start_regular_shared):
             {"a": 2, "b": 5.0, "c": np.array([2, 3])},
             {"a": 3, "b": 6.0, "c": np.array([4, 5])},
             {"a": 4, "b": 7.0, "c": np.array([6, 7])},
+        ],
+    )
+
+    # Single column (should still yield ndarray dict batches).
+    def single_mapper(col_arrs):
+        assert isinstance(col_arrs, dict)
+        assert list(col_arrs.keys()) == ["c"]
+        assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
+        return pd.DataFrame({"c": TensorArray(col_arrs["c"] + 1)})
+
+    df = df[["c"]]
+    res = (
+        ray.data.from_pandas(df)
+        .map_batches(single_mapper, batch_size=2, batch_format="numpy")
+        .take()
+    )
+    np.testing.assert_equal(
+        [r.as_pydict() for r in res],
+        [
+            {"c": np.array([2, 3])},
+            {"c": np.array([4, 5])},
+            {"c": np.array([6, 7])},
         ],
     )
 
@@ -1762,6 +1809,14 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
+    # Numpy format (single column).
+    ds2 = ds.select_columns(["one"])
+    for batch, df in zip(ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs):
+        assert isinstance(batch, dict)
+        assert list(batch.keys()) == ["one"]
+        assert all(isinstance(col, np.ndarray) for col in batch.values())
+        pd.testing.assert_frame_equal(pd.DataFrame(batch), df[["one"]])
+
     # Test NumPy format on Arrow blocks.
     ds2 = ds.map_batches(lambda b: b, batch_size=None, batch_format="pyarrow")
     for batch, df in zip(ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs):
@@ -1769,6 +1824,14 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
+
+    # Test NumPy format on Arrow blocks (single column).
+    ds3 = ds2.select_columns(["one"])
+    for batch, df in zip(ds3.iter_batches(batch_size=None, batch_format="numpy"), dfs):
+        assert isinstance(batch, dict)
+        assert list(batch.keys()) == ["one"]
+        assert all(isinstance(col, np.ndarray) for col in batch.values())
+        pd.testing.assert_frame_equal(pd.DataFrame(batch), df[["one"]])
 
     # Native format (deprecated).
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="native"), dfs):
@@ -1868,14 +1931,18 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Prefetch with ray.wait.
     context = DatasetContext.get_current()
-    context.actor_prefetcher_enabled = False
-    batches = list(
-        ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
-    )
-    assert len(batches) == len(dfs)
-    for batch, df in zip(batches, dfs):
-        assert isinstance(batch, pd.DataFrame)
-        assert batch.equals(df)
+    old_config = context.actor_prefetcher_enabled
+    try:
+        context.actor_prefetcher_enabled = False
+        batches = list(
+            ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
+        )
+        assert len(batches) == len(dfs)
+        for batch, df in zip(batches, dfs):
+            assert isinstance(batch, pd.DataFrame)
+            assert batch.equals(df)
+    finally:
+        context.actor_prefetcher_enabled = old_config
 
 
 def test_iter_batches_empty_block(ray_start_regular_shared):
@@ -2594,6 +2661,34 @@ def test_map_batches_batch_mutation(
     # Apply UDF that mutates the batches.
     ds = ds.map_batches(mutate, batch_size=batch_size)
     assert [row["value"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
+
+
+@pytest.mark.parametrize(
+    "num_rows,num_blocks,batch_size",
+    [
+        (10, 5, 2),
+        (10, 1, 10),
+        (12, 3, 2),
+    ],
+)
+def test_map_batches_batch_zero_copy(
+    ray_start_regular_shared, num_rows, num_blocks, batch_size
+):
+    # Test that batches are zero-copy read-only views when zero_copy_batch=True.
+    def mutate(df):
+        # Check that batch is read-only.
+        assert not df.values.flags.writeable
+        df["value"] += 1
+        return df
+
+    ds = ray.data.range_table(num_rows, parallelism=num_blocks).repartition(num_blocks)
+    # Convert to Pandas blocks.
+    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
+
+    # Apply UDF that mutates the batches, which should fail since the batch is
+    # read-only.
+    with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
+        ds.map_batches(mutate, batch_size=batch_size, zero_copy_batch=True)
 
 
 BLOCK_BUNDLING_TEST_CASES = [
@@ -4056,6 +4151,13 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=10)
+    ds = ds.map_batches(lambda x: [])
+    ds = ds.map_batches(lambda x: x)
+    assert ds.num_blocks() == 10, ds
+
+
 def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
     xs = [x % 3 for x in list(range(100))]
 
@@ -4656,6 +4758,12 @@ def test_random_sample_checks(ray_start_regular_shared):
         ray.data.range(1).random_sample(10)
 
 
+def test_random_block_order_schema(ray_start_regular_shared):
+    df = pd.DataFrame({"a": np.random.rand(10), "b": np.random.rand(10)})
+    ds = ray.data.from_pandas(df).randomize_block_order()
+    ds.schema().names == ["a", "b"]
+
+
 def test_random_block_order(ray_start_regular_shared):
 
     # Test BlockList.randomize_block_order.
@@ -4935,7 +5043,7 @@ def test_read_write_local_node(ray_start_cluster):
         locations = []
         for block in blocks:
             locations.extend(location_data[block]["node_ids"])
-        assert set(locations) == {ray.get_runtime_context().node_id.hex()}
+        assert set(locations) == {ray.get_runtime_context().get_node_id()}
 
     local_path = "local://" + data_path
     # Plain read.
@@ -4987,7 +5095,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
@@ -5021,7 +5129,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
@@ -5289,6 +5397,23 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
     schema = ds.schema()
     ds.stats()
     assert schema == ds.schema()
+
+
+def test_ragged_tensors(ray_start_regular_shared):
+    """Test Arrow type promotion between ArrowTensorType and
+    ArrowVariableShapedTensorType when a column contains ragged tensors."""
+    import numpy as np
+
+    ds = ray.data.from_items(
+        [
+            {"spam": np.zeros((32, 32, 5))},
+            {"spam": np.zeros((64, 64, 5))},
+        ]
+    )
+    new_type = ds.schema().types[0].scalar_type
+    assert ds.schema().types == [
+        ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
+    ]
 
 
 if __name__ == "__main__":

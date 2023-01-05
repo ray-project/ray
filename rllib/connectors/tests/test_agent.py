@@ -1,8 +1,8 @@
-import tree
-import gym
+import gymnasium as gym
+from gymnasium.spaces import Box
 import numpy as np
+import tree  # pip install dm_tree
 import unittest
-from gym.spaces import Box
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
@@ -12,7 +12,8 @@ from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
-from ray.rllib.connectors.connector import ConnectorContext, get_connector
+from ray.rllib.connectors.connector import ConnectorContext
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
@@ -32,7 +33,7 @@ class TestAgentConnector(unittest.TestCase):
         connectors = [ClipRewardAgentConnector(ctx, False, 1.0)]
         pipeline = AgentConnectorPipeline(ctx, connectors)
         name, params = pipeline.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ClipRewardAgentConnector))
 
@@ -50,7 +51,7 @@ class TestAgentConnector(unittest.TestCase):
         c = ObsPreprocessorConnector(ctx)
         name, params = c.to_state()
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ObsPreprocessorConnector))
 
         obs = obs_space.sample()
@@ -81,7 +82,7 @@ class TestAgentConnector(unittest.TestCase):
         self.assertEqual(name, "ClipRewardAgentConnector")
         self.assertAlmostEqual(params["limit"], 2.0)
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ClipRewardAgentConnector))
 
         d = AgentConnectorDataType(
@@ -102,7 +103,7 @@ class TestAgentConnector(unittest.TestCase):
         c = FlattenDataAgentConnector(ctx)
 
         name, params = c.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, FlattenDataAgentConnector))
 
         sample_batch = {
@@ -430,10 +431,9 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             # next state and action at time t-1 are the following
             timestep_data = {
                 SampleBatch.NEXT_OBS: obs_arrs[t],
-                SampleBatch.ACTIONS: (
-                    np.zeros_like(act_arrs[0]) if t == 0 else act_arrs[t - 1]
-                ),
             }
+            if t > 0:
+                timestep_data[SampleBatch.ACTIONS] = act_arrs[t - 1]
             data = AgentConnectorDataType(0, 1, timestep_data)
             processed = c([data])
             sample_batch = processed[0].data.sample_batch
@@ -450,8 +450,13 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
                 act_list.append(act_arrs[t - 1])
 
             self.assertTrue("context_next_obs" not in sample_batch)
+            # We should have the 5 (context_len) most recent observations here
             check(sample_batch["context_obs"], np.stack(obs_list)[None])
-            check(sample_batch["context_act"], np.stack(act_list[:-1])[None])
+            # The context for actions is [t-context_len+1:t]. Since we build sample
+            # batch for inference in ViewRequirementAgentConnector, it always
+            # includes everything up until the last action (at t-1), but not the
+            # action current action (at t).
+            check(sample_batch["context_act"], np.stack(act_list[1:])[None])
 
     def test_connector_pipline_with_view_requirement(self):
         """A very minimal test that checks wheter pipeline connectors work in a
@@ -490,14 +495,14 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         agent_connector = AgentConnectorPipeline(ctx, connectors)
 
         name, params = agent_connector.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         for cidx, c in enumerate(connectors):
             check(restored.connectors[cidx].to_state(), c.to_state())
 
         # simulate a rollout
         n_steps = 10
-        obs = env.reset()
+        obs, info = env.reset()
         env_out = AgentConnectorDataType(
             0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: -1}
         )
@@ -516,11 +521,12 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             )
             action = policy_output[0]
 
-            next_obs, rewards, dones, info = env.step(action)
+            next_obs, rewards, terminateds, truncateds, info = env.step(action)
             env_out_dict = {
                 SampleBatch.NEXT_OBS: next_obs,
                 SampleBatch.REWARDS: rewards,
-                SampleBatch.DONES: dones,
+                SampleBatch.TERMINATEDS: terminateds,
+                SampleBatch.TRUNCATEDS: truncateds,
                 SampleBatch.INFOS: info,
                 SampleBatch.ACTIONS: action,
                 # state_out
