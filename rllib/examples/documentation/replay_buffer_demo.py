@@ -127,6 +127,7 @@ assert len(less_sampled_buffer._storage) == 0
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
 config = (
     DQNConfig()
+    .rollouts(num_rollout_workers=3)
     .training(
         replay_buffer_config={
             "type": "MultiAgentReplayBuffer",

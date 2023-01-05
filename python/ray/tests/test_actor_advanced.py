@@ -1210,7 +1210,7 @@ def test_actor_timestamps(ray_start_regular):
     @ray.remote
     class Foo:
         def get_id(self):
-            return ray.get_runtime_context().actor_id.hex()
+            return ray.get_runtime_context().get_actor_id()
 
         def kill_self(self):
             sys.exit(1)
