@@ -338,6 +338,9 @@ class DatasetConfig:
     max_object_store_memory_fraction: Optional[float] = None
     global_shuffle: Optional[bool] = None
     randomize_block_order: Optional[bool] = None
+    # Deprecated.
+    use_stream_api: Optional[int] = None
+    stream_window_size: Optional[int] = None
 
     def __repr__(self):
         return _repr_dataclass(self)
@@ -347,8 +350,20 @@ class DatasetConfig:
             title = type(self).__name__
         return make_table_html_repr(obj=self, title=title)
 
+    def _check_deprecations(self):
+        if self.use_stream_api is not None or self.stream_window_size is not None:
+            raise DeprecationWarning(
+                "DatasetConfig.use_stream_api and DatasetConfig.stream_window_size "
+                "have been removed as of Ray 2.3. Instead, use "
+                "DatasetConfig.max_object_store_memory_fraction with a value "
+                "between 0 and 1 "
+                "(https://docs.ray.io/en/latest/ray-air/package-ref.html"
+                "#ray.air.config.DatasetConfig)."
+            )
+
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
+        self._check_deprecations()
         return DatasetConfig(
             fit=self.fit or False,
             split=self.split or False,
@@ -426,6 +441,7 @@ class DatasetConfig:
 
     def _merge(self, other: "DatasetConfig") -> "DatasetConfig":
         """Merge the given DatasetConfig into this one."""
+        self._check_deprecations()
         new_config = DatasetConfig(
             fit=self.fit if other.fit is None else other.fit,
             split=self.split if other.split is None else other.split,

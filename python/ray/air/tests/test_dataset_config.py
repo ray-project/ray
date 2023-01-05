@@ -4,7 +4,7 @@ from typing import Optional
 import pytest
 
 import ray
-from ray.air import session
+from ray.air import session, DatasetIterator
 from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -30,10 +30,7 @@ class TestBasic(DataParallelTrainer):
     ):
         def train_loop_per_worker():
             data_shard = session.get_dataset_shard("train")
-            if expect_ds:
-                assert isinstance(data_shard, Dataset), data_shard
-            else:
-                assert isinstance(data_shard, DatasetPipeline), data_shard
+            assert isinstance(data_shard, DatasetIterator), data_shard
             for k, v in expect_sizes.items():
                 shard = session.get_dataset_shard(k)
                 if v == -1:

@@ -16,6 +16,7 @@ from ray.air.execution.resources.request import AcquiredResources, ResourceReque
 __all__ = [
     "Checkpoint",
     "DataBatchType",
+    "DatasetIterator",
     "RunConfig",
     "Result",
     "ScalingConfig",
