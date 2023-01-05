@@ -89,7 +89,9 @@ def DeveloperAPI(*args, **kwargs):
 
 
 class RayDeprecationWarning(DeprecationWarning):
-    ...
+    """Specialized Deprecation Warning for fine grained filtering control"""
+
+    pass
 
 
 # By default, print the first occurrence of matching warnings for
