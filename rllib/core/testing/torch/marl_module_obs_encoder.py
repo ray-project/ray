@@ -12,8 +12,22 @@ from ray.rllib.utils.nested_dict import NestedDict
 
 
 class MaModuleWObsEncoder(MultiAgentRLModule):
+    """A multi-agent RLModule that has an obs encoder.
+
+    Args:
+        input_dim_encoder: The input dimension of the encoder.
+        hidden_dim_encoder: The hidden dimension of the encoder.
+        output_dim_encoder: The output dimension of the encoder.
+        modules: RLModules for the different agents.
+
+    """
+
     def __init__(
-        self, input_dim_encoder, hidden_dim_encoder, output_dim_encoder, modules
+        self,
+        input_dim_encoder: int,
+        hidden_dim_encoder: int,
+        output_dim_encoder: int,
+        modules: Dict[ModuleID, RLModule],
     ):
         super().__init__(modules)
         self.encoder = nn.Sequential(
