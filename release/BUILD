@@ -354,6 +354,14 @@ py_test(
 )
 
 py_test(
+    name = "test_utils",
+    tags = ["team:ci", "release_unit"],
+    size = "small",
+    srcs = ["ray_release/tests/test_utils.py"]
+)
+
+
+py_test(
     name = "test_wheels",
     tags = ["team:ci", "release_unit"],
     size = "small",
