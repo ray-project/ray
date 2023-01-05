@@ -48,8 +48,7 @@ def setup_mlflow(
 
     By default, the MLflow experiment ID is the Ray trial ID and the
     MLlflow experiment name is the Ray trial name. These settings can be overwritten by
-    entries in the ``mlflow`` key of the ``config`` dict.
-    Any keyword arguments will be merged into this configuration.
+    passing the respective keyword arguments.
 
     The ``config`` dict is automatically logged as the run parameters (excluding the
     mlflow settings).
@@ -160,7 +159,7 @@ def setup_mlflow(
     # Deprecate: 2.4
     if mlflow_config:
         warnings.warn(
-            "Passing a `mlflow` configuration key is deprecated and will raise an "
+            "Passing a `mlflow` key in the config dict is deprecated and will raise an "
             "error in the future. Please pass the actual arguments to `setup_mlflow()` "
             "instead.",
             DeprecationWarning,
@@ -173,7 +172,7 @@ def setup_mlflow(
     mlflow_util = _MLflowLoggerUtil()
     mlflow_util.setup_mlflow(
         tracking_uri=tracking_uri or mlflow_config.get("tracking_uri", None),
-        registry_uri=tracking_uri or mlflow_config.get("registry_uri", None),
+        registry_uri=registry_uri or mlflow_config.get("registry_uri", None),
         experiment_id=experiment_id or mlflow_config.get("experiment_id", None),
         experiment_name=experiment_name or mlflow_config.get("experiment_name", None),
         tracking_token=tracking_token or mlflow_config.get("tracking_token", None),

@@ -161,7 +161,7 @@ def _setup_wandb(
     # Deprecate: 2.4
     if wandb_config:
         warnings.warn(
-            "Passing a `wandb` configuration key is deprecated and will raise an "
+            "Passing a `wandb` key in the config dict is deprecated and will raise an "
             "error in the future. Please pass the actual arguments to `setup_wandb()` "
             "instead.",
             DeprecationWarning,
