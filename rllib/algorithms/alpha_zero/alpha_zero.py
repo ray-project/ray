@@ -57,8 +57,8 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
         >>> config = AlphaZeroConfig()   # doctest: +SKIP
         >>> config = config.training(sgd_minibatch_size=256)   # doctest: +SKIP
-        >>> config = config..resources(num_gpus=0)   # doctest: +SKIP
-        >>> config = config..rollouts(num_rollout_workers=4)   # doctest: +SKIP
+        >>> config = config.resources(num_gpus=0)   # doctest: +SKIP
+        >>> config = config.rollouts(num_rollout_workers=4)   # doctest: +SKIP
         >>> print(config.to_dict()) # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
