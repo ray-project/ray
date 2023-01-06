@@ -3,19 +3,13 @@ import unittest
 
 import ray
 
-from ray.rllib.algorithms import AlgorithmConfig
-from ray.rllib.offline import IOContext
-from ray.rllib.offline.dataset_reader import (
-    DatasetReader,
-    get_dataset_and_shards,
-)
-
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 from ray.rllib.core.rl_trainer.tf.tf_rl_trainer import TfRLTrainer
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_optimizer import BCTFOptimizer
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
 
 
 class TestTfRLTrainer(unittest.TestCase):
@@ -45,21 +39,7 @@ class TestTfRLTrainer(unittest.TestCase):
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
         )
 
-        path = "rllib/tests/data/cartpole/large.json"
-        input_config = {"format": "json", "paths": path}
-        dataset, _ = get_dataset_and_shards(
-            AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
-        )
-        batch_size = 500
-        ioctx = IOContext(
-            config=(
-                AlgorithmConfig()
-                .training(train_batch_size=batch_size)
-                .offline_data(actions_in_input_normalized=True)
-            ),
-            worker_index=0,
-        )
-        reader = DatasetReader(dataset, ioctx)
+        reader = get_cartpole_dataset_reader(batch_size=500)
 
         min_loss = float("inf")
         for iter_i in range(1000):
@@ -99,21 +79,7 @@ class TestTfRLTrainer(unittest.TestCase):
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
         )
 
-        path = "tests/data/cartpole/large.json"
-        input_config = {"format": "json", "paths": path}
-        dataset, _ = get_dataset_and_shards(
-            AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
-        )
-        batch_size = 500
-        ioctx = IOContext(
-            config=(
-                AlgorithmConfig()
-                .training(train_batch_size=batch_size)
-                .offline_data(actions_in_input_normalized=True)
-            ),
-            worker_index=0,
-        )
-        reader = DatasetReader(dataset, ioctx)
+        reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
         results = runner.update(batch.as_multi_agent())
         module_ids_before_add = {DEFAULT_POLICY_ID}
