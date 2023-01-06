@@ -4,6 +4,7 @@ import signal
 import time
 import sys
 import pytest
+import warnings
 
 from ray._private.test_utils import SignalActor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -243,10 +244,16 @@ def test_ids(ray_start_regular):
     rtc = ray.get_runtime_context()
     # node id
     assert isinstance(rtc.get_node_id(), str)
-    assert rtc.get_node_id() == rtc.node_id.hex()
+    with warnings.catch_warnings(record=True) as w:
+        assert rtc.get_node_id() == rtc.node_id.hex()
+        assert any("Use get_node_id() instead" in str(warning.message) for warning in w)
+
     # job id
     assert isinstance(rtc.get_job_id(), str)
-    assert rtc.get_job_id() == rtc.job_id.hex()
+    with warnings.catch_warnings(record=True) as w:
+        assert rtc.get_job_id() == rtc.job_id.hex()
+        assert any("Use get_job_id() instead" in str(warning.message) for warning in w)
+
     # placement group id
     # Driver doesn't belong to any placement group.
     assert rtc.get_placement_group_id() is None
@@ -263,7 +270,13 @@ def test_ids(ray_start_regular):
     def foo_pg():
         rtc = ray.get_runtime_context()
         assert isinstance(rtc.get_placement_group_id(), str)
-        assert rtc.get_placement_group_id() == rtc.current_placement_group_id.hex()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            assert rtc.get_placement_group_id() == rtc.current_placement_group_id.hex()
+            assert any(
+                "Use get_placement_group_id() instead" in str(warning.message)
+                for warning in w
+            )
 
     ray.get(
         foo_pg.options(
@@ -279,7 +292,12 @@ def test_ids(ray_start_regular):
     def foo_task():
         rtc = ray.get_runtime_context()
         assert isinstance(rtc.get_task_id(), str)
-        assert rtc.get_task_id() == rtc.task_id.hex()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            assert rtc.get_task_id() == rtc.task_id.hex()
+            assert any(
+                "Use get_task_id() instead" in str(warning.message) for warning in w
+            )
 
     ray.get(foo_task.remote())
 
@@ -291,7 +309,13 @@ def test_ids(ray_start_regular):
         def foo(self):
             rtc = ray.get_runtime_context()
             assert isinstance(rtc.get_actor_id(), str)
-            assert rtc.get_actor_id() == rtc.actor_id.hex()
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                assert rtc.get_actor_id() == rtc.actor_id.hex()
+                assert any(
+                    "Use get_actor_id() instead" in str(warning.message)
+                    for warning in w
+                )
 
     actor = FooActor.remote()
     ray.get(actor.foo.remote())

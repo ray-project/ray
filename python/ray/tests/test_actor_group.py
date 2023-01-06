@@ -1,4 +1,5 @@
 import time
+import warnings
 
 import pytest
 
@@ -16,7 +17,11 @@ class DummyActor:
 
 def test_actor_creation(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
-    ag = ActorGroup(actor_cls=DummyActor, num_actors=2)
+    with warnings.catch_warnings(record=True) as w:
+        ag = ActorGroup(actor_cls=DummyActor, num_actors=2)
+        assert any(
+            "use ray.util.multiprocessing" in str(warning.message) for warning in w
+        )
     assert len(ag) == 2
     time.sleep(1)
     # Make sure both CPUs are being used by the actors.
