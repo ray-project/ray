@@ -194,7 +194,10 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
 
     # Expect precomputed row counts and block sizes to be missing.
     assert ds._meta_count() is None
-    assert ds._plan._snapshot_blocks.size_bytes() == -1
+    assert (
+        ds._plan._snapshot_blocks is None
+        or ds._plan._snapshot_blocks.size_bytes() == -1
+    )
 
     # Expect to lazily compute all metadata correctly.
     assert ds._plan.execute()._num_computed() == 1

@@ -339,9 +339,9 @@ def read_datasource(
     block_list.ensure_metadata_for_first_block()
 
     return Dataset(
-        ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
-        0,
-        False,
+        plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
+        epoch=0,
+        lazy=True,
     )
 
 

@@ -82,10 +82,13 @@ def test_dataset(
     assert ds.size_bytes() >= 0.7 * block_size * num_blocks * num_tasks
 
     map_ds = ds.map_batches(lambda x: x)
+    map_ds.fully_executed()
     assert map_ds.num_blocks() == num_tasks
     map_ds = ds.map_batches(lambda x: x, batch_size=num_blocks * num_tasks)
+    map_ds.fully_executed()
     assert map_ds.num_blocks() == 1
     map_ds = ds.map(lambda x: x)
+    map_ds.fully_executed()
     assert map_ds.num_blocks() == num_blocks * num_tasks
 
     ds_list = ds.split(5)
@@ -109,6 +112,7 @@ def test_dataset(
     assert ds.groupby("one").count().count() == num_blocks * num_tasks
 
     new_ds = ds.zip(ds)
+    new_ds.fully_executed()
     assert new_ds.num_blocks() == num_blocks * num_tasks
 
     assert len(ds.take(5)) == 5
