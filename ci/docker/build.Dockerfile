@@ -25,9 +25,10 @@ RUN env
 
 # init also calls install-dependencies.sh
 RUN BUILD=1 bash --login -i ./ci/ci.sh init
-RUN bash --login -i ./ci/ci.sh build
 
 RUN export CC=clang CXX=clang++-12
+
+RUN bash --login -i ./ci/ci.sh build
 
 # Run determine test to run
 RUN bash --login -i -c "python ./ci/pipeline/determine_tests_to_run.py --output=json > affected_set.json"
