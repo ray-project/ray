@@ -93,7 +93,7 @@ def get_expected_model_config(
         )
         pi_input_key = pi_encoder_config.output_key
         vf_input_key = vf_encoder_config.output_key
-    pi_kh = ModelIOKeyHelper("pi_encoder")
+    pi_kh = ModelIOKeyHelper("pi")
     pi_config = FCConfig(
         input_dim=pi_encoder_config.output_dim,
         hidden_layers=[32],
@@ -101,7 +101,7 @@ def get_expected_model_config(
         input_key=pi_input_key,
         output_key=pi_kh.create(BaseModelIOKeys.OUT),
     )
-    vf_kh = ModelIOKeyHelper("pi_encoder")
+    vf_kh = ModelIOKeyHelper("vf")
     vf_config = FCConfig(
         input_dim=vf_encoder_config.output_dim,
         output_dim=1,

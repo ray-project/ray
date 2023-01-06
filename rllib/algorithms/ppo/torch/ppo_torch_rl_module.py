@@ -22,6 +22,7 @@ from ray.rllib.core.rl_module.encoder import (
     LSTMEncoder,
     STATE_OUT,
 )
+from ray.rllib.models.base_model import BaseModelIOKeys, ModelIOKeyHelper
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 
 
@@ -115,39 +116,71 @@ class PPOTorchRLModule(TorchRLModule):
         use_lstm = model_config["use_lstm"]
 
         if vf_share_layers:
+            shared_encoder_kh = ModelIOKeyHelper("shared_encoder")
             shared_encoder_config = FCConfig(
                 input_dim=obs_dim,
                 hidden_layers=fcnet_hiddens,
                 activation=activation,
                 output_dim=model_config["fcnet_hiddens"][-1],
+                input_key=SampleBatch.OBS,
+                output_key=shared_encoder_kh.create(BaseModelIOKeys.OUT),
             )
+            pi_encoder_config = IdentityConfig(
+                output_dim=model_config["fcnet_hiddens"][-1]
+            )
+            vf_encoder_config = IdentityConfig(
+                output_dim=model_config["fcnet_hiddens"][-1]
+            )
+            pi_input_key = shared_encoder_config.output_key
+            vf_input_key = shared_encoder_config.output_key
         else:
             shared_encoder_config = IdentityConfig(output_dim=obs_dim)
+            pi_encoder_kh = ModelIOKeyHelper("pi_encoder")
 
-        if use_lstm:
-            pi_encoder_config = LSTMConfig(
-                input_dim=shared_encoder_config.output_dim,
-                hidden_dim=model_config["lstm_cell_size"],
-                batch_first=not model_config["_time_major"],
-                output_dim=model_config["lstm_cell_size"],
-                num_layers=1,
-            )
-        else:
-            pi_encoder_config = FCConfig(
-                input_dim=shared_encoder_config.output_dim,
-                hidden_layers=fcnet_hiddens,
-                activation=activation,
-                output_dim=model_config["fcnet_hiddens"][-1],
-            )
+            if use_lstm:
+                pi_encoder_config = LSTMConfig(
+                    input_dim=shared_encoder_config.output_dim,
+                    hidden_dim=model_config["lstm_cell_size"],
+                    batch_first=not model_config["_time_major"],
+                    output_dim=model_config["lstm_cell_size"],
+                    num_layers=1,
+                    input_key=SampleBatch.OBS,
+                    state_in_key="state_in_0",
+                    output_key=pi_encoder_kh.create(BaseModelIOKeys.OUT),
+                    state_out_key="state_out_0",
+                )
+            else:
+                pi_encoder_config = FCConfig(
+                    input_dim=shared_encoder_config.output_dim,
+                    hidden_layers=fcnet_hiddens,
+                    activation=activation,
+                    output_dim=model_config["fcnet_hiddens"][-1],
+                    input_key=SampleBatch.OBS,
+                    output_key=pi_encoder_kh.create(BaseModelIOKeys.OUT),
+                )
 
-        vf_encoder_config = FCConfig(
-            input_dim=shared_encoder_config.output_dim,
-            hidden_layers=fcnet_hiddens,
-            activation=activation,
-            output_dim=model_config["fcnet_hiddens"][-1],
-        )
-        pi_config = FCConfig()
-        vf_config = FCConfig()
+                vf_encoder_kh = ModelIOKeyHelper("vf_encoder")
+                vf_encoder_config = FCConfig(
+                    input_dim=shared_encoder_config.output_dim,
+                    hidden_layers=fcnet_hiddens,
+                    activation=activation,
+                    output_dim=model_config["fcnet_hiddens"][-1],
+                    input_key=SampleBatch.OBS,
+                    output_key=vf_encoder_kh.create(BaseModelIOKeys.OUT),
+                )
+                pi_input_key = pi_encoder_config.output_key
+                vf_input_key = vf_encoder_config.output_key
+
+            pi_kh = ModelIOKeyHelper("pi")
+            vf_kh = ModelIOKeyHelper("vf")
+            pi_config = FCConfig(
+                input_key=pi_input_key,
+                output_key=pi_kh.create(BaseModelIOKeys.OUT),
+            )
+            vf_config = FCConfig(
+                input_key=vf_input_key,
+                output_key=vf_kh.create(BaseModelIOKeys.OUT),
+            )
 
         assert isinstance(
             observation_space, gym.spaces.Box
