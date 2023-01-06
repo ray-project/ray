@@ -126,8 +126,8 @@ class StreamingExecutor(Executor):
 
         This runs a few general phases:
             1. Waiting for the next task completion using `ray.wait()`.
-            2. Pushing updates through operator inqueues / outqueues.
-            3. Selecting and dispatching new operator tasks.
+            2. Pulling completed refs into operator outqueues.
+            3. Selecting and dispatching new inputs to operators.
 
         Returns:
             True if we should continue running the scheduling loop.
@@ -142,9 +142,6 @@ class StreamingExecutor(Executor):
     def _process_completed_tasks(self) -> bool:
         """Process any newly completed tasks and update operator state.
 
-        This does not dispatch any new tasks, but pushes RefBundles through the
-        DAG topology (i.e., operator state inqueues/outqueues).
-
         Returns:
             True if work remains to be run.
         """
@@ -158,7 +155,10 @@ class StreamingExecutor(Executor):
                 active_tasks[ref] = op
         if self._active_tasks:
             completed, _ = ray.wait(
-                list(active_tasks), num_returns=len(active_tasks), fetch_local=False
+                list(active_tasks),
+                num_returns=len(active_tasks),
+                fetch_local=False,
+                timeout=0.1,
             )
             for ref in completed:
                 op = active_tasks.pop(ref)
