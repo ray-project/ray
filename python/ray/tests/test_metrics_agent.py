@@ -151,10 +151,7 @@ _NODE_COMPONENT_METRICS = [
     "ray_component_uss_mb",
 ]
 
-if ray._raylet.Config.pull_based_healthcheck():
-    _METRICS.append("ray_health_check_rpc_latency_ms_sum")
-else:
-    _METRICS.append("ray_heartbeat_report_ms_sum")
+_METRICS.append("ray_health_check_rpc_latency_ms_sum")
 
 
 @pytest.fixture

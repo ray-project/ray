@@ -177,14 +177,6 @@ message GetAllNodeInfoReply {
   repeated GcsNodeInfo node_info_list = 2;
 }
 
-message ReportHeartbeatRequest {
-  HeartbeatTableData heartbeat = 1;
-}
-
-message ReportHeartbeatReply {
-  GcsStatus status = 1;
-}
-
 message CheckAliveRequest {
   repeated string raylet_address = 1;
 }
@@ -228,12 +220,6 @@ message ReportResourceUsageRequest {
 
 message ReportResourceUsageReply {
   GcsStatus status = 1;
-}
-
-// Service for heartbeat info access.
-service HeartbeatInfoGcsService {
-  // Report heartbeat of a node to GCS Service.
-  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
 }
 
 message ReportWorkerFailureRequest {
