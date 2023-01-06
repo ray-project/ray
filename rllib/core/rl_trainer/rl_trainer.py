@@ -93,10 +93,10 @@ class RLTrainer:
         parameters during training, based on the computed gradients. The method should
         return a list of tuples, where each tuple consists of a list of model
         parameters and a deep learning optimizer that should be used to optimize those
-        parameters. To support both tf and torch, we return a list of tuples of
-        parameters and optimizers regardless of whether the parameters exist in the
-        optimizer objects. This method is called once at initialization and everytime a
-        new sub-module is added to the module.
+        parameters. To support both tf and torch, we must explicitly return the
+        parameters as the first element of the tuple regardless of whether those
+        exist in the optimizer objects or not. This method is called once at
+        initialization and everytime a new sub-module is added to the module.
 
         Returns:
             A list of tuples (parameters, optimizer), where parameters is a list of
@@ -113,10 +113,14 @@ class RLTrainer:
     ) -> Union[TensorType, Mapping[str, Any]]:
         """Computes the loss for the module being optimized.
 
-        Each algorithm's trainer has to override this method to specify the logic for
-        the loss computation. Ideally all the tensors required for computing the loss
-        should already be computed as part of the `forward_train()` outputs. It is
-        highly discouraged to compute any forward passes inside this method.
+        This method must be overridden by each algorithm's trainer to specify the
+        specific loss computation logic. The input "fwd_out" is the output of a call to
+        the "forward_train" method on the instance's "_module" attribute during
+        training. The input "batch" is the data that was used to compute "fwd_out". The
+        returned dictionary must contain a key called "total_loss", which will be used
+        to compute gradients. It is recommended to not compute any forward passes
+        within this method, and to use the "forward_train" outputs to compute the
+        required tensors for loss calculation.
 
         Args:
             fwd_out: Output from a call to `forward_train` on self._module during
@@ -128,10 +132,10 @@ class RLTrainer:
             must contain one protected key "total_loss" which will be used for
             computing gradients through.
         """
-        # TODO: This method is built for multi-agent. While it's possible to write
-        # single-agent losses, it may become confusing to users. We should find a way
-        # to allow them to specify single-agent losses as well, without having to think
-        # about one extra layer of hierarchy for module ids.
+        # TODO: This method is built for multi-agent. While it is still possible to
+        # write single-agent losses, it may become confusing to users. We should find a
+        # way to allow them to specify single-agent losses as well, without having to
+        # think about one extra layer of hierarchy for module ids.
 
     def on_after_compute_gradients(
         self, gradients_dict: Mapping[str, Any]
