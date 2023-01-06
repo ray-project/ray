@@ -613,7 +613,8 @@ def read_parquet_bulk(
     ),
     **arrow_parquet_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from a large number (e.g. >1K) of parquet files quickly.
+    """Create an Arrow dataset from a large number (such as >1K) of parquet files
+    quickly.
 
     By default, ONLY file paths should be provided as input (i.e. no directory paths),
     and an OSError will be raised if one or more paths point to directories. If your
