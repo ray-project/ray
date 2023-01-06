@@ -16,11 +16,11 @@ from unittest.mock import patch
 
 def canonicalize(stats: str) -> str:
     # Time expressions.
-    s1 = re.sub("[0-9\.]+(ms|us|s)", "T", stats)
+    s1 = re.sub(r"[0-9\.]+(ms|us|s)", "T", stats)
     # Handle zero values specially so we can check for missing values.
-    s2 = re.sub(" [0]+(\.[0]+)?", " Z", s1)
+    s2 = re.sub(r" [0]+(\.[0]+)?", " Z", s1)
     # Other numerics.
-    s3 = re.sub("[0-9]+(\.[0-9]+)?", "N", s2)
+    s3 = re.sub(r"[0-9]+(\.[0-9]+)?", "N", s2)
     # Replace tabs with spaces.
     s4 = re.sub("\t", "    ", s3)
     return s4

@@ -70,7 +70,7 @@ class QValueModel(nn.Module):
 
 
 class UserChoiceModel(nn.Module):
-    """The user choice model for SlateQ.
+    r"""The user choice model for SlateQ.
 
     This class implements a multinomial logit model for predicting user clicks.
 

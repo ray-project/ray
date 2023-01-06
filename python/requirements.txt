@@ -46,7 +46,7 @@ opencensus
 fsspec
 dm_tree
 matplotlib!=3.4.3; platform_system != "Windows"
-tensorboardX>=1.9
+tensorboardX>=1.9.0
 smart_open
 requests
 kubernetes

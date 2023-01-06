@@ -223,6 +223,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
 #ifdef __linux__
   if (RayConfig::instance().raylet_core_dump_exclude_plasma_store()) {
     int rval = madvise(initial_region_ptr, initial_region_size, MADV_DONTDUMP);
+    // Comment to trigger cpp build.
     if (rval) {
       RAY_LOG(WARNING) << "madvise(MADV_DONTDUMP) call failed: " << rval << ", "
                        << strerror(errno);

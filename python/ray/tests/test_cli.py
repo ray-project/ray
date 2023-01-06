@@ -281,6 +281,9 @@ def test_disable_usage_stats(monkeypatch, tmp_path):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
     runner = CliRunner()
@@ -598,6 +601,9 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path, cleanup
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 @mock_ec2
 @mock_iam
 def test_ray_up(
@@ -639,6 +645,9 @@ def test_ray_up(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 @mock_ec2
 @mock_iam
 def test_ray_up_docker(
@@ -682,6 +691,9 @@ def test_ray_up_docker(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 @mock_ec2
 @mock_iam
 def test_ray_up_record(
@@ -716,6 +728,9 @@ def test_ray_up_record(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 @mock_ec2
 @mock_iam
 def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
@@ -758,6 +773,9 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 @mock_ec2
 @mock_iam
 def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
@@ -792,6 +810,9 @@ def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 @mock_ec2
 @mock_iam
 def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
@@ -845,6 +866,9 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 @mock_ec2
 @mock_iam
 def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
@@ -890,6 +914,9 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
             _check_output_via_pattern("test_ray_submit.txt", result)
 
 
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 def test_ray_status(shutdown_only, monkeypatch):
     import ray
 
@@ -923,6 +950,9 @@ def test_ray_status(shutdown_only, monkeypatch):
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported on Windows")
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 def test_ray_status_multinode(ray_start_cluster):
     cluster = ray_start_cluster
     for _ in range(4):
@@ -948,6 +978,9 @@ def test_ray_status_multinode(ray_start_cluster):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
+# Ignore warnings since _check_output_via_pattern will fail if any warnings are printed,
+# and it doesn't provide details on what failed.
+@pytest.mark.filterwarnings("ignore")
 @mock_ec2
 @mock_iam
 def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):

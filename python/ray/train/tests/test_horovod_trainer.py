@@ -14,6 +14,9 @@ from ray.air.config import ScalingConfig
 from ray.train.horovod import HorovodTrainer
 from ray.train.torch import TorchPredictor
 
+# TODO (cade) comment
+pytestmark = pytest.mark.filterwarnings("default")
+
 
 @pytest.fixture
 def ray_start_4_cpus():

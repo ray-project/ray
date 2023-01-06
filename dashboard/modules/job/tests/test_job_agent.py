@@ -40,6 +40,10 @@ from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
 
 logger = logging.getLogger(__name__)
 
+# Disable fail-on-warnings for this file as some of the tests
+# fail due to warnings.
+pytestmark = pytest.mark.filterwarnings("default")
+
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 EVENT_LOOP = get_or_create_event_loop()
 

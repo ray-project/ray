@@ -31,13 +31,13 @@ def scrub_traceback(ex):
     print(ex)
     ex = ex.strip("\n")
     ex = re.sub("pid=[0-9]+,", "pid=XXX,", ex)
-    ex = re.sub("ip=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+", "ip=YYY", ex)
-    ex = re.sub("repr=.*\)", "repr=ZZZ)", ex)
+    ex = re.sub(r"ip=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+", "ip=YYY", ex)
+    ex = re.sub(r"repr=.*\)", "repr=ZZZ)", ex)
     ex = re.sub("line .*,", "line ZZ,", ex)
     ex = re.sub('".*"', '"FILE"', ex)
     # These are used to coloring the string.
-    ex = re.sub("\\x1b\[36m", "", ex)
-    ex = re.sub("\\x1b\[39m", "", ex)
+    ex = re.sub(r"\x1b\[36m", "", ex)
+    ex = re.sub(r"\x1b\[39m", "", ex)
     # When running bazel test with pytest 6.x, the module name becomes
     # "python.ray.tests.test_traceback" instead of just "test_traceback"
     # Also remove the "com_github_ray_project_ray" prefix, which may appear on Windows.

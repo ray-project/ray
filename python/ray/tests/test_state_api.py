@@ -119,6 +119,9 @@ if sys.version_info >= (3, 8, 0):
 else:
     from asyncmock import AsyncMock
 
+# Disable fail-on-warnings for this file as some of the tests
+# fail due to warnings being printed.
+pytestmark = pytest.mark.filterwarnings("default")
 
 """
 Unit tests
