@@ -1144,7 +1144,7 @@ def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
         get_dataset_and_shards,
     )
 
-    path = "rllib/tests/data/cartpole/large.json"
+    path = "tests/data/cartpole/large.json"
     input_config = {"format": "json", "paths": path}
     dataset, _ = get_dataset_and_shards(
         AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
