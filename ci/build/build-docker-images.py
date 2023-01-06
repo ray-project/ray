@@ -43,8 +43,9 @@ BASE_IMAGES = {
     "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
     "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04",
     "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu20.04",
-    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu20.04",
-    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu20.04",
+    # there is no ubuntu20.04 image for cuda 10.2 and 10.1
+    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04",
+    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04",
     "cpu": "ubuntu:focal",
 }
 
