@@ -111,7 +111,7 @@ class WorkerContext {
 
   // a worker's job infomation might be lazily initialized.
   JobID current_job_id_ GUARDED_BY(mutex_);
-  rpc::JobConfig job_config_ GUARDED_BY(mutex_);
+  std::optional<rpc::JobConfig> job_config_ GUARDED_BY(mutex_);
 
   int64_t task_depth_ GUARDED_BY(mutex_) = 0;
   ActorID current_actor_id_ GUARDED_BY(mutex_);
