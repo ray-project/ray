@@ -289,7 +289,8 @@ install_pip_packages() {
   # Install modules needed in all jobs.
   alias pip="python -m pip"
 
-  if [ "${MINIMAL_INSTALL-}" != 1 ]; then
+  # Todo: install for aarch64?
+  if [ "${MINIMAL_INSTALL-}" != 1 ] && [ "$HOSTTYPE" != "aarch64" ]; then
     pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
   fi
 
