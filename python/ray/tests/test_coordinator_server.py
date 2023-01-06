@@ -70,7 +70,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         # Use a random head_ip so that the state file is regenerated each time
         # this test is run. (Otherwise the test will fail spuriously when run a
         # second time.)
-        self._monkeypatch.setenv("RAY_TMPDIR", self._tmpdir)
+        self._monkeypatch.setenv("RAY_TMPDIR", str(self._tmpdir))
         # ensure that a new cluster can start up if RAY_TMPDIR doesn't exist yet
         assert not os.path.exists(get_ray_temp_dir())
         head_ip = ".".join(str(random.randint(0, 255)) for _ in range(4))
