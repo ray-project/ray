@@ -26,6 +26,7 @@ RUN env
 # init also calls install-dependencies.sh
 RUN BUILD=1 bash --login -i ./ci/ci.sh init
 
+# Set compiler here to build Ray with CLANG/LLVM
 RUN export CC=clang CXX=clang++-12
 
 RUN bash --login -i ./ci/ci.sh build
