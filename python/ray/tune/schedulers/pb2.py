@@ -345,13 +345,6 @@ class PB2(PopulationBasedTraining):
             raise RuntimeError("Please install scikit-learn to use PB2.")
 
         hyperparam_bounds = hyperparam_bounds or {}
-        # for value in hyperparam_bounds.values():
-        #     if not isinstance(value, (list, tuple)) or len(value) != 2:
-        #         raise ValueError(
-        #             "`hyperparam_bounds` values must either be "
-        #             "a list or tuple of size 2, but got {} "
-        #             "instead".format(value)
-        #         )
 
         if not hyperparam_bounds:
             raise TuneError(
@@ -379,6 +372,13 @@ class PB2(PopulationBasedTraining):
         self._hyperparam_bounds_flat = flatten_dict(
             hyperparam_bounds, prevent_delimiter=True
         )
+        for key, value in self._hyperparam_bounds_flat.items():
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
+                raise ValueError(
+                    "`hyperparam_bounds` values must either be "
+                    f"a list or tuple of size 2, but got {value} "
+                    f"instead for the param '{key}'"
+                )
 
         # Current = trials running that have already re-started after reaching
         #           the checkpoint. When exploring we care if these trials

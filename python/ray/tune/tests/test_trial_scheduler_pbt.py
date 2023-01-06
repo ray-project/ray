@@ -2,6 +2,7 @@ from functools import partial
 import numpy as np
 import os
 import pickle
+import pytest
 import random
 import unittest
 import sys
@@ -910,6 +911,12 @@ def test_pb2_missing_hyperparam_init():
     pb2.on_trial_add(mock_runner, trial)
     validate_config(trial.config, hyperparam_bounds)
     assert trial.config["b"]["c"] == 3.0
+
+
+def test_pb2_hyperparam_bounds_validation():
+    hyperparam_bounds = {"a": [1.0, 2.0], "b": {"c": [2.0, 4.0, 6.0]}}
+    with pytest.raises(ValueError):
+        create_pb2_scheduler(hyperparam_bounds=hyperparam_bounds)
 
 
 if __name__ == "__main__":
