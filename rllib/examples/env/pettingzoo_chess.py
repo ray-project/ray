@@ -122,7 +122,7 @@ class MultiAgentChess(MultiAgentEnv):
             "state": self.get_state(),
         }
 
-    def reset(self):
+    def reset(self,*args,**kwargs):
         self.env.reset()
         if self.config["random_start"] > 0:
             self.random_start(self.config["random_start"])

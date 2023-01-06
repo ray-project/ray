@@ -110,7 +110,7 @@ class MultiAgentConnect4(MultiAgentEnv):
             "state": self.get_state(),
         }
 
-    def reset(self):
+    def reset(self,*args,**kwargs):
         self.env.reset()
         return {self.env.agent_selection: self.env.observe(self.env.agent_selection)}
 
