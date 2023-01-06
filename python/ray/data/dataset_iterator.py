@@ -8,6 +8,7 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import tf
+    import torch
 
 
 @PublicAPI(stability="beta")

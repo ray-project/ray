@@ -1,5 +1,5 @@
 import warnings
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional
 
 from ray.air._internal.session import Session
 from ray.air.checkpoint import Checkpoint

@@ -29,6 +29,7 @@ from ray.data._internal.pipeline_executor import (
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
+from ray.data._internal.util import _is_tensor_schema
 from ray.data.block import BatchUDF, Block, KeyFn, RowUDF
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T, U, TensorflowFeatureTypeSpec
