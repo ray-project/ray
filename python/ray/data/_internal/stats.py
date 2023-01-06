@@ -64,10 +64,13 @@ class _DatasetStatsBuilder:
     def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
-            if i == 0:
-                stage_infos[self.stage_name + "_" + k] = v
+            if len(stages) > 1:
+                if i == 0:
+                    stage_infos[self.stage_name + "_" + k] = v
+                else:
+                    stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
             else:
-                stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
+                stage_infos[self.stage_name] = v
         stats = DatasetStats(
             stages=stage_infos,
             parent=self.parent,
@@ -211,6 +214,7 @@ class DatasetStats:
         self.iter_format_batch_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
+        self.extra_metrics = {}
 
     @property
     def stats_actor(self):
@@ -278,6 +282,7 @@ class DatasetStats:
             self.dataset_uuid,
             self.time_total_s,
             self.base_name,
+            self.extra_metrics,
         )
 
 
@@ -291,6 +296,7 @@ class DatasetStatsSummary:
     dataset_uuid: str
     time_total_s: float
     base_name: str
+    extra_metrics: Dict
 
     def to_string(
         self, already_printed: Optional[Set[str]] = None, include_parent: bool = True
@@ -318,7 +324,9 @@ class DatasetStatsSummary:
         if len(self.stages_stats) == 1:
             stage_stats_summary = next(iter(self.stages_stats))
             stage_name = stage_stats_summary.stage_name
-            stage_uuid = self.dataset_uuid + stage_name
+            # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
+            # fully to streaming execution.
+            stage_uuid = (self.dataset_uuid or "unknown_uuid") + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
@@ -344,6 +352,9 @@ class DatasetStatsSummary:
                     already_printed.add(stage_uuid)
                     out += str(stage_stats_summary)
         out += str(self.iter_stats)
+        if self.extra_metrics:
+            out += indent
+            out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         return out
 
     def get_total_wall_time(self) -> float:
