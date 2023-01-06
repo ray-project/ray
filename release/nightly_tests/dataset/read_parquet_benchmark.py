@@ -56,21 +56,26 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
 
     # Test with different number files to handle: from a few to many.
     data_dirs = []
+    # Each test set has same total number of rows, which are distributed
+    # to different number of files.
+    total_rows = 1024 * 1024 * 8
     for num_files in [8, 128, 1024]:
-        data_dirs.append(tempfile.mkdtemp())
-        generate_data(
-            num_rows=1000 * num_files,
-            num_files=num_files,
-            num_row_groups_per_file=10,
-            data_dir=data_dirs[-1],
-        )
-        test_name = f"read-parquet-random-data-{num_files}"
-        benchmark.run(
-            test_name,
-            read_parquet,
-            root=data_dirs[-1],
-            parallelism=1,  # We are testing one task to handle N files
-        )
+        for compression in ["snappy", "gzip"]:
+            data_dirs.append(tempfile.mkdtemp())
+            generate_data(
+                num_rows=total_rows,
+                num_files=num_files,
+                num_row_groups_per_file=16,
+                compression=compression,
+                data_dir=data_dirs[-1],
+            )
+            test_name = f"read-parquet-random-data-{num_files}-{compression}"
+            benchmark.run(
+                test_name,
+                read_parquet,
+                root=data_dirs[-1],
+                parallelism=1,  # We are testing one task to handle N files
+            )
     for dir in data_dirs:
         shutil.rmtree(dir)
 

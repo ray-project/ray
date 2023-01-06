@@ -10,7 +10,13 @@ import ray
 #
 
 
-def generate_data(num_rows, num_files, num_row_groups_per_file, data_dir):
+def generate_data(
+    num_rows: int,
+    num_files: int,
+    num_row_groups_per_file: int,
+    compression: str,
+    data_dir: str,
+):
     results = []
     for file_index, global_row_index in enumerate(
         range(0, num_rows, num_rows // num_files)
@@ -22,6 +28,7 @@ def generate_data(num_rows, num_files, num_row_groups_per_file, data_dir):
                 global_row_index,
                 num_rows_in_file,
                 num_row_groups_per_file,
+                compression,
                 data_dir,
             )
         )
@@ -31,7 +38,12 @@ def generate_data(num_rows, num_files, num_row_groups_per_file, data_dir):
 
 @ray.remote
 def generate_file(
-    file_index, global_row_index, num_rows_in_file, num_row_groups_per_file, data_dir
+    file_index: int,
+    global_row_index: int,
+    num_rows_in_file: int,
+    num_row_groups_per_file: int,
+    compression: str,
+    data_dir: str,
 ):
     buffs = []
     for group_index, group_global_row_index in enumerate(
@@ -49,11 +61,15 @@ def generate_file(
     filename = os.path.join(data_dir, f"input_data_{file_index}.parquet.snappy")
     df.to_parquet(
         filename,
-        compression="snappy",
+        compression=compression,
         row_group_size=num_rows_in_file // num_row_groups_per_file,
     )
     return filename, data_size
 
+
+# TODO(jian): Enhance the parquet content:
+#   1) supports more data types;
+#   2) supports data skews.
 
 DATA_SPEC = {
     "embeddings_name0": (0, 2385, np.int64),
@@ -79,7 +95,7 @@ DATA_SPEC = {
 }
 
 
-def generate_row_group(group_index, global_row_index, num_rows_in_group):
+def generate_row_group(group_index: int, global_row_index: int, num_rows_in_group: int):
     buffer = {
         "key": np.array(range(global_row_index, global_row_index + num_rows_in_group)),
     }
