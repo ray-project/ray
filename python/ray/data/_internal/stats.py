@@ -353,6 +353,7 @@ class DatasetStatsSummary:
                     out += str(stage_stats_summary)
         out += str(self.iter_stats)
         if self.extra_metrics:
+            indent = "\t" if stage_stats_summary.is_substage else ""
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         return out
