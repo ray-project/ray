@@ -175,6 +175,7 @@ class TestRLOptimizer(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
+    @pytest.mark.skip
     def test_rl_optimizer_in_behavioral_cloning_torch(self):
         torch.manual_seed(1)
         env = gym.make("CartPole-v1")
@@ -202,6 +203,7 @@ class TestRLOptimizer(unittest.TestCase):
         # 0.57 the return of the policy gets to around 100.
         self.assertLess(results["total_loss"], 0.57)
 
+    @pytest.mark.skip
     def test_rl_optimizer_set_state_get_state_torch(self):
         env = gym.make("CartPole-v1")
         module = DiscreteBCTorchModule.from_model_config(

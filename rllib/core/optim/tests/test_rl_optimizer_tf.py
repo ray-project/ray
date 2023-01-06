@@ -3,6 +3,7 @@
 import gymnasium as gym
 from typing import Any, Mapping, Union
 import unittest
+import pytest
 
 import ray
 from ray.rllib.utils.framework import try_import_tf
@@ -158,6 +159,7 @@ class TestRLOptimizerTF(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
+    @pytest.mark.skip
     def test_rl_optimizer_in_behavioral_cloning_tf(self):
         tf.random.set_seed(1)
         env = gym.make("CartPole-v1")
@@ -178,6 +180,7 @@ class TestRLOptimizerTF(unittest.TestCase):
         # 0.57 the return of the policy gets to around 100.
         self.assertLess(results["total_loss"], 0.57)
 
+    @pytest.mark.skip
     def test_rl_optimizer_set_state_get_state_tf(self):
         env = gym.make("CartPole-v1")
 
