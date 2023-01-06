@@ -105,16 +105,9 @@ def test_gcs_server_restart_during_actor_creation(
         generate_system_config_map(
             gcs_failover_worker_reconnect_timeout=2,
             gcs_rpc_server_reconnect_timeout_s=60,
-            num_heartbeats_timeout=3,
-            pull_based_healthcheck=False,
-        ),
-        generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=2,
-            gcs_rpc_server_reconnect_timeout_s=60,
             health_check_initial_delay_ms=0,
             health_check_period_ms=1000,
             health_check_failure_threshold=3,
-            pull_based_healthcheck=True,
         ),
     ],
     indirect=True,

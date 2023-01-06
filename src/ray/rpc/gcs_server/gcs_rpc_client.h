@@ -217,8 +217,6 @@ class GcsRpcClient {
     node_resource_info_grpc_client_ =
         std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(channel_,
                                                                  client_call_manager);
-    heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
-        channel_, client_call_manager);
     worker_info_grpc_client_ =
         std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
     placement_group_info_grpc_client_ =
@@ -359,12 +357,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetAllResourceUsage,
                              node_resource_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
-  /// Report heartbeat of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService,
-                             ReportHeartbeat,
-                             heartbeat_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Add task events info to GCS Service.
@@ -586,7 +578,6 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
-  std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;

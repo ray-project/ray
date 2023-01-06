@@ -555,28 +555,6 @@ bool NodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
   return removed_nodes_.count(node_id) == 1;
 }
 
-Status NodeInfoAccessor::AsyncReportHeartbeat(
-    const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-    const StatusCallback &callback) {
-  rpc::ReportHeartbeatRequest request;
-  request.mutable_heartbeat()->CopyFrom(*data_ptr);
-  static auto *rpc_client = [this]() -> rpc::GcsRpcClient * {
-    auto io_service = new instrumented_io_context;
-    auto client_call_manager = new rpc::ClientCallManager(*io_service);
-    new boost::asio::io_service::work(*io_service);
-    new std::thread([io_service]() { io_service->run(); });
-    const auto addr = client_impl_->GetGcsServerAddress();
-    return new rpc::GcsRpcClient(addr.first, addr.second, *client_call_manager);
-  }();
-  rpc_client->ReportHeartbeat(
-      request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-      });
-  return Status::OK();
-}
-
 void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);

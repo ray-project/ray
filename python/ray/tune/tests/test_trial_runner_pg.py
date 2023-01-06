@@ -32,7 +32,11 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                 "num_cpus": self.head_cpus,
                 "num_gpus": self.head_gpus,
                 "resources": {"custom": self.head_custom},
-                "_system_config": {"num_heartbeats_timeout": 10},
+                "_system_config": {
+                    "health_check_initial_delay_ms": 0,
+                    "health_check_period_ms": 1000,
+                    "health_check_failure_threshold": 10,
+                },
             },
         )
         # Pytest doesn't play nicely with imports

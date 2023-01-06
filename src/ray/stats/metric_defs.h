@@ -202,15 +202,6 @@ static Gauge ObjectDirectoryRemovedLocations(
     "have been removed from this node.",
     "removals");
 
-/// Node Manager
-static Histogram HeartbeatReportMs(
-    "heartbeat_report_ms",
-    "Heartbeat report time in raylet. If this value is high, that means there's a high "
-    "system load. It is possible that this node will be killed because of missing "
-    "heartbeats.",
-    "ms",
-    {100, 200, 400, 800, 1600, 3200, 6400, 15000, 30000});
-
 /// Worker Pool
 static Histogram ProcessStartupTimeMs("process_startup_time_ms",
                                       "Time to start up a worker process.",

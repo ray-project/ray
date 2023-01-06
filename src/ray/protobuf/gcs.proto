@@ -295,11 +295,6 @@ message GcsNodeInfo {
   string node_name = 12;
 }
 
-message HeartbeatTableData {
-  // Node id.
-  bytes node_id = 1;
-}
-
 message JobConfig {
   enum ActorLifetime {
     DETACHED = 0;
