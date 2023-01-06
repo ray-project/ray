@@ -2637,6 +2637,12 @@ class Dataset(Generic[T]):
     def iterator(self) -> DatasetIterator:
         """Return a :class:`DatasetIterator <ray.data.DatasetIterator>` that
         can be used to repeatedly iterate over the dataset.
+        Examples:
+            >>> import ray
+            >>> for batch in ray.data.range(
+            ...     1000000
+            ... ).iterator().iter_batches(): # doctest: +SKIP
+            ...     print(batch) # doctest: +SKIP
 
         It is recommended to use `DatasetIterator` methods over directly
         calling methods such as `iter_batches()`.

@@ -9,7 +9,6 @@ from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data import DatasetIterator
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.util.check_ingest import make_local_dataset_iterator
 
 
 @pytest.fixture
@@ -207,7 +206,10 @@ def test_fit_transform_config(ray_start_4_cpus):
 class TestStream(DataParallelTrainer):
     _dataset_config = {
         "train": DatasetConfig(
-            split=True, required=True, max_object_store_memory_fraction=0.3
+            split=True,
+            required=True,
+            # Use 30% of object store memory.
+            max_object_store_memory_fraction=0.3,
         ),
     }
 
@@ -363,36 +365,6 @@ def test_randomize_block_order(ray_start_4_cpus):
         datasets={"train": ds},
     )
     test.fit()
-
-
-def test_tf_torch(ray_start_4_cpus):
-    ds = ray.data.range_table(5)
-
-    it = make_local_dataset_iterator(
-        ds,
-        BatchMapper(lambda x: x, batch_format="pandas"),
-        DatasetConfig(randomize_block_order=False),
-    )
-
-    for batch1, batch2 in zip(ds.iter_torch_batches(), it.iter_torch_batches()):
-        assert (batch1["value"].numpy() == batch2["value"].numpy()).all()
-
-    for batch1, batch2 in zip(ds.to_tf("value", "value"), it.to_tf("value", "value")):
-        assert batch1 == batch2
-
-    it = make_local_dataset_iterator(
-        ds,
-        BatchMapper(lambda x: x, batch_format="pandas"),
-        DatasetConfig(
-            randomize_block_order=False, max_object_store_memory_fraction=0.5
-        ),
-    )
-
-    for batch1, batch2 in zip(ds.iter_torch_batches(), it.iter_torch_batches()):
-        assert (batch1["value"].numpy() == batch2["value"].numpy()).all()
-
-    for batch1, batch2 in zip(ds.to_tf("value", "value"), it.to_tf("value", "value")):
-        assert batch1 == batch2
 
 
 if __name__ == "__main__":

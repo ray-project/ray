@@ -5,12 +5,9 @@ from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
 
 from ray.data import Dataset, DatasetPipeline
-from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
-from ray.data._internal.pipelined_dataset_iterator import PipelinedDatasetIterator
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
-    from ray.data import DatasetIterator
     from ray.data.preprocessor import Preprocessor
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
@@ -225,10 +222,7 @@ class DataParallelIngestSpec:
                 dataset_splits = [dataset] * len(training_worker_handles)
 
             for i, dataset_split in enumerate(dataset_splits):
-                if isinstance(dataset_split, Dataset):
-                    dataset_splits[i] = BulkDatasetIterator(dataset_split)
-                elif isinstance(dataset_split, DatasetPipeline):
-                    dataset_splits[i] = PipelinedDatasetIterator(dataset_split)
+                dataset_splits[i] = dataset_split.iterator()
 
             for i in range(len(dataset_splits)):
                 dataset_dict_splits[i][key] = dataset_splits[i]

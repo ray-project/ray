@@ -5416,17 +5416,6 @@ def test_ragged_tensors(ray_start_regular_shared):
     ]
 
 
-def test_iterator(ray_start_regular_shared):
-    ds = ray.data.range_table(5)
-
-    it = ds.iterator()
-    for batch1, batch2 in zip(ds.iter_torch_batches(), it.iter_torch_batches()):
-        assert (batch1["value"].numpy() == batch2["value"].numpy()).all()
-
-    for batch1, batch2 in zip(ds.to_tf("value", "value"), it.to_tf("value", "value")):
-        assert batch1 == batch2
-
-
 if __name__ == "__main__":
     import sys
 

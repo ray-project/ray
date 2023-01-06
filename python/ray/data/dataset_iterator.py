@@ -13,8 +13,13 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="beta")
 class DatasetIterator(abc.ABC):
-    """An iterator for repeatedly reading a preprocessed dataset. Each
-    iteration call represents one pass (epoch) over the dataset.
+    """An iterator for reading items from a :class:`~Dataset` or
+    :class:`~DatasetPipeline`.
+
+    For Datasets, each iteration call represents a complete read of all items in the
+    Dataset. For DatasetPipelines, each iteration call represents one pass (epoch)
+    over the Dataset. Note that for DatasetPipelines, each pass iterates over
+    the original Dataset, instead of a window (if `.window()` was used).
 
     If using Ray AIR, each trainer actor should get its own iterator by calling
     :meth:`session.get_dataset_shard("train")
@@ -224,3 +229,12 @@ class DatasetIterator(abc.ABC):
     @abc.abstractmethod
     def stats(self) -> str:
         return NotImplementedError
+
+    def iter_epochs(self, max_epoch: int = -1) -> None:
+        raise DeprecationWarning(
+            "If you are using AIR, note that session.get_dataset_shard() "
+            "returns a ray.data.DatasetIterator instead of a "
+            "DatasetPipeline as of Ray 2.3. "
+            "To iterate over one epoch of data, use iter_batches(), "
+            "iter_torch_batches(), or to_tf()."
+        )
