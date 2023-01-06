@@ -4,7 +4,6 @@ from typing import Any, Mapping, Tuple, Union, Type
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
-from ray.rllib.core.optim.marl_optimizer import MultiAgentRLOptimizer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy

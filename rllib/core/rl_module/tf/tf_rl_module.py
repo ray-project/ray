@@ -1,10 +1,8 @@
-import abc
 from typing import Any, Mapping
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 
 
 _, tf, _ = try_import_tf()
@@ -61,4 +59,3 @@ class TfRLModule(RLModule, tf.keras.Model):
         """Returns True if the module is distributed."""
         # TODO (Avnish): Implement this.
         return False
-
