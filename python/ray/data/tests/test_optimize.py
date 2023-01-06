@@ -296,7 +296,7 @@ def test_stage_linking(ray_start_regular_shared):
     ds = ray.data.range(10).lazy()
     assert len(ds._plan._stages_before_snapshot) == 0
     assert len(ds._plan._stages_after_snapshot) == 0
-    assert len(ds._plan._last_optimized_stages) == 0
+    assert ds._plan._last_optimized_stages is None
     ds = ds.map(lambda x: x + 1)
     assert len(ds._plan._stages_before_snapshot) == 0
     _assert_has_stages(ds._plan._stages_after_snapshot, ["map"])
