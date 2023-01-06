@@ -55,7 +55,6 @@ namespace raylet {
 
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
-using rpc::HeartbeatTableData;
 using rpc::JobTableData;
 using rpc::ResourceUsageBatchData;
 
@@ -111,35 +110,6 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
-};
-
-class HeartbeatSender {
- public:
-  /// Create a heartbeat sender.
-  ///
-  /// \param self_node_id ID of this node.
-  /// \param gcs_client GCS client to send heartbeat.
-  HeartbeatSender(NodeID self_node_id, std::shared_ptr<gcs::GcsClient> gcs_client);
-
-  ~HeartbeatSender();
-
- private:
-  /// Send heartbeats to the GCS.
-  void Heartbeat();
-
-  /// ID of this node.
-  NodeID self_node_id_;
-  /// A client connection to the GCS.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The io service used in heartbeat loop in case of it being
-  /// blocked by main thread.
-  instrumented_io_context heartbeat_io_service_;
-  /// Heartbeat thread, using with heartbeat_io_service_.
-  std::unique_ptr<std::thread> heartbeat_thread_;
-  std::unique_ptr<PeriodicalRunner> heartbeat_runner_;
-  /// The time that the last heartbeat was sent at. Used to make sure we are
-  /// keeping up with heartbeats.
-  uint64_t last_heartbeat_at_ms_;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
@@ -708,8 +678,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// Class to send heartbeat to GCS.
-  std::unique_ptr<HeartbeatSender> heartbeat_sender_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s

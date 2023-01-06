@@ -123,59 +123,6 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   return buffer.str();
 }
 
-HeartbeatSender::HeartbeatSender(NodeID self_node_id,
-                                 std::shared_ptr<gcs::GcsClient> gcs_client)
-    : self_node_id_(self_node_id), gcs_client_(gcs_client) {
-  // Init heartbeat thread and run its io service.
-  heartbeat_thread_.reset(new std::thread([this] {
-    SetThreadName("heartbeat");
-    /// The asio work to keep io_service_ alive.
-    boost::asio::io_service::work io_service_work_(heartbeat_io_service_);
-    heartbeat_io_service_.run();
-  }));
-  heartbeat_runner_.reset(new PeriodicalRunner(heartbeat_io_service_));
-
-  // Start sending heartbeats to the GCS.
-  last_heartbeat_at_ms_ = current_time_ms();
-  heartbeat_runner_->RunFnPeriodically(
-      [this] { Heartbeat(); },
-      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
-      "NodeManager.deadline_timer.heartbeat");
-}
-
-HeartbeatSender::~HeartbeatSender() {
-  heartbeat_io_service_.stop();
-  if (heartbeat_thread_->joinable()) {
-    heartbeat_thread_->join();
-  }
-  heartbeat_runner_.reset();
-  heartbeat_thread_.reset();
-}
-
-void HeartbeatSender::Heartbeat() {
-  uint64_t now_ms = current_time_ms();
-  uint64_t interval = now_ms - last_heartbeat_at_ms_;
-  if (interval > RayConfig::instance().num_heartbeats_warning() *
-                     RayConfig::instance().raylet_heartbeat_period_milliseconds()) {
-    RAY_LOG(WARNING)
-        << "Last heartbeat was sent " << interval
-        << " ms ago. There might be resource pressure on this node. If heartbeat keeps "
-           "lagging, this node can be marked as dead mistakenly.";
-  }
-  last_heartbeat_at_ms_ = now_ms;
-  stats::HeartbeatReportMs.Record(interval);
-
-  auto heartbeat_data = std::make_shared<HeartbeatTableData>();
-  heartbeat_data->set_node_id(self_node_id_.Binary());
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
-        if (status.IsDisconnected()) {
-          RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD") << "This node has beem marked as dead.";
-          RAY_LOG(FATAL) << "This node has beem marked as dead.";
-        }
-      }));
-}
-
 NodeManager::NodeManager(instrumented_io_context &io_service,
                          const NodeID &self_node_id,
                          const std::string &self_node_name,
@@ -344,7 +291,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
-  RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       scheduling::NodeID(self_node_id_.Binary()),
       config.resource_config.ToResourceMap(),
@@ -483,10 +429,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 }
 
 ray::Status NodeManager::RegisterGcs() {
-  // Start sending heartbeat here to ensure it happening after raylet being registered.
-  if (!RayConfig::instance().pull_based_healthcheck()) {
-    heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
-  }
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
@@ -1054,17 +996,15 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
       RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD")
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
              "dead by the "
-          << "GCS: GCS didn't receive heartbeats from this node for "
-          << RayConfig::instance().num_heartbeats_timeout() *
-                 RayConfig::instance().raylet_heartbeat_period_milliseconds()
-          << " ms. This is likely because the machine or raylet has become overloaded.";
+          << "GCS: GCS failed to check the health of this node for "
+          << RayConfig::instance().health_check_failure_threshold() << " times."
+          << " This is likely because the machine or raylet has become overloaded.";
       RAY_LOG(FATAL)
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
              "dead by the "
-          << "GCS: GCS didn't receive heartbeats from this node for "
-          << RayConfig::instance().num_heartbeats_timeout() *
-                 RayConfig::instance().raylet_heartbeat_period_milliseconds()
-          << " ms. This is likely because the machine or raylet has become overloaded.";
+          << "GCS: GCS failed to check the health of this node for "
+          << RayConfig::instance().health_check_failure_threshold() << " times."
+          << " This is likely because the machine or raylet has become overloaded.";
     } else {
       // No-op since this node already starts to be drained, and GCS already knows about
       // it.
@@ -2807,12 +2747,7 @@ void NodeManager::TriggerGlobalGC() {
   should_local_gc_ = true;
 }
 
-void NodeManager::Stop() {
-  object_manager_.Stop();
-  if (heartbeat_sender_) {
-    heartbeat_sender_.reset();
-  }
-}
+void NodeManager::Stop() { object_manager_.Stop(); }
 
 void NodeManager::RecordMetrics() {
   recorded_metrics_ = true;
