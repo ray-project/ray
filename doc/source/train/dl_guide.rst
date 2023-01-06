@@ -476,7 +476,8 @@ be logged and displayed.
 .. warning::
 
     Only the results from rank 0 worker will be used. However, in order to ensure
-    consistency, ``session.report()`` has to be called on each worker.
+    consistency, ``session.report()`` has to be called on each worker. If you
+    want to aggregate results from multiple workers, see :ref:`train-aggregating-results`.
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
 the end of each training epoch.
@@ -905,35 +906,103 @@ A simple example for creating a callback that will print out results:
     # {'epoch': 1, '_timestamp': 1656349412, '_time_this_iter_s': 0.0013833045959472656, '_training_iteration': 2, 'time_this_iter_s': 0.016670703887939453, 'done': False, 'timesteps_total': None, 'episodes_total': None, 'training_iteration': 2, 'trial_id': '0f1d0_00000', 'experiment_id': '494a1d050b4a4d11aeabd87ba475fcd3', 'date': '2022-06-27_17-03-32', 'timestamp': 1656349412, 'time_total_s': 3.4501540660858154, 'pid': 23018, 'hostname': 'ip-172-31-43-110', 'node_ip': '172.31.43.110', 'config': {}, 'time_since_restore': 3.4501540660858154, 'timesteps_since_restore': 0, 'iterations_since_restore': 2, 'warmup_time': 0.003779172897338867, 'experiment_tag': '0'}
 
 
-Example: PyTorch Distributed metrics
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _train-aggregating-results:
 
-In real applications, you may want to calculate optimization metrics besides
-accuracy and loss: recall, precision, Fbeta, etc.
+Obtaining and aggregating results from multiple workers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Train natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable PyTorch models.
+In real applications, you may want to calculate optimization metrics besides accuracy and loss: recall, precision, Fbeta, etc.
+You may also want to collect metrics from multiple workers. While Ray Train currently only reports metrics from the rank 0
+worker, you can use third-party libraries or distributed primitives of your machine learning framework to report
+metrics from multiple workers.
 
-Here is an example:
+.. tabbed:: PyTorch
 
-.. code-block:: python
+    Ray Train natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable PyTorch models.
 
-    from typing import List, Dict
-    from ray.air import session, ScalingConfig
-    from ray.train.torch import TorchTrainer
+    Here is an example of reporting both the aggregated R2 score and mean train and validation loss from all workers.
 
-    import torch
-    import torchmetrics
+    .. code-block:: python
 
-    def train_func(config):
-        preds = torch.randn(10, 5).softmax(dim=-1)
-        target = torch.randint(5, (10,))
-        accuracy = torchmetrics.functional.accuracy(preds, target).item()
-        session.report({"accuracy": accuracy})
+        import ray.train.torch
+        from ray.air import session, ScalingConfig
+        from ray.train.torch import TorchTrainer
 
-    trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=2))
-    result = trainer.fit()
-    print(result.metrics["accuracy"])
-    # 0.20000000298023224
+        import torch
+        import torch.nn as nn
+        import torchmetrics
+        from torch.optim import Adam
+        import numpy as np
+
+        def train_func(config):
+            n = 100
+            # create a toy dataset
+            X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
+            X_valid = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
+            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
+            Y_valid = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
+            # toy neural network : 1-layer
+            # wrap the model in DDP
+            model = ray.train.torch.prepare_model(nn.Linear(4, 1))
+            criterion = nn.MSELoss()
+
+            mape = torchmetrics.MeanAbsolutePercentageError()
+            # for averaging loss
+            mean_valid_loss = torchmetrics.MeanMetric()
+
+            optimizer = Adam(model.parameters(), lr=3e-4)
+            for epoch in range(config["num_epochs"]):
+                model.train()
+                y = model.forward(X)
+
+                # compute loss
+                loss = criterion(y, Y)
+
+                # back-propagate loss
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                # evaluate
+                model.eval()
+                with torch.no_grad():
+                    pred = model(X_valid)
+                    valid_loss = criterion(pred, Y_valid)
+                    # save loss in aggregator
+                    mean_valid_loss(valid_loss)
+                    mape(pred, Y_valid)
+
+                # collect all metrics
+                # use .item() to obtain a value that can be reported
+                valid_loss = valid_loss.item()
+                mape_collected = mape.compute().item()
+                mean_valid_loss_collected = mean_valid_loss.compute().item()
+
+                session.report(
+                    {
+                        "mape_collected": mape_collected,
+                        "valid_loss": valid_loss,
+                        "mean_valid_loss_collected": mean_valid_loss_collected,
+                    }
+                )
+
+                # reset for next epoch
+                mape.reset()
+                mean_valid_loss.reset()
+
+        trainer = TorchTrainer(
+            train_func,
+            train_loop_config={"num_epochs": 5},
+            scaling_config=ScalingConfig(num_workers=2),
+        )
+        result = trainer.fit()
+        print(result.metrics["valid_loss"], result.metrics["mean_valid_loss_collected"])
+        # 0.5109779238700867 0.5512474775314331
+
+.. tabbed:: TensorFlow
+
+    TensorFlow Keras automatically aggregates metrics from all workers. If you wish to have more
+    control over that, consider implementing a `custom training loop <https://www.tensorflow.org/tutorials/distribute/custom_training>`_.
 
 .. Running on the cloud
 .. --------------------
