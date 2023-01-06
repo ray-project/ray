@@ -16,7 +16,6 @@ prelude_commands: &prelude_commands |-
     export LANG="en_US.UTF-8"
     export BUILD="1"
     export DL="1"
-    export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
     powershell ci/pipeline/fix-windows-container-networking.ps1
     cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 
@@ -36,6 +35,7 @@ steps:
     - conda init
     - . ./ci/ci.sh init
     - ./ci/ci.sh build
+    - export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
     - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then ./ci/ci.sh test_core; fi
     # The next command will be sharded into $parallelism shards.
     - ./ci/ci.sh test_python
