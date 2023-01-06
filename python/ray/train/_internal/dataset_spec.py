@@ -10,6 +10,7 @@ from ray.data._internal.pipelined_dataset_iterator import PipelinedDatasetIterat
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
+    from ray.data import DatasetIterator
     from ray.data.preprocessor import Preprocessor
 
 RayDataset = Union["Dataset", "DatasetPipeline"]

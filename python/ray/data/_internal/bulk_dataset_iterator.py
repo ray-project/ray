@@ -17,6 +17,9 @@ class BulkDatasetIterator(DatasetIterator):
     ):
         self._base_dataset = base_dataset
 
+    def __repr__(self) -> str:
+        return f"DatasetIterator({self._base_dataset})"
+
     def iter_batches(
         self,
         *,

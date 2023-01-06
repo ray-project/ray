@@ -214,7 +214,6 @@ class TestStream(DataParallelTrainer):
     def __init__(self, check_results_fn, **kwargs):
         def train_loop_per_worker():
             data_shard = session.get_dataset_shard("train")
-            # assert isinstance(data_shard, DatasetPipeline), data_shard
             results = []
             for _ in range(2):
                 result = []

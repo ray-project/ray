@@ -19,11 +19,13 @@ class PipelinedDatasetIterator(DatasetIterator):
         self._base_dataset_pipeline = base_dataset_pipeline
         self._epoch_iterator = None
 
+    def __repr__(self) -> str:
+        return f"DatasetIterator({self._base_dataset_pipeline})"
+
     def _get_next_dataset(self) -> "DatasetPipeline":
         if self._epoch_iterator is None:
             self._epoch_iterator = self._base_dataset_pipeline.iter_epochs()
         ds = next(self._epoch_iterator)
-        print(ds)
         return ds
 
     def iter_batches(
