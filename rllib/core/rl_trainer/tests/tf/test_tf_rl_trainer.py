@@ -40,8 +40,7 @@ class TestTfRLTrainer(unittest.TestCase):
             },
         )
         runner = TrainerRunner(
-            trainer_class, trainer_cfg, 
-            compute_config=dict(num_gpus=0)
+            trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
         )
 
         path = "tests/data/cartpole/large.json"

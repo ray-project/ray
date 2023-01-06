@@ -72,14 +72,15 @@ class RLTrainer:
         self.scaling_config = scaling_config
         self.distributed = distributed
 
-
     @abc.abstractmethod
     def _configure_optimizers(self):
         pass
-        
+
     @abc.abstractmethod
     def compute_loss(
-        self, fwd_out: MultiAgentBatch, batch: MultiAgentBatch,
+        self,
+        fwd_out: MultiAgentBatch,
+        batch: MultiAgentBatch,
     ) -> Union[TensorType, Mapping[str, Any]]:
         """Computes variables for optimizing self._module based on fwd_out.
 
@@ -228,6 +229,8 @@ class RLTrainer:
         module = module_cls.from_model_config(**module_kwargs)
         self._module.add_module(module_id, module)
 
+        # TODO: Figure the optimizer part out.
+
     def remove_module(self, module_id: ModuleID) -> None:
         """Remove a module from the trainer.
 
@@ -261,7 +264,6 @@ class RLTrainer:
         for param, optimizer in self._configure_optimizers():
             self.params.append(param)
             self.optimizers.append(optimizer)
-        
 
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.

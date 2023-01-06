@@ -11,7 +11,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-import tree # pip install dm-tree
+import tree  # pip install dm-tree
 
 
 tf1, tf, tfv = try_import_tf()
@@ -34,10 +34,13 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def _configure_optimizers(self):
-        return [(
-            self._module[key].trainable_variables, 
-            tf.keras.optimizers.Adam(learning_rate=1e-3)
-        ) for key in self._module.keys()]
+        return [
+            (
+                self._module[key].trainable_variables,
+                tf.keras.optimizers.Adam(learning_rate=1e-3),
+            )
+            for key in self._module.keys()
+        ]
 
     @override(RLTrainer)
     def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
@@ -63,7 +66,9 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def apply_gradients(self, gradients: Mapping[str, Any]) -> None:
-        for optim, param_groups, grad_groups in zip(self.optimizers, self.params, gradients):
+        for optim, param_groups, grad_groups in zip(
+            self.optimizers, self.params, gradients
+        ):
             optim.apply_gradients(zip(grad_groups, param_groups))
 
     @override(RLTrainer)

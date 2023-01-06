@@ -62,15 +62,3 @@ class TfRLModule(RLModule, tf.keras.Model):
         # TODO (Avnish): Implement this.
         return False
 
-    # @abc.abstractmethod
-    # def trainable_variables(self) -> NestedDict[tf.Tensor]:
-    #     """Returns the trainable variables of the module.
-
-    #     Example:
-    #         `return {"module": module.trainable_variables}`
-
-    #     Note:
-    #         See tensorflow.org/guide/autodiff#gradients_with_respect_to_a_model
-    #         for more details.
-
-    #     """
