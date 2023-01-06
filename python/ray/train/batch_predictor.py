@@ -99,7 +99,7 @@ class BatchPredictor:
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
-    ) -> ray.data.Dataset:
+    ) -> Union[ray.data.Dataset, ray.data.DatasetPipeline]:
         """Run batch scoring on a Dataset.
 
         Args:
@@ -308,6 +308,10 @@ class BatchPredictor:
             batch_size=batch_size,
             **ray_remote_args,
         )
+
+        if isinstance(prediction_results, ray.data.Dataset):
+            # Force execution because Dataset uses lazy execution by default.
+            prediction_results.fully_executed()
 
         return prediction_results
 
