@@ -148,7 +148,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
     : worker_type_(worker_type),
       worker_id_(worker_id),
       current_job_id_(job_id),
-      job_config_(kDefaultJobConfig),
+      job_config_(),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
@@ -184,12 +184,12 @@ void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
   if (current_job_id_.IsNil()) {
     current_job_id_ = job_id;
   }
-  if (google::protobuf::util::MessageDifferencer::Equals(job_config_,
-                                                         kDefaultJobConfig)) {
+  if (!job_config_.has_value()) {
     job_config_ = job_config;
   }
   RAY_CHECK(current_job_id_ == job_id);
-  RAY_CHECK(google::protobuf::util::MessageDifferencer::Equals(job_config_, job_config_));
+  RAY_CHECK(google::protobuf::util::MessageDifferencer::Equals(job_config_.value(),
+                                                               job_config));
 }
 
 int64_t WorkerContext::GetTaskDepth() const {
@@ -204,7 +204,7 @@ JobID WorkerContext::GetCurrentJobID() const {
 
 rpc::JobConfig WorkerContext::GetCurrentJobConfig() const {
   absl::ReaderMutexLock lock(&mutex_);
-  return job_config_;
+  return job_config_.has_value() ? job_config_.value() : kDefaultJobConfig;
 }
 
 const TaskID &WorkerContext::GetCurrentTaskID() const {
