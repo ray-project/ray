@@ -60,13 +60,13 @@ class TfRLTrainer(RLTrainer):
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: tf.GradientTape
     ) -> Mapping[str, Any]:
-        grads = tape.gradient(loss["total_loss"], self.params)
+        grads = tape.gradient(loss["total_loss"], self._params)
         return grads
 
     @override(RLTrainer)
     def apply_gradients(self, gradients: Mapping[str, Any]) -> None:
         for optim, param_groups, grad_groups in zip(
-            self.optimizers, self.params, gradients
+            self._optimizers, self._params, gradients
         ):
             optim.apply_gradients(zip(grad_groups, param_groups))
 

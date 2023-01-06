@@ -3,7 +3,6 @@ from typing import Any, List, Mapping, Sequence, Tuple, Type, TYPE_CHECKING, Uni
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -83,6 +82,10 @@ class RLTrainer:
         self.optimizer_config = optimizer_config
         self.distributed = distributed
         self.in_test = in_test
+
+        # These are the attributes that are set during build
+        self._params: List[ParamType] = None
+        self._optimizers: List[Optimizer] = None
 
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
@@ -234,7 +237,7 @@ class RLTrainer:
                 from `get_state`.
 
         """
-        # self.set_autograd_optimizer_state(state.get("optimizer_state"))
+        # TODO: once we figure out the optimizer format, we can set/get the state
         self._module.set_state(state.get("module_state", {}))
 
     def get_state(self) -> Mapping[str, Any]:
@@ -244,10 +247,8 @@ class RLTrainer:
             The state of the optimizer and module.
 
         """
-        return {
-            "module_state": self._module.get_state(),
-            # "optimizer_state": self.get_autograd_optimizer_state(),
-        }
+        # TODO: once we figure out the optimizer format, we can set/get the state
+        return {"module_state": self._module.get_state()}
 
     def add_module(
         self,
@@ -261,16 +262,15 @@ class RLTrainer:
             module_id: The id of the module to add.
             module_cls: The module class to add.
             module_kwargs: The config for the module.
-            optimizer_cls: The optimizer class to use.
-            optimizer_kwargs: The config for the optimizer.
-
         """
         module = module_cls.from_model_config(**module_kwargs)
         self._module.add_module(module_id, module)
 
+        # TODO: Everytime we add a module, the optimizer gets re-initialized. This is
+        # bad. Fix it.
         # rerun make_optimizers to update the params and optimizer list with the new
         # module
-        self.make_optimizers()
+        self._make_optimizers()
 
     def remove_module(self, module_id: ModuleID) -> None:
         """Remove a module from the trainer.
@@ -282,16 +282,17 @@ class RLTrainer:
         self._module.remove_module(module_id)
 
         # rerun make_optimizers to update the params and optimizer
-        self.make_optimizers()
+        self._make_optimizers()
 
-    def make_module(self) -> RLModule:
-        """Initialize the RLModule or MARLModule that is going to be trained.
-        Args:
-            config: The config to use for the initializing the module.
+    def _make_module(self) -> MultiAgentRLModule:
+        """Construct the multi-agent RL module for the trainer.
+
+        This method uses `self.module_class` and `self.module_kwargs` to construct the
+        module. If the module_class is a single agent RL module it will be wrapped to a
+        multi-agent RL module.
+
         Returns:
-            The initialized module.
-        Note: if an RLModule is returned it will be wrapped in as a
-            MultiAgentRLModule.
+            The constructed module.
         """
 
         if issubclass(self.module_class, MultiAgentRLModule):
@@ -308,21 +309,26 @@ class RLTrainer:
 
         return module
 
-    def make_optimizers(self) -> None:
-        self.params = []
-        self.optimizers = []
+    def _make_optimizers(self) -> None:
+        """Initialize the optimizers for the module.
+
+        This method runs the configure_optimizers() and separates the parameters and
+        optimizers in two distinct lists so that they can be iterated over separately.
+        """
+        self._params = []
+        self._optimizers = []
         for param, optimizer in self.configure_optimizers():
-            self.params.append(param)
-            self.optimizers.append(optimizer)
+            self._params.append(param)
+            self._optimizers.append(optimizer)
 
     def build(self) -> None:
         """Initialize the model."""
         if self.distributed:
             self._module = self._make_distributed()
         else:
-            self._module = self.make_module()
+            self._module = self._make_module()
 
-        self.make_optimizers()
+        self._make_optimizers()
 
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.
@@ -335,10 +341,15 @@ class RLTrainer:
         """
         raise NotImplementedError
 
-    def _make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
+    def _make_distributed(self) -> MultiAgentRLModule:
         """Initialize this trainer in a distributed training setting.
 
+        This method should be overriden in the framework specific trainer. It is
+        expected the the module creation is wrapped in some context manager that will
+        handle the distributed training. This is a common patterns used in torch and
+        tf.
+
         Returns:
-            The distributed module and optimizer.
+            The distributed module.
         """
         raise NotImplementedError
