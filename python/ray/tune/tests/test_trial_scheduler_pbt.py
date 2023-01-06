@@ -788,6 +788,7 @@ def create_pb2_scheduler(
     mode="max",
     perturbation_interval=1,
     hyperparam_bounds=None,
+    custom_explore_fn=None,
 ) -> PB2:
     hyperparam_bounds = hyperparam_bounds or {"a": [0.0, 1.0]}
     return PB2(
@@ -797,6 +798,7 @@ def create_pb2_scheduler(
         perturbation_interval=perturbation_interval,
         quantile_fraction=0.25,
         hyperparam_bounds=hyperparam_bounds,
+        custom_explore_fn=custom_explore_fn,
     )
 
 
@@ -917,6 +919,25 @@ def test_pb2_hyperparam_bounds_validation():
     hyperparam_bounds = {"a": [1.0, 2.0], "b": {"c": [2.0, 4.0, 6.0]}}
     with pytest.raises(ValueError):
         create_pb2_scheduler(hyperparam_bounds=hyperparam_bounds)
+
+
+def test_pb2_custom_explore_fn():
+    hyperparam_bounds = {"a": [1.0, 2.0], "b": {"c": [2.0, 4.0], "d": [4.0, 10.0]}}
+
+    def explore(config):
+        config["b"]["c"] = int(config["b"]["c"])
+        return config
+
+    pb2 = create_pb2_scheduler(
+        hyperparam_bounds=hyperparam_bounds,
+        custom_explore_fn=explore,
+    )
+    mock_runner = MagicMock()
+    trial = Trial("test_pb2", stub=True)
+    pb2.on_trial_add(mock_runner, trial)
+    save_trial_result(pb2, trial, 1, result(time=1, val=10))
+    new_config, _ = pb2._get_new_config(trial, trial)
+    assert isinstance(new_config["b"]["c"], int)
 
 
 if __name__ == "__main__":
