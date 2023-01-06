@@ -238,7 +238,6 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     # So far we have the following gets
     """
     b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
-    b'fun' b'FunctionsToRun:01000000:\x12\x9b\xea\xa39\x01...'
     b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x02'
     b'cluster' b'CLUSTER_METADATA'
     b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
@@ -247,7 +246,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     ???? # unknown
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
-    assert freqs["internal_kv_get"] == 8
+    assert freqs["internal_kv_get"] == 5
 
 
 if __name__ == "__main__":

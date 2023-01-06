@@ -230,6 +230,12 @@ if __name__ == "__main__":
             sys.path.insert(0, p)
     ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
+    # Add driver's system path to sys.path
+    py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+    if py_driver_sys_path:
+        for p in py_driver_sys_path:
+            sys.path.insert(0, p)
+
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
         get_worker_log_file_name(args.worker_type)
