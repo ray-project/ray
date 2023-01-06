@@ -51,7 +51,7 @@ class TestRLModule(unittest.TestCase):
         grads = tape.gradient(loss, module.trainable_variables)
 
         # check that all neural net parameters have gradients
-        for grad in grads["policy"]:
+        for grad in grads:
             self.assertIsNotNone(grad)
 
     def test_forward(self):

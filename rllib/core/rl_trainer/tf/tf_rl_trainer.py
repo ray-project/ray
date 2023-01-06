@@ -76,7 +76,7 @@ class TfRLTrainer(RLTrainer):
         # the user of this class that there is such an attribute.
         self.strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with self.strategy.scope():
-            module = self.make_module()
+            module = self._make_module()
         return module
 
     @override(RLTrainer)

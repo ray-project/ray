@@ -5,19 +5,13 @@ from typing import Any, Mapping, Union
 import unittest
 
 import ray
-from ray.rllib.algorithms import AlgorithmConfig
-from ray.rllib.offline import IOContext
-from ray.rllib.offline.dataset_reader import (
-    DatasetReader,
-    get_dataset_and_shards,
-)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_optimizer import BCTFOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -132,14 +126,14 @@ class BCTFTrainer:
         Returns:
             A dictionary of extra information and statistics.
         """
-        grads = tape.gradient(loss["total_loss"], self._module.trainable_variables())
+        grads = tape.gradient(loss["total_loss"], self._module.trainable_variables)
         return grads
 
     def apply_gradients(self, gradients: Mapping[str, Any]) -> None:
         """Perform an update on self._module"""
         for key, optimizer in self._rl_optimizer.get_optimizers().items():
             optimizer.apply_gradients(
-                zip(gradients[key], self._module.trainable_variables()[key])
+                zip(gradients[key], self._module.trainable_variables[key])
             )
 
     def set_state(self, state: Mapping[str, Any]) -> None:
@@ -169,22 +163,8 @@ class TestRLOptimizerTF(unittest.TestCase):
         env = gym.make("CartPole-v1")
         trainer = BCTFTrainer(env)
 
-        # path = "s3://air-example-data/rllib/cartpole/large.json"
-        path = "tests/data/cartpole/large.json"
-        input_config = {"format": "json", "paths": path}
-        dataset, _ = get_dataset_and_shards(
-            AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
-        )
         batch_size = 500
-        ioctx = IOContext(
-            config=(
-                AlgorithmConfig()
-                .training(train_batch_size=batch_size)
-                .offline_data(actions_in_input_normalized=True)
-            ),
-            worker_index=0,
-        )
-        reader = DatasetReader(dataset, ioctx)
+        reader = get_cartpole_dataset_reader(batch_size=batch_size)
         num_epochs = 100
         total_timesteps_of_training = 1000000
         inter_steps = total_timesteps_of_training // (num_epochs * batch_size)
@@ -204,22 +184,8 @@ class TestRLOptimizerTF(unittest.TestCase):
         trainer1 = BCTFTrainer(env)
         trainer2 = BCTFTrainer(env)
 
-        # path = "s3://air-example-data/rllib/cartpole/large.json"
-        path = "tests/data/cartpole/large.json"
-        input_config = {"format": "json", "paths": path}
-        dataset, _ = get_dataset_and_shards(
-            AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
-        )
         batch_size = 500
-        ioctx = IOContext(
-            config=(
-                AlgorithmConfig()
-                .training(train_batch_size=batch_size)
-                .offline_data(actions_in_input_normalized=True)
-            ),
-            worker_index=0,
-        )
-        reader = DatasetReader(dataset, ioctx)
+        reader = get_cartpole_dataset_reader(batch_size=batch_size)
         batch = reader.next()
 
         trainer1.update(batch)
