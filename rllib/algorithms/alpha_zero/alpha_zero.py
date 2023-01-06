@@ -293,11 +293,11 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         )
         _, env_creator = Algorithm._get_env_id_and_creator(config["env"], config)
         if config["ranked_rewards"]["enable"]:
-            # if r2 is enabled, tne env is wrapped to include a rewards buffer
-            # used to normalize rewards
+            # If r2 is enabled, the env is wrapped to include a rewards buffer
+            # used to normalize rewards.
             env_cls = get_r2_env_wrapper(env_creator, config["ranked_rewards"])
 
-            # the wrapped env is used only in the mcts, not in the
+            # The wrapped env is used only in the mcts, not in the
             # rollout workers
             def _env_creator():
                 return env_cls(config["env_config"])
