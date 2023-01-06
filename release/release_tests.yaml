@@ -4350,8 +4350,8 @@
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    # Expect the benchmark to finish around 90 minutes.
-    timeout: 7200
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
     script: python iter_tensor_batches_benchmark.py
 
     type: sdk_command

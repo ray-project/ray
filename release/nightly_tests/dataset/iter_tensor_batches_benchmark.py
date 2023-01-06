@@ -83,7 +83,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark):
         use_default_params=True,
     )
 
-    batch_sizes = [16, 32, 64]
+    batch_sizes = [16, 32]
 
     # Test with varying batch sizes for iter_torch_batches() and to_tf().
     for batch_size in batch_sizes:
