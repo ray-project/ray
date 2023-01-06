@@ -26,9 +26,9 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
             impala.ImpalaConfig()
             .environment("CartPole-v1")
             .resources(num_gpus=1)
-            .rollouts(num_rollout_workers=2)
+            .rollouts(num_rollout_workers=4)
         )
-        num_iterations = 4
+        num_iterations = 3
 
         for _ in framework_iterator(config, with_eager_tracing=True):
             for num_aggregation_workers in [0, 1]:
