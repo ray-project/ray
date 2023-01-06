@@ -4404,7 +4404,7 @@
 ###############
 
 - name: inference
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: inference
@@ -4426,7 +4426,7 @@
     file_manager: sdk
 
 - name: shuffle_data_loader
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: shuffle_data_loader
@@ -4445,7 +4445,7 @@
     file_manager: sdk
 
 - name: parquet_metadata_resolution
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: parquet_metadata_resolution
@@ -4467,7 +4467,7 @@
     file_manager: sdk
 
 - name: dataset_random_access
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   stable: false
 
@@ -4487,7 +4487,7 @@
     file_manager: sdk
 
 - name: pipelined_data_ingest_benchmark
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4506,7 +4506,7 @@
     file_manager: sdk
 
 - name: aggregate_benchmark
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4523,7 +4523,7 @@
     file_manager: sdk
 
 - name: read_images_benchmark_single_node
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4540,7 +4540,7 @@
     file_manager: sdk
 
 - name: read_tfrecords_benchmark_single_node
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4558,7 +4558,7 @@
     file_manager: sdk
 
 - name: map_batches_benchmark_single_node
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4576,7 +4576,7 @@
     file_manager: sdk
 
 - name: pipelined_training_50_gb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: pipelined_training_50_gb
@@ -4598,7 +4598,7 @@
     file_manager: sdk
 
 - name: pipelined_ingestion_1500_gb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: pipelined_ingestion_1500_gb
@@ -4622,7 +4622,7 @@
     file_manager: sdk
 
 - name: datasets_preprocess_ingest
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: datasets_preprocess_ingest
@@ -4646,7 +4646,7 @@
     file_manager: sdk
 
 - name: datasets_ingest_400G
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: datasets_ingest_400G
@@ -4665,7 +4665,7 @@
     file_manager: sdk
 
 - name: dataset_shuffle_random_shuffle_1tb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_random_shuffle_1tb
@@ -4686,7 +4686,7 @@
     file_manager: sdk
 
 - name: dataset_shuffle_sort_1tb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_sort_1tb
@@ -4707,7 +4707,7 @@
     file_manager: sdk
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_random_shuffle_1tb
@@ -4728,7 +4728,7 @@
     file_manager: sdk
 
 - name: dataset_shuffle_push_based_sort_1tb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_sort_1tb
@@ -4749,7 +4749,7 @@
     file_manager: sdk
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_random_shuffle_100tb
@@ -4820,7 +4820,7 @@
     file_manager: sdk
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dask_on_ray_large_scale_test_no_spilling
@@ -4844,7 +4844,7 @@
     file_manager: sdk
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dask_on_ray_large_scale_test_spilling
@@ -4868,7 +4868,7 @@
     file_manager: sdk
 
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_pipelined_ingestion_1500_gb_15_windows
@@ -4892,7 +4892,7 @@
     file_manager: sdk
 
 - name: chaos_dataset_shuffle_push_based_sort_1tb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_push_based_sort_1tb
@@ -4916,7 +4916,7 @@
     file_manager: sdk
 
 - name: chaos_dataset_shuffle_sort_1tb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_sort_1tb
@@ -4938,7 +4938,7 @@
     file_manager: sdk
 
 - name: chaos_dataset_shuffle_random_shuffle_1tb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_random_shuffle_1tb
@@ -4963,7 +4963,7 @@
     file_manager: sdk
 
 - name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
-  group: Data tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
