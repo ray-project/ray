@@ -9,13 +9,13 @@ from pl_bolts.datamodules import MNISTDataModule
 import mlflow
 
 from ray import air, tune
-from ray.tune.integration.mlflow import mlflow_mixin
+from ray.air.integrations.mlflow import setup_mlflow
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
 
 
-@mlflow_mixin
 def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
+    setup_mlflow(config)
     model = LightningMNISTClassifier(config, data_dir)
     dm = MNISTDataModule(
         data_dir=data_dir, num_workers=1, batch_size=config["batch_size"]

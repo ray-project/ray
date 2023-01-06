@@ -251,8 +251,9 @@ def test_dynamic_generator_distributed(ray_start_cluster):
 
 def test_dynamic_generator_reconstruction(ray_start_cluster):
     config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
         "max_direct_call_object_size": 100,
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
@@ -304,8 +305,9 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     ray_start_cluster, too_many_returns
 ):
     config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
         "max_direct_call_object_size": 100,
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
@@ -370,8 +372,9 @@ def test_dynamic_generator_reconstruction_nondeterministic(
 
 def test_dynamic_generator_reconstruction_fails(ray_start_cluster):
     config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
         "max_direct_call_object_size": 100,
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
@@ -433,8 +436,9 @@ def test_dynamic_generator_reconstruction_fails(ray_start_cluster):
 
 def test_dynamic_empty_generator_reconstruction_nondeterministic(ray_start_cluster):
     config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
         "max_direct_call_object_size": 100,
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,

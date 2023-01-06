@@ -79,8 +79,9 @@ class ViewRequirementAgentConnector(AgentConnector):
             "and agent_id({agent_id})"
         )
 
-        vr = self._view_requirements
-        assert vr, "ViewRequirements required by ViewRequirementAgentConnector"
+        assert (
+            self._view_requirements
+        ), "ViewRequirements required by ViewRequirementAgentConnector"
 
         # Note(jungong) : we need to keep the entire input dict here.
         # A column may be used by postprocessing (GAE) even if its

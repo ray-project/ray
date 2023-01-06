@@ -210,7 +210,9 @@ def _shutdown():
     """Cleans up the trial and removes it from the global context."""
 
     global _session
+    global _session_v2
     _session = None
+    _session_v2 = None
 
 
 @Deprecated(message=_deprecation_msg)
