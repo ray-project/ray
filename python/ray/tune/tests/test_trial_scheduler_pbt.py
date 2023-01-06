@@ -920,6 +920,4 @@ def test_pb2_hyperparam_bounds_validation():
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))
