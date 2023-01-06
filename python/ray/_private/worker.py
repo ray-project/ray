@@ -873,7 +873,10 @@ def get_gpu_ids():
     return assigned_ids
 
 
-@Deprecated(message="Use ray.get_runtime_context().get_assigned_resources() instead.")
+@Deprecated(
+    message="Use ray.get_runtime_context().get_assigned_resources() instead.",
+    warning=True,
+)
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
 
