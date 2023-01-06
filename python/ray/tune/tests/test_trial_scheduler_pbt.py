@@ -24,6 +24,7 @@ from ray.tune.schedulers.pb2 import PB2
 from ray.tune.schedulers.pb2_utils import UCB
 from ray.tune.tune_config import TuneConfig
 from ray._private.test_utils import object_memory_usage
+from ray.tune.utils.util import flatten_dict
 
 
 # Import psutil after ray so the packaged version is used.
@@ -798,6 +799,14 @@ def create_pb2_scheduler(
     )
 
 
+def save_trial_result(scheduler, trial, time, result):
+    scheduler._save_trial_state(scheduler._trial_state[trial], time, result, trial)
+
+
+def result(time, val):
+    return {"training_iteration": time, "score": val}
+
+
 def test_pb2_perturbation(monkeypatch):
     hyperparam_bounds = {"a": [1.0, 2.0]}
     pb2 = create_pb2_scheduler(
@@ -805,12 +814,6 @@ def test_pb2_perturbation(monkeypatch):
     )
 
     mock_runner = MagicMock()
-
-    def save_trial_result(trial, time, result):
-        pb2._save_trial_state(pb2._trial_state[trial], time, result, trial)
-
-    def result(time, val):
-        return {"training_iteration": time, "score": val}
 
     # One trial at each end of the hyperparam bounds, one performing better than the
     # other. We expect a perturbed value to be closer to the better performing one.
@@ -826,14 +829,62 @@ def test_pb2_perturbation(monkeypatch):
     # Each timestep, trial 1's score increases by 10, trial 2's score increases by 20
     for t in range(1, 11):
         for i, trial in enumerate(trials):
-            save_trial_result(trial, t, result(time=t, val=t * (i + 1) * 10))
+            save_trial_result(pb2, trial, t, result(time=t, val=t * (i + 1) * 10))
 
     # Ignoring variance (kappa=0) and only optimizing for exploitation,
     # we expect the next point suggested to be close to higher-performing trial
     monkeypatch.setattr(ray.tune.schedulers.pb2_utils, "UCB", partial(UCB, kappa=0.0))
-    new_config, _ = pb2._get_new_config(trials[0], trials[-1])
+    new_config, _ = pb2._get_new_config(trials[0], trials[1])
     assert new_config["a"] > 1.5
     assert pb2._quantiles() == ([trials[0]], [trials[1]])
+
+
+def test_pb2_nested_hyperparams():
+    """Test that PB2 with nested hyperparams behaves the same as without nesting."""
+    hyperparam_bounds = {"a": [1.0, 2.0], "b": {"c": [2.0, 4.0], "d": [4.0, 10.0]}}
+    pb2_nested = create_pb2_scheduler(
+        metric="score",
+        mode="max",
+        hyperparam_bounds=hyperparam_bounds,
+    )
+    pb2_flat = create_pb2_scheduler(
+        metric="score",
+        mode="max",
+        hyperparam_bounds=flatten_dict(hyperparam_bounds, delimiter=""),
+    )
+
+    mock_runner = MagicMock()
+
+    trials_nested = [Trial("pb2_test", stub=True) for _ in range(3)]
+    trials_flat = [Trial("pb2_test", stub=True) for _ in range(3)]
+
+    np.random.seed(2023)
+
+    for trial_nested, trial_flat in zip(trials_nested, trials_flat):
+        pb2_nested.on_trial_add(mock_runner, trial_nested)
+        # Let PB2 generate the initial config randomly, then use the same
+        # initial values for the flattened version
+        flattened_init_config = flatten_dict(trial_nested.config, delimiter="")
+        trial_flat.config = flattened_init_config
+        pb2_flat.on_trial_add(mock_runner, trial_flat)
+
+    # Make sure that config suggestions are the same for each timestep
+    for t in range(1, 10):
+        for i, (trial_nested, trial_flat) in enumerate(zip(trials_nested, trials_flat)):
+            res = result(time=t, val=t * (i + 1) * 10)
+            save_trial_result(pb2_nested, trial_nested, t, res)
+            save_trial_result(pb2_flat, trial_flat, t, res)
+
+        new_config, _ = pb2_nested._get_new_config(trials_nested[0], trials_nested[-1])
+        new_config_flat, _ = pb2_flat._get_new_config(trials_flat[0], trials_flat[-1])
+
+        # Make sure the suggested config is still nested properly
+        assert list(new_config.keys()) == ["a", "b"]
+        assert list(new_config["b"].keys()) == ["c", "d"]
+        assert np.allclose(
+            list(flatten_dict(new_config, delimiter="").values()),
+            list(new_config_flat.values()),
+        )
 
 
 if __name__ == "__main__":

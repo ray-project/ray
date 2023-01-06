@@ -7,6 +7,7 @@ import pandas as pd
 from ray.tune import TuneError
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.experiment import Trial
+from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 
 def import_pb2_dependencies():
@@ -310,13 +311,13 @@ class PB2(PopulationBasedTraining):
             raise RuntimeError("Please install scikit-learn to use PB2.")
 
         hyperparam_bounds = hyperparam_bounds or {}
-        for value in hyperparam_bounds.values():
-            if not isinstance(value, (list, tuple)) or len(value) != 2:
-                raise ValueError(
-                    "`hyperparam_bounds` values must either be "
-                    "a list or tuple of size 2, but got {} "
-                    "instead".format(value)
-                )
+        # for value in hyperparam_bounds.values():
+        #     if not isinstance(value, (list, tuple)) or len(value) != 2:
+        #         raise ValueError(
+        #             "`hyperparam_bounds` values must either be "
+        #             "a list or tuple of size 2, but got {} "
+        #             "instead".format(value)
+        #         )
 
         if not hyperparam_bounds:
             raise TuneError(
@@ -341,6 +342,9 @@ class PB2(PopulationBasedTraining):
         self.data = pd.DataFrame()
 
         self._hyperparam_bounds = hyperparam_bounds
+        self._hyperparam_bounds_flat = flatten_dict(
+            hyperparam_bounds, prevent_delimiter=True
+        )
 
         # Current = trials running that have already re-started after reaching
         #           the checkpoint. When exploring we care if these trials
@@ -354,11 +358,9 @@ class PB2(PopulationBasedTraining):
         # Data logging for PB2.
 
         # Collect hyperparams names and current values for this trial.
-        names = []
-        values = []
-        for key in self._hyperparam_bounds:
-            names.append(str(key))
-            values.append(trial.config[key])
+        names = list(self._hyperparam_bounds_flat.keys())
+        flattened_config = flatten_dict(trial.config)
+        values = [flattened_config[key] for key in names]
 
         # Store trial state and hyperparams in dataframe.
         # this needs to be made more general.
@@ -390,13 +392,13 @@ class PB2(PopulationBasedTraining):
         if self.data["Time"].max() > self.last_exploration_time:
             self.current = None
 
-        new_config, data = explore(
+        new_config_flat, data = explore(
             self.data,
-            self._hyperparam_bounds,
+            self._hyperparam_bounds_flat,
             self.current,
             trial_to_clone,
             trial,
-            trial_to_clone.config,
+            flatten_dict(trial_to_clone.config),
         )
 
         # Important to replace the old values, since we are copying across
@@ -405,7 +407,7 @@ class PB2(PopulationBasedTraining):
         # If the current guy being selecting is at a point that is already
         # done, then append the data to the "current" which contains the
         # points in the current batch.
-        new = [new_config[key] for key in self._hyperparam_bounds]
+        new = [new_config_flat[key] for key in self._hyperparam_bounds_flat]
 
         new = np.array(new)
         new = new.reshape(1, new.size)
@@ -416,4 +418,5 @@ class PB2(PopulationBasedTraining):
             self.current = np.concatenate((self.current, new), axis=0)
             logger.debug(self.current)
 
+        new_config = unflatten_dict(new_config_flat)
         return new_config, {}
