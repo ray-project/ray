@@ -33,7 +33,8 @@ RUN apt-get install -y -qq \
     curl python-is-python3 git build-essential \
     sudo unzip unrar apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop \
-    libgtk2.0-dev liblz4-dev zlib1g-dev libgl1-mesa-dev \
+    libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
+    liblz4-dev libunwind-dev musl-dev \
     clang-format-12 jq \
     clang-tidy-12 clang-12
 # Make using GCC 9 explicit.
