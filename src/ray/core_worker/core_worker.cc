@@ -162,7 +162,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   if (options_.worker_type == WorkerType::DRIVER &&
       !options_.serialized_job_config.empty()) {
-    // Driver populates job_config through worker startup options.
+    // Driver populates the job config via initialization.
+    // Workers populates it when the first task is received.
     rpc::JobConfig job_config;
     job_config.ParseFromString(options_.serialized_job_config);
     worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);

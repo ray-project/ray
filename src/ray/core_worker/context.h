@@ -51,6 +51,8 @@ class WorkerContext {
 
   std::shared_ptr<json> GetCurrentRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
+  // Initialize worker's job_id and job_config if they haven't already.
+  // Note a worker's job config can't be changed after initialization.
   void MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
       LOCKS_EXCLUDED(mutex_);
 
