@@ -62,6 +62,7 @@ def test_deprecated(warning):
             assert not w
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows failed reading stdout")
 def test_only_warn_once():
     log = run_string_as_driver(
         """
@@ -78,6 +79,7 @@ for _ in range(3):
     assert log.count("functionisdeprecated") == 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows failed reading stdout")
 def test_warn_suppressed():
     log = run_string_as_driver(
         """
