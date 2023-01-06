@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Mapping, Tuple, Union, Type, TYPE_CHECKING, List
+from typing import Any, List, Mapping, Sequence, Tuple, Type, TYPE_CHECKING, Union
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -14,7 +14,8 @@ if TYPE_CHECKING:
     import tensorflow as tf
 
 Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
-ParamOptimizerPairs = List[Tuple[TensorType, Optimizer]]
+ParamType = Sequence[Union["torch.Tensor", "tf.Variable"]]
+ParamOptimizerPairs = List[Tuple[ParamType, Optimizer]]
 
 
 class RLTrainer:
@@ -85,15 +86,37 @@ class RLTrainer:
 
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
-        pass
+        """Configures the optimizers for the trainer.
+
+        This method is responsible for setting up the optimizers that will be used to
+        train the model. The optimizers are responsible for updating the model's
+        parameters during training, based on the computed gradients. The method should
+        return a list of tuples, where each tuple consists of a list of model
+        parameters and a deep learning optimizer that should be used to optimize those
+        parameters. To support both tf and torch, we return a list of tuples of
+        parameters and optimizers regardless of whether the parameters exist in the
+        optimizer objects. This method is called once at initialization and everytime a
+        new sub-module is added to the module.
+
+        Returns:
+            A list of tuples (parameters, optimizer), where parameters is a list of
+            model parameters and optimizer is a deep learning optimizer.
+
+        """
 
     @abc.abstractmethod
     def compute_loss(
         self,
+        *,
         fwd_out: MultiAgentBatch,
         batch: MultiAgentBatch,
     ) -> Union[TensorType, Mapping[str, Any]]:
-        """Computes variables for optimizing self._module based on fwd_out.
+        """Computes the loss for the module being optimized.
+
+        Each algorithm's trainer has to override this method to specify the logic for
+        the loss computation. Ideally all the tensors required for computing the loss
+        should already be computed as part of the `forward_train()` outputs. It is
+        highly discouraged to compute any forward passes inside this method.
 
         Args:
             fwd_out: Output from a call to `forward_train` on self._module during
@@ -101,11 +124,14 @@ class RLTrainer:
             batch: The data that was used to compute fwd_out.
 
         Returns:
-            Either a single loss tensor which can be used for computing
-            gradients through, or a dictionary of losses. NOTE the dictionary
+            A dictionary of losses. NOTE that the dictionary
             must contain one protected key "total_loss" which will be used for
             computing gradients through.
         """
+        # TODO: This method is built for multi-agent. While it's possible to write
+        # single-agent losses, it may become confusing to users. We should find a way
+        # to allow them to specify single-agent losses as well, without having to think
+        # about one extra layer of hierarchy for module ids.
 
     def on_after_compute_gradients(
         self, gradients_dict: Mapping[str, Any]
