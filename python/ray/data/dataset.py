@@ -27,6 +27,7 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.batcher import Batcher
@@ -44,7 +45,11 @@ from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-from ray.data._internal.util import _estimate_available_parallelism, _is_local_scheme
+from ray.data._internal.util import (
+    _estimate_available_parallelism,
+    _is_local_scheme,
+    _is_tensor_schema,
+)
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
@@ -62,7 +67,6 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -2449,7 +2453,7 @@ class Dataset(Generic[T]):
         self,
         path: str,
         *,
-        column: str = VALUE_COL_NAME,
+        column: str = TENSOR_COLUMN_NAME,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -4068,18 +4072,16 @@ class Dataset(Generic[T]):
             return list
 
         if isinstance(schema, (PandasBlockSchema, pa.Schema)):
-            if schema.names == [VALUE_COL_NAME]:
+            if schema.names == [TENSOR_COLUMN_NAME]:
                 return np.ndarray
             return pd.DataFrame
 
     def _is_tensor_dataset(self) -> bool:
         """Return ``True`` if this dataset is a tensor dataset."""
-        from ray.air.constants import TENSOR_COLUMN_NAME
-
         schema = self.schema()
         if schema is None or isinstance(schema, type):
             return False
-        return schema.names == [TENSOR_COLUMN_NAME]
+        return _is_tensor_schema(schema.names)
 
     def dataset_format(self) -> BlockFormat:
         """The format of the dataset's underlying data blocks. Possible values
