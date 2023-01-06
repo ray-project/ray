@@ -58,21 +58,42 @@ class RLTrainer:
 
     """
 
+    TOTAL_LOSS_KEY = "total_loss"
+
     def __init__(
         self,
         module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
         module_kwargs: Mapping[str, Any],
-        optimizer_class: Union[Type[RLOptimizer], Type[MultiAgentRLOptimizer]],
-        optimizer_kwargs: Mapping[str, Any],
         scaling_config: Mapping[str, Any],
         distributed: bool = False,
     ):
         self.module_class = module_class
         self.module_kwargs = module_kwargs
-        self.optimizer_class = optimizer_class
-        self.optimizer_kwargs = optimizer_kwargs
         self.scaling_config = scaling_config
         self.distributed = distributed
+
+
+    @abc.abstractmethod
+    def _configure_optimizers(self):
+        pass
+        
+    @abc.abstractmethod
+    def compute_loss(
+        self, fwd_out: MultiAgentBatch, batch: MultiAgentBatch,
+    ) -> Union[TensorType, Mapping[str, Any]]:
+        """Computes variables for optimizing self._module based on fwd_out.
+
+        Args:
+            fwd_out: Output from a call to `forward_train` on self._module during
+                training.
+            batch: The data that was used to compute fwd_out.
+
+        Returns:
+            Either a single loss tensor which can be used for computing
+            gradients through, or a dictionary of losses. NOTE the dictionary
+            must contain one protected key "total_loss" which will be used for
+            computing gradients through.
+        """
 
     def on_after_compute_gradients(
         self, gradients_dict: Mapping[str, Any]
@@ -131,7 +152,7 @@ class RLTrainer:
         """
         if not self.distributed:
             fwd_out = self._module.forward_train(batch)
-            loss = self._rl_optimizer.compute_loss(batch, fwd_out)
+            loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
             gradients = self.compute_gradients(loss)
             post_processed_gradients = self.on_after_compute_gradients(gradients)
             self.apply_gradients(post_processed_gradients)
@@ -171,7 +192,7 @@ class RLTrainer:
                 from `get_state`.
 
         """
-        self._rl_optimizer.set_state(state.get("optimizer_state", {}))
+        # self.set_autograd_optimizer_state(state.get("optimizer_state"))
         self._module.set_state(state.get("module_state", {}))
 
     def get_state(self) -> Mapping[str, Any]:
@@ -183,7 +204,7 @@ class RLTrainer:
         """
         return {
             "module_state": self._module.get_state(),
-            "optimizer_state": self._rl_optimizer.get_state(),
+            # "optimizer_state": self.get_autograd_optimizer_state(),
         }
 
     def add_module(
@@ -191,8 +212,8 @@ class RLTrainer:
         module_id: ModuleID,
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
-        optimizer_cls: Type[RLOptimizer],
-        optimizer_kwargs: Mapping[str, Any],
+        optimizer_cls: Type[RLOptimizer] = None,
+        optimizer_kwargs: Mapping[str, Any] = None,
     ) -> None:
         """Add a module to the trainer.
 
@@ -206,8 +227,6 @@ class RLTrainer:
         """
         module = module_cls.from_model_config(**module_kwargs)
         self._module.add_module(module_id, module)
-        optimizer = optimizer_cls(module, optimizer_kwargs)
-        self._rl_optimizer.add_optimizer(module_id, optimizer)
 
     def remove_module(self, module_id: ModuleID) -> None:
         """Remove a module from the trainer.
@@ -217,7 +236,6 @@ class RLTrainer:
 
         """
         self._module.remove_module(module_id)
-        self._rl_optimizer.remove_optimizer(module_id)
 
     def init_trainer(self) -> None:
         """Initialize the model."""
@@ -237,19 +255,13 @@ class RLTrainer:
                     f"Module class {self.module_class} is not a subclass of "
                     f"RLModule or MultiAgentRLModule."
                 )
-            if issubclass(self.optimizer_class, RLOptimizer):
-                self._rl_optimizer = self.optimizer_class.from_module(
-                    self._module, **self.optimizer_kwargs
-                ).as_multi_agent()
-            elif issubclass(self.optimizer_class, MultiAgentRLOptimizer):
-                self._rl_optimizer = self.optimizer_class.from_marl_module(
-                    self._module, **self.optimizer_kwargs
-                )
-            else:
-                raise ValueError(
-                    f"Optimizer class {self.optimizer_class} is not a subclass of "
-                    f"RLOptimizer or MultiAgentRLOptimizer."
-                )
+
+        self.params = []
+        self.optimizers = []
+        for param, optimizer in self._configure_optimizers():
+            self.params.append(param)
+            self.optimizers.append(optimizer)
+        
 
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.

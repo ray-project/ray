@@ -14,6 +14,7 @@ from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 from ray.rllib.core.rl_trainer.tf.tf_rl_trainer import TfRLTrainer
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_optimizer import BCTFOptimizer
+from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 
 
@@ -29,7 +30,7 @@ class TestTfRLTrainer(unittest.TestCase):
     def test_update_multigpu(self):
         """Test training in a 2 gpu setup and that weights are synchronized."""
         env = gym.make("CartPole-v1")
-        trainer_class = TfRLTrainer
+        trainer_class = BCTfRLTrainer
         trainer_cfg = dict(
             module_class=DiscreteBCTFModule,
             module_kwargs={
@@ -37,11 +38,10 @@ class TestTfRLTrainer(unittest.TestCase):
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
-            optimizer_class=BCTFOptimizer,
-            optimizer_kwargs={"config": {"lr": 1e-3}},
         )
         runner = TrainerRunner(
-            trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
+            trainer_class, trainer_cfg, 
+            compute_config=dict(num_gpus=0)
         )
 
         path = "tests/data/cartpole/large.json"
@@ -64,6 +64,7 @@ class TestTfRLTrainer(unittest.TestCase):
         for _ in range(1000):
             batch = reader.next()
             results_worker_0, results_worker_1 = runner.update(batch.as_multi_agent())
+
             loss = (
                 results_worker_0["loss"]["total_loss"]
                 + results_worker_1["loss"]["total_loss"]

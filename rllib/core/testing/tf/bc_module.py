@@ -84,9 +84,10 @@ class DiscreteBCTFModule(TfRLModule):
     def set_state(self, state: Mapping[str, Any]) -> None:
         self.policy.set_weights(state["policy"])
 
-    @override(TfRLModule)
-    def trainable_variables(self) -> NestedDict[tf.Tensor]:
-        return NestedDict({"policy": self.policy.trainable_variables})
+    # @override(TfRLModule)
+    # def trainable_variables(self) -> NestedDict[tf.Tensor]:
+    #     # return NestedDict({"policy": self.policy.trainable_variables})
+    #     return itertools.chain(self.policy.trainable_variables)
 
     @classmethod
     @override(RLModule)
