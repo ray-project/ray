@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data._internal.stats import DatasetStats, StageStatsSummary
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.context import DatasetContext
 from ray.tests.conftest import *  # noqa
@@ -433,25 +433,25 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
     )
     calculated_stats = stats.to_summary().stages_stats[0]
 
-    assert getattr(calculated_stats, StageStatsSummary.OUTPUT_NUM_ROWS) == {
+    assert calculated_stats.output_num_rows == {
         "min": min(block_params["num_rows"]),
         "max": max(block_params["num_rows"]),
         "mean": np.mean(block_params["num_rows"]),
         "sum": sum(block_params["num_rows"]),
     }
-    assert getattr(calculated_stats, StageStatsSummary.OUTPUT_SIZE_BYTES) == {
+    assert calculated_stats.output_size_bytes == {
         "min": min(block_params["size_bytes"]),
         "max": max(block_params["size_bytes"]),
         "mean": np.mean(block_params["size_bytes"]),
         "sum": sum(block_params["size_bytes"]),
     }
-    assert getattr(calculated_stats, StageStatsSummary.WALL_TIME) == {
+    assert calculated_stats.wall_time == {
         "min": min(block_params["wall_time"]),
         "max": max(block_params["wall_time"]),
         "mean": np.mean(block_params["wall_time"]),
         "sum": sum(block_params["wall_time"]),
     }
-    assert getattr(calculated_stats, StageStatsSummary.CPU_TIME) == {
+    assert calculated_stats.cpu_time == {
         "min": min(block_params["cpu_time"]),
         "max": max(block_params["cpu_time"]),
         "mean": np.mean(block_params["cpu_time"]),
@@ -459,7 +459,7 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
     }
 
     node_counts = Counter(block_params["node_id"])
-    assert getattr(calculated_stats, StageStatsSummary.NODE_COUNT) == {
+    assert calculated_stats.node_count == {
         "min": min(node_counts.values()),
         "max": max(node_counts.values()),
         "mean": np.mean(list(node_counts.values())),
