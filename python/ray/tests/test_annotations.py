@@ -4,6 +4,9 @@ import warnings
 import pytest
 
 from ray.util.annotations import Deprecated
+from ray._private.test_utils import (
+    run_string_as_driver,
+)
 
 
 @pytest.mark.parametrize("warning", [True, False])
@@ -57,6 +60,39 @@ def test_deprecated(warning):
             )
         else:
             assert not w
+
+
+def test_only_warn_once():
+    log = run_string_as_driver(
+        """
+from ray.util.annotations import Deprecated
+
+@Deprecated(message="functionisdeprecated", warning=True)
+def func():
+    return 15
+
+for _ in range(3):
+    func()
+    """
+    )
+    assert log.count("functionisdeprecated") == 1
+
+
+def test_warn_suppressed():
+    log = run_string_as_driver(
+        """
+from ray.util.annotations import Deprecated
+
+@Deprecated(message="functionisdeprecated", warning=True)
+def func():
+    return 15
+
+for _ in range(3):
+    func()
+    """,
+        env={"PYTHONWARNINGS": "ignore::DeprecationWarning"},
+    )
+    assert log.count("functionisdeprecated") == 0
 
 
 if __name__ == "__main__":
