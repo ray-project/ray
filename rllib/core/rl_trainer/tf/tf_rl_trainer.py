@@ -1,10 +1,8 @@
 import numpy as np
 from typing import Any, Mapping, Tuple, Union, Type
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
-from ray.rllib.core.optim.marl_optimizer import MultiAgentRLOptimizer
 from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -34,10 +32,11 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def configure_optimizers(self):
+        lr = self.optimizer_config.get("lr", 1e-3)
         return [
             (
                 self._module[key].trainable_variables,
-                tf.keras.optimizers.Adam(learning_rate=self.optimizers.lr),
+                tf.keras.optimizers.Adam(learning_rate=lr),
             )
             for key in self._module.keys()
         ]
@@ -73,34 +72,12 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def _make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
+        # TODO: Does strategy has to be an attribute here? if so it's very hidden to
+        # the user of this class that there is such an attribute.
         self.strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with self.strategy.scope():
-            if issubclass(self.module_class, MultiAgentRLModule):
-                module = self.module_class.from_multi_agent_config(**self.module_kwargs)
-            elif issubclass(self.module_class, RLModule):
-                module = self.module_class.from_model_config(
-                    **self.module_kwargs
-                ).as_multi_agent()
-            else:
-                raise ValueError(
-                    f"Module class {self.module_class} is not a subclass of "
-                    f"RLModule or MultiAgentRLModule."
-                )
-            if issubclass(self.optimizer_class, RLOptimizer):
-                optimizer = self.optimizer_class.from_module(
-                    module, **self.optimizer_kwargs
-                )
-                optimizer = optimizer.as_multi_agent()
-            elif issubclass(self.optimizer_class, MultiAgentRLOptimizer):
-                optimizer = self.optimizer_class.from_marl_module(
-                    module, **self.optimizer_kwargs
-                )
-            else:
-                raise ValueError(
-                    f"Optimizer class {self.optimizer_class} is not a subclass of "
-                    f"RLOptimizer or MultiAgentRLOptimizer."
-                )
-        return module, optimizer
+            module = self.make_module()
+        return module
 
     @override(RLTrainer)
     def compile_results(
@@ -118,6 +95,15 @@ class TfRLTrainer(RLTrainer):
             "loss": loss_numpy,
             "mean_gradient": np.mean(mean_grads),
         }
+
+        if self.in_test:
+            # this is to check if in the multi-gpu case, the weights across workers are
+            # the same. It is really only needed during testing.
+            mean_ws = {}
+            for module_id in self._module.keys():
+                m = self._module[module_id]
+                mean_ws[module_id] = np.mean([w.mean() for w in m.get_weights()])
+            ret["mean_weight"] = mean_ws
         return ret
 
     @override(RLTrainer)

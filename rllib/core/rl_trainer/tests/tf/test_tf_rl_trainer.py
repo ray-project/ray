@@ -38,12 +38,14 @@ class TestTfRLTrainer(unittest.TestCase):
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
+            optimizer_config={"lr": 1e-3},
+            in_test=True,
         )
         runner = TrainerRunner(
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
         )
 
-        path = "tests/data/cartpole/large.json"
+        path = "rllib/tests/data/cartpole/large.json"
         input_config = {"format": "json", "paths": path}
         dataset, _ = get_dataset_and_shards(
             AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
@@ -60,7 +62,7 @@ class TestTfRLTrainer(unittest.TestCase):
         reader = DatasetReader(dataset, ioctx)
 
         min_loss = float("inf")
-        for _ in range(1000):
+        for iter_i in range(1000):
             batch = reader.next()
             results_worker_0, results_worker_1 = runner.update(batch.as_multi_agent())
 
@@ -69,7 +71,8 @@ class TestTfRLTrainer(unittest.TestCase):
                 + results_worker_1["loss"]["total_loss"]
             ) / 2
             min_loss = min(loss, min_loss)
-            # The loss is initially around 0.68. When it gets to around
+            print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
+            # The loss is initially around 0.69 (ln2). When it gets to around
             # 0.57 the return of the policy gets to around 100.
             if min_loss < 0.57:
                 break

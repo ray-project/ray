@@ -73,6 +73,7 @@ class RLTrainer:
         scaling_config: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
+        in_test: bool = False,
     ):
         # TODO: convert scaling and optimizer configs to dataclasses
         self.module_class = module_class
@@ -80,6 +81,7 @@ class RLTrainer:
         self.scaling_config = scaling_config
         self.optimizer_config = optimizer_config
         self.distributed = distributed
+        self.in_test = in_test
 
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
@@ -249,24 +251,36 @@ class RLTrainer:
         """
         self._module.remove_module(module_id)
 
-    def init_trainer(self) -> None:
+    def make_module(self) -> RLModule:
+        """Initialize the RLModule or MARLModule that is going to be trained.
+        Args:
+            config: The config to use for the initializing the module.
+        Returns:
+            The initialized module.
+        Note: if an RLModule is returned it will be wrapped in as a
+            MultiAgentRLModule.
+        """
+
+        if issubclass(self.module_class, MultiAgentRLModule):
+            module = self.module_class.from_multi_agent_config(**self.module_kwargs)
+        elif issubclass(self.module_class, RLModule):
+            module = self.module_class.from_model_config(
+                **self.module_kwargs
+            ).as_multi_agent()
+        else:
+            raise ValueError(
+                f"Module class {self.module_class} is not a subclass of "
+                f"RLModule or MultiAgentRLModule."
+            )
+
+        return module
+
+    def build(self) -> None:
         """Initialize the model."""
         if self.distributed:
-            self._module, self._rl_optimizer = self._make_distributed()
+            self._module = self._make_distributed()
         else:
-            if issubclass(self.module_class, MultiAgentRLModule):
-                self._module = self.module_class.from_multi_agent_config(
-                    **self.module_kwargs
-                )
-            elif issubclass(self.module_class, RLModule):
-                self._module = self.module_class.from_model_config(
-                    **self.module_kwargs
-                ).as_multi_agent()
-            else:
-                raise ValueError(
-                    f"Module class {self.module_class} is not a subclass of "
-                    f"RLModule or MultiAgentRLModule."
-                )
+            self._module = self.make_module()
 
         self.params = []
         self.optimizers = []

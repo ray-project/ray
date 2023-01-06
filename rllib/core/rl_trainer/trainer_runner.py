@@ -78,7 +78,7 @@ class TrainerRunner:
         )
         self.workers = [w.actor for w in self.backend_executor.worker_group.workers]
 
-        ray.get([w.init_trainer.remote() for w in self.workers])
+        ray.get([w.build.remote() for w in self.workers])
 
     def _compute_necessary_resources(self):
         num_gpus = self._compute_config.get("num_gpus", 0)
