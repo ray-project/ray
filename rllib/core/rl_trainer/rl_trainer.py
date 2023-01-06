@@ -224,8 +224,6 @@ class RLTrainer:
         module_id: ModuleID,
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
-        optimizer_cls: Type[RLOptimizer] = None,
-        optimizer_kwargs: Mapping[str, Any] = None,
     ) -> None:
         """Add a module to the trainer.
 
@@ -240,7 +238,9 @@ class RLTrainer:
         module = module_cls.from_model_config(**module_kwargs)
         self._module.add_module(module_id, module)
 
-        # TODO: Figure the optimizer part out.
+        # rerun make_optimizers to update the params and optimizer list with the new
+        # module
+        self.make_optimizers()
 
     def remove_module(self, module_id: ModuleID) -> None:
         """Remove a module from the trainer.
@@ -250,6 +250,9 @@ class RLTrainer:
 
         """
         self._module.remove_module(module_id)
+
+        # rerun make_optimizers to update the params and optimizer
+        self.make_optimizers()
 
     def make_module(self) -> RLModule:
         """Initialize the RLModule or MARLModule that is going to be trained.
@@ -275,6 +278,13 @@ class RLTrainer:
 
         return module
 
+    def make_optimizers(self) -> None:
+        self.params = []
+        self.optimizers = []
+        for param, optimizer in self.configure_optimizers():
+            self.params.append(param)
+            self.optimizers.append(optimizer)
+
     def build(self) -> None:
         """Initialize the model."""
         if self.distributed:
@@ -282,11 +292,7 @@ class RLTrainer:
         else:
             self._module = self.make_module()
 
-        self.params = []
-        self.optimizers = []
-        for param, optimizer in self.configure_optimizers():
-            self.params.append(param)
-            self.optimizers.append(optimizer)
+        self.make_optimizers()
 
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.

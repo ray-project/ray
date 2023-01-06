@@ -4,15 +4,17 @@ import unittest
 import ray
 
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.tf.tf_rl_trainer import TfRLTrainer
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.core.testing.tf.bc_optimizer import BCTFOptimizer
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
 
 
 class TestTfRLTrainer(unittest.TestCase):
+    """This test is setup for 2 gpus."""
+
+    # TODO: Make a unittest that does not need 2 gpus to run.
+    # So that the user can run it locally as well.
     @classmethod
     def setUp(cls) -> None:
         ray.init()
@@ -64,7 +66,7 @@ class TestTfRLTrainer(unittest.TestCase):
 
     def test_add_remove_module(self):
         env = gym.make("CartPole-v1")
-        trainer_class = TfRLTrainer
+        trainer_class = BCTfRLTrainer
         trainer_cfg = dict(
             module_class=DiscreteBCTFModule,
             module_kwargs={
@@ -72,8 +74,8 @@ class TestTfRLTrainer(unittest.TestCase):
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
-            optimizer_class=BCTFOptimizer,
-            optimizer_kwargs={"config": {"lr": 1e-3}},
+            optimizer_config={"lr": 1e-3},
+            in_test=True,
         )
         runner = TrainerRunner(
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
@@ -81,6 +83,8 @@ class TestTfRLTrainer(unittest.TestCase):
 
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
+
+        # update once with the default policy
         results = runner.update(batch.as_multi_agent())
         module_ids_before_add = {DEFAULT_POLICY_ID}
         new_module_id = "test_module"
@@ -94,8 +98,6 @@ class TestTfRLTrainer(unittest.TestCase):
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
-            optimizer_cls=BCTFOptimizer,
-            optimizer_kwargs={"config": {"lr": 1e-3}},
         )
 
         # do training that includes the test_module
@@ -116,11 +118,8 @@ class TestTfRLTrainer(unittest.TestCase):
         # check that module ids are updated to include the new module
         module_ids_after_add = {DEFAULT_POLICY_ID, new_module_id}
         for result in results:
-            for module_result in result.values():
-                # remove the total_loss key since its not a module key
-                self.assertEqual(
-                    set(module_result) - {"total_loss"}, module_ids_after_add
-                )
+            # remove the total_loss key since its not a module key
+            self.assertEqual(set(result["loss"]) - {"total_loss"}, module_ids_after_add)
 
         # remove the test_module
         runner.remove_module(module_id=new_module_id)
@@ -139,11 +138,10 @@ class TestTfRLTrainer(unittest.TestCase):
         # check that module ids are updated after remove operation to not
         # include the new module
         for result in results:
-            for module_result in result.values():
-                # remove the total_loss key since its not a module key
-                self.assertEqual(
-                    set(module_result) - {"total_loss"}, module_ids_before_add
-                )
+            # remove the total_loss key since its not a module key
+            self.assertEqual(
+                set(result["loss"]) - {"total_loss"}, module_ids_before_add
+            )
 
 
 if __name__ == "__main__":

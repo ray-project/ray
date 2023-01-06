@@ -112,8 +112,6 @@ class TfRLTrainer(RLTrainer):
         module_id: ModuleID,
         module_cls: Type[RLModule],
         module_kwargs,
-        optimizer_cls,
-        optimizer_kwargs,
     ) -> None:
         if self.distributed:
             with self.strategy.scope():
@@ -121,13 +119,9 @@ class TfRLTrainer(RLTrainer):
                     module_id,
                     module_cls,
                     module_kwargs,
-                    optimizer_cls,
-                    optimizer_kwargs,
                 )
         else:
-            super().add_module(
-                module_id, module_cls, module_kwargs, optimizer_cls, optimizer_kwargs
-            )
+            super().add_module(module_id, module_cls, module_kwargs)
         self.traced_update_fn = tf.function(self._do_update_fn)
 
     @override(RLTrainer)

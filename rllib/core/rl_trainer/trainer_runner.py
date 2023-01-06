@@ -5,7 +5,6 @@ import ray
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
-from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
@@ -128,8 +127,6 @@ class TrainerRunner:
         module_id: ModuleID,
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
-        optimizer_cls: Type[RLOptimizer],
-        optimizer_kwargs: Mapping[str, Any],
     ) -> None:
         """Add a module to the RLTrainers maintained by this TrainerRunner.
 
@@ -142,9 +139,7 @@ class TrainerRunner:
         """
         refs = []
         for worker in self.workers:
-            ref = worker.add_module.remote(
-                module_id, module_cls, module_kwargs, optimizer_cls, optimizer_kwargs
-            )
+            ref = worker.add_module.remote(module_id, module_cls, module_kwargs)
             refs.append(ref)
         ray.get(refs)
 
