@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Mapping, Tuple, Union, Type
+from typing import Any, Mapping, Tuple, Union, Type, TYPE_CHECKING, List
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -8,6 +8,13 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
+
+if TYPE_CHECKING:
+    import torch
+    import tensorflow as tf
+
+Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
+ParamOptimizerPairs = List[Tuple[TensorType, Optimizer]]
 
 
 class RLTrainer:
@@ -64,15 +71,18 @@ class RLTrainer:
         module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
         module_kwargs: Mapping[str, Any],
         scaling_config: Mapping[str, Any],
+        optimizer_config: Mapping[str, Any],
         distributed: bool = False,
     ):
+        # TODO: convert scaling and optimizer configs to dataclasses
         self.module_class = module_class
         self.module_kwargs = module_kwargs
         self.scaling_config = scaling_config
+        self.optimizer_config = optimizer_config
         self.distributed = distributed
 
     @abc.abstractmethod
-    def _configure_optimizers(self):
+    def configure_optimizers(self) -> ParamOptimizerPairs:
         pass
 
     @abc.abstractmethod
@@ -260,7 +270,7 @@ class RLTrainer:
 
         self.params = []
         self.optimizers = []
-        for param, optimizer in self._configure_optimizers():
+        for param, optimizer in self.configure_optimizers():
             self.params.append(param)
             self.optimizers.append(optimizer)
 

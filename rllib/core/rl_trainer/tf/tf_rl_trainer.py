@@ -33,11 +33,11 @@ class TfRLTrainer(RLTrainer):
         return {"loss": loss, "fwd_out": fwd_out, "post_processed_gradients": gradients}
 
     @override(RLTrainer)
-    def _configure_optimizers(self):
+    def configure_optimizers(self):
         return [
             (
                 self._module[key].trainable_variables,
-                tf.keras.optimizers.Adam(learning_rate=1e-3),
+                tf.keras.optimizers.Adam(learning_rate=self.optimizers.lr),
             )
             for key in self._module.keys()
         ]
