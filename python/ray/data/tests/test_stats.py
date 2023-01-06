@@ -34,7 +34,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
     )
     with patch.object(logger, "info") as mock_logger:
         ds = ray.data.range(1000, parallelism=10)
-        ds = ds.map_batches(lambda x: x)
+        ds = ds.map_batches(lambda x: x).fully_executed()
 
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
@@ -50,7 +50,7 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 """
             )
 
-        ds = ds.map(lambda x: x)
+        ds = ds.map(lambda x: x).fully_executed()
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
             assert (
@@ -242,7 +242,7 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
     )
     with patch.object(logger, "info") as mock_logger:
         ds = ray.data.range(1000, parallelism=10)
-        ds = ds.map_batches(lambda x: x)
+        ds = ds.map_batches(lambda x: x).fully_executed()
 
         if enable_auto_log_stats:
             logger_args, logger_kwargs = mock_logger.call_args
