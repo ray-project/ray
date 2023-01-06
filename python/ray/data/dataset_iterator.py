@@ -2,29 +2,27 @@ import abc
 from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
 from typing_extensions import Literal
 
-from ray.air.data_batch_type import DataBatchType
+from ray.data._internal.block_batching import BatchType
+from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import tf
-    import torch
-
-
-TorchTensorBatchType = Union["torch.Tensor", Dict[str, "torch.Tensor"]]
 
 
 @PublicAPI(stability="beta")
 class DatasetIterator(abc.ABC):
-    """An iterator for reading a preprocessed dataset.
+    """An iterator for repeatedly reading a preprocessed dataset. Each
+    iteration call represents one pass (epoch) over the dataset.
 
-    Each iteration call represents one pass (epoch) over the dataset. During
-    training, each trainer actor should get its own iterator by calling
-    `session.get_dataset_shard("train")`.
+    If using Ray AIR, each trainer actor should get its own iterator by calling
+    :meth:`session.get_dataset_shard("train")
+    <ray.air.session.get_dataset_shard>`.
 
     Tip: For debugging purposes, use
-    :py:meth:`~ray.air.util.check_ingest.make_local_dataset_iterator`
-    to create a local DatasetIterator from a Dataset, a
-    Preprocessor, and a DatasetConfig.
+    :meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to create a
+    local `DatasetIterator` from a :class:`~ray.data.Dataset`, a
+    :class:`~ray.data.Preprocessor`, and a :class:`~ray.air.DatasetConfig`.
     """
 
     @abc.abstractmethod
@@ -37,7 +35,7 @@ class DatasetIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[DataBatchType]:
+    ) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
         Time complexity: O(1)

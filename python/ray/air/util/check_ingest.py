@@ -7,9 +7,9 @@ from typing import Optional, Union
 import numpy as np
 
 import ray
-from ray.air import session, DatasetIterator
+from ray.air import session
 from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import DatasetPipeline, Dataset, Preprocessor
+from ray.data import DatasetPipeline, Dataset, DatasetIterator, Preprocessor
 from ray.data.preprocessors import BatchMapper, Chain
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -140,8 +140,8 @@ def make_local_dataset_iterator(
     dataset_config: DatasetConfig,
 ) -> DatasetIterator:
     """A helper function to create a local
-    :py:class:`DatasetIterator <ray.air.DatasetIterator>`,
-    like the one returned by session.get_dataset_shard().
+    :py:class:`DatasetIterator <ray.data.DatasetIterator>`,
+    like the one returned by :meth:`~ray.air.session.get_dataset_shard`.
 
     Args:
         dataset: The input Dataset.

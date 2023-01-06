@@ -9,7 +9,7 @@ from ray.train.session import _TrainSessionImpl
 from ray.util import log_once
 
 if TYPE_CHECKING:
-    from ray.data import Dataset, DatasetPipeline
+    from ray.data import DatasetIterator
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
@@ -344,12 +344,12 @@ def get_node_rank() -> int:
 @_warn_session_misuse()
 def get_dataset_shard(
     dataset_name: Optional[str] = None,
-) -> Optional[Union["Dataset", "DatasetPipeline"]]:
-    """Returns the Ray Dataset or DatasetPipeline shard for this worker.
+) -> Optional["DatasetIterator"]:
+    """Returns the :class:`ray.data.DatasetIterator` shard for this worker.
 
-    Call :meth:`~ray.data.Dataset.iter_torch_batches` or
-    :meth:`~ray.data.Dataset.to_tf` on this shard to convert it to the appropriate
-    framework-specific data type.
+    Call :meth:`~ray.data.DatasetIterator.iter_torch_batches` or
+    :meth:`~ray.data.DatasetIterator.to_tf` on this shard to convert it to the
+    appropriate framework-specific data type.
 
     .. code-block:: python
 
@@ -379,7 +379,7 @@ def get_dataset_shard(
             specifies which dataset shard to return.
 
     Returns:
-        The ``Dataset`` or ``DatasetPipeline`` shard to use for this worker.
+        The ``DatasetIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
     session = _get_session()

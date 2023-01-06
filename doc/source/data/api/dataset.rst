@@ -71,10 +71,7 @@ Dataset API
     ray.data.Dataset.show
     ray.data.Dataset.take
     ray.data.Dataset.take_all
-    ray.data.Dataset.iter_rows
-    ray.data.Dataset.iter_batches
-    ray.data.Dataset.iter_torch_batches
-    ray.data.Dataset.iter_tf_batches
+    ray.data.Dataset.iterator
 
 **I/O and Conversion**
 
@@ -209,6 +206,8 @@ Consuming Datasets
 .. automethod:: ray.data.Dataset.take
 
 .. automethod:: ray.data.Dataset.take_all
+
+.. automethod:: ray.data.Dataset.iterator
 
 .. automethod:: ray.data.Dataset.iter_rows
 

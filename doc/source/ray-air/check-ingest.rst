@@ -29,7 +29,7 @@ on the train dataset passed to the Trainer, followed by :py:meth:`prep.transform
 on remaining datasets.
 
 **Training**: Then, AIR passes the preprocessed dataset to Train workers (Ray actors) launched by the Trainer. Each worker calls :py:func:`get_dataset_shard <ray.air.session.get_dataset_shard>` to get a handle to its assigned data shard.
-This returns a :py:class:`DatasetIterator <ray.air.DatasetIterator>`, which can be used to loop over the data with :py:meth:`iter_batches() <ray.data.Dataset.iter_batches>`, :py:meth:`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`, or :meth:`~ray.data.Dataset.to_tf`.
+This returns a :py:class:`DatasetIterator <ray.data.DatasetIterator>`, which can be used to loop over the data with :py:meth:`iter_batches() <ray.data.DatasetIterator.iter_batches>`, :py:meth:`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`, or :meth:`~ray.data.Dataset.to_tf`.
 Each of these returns a batch iterator for one epoch (a full pass over the original dataset).
 
 Getting Started
@@ -45,7 +45,7 @@ The following is a simple example of how to configure ingest for a dummy :py:cla
 
 .. _air-configure-ingest:
 
-For local development and testing, you can also use the helper function :py:meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to get a local :py:class:`DatasetIterator <ray.air.DatasetIterator>`.
+For local development and testing, you can also use the helper function :py:meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to get a local :py:class:`DatasetIterator <ray.data.DatasetIterator>`.
 
 Configuring Ingest
 ------------------
@@ -136,12 +136,12 @@ Shuffling or data randomization is important for training high-quality models. B
 .. tabbed:: Local Shuffling
 
     Local shuffling is the recommended approach for randomizing data order. To use local shuffle,
-    simply specify a non-zero ``local_shuffle_buffer_size`` as an argument to :py:meth:`iter_batches() <ray.data.Dataset.iter_batches>`.
+    simply specify a non-zero ``local_shuffle_buffer_size`` as an argument to :py:meth:`iter_batches() <ray.data.DatasetIterator.iter_batches>`.
     The iterator will then use a local buffer of the given size to randomize record order. The
     larger the buffer size, the more randomization will be applied, but it will also use more
     memory.
 
-    See :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` for more details.
+    See :meth:`ds.iter_batches() <ray.data.DatasetIterator.iter_batches>` for more details.
 
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
@@ -258,7 +258,7 @@ Debugging Ingest with the ``DummyTrainer``
 Data ingest problems can be challenging to debug when combined in a full training pipeline. To isolate data
 ingest issues from other possible training problems, we provide the :py:class:`~ray.air.util.check_ingest.DummyTrainer`
 utility class that can be used to debug ingest problems.
-You can also use the helper function :py:meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to get a local :py:class:`DatasetIterator <ray.air.DatasetIterator>` for debugging purposes.
+You can also use the helper function :py:meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to get a local :py:class:`DatasetIterator <ray.data.DatasetIterator>` for debugging purposes.
 Let's walk through using ``DummyTrainer`` to understand
 and resolve an ingest misconfiguration.
 

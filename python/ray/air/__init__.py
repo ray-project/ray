@@ -7,7 +7,6 @@ from ray.air.config import (
     CheckpointConfig,
 )
 from ray.air.data_batch_type import DataBatchType
-from ray.air.dataset_iterator import DatasetIterator
 from ray.air.result import Result
 
 from ray.air.execution.resources.request import AcquiredResources, ResourceRequest
@@ -16,7 +15,6 @@ from ray.air.execution.resources.request import AcquiredResources, ResourceReque
 __all__ = [
     "Checkpoint",
     "DataBatchType",
-    "DatasetIterator",
     "RunConfig",
     "Result",
     "ScalingConfig",

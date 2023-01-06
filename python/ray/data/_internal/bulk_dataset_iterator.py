@@ -1,30 +1,21 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
 
-from ray.data import Dataset
-from ray.air import DatasetIterator
-from ray.air.dataset_iterator import TorchTensorBatchType
-from ray.air.data_batch_type import DataBatchType
+from ray.data.dataset_iterator import DatasetIterator
+from ray.data._internal.block_batching import BatchType
+from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 if TYPE_CHECKING:
     import tf
     import torch
-    from ray.data import DatasetPipeline
+    from ray.data import Dataset
 
 
-class PipelinedDatasetIterator(DatasetIterator):
+class BulkDatasetIterator(DatasetIterator):
     def __init__(
         self,
-        base_dataset_pipeline: "DatasetPipeline",
+        base_dataset: "Dataset",
     ):
-        self._base_dataset_pipeline = base_dataset_pipeline
-        self._epoch_iterator = None
-
-    def _get_next_dataset(self) -> "DatasetPipeline":
-        if self._epoch_iterator is None:
-            self._epoch_iterator = self._base_dataset_pipeline.iter_epochs()
-        ds = next(self._epoch_iterator)
-        print(ds)
-        return ds
+        self._base_dataset = base_dataset
 
     def iter_batches(
         self,
@@ -35,9 +26,8 @@ class PipelinedDatasetIterator(DatasetIterator):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[DataBatchType]:
-        ds = self._get_next_dataset()
-        return ds.iter_batches(
+    ) -> Iterator[BatchType]:
+        return self._base_dataset.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
@@ -57,24 +47,15 @@ class PipelinedDatasetIterator(DatasetIterator):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[TorchTensorBatchType]:
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
-
-        ds = self._get_next_dataset()
-        for batch in ds.iter_batches(
+        return self._base_dataset.iter_torch_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
+            dtypes=dtypes,
+            device=device,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        ):
-            yield convert_ndarray_batch_to_torch_tensor_batch(
-                batch,
-                dtypes=dtypes,
-                device=device,
-            )
+        )
 
     def to_tf(
         self,
@@ -87,9 +68,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> "tf.data.Dataset":
-        ds = self._get_next_dataset()
-        return Dataset.to_tf(
-            ds,
+        return self._base_dataset.to_tf(
             feature_columns,
             label_columns,
             prefetch_blocks=prefetch_blocks,
@@ -100,4 +79,4 @@ class PipelinedDatasetIterator(DatasetIterator):
         )
 
     def stats(self) -> str:
-        return self._base_dataset_pipeline.stats()
+        return self._base_dataset.stats()

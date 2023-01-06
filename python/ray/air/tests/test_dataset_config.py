@@ -4,8 +4,9 @@ from typing import Optional
 import pytest
 
 import ray
-from ray.air import session, DatasetIterator
+from ray.air import session
 from ray.air.config import DatasetConfig, ScalingConfig
+from ray.data import DatasetIterator
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.util.check_ingest import make_local_dataset_iterator

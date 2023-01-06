@@ -28,9 +28,11 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.util.data_batch_conversion import BlockFormat
+from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.batcher import Batcher
 from ray.data._internal.block_batching import BatchType, batch_blocks
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -41,6 +43,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 from ray.data._internal.util import _estimate_available_parallelism, _is_local_scheme
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
@@ -131,7 +134,6 @@ TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
 
-TorchTensorBatchType = Union["torch.Tensor", Dict[str, "torch.Tensor"]]
 TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 
 
@@ -2627,6 +2629,15 @@ class Dataset(Generic[T]):
             raise
         finally:
             progress.close()
+
+    def iterator(self) -> DatasetIterator:
+        """Return a :class:`DatasetIterator <ray.data.DatasetIterator>` that
+        can be used to repeatedly iterate over the dataset.
+
+        It is recommended to use `DatasetIterator` methods over directly
+        calling methods such as `iter_batches()`.
+        """
+        return BulkDatasetIterator(self)
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the dataset.

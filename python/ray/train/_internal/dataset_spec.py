@@ -3,10 +3,10 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
-from ray.air._internal.bulk_dataset_iterator import BulkDatasetIterator
-from ray.air._internal.pipelined_dataset_iterator import PipelinedDatasetIterator
 
 from ray.data import Dataset, DatasetPipeline
+from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
+from ray.data._internal.pipelined_dataset_iterator import PipelinedDatasetIterator
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:

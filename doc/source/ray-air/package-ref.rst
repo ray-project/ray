@@ -140,8 +140,9 @@ Abstract Classes
 Dataset Iteration
 #################
 
-.. autoclass:: ray.air.DatasetIterator
+.. autoclass:: ray.data.DatasetIterator
     :members:
+    :noindex:
 
 .. autofunction:: ray.air.util.check_ingest.make_local_dataset_iterator
 
