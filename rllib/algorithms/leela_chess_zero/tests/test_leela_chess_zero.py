@@ -5,7 +5,7 @@ import ray.rllib.algorithms.leela_chess_zero.leela_chess_zero as lz
 from ray.rllib.algorithms.leela_chess_zero.leela_chess_zero_model import (
     LeelaChessZeroModel,
 )
-from ray.rllib.examples.env.pettingzoo_connect4 import MultiAgentConnect4
+from ray.rllib.examples.env.pettingzoo_chess import MultiAgentChess
 from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
@@ -24,7 +24,7 @@ class TestLeelaChessZero(unittest.TestCase):
 
     def test_leela_chess_zero_compilation(self):
         """Test whether LeelaChessZero can be built with PyTorch frameworks."""
-        register_env("ChessMultiAgent", lambda config: MultiAgentConnect4())
+        register_env("ChessMultiAgent", lambda config: MultiAgentChess())
         config = (
             lz.LeelaChessZeroConfig()
             .environment(env="ChessMultiAgent")
