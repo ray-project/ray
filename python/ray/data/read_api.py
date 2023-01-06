@@ -338,15 +338,11 @@ def read_datasource(
     block_list.compute_first_block()
     block_list.ensure_metadata_for_first_block()
 
-    ds = Dataset(
+    return Dataset(
         plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
         epoch=0,
         lazy=True,
     )
-    # NOTE: call ds._plan.execute() here to keep the existing ds.schema() and other
-    # APIs are still working. This is NOT triggering execution for all input blocks.
-    ds._plan.execute()
-    return ds
 
 
 @PublicAPI(stability="alpha")
