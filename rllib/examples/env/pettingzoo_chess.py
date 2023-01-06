@@ -2,6 +2,7 @@ from pettingzoo import AECEnv
 from pettingzoo.classic.chess.chess_env import raw_env as chess_v5
 import copy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from gym import spaces
 from typing import Dict, Any
 import chess as ch
 import numpy as np
@@ -86,28 +87,16 @@ class MultiAgentChess(MultiAgentEnv):
         except KeyError:
             self.config["random_start"] = 4
         # Get first observation space, assuming all agents have equal space
-        self.observation_space = self.env.observation_space(self.env.agents[0])
+        self.observation_space = spaces.Dict(
+            {
+                "observation": spaces.Box(low=0, high=1, shape=(8, 8, 111), dtype=bool),
+                "action_mask": spaces.Box(low=0, high=1, shape=(4672,), dtype=np.int8),
+            }
+        )
 
         # Get first action space, assuming all agents have equal space
-        self.action_space = self.env.action_space(self.env.agents[0])
+        self.action_space = spaces.Discrete(8 * 8 * 73)
 
-        assert all(
-            self.env.observation_space(agent) == self.observation_space
-            for agent in self.env.agents
-        ), (
-            "Observation spaces for all agents must be identical. Perhaps "
-            "SuperSuit's pad_observations wrapper can help (useage: "
-            "`supersuit.aec_wrappers.pad_observations(env)`"
-        )
-
-        assert all(
-            self.env.action_space(agent) == self.action_space
-            for agent in self.env.agents
-        ), (
-            "Action spaces for all agents must be identical. Perhaps "
-            "SuperSuit's pad_action_space wrapper can help (usage: "
-            "`supersuit.aec_wrappers.pad_action_space(env)`"
-        )
         self._agent_ids = set(self.env.agents)
 
     def random_start(self, random_moves):
@@ -126,7 +115,10 @@ class MultiAgentChess(MultiAgentEnv):
         self.env.reset()
         if self.config["random_start"] > 0:
             self.random_start(self.config["random_start"])
-        return {self.env.agent_selection: self.env.observe(self.env.agent_selection)}
+        return (
+            {self.env.agent_selection: self.env.observe(self.env.agent_selection)},
+            {self.env.agent_selection: {}},
+        )
 
     def step(self, action):
         try:
@@ -141,6 +133,7 @@ class MultiAgentChess(MultiAgentEnv):
         obs_d = {}
         rew_d = {}
         done_d = {}
+        truncated_d = {}
         info_d = {}
         while self.env.agents:
             obs, rew, done, info = self.env.last()
@@ -152,11 +145,13 @@ class MultiAgentChess(MultiAgentEnv):
             if self.env.dones[self.env.agent_selection]:
                 self.env.step(None)
                 done_d["__all__"] = True
+                truncated_d["__all__"] = True
             else:
                 done_d["__all__"] = False
+                truncated_d["__all__"] = False
                 break
 
-        return obs_d, rew_d, done_d, info_d
+        return obs_d, rew_d, done_d, truncated_d, info_d
 
     def close(self):
         self.env.close()

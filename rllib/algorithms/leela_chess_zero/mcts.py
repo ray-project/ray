@@ -123,7 +123,7 @@ class Node:
     def get_child(self, action):
         if action not in self.children:
             self.env.set_state(self.state)
-            obs, reward, done, _ = self.env.step(action)
+            obs, reward, done, _, _ = self.env.step(action)
             next_state = self.env.get_state()
             self.children[action] = Node(
                 state=next_state,

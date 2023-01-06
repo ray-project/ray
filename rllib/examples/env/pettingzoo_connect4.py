@@ -112,7 +112,10 @@ class MultiAgentConnect4(MultiAgentEnv):
 
     def reset(self, *args, **kwargs):
         self.env.reset()
-        return {self.env.agent_selection: self.env.observe(self.env.agent_selection)}
+        return (
+            {self.env.agent_selection: self.env.observe(self.env.agent_selection)},
+            {self.env.agent_selection: {}},
+        )
 
     def step(self, action):
         try:
