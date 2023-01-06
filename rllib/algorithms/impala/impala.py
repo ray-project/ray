@@ -104,7 +104,6 @@ class ImpalaConfig(AlgorithmConfig):
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0
-        self.replay_ratio = 0.0
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
@@ -271,9 +270,6 @@ class ImpalaConfig(AlgorithmConfig):
             self.num_sgd_iter = num_sgd_iter
         if replay_proportion is not NotProvided:
             self.replay_proportion = replay_proportion
-            self.replay_ratio = (
-                (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
-            )
         if replay_buffer_num_slots is not NotProvided:
             self.replay_buffer_num_slots = replay_buffer_num_slots
         if learner_queue_size is not NotProvided:
@@ -307,8 +303,6 @@ class ImpalaConfig(AlgorithmConfig):
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
-            if entropy_coeff < 0.0:
-                raise ValueError("`entropy_coeff` must be >= 0.0!")
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
@@ -330,6 +324,10 @@ class ImpalaConfig(AlgorithmConfig):
             deprecation_warning(
                 "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
             )
+
+        # Check `entropy_coeff` for correctness.
+        if self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0!")
 
         # Check whether worker to aggregation-worker ratio makes sense.
         if self.num_aggregation_workers > self.num_rollout_workers:
@@ -362,6 +360,13 @@ class ImpalaConfig(AlgorithmConfig):
                     "term/optimizer! Try setting config.training("
                     "_tf_policy_handles_more_than_one_loss=True)."
                 )
+
+    def get_replay_ratio(self) -> float:
+        """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
+
+        Formula: ratio = 1 / proportion
+        """
+        return (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
 
 
 def make_learner_thread(local_worker, config):
@@ -511,7 +516,7 @@ class Impala(Algorithm):
                     if self.config.replay_buffer_num_slots > 0
                     else 1
                 ),
-                replay_ratio=self.config.replay_ratio,
+                replay_ratio=self.config.get_replay_ratio(),
                 replay_mode=ReplayMode.LOCKSTEP,
             )
             self._aggregator_actor_manager = None
@@ -872,7 +877,7 @@ class AggregatorWorker(FaultAwareApply):
                 if self.config.replay_buffer_num_slots > 0
                 else 1
             ),
-            replay_ratio=self.config.replay_ratio,
+            replay_ratio=self.config.get_replay_ratio(),
             replay_mode=ReplayMode.LOCKSTEP,
         )
 
