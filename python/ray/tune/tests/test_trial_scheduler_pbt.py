@@ -887,6 +887,31 @@ def test_pb2_nested_hyperparams():
         )
 
 
+def test_pb2_missing_hyperparam_init():
+    """Test that PB2 fills in all missing hyperparameters (those that are not
+    specified in param_space)."""
+    hyperparam_bounds = {"a": [1.0, 2.0], "b": {"c": [2.0, 4.0], "d": [4.0, 10.0]}}
+    pb2 = create_pb2_scheduler(hyperparam_bounds=hyperparam_bounds)
+    mock_runner = MagicMock()
+
+    def validate_config(config, bounds):
+        for param, bound in bounds.items():
+            if isinstance(bound, dict):
+                validate_config(config[param], bound)
+            else:
+                low, high = bound
+                assert config[param] >= low and config[param] < high
+
+    trial = Trial("test_pb2", stub=True)
+    pb2.on_trial_add(mock_runner, trial)
+    validate_config(trial.config, hyperparam_bounds)
+
+    trial = Trial("test_pb2", stub=True, config={"b": {"c": 3.0}})
+    pb2.on_trial_add(mock_runner, trial)
+    validate_config(trial.config, hyperparam_bounds)
+    assert trial.config["b"]["c"] == 3.0
+
+
 if __name__ == "__main__":
     import pytest
 

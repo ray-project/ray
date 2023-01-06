@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 from copy import deepcopy
 import logging
 import numpy as np
@@ -6,8 +6,10 @@ import pandas as pd
 
 from ray.tune import TuneError
 from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.execution import trial_runner
 from ray.tune.experiment import Trial
 from ray.tune.utils.util import flatten_dict, unflatten_dict
+from ray.util.debug import log_once
 
 
 def import_pb2_dependencies():
@@ -35,6 +37,38 @@ if GPy and has_sklearn:
     )
 
 logger = logging.getLogger(__name__)
+
+
+def _fill_config(
+    config: Dict, hyperparam_bounds: Dict[str, Union[dict, list, tuple]]
+) -> Dict:
+    """Fills missing hyperparameters in config by sampling uniformly from the
+    specified `hyperparam_bounds`.
+    Recursively fills the config if `hyperparam_bounds` is a nested dict.
+
+    This is a helper used to set initial hyperparameter values if the user doesn't
+    specify them in the Tuner `param_space`.
+
+    Returns the dict of filled hyperparameters.
+    """
+    filled_hyperparams = {}
+    for param_name, bounds in hyperparam_bounds.items():
+        if isinstance(bounds, dict):
+            if param_name not in config:
+                config[param_name] = {}
+            filled_hyperparams[param_name] = _fill_config(config[param_name], bounds)
+        elif isinstance(bounds, (list, tuple)) and param_name not in config:
+            if log_once(param_name + "-missing"):
+                logger.debug(
+                    f"Cannot find {param_name} in config. Initializing by "
+                    "sampling uniformly from the provided `hyperparam_bounds`."
+                )
+            assert len(bounds) == 2
+            low, high = bounds
+            config[param_name] = filled_hyperparams[param_name] = np.random.uniform(
+                low, high
+            )
+    return filled_hyperparams
 
 
 def select_config(
@@ -350,6 +384,12 @@ class PB2(PopulationBasedTraining):
         #           the checkpoint. When exploring we care if these trials
         #           are already in or scheduled to be in the next round.
         self.current = None
+
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+        filled_hyperparams = _fill_config(trial.config, self._hyperparam_bounds)
+        # Make sure that the params we sampled show up in the CLI output
+        trial.evaluated_params.update(flatten_dict(filled_hyperparams))
+        super().on_trial_add(trial_runner, trial)
 
     def _save_trial_state(self, state, time, result, trial):
 
