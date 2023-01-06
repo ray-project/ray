@@ -73,7 +73,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark):
         use_default_params=True,
     )
 
-    # Test to_tf() with default params.
+    # Test to_tf() with default args.
     benchmark.run(
         "to-tf-default",
         to_tf,
@@ -102,7 +102,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark):
             batch_size=batch_size,
         )
 
-    # Test image data with shuffle for iter_torch_batches() and to_tf().
+    # Test with varying batch sizes and shuffle for iter_torch_batches() and to_tf().
     for batch_size in batch_sizes:
         for shuffle_buffer_size in [batch_size, 2 * batch_size]:
             test_name = f"iter-torch-batches-shuffle-{batch_size}-{shuffle_buffer_size}"
