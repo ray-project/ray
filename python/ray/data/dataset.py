@@ -4000,6 +4000,7 @@ class Dataset(Generic[T]):
             If your dataset represents a list of Python objects, then the default batch
             format is ``list``.
 
+            >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds  # doctest: +SKIP
             Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)

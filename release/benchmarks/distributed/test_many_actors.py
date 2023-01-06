@@ -29,11 +29,9 @@ def test_max_actors():
         for _ in tqdm.trange(MAX_ACTORS_IN_CLUSTER, desc="Launching actors")
     ]
 
-    not_ready = [actor.foo.remote() for actor in actors]
-
-    for _ in tqdm.trange(len(actors)):
-        ready, not_ready = ray.wait(not_ready)
-        assert ray.get(*ready) is None
+    done = ray.get([actor.foo.remote() for actor in actors])
+    for result in done:
+        assert result is None
 
 
 def no_resource_leaks():
