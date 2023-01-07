@@ -1,5 +1,6 @@
 # fmt: off
-# __mxnetpredictor_impl_start__
+# __mxnetpredictor_imports_start__
+import os
 from typing import Dict, Optional, Union
 
 import mxnet as mx
@@ -9,10 +10,17 @@ from mxnet import gluon
 import ray
 from ray.air import Checkpoint
 from ray.data.preprocessor import Preprocessor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import Predictor
+# __mxnetpredictor_imports_end__
 
 
+# __mxnetpredictor_signature_start__
 class MXNetPredictor(Predictor):
+    ...
+    # __mxnetpredictor_signature_end__
+
+    # __mxnetpredictor_init_start__
     def __init__(
         self,
         net: gluon.Block,
@@ -20,7 +28,23 @@ class MXNetPredictor(Predictor):
     ):
         self.net = net
         super().__init__(preprocessor)
+    # __mxnetpredictor_init_end__
 
+    # __mxnetpredictor_from_checkpoint_start__
+    @classmethod
+    def from_checkpoint(
+        cls,
+        checkpoint: Checkpoint,
+        net: gluon.Block,
+        preprocessor: Optional[Preprocessor] = None,
+    ) -> Predictor:
+        with checkpoint.as_directory() as directory:
+            path = os.path.join(directory, "net.params")
+            net.load_parameters(path)
+        return cls(net, preprocessor=preprocessor)
+    # __mxnetpredictor_from_checkpoint_end__
+
+    # __mxnetpredictor_predict_numpy_start__
     def _predict_numpy(
         self,
         data: Union[np.ndarray, Dict[str, np.ndarray]],
@@ -35,55 +59,23 @@ class MXNetPredictor(Predictor):
         outputs = self.net(inputs).asnumpy()
 
         return {"predictions": outputs}
-
-    @classmethod
-    def from_checkpoint(
-        cls,
-        checkpoint: Checkpoint,
-        net: gluon.Block,
-        preprocessor: Optional[Preprocessor] = None,
-    ) -> Predictor:
-        with checkpoint.as_directory() as directory:
-            path = os.path.join(directory, "net.params")
-            net.load_parameters(path)
-        return cls(net, preprocessor=preprocessor)
-# __mxnetpredictor_impl_end__
-# fmt: on
+# __mxnetpredictor_predict_numpy_end__
 
 
-def preprocess_batch(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    def preprocess(image: mx.nd.NDArray) -> np.ndarray:
-        image = mx.nd.array(image)
-        # (C, H, W) -> (H, W, C)
-        image.transpose((1, 2, 0))
-        image = mx.image.imresize(image, 224, 224)
-        image = mx.image.color_normalize(
-            image.astype(dtype="float32") / 255,
-            mean=mx.nd.array([0.485, 0.456, 0.406]),
-            std=mx.nd.array([0.229, 0.224, 0.225]),
-        )
-        # (H, W, C) -> (C, H, W)
-        image = image.transpose((2, 0, 1))
-        return image.asnumpy()
-
-    batch["image"] = np.array([preprocess(image) for image in batch["image"]])
-    return batch
-
-
-# __mxnetpredictor_usage_start__
-import os
-
-from ray.train.batch_predictor import BatchPredictor
-
+# __mxnetpredictor_model_start__
 net = gluon.model_zoo.vision.resnet50_v1(pretrained=True)
+# __mxnetpredictor_model_end__
 
+# __mxnetpredictor_checkpoint_start__
 os.makedirs("checkpoint", exist_ok=True)
 net.save_parameters("checkpoint/net.params")
 checkpoint = Checkpoint.from_directory("checkpoint")
+# __mxnetpredictor_checkpoint_end__
 
-predictor = BatchPredictor(checkpoint, MXNetPredictor, net=net)
-# __mxnetpredictor_usage_end__
-
-# NOTE: This is to ensure the code runs. It shouldn't be part of the documentation.
+# __mxnetpredictor_predict_start__
+predictor = BatchPredictor.from_checkpoint(checkpoint, MXNetPredictor, net=net)
+# These images aren't normalized. In practice, preprocess images before inference.
 dataset = ray.data.read_images("s3://air-example-data-2/imagenet-sample-images")
 predictor.predict(dataset)
+# __mxnetpredictor_predict_end__
+# fmt: on
