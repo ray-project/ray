@@ -9,6 +9,7 @@ ENV BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST}
 ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
 ENV TRAVIS_COMMIT=${BUILDKITE_COMMIT}
+# Set compiler here to build Ray with CLANG/LLVM
 ENV CC=clang
 ENV CXX=clang++-12
 
@@ -24,9 +25,6 @@ WORKDIR /ray
 COPY . .
 
 RUN env
-
-# Set compiler here to build Ray with CLANG/LLVM
-RUN export CC=clang CXX=clang++-12
 
 # init also calls install-dependencies.sh
 RUN BUILD=1 bash --login -i ./ci/ci.sh init
