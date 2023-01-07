@@ -50,7 +50,7 @@ The memory monitor is controlled by the following environment variables:
   .. note::
 
       Keep the value of ``RAY_task_oom_retries`` low, below 25, to avoid extremely long delays as it is using exponential backoff.
-      The delay is capped at 10 minutes.
+      The delay is capped at 1 minute.
   
 
 Using the Memory Monitor

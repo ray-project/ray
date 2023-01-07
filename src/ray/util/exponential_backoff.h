@@ -37,7 +37,7 @@ class ExponentialBackoff {
 
  private:
   // The default cap on the backoff delay.
-  static constexpr uint64_t kMaxBackoffMs = 10 * 60 * 1000;
+  static constexpr uint64_t kMaxBackoffMs = 1 * 60 * 1000;
 };
 
 }  // namespace ray
