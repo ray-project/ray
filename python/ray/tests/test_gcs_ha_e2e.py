@@ -49,50 +49,61 @@ redis = container(
     ),
 )
 
-head_node = container(
-    image="ray_ci:v1",
-    name="gcs",
-    network="{gcs_network.name}",
-    command=[
-        "ray",
-        "start",
-        "--head",
-        "--block",
-        "--num-cpus",
-        "0",
-        # Fix the port of raylet to make sure raylet restarts at the same
-        # ip:port is treated as a different raylet.
-        "--node-manager-port",
-        "9379",
-    ],
-    environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
-    wrapper_class=Container,
-    ports={
-        "8000/tcp": None,
-    },
-)
+def make_head_node(num_cpus=0, envs=None):
+    if envs is None:
+        envs = {}
+    envs["RAY_REDIS_ADDRESS"] = "{redis.ips.primary}:6379"
 
-worker_node = container(
-    image="ray_ci:v1",
-    network="{gcs_network.name}",
-    command=[
-        "ray",
-        "start",
-        "--address",
-        "gcs:6379",
-        "--block",
-        # Fix the port of raylet to make sure raylet restarts at the same
-        # ip:port is treated as a different raylet.
-        "--node-manager-port",
-        "9379",
-    ],
-    environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
-    wrapper_class=Container,
-    ports={
-        "8000/tcp": None,
-    },
-)
+    return container(
+        image="ray_ci:v1",
+        name="gcs",
+        network="{gcs_network.name}",
+        command=[
+            "ray",
+            "start",
+            "--head",
+            "--block",
+            "--num-cpus",
+            f"{num_cpus}",
+            # Fix the port of raylet to make sure raylet restarts at the same
+            # ip:port is treated as a different raylet.
+            "--node-manager-port",
+            "9379",
+        ],
+        environment=envs,
+        wrapper_class=Container,
+        ports={
+            "8000/tcp": None,
+        },
+    )
 
+
+head_node = make_head_node(num_cpus=0)
+
+def make_worker_node():
+    return container(
+        image="ray_ci:v1",
+        network="{gcs_network.name}",
+        command=[
+            "ray",
+            "start",
+            "--address",
+            "gcs:6379",
+            "--block",
+            # Fix the port of raylet to make sure raylet restarts at the same
+            # ip:port is treated as a different raylet.
+            "--node-manager-port",
+            "9379",
+        ],
+        environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
+        wrapper_class=Container,
+        ports={
+            "8000/tcp": None,
+        },
+    )
+
+worker_node = make_worker_node()
+worker_node_2 = make_worker_node()
 
 @pytest.fixture
 def docker_cluster(head_node, worker_node):
@@ -238,6 +249,124 @@ print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
     wait_for_condition(check_alive, timeout=10, n=3)
     # Later, GCS detect the old raylet dead and the alive nodes will be 2
     wait_for_condition(check_alive, timeout=30, n=2)
+
+head_node_1cpu = make_head_node(num_cpus=1, envs={"RAY_gcs_server_request_timeout_seconds": "3"})
+
+@pytest.fixture
+def docker_cluster_1cpu(head_node_1cpu, worker_node):
+    yield (head_node_1cpu, worker_node)
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_ray_deadnode_actor_call(docker_cluster_1cpu):
+    # This test is to test the behavior when the head node is down for actors:
+    #    The actor call will hang forever until the GCS is back and broadcast
+    #    the death of the actor.
+    #    If max_task_retries=-1, client will retry it once actor is recreated.
+    #    Otherwise, exception will be thrown.
+
+    head, worker = docker_cluster_1cpu
+
+    create_actor_script = """
+import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+ray.init("auto", namespace="n")
+
+@ray.remote(max_restarts=-1, max_task_retries=-1)
+class Actor:
+    def hello(self):
+        return "world"
+
+strategy = NodeAffinitySchedulingStrategy(
+    node_id=ray.get_runtime_context().node_id,
+    soft=True)
+
+a = Actor.options(
+        name="hello",
+        lifetime="detached",
+        scheduling_strategy=strategy).remote()
+
+print(ray.get(a.hello.remote()))
+"""
+    output = head.exec_run(cmd=f"python -c '{create_actor_script}'")
+    assert output.exit_code == 0
+
+    def kill_head():
+        # sleep 3 seconds and then kill head
+        sleep(3)
+        head.kill()
+        print("head node killed")
+
+    t = threading.Thread(target=kill_head)
+
+    fetch_from_actor_script = """
+import ray
+ray.init("auto", namespace="n")
+a = ray.get_actor("hello")
+
+import time
+
+assert ray.get(a.hello.remote()) == "world"
+
+for i in range(10):
+    assert ray.get(a.hello.remote()) == "world"
+    print("iter=", i)
+    time.sleep(1)
+"""
+
+    def fetch_data():
+        nonlocal output
+        output = worker.exec_run(cmd=f"python -c '{fetch_from_actor_script}'")
+
+    f = threading.Thread(target=fetch_data)
+
+    t.start()
+    f.start()
+
+    t.join()
+    f.join(timeout=10)
+
+    assert f.is_alive()
+
+    head.restart()
+
+    f.join()
+    assert not f.is_alive()
+    assert output.exit_code == 0
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_ray_deadnode_object_fetch(docker_cluster_1cpu):
+    head, worker = docker_cluster
+    create_actor_script = """
+import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+ray.init("auto", namespace="n")
+
+@ray.remote(max_restarts=-1, max_task_retries=-1)
+class Actor:
+    def hello(self):
+        return ray.put("world")
+
+strategy = NodeAffinitySchedulingStrategy(
+    node_id=ray.get_runtime_context().node_id,
+    soft=True)
+
+a = Actor.options(
+        name="hello",
+        lifetime="detached",
+        scheduling_strategy=strategy).remote()
+
+print(ray.get(ray.get(a.hello.remote())))
+"""
+    output = head.exec_run(cmd=f"python -c {create_actor_script}")
+    assert output.exit_code == 0
+    head.kill()
+
+    fetch_obj_script = """
+
+"""
 
 
 if __name__ == "__main__":
