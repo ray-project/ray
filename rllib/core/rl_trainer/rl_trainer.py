@@ -1,6 +1,20 @@
 import abc
-from typing import Any, List, Mapping, Sequence, Tuple, Type, TYPE_CHECKING, Union
 
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Hashable,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
+
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -8,13 +22,14 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
 
-if TYPE_CHECKING:
-    import torch
-    import tensorflow as tf
+torch, _ = try_import_torch()
+tf1, tf, tfv = try_import_tf()
+
 
 Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
-ParamType = Sequence[Union["torch.Tensor", "tf.Variable"]]
-ParamOptimizerPairs = List[Tuple[ParamType, Optimizer]]
+ParamType = Union["torch.Tensor", "tf.Variable"]
+ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
+ParamRef = Hashable
 
 
 class RLTrainer:
@@ -84,8 +99,8 @@ class RLTrainer:
         self.in_test = in_test
 
         # These are the attributes that are set during build
-        self._params: List[ParamType] = None
-        self._optimizers: List[Optimizer] = None
+        self._params: Dict[ParamRef, ParamType] = {}
+        self._optimizers: Dict[ParamRef, Optimizer] = {}
 
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
@@ -252,9 +267,11 @@ class RLTrainer:
 
     def add_module(
         self,
+        *,
         module_id: ModuleID,
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
+        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
     ) -> None:
         """Add a module to the trainer.
 
@@ -262,15 +279,40 @@ class RLTrainer:
             module_id: The id of the module to add.
             module_cls: The module class to add.
             module_kwargs: The config for the module.
+            set_optimizer_fn: A function that takes in the module and returns a list of
+                (param, optimizer) pairs. Each element in the tuple describes a
+                parameter group that share the same optimizer object, if None, the
+                default optimizer (obtained from the exiting optimizer dictionary) will
+                be used.
         """
         module = module_cls.from_model_config(**module_kwargs)
-        self._module.add_module(module_id, module)
 
-        # TODO: Everytime we add a module, the optimizer gets re-initialized. This is
-        # bad. Fix it.
-        # rerun make_optimizers to update the params and optimizer list with the new
-        # module
-        self._make_optimizers()
+        # construct a default set_optimizer_fn if not provided
+        if set_optimizer_fn is None:
+            # default is to use the first optimizer class and default parameters
+            optimizer_obj = next(iter(self._optimizers.values()))
+            optimizer_cls = optimizer_obj.__class__
+            lr = self.optimizer_config.get("lr", 1e-3)
+            if torch and isinstance(module, torch.nn.Module):
+                optimizer = optimizer_cls(module.parameters(), lr=lr)
+            elif tf and isinstance(module, tf.keras.Model):
+                optimizer = optimizer_cls(learning_rate=lr)
+            else:
+                raise ValueError(
+                    "Unknown module type. Only torch.nn.Module and "
+                    "tf.keras.Model are supported."
+                )
+
+            def set_optimizer_fn(module):
+                return [(module.parameters(), optimizer)]
+
+        for param_seq, optimizer in set_optimizer_fn(module):
+            for param in param_seq:
+                param_ref = self.__get_param_ref(param)
+                self._params[param_ref] = param
+                self._optimizers[param_ref] = optimizer
+
+        self._module.add_module(module_id, module)
 
     def remove_module(self, module_id: ModuleID) -> None:
         """Remove a module from the trainer.
@@ -279,10 +321,14 @@ class RLTrainer:
             module_id: The id of the module to remove.
 
         """
-        self._module.remove_module(module_id)
+        module = self._module[module_id]
+        parameters = self.__get_parameters(module)
+        for param in parameters:
+            param_ref = self.__get_param_ref(param)
+            del self._params[param_ref]
+            del self._optimizers[param_ref]
 
-        # rerun make_optimizers to update the params and optimizer
-        self._make_optimizers()
+        self._module.remove_module(module_id)
 
     def _make_module(self) -> MultiAgentRLModule:
         """Construct the multi-agent RL module for the trainer.
@@ -309,18 +355,6 @@ class RLTrainer:
 
         return module
 
-    def _make_optimizers(self) -> None:
-        """Initialize the optimizers for the module.
-
-        This method runs the configure_optimizers() and separates the parameters and
-        optimizers in two distinct lists so that they can be iterated over separately.
-        """
-        self._params = []
-        self._optimizers = []
-        for param, optimizer in self.configure_optimizers():
-            self._params.append(param)
-            self._optimizers.append(optimizer)
-
     def build(self) -> None:
         """Initialize the model."""
         if self.distributed:
@@ -328,7 +362,11 @@ class RLTrainer:
         else:
             self._module = self._make_module()
 
-        self._make_optimizers()
+        for param_seq, optimizer in self.configure_optimizers():
+            for param in param_seq:
+                param_ref = self.__get_param_ref(param)
+                self._params[param_ref] = param
+                self._optimizers[param_ref] = optimizer
 
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.
@@ -353,3 +391,29 @@ class RLTrainer:
             The distributed module.
         """
         raise NotImplementedError
+
+    def __get_param_ref(self, param: ParamType) -> Hashable:
+        """Returns a reference to a parameter.
+
+        In torch this is simply the parameter itself. In tf this is the .ref() of the
+        variable. The purpose is to retrieve a unique reference to the parameters.
+        """
+        if torch and isinstance(param, torch.nn.Parameter):
+            return param
+        elif tf and isinstance(param, tf.Variable):
+            return param.ref()
+        else:
+            raise ValueError(
+                "The parameter must be a torch.nn.Parameter or a tf.Variable."
+            )
+
+    def __get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+        """Returns the parameters of a module."""
+        if torch and isinstance(module, torch.nn.Module):
+            return module.parameters()
+        elif tf and isinstance(module, tf.keras.Model):
+            return module.trainable_variables
+        else:
+            raise ValueError(
+                "The module must be a torch.nn.Module or a tf.keras.Model."
+            )

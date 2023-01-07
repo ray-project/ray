@@ -1,7 +1,8 @@
 import numpy as np
 from typing import Any, Mapping, Tuple, Union, Type
+
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer, ParamOptimizerPairs
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
@@ -31,7 +32,7 @@ class TfRLTrainer(RLTrainer):
         return {"loss": loss, "fwd_out": fwd_out, "post_processed_gradients": gradients}
 
     @override(RLTrainer)
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> ParamOptimizerPairs:
         lr = self.optimizer_config.get("lr", 1e-3)
         return [
             (
