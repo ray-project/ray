@@ -1,6 +1,6 @@
 from collections import defaultdict
 import copy
-from gym.spaces import Discrete, MultiDiscrete, Space
+from gymnasium.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
 import numpy as np
@@ -144,13 +144,21 @@ def _update_env_seed_if_necessary(
     ), "Too many envs per worker. Random seeds may collide."
     computed_seed: int = worker_idx * max_num_envs_per_workers + vector_idx + seed
 
-    # Gym.env.
+    # Gymnasium.env.
     # This will silently fail for most OpenAI gyms
     # (they do nothing and return None per default)
-    if not hasattr(env, "seed"):
-        logger.info("Env doesn't support env.seed(): {}".format(env))
+    if not hasattr(env, "reset"):
+        if log_once("env_has_no_reset_method"):
+            logger.info(f"Env {env} doesn't have a `reset()` method. Cannot seed.")
     else:
-        env.seed(computed_seed)
+        try:
+            env.reset(seed=computed_seed)
+        except Exception:
+            logger.info(
+                f"Env {env} doesn't support setting a seed via its `reset()` "
+                "method! Implement this method as `reset(self, *, seed=None, "
+                "options=None)` for it to abide to the correct API. Cannot seed."
+            )
 
 
 @DeveloperAPI
@@ -166,7 +174,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
     Examples:
         >>> # Create a rollout worker and using it to collect experiences.
-        >>> import gym
+        >>> import gymnasium as gym
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
         >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
         >>> worker = RolloutWorker( # doctest: +SKIP
@@ -175,9 +183,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
-            "dones": [[...]], "new_obs": [[...]]})
+            "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]})
         >>> # Creating a multi-agent rollout worker
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> import random
         >>> MultiAgentTrafficGrid = ... # doctest: +SKIP
         >>> worker = RolloutWorker( # doctest: +SKIP
@@ -406,9 +414,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if soft_horizon != DEPRECATED_VALUE:
             deprecation_warning("soft_horizon", error=True)
         if no_done_at_end != DEPRECATED_VALUE:
-            deprecation_warning(
-                "no_done_at_end", "config.rollouts(no_done_at_end=..)", error=True
-            )
+            deprecation_warning("no_done_at_end", error=True)
         if fake_sampler != DEPRECATED_VALUE:
             deprecation_warning(
                 "fake_sampler", "config.rollouts(fake_sampler=..)", error=True
@@ -515,9 +521,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         ):
             tf1.enable_eager_execution()
 
-        if self.config.log_level:
-            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
-
         if self.worker_index > 1:
             disable_log_once_globally()  # only need 1 worker to log
         elif self.config.log_level == "DEBUG":
@@ -575,7 +578,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         )
 
         # Update the global seed for numpy/random/tf-eager/torch if we are not
-        # the local worker, otherwise, this was already done in the Trainer
+        # the local worker, otherwise, this was already done in the Algorithm
         # object itself.
         if self.worker_index > 0:
             update_global_seed_if_necessary(self.config.framework_str, self.seed)
@@ -636,7 +639,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
                 def wrap(env):
                     env = wrap_deepmind(
-                        env, dim=self.config.model.get("dim"), framestack=use_framestack
+                        env,
+                        dim=self.config.model.get("dim"),
+                        framestack=use_framestack,
+                        noframeskip=self.config.env_config.get("frameskip", 0) == 1,
                     )
                     return env
 
@@ -810,7 +816,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
                 render=render,
@@ -828,7 +833,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
                 render=render,
@@ -877,7 +881,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             A columnar batch of experiences (e.g., tensors).
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -958,7 +962,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 size of the collected batch.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -984,7 +988,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             Dictionary of extra metadata from compute_gradients().
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -1107,7 +1111,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             compatible worker using the worker's `apply_gradients()` method.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -1177,7 +1181,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 structs.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -2004,7 +2008,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # Also note that we cannot just check the existence of connectors
                 # to decide whether we should create connectors because we may be
                 # restoring a policy that has 0 connectors configured.
-                if not policy and not restore_states:
+                if (
+                    new_policy.agent_connectors is None
+                    or new_policy.action_connectors is None
+                ):
                     # TODO(jungong) : revisit this. It will be nicer to create
                     # connectors as the last step of Policy.__init__().
                     create_connectors_for_policy(new_policy, merged_conf)

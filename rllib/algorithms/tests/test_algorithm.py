@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 from pathlib import Path
@@ -196,7 +196,7 @@ class TestAlgorithm(unittest.TestCase):
                     # Note that the complete signature of a policy_mapping_fn
                     # is: `agent_id, episode, worker, **kwargs`.
                     policy_mapping_fn=(
-                        lambda agent_id, worker, episode, **kwargs: f"p{i - 1}"
+                        lambda agent_id, episode, worker, **kwargs: f"p{i - 1}"
                     ),
                     # Update list of policies to train.
                     policies_to_train=[f"p{i - 1}"],

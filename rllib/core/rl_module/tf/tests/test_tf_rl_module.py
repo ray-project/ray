@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import tensorflow as tf
 import tensorflow_probability as tfp
 import unittest
@@ -48,10 +48,10 @@ class TestRLModule(unittest.TestCase):
         self.assertIn("action_dist", output)
         self.assertIsInstance(output["action_dist"], tfp.distributions.Categorical)
 
-        grads = tape.gradient(loss, module.trainable_variables())
+        grads = tape.gradient(loss, module.trainable_variables)
 
         # check that all neural net parameters have gradients
-        for grad in grads["policy"]:
+        for grad in grads:
             self.assertIsNotNone(grad)
 
     def test_forward(self):

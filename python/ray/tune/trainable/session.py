@@ -210,7 +210,9 @@ def _shutdown():
     """Cleans up the trial and removes it from the global context."""
 
     global _session
+    global _session_v2
     _session = None
+    _session_v2 = None
 
 
 @Deprecated(message=_deprecation_msg)
@@ -241,7 +243,7 @@ def report(_metric=None, **kwargs):
     )
     _session = get_session()
     if _session:
-        if _session._iter:
+        if _session._air_session_has_reported:
             raise ValueError(
                 "It is not allowed to mix `tune.report` with `session.report`."
             )
@@ -310,7 +312,7 @@ def checkpoint_dir(step: int):
         raise ValueError("checkpoint_dir(step) must be provided - got None.")
 
     if _session:
-        if _session._iter:
+        if _session._air_session_has_reported:
             raise ValueError(
                 "It is not allowed to mix `with tune.checkpoint_dir` "
                 "with `session.report`."
