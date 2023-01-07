@@ -1,5 +1,5 @@
 from pettingzoo import AECEnv
-from pettingzoo.classic.chess.chess_env import raw_env as chess_v5
+from pettingzoo.classic.chess.chess import raw_env as chess_v5
 import copy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from gym import spaces
