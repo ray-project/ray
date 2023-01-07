@@ -5,11 +5,16 @@ import torch
 from typing import Dict, Any, Type
 import unittest
 
-from ray.rllib.models.specs.specs_base import TensorSpec
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.specs_base import TensorSpec, TypeSpec
+from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.models.specs.checker import (
+    _convert_to_canonical_format,
+    check_input_specs,
+    check_output_specs,
+)
 
 ONLY_ONE_KEY_ALLOWED = "Only one key is allowed in the data dict."
 
@@ -18,15 +23,16 @@ class AbstractInterfaceClass(abc.ABC):
     """An abstract class that has a couple of methods, each having their own
     input/output constraints."""
 
-    @abc.abstractmethod
-    def input_spec(self) -> ModelSpec:
+    @property
+    def input_spec(self) -> SpecDict:
         pass
 
-    @abc.abstractmethod
-    def output_spec(self) -> ModelSpec:
+    @property
+    def output_spec(self) -> SpecDict:
         pass
 
-    @check_specs(input_spec="input_spec", output_spec="output_spec")
+    @check_input_specs("input_spec", filter=True, cache=False)
+    @check_output_specs("output_spec", cache=False)
     def check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         return self._check_input_and_output(input_dict)
 
@@ -34,7 +40,7 @@ class AbstractInterfaceClass(abc.ABC):
     def _check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
-    @check_specs(input_spec="input_spec")
+    @check_input_specs("input_spec", filter=True, cache=False)
     def check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         """should not override this method"""
         return self._check_only_input(input_dict)
@@ -43,7 +49,7 @@ class AbstractInterfaceClass(abc.ABC):
     def _check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
-    @check_specs(output_spec="output_spec")
+    @check_output_specs("output_spec", cache=False)
     def check_only_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         """should not override this method"""
         return self._check_only_output(input_dict)
@@ -52,14 +58,16 @@ class AbstractInterfaceClass(abc.ABC):
     def _check_only_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
-    @check_specs(input_spec="input_spec", output_spec="output_spec", cache=True)
+    @check_input_specs("input_spec", filter=True, cache=True)
+    @check_output_specs("output_spec", cache=True)
     def check_input_and_output_with_cache(
         self, input_dict: Dict[str, Any]
     ) -> Dict[str, Any]:
         """should not override this method"""
         return self._check_input_and_output(input_dict)
 
-    @check_specs(input_spec="input_spec", output_spec="output_spec", filter=False)
+    @check_input_specs("input_spec", filter=False, cache=False)
+    @check_output_specs("output_spec", cache=False)
     def check_input_and_output_wo_filter(self, input_dict) -> Dict[str, Any]:
         """should not override this method"""
         return self._check_input_and_output(input_dict)
@@ -68,11 +76,13 @@ class AbstractInterfaceClass(abc.ABC):
 class InputNumberOutputFloat(AbstractInterfaceClass):
     """This is an abstract class enforcing a contraint on input/output"""
 
-    def input_spec(self) -> ModelSpec:
-        return ModelSpec({"input": (float, int)})
+    @property
+    def input_spec(self) -> SpecDict:
+        return SpecDict({"input": (float, int)})
 
-    def output_spec(self) -> ModelSpec:
-        return ModelSpec({"output": float})
+    @property
+    def output_spec(self) -> SpecDict:
+        return SpecDict({"output": float})
 
 
 class CorrectImplementation(InputNumberOutputFloat):
@@ -123,7 +133,7 @@ class TestCheckSpecs(unittest.TestCase):
 
         output = correct_module.check_input_and_output({"input": 2})
         # output should also match the output_spec
-        correct_module.output_spec().validate(NestedDict(output))
+        correct_module.output_spec.validate(NestedDict(output))
 
         # this should raise an error saying that the `input` key is missing
         self.assertRaises(
@@ -137,7 +147,7 @@ class TestCheckSpecs(unittest.TestCase):
         # output can be anything since ther is no output_spec
         self.assertRaises(
             ValueError,
-            lambda: correct_module.output_spec().validate(NestedDict(output)),
+            lambda: correct_module.output_spec.validate(NestedDict(output)),
         )
 
     def test_check_only_output(self):
@@ -145,7 +155,7 @@ class TestCheckSpecs(unittest.TestCase):
         # this should not raise any error since input does not have to match input_spec
         output = correct_module.check_only_output({"not_input": 2})
         # output should match the output specs
-        correct_module.output_spec().validate(NestedDict(output))
+        correct_module.output_spec.validate(NestedDict(output))
 
     def test_incorrect_implementation(self):
         incorrect_module = IncorrectImplementation()
@@ -224,10 +234,11 @@ class TestCheckSpecs(unittest.TestCase):
     def test_tensor_specs(self):
         # test if the input_spec can be a tensor spec
         class ClassWithTensorSpec:
+            @property
             def input_spec1(self) -> TensorSpec:
                 return TorchTensorSpec("b, h", h=4)
 
-            @check_specs(input_spec="input_spec1")
+            @check_input_specs("input_spec1", cache=False)
             def forward(self, input_data) -> Any:
                 return input_data
 
@@ -243,14 +254,15 @@ class TestCheckSpecs(unittest.TestCase):
             pass
 
         class ClassWithTypeSpec:
+            @property
             def output_spec(self) -> Type:
                 return SpecialOutputType
 
-            @check_specs(output_spec="output_spec")
+            @check_output_specs("output_spec", cache=False)
             def forward_pass(self, input_data) -> Any:
                 return SpecialOutputType()
 
-            @check_specs(output_spec="output_spec")
+            @check_output_specs("output_spec", cache=False)
             def forward_fail(self, input_data) -> Any:
                 return WrongOutputType()
 
@@ -258,6 +270,47 @@ class TestCheckSpecs(unittest.TestCase):
         output = module.forward_pass(torch.rand(2, 4))
         self.assertIsInstance(output, SpecialOutputType)
         self.assertRaises(ValueError, lambda: module.forward_fail(torch.rand(2, 3)))
+
+    def test_convert_to_canonical_format(self):
+
+        # Case: input is a list of strs
+        self.assertDictEqual(
+            _convert_to_canonical_format(["foo", "bar"]).asdict(),
+            SpecDict({"foo": None, "bar": None}).asdict(),
+        )
+
+        # Case: input is a list of strs and nested strs
+        self.assertDictEqual(
+            _convert_to_canonical_format(["foo", ("bar", "jar")]).asdict(),
+            SpecDict({"foo": None, "bar": {"jar": None}}).asdict(),
+        )
+
+        # Case: input is a Nested Mapping
+        returned = _convert_to_canonical_format(
+            {"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int, "car": None}}
+        )
+        self.assertIsInstance(returned, SpecDict)
+        self.assertDictEqual(
+            returned.asdict(),
+            SpecDict(
+                {
+                    "foo": {"bar": TorchTensorSpec("b")},
+                    "jar": {"tar": TypeSpec(int), "car": None},
+                }
+            ).asdict(),
+        )
+
+        # Case: input is a SpecDict already
+        returned = _convert_to_canonical_format(
+            SpecDict({"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": int}})
+        )
+        self.assertIsInstance(returned, SpecDict)
+        self.assertDictEqual(
+            returned.asdict(),
+            SpecDict(
+                {"foo": {"bar": TorchTensorSpec("b")}, "jar": {"tar": TypeSpec(int)}}
+            ).asdict(),
+        )
 
 
 if __name__ == "__main__":

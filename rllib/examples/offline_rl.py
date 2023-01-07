@@ -20,6 +20,7 @@ Use the generated file(s) as "input" in the CQL config below
 import argparse
 import numpy as np
 
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.algorithms import cql as cql
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.execution.rollout_ops import (
@@ -88,7 +89,7 @@ if __name__ == "__main__":
             evaluation_interval=1,
             evaluation_duration=10,
             evaluation_parallel_to_training=False,
-            evaluation_config={"input": "sampler"},
+            evaluation_config=cql.CQLConfig.overrides(input_="sampler"),
         )
     )
     # evaluation_parallel_to_training should be False b/c iterations are very long
@@ -136,6 +137,7 @@ if __name__ == "__main__":
     # Get a sample (MultiAgentBatch).
 
     batch = synchronous_parallel_sample(worker_set=cql_algorithm.workers)
+    batch = convert_ma_batch_to_sample_batch(batch)
     obs = torch.from_numpy(batch["obs"])
     # Pass the observations through our model to get the
     # features, which then to pass through the Q-head.

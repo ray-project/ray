@@ -10,7 +10,7 @@ modifies the policy to add a centralized value function.
 """
 
 import numpy as np
-from gym.spaces import Dict, Discrete
+from gymnasium.spaces import Dict, Discrete
 import argparse
 import os
 
@@ -132,7 +132,7 @@ if __name__ == "__main__":
                 "pol1": (None, observer_space, action_space, {}),
                 "pol2": (None, observer_space, action_space, {}),
             },
-            policy_mapping_fn=lambda agent_id, **kwargs: "pol1"
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
             if agent_id == 0
             else "pol2",
             observation_fn=central_critic_observer,

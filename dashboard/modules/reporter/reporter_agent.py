@@ -328,16 +328,20 @@ class ReporterAgent(
 
     async def GetTraceback(self, request, context):
         pid = request.pid
+        native = request.native
         p = CpuProfilingManager(self._log_dir)
-        success, output = await p.trace_dump(pid)
+        success, output = await p.trace_dump(pid, native=native)
         return reporter_pb2.GetTracebackReply(output=output, success=success)
 
     async def CpuProfiling(self, request, context):
         pid = request.pid
         duration = request.duration
         format = request.format
+        native = request.native
         p = CpuProfilingManager(self._log_dir)
-        success, output = await p.cpu_profile(pid, format=format, duration=duration)
+        success, output = await p.cpu_profile(
+            pid, format=format, duration=duration, native=native
+        )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
 
     async def ReportOCMetrics(self, request, context):

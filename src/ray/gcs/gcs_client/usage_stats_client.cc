@@ -17,21 +17,16 @@
 namespace ray {
 namespace gcs {
 UsageStatsClient::UsageStatsClient(const std::string &gcs_address,
-                                   instrumented_io_context &io_service)
-    : io_service_(io_service) {
+                                   instrumented_io_context &io_service) {
   GcsClientOptions options(gcs_address);
   gcs_client_ = std::make_unique<GcsClient>(options);
+  RAY_CHECK_OK(gcs_client_->Connect(io_service));
 }
 
-void UsageStatsClient::RecordExtraUsageTag(const std::string &key,
-                                           const std::string &value) {
-  if (!gcs_client_->IsConnected()) {
-    RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  }
-
+void UsageStatsClient::RecordExtraUsageTag(usage::TagKey key, const std::string &value) {
   RAY_CHECK_OK(gcs_client_->InternalKV().AsyncInternalKVPut(
       kUsageStatsNamespace,
-      kExtraUsageTagPrefix + key,
+      kExtraUsageTagPrefix + absl::AsciiStrToLower(usage::TagKey_Name(key)),
       value,
       /*overwrite=*/true,
       [](Status status, boost::optional<int> added_num) {
@@ -39,6 +34,10 @@ void UsageStatsClient::RecordExtraUsageTag(const std::string &key,
           RAY_LOG(DEBUG) << "Failed to put extra usage tag, status = " << status;
         }
       }));
+}
+
+void UsageStatsClient::RecordExtraUsageCounter(usage::TagKey key, int64_t counter) {
+  RecordExtraUsageTag(key, std::to_string(counter));
 }
 }  // namespace gcs
 }  // namespace ray

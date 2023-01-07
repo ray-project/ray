@@ -20,11 +20,11 @@
 #include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
-#include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
@@ -65,6 +65,7 @@ class GcsJobManager;
 class GcsWorkerManager;
 class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
+class GcsTaskManager;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -102,8 +103,8 @@ class GcsServer {
   /// Initialize gcs node manager.
   void InitGcsNodeManager(const GcsInitData &gcs_init_data);
 
-  /// Initialize gcs heartbeat manager.
-  void InitGcsHeartbeatManager(const GcsInitData &gcs_init_data);
+  /// Initialize gcs health check manager.
+  void InitGcsHealthCheckManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs resource manager.
   void InitGcsResourceManager(const GcsInitData &gcs_init_data);
@@ -129,8 +130,8 @@ class GcsServer {
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
 
-  /// Initialize stats handler.
-  void InitStatsHandler();
+  /// Initialize gcs task manager.
+  void InitGcsTaskManager();
 
   /// Initialize usage stats client.
   void InitUsageStatsClient();
@@ -177,9 +178,6 @@ class GcsServer {
   const std::string storage_type_;
   /// The main io service to drive event posted from grpc threads.
   instrumented_io_context &main_service_;
-  /// The io service used by heartbeat manager in case of node failure detector being
-  /// blocked by main thread.
-  instrumented_io_context heartbeat_manager_io_service_;
   /// The io service used by Pubsub, for isolation from other workload.
   instrumented_io_context pubsub_io_service_;
   /// The grpc server
@@ -201,8 +199,6 @@ class GcsServer {
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
-  /// The heartbeat manager.
-  std::shared_ptr<GcsHeartbeatManager> gcs_heartbeat_manager_;
   /// The gcs redis failure detector.
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager.
@@ -222,11 +218,6 @@ class GcsServer {
   std::unique_ptr<GcsFunctionManager> function_manager_;
   /// Node resource info handler and service.
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
-  /// Heartbeat info handler and service.
-  std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
-  /// Stats handler and service.
-  std::unique_ptr<rpc::StatsHandler> stats_handler_;
-  std::unique_ptr<rpc::StatsGrpcService> stats_service_;
 
   /// Synchronization service for ray.
   /// TODO(iycheng): Deprecate this gcs_ray_syncer_ one once we roll out
@@ -258,6 +249,10 @@ class GcsServer {
   /// GCS PubSub handler and service.
   std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
   std::unique_ptr<rpc::InternalPubSubGrpcService> pubsub_service_;
+  /// GCS Task info manager for managing task states change events.
+  std::unique_ptr<GcsTaskManager> gcs_task_manager_;
+  /// Independent task info service from the main grpc service.
+  std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.

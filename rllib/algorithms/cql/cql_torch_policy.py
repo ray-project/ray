@@ -2,7 +2,7 @@
 PyTorch policy class used for CQL.
 """
 import numpy as np
-import gym
+import gymnasium as gym
 import logging
 import tree
 from typing import Dict, List, Tuple, Type, Union
@@ -112,7 +112,7 @@ def cql_loss(
     actions = train_batch[SampleBatch.ACTIONS]
     rewards = train_batch[SampleBatch.REWARDS].float()
     next_obs = train_batch[SampleBatch.NEXT_OBS]
-    terminals = train_batch[SampleBatch.DONES]
+    terminals = train_batch[SampleBatch.TERMINATEDS]
 
     model_out_t, _ = model(SampleBatch(obs=obs, _is_training=True), [], None)
 
@@ -203,7 +203,7 @@ def cql_loss(
         torch.FloatTensor(actions.shape[0] * num_actions, actions.shape[-1]).uniform_(
             action_low, action_high
         ),
-        policy.device,
+        actions.device,
     )
     curr_actions, curr_logp = policy_actions_repeat(
         model, action_dist_class, model_out_t, num_actions
@@ -323,7 +323,7 @@ def cql_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]
 
     # Add CQL loss stats to the dict.
     stats_dict["cql_loss"] = torch.mean(
-        torch.stack(*policy.get_tower_stats("cql_loss"))
+        torch.stack(tree.flatten(policy.get_tower_stats("cql_loss")))
     )
 
     if policy.config["lagrangian"]:

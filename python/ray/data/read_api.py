@@ -339,9 +339,9 @@ def read_datasource(
     block_list.ensure_metadata_for_first_block()
 
     return Dataset(
-        ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
-        0,
-        False,
+        plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
+        epoch=0,
+        lazy=True,
     )
 
 
@@ -459,7 +459,7 @@ def read_parquet(
         Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, ...})
 
         For further arguments you can pass to pyarrow as a keyword argument, see
-        https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
+        https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
 
     Args:
         paths: A single file path or directory, or a list of file paths. Multiple
@@ -479,7 +479,7 @@ def read_parquet(
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         arrow_parquet_args: Other parquet read options to pass to pyarrow, see
-            https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
+            https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -500,7 +500,7 @@ def read_parquet(
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def read_images(
     paths: Union[str, List[str]],
     *,
@@ -613,7 +613,8 @@ def read_parquet_bulk(
     ),
     **arrow_parquet_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from a large number (e.g. >1K) of parquet files quickly.
+    """Create an Arrow dataset from a large number (such as >1K) of parquet files
+    quickly.
 
     By default, ONLY file paths should be provided as input (i.e. no directory paths),
     and an OSError will be raised if one or more paths point to directories. If your

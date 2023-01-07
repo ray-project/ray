@@ -2,9 +2,9 @@ import click
 import time
 import json
 import os
-import numpy as np
-import pandas as pd
+from typing import Dict
 
+import numpy as np
 from torchvision import transforms
 from torchvision.models import resnet18
 import torch.nn as nn
@@ -12,29 +12,16 @@ import torch.optim as optim
 
 import ray
 from ray.train.torch import TorchCheckpoint
-from ray.data.preprocessors import BatchMapper
+from ray.data.preprocessors import BatchMapper, Chain, TorchVisionPreprocessor
 from ray import train
 from ray.air import session
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
 
 
-def preprocess_image_with_label(batch: np.ndarray) -> pd.DataFrame:
-    """
-    User Pytorch code to transform user image.
-    """
-    preprocess = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-    df = pd.DataFrame(
-        {"image": [preprocess(image) for image in batch], "label": [1] * len(batch)}
-    )
-    return df
+def add_fake_labels(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    batch["labels"] = np.ones((len(batch["images"]),))
+    return batch
 
 
 def train_loop_per_worker(config):
@@ -88,7 +75,18 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     start = time.time()
     dataset = ray.data.read_images(data_url, size=(256, 256))
 
-    preprocessor = BatchMapper(preprocess_image_with_label, batch_format="numpy")
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+    preprocessor = Chain(
+        BatchMapper(add_fake_labels, batch_format="numpy"),
+        TorchVisionPreprocessor(columns=["image"], transform=transform),
+    )
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,

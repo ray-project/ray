@@ -3,6 +3,7 @@ import re
 import pytest
 
 import ray
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.context import DatasetContext
 from ray.tests.conftest import *  # noqa
 
@@ -21,20 +22,22 @@ def canonicalize(stats: str) -> str:
     return s4
 
 
-@patch("ray.data._internal.plan.logger")
-def test_dataset_stats_basic(
-    mock_logger, ray_start_regular_shared, enable_auto_log_stats
-):
+def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
-    ds = ray.data.range(1000, parallelism=10)
-    ds = ds.map_batches(lambda x: x)
 
-    if enable_auto_log_stats:
-        logger_args, logger_kwargs = mock_logger.info.call_args
-        assert (
-            canonicalize(logger_args[0])
-            == """Stage N read->map_batches: N/N blocks executed in T
+    logger = DatasetLogger("ray.data._internal.plan").get_logger(
+        log_to_stdout=enable_auto_log_stats,
+    )
+    with patch.object(logger, "info") as mock_logger:
+        ds = ray.data.range(1000, parallelism=10)
+        ds = ds.map_batches(lambda x: x).fully_executed()
+
+        if enable_auto_log_stats:
+            logger_args, logger_kwargs = mock_logger.call_args
+            assert (
+                canonicalize(logger_args[0])
+                == """Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -42,14 +45,14 @@ def test_dataset_stats_basic(
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 """
-        )
+            )
 
-    ds = ds.map(lambda x: x)
-    if enable_auto_log_stats:
-        logger_args, logger_kwargs = mock_logger.info.call_args
-        assert (
-            canonicalize(logger_args[0])
-            == """Stage N map: N/N blocks executed in T
+        ds = ds.map(lambda x: x).fully_executed()
+        if enable_auto_log_stats:
+            logger_args, logger_kwargs = mock_logger.call_args
+            assert (
+                canonicalize(logger_args[0])
+                == """Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -57,7 +60,7 @@ def test_dataset_stats_basic(
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 """
-        )
+            )
     for batch in ds.iter_batches():
         pass
     stats = canonicalize(ds.stats())
@@ -227,20 +230,22 @@ Stage N map: N/N blocks executed in T
         )
 
 
-@patch("ray.data._internal.plan.logger")
-def test_dataset_pipeline_stats_basic(
-    mock_logger, ray_start_regular_shared, enable_auto_log_stats
-):
+def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
-    ds = ray.data.range(1000, parallelism=10)
-    ds = ds.map_batches(lambda x: x)
 
-    if enable_auto_log_stats:
-        logger_args, logger_kwargs = mock_logger.info.call_args
-        assert (
-            canonicalize(logger_args[0])
-            == """Stage N read->map_batches: N/N blocks executed in T
+    logger = DatasetLogger("ray.data._internal.plan").get_logger(
+        log_to_stdout=enable_auto_log_stats,
+    )
+    with patch.object(logger, "info") as mock_logger:
+        ds = ray.data.range(1000, parallelism=10)
+        ds = ds.map_batches(lambda x: x).fully_executed()
+
+        if enable_auto_log_stats:
+            logger_args, logger_kwargs = mock_logger.call_args
+            assert (
+                canonicalize(logger_args[0])
+                == """Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -248,16 +253,16 @@ def test_dataset_pipeline_stats_basic(
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 """
-        )
+            )
 
-    pipe = ds.repeat(5)
-    pipe = pipe.map(lambda x: x)
-    if enable_auto_log_stats:
-        # Stats only include first stage, and not for pipelined map
-        logger_args, logger_kwargs = mock_logger.info.call_args
-        assert (
-            canonicalize(logger_args[0])
-            == """Stage N read->map_batches: N/N blocks executed in T
+        pipe = ds.repeat(5)
+        pipe = pipe.map(lambda x: x)
+        if enable_auto_log_stats:
+            # Stats only include first stage, and not for pipelined map
+            logger_args, logger_kwargs = mock_logger.call_args
+            assert (
+                canonicalize(logger_args[0])
+                == """Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -265,19 +270,19 @@ def test_dataset_pipeline_stats_basic(
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 """
-        )
+            )
 
-    stats = canonicalize(pipe.stats())
-    assert "No stats available" in stats, stats
-    for batch in pipe.iter_batches():
-        pass
+        stats = canonicalize(pipe.stats())
+        assert "No stats available" in stats, stats
+        for batch in pipe.iter_batches():
+            pass
 
-    if enable_auto_log_stats:
-        # Now stats include the pipelined map stage
-        logger_args, logger_kwargs = mock_logger.info.call_args
-        assert (
-            canonicalize(logger_args[0])
-            == """Stage N map: N/N blocks executed in T
+        if enable_auto_log_stats:
+            # Now stats include the pipelined map stage
+            logger_args, logger_kwargs = mock_logger.call_args
+            assert (
+                canonicalize(logger_args[0])
+                == """Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
@@ -285,12 +290,12 @@ def test_dataset_pipeline_stats_basic(
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 """
-        )
+            )
 
-    stats = canonicalize(pipe.stats())
-    assert (
-        stats
-        == """== Pipeline Window N ==
+        stats = canonicalize(pipe.stats())
+        assert (
+            stats
+            == """== Pipeline Window N ==
 Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -341,7 +346,7 @@ DatasetPipeline iterator time breakdown:
 * In user code: T
 * Total time: T
 """
-    )
+        )
 
 
 def test_dataset_pipeline_cache_cases(ray_start_regular_shared):

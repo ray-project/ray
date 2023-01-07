@@ -36,7 +36,7 @@ MLflow (tune.integration.mlflow)
 .. autoclass:: ray.air.integrations.mlflow.MLflowLoggerCallback
     :noindex:
 
-.. autofunction:: ray.tune.integration.mlflow.mlflow_mixin
+.. autofunction:: ray.air.integrations.mlflow.setup_mlflow
 
 
 .. _tune-integration-mxnet:

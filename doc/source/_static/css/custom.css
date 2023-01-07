@@ -1,5 +1,109 @@
+/* Remove flicker for announcement top bar replacement */
+.header-item.announcement {
+  background-color: white;
+  color: white;
+  padding: 0pt;
+}
+
+.topnav {
+  background-color: white;
+  border-bottom: 1px solid rgba(0, 0, 0, .1);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+/* Content wrapper for the unified nav link / menus */
+.top-nav-content {
+  max-width: 1400px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+@media (max-width: 900px) {
+  .top-nav-content {
+    display: none;
+  }
+}
+
+/* Styling the links and menus in the top nav */
+.top-nav-content a {
+  text-decoration: none;
+  color: black;
+  font-size: 17px;
+}
+.top-nav-content a:hover {
+  color: #007bff;
+}
+
+/* The left part are the links and menus */
+.top-nav-content > .left {
+  display: flex;
+  white-space: nowrap;
+}
+
+.top-nav-content .left > * {
+  margin-right: 8px;
+}
+.top-nav-content .left > a,
+.top-nav-content .left > .menu > a {
+  text-align: center;
+  padding: 14px 16px;
+  border-bottom: 2px solid white; 
+}
+.top-nav-content .menu:hover > a,
+.top-nav-content .left > a:hover {
+  border-bottom: 2px solid #007bff; 
+}
+
+/* Special styling for the Ray logo */
+.top-nav-content .left > a.ray-logo {
+  width: 90px;
+  padding: 10px 0;
+}
+.top-nav-content .left > a.ray-logo:hover {
+  border-bottom: 2px solid white; 
+}
+
+/* Styling the dropdown menus */
+.top-nav-content .menu {
+  display: flex;
+}
+.top-nav-content .menu > a > .down-caret {
+  margin-left: 8px;
+}
+.top-nav-content .menu > ul {
+  display: none;
+}
+.top-nav-content .menu:hover > ul {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  box-shadow: 0 5px 15px 0 rgb(0 0 0 / 10%);
+  padding: 15px;
+  width: 330px;
+  position: absolute;
+  z-index: 2000;
+  background-color: white;
+  top: 58px;
+}
+.top-nav-content .menu:hover > ul > li {
+  list-style: none;
+  padding: 5px 0;
+}
+.top-nav-content .menu:hover > ul > li span {
+  display: block;
+}
+.top-nav-content .menu:hover > ul > li span.secondary {
+  color: #787878;
+}
+
 /* Styling the "Try Anyscale" button */
-.topbar-main > button.try-anyscale {
+.top-nav-content > button.try-anyscale {
   float: right;
   border-radius: 6px;
   background-color: #e7f2fa;
@@ -8,15 +112,24 @@
   margin-left: 12px;
   height: 40px;
   border: none;
+  white-space: nowrap;
 }
-@media (max-width: 900px) {
-  .topbar-main > button.try-anyscale {
-    display: none;
+@media (max-width: 1000px) {
+  .top-nav-content > button.try-anyscale {
+    display: none;;
   }
 }
-.topbar-main > button.try-anyscale > span {
+.top-nav-content > button.try-anyscale > span {
   margin-right: 12px;
 }
+
+
+/* Style the links inside the navigation bar */
+/* Add a color to the active/current link */
+/* .topnav a.active {
+  color: #007bff;
+} */
+
 
 /* For Algolia search box
     * overflow-y: to flow-over horizontally into main content
@@ -74,6 +187,28 @@
     }
 }
 
+/* Make the TOC on the left scrollable by itself */
+#site-navigation .bd-sidebar__content {
+  height: 100vh;
+  overflow: visible;
+}
+.bd-sidebar__top {
+  height: 100%;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+nav.bd-links {
+  overflow-y: auto;
+  flex: 1;
+  padding-bottom: 50px;
+}
+nav.bd-links::-webkit-scrollbar-thumb {
+  background-color: #ccc;
+}
+nav.bd-links::-webkit-scrollbar {
+  width: 5px;
+}
 /*Extends the docstring signature box.*/
 .rst-content dl:not(.docutils) dt {
   display: block;
@@ -110,8 +245,13 @@ th.tune-colab {
 
 /* Adjustment to Sphinx Book Theme */
 .table td {
-  /* Remove row spacing */
-  padding: 0;
+  /* Remove row spacing on the left */
+  padding-left: 0;
+}
+
+.table thead th {
+  /* Remove row spacing on the left */
+  padding-left: 0;
 }
 
 img.inline-figure {
