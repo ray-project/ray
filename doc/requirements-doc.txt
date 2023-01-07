@@ -60,7 +60,7 @@ sphinx-sitemap==2.2.0
 sphinx-thebe==0.1.1
 autodoc_pydantic==1.6.1
 sphinxcontrib-redoc==1.6.0
-sphinx-tabs==3.4.1
+sphinx-tabs
 
 # MyST
 myst-parser==0.15.2
