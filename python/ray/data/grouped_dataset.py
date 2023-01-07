@@ -394,7 +394,7 @@ class GroupedDataset(Generic[T]):
     def sum(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
-        """Compute grouped sum aggregation.
+        r"""Compute grouped sum aggregation.
 
         This is a blocking operation.
 
