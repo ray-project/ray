@@ -28,7 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.util.data_batch_conversion import BlockFormat
-from ray.data._internal.block_batching import BatchType, batch_block_refs, batch_blocks
+from ray.data._internal.block_batching import batch_block_refs, batch_blocks
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -67,6 +67,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
+    DataBatch,
     KeyFn,
     RowUDF,
     T,
@@ -588,7 +589,7 @@ class Dataset(Generic[T]):
                                 f"the {type(value)} to a `numpy.ndarray`."
                             )
 
-            def process_next_batch(batch: Block) -> Iterator[Block]:
+            def process_next_batch(batch: DataBatch) -> Iterator[Block]:
                 # Apply UDF.
                 try:
                     batch = batch_fn(batch, *fn_args, **fn_kwargs)
@@ -2673,7 +2674,7 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[BatchType]:
+    ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
         Examples:

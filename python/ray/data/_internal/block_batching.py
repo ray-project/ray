@@ -1,4 +1,5 @@
-import queue
+import collections
+import itertools
 import sys
 from typing import TYPE_CHECKING, Iterator, Optional, Union, Dict
 
@@ -8,7 +9,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -28,21 +29,13 @@ else:
         yield enter_result
 
 
-# An output type of iter_batches() determined by the batch_format parameter.
-BatchType = Union[
-    "pandas.DataFrame",
-    "pyarrow.Table",
-    np.ndarray,
-    Dict[str, np.ndarray],
-    list,
-]
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
 def batch_block_refs(
     block_refs: Iterator[ObjectRef[Block]],
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     *,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     prefetch_blocks: int = 0,
     clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
@@ -51,7 +44,7 @@ def batch_block_refs(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
-) -> Iterator[BatchType]:
+) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more block object references.
 
     This takes a block iterator and creates batch_size batches, slicing,
@@ -124,15 +117,15 @@ def batch_block_refs(
 
 def batch_blocks(
     blocks: Iterator[Block],
-    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     *,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     drop_last: bool = False,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
-):
+) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more blocks.
 
     This is equivalent to batch_block_refs, except
@@ -215,23 +208,19 @@ def _prefetch_blocks(
                 ray._private.internal_api.free(block_ref, local_only=False)
 
     window_size = num_blocks_to_prefetch
-    sliding_window = queue.Queue(maxsize=window_size)
-
     # Create the initial set of blocks to prefetch.
-    while not sliding_window.full():
-        try:
-            sliding_window.put(next(block_ref_iter))
-        except StopIteration:
-            break
+    sliding_window = collections.deque(
+        itertools.islice(block_ref_iter, window_size), maxlen=window_size
+    )
     with stats.iter_wait_s.timer() if stats else nullcontext():
         prefetcher.prefetch_blocks(list(sliding_window.queue))
 
-    while not sliding_window.empty():
-        block_ref = sliding_window.get()
+    while sliding_window:
+        block_ref = sliding_window.popleft()
         try:
-            sliding_window.put(next(block_ref_iter))
+            sliding_window.append(next(block_ref_iter))
             with stats.iter_wait_s.timer() if stats else nullcontext():
-                prefetcher.prefetch_blocks(list(sliding_window.queue))
+                prefetcher.prefetch_blocks(list(sliding_window))
         except StopIteration:
             pass
         yield block_ref
@@ -274,11 +263,13 @@ def _blocks_to_batches(
     else:
         batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
 
+    def get_iter_next_batch_s_timer():
+        return stats.iter_next_batch_s.timer() if stats else nullcontext()
+
     for block in block_iter:
         batcher.add(block)
         while batcher.has_batch():
-            timer = stats.iter_next_batch_s.timer() if stats else nullcontext()
-            with timer:
+            with get_iter_next_batch_s_timer():
                 batch = batcher.next_batch()
             yield batch
 
@@ -287,22 +278,22 @@ def _blocks_to_batches(
 
     # Get any leftover batches in ShufflingBatcher.
     while batcher.has_batch():
-        timer = stats.iter_next_batch_s.timer() if stats else nullcontext()
-        with timer:
+        with get_iter_next_batch_s_timer():
             batch = batcher.next_batch()
         yield batch
 
     # Get any remaining data.
     if not drop_last and batcher.has_any():
-        timer = stats.iter_next_batch_s.timer() if stats else nullcontext()
-        with timer:
+        with get_iter_next_batch_s_timer():
             batch = batcher.next_batch()
         yield batch
 
 
 def _format_batches(
-    block_iter: Iterator[Block], batch_format: str
-) -> Iterator[BatchType]:
+    block_iter: Iterator[Block],
+    batch_format: str,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
+) -> Iterator[DataBatch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
 
     Args:
@@ -313,7 +304,8 @@ def _format_batches(
         An iterator over formatted batches.
     """
     for block in block_iter:
-        batch = BlockAccessor.for_block(block).to_batch_format(batch_format)
+        with stats.iter_format_batch_s.timer() if stats else nullcontext():
+            batch = BlockAccessor.for_block(block).to_batch_format(batch_format)
         yield batch
 
 
