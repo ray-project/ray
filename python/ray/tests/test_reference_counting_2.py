@@ -778,6 +778,24 @@ def test_generators(one_worker_100MiB):
         _fill_object_store_and_get(r_oid, succeed=False)
 
 
+def test_lineage_leak(shutdown_only):
+    ray.init()
+    @ray.remote
+    def process(data):
+        return b"\0" * 100_000_000
+
+    data = ray.put(b"\0" * 100_000_000)
+    ref = process.remote(data)
+    ray.get(ref)
+    del data
+    del ref
+
+    def check_usage():
+        from ray._private.internal_api import memory_summary
+        return "Plasma memory usage 0 MiB" in memory_summary(stats_only=True)
+
+    wait_for_condition(check_usage)
+
 if __name__ == "__main__":
     import sys
 

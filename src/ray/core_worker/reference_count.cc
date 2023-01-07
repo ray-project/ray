@@ -480,7 +480,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     if (arg_it->second.ShouldDelete(lineage_pinning_enabled_)) {
       RAY_CHECK(arg_it->second.on_ref_removed == nullptr);
       lineage_bytes_evicted += ReleaseLineageReferences(arg_it);
-      DeleteReferenceInternal(arg_it);
+      DeleteReferenceInternal(arg_it, nullptr);
     }
   }
   return lineage_bytes_evicted;
