@@ -337,7 +337,10 @@ for i in range(10):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_ray_deadnode_object_fetch(docker_cluster_1cpu):
-    head, worker = docker_cluster
+    # This test is to verify even the owner died, as long as it's going to restart,
+    # we shall still be able to fetch the object it created if the object has copy
+    # some place.
+    head, worker = docker_cluster_1cpu
     create_actor_script = """
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -360,13 +363,56 @@ a = Actor.options(
 
 print(ray.get(ray.get(a.hello.remote())))
 """
-    output = head.exec_run(cmd=f"python -c {create_actor_script}")
+    output = head.exec_run(cmd=f"python -c '{create_actor_script}'")
     assert output.exit_code == 0
-    head.kill()
 
-    fetch_obj_script = """
+    create_cache_script = """
+import ray
+import time
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+ray.init("auto", namespace="n")
+
+@ray.remote(max_restarts=-1, max_task_retries=-1)
+class Cache:
+    def __init__(self):
+        self.data = None
+    def hello(self):
+        if self.data is None:
+            a = ray.get_actor("hello")
+            self.data = ray.get(a.hello.remote())
+        return self.data
+
+strategy = NodeAffinitySchedulingStrategy(
+    node_id=ray.get_runtime_context().node_id,
+    soft=True)
+
+c = Cache.options(name="cache", get_if_exists=True).remote()
+for i in range({num_iters}):
+    assert ray.get(ray.get(c.hello.remote())) == "world"
+    print(i, time.time(), ray.get(ray.get(c.hello.remote())))
+    time.sleep(1)
 """
+    output = worker.exec_run(cmd=f"python -c '{create_cache_script.format(num_iters=1)}'")
+    assert output.exit_code == 0
+
+    def kill_head():
+        # sleep 3 seconds and then kill head
+        sleep(2)
+        head.kill()
+        print("head node killed")
+        sleep(1)
+        head.restart()
+
+    t = threading.Thread(target=kill_head)
+    t.start()
+
+    output = worker.exec_run(cmd=f"python -c '{create_cache_script.format(num_iters=4)}'")
+    print(output.output.decode())
+    assert output.exit_code == 0
+    print(output.output.decode())
+    t.join()
+
 
 
 if __name__ == "__main__":
