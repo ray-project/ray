@@ -1,4 +1,3 @@
-import itertools
 import logging
 import sys
 import time
@@ -98,7 +97,6 @@ class DatasetPipeline(Generic[T]):
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
-        self._dataset_iter = None
         self._first_dataset = None
         self._schema = None
         self._stats = DatasetPipelineStats()
@@ -481,7 +479,7 @@ class DatasetPipeline(Generic[T]):
                 # This is calculated later.
                 self._max_i = None
 
-            def __next__(self) -> Dataset[T]:
+            def __next__(self) -> Callable[[], Dataset[T]]:
                 # Still going through the original pipeline.
                 if self._original_iter:
                     try:
@@ -1150,12 +1148,8 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
-        if self._first_dataset is None:
-            self._peek()
-        iter = itertools.chain([self._first_dataset], self._dataset_iter)
-        self._first_dataset = None
-        self._dataset_iter = None
-        return iter
+        self._optimize_stages()
+        return PipelineExecutor(self)
 
     @DeveloperAPI
     def foreach_window(
@@ -1171,13 +1165,15 @@ class DatasetPipeline(Generic[T]):
         """
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
-        return DatasetPipeline(
+
+        pipe = DatasetPipeline(
             self._base_iterable,
             self._stages + [fn],
             self._length,
             self._progress_bars,
             _executed=self._executed,
         )
+        return pipe
 
     def stats(self, exclude_first_window: bool = True) -> str:
         """Returns a string containing execution timing information.
@@ -1259,9 +1255,15 @@ class DatasetPipeline(Generic[T]):
 
     def _peek(self) -> Dataset[T]:
         if self._first_dataset is None:
-            self._optimize_stages()
-            self._dataset_iter = PipelineExecutor(self)
-            self._first_dataset = next(self._dataset_iter)
+            first_dataset_gen = next(iter(self._base_iterable))
+            peek_pipe = DatasetPipeline(
+                base_iterable=[first_dataset_gen],
+                stages=self._stages.copy(),
+                length=1,
+                progress_bars=False,
+            )
+            self._first_dataset = next(peek_pipe.iter_datasets())
+
         return self._first_dataset
 
     def _write_each_dataset(self, write_fn: Callable[[Dataset[T]], None]) -> None:

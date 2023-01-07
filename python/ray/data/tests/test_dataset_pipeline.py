@@ -471,6 +471,24 @@ def test_schema_peek(ray_start_regular_shared):
     assert pipe.schema() is None
 
 
+def test_schema_after_repeat(ray_start_regular_shared):
+    pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2).repeat(2)
+    assert pipe.schema() == int
+    output = []
+    for ds in pipe.iter_datasets():
+        output.extend(dataset.take())
+    assert output.sort() == (list(range(6)) * 2).sort()
+
+    pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2).repeat(2)
+    assert pipe.schema() == int
+    # Test that operations still work after peek.
+    pipe = pipe.map_batches(lambda batch: batch)
+    output = []
+    for ds in pipe.iter_datasets():
+        output.extend(dataset.take())
+    assert output.sort() == (list(range(6)) * 2).sort()
+
+
 def test_split(ray_start_regular_shared):
     pipe = ray.data.range(3).map(lambda x: x + 1).repeat(10)
 
