@@ -4,7 +4,7 @@
 # __start__
 
 # First, pip install torchmetrics
-# This code is tested with torchmetrics==1.1.1
+# This code is tested with torchmetrics==0.7.3 and torch==1.12.1
 
 import ray.train.torch
 from ray.air import session, ScalingConfig
