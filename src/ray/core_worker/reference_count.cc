@@ -482,8 +482,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
       // should already be released.
       RAY_CHECK(arg_it->second.on_ref_removed == nullptr);
       lineage_bytes_evicted += ReleaseLineageReferences(arg_it);
-      EraseReference(arg_it);
-      ReleasePlasmaObject(arg_it);
+      DeleteReferenceInternal(arg_it);
     }
   }
   return lineage_bytes_evicted;
