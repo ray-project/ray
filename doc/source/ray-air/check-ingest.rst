@@ -88,7 +88,7 @@ Enabling Streaming Ingest
     You should use bulk ingest when:
 
     * you have enough memory to fit data blocks in cluster object store; or
-    * your preprocessing step is expensive to recompute on each epoch
+    * your preprocessing transform is expensive to recompute on each epoch
 
 .. tabbed:: Streaming Ingest (experimental)
 
