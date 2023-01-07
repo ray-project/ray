@@ -216,6 +216,11 @@ inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info
   return ss.str();
 }
 
+/// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
+///
+/// \param task_status The task status.
+/// \param timestamp The timestamp.
+/// \param[out] state_updates The state updates with timestamp to be updated.
 inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
                                      int64_t timestamp,
                                      ray::rpc::TaskStateUpdate *state_updates) {
