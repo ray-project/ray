@@ -259,7 +259,7 @@ assert ray.get_runtime_context().job_id.hex() == '02000000'
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --num-gpus=2"],
+    ["ray start --head --num-cpus=2"],
     indirect=True,
 )
 def test_demands_when_driver_exits(call_ray_start):
@@ -269,7 +269,7 @@ ray.init(address='{call_ray_start}')
 
 import os
 import time
-@ray.remote(num_gpus=3)
+@ray.remote(num_cpus=3)
 def use_gpu():
     time.sleep(1)
 
