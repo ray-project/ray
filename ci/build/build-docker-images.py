@@ -620,7 +620,7 @@ if __name__ == "__main__":
         default="py37",
         nargs="*",
         help="Which python versions to build. "
-        "Must be in (py36, py37, py38, py39, py310)",
+        "Must be in (py36, py37, py38, py39, py310, py311)",
     )
     parser.add_argument(
         "--device-types",

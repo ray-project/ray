@@ -67,7 +67,8 @@ cdef extern from "Python.h":
 
     # You can find the cpython definition in Include/cpython/pystate.h#L59
     ctypedef struct CPyThreadState "PyThreadState":
-        int recursion_depth
+        int recursion_limit
+        int recursion_remaining
 
     # From Include/ceveal.h#67
     int Py_GetRecursionLimit()
