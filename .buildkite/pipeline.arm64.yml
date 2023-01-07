@@ -1,4 +1,5 @@
 - label: ":ferris_wheel: :mechanical_arm: ARM64 Linux wheels"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
   commands:
     # Build the wheels
