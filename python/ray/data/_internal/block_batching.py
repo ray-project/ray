@@ -1,9 +1,7 @@
 import collections
 import itertools
 import sys
-from typing import TYPE_CHECKING, Iterator, Optional, Union, Dict
-
-import numpy as np
+from typing import Iterator, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -13,10 +11,6 @@ from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-if TYPE_CHECKING:
-    import pandas
-    import pyarrow
 
 
 if sys.version_info >= (3, 7):
@@ -144,6 +138,7 @@ def batch_blocks(
             ensure_copy=ensure_copy,
         ),
         batch_format=batch_format,
+        stats=stats,
     )
 
     for formatted_batch in batch_iter:
