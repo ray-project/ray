@@ -49,17 +49,16 @@ You can install the nightly Ray wheels via the following links. These daily rele
   # pip install -U LINK_TO_WHEEL.whl
 
 
-====================                ====================  =======================
-       Linux                        MacOS                 Windows (beta)
-====================                ====================  =======================
-`Linux Python 3.10`_                `MacOS Python 3.10`_  `Windows Python 3.10`_
-`Linux Python 3.9`_                 `MacOS Python 3.9`_   `Windows Python 3.9`_
-`Linux Python 3.8`_                 `MacOS Python 3.8`_   `Windows Python 3.8`_
-`Linux Python 3.7`_                 `MacOS Python 3.7`_   `Windows Python 3.7`_
-`Linux Python 3.6`_                 `MacOS Python 3.6`_
-`Linux Python 3.5`_
-`Linux Python 3.11 (EXPERIMENTAL)`_ 
-====================                ====================  =======================
+===================================  ====================  =======================
+       Linux                         MacOS                 Windows (beta)
+===================================  ====================  =======================
+`Linux Python 3.10`_                 `MacOS Python 3.10`_  `Windows Python 3.10`_
+`Linux Python 3.9`_                  `MacOS Python 3.9`_   `Windows Python 3.9`_
+`Linux Python 3.8`_                  `MacOS Python 3.8`_   `Windows Python 3.8`_
+`Linux Python 3.7`_                  `MacOS Python 3.7`_   `Windows Python 3.7`_
+`Linux Python 3.6`_                  `MacOS Python 3.6`_
+`Linux Python 3.11 (EXPERIMENTAL)`_
+===================================  ====================  =======================
 
 .. note::
 
