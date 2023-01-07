@@ -11,5 +11,5 @@ torchvision==0.13.1;sys_platform=="darwin"
 
 # On non-OSX machines only install CPU version of torch and torchvision
 -f https://download.pytorch.org/whl/torch_stable.html
-torch==1.12.1+cpu;sys_platform!="darwin"
+torch==1.13.1;sys_platform!="darwin"
 torchvision==0.13.1+cpu;sys_platform!="darwin"

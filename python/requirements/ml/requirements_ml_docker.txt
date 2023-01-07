@@ -5,7 +5,7 @@ tblib
 
 # If you make changes to the torch versions, please also make the corresponding changes to `requirements_dl.txt`!
 -f https://download.pytorch.org/whl/torch_stable.html
-torch==1.12.1+cu116
+torch==1.13.1
 torchvision==0.13.1+cu116
 
 -f https://data.pyg.org/whl/torch-1.12.1+cu116.html
