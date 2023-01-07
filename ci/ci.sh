@@ -414,8 +414,7 @@ validate_wheels_commit_str() {
       continue
     fi
 
-    folder=${basename%%-cp*}
-    WHL_COMMIT=$(unzip -p "$whl" "${folder}.data/purelib/ray/__init__.py" | grep "__commit__" | awk -F'"' '{print $2}')
+    WHL_COMMIT=$(unzip -p "$whl" | grep "^__commit__" | awk -F'"' '{print $2}')
 
     if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
       echo "Error: Observed wheel commit (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
@@ -456,7 +455,7 @@ build_wheels() {
       )
 
       IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
-      IMAGE_TAG="2021-11-07-28723f3"
+      IMAGE_TAG="2022-12-20-b4884d9"
 
       if [ -z "${BUILDKITE-}" ]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,

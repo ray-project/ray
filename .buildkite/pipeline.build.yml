@@ -338,6 +338,14 @@
     - ./ci/ci.sh test_minimal 3.10
     - ./ci/ci.sh test_latest_core_dependencies 3.10
 
+- label: ":python: Minimal install 3.11"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.11
+    - ./ci/ci.sh test_latest_core_dependencies 3.11
+
 - label: ":python: Default install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: small
