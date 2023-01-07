@@ -49,6 +49,7 @@ redis = container(
     ),
 )
 
+
 def make_head_node(num_cpus=0, envs=None):
     if envs is None:
         envs = {}
@@ -80,6 +81,7 @@ def make_head_node(num_cpus=0, envs=None):
 
 head_node = make_head_node(num_cpus=0)
 
+
 def make_worker_node():
     return container(
         image="ray_ci:v1",
@@ -102,8 +104,10 @@ def make_worker_node():
         },
     )
 
+
 worker_node = make_worker_node()
 worker_node_2 = make_worker_node()
+
 
 @pytest.fixture
 def docker_cluster(head_node, worker_node):
@@ -250,11 +254,16 @@ print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
     # Later, GCS detect the old raylet dead and the alive nodes will be 2
     wait_for_condition(check_alive, timeout=30, n=2)
 
-head_node_1cpu = make_head_node(num_cpus=1, envs={"RAY_gcs_server_request_timeout_seconds": "3"})
+
+head_node_1cpu = make_head_node(
+    num_cpus=1, envs={"RAY_gcs_server_request_timeout_seconds": "3"}
+)
+
 
 @pytest.fixture
 def docker_cluster_1cpu(head_node_1cpu, worker_node):
     yield (head_node_1cpu, worker_node)
+
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_ray_deadnode_actor_call(docker_cluster_1cpu):
@@ -393,7 +402,9 @@ for i in range({num_iters}):
     print(i, time.time(), ray.get(ray.get(c.hello.remote())))
     time.sleep(1)
 """
-    output = worker.exec_run(cmd=f"python -c '{create_cache_script.format(num_iters=1)}'")
+    output = worker.exec_run(
+        cmd=f"python -c '{create_cache_script.format(num_iters=1)}'"
+    )
     assert output.exit_code == 0
 
     def kill_head():
@@ -407,12 +418,13 @@ for i in range({num_iters}):
     t = threading.Thread(target=kill_head)
     t.start()
 
-    output = worker.exec_run(cmd=f"python -c '{create_cache_script.format(num_iters=4)}'")
+    output = worker.exec_run(
+        cmd=f"python -c '{create_cache_script.format(num_iters=4)}'"
+    )
     print(output.output.decode())
     assert output.exit_code == 0
     print(output.output.decode())
     t.join()
-
 
 
 if __name__ == "__main__":
