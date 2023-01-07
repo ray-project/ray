@@ -1,4 +1,6 @@
 import logging
+from pathlib import Path
+
 import numpy as np
 from typing import TYPE_CHECKING, Dict, Optional, List
 
@@ -82,9 +84,10 @@ class AimCallback(LoggerCallback):
         Returns:
             run (:obj:`aim.sdk.Run`): The created aim run for a specific trial.
         """
+        experiment_dir = str(Path(trial.logdir).parent)
         run = self._run_cls(
-            repo=self._repo_path,
-            experiment=self._experiment_name,
+            repo=self._repo_path or experiment_dir,
+            experiment=self._experiment_name or trial.experiment_dir_name,
             **self._aim_run_kwargs
         )
         if self._as_multirun:
