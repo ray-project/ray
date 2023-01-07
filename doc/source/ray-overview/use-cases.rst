@@ -63,6 +63,15 @@ Many Model Training
 Many model training is common in ML use cases such as time series forecasting, which require fitting of models on multiple data batches corresponding to locations, products, etc.
 Here, the focus is on training many models on subsets of a dataset. This is in contrast to training a single model on the entire dataset.
 
+How do I do many model training on Ray?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+There are three ways of using Ray to express this workload.
+
+1. If you have a large amount of data, use Ray Data (:ref:`Tutorial <mmt-datasets>`).
+2. If you want to integrate with tools, such as wandb and mlflow, and if you have less than 20,000 models, use Ray Tune (:ref:`Tutorial <mmt-tune>`).
+3. If you want lower level control, better scale (up to 1 million models), maybe faster performance, use Ray Core (:ref:`Tutorial <mmt-core>`). Note that this requires you to be more careful about implementation.
+
 .. TODO
   Add link to many model training blog.
 
