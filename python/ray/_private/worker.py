@@ -873,7 +873,10 @@ def get_gpu_ids():
     return assigned_ids
 
 
-@Deprecated(message="Use ray.get_runtime_context().get_assigned_resources() instead.")
+@Deprecated(
+    message="Use ray.get_runtime_context().get_assigned_resources() instead.",
+    warning=True,
+)
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
 
@@ -1777,7 +1780,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.CYAN
 
     if data.get("pid") == "autoscaler":
-        pid = "scheduler +{}".format(time_string())
+        pid = "autoscaler +{}".format(time_string())
         lines = filter_autoscaler_events(data.get("lines", []))
     else:
         pid = data.get("pid")
