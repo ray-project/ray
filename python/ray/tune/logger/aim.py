@@ -135,13 +135,16 @@ class AimCallback(LoggerCallback):
         if not self._as_multirun:
             context["trial"] = trial.trial_id
 
+        path = ["ray", "tune"]
+
         if self._metrics:
             for metric in self._metrics:
+                full_attr = "/".join(path + [metric])
                 try:
                     trial_run.track(
                         value=tmp_result[metric],
                         epoch=epoch,
-                        name=metric,
+                        name=full_attr,
                         step=step,
                         context=context,
                     )
@@ -155,12 +158,13 @@ class AimCallback(LoggerCallback):
             valid_result = {}
 
             for attr, value in flat_result.items():
+                full_attr = "/".join(path + [attr])
                 if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(
                     value
                 ):
                     valid_result[attr] = value
                     trial_run.track(
-                        value=value, name=attr, epoch=epoch, step=step, context=context
+                        value=value, name=full_attr, epoch=epoch, step=step, context=context
                     )
                 elif (isinstance(value, list) and len(value) > 0) or (
                     isinstance(value, np.ndarray) and value.size > 0
