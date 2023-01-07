@@ -37,6 +37,7 @@ The memory monitor is controlled by the following environment variables:
   only when the process is killed by the memory monitor, and the retry counter of the
   task or actor (:ref:`max_retries <task-fault-tolerance>` or :ref:`max_restarts <actor-fault-tolerance>`) is used when it fails 
   in other ways. If the process is killed by the operating system OOM killer it will use the task retry and not ``task_oom_retries``.
+  It will retry indefinitely if this value is set to -1.
 
   When the task is retried due to OOM it applies a delay before re-executing the task. The delay is calculated as
 
@@ -49,6 +50,7 @@ The memory monitor is controlled by the following environment variables:
   .. note::
 
       Keep the value of ``RAY_task_oom_retries`` low, below 25, to avoid extremely long delays as it is using exponential backoff.
+      The delay is capped at 10 minutes.
   
 
 Using the Memory Monitor
