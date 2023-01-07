@@ -128,23 +128,21 @@ py_test(
     tags = ["team:ml", "exclusive"],
 )
 
-# Temporarily disabling this because it uses filterwarnigns always, it might be interfering with pytest.ini
-#py_test(
-#    name = "test_function_api_legacy",
-#    size = "small",
-#    srcs = ["tests/test_function_api_legacy.py"],
-#    deps = [":tune_lib"],
-#    tags = ["team:ml", "exclusive"],
-#)
+py_test(
+    name = "test_function_api_legacy",
+    size = "small",
+    srcs = ["tests/test_function_api_legacy.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
 
-# Temporarily disabling this because it uses filterwarnigns always, it might be interfering with pytest.ini
-#py_test(
-#    name = "test_legacy_import",
-#    size = "medium",
-#    srcs = ["tests/test_legacy_import.py"],
-#    deps = [":tune_lib"],
-#    tags = ["team:ml", "exclusive"],
-#)
+py_test(
+    name = "test_legacy_import",
+    size = "medium",
+    srcs = ["tests/test_legacy_import.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
 
 py_test(
     name = "test_integration_pytorch_lightning",
