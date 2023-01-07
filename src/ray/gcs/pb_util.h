@@ -216,6 +216,40 @@ inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info
   return ss.str();
 }
 
+inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
+                                     int64_t timestamp,
+                                     ray::rpc::TaskStateUpdate *state_updates) {
+  switch (task_status) {
+  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
+    state_updates->set_pending_args_avail_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
+    state_updates->set_submitted_to_worker_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
+    state_updates->set_pending_node_assignment_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::FINISHED: {
+    state_updates->set_finished_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::FAILED: {
+    state_updates->set_failed_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::RUNNING: {
+    state_updates->set_running_ts(timestamp);
+    break;
+  }
+  default: {
+    UNREACHABLE;
+  }
+  }
+}
+
 }  // namespace gcs
 
 }  // namespace ray
