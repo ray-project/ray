@@ -1274,7 +1274,7 @@ def get_wheel_filename(
     if py_version_str in ["36", "37"]:
         darwin_os_string = "macosx_10_15_intel"
     elif py_version_str in ["38", "39"]:
-        darwin_os_string = f"macosx_10_15_{architecture}"
+        darwin_os_string = "macosx_10_15_x86_64"
     else:
         darwin_os_string = "macosx_10_15_universal2"
 

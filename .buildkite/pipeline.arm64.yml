@@ -38,7 +38,7 @@
     [
         "RAY_CI_LINUX_WHEELS_AFFECTED",
     ]
-  instance_size: medium
+  instance_size: arm64-medium
   commands:
     # Build the debug wheels
     - RAY_DEBUG_BUILD=debug LINUX_WHEELS=1 ./ci/ci.sh build
