@@ -6,7 +6,6 @@ RANDOMSTRING=$(openssl rand -hex 16)
 # Pull external IP
 IPADDRESS=$(curl -s http://ifconfig.me/ip)
 export IPADDRESS=$IPADDRESS
-echo $IPADDRESS > eth0-dyndns-custom-${DDNS_HOST}.log
 
 # Export the random string as an environment variable
 export RANDOMSTRING=$RANDOMSTRING
