@@ -261,9 +261,19 @@ cdef increase_recursion_limit():
     """Double the recusion limit if current depth is close to the limit"""
     cdef:
         CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
-        int current_depth = s.recursion_depth
         int current_limit = Py_GetRecursionLimit()
         int new_limit = current_limit * 2
+        cdef extern from *:
+            """
+#if PY_VERSION_HEX >= 0x30B00A4
+    #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
+#else
+    #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
+#endif
+            """
+            int CURRENT_DEPTH(CPyThreadState *x)
+
+        int current_depth = CURRENT_DEPTH(s)
 
     if current_limit - current_depth < 500:
         Py_SetRecursionLimit(new_limit)
