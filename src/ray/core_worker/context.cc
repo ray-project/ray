@@ -15,7 +15,6 @@
 #include "ray/core_worker/context.h"
 
 #include <google/protobuf/util/json_util.h>
-#include <google/protobuf/util/message_differencer.h>
 
 #include "ray/common/runtime_env_common.h"
 
@@ -188,8 +187,6 @@ void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
     job_config_ = job_config;
   }
   RAY_CHECK(current_job_id_ == job_id);
-  RAY_CHECK(google::protobuf::util::MessageDifferencer::Equals(job_config_.value(),
-                                                               job_config));
 }
 
 int64_t WorkerContext::GetTaskDepth() const {
