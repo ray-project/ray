@@ -19,8 +19,8 @@ mkfifo $dhcppipe
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
-    wget -b http://${DDNS_LOGIN}:${DDNS_PASSWORD}@members.dyndns.org/nic/update?system=custom&hostname=${DDNS_HOST}&myip=${IPADDRESS}&wildcard=OFF&backmx=NO&offline=NO
-    #dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom --urlping http://ifconfig.me/ip --urlping-regexp "([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)"
+    #wget -b http://${DDNS_LOGIN}:${DDNS_PASSWORD}@members.dyndns.org/nic/update?system=custom&hostname=${DDNS_HOST}&myip=${IPADDRESS}&wildcard=OFF&backmx=NO&offline=NO
+    dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom --urlping http://ifconfig.me/ip --urlping-regexp "([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)"
     supernode -f > /tmp/n2n.log &
     export N2N_SUPERNODE="localhost"
 fi
@@ -29,14 +29,13 @@ fi
 if [ -n $STATIC_IP ]
 then
     nohup sudo edge -c ${N2N_COMMUNITY} -k ${N2N_KEY} -l ${N2N_SUPERNODE}:${N2N_SUPERNODE_PORT} -f -r > /tmp/n2n.log &
-#    n2n_interface_ip=`/sbin/ifconfig ${N2N_INTERFACE}|grep inet|grep -v 127.0.0.1|grep -v inet6|awk '{print $2}'|tr -d "addr:"`
 #    while [ -z "${n2n_interface_ip}" ]
 #    do
 #        n2n_interface_ip=`/sbin/ifconfig ${N2N_INTERFACE}|grep inet|grep -v 127.0.0.1|grep -v inet6|awk '{print $2}'|tr -d "addr:"`
 #        dhclient ${N2N_INTERFACE}
 #    done
 else
-    sudo edge -d ${N2N_INTERFACE} -a $STATIC_IP -c ${N2N_COMMUNITY} -k ${N2N_KEY} -l ${DDNS_HOST} -f -r > /tmp/n2n.log &
+    sudo edge -a $STATIC_IP -c ${N2N_COMMUNITY} -k ${N2N_KEY} -l ${N2N_SUPERNODE}:${N2N_SUPERNODE_PORT} -f -r > /tmp/n2n.log &
 fi
 
 set -ae
@@ -53,8 +52,9 @@ CRATE_JAVA_OPTS="-Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             #-Cnode.name=${DDNS_HOST} \
-            -Ccluster.initial_master_nodes=${DDNS_HOST} \
-            -Cgateway.expected_data_nodes=1 \
+            -Cdiscovery.type=zen
+            #-Ccluster.initial_master_nodes=${DDNS_HOST} \
+            -Cgateway.expected_data_nodes=2 \
             -Cgateway.recover_after_data_nodes=1 \
             &
 #need to make it so that we discover and connect via n2n ips
