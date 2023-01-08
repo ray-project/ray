@@ -1,5 +1,6 @@
 import abc
 
+import logging
 from typing import (
     Any,
     Callable,
@@ -25,6 +26,7 @@ from ray.rllib.utils.typing import TensorType
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
 
+logger = logging.getLogger(__name__)
 
 Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
 ParamType = Union["torch.Tensor", "tf.Variable"]
@@ -98,9 +100,11 @@ class RLTrainer:
         self.distributed = distributed
         self.in_test = in_test
 
-        # These are the attributes that are set during build
+        # These are the attributes that are set during build for properly applying
+        # optimizers and adding or removing modules.
+        self._optim_to_param: Dict[Optimizer, Sequence[ParamRef]] = {}
+        self._param_to_optim: Dict[ParamRef, Optimizer] = {}
         self._params: Dict[ParamRef, ParamType] = {}
-        self._optimizers: Dict[ParamRef, Optimizer] = {}
 
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
@@ -237,7 +241,7 @@ class RLTrainer:
         """
 
     @abc.abstractmethod
-    def apply_gradients(self, gradients: Mapping[str, Any]) -> None:
+    def apply_gradients(self, gradients: Dict[ParamRef, TensorType]) -> None:
         """Perform an update on self._module
 
         Args:
@@ -290,7 +294,16 @@ class RLTrainer:
         # construct a default set_optimizer_fn if not provided
         if set_optimizer_fn is None:
             # default is to use the first optimizer class and default parameters
-            optimizer_obj = next(iter(self._optimizers.values()))
+            optimizer_obj = next(iter(self._optim_to_param))
+
+            if optimizer_obj is None:
+                raise ValueError(
+                    "No optimizer is specified. RLlib could not obtain the default "
+                    "optimizer from configure_optimizer() either. This is could "
+                    "mean that you module initially had no parameters and therefore "
+                    "no optimizers. Please specify set_optimizer_fn for new parameters."
+                )
+
             optimizer_cls = optimizer_obj.__class__
             lr = self.optimizer_config.get("lr", 1e-3)
             if torch and isinstance(module, torch.nn.Module):
@@ -304,13 +317,16 @@ class RLTrainer:
                 )
 
             def set_optimizer_fn(module):
-                return [(module.parameters(), optimizer)]
+                parameters = self.__get_parameters(module)
+                return [(parameters, optimizer)]
 
         for param_seq, optimizer in set_optimizer_fn(module):
+            self._optim_to_param[optimizer] = []
             for param in param_seq:
                 param_ref = self.__get_param_ref(param)
+                self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
-                self._optimizers[param_ref] = optimizer
+                self._param_to_optim[param_ref] = optimizer
 
         self._module.add_module(module_id, module)
 
@@ -322,11 +338,17 @@ class RLTrainer:
 
         """
         module = self._module[module_id]
+
         parameters = self.__get_parameters(module)
         for param in parameters:
             param_ref = self.__get_param_ref(param)
-            del self._params[param_ref]
-            del self._optimizers[param_ref]
+            if param_ref in self._params:
+                del self._params[param_ref]
+            if param_ref in self._param_to_optim:
+                optimizer = self._param_to_optim[param_ref]
+                if optimizer in self._optim_to_param:
+                    del self._optim_to_param[optimizer]
+                del self._param_to_optim[param_ref]
 
         self._module.remove_module(module_id)
 
@@ -363,10 +385,12 @@ class RLTrainer:
             self._module = self._make_module()
 
         for param_seq, optimizer in self.configure_optimizers():
+            self._optim_to_param[optimizer] = []
             for param in param_seq:
                 param_ref = self.__get_param_ref(param)
+                self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
-                self._optimizers[param_ref] = optimizer
+                self._param_to_optim[param_ref] = optimizer
 
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.

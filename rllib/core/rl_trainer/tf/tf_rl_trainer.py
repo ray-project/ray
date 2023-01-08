@@ -1,8 +1,13 @@
+import logging
 import numpy as np
-from typing import Any, Mapping, Tuple, Union, Type
+from typing import Any, Mapping, Tuple, Union, Type, Optional, Callable, Dict
 
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer, ParamOptimizerPairs
+from ray.rllib.core.rl_trainer.rl_trainer import (
+    RLTrainer,
+    ParamOptimizerPairs,
+    ParamRef,
+)
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
@@ -15,6 +20,8 @@ import tree  # pip install dm-tree
 
 tf1, tf, tfv = try_import_tf()
 tf1.enable_eager_execution()
+
+logger = logging.getLogger(__name__)
 
 
 class TfRLTrainer(RLTrainer):
@@ -65,11 +72,11 @@ class TfRLTrainer(RLTrainer):
         return grads
 
     @override(RLTrainer)
-    def apply_gradients(self, gradients: Mapping[str, Any]) -> None:
-        for optim, param_groups, grad_groups in zip(
-            self._optimizers, self._params, gradients
-        ):
-            optim.apply_gradients(zip(grad_groups, param_groups))
+    def apply_gradients(self, gradients: Dict[ParamRef, TensorType]) -> None:
+        for optim, param_ref_seq in self._optim_to_param.items():
+            variable_list = [self._params[param_ref] for param_ref in param_ref_seq]
+            gradient_list = [gradients[param_ref] for param_ref in param_ref_seq]
+            optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(RLTrainer)
     def _make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
@@ -110,19 +117,27 @@ class TfRLTrainer(RLTrainer):
     @override(RLTrainer)
     def add_module(
         self,
+        *,
         module_id: ModuleID,
         module_cls: Type[RLModule],
-        module_kwargs,
+        module_kwargs: Mapping[str, Any],
+        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
     ) -> None:
         if self.distributed:
             with self.strategy.scope():
                 super().add_module(
-                    module_id,
-                    module_cls,
-                    module_kwargs,
+                    module_id=module_id,
+                    module_cls=module_cls,
+                    module_kwargs=module_kwargs,
+                    set_optimizer_fn=set_optimizer_fn,
                 )
         else:
-            super().add_module(module_id, module_cls, module_kwargs)
+            super().add_module(
+                module_id=module_id,
+                module_cls=module_cls,
+                module_kwargs=module_kwargs,
+                set_optimizer_fn=set_optimizer_fn,
+            )
         self.traced_update_fn = tf.function(self._do_update_fn)
 
     @override(RLTrainer)
