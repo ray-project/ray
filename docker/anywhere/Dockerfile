@@ -94,7 +94,9 @@ EXPOSE 5645
 EXPOSE 7654/udp
 EXPOSE 7654/tcp
 #crate
-EXPOSE 4200/tcp 4300/tcp 5432/tcp
+EXPOSE 4200/tcp
+EXPOSE 4300/tcp
+EXPOSE 5432/tcp
 
 COPY startup.sh /home/ray/startup.sh
 RUN sudo chmod +x /home/ray/startup.sh
