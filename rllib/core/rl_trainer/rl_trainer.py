@@ -35,13 +35,11 @@ ParamRef = Hashable
 
 
 class RLTrainer:
-    """Base class for rllib algorithm trainers.
+    """Base class for RLlib algorithm trainers.
 
     Args:
         module_class: The (MA)RLModule class to use.
         module_kwargs: The kwargs for the (MA)RLModule.
-        optimizer_class: The optimizer class to use.
-        optimizer_kwargs: The kwargs for the optimizer.
         scaling_config: A mapping that holds the world size and rank of this
             trainer. Note this is only used for distributed training.
         distributed: Whether this trainer is distributed or not.
@@ -49,20 +47,35 @@ class RLTrainer:
     Abstract Methods:
         compute_gradients: Compute gradients for the module being optimized.
         apply_gradients: Apply gradients to the module being optimized with respect to
-            a loss that is computed by the optimizer.
+            a loss that is computed by the optimizer. Both compute_gradients and 
+            apply_gradients are meant for framework-specific specializations.
+        compute_loss: Compute the loss for the module being optimized. Override this 
+            method to customize the loss function of the multi-agent RLModule that is 
+            being optimized.
+        configure_optimizers: Configure the optimizers for the module being optimized. 
+            Override this to cutomize the optimizers and the parameters that they are 
+            optimizing.
+        
 
     Example:
         .. code-block:: python
 
-        trainer = MyRLTrainer(module_class, module_kwargs, optimizer_class,
-                optimizer_kwargs, scaling_config)
-        trainer.init_trainer()
+        trainer = MyRLTrainer(
+            module_class, 
+            module_kwargs, 
+            scaling_config,
+            optimizer_config
+        )
+        trainer.build()
         batch = ...
         results = trainer.update(batch)
 
         # add a new module, perhaps for league based training or lru caching
-        trainer.add_module("new_player", NewPlayerCls, new_player_kwargs,
-            NewPlayerOptimCls, new_player_optim_kwargs)
+        trainer.add_module(
+            module_id="new_player", 
+            module_cls=NewPlayerCls, 
+            module_kwargs=new_player_kwargs,
+        )
 
         batch = ...
         results = trainer.update(batch)  # will train previous and new modules.

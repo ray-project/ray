@@ -1,6 +1,9 @@
+
+
 import gymnasium as gym
 import unittest
 import pytest
+
 import ray
 
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
@@ -10,11 +13,8 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
 
 
-class TestTfRLTrainer(unittest.TestCase):
-    """This test is setup for 2 gpus."""
+class TestRLTrainer(unittest.TestCase):
 
-    # TODO: Make a unittest that does not need 2 gpus to run.
-    # So that the user can run it locally as well.
     @classmethod
     def setUp(cls) -> None:
         ray.init()
@@ -23,46 +23,45 @@ class TestTfRLTrainer(unittest.TestCase):
     def tearDown(cls) -> None:
         ray.shutdown()
 
-    @pytest.mark.skip
-    def test_update_multigpu(self):
-        """Test training in a 2 gpu setup and that weights are synchronized."""
+    def test_x(self):
         env = gym.make("CartPole-v1")
-        trainer_class = BCTfRLTrainer
-        trainer_cfg = dict(
+        scaling_config = {}
+        distributed = False
+
+        # TODO: Another way to make RLTrainer would be to construct the module first 
+        # and then apply trainer to it. We should also allow that. In fact if we figure 
+        # out the serialization of RLModules we can simply pass the module the trainer 
+        # and internally it will serialize and deserialize the module for distributed 
+        # construction.
+        trainer = BCTfRLTrainer(
             module_class=DiscreteBCTFModule,
             module_kwargs={
                 "observation_space": env.observation_space,
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
+            scaling_config=scaling_config,
             optimizer_config={"lr": 1e-3},
-            in_test=True,
-        )
-        runner = TrainerRunner(
-            trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
+            distributed=distributed,
+            in_test=True
         )
 
-        reader = get_cartpole_dataset_reader(batch_size=500)
+        trainer.build()
+
+        reader = get_cartpole_dataset_reader(batch_size=512)
 
         min_loss = float("inf")
         for iter_i in range(1000):
             batch = reader.next()
-            results_worker_0, results_worker_1 = runner.update(batch.as_multi_agent())
+            results = trainer.update(batch.as_multi_agent())
 
-            loss = (
-                results_worker_0["loss"]["total_loss"]
-                + results_worker_1["loss"]["total_loss"]
-            ) / 2
+            loss = results["loss"]["total_loss"]
             min_loss = min(loss, min_loss)
             print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
             # The loss is initially around 0.69 (ln2). When it gets to around
             # 0.57 the return of the policy gets to around 100.
             if min_loss < 0.57:
                 break
-            self.assertEqual(
-                results_worker_0["mean_weight"]["default_policy"],
-                results_worker_1["mean_weight"]["default_policy"],
-            )
         self.assertLess(min_loss, 0.57)
 
     @pytest.mark.skip
