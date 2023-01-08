@@ -9,7 +9,7 @@ ENV CFLAGS="-O3"
 
 ENV DDNS_LOGIN=username
 ENV DDNS_PASSWORD=password
-ENV DDNS_HOST=noname
+ENV DDNS_HOST=nexus.usethetools.com
 
 ENV N2N_COMMUNITY=community
 ENV N2N_FEDERATION=clusteranywhere
