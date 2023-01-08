@@ -14,6 +14,8 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
 
+StatsDict = Dict[str, List[BlockMetadata]]
+
 
 def fmt(seconds: float) -> str:
     if seconds > 1:
@@ -57,15 +59,16 @@ class _DatasetStatsBuilder:
         self.parent = parent
         self.start_time = time.perf_counter()
 
-    def build_multistage(
-        self, stages: Dict[str, List[BlockMetadata]]
-    ) -> "DatasetStats":
+    def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
-            if i == 0:
-                stage_infos[self.stage_name + "_" + k] = v
+            if len(stages) > 1:
+                if i == 0:
+                    stage_infos[self.stage_name + "_" + k] = v
+                else:
+                    stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
             else:
-                stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
+                stage_infos[self.stage_name] = v
         stats = DatasetStats(
             stages=stage_infos,
             parent=self.parent,
@@ -168,7 +171,7 @@ class DatasetStats:
     def __init__(
         self,
         *,
-        stages: Dict[str, List[BlockMetadata]],
+        stages: StatsDict,
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
         needs_stats_actor: bool = False,
         stats_uuid: str = None,
@@ -189,7 +192,7 @@ class DatasetStats:
             base_name: The name of the base operation for a multi-stage operation.
         """
 
-        self.stages: Dict[str, List[BlockMetadata]] = stages
+        self.stages: StatsDict = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
         self.parents: List["DatasetStats"] = parent
@@ -209,6 +212,7 @@ class DatasetStats:
         self.iter_format_batch_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
+        self.extra_metrics = {}
 
     @property
     def stats_actor(self):
@@ -263,7 +267,9 @@ class DatasetStats:
                     out += "\n"
         if len(self.stages) == 1:
             stage_name, metadata = next(iter(self.stages.items()))
-            stage_uuid = self.dataset_uuid + stage_name
+            # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
+            # fully to streaming execution.
+            stage_uuid = (self.dataset_uuid or "unknown_uuid") + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
@@ -395,6 +401,10 @@ class DatasetStats:
                 int(np.mean(list(node_counts.values()))),
                 len(node_counts),
             )
+
+        if self.extra_metrics:
+            out += indent
+            out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
 
         return out
 

@@ -361,3 +361,8 @@ def gcs_actor_scheduling_enabled():
 
 
 DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
+
+# Supported Python versions for runtime env's "conda" field. Ray downloads
+# Ray wheels into the conda environment, so the Ray wheels for these Python
+# versions must be available online.
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]

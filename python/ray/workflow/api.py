@@ -224,7 +224,7 @@ def run_async(
                 workflow_id, state, ignore_existing=False
             )
         )
-        job_id = ray.get_runtime_context().job_id.hex()
+        job_id = ray.get_runtime_context().get_job_id()
         return workflow_manager.execute_workflow.remote(job_id, context)
 
 
@@ -284,7 +284,7 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
-    job_id = ray.get_runtime_context().job_id.hex()
+    job_id = ray.get_runtime_context().get_job_id()
 
     context = workflow_context.WorkflowTaskContext(workflow_id=workflow_id)
     ray.get(workflow_manager.reconstruct_workflow.remote(job_id, context))
@@ -502,7 +502,7 @@ def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     except Exception as e:
         raise RuntimeError("Failed to get management actor") from e
 
-    job_id = ray.get_runtime_context().job_id.hex()
+    job_id = ray.get_runtime_context().get_job_id()
     reconstructed_workflows = []
     for wid, _ in all_failed:
         context = workflow_context.WorkflowTaskContext(workflow_id=wid)

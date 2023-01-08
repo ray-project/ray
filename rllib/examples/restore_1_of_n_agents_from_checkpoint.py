@@ -5,7 +5,7 @@ Control the number of agents and policies via --num-agents and --num-policies.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import os
 import random
 

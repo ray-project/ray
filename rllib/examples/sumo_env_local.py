@@ -23,8 +23,7 @@ from ray.rllib.algorithms.ppo import ppo
 from ray.rllib.examples.simulators.sumo import marlenvironment
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-logging.basicConfig(level=logging.WARN)
-logger = logging.getLogger("ppotrain")
+logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -84,7 +83,6 @@ if __name__ == "__main__":
         .framework("tf")
         .rollouts(
             batch_mode="complete_episodes",
-            no_done_at_end=True,
             num_rollout_workers=args.num_workers,
         )
         .training(

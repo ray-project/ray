@@ -119,7 +119,8 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
 def get_default_fixure_system_config():
     system_config = {
         "object_timeout_milliseconds": 200,
-        "num_heartbeats_timeout": 10,
+        "health_check_initial_delay_ms": 0,
+        "health_check_failure_threshold": 10,
         "object_store_full_delay_ms": 100,
     }
     return system_config
@@ -576,7 +577,6 @@ def enable_mac_large_object_store():
 def two_node_cluster():
     system_config = {
         "object_timeout_milliseconds": 200,
-        "num_heartbeats_timeout": 10,
     }
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
@@ -747,8 +747,6 @@ def _ray_start_chaos_cluster(request):
     config = param.pop("_system_config", {})
     config.update(
         {
-            "num_heartbeats_timeout": 10,
-            "raylet_heartbeat_period_milliseconds": 100,
             "task_retry_delay_ms": 100,
         }
     )

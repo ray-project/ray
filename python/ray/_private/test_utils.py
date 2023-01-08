@@ -18,6 +18,8 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Callable, Dict, List, Optional
 import uuid
+
+import requests
 from ray._raylet import Config
 
 import grpc
@@ -39,7 +41,13 @@ from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
-from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
+from ray.core.generated import (
+    gcs_pb2,
+    node_manager_pb2,
+    node_manager_pb2_grpc,
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+)
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.experimental.state.state_manager import StateDataSourceClient
@@ -1615,6 +1623,34 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
             continue
     assert reply is not None
     return reply
+
+
+# Gets resource usage assuming gcs is local.
+def get_resource_usage(gcs_address, timeout=10):
+    if not gcs_address:
+        gcs_address = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
+    )
+
+    gcs_node_resources_stub = gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(
+        gcs_channel
+    )
+
+    request = gcs_service_pb2.GetAllResourceUsageRequest()
+    response = gcs_node_resources_stub.GetAllResourceUsage(request, timeout=timeout)
+    resources_batch_data = response.resource_usage_data
+
+    return resources_batch_data
+
+
+# Gets the load metrics report assuming gcs is local.
+def get_load_metrics_report(webui_url):
+    webui_url = format_web_url(webui_url)
+    response = requests.get(f"{webui_url}/api/cluster_status")
+    response.raise_for_status()
+    return response.json()["data"]["clusterStatus"]["loadMetricsReport"]
 
 
 # Send a RPC to the raylet to have it self-destruct its process.
