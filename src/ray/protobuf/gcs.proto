@@ -295,9 +295,37 @@ message GcsNodeInfo {
   string node_name = 12;
 }
 
+
 message HeartbeatTableData {
   // Node id.
   bytes node_id = 1;
+}
+
+message JobConfig {
+  enum ActorLifetime {
+    DETACHED = 0;
+    NON_DETACHED = 1;
+  }
+
+  // The jvm options for java workers of the job.
+  repeated string jvm_options = 2;
+  // A list of directories or files (jar files or dynamic libraries) that specify the
+  // search path for user code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH`
+  // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
+  repeated string code_search_path = 3;
+  // Runtime environment to run the code
+  RuntimeEnvInfo runtime_env_info = 4;
+  // The job's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 5;
+  // An opaque kv store for job related metadata.
+  map<string, string> metadata = 6;
+  // The default lifetime of actors in this job.
+  // If the lifetime of an actor is not specified explicitly at runtime, this
+  // default value will be applied.
+  ActorLifetime default_actor_lifetime = 7;
+  // System paths of the driver scripts. Python workers need to search
+  // these paths to load modules.
+  repeated string py_driver_sys_path = 8;
 }
 
 message JobTableData {

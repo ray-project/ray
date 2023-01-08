@@ -156,7 +156,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
 
