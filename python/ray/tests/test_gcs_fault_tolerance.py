@@ -14,6 +14,7 @@ from ray._private.test_utils import (
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
+    run_string_as_driver,
 )
 
 import psutil
@@ -154,7 +155,6 @@ def test_node_failure_detector_when_gcs_server_restart(
     wait_for_pid_to_exit(raylet_pid)
 
     # Restart gcs server process.
-    print("START GCS!!")
     cluster.head_node.start_gcs_server()
 
     def condition():
@@ -654,18 +654,85 @@ def redis_replicas(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
+    "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
             gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
             gcs_server_request_timeout_seconds=10,
+            redis_db_connect_retries=50,
         )
     ],
     indirect=True,
 )
-def test_redis_failureover(redis_replicas, ray_start_regular_with_external_redis):
-    pass
+def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_redis):
+    cluster = ray_start_cluster_head_with_external_redis
+    import redis
+
+    redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
+    ip, port = redis_addr.split(":")
+    cli = redis.Redis(ip, port)
+    nodes = cli.cluster("nodes")
+    leader_cli = None
+    follower_cli = []
+    for n in nodes:
+        addr, _ = n.split("@")
+        ip, port = addr.split(":")
+        cli = redis.Redis(ip, port)
+        meta = nodes[n]
+        flags = meta["flags"].split(",")
+        if "master" in flags:
+            leader_cli = cli
+        else:
+            follower_cli.append(cli)
+
+    leader_pid = leader_cli.info()["process_id"]
+
+    @ray.remote(max_restarts=-1)
+    class Counter:
+        def r(self, v):
+            return v
+
+    c = Counter.options(name="c", lifetime="detached").remote()
+    r = ray.get(c.r.remote(10))
+    assert r == 10
+
+    head_node = cluster.head_node
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    # Wait until all data is updated in the replica
+    sleep(5)
+
+    # Now kill pid
+    leader_process = psutil.Process(pid=leader_pid)
+    leader_process.kill()
+
+    print(">>> Waiting gcs server to exit", gcs_server_pid)
+    wait_for_pid_to_exit(gcs_server_pid, 1000)
+
+    print("GCS killed")
+    follower_cli[0].cluster("failover", "takeover")
+
+    # Cleanup the in memory data and then start gcs
+    cluster.head_node.kill_gcs_server(False)
+    sleep(1)
+    print("Start gcs")
+    cluster.head_node.start_gcs_server()
+
+    assert len(ray.nodes()) == 1
+    assert ray.nodes()[0]["alive"]
+
+    driver_script = f"""
+import ray
+ray.init('{cluster.address}')
+@ray.remote
+def f():
+    return 10
+assert ray.get(f.remote()) == 10
+"""
+    # Make sure the cluster is usable
+    run_string_as_driver(driver_script)
 
 
 if __name__ == "__main__":
