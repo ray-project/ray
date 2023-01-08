@@ -2,7 +2,7 @@
 
 from typing import Dict
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 import ray
@@ -124,7 +124,7 @@ class ComputeTDErrorMixin:
     def __init__(self):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             # Do forward pass on loss to update td error attribute
             build_q_losses(
@@ -136,7 +136,7 @@ class ComputeTDErrorMixin:
                     SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
                     SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
                     SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
-                    SampleBatch.DONES: tf.convert_to_tensor(done_mask),
+                    SampleBatch.TERMINATEDS: tf.convert_to_tensor(terminateds_mask),
                     PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
                 },
             )
@@ -324,7 +324,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
         q_dist_tp1_best,
         train_batch[PRIO_WEIGHTS],
         tf.cast(train_batch[SampleBatch.REWARDS], tf.float32),
-        tf.cast(train_batch[SampleBatch.DONES], tf.float32),
+        tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32),
         config["gamma"],
         config["n_step"],
         config["num_atoms"],
@@ -461,7 +461,7 @@ def postprocess_nstep_and_prio(
             batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS],
             batch[SampleBatch.NEXT_OBS],
-            batch[SampleBatch.DONES],
+            batch[SampleBatch.TERMINATEDS],
             batch[PRIO_WEIGHTS],
         )
         # Retain compatibility with old-style Replay args

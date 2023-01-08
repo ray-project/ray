@@ -1,3 +1,4 @@
+import gc
 import io
 import logging
 import os
@@ -236,6 +237,10 @@ def test_reserved_cpus(ray_start_4_cpus):
 
 
 def test_reserved_cpu_warnings(ray_start_4_cpus, mock_tuner_internal_logger):
+    # We use gc.collect in this test to ensure that all
+    # Ray actors & tasks are terminated in between .fit() calls,
+    # as the warning condition checks for available Ray resources.
+
     def train_loop(config):
         pass
 
@@ -246,6 +251,7 @@ def test_reserved_cpu_warnings(ray_start_4_cpus, mock_tuner_internal_logger):
         datasets={"train": ray.data.range(10)},
     )
     trainer.fit()
+    gc.collect()
     assert not mock_tuner_internal_logger.warnings
 
     # No datasets, no fraction.
@@ -254,6 +260,7 @@ def test_reserved_cpu_warnings(ray_start_4_cpus, mock_tuner_internal_logger):
         scaling_config=ScalingConfig(num_workers=1),
     )
     trainer.fit()
+    gc.collect()
     assert not mock_tuner_internal_logger.warnings
 
     # Should warn.
@@ -263,6 +270,7 @@ def test_reserved_cpu_warnings(ray_start_4_cpus, mock_tuner_internal_logger):
         datasets={"train": ray.data.range(10)},
     )
     trainer.fit()
+    gc.collect()
     assert (
         len(mock_tuner_internal_logger.warnings) == 1
     ), mock_tuner_internal_logger.warnings
@@ -277,6 +285,7 @@ def test_reserved_cpu_warnings(ray_start_4_cpus, mock_tuner_internal_logger):
     )
     tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
     tuner.fit()
+    gc.collect()
     assert (
         len(mock_tuner_internal_logger.warnings) == 1
     ), mock_tuner_internal_logger.warnings
@@ -291,6 +300,7 @@ def test_reserved_cpu_warnings(ray_start_4_cpus, mock_tuner_internal_logger):
     )
     tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
     tuner.fit()
+    gc.collect()
     assert not mock_tuner_internal_logger.warnings
 
     # Don't warn if Trainer is not used

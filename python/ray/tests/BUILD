@@ -58,7 +58,6 @@ py_test_module_list(
     "test_get_locations.py",
     "test_global_state.py",
     "test_healthcheck.py",
-    "test_ray_shutdown.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
     "test_protobuf_compatibility.py"
@@ -128,6 +127,7 @@ py_test_module_list(
     "test_placement_group_failover.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
+    "test_ray_shutdown.py",
     "test_resource_demand_scheduler.py",
     "test_resource_metrics.py",
     "test_runtime_context.py",
@@ -163,6 +163,7 @@ py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+    "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_concurrency_group.py",
@@ -517,4 +518,20 @@ py_test_module_list(
   name_suffix = "_asan",
   tags = ["exclusive", "asan_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "spark/test_basic.py",
+    "spark/test_GPU.py",
+    "spark/test_multicores_per_task.py",
+    "spark/test_utils.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+  data = [
+    "spark/discover_2_gpu.sh",
+    "spark/discover_4_gpu.sh"
+  ],
 )

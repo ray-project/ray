@@ -123,59 +123,6 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   return buffer.str();
 }
 
-HeartbeatSender::HeartbeatSender(NodeID self_node_id,
-                                 std::shared_ptr<gcs::GcsClient> gcs_client)
-    : self_node_id_(self_node_id), gcs_client_(gcs_client) {
-  // Init heartbeat thread and run its io service.
-  heartbeat_thread_.reset(new std::thread([this] {
-    SetThreadName("heartbeat");
-    /// The asio work to keep io_service_ alive.
-    boost::asio::io_service::work io_service_work_(heartbeat_io_service_);
-    heartbeat_io_service_.run();
-  }));
-  heartbeat_runner_.reset(new PeriodicalRunner(heartbeat_io_service_));
-
-  // Start sending heartbeats to the GCS.
-  last_heartbeat_at_ms_ = current_time_ms();
-  heartbeat_runner_->RunFnPeriodically(
-      [this] { Heartbeat(); },
-      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
-      "NodeManager.deadline_timer.heartbeat");
-}
-
-HeartbeatSender::~HeartbeatSender() {
-  heartbeat_io_service_.stop();
-  if (heartbeat_thread_->joinable()) {
-    heartbeat_thread_->join();
-  }
-  heartbeat_runner_.reset();
-  heartbeat_thread_.reset();
-}
-
-void HeartbeatSender::Heartbeat() {
-  uint64_t now_ms = current_time_ms();
-  uint64_t interval = now_ms - last_heartbeat_at_ms_;
-  if (interval > RayConfig::instance().num_heartbeats_warning() *
-                     RayConfig::instance().raylet_heartbeat_period_milliseconds()) {
-    RAY_LOG(WARNING)
-        << "Last heartbeat was sent " << interval
-        << " ms ago. There might be resource pressure on this node. If heartbeat keeps "
-           "lagging, this node can be marked as dead mistakenly.";
-  }
-  last_heartbeat_at_ms_ = now_ms;
-  stats::HeartbeatReportMs.Record(interval);
-
-  auto heartbeat_data = std::make_shared<HeartbeatTableData>();
-  heartbeat_data->set_node_id(self_node_id_.Binary());
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
-        if (status.IsDisconnected()) {
-          RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD") << "This node has beem marked as dead.";
-          RAY_LOG(FATAL) << "This node has beem marked as dead.";
-        }
-      }));
-}
-
 NodeManager::NodeManager(instrumented_io_context &io_service,
                          const NodeID &self_node_id,
                          const std::string &self_node_name,
@@ -343,7 +290,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
-  RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       scheduling::NodeID(self_node_id_.Binary()),
       config.resource_config.ToResourceMap(),
@@ -482,10 +428,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 }
 
 ray::Status NodeManager::RegisterGcs() {
-  // Start sending heartbeat here to ensure it happening after raylet being registered.
-  if (!RayConfig::instance().pull_based_healthcheck()) {
-    heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_));
-  }
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
@@ -1053,17 +995,15 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
       RAY_EVENT(FATAL, "RAYLET_MARKED_DEAD")
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
              "dead by the "
-          << "GCS: GCS didn't receive heartbeats from this node for "
-          << RayConfig::instance().num_heartbeats_timeout() *
-                 RayConfig::instance().raylet_heartbeat_period_milliseconds()
-          << " ms. This is likely because the machine or raylet has become overloaded.";
+          << "GCS: GCS failed to check the health of this node for "
+          << RayConfig::instance().health_check_failure_threshold() << " times."
+          << " This is likely because the machine or raylet has become overloaded.";
       RAY_LOG(FATAL)
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
              "dead by the "
-          << "GCS: GCS didn't receive heartbeats from this node for "
-          << RayConfig::instance().num_heartbeats_timeout() *
-                 RayConfig::instance().raylet_heartbeat_period_milliseconds()
-          << " ms. This is likely because the machine or raylet has become overloaded.";
+          << "GCS: GCS failed to check the health of this node for "
+          << RayConfig::instance().health_check_failure_threshold() << " times."
+          << " This is likely because the machine or raylet has become overloaded.";
     } else {
       // No-op since this node already starts to be drained, and GCS already knows about
       // it.
@@ -1584,8 +1524,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // Return the resources that were being used by this worker.
     local_task_manager_->ReleaseWorkerResources(worker);
 
-    local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
-
     // Since some resources may have been released, we can try to dispatch more tasks.
     cluster_task_manager_->ScheduleAndDispatchTasks();
   } else if (is_driver) {
@@ -1607,6 +1545,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
           << ", JobId: " << worker->GetAssignedJobId();
     }
   }
+
+  local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
 
   client->Close();
 
@@ -2806,12 +2746,7 @@ void NodeManager::TriggerGlobalGC() {
   should_local_gc_ = true;
 }
 
-void NodeManager::Stop() {
-  object_manager_.Stop();
-  if (heartbeat_sender_) {
-    heartbeat_sender_.reset();
-  }
-}
+void NodeManager::Stop() { object_manager_.Stop(); }
 
 void NodeManager::RecordMetrics() {
   recorded_metrics_ = true;
@@ -2941,8 +2876,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           return;
         }
         RetriableLIFOWorkerKillingPolicy worker_killing_policy;
-        auto worker_to_kill =
+        auto worker_to_kill_and_should_retry =
             worker_killing_policy.SelectWorkerToKill(workers, system_memory);
+        auto worker_to_kill = worker_to_kill_and_should_retry.first;
+        bool should_retry = worker_to_kill_and_should_retry.second;
         if (worker_to_kill == nullptr) {
           RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
                                              "kill even though memory usage is high.";
@@ -2950,8 +2887,12 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           high_memory_eviction_target_ = worker_to_kill;
 
           /// TODO: (clarng) expose these strings in the frontend python error as well.
-          std::string oom_kill_details = this->CreateOomKillMessageDetails(
-              worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
+          std::string oom_kill_details =
+              this->CreateOomKillMessageDetails(worker_to_kill,
+                                                this->self_node_id_,
+                                                system_memory,
+                                                usage_threshold,
+                                                should_retry);
           std::string oom_kill_suggestions =
               this->CreateOomKillMessageSuggestions(worker_to_kill);
 
@@ -2973,7 +2914,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
           SetTaskFailureReason(worker_to_kill->GetAssignedTaskId(),
-                               std::move(task_failure_reason));
+                               std::move(task_failure_reason),
+                               should_retry);
 
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
@@ -2999,7 +2941,8 @@ const std::string NodeManager::CreateOomKillMessageDetails(
     const std::shared_ptr<WorkerInterface> &worker,
     const NodeID &node_id,
     const MemorySnapshot &system_memory,
-    float usage_threshold) const {
+    float usage_threshold,
+    bool should_retry) const {
   float usage_fraction =
       static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
   std::string used_bytes_gb =
@@ -3069,9 +3012,10 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
 }
 
 void NodeManager::SetTaskFailureReason(const TaskID &task_id,
-                                       const rpc::RayErrorInfo &failure_reason) {
+                                       const rpc::RayErrorInfo &failure_reason,
+                                       bool should_retry) {
   RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
-  ray::TaskFailureEntry entry(failure_reason);
+  ray::TaskFailureEntry entry(failure_reason, should_retry);
   auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
   if (!result.second) {
     RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
