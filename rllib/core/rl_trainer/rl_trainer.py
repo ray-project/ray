@@ -276,6 +276,7 @@ class RLTrainer:
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         """Add a module to the trainer.
 
@@ -286,25 +287,19 @@ class RLTrainer:
             set_optimizer_fn: A function that takes in the module and returns a list of
                 (param, optimizer) pairs. Each element in the tuple describes a
                 parameter group that share the same optimizer object, if None, the
-                default optimizer (obtained from the exiting optimizer dictionary) will
-                be used.
+                default optimizer_cls will be used with all the parameters from the
+                module.
+            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
+                should be provided.
         """
         module = module_cls.from_model_config(**module_kwargs)
 
         # construct a default set_optimizer_fn if not provided
         if set_optimizer_fn is None:
-            # default is to use the first optimizer class and default parameters
-            optimizer_obj = next(iter(self._optim_to_param))
-
-            if optimizer_obj is None:
+            if optimizer_cls is None:
                 raise ValueError(
-                    "No optimizer is specified. RLlib could not obtain the default "
-                    "optimizer from configure_optimizer() either. This is could "
-                    "mean that you module initially had no parameters and therefore "
-                    "no optimizers. Please specify set_optimizer_fn for new parameters."
+                    "Either set_optimizer_fn or optimizer_cls must be provided."
                 )
-
-            optimizer_cls = optimizer_obj.__class__
 
             def set_optimizer_fn(module):
                 optimizer = self.__get_optimizer_obj(module, optimizer_cls)

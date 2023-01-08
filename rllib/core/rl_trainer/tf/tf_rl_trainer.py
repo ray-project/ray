@@ -7,6 +7,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
     ParamOptimizerPairs,
     ParamRef,
+    Optimizer,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -122,6 +123,7 @@ class TfRLTrainer(RLTrainer):
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         if self.distributed:
             with self.strategy.scope():
@@ -130,6 +132,7 @@ class TfRLTrainer(RLTrainer):
                     module_cls=module_cls,
                     module_kwargs=module_kwargs,
                     set_optimizer_fn=set_optimizer_fn,
+                    optimizer_cls=optimizer_cls,
                 )
         else:
             super().add_module(
@@ -137,6 +140,7 @@ class TfRLTrainer(RLTrainer):
                 module_cls=module_cls,
                 module_kwargs=module_kwargs,
                 set_optimizer_fn=set_optimizer_fn,
+                optimizer_cls=optimizer_cls,
             )
         self.traced_update_fn = tf.function(self._do_update_fn)
 
