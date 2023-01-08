@@ -102,7 +102,7 @@ class RLTrainer:
 
         # These are the attributes that are set during build for properly applying
         # optimizers and adding or removing modules.
-        self._optim_to_param: Dict[Optimizer, Sequence[ParamRef]] = {}
+        self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
         self._param_to_optim: Dict[ParamRef, Optimizer] = {}
         self._params: Dict[ParamRef, ParamType] = {}
 
@@ -305,18 +305,9 @@ class RLTrainer:
                 )
 
             optimizer_cls = optimizer_obj.__class__
-            lr = self.optimizer_config.get("lr", 1e-3)
-            if torch and isinstance(module, torch.nn.Module):
-                optimizer = optimizer_cls(module.parameters(), lr=lr)
-            elif tf and isinstance(module, tf.keras.Model):
-                optimizer = optimizer_cls(learning_rate=lr)
-            else:
-                raise ValueError(
-                    "Unknown module type. Only torch.nn.Module and "
-                    "tf.keras.Model are supported."
-                )
 
             def set_optimizer_fn(module):
+                optimizer = self.__get_optimizer_obj(module, optimizer_cls)
                 parameters = self.__get_parameters(module)
                 return [(parameters, optimizer)]
 
@@ -441,3 +432,22 @@ class RLTrainer:
             raise ValueError(
                 "The module must be a torch.nn.Module or a tf.keras.Model."
             )
+
+    def __get_optimizer_obj(self, module: RLModule, optimizer_cls: Type[Optimizer]) -> Optimizer:
+        """Returns the optimizer instance of type optimizer_cls from the module 
+
+        In torch this is the optimizer object initialize with module parameters. In tf 
+        this is initialized without module parameters.
+        """
+        lr = self.optimizer_config.get("lr", 1e-3)
+        if torch and isinstance(module, torch.nn.Module):
+            optimizer = optimizer_cls(module.parameters(), lr=lr)
+        elif tf and isinstance(module, tf.keras.Model):
+            optimizer = optimizer_cls(learning_rate=lr)
+        else:
+            raise ValueError(
+                "Unknown module type. Only torch.nn.Module and "
+                "tf.keras.Model are supported."
+            )
+        
+        return optimizer
