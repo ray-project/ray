@@ -10,6 +10,7 @@ import json
 import logging
 import multiprocessing
 import os
+import platform
 import re
 import signal
 import subprocess
@@ -1249,6 +1250,7 @@ def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
     py_version: Tuple[int, int] = (sys.version_info.major, sys.version_info.minor),
+    architecture: Optional[str] = None,
 ) -> str:
     """Returns the filename used for the nightly Ray wheel.
 
@@ -1259,6 +1261,9 @@ def get_wheel_filename(
             `ray --version`.  Examples: "3.0.0.dev0"
         py_version: The Python version as returned by sys.version_info. A
             tuple of (major, minor). Examples: (3, 8)
+        architecture: Architecture, e.g. ``x86_64`` or ``aarch64``. If None, will
+            be determined by calling ``platform.processor()``.
+
     Returns:
         The wheel file name.  Examples:
             ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
@@ -1269,12 +1274,20 @@ def get_wheel_filename(
     if py_version_str in ["36", "37"]:
         darwin_os_string = "macosx_10_15_intel"
     elif py_version_str in ["38", "39"]:
-        darwin_os_string = "macosx_10_15_x86_64"
+        darwin_os_string = f"macosx_10_15_{architecture}"
     else:
         darwin_os_string = "macosx_10_15_universal2"
+
+    architecture = architecture or platform.processor()
+
+    if architecture == ["aarch64"]:
+        linux_os_string = "manylinux2014_aarch64"
+    else:
+        linux_os_string = "manylinux2014_x86_64"
+
     os_strings = {
         "darwin": darwin_os_string,
-        "linux": "manylinux2014_x86_64",
+        "linux": linux_os_string,
         "win32": "win_amd64",
     }
 
