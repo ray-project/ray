@@ -664,9 +664,7 @@ def redis_replicas(monkeypatch):
     ],
     indirect=True,
 )
-def test_redis_failureover(
-    redis_replicas, ray_start_regular_with_external_redis
-):
+def test_redis_failureover(redis_replicas, ray_start_regular_with_external_redis):
     pass
 
 
