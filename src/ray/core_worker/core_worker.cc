@@ -2779,8 +2779,12 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                            send_reply_callback)) {
     return;
   }
-  worker_context_.MaybeInitializeJobInfo(JobID::FromBinary(request.task_spec().job_id()),
-                                         request.task_spec().job_config());
+  if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
+      request.task_spec().type() == TaskType::NORMAL_TASK) {
+    worker_context_.MaybeInitializeJobInfo(
+        JobID::FromBinary(request.task_spec().job_id()),
+        request.task_spec().job_config());
+  }
   // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
   std::string func_name =
