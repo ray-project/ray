@@ -64,34 +64,30 @@ class TestRLTrainer(unittest.TestCase):
                 break
         self.assertLess(min_loss, 0.57)
 
-    @pytest.mark.skip
     def test_add_remove_module(self):
         env = gym.make("CartPole-v1")
-        trainer_class = BCTfRLTrainer
-        trainer_cfg = dict(
+
+        scaling_config = {}
+        distributed = False
+        trainer = BCTfRLTrainer(
             module_class=DiscreteBCTFModule,
             module_kwargs={
                 "observation_space": env.observation_space,
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
+            scaling_config=scaling_config,
             optimizer_config={"lr": 1e-3},
-            in_test=True,
+            distributed=distributed,
+            in_test=True
         )
-        runner = TrainerRunner(
-            trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
-        )
+        trainer.build()
 
-        reader = get_cartpole_dataset_reader(batch_size=500)
-        batch = reader.next()
-
-        # update once with the default policy
-        results = runner.update(batch.as_multi_agent())
         module_ids_before_add = {DEFAULT_POLICY_ID}
         new_module_id = "test_module"
 
         # add a test_module
-        runner.add_module(
+        trainer.add_module(
             module_id=new_module_id,
             module_cls=DiscreteBCTFModule,
             module_kwargs={
@@ -101,13 +97,7 @@ class TestRLTrainer(unittest.TestCase):
             },
         )
 
-        # do training that includes the test_module
-        results = runner.update(
-            MultiAgentBatch(
-                {new_module_id: batch, DEFAULT_POLICY_ID: batch}, batch.count
-            )
-        )
-
+        
         # check that module weights are updated across workers and synchronized
         for i in range(1, len(results)):
             for module_id in results[i]["mean_weight"].keys():
