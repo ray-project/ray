@@ -20,7 +20,8 @@ mkfifo $dhcppipe
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
-    dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom --urlping http://ifconfig.me/ip --urlping-regexp "([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)"
+    wget http://${DDNS_LOGIN}:${DDNS_PASSWORD}@members.dyndns.org/nic/update?system=custom&hostname=${DDNS_HOST}&myip=${IPADDRESS}&wildcard=OFF&backmx=NO&offline=NO > /tmp/wget.log &
+    #dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom --urlping http://ifconfig.me/ip --urlping-regexp "([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)"
     supernode -f > /tmp/n2n.log &
 fi
 

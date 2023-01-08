@@ -4,9 +4,10 @@ ENV MODIN_ENGINE=ray
 ENV MODIN_RAY_CLUSTER=True
 ENV TZ=America/Los_Angeles
 ENV NODETYPE=head
-ENV DDNS_LOGIN=username
+
 ENV CFLAGS="-O3"
 
+ENV DDNS_LOGIN=username
 ENV DDNS_PASSWORD=password
 ENV DDNS_HOST=nexus.usethetools.com
 
@@ -20,7 +21,7 @@ ENV N2N_KEY=$DDNS_HOST
 #ENV N2N_KEY=$RANDOMSTRING
 
 RUN sudo apt-get update  \
-        && sudo apt-get install -y --no-install-recommends ca-certificates curl wget build-essential libssl-dev libzstd-dev git cmake linux-headers-virtual net-tools openssl software-properties-common lsb-release libzstd1 isc-dhcp-client dyndns  \
+        && sudo apt-get install -y --no-install-recommends ca-certificates curl wget build-essential libssl-dev libzstd-dev git cmake linux-headers-virtual net-tools openssl software-properties-common lsb-release libzstd1 \ 
         && sudo apt-get clean  \
         && sudo rm -rf /var/lib/apt/lists/*
 
