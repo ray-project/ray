@@ -135,7 +135,7 @@ Status MGetValues(std::shared_ptr<RedisClient> redis_client,
           for (size_t index = 0; index < value.size(); ++index) {
             if (value[index].has_value()) {
               (*key_value_map)[GetKeyFromRedisKey(
-                  external_storage_namespace, mget_keys[index + 1], table_name)] =
+                  external_storage_namespace, mget_keys[index + 2], table_name)] =
                   *(value[index]);
             }
           }
