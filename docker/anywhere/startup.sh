@@ -19,15 +19,16 @@ mkfifo $dhcppipe
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
-    wget http://${DDNS_LOGIN}:${DDNS_PASSWORD}@members.dyndns.org/nic/update?system=custom&hostname=${DDNS_HOST}&myip=${IPADDRESS}&wildcard=OFF&backmx=NO&offline=NO > /tmp/wget.log &
+    wget -b http://${DDNS_LOGIN}:${DDNS_PASSWORD}@members.dyndns.org/nic/update?system=custom&hostname=${DDNS_HOST}&myip=${IPADDRESS}&wildcard=OFF&backmx=NO&offline=NO
     #dyndns --login ${DDNS_LOGIN} --password ${DDNS_PASSWORD} --host ${DDNS_HOST} --system custom --urlping http://ifconfig.me/ip --urlping-regexp "([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)"
     supernode -f > /tmp/n2n.log &
+    N2N_SUPERNODE="localhost"
 fi
 
 #static not yet tested
 if [ -n $STATIC_IP ]
 then
-    nohup sudo edge -c ${N2N_COMMUNITY} -k ${N2N_KEY} -l ${DDNS_HOST}:${N2N_SUPERNODE_PORT} -f -r > /tmp/n2n.log &
+    nohup sudo edge -c ${N2N_COMMUNITY} -k ${N2N_KEY} -l ${N2N_SUPERNODE}:${N2N_SUPERNODE_PORT} -f -r > /tmp/n2n.log &
 #    n2n_interface_ip=`/sbin/ifconfig ${N2N_INTERFACE}|grep inet|grep -v 127.0.0.1|grep -v inet6|awk '{print $2}'|tr -d "addr:"`
 #    while [ -z "${n2n_interface_ip}" ]
 #    do
