@@ -2126,7 +2126,8 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
                               bool force_kill,
                               bool recursive) {
   if (actor_manager_->CheckActorHandleExists(object_id.TaskId().ActorId())) {
-    return Status::Invalid("Actor task cancellation is not supported.");
+    return Status::Invalid("Actor task 
+    is not supported.");
   }
   rpc::Address obj_addr;
   if (!reference_counter_->GetOwner(object_id, &obj_addr)) {
@@ -2159,7 +2160,8 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   if (recursive_success) {
     return Status::OK();
   } else {
-    return Status::UnknownError("Recursive task cancellation failed--check warning logs.");
+    return Status::UnknownError(
+        "Recursive task cancellation failed--check warning logs.");
   }
 }
 
