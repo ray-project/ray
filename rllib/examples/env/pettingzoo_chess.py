@@ -82,6 +82,8 @@ class MultiAgentChess(MultiAgentEnv):
         self._skip_env_checking = True
 
         self.config = config
+        if self.config is None:
+            self.config = {}
         try:
             self.config["random_start"] = self.config["random_start"]
         except KeyError:
