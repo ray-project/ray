@@ -416,9 +416,10 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
   // Build the arguments.
   std::vector<const char *> argv;
   std::vector<size_t> argc;
-  for (const auto &arg : args) {
-    argv.push_back(arg.data());
-    argc.push_back(arg.size());
+  for (size_t i = 0; i < args.size(); ++i) {
+    RAY_LOG(INFO) << "CMD: " << i << ", " << std::string(args[i].data(), args[i].size());
+    argv.push_back(args[i].data());
+    argc.push_back(args[i].size());
   }
   auto redis_reply = reinterpret_cast<redisReply *>(
       ::redisCommandArgv(context_, args.size(), argv.data(), argc.data()));
@@ -438,6 +439,7 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
   std::vector<const char *> argv;
   std::vector<size_t> argc;
   for (size_t i = 0; i < args.size(); ++i) {
+    RAY_LOG(INFO) << "CMD: " << i << ", " << std::string(args[i].data(), args[i].size());
     argv.push_back(args[i].data());
     argc.push_back(args[i].size());
   }

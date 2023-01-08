@@ -143,47 +143,64 @@ def _setup_redis(request):
     # Setup external Redis and env var for initialization.
     redis_ports = []
     for _ in range(redis_replicas()):
-        with socket.socket() as s:
-            s.bind(("", 0))
-            port = s.getsockname()[1]
+        # max port for redis cluster
+        port = 55536
+        while port >= 55535:
+            with socket.socket() as s:
+                s.bind(("", 0))
+                port = s.getsockname()[1]
+        print("Picking port", port)
         redis_ports.append(port)
 
-    processes = []
-    enable_tls = "RAY_REDIS_CA_CERT" in os.environ
-    leader_port = None
-    for port in redis_ports:
-        temp_dir = ray._private.utils.get_ray_temp_dir()
-        _, proc = start_redis_instance(
-            temp_dir,
-            port,
-            enable_tls=enable_tls,
-            replica_of=leader_port,
-        )
-        if leader_port is None:
-            leader_port = port
-        processes.append(proc)
-    scheme = "rediss://" if enable_tls else ""
-    address_str = f"{scheme}127.0.0.1:{redis_ports[-1]}"
-    old_addr = os.environ.get("RAY_REDIS_ADDRESS")
-    os.environ["RAY_REDIS_ADDRESS"] = address_str
-    import uuid
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        processes = []
+        enable_tls = "RAY_REDIS_CA_CERT" in os.environ
+        leader_port = None
+        leader_id = None
+        for port in redis_ports:
+            print("Start Redis with port: ", port)
+            temp_dir = ray._private.utils.get_ray_temp_dir()
+            node_id, proc = start_redis_instance(
+                temp_dir,
+                port,
+                enable_tls=enable_tls,
+                replica_of=leader_port,
+                leader_id=leader_id,
+                db_dir=tmpdirname,
+            )
+            if leader_port is None:
+                leader_port = port
+                leader_id = node_id
+            processes.append(proc)
+        import redis
 
-    ns = str(uuid.uuid4())
-    old_ns = os.environ.get("RAY_external_storage_namespace")
-    os.environ["RAY_external_storage_namespace"] = ns
-    yield
-    if old_addr is not None:
-        os.environ["RAY_REDIS_ADDRESS"] = old_addr
-    else:
-        del os.environ["RAY_REDIS_ADDRESS"]
+        redis_cli = redis.Redis("localhost", str(leader_port))
+        while redis_cli.cluster("info")["cluster_state"] != "ok":
+            pass
 
-    if old_ns is not None:
-        os.environ["RAY_external_storage_namespace"] = old_ns
-    else:
-        del os.environ["RAY_external_storage_namespace"]
+        scheme = "rediss://" if enable_tls else ""
+        address_str = f"{scheme}127.0.0.1:{redis_ports[-1]}"
+        old_addr = os.environ.get("RAY_REDIS_ADDRESS")
+        os.environ["RAY_REDIS_ADDRESS"] = address_str
+        import uuid
 
-    for proc in processes:
-        proc.process.kill()
+        ns = str(uuid.uuid4())
+        old_ns = os.environ.get("RAY_external_storage_namespace")
+        os.environ["RAY_external_storage_namespace"] = ns
+
+        yield
+        if old_addr is not None:
+            os.environ["RAY_REDIS_ADDRESS"] = old_addr
+        else:
+            del os.environ["RAY_REDIS_ADDRESS"]
+
+        if old_ns is not None:
+            os.environ["RAY_external_storage_namespace"] = old_ns
+        else:
+            del os.environ["RAY_external_storage_namespace"]
+
+        for proc in processes:
+            proc.process.kill()
 
 
 @pytest.fixture

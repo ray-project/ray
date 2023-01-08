@@ -238,6 +238,11 @@ print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
     wait_for_condition(check_alive, timeout=30, n=2)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_redis_cluster_failure(docker_cluster):
+    pass
+
+
 if __name__ == "__main__":
     import os
 

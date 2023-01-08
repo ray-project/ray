@@ -154,6 +154,7 @@ def test_node_failure_detector_when_gcs_server_restart(
     wait_for_pid_to_exit(raylet_pid)
 
     # Restart gcs server process.
+    print("START GCS!!")
     cluster.head_node.start_gcs_server()
 
     def condition():
@@ -645,6 +646,28 @@ def test_get_actor_when_gcs_is_down(ray_start_regular_with_external_redis):
 
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get_actor("A")
+
+
+@pytest.fixture
+def redis_replicas(monkeypatch):
+    monkeypatch.setenv("TEST_EXTERNAL_REDIS_REPLICAS", "3")
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            gcs_server_request_timeout_seconds=10,
+        )
+    ],
+    indirect=True,
+)
+def test_get_actor_when_gcs_is_down(
+    redis_replicas, ray_start_regular_with_external_redis
+):
+    pass
 
 
 if __name__ == "__main__":

@@ -77,6 +77,7 @@ std::string GetKeyFromRedisKey(const std::string &external_storage_namespace,
 absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
 GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
                     const std::string &command,
+                    const std::string &hash_field,
                     const std::vector<std::string> &keys,
                     int *count) {
   absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
@@ -88,6 +89,7 @@ GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
       auto key_vector = commands_by_shards[shard_context].emplace(
           commands_by_shards[shard_context].begin(), std::vector<std::string>());
       key_vector->push_back(command);
+      key_vector->push_back(hash_field);
       key_vector->push_back(key);
       (*count)++;
     } else {
@@ -96,6 +98,7 @@ GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
           RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
         it->second.emplace_back(std::vector<std::string>());
         it->second.back().push_back(command);
+        it->second.back().push_back(hash_field);
         (*count)++;
       }
       it->second.back().push_back(key);
@@ -112,7 +115,7 @@ Status MGetValues(std::shared_ptr<RedisClient> redis_client,
   // The `MGET` command for each shard.
   int total_count = 0;
   auto mget_commands_by_shards =
-      GenCommandsByShards(redis_client, "MGET", keys, &total_count);
+      GenCommandsByShards(redis_client, "HMGET", external_storage_namespace, keys, &total_count);
   auto finished_count = std::make_shared<int>(0);
   auto key_value_map = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
   for (auto &command_list : mget_commands_by_shards) {
@@ -187,7 +190,7 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
   };
 
   std::string redis_key = GenRedisKey(external_storage_namespace_, table_name, key);
-  std::vector<std::string> args = {"GET", redis_key};
+  std::vector<std::string> args = {"HGET", external_storage_namespace_, redis_key};
 
   auto shard_context = redis_client_->GetShardContext(redis_key);
   return shard_context->RunArgvAsync(args, redis_callback);
@@ -220,7 +223,7 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
 
   std::string redis_key = GenRedisKey(external_storage_namespace_, table_name, key);
   // We always replace `DEL` with `UNLINK`.
-  std::vector<std::string> args = {"UNLINK", redis_key};
+  std::vector<std::string> args = {"HDEL", external_storage_namespace_, redis_key};
 
   auto shard_context = redis_client_->GetShardContext(redis_key);
   return shard_context->RunArgvAsync(args, delete_callback);
@@ -258,17 +261,13 @@ Status RedisStoreClient::DoPut(const std::string &key,
                                const std::string &data,
                                bool overwrite,
                                std::function<void(bool)> callback) {
-  std::vector<std::string> args = {overwrite ? "GETSET" : "SETNX", key, data};
+  std::vector<std::string> args = {overwrite ? "HSET" : "HSETNX", external_storage_namespace_, key, data};
   RedisCallback write_callback = nullptr;
   if (callback) {
     write_callback = [callback = std::move(callback),
                       overwrite](const std::shared_ptr<CallbackReply> &reply) {
-      if (overwrite) {
-        callback(reply->IsNil());
-      } else {
-        auto added_num = reply->ReadAsInteger();
-        callback(added_num != 0);
-      }
+      auto added_num = reply->ReadAsInteger();
+      callback(added_num != 0);
     };
   }
 
@@ -282,7 +281,7 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
   // We always replace `DEL` with `UNLINK`.
   int total_count = 0;
   auto del_commands_by_shards =
-      GenCommandsByShards(redis_client_, "UNLINK", keys, &total_count);
+      GenCommandsByShards(redis_client_, "HDEL", external_storage_namespace_, keys, &total_count);
 
   auto finished_count = std::make_shared<int>(0);
   auto num_deleted = std::make_shared<int64_t>(0);
@@ -366,12 +365,14 @@ void RedisStoreClient::RedisScanner::Scan(const std::string &match_pattern,
       OnScanCallback(match_pattern, shard_index, reply, callback);
     };
     // Scan by prefix from Redis.
-    std::vector<std::string> args = {"SCAN",
-                                     std::to_string(cursor),
-                                     "MATCH",
-                                     match_pattern,
-                                     "COUNT",
-                                     std::to_string(batch_count)};
+    std::vector<std::string> args = {
+      "HSCAN",
+      external_storage_namespace_,
+      std::to_string(cursor),
+      "MATCH",
+      match_pattern,
+      "COUNT",
+      std::to_string(batch_count)};
     auto shard_context = redis_client_->GetShardContexts()[shard_index];
     Status status = shard_context->RunArgvAsync(args, scan_callback);
     if (!status.ok()) {
@@ -437,7 +438,7 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
                                      const std::string &key,
                                      std::function<void(bool)> callback) {
   std::string redis_key = GenRedisKey(external_storage_namespace_, table_name, key);
-  std::vector<std::string> args = {"EXISTS", redis_key};
+  std::vector<std::string> args = {"HEXISTS", external_storage_namespace_, redis_key};
 
   auto shard_context = redis_client_->GetShardContext(redis_key);
   RAY_CHECK_OK(shard_context->RunArgvAsync(

@@ -153,6 +153,7 @@ RedisClient::RedisClient(const RedisClientOptions &options) : options_(options) 
       leader_port_ = std::stoi(kv[1]);
     }
   }
+  RAY_LOG(INFO) << "Find redis leader: " << leader_ip_ << ":" << leader_port_;
   RAY_CHECK(!leader_ip_.empty() && leader_port_ != 0) << "Failed to get leader info";
 }
 
