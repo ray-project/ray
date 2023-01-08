@@ -561,6 +561,9 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
 @pytest.mark.filterwarnings(
     "default:Setting 'object_store_memory' for actors is deprecated"
 )
+@pytest.mark.filterwarnings(
+    "default:Setting 'object_store_memory' for bundles is deprecated"
+)
 def test_object_store_memory_deprecation_warning(ray_start_regular_shared):
     with warnings.catch_warnings(record=True) as w:
 
