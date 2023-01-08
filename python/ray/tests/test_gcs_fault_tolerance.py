@@ -664,7 +664,7 @@ def redis_replicas(monkeypatch):
     ],
     indirect=True,
 )
-def test_get_actor_when_gcs_is_down(
+def test_redis_failureover(
     redis_replicas, ray_start_regular_with_external_redis
 ):
     pass
