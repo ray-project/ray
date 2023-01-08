@@ -161,7 +161,8 @@ def start_redis_instance(
         if " " in password:
             raise ValueError("Spaces not permitted in redis password.")
         command += ["--requirepass", password]
-    command += ["--cluster-enabled", "yes", "--cluster-config-file", f"node-{port}"]
+    if redis_replicas() > 1:
+        command += ["--cluster-enabled", "yes", "--cluster-config-file", f"node-{port}"]
     if enable_tls:
         import socket
 
@@ -202,25 +203,30 @@ def start_redis_instance(
         stderr_file=stderr_file,
         fate_share=fate_share,
     )
-    # Setup redis cluster
-    import redis
+    node_id = None
+    if redis_replicas() > 1:
+        # Setup redis cluster
+        import redis
 
-    while True:
-        try:
-            redis_cli = redis.Redis("localhost", str(port))
-            if replica_of is None:
-                slots = [str(i) for i in range(16384)]
-                redis_cli.cluster("addslots", *slots)
-            else:
-                redis_cli.cluster("meet", "127.0.0.1", str(replica_of))
-                redis_cli.cluster("replicate", leader_id)
-            node_id = redis_cli.cluster("myid")
-            break
-        except (redis.exceptions.ConnectionError, redis.exceptions.ResponseError) as e:
-            from time import sleep
+        while True:
+            try:
+                redis_cli = redis.Redis("localhost", str(port))
+                if replica_of is None:
+                    slots = [str(i) for i in range(16384)]
+                    redis_cli.cluster("addslots", *slots)
+                else:
+                    redis_cli.cluster("meet", "127.0.0.1", str(replica_of))
+                    redis_cli.cluster("replicate", leader_id)
+                node_id = redis_cli.cluster("myid")
+                break
+            except (
+                redis.exceptions.ConnectionError,
+                redis.exceptions.ResponseError,
+            ) as e:
+                from time import sleep
 
-            print(f"Waiting for redis to be up {e}")
-            sleep(0.1)
+                print(f"Waiting for redis to be up {e}")
+                sleep(0.1)
 
     return node_id, process_info
 

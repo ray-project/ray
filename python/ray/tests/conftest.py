@@ -172,11 +172,12 @@ def _setup_redis(request):
                 leader_port = port
                 leader_id = node_id
             processes.append(proc)
-        import redis
+        if redis_replicas() > 1:
+            import redis
 
-        redis_cli = redis.Redis("localhost", str(leader_port))
-        while redis_cli.cluster("info")["cluster_state"] != "ok":
-            pass
+            redis_cli = redis.Redis("localhost", str(leader_port))
+            while redis_cli.cluster("info")["cluster_state"] != "ok":
+                pass
 
         scheme = "rediss://" if enable_tls else ""
         address_str = f"{scheme}127.0.0.1:{redis_ports[-1]}"
