@@ -200,7 +200,8 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    # Unset CC CXX vars set in Dockerfile
+    # Unset CC CXX vars set in Dockerfile. Clang currently runs into problems with ubsan builds, this will revert to
+    # using GCC instead.
     - unset CC CXX && bazel test --config=ci --config=ubsan $(./ci/run/bazel_export_options)
       --build_tests_only
       --jobs=2
