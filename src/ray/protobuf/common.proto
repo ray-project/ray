@@ -396,8 +396,8 @@ message TaskSpec {
   // first execution, we do not yet know whether the task has dynamic return
   // objects.
   repeated bytes dynamic_return_ids = 31;
-  // Job config.
-  JobConfig job_config = 32;
+  // Job config for the task. Only set for normal task or actor creation task.
+  optional JobConfig job_config = 32;
 }
 
 message TaskInfoEntry {

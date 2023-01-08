@@ -1714,7 +1714,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &debugger_breakpoint,
     int64_t depth,
     const std::string &serialized_runtime_env_info,
-    const std::string &concurrency_group_name) {
+    const std::string &concurrency_group_name,
+    bool include_job_config) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1726,24 +1727,27 @@ void CoreWorker::BuildCommonTaskSpec(
     num_returns = 1;
   }
   RAY_CHECK(num_returns >= 0);
-  builder.SetCommonTaskSpec(task_id,
-                            name,
-                            function.GetLanguage(),
-                            function.GetFunctionDescriptor(),
-                            job_id,
-                            worker_context_.GetCurrentJobConfig(),
-                            current_task_id,
-                            task_index,
-                            caller_id,
-                            address,
-                            num_returns,
-                            returns_dynamic,
-                            required_resources,
-                            required_placement_resources,
-                            debugger_breakpoint,
-                            depth,
-                            override_runtime_env_info,
-                            concurrency_group_name);
+  builder.SetCommonTaskSpec(
+      task_id,
+      name,
+      function.GetLanguage(),
+      function.GetFunctionDescriptor(),
+      job_id,
+      include_job_config
+          ? std::optional<rpc::JobConfig>(worker_context_.GetCurrentJobConfig())
+          : std::optional<rpc::JobConfig>(),
+      current_task_id,
+      task_index,
+      caller_id,
+      address,
+      num_returns,
+      returns_dynamic,
+      required_resources,
+      required_placement_resources,
+      debugger_breakpoint,
+      depth,
+      override_runtime_env_info,
+      concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1791,7 +1795,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       required_resources,
                       debugger_breakpoint,
                       depth,
-                      task_options.serialized_runtime_env_info);
+                      task_options.serialized_runtime_env_info,
+                      /*concurrency_group_name*/ "",
+                      /*include_job_config*/ true);
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
@@ -1872,7 +1878,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       new_placement_resources,
                       "" /* debugger_breakpoint */,
                       depth,
-                      actor_creation_options.serialized_runtime_env_info);
+                      actor_creation_options.serialized_runtime_env_info,
+                      /*concurrency_group_name*/ "",
+                      /*include_job_config*/ true);
 
   // If the namespace is not specified, get it from the job.
   const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -2098,7 +2106,8 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       "",    /* debugger_breakpoint */
                       depth, /*depth*/
                       "{}",  /* serialized_runtime_env_info */
-                      task_options.concurrency_group_name);
+                      task_options.concurrency_group_name,
+                      /*include_job_config*/ false);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 

@@ -119,7 +119,7 @@ class TaskSpecBuilder {
       const Language &language,
       const ray::FunctionDescriptor &function_descriptor,
       const JobID &job_id,
-      const rpc::JobConfig &job_config,
+      std::optional<rpc::JobConfig> job_config,
       const TaskID &parent_task_id,
       uint64_t parent_counter,
       const TaskID &caller_id,
@@ -137,7 +137,9 @@ class TaskSpecBuilder {
     message_->set_language(language);
     *message_->mutable_function_descriptor() = function_descriptor->GetMessage();
     message_->set_job_id(job_id.Binary());
-    message_->mutable_job_config()->CopyFrom(job_config);
+    if (job_config.has_value()) {
+      message_->mutable_job_config()->CopyFrom(job_config.value());
+    }
     message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
     message_->set_parent_counter(parent_counter);
