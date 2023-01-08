@@ -52,10 +52,10 @@ mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
 CRATE_JAVA_OPTS="-Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
-            -Cnode.name=${DDNS_HOST} \
+            #-Cnode.name=${DDNS_HOST} \
             -Ccluster.initial_master_nodes=${DDNS_HOST} \
             -Cgateway.expected_data_nodes=1 \
             -Cgateway.recover_after_data_nodes=1 \
             &
-
+#need to make it so that we discover and connect via n2n ips
 tail -f /tmp/n2n.log
