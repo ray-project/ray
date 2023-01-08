@@ -446,10 +446,12 @@ class RLTrainer:
                 "The module must be a torch.nn.Module or a tf.keras.Model."
             )
 
-    def __get_optimizer_obj(self, module: RLModule, optimizer_cls: Type[Optimizer]) -> Optimizer:
-        """Returns the optimizer instance of type optimizer_cls from the module 
+    def __get_optimizer_obj(
+        self, module: RLModule, optimizer_cls: Type[Optimizer]
+    ) -> Optimizer:
+        """Returns the optimizer instance of type optimizer_cls from the module
 
-        In torch this is the optimizer object initialize with module parameters. In tf 
+        In torch this is the optimizer object initialize with module parameters. In tf
         this is initialized without module parameters.
         """
         lr = self.optimizer_config.get("lr", 1e-3)
@@ -462,5 +464,5 @@ class RLTrainer:
                 "Unknown module type. Only torch.nn.Module and "
                 "tf.keras.Model are supported."
             )
-        
+
         return optimizer
