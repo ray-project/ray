@@ -1280,7 +1280,7 @@ def get_wheel_filename(
 
     architecture = architecture or platform.processor()
 
-    if architecture == ["aarch64"]:
+    if architecture == "aarch64":
         linux_os_string = "manylinux2014_aarch64"
     else:
         linux_os_string = "manylinux2014_x86_64"
