@@ -873,7 +873,10 @@ def get_gpu_ids():
     return assigned_ids
 
 
-@Deprecated(message="Use ray.get_runtime_context().get_assigned_resources() instead.")
+@Deprecated(
+    message="Use ray.get_runtime_context().get_assigned_resources() instead.",
+    warning=True,
+)
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
 
@@ -1777,7 +1780,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.CYAN
 
     if data.get("pid") == "autoscaler":
-        pid = "scheduler +{}".format(time_string())
+        pid = "autoscaler +{}".format(time_string())
         lines = filter_autoscaler_events(data.get("lines", []))
     else:
         pid = data.get("pid")
@@ -2027,6 +2030,29 @@ def connect(
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
 
+    if mode == SCRIPT_MODE:
+        # Add the directory containing the script that is running to the Python
+        # paths of the workers. Also add the current directory. Note that this
+        # assumes that the directory structures on the machines in the clusters
+        # are the same.
+        # When using an interactive shell, there is no script directory.
+        code_paths = []
+        if not interactive_mode:
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
+            # If driver's sys.path doesn't include the script directory
+            # (e.g driver is started via `python -m`,
+            # see https://peps.python.org/pep-0338/),
+            # then we shouldn't add it to the workers.
+            if script_directory in sys.path:
+                code_paths.append(script_directory)
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
+        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
+            current_directory = os.path.abspath(os.path.curdir)
+            code_paths.append(current_directory)
+        if len(code_paths) != 0:
+            job_config.py_driver_sys_path.extend(code_paths)
+
     serialized_job_config = job_config.serialize()
     if not node.should_redirect_logs():
         # Logging to stderr, so give core worker empty logs directory.
@@ -2097,29 +2123,6 @@ def connect(
             worker.logger_thread.start()
 
     if mode == SCRIPT_MODE:
-        # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        # When using an interactive shell, there is no script directory.
-        code_paths = []
-        if not interactive_mode:
-            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
-            # If driver's sys.path doesn't include the script directory
-            # (e.g driver is started via `python -m`,
-            # see https://peps.python.org/pep-0338/),
-            # then we shouldn't add it to the workers.
-            if script_directory in sys.path:
-                code_paths.append(script_directory)
-        # In client mode, if we use runtime envs with "working_dir", then
-        # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
-            current_directory = os.path.abspath(os.path.curdir)
-            code_paths.append(current_directory)
-        if len(code_paths) != 0:
-            worker.run_function_on_all_workers(
-                lambda worker_info: [sys.path.insert(1, path) for path in code_paths]
-            )
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
         # run may set the Python path, which is needed to import a module used
