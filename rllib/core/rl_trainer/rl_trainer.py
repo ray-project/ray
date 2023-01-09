@@ -205,6 +205,14 @@ class RLTrainer:
             self.do_distributed_update(batch)
         return self.compile_results(batch, fwd_out, loss, post_processed_gradients)
 
+    def additional_update(self) -> Mapping[str, Any]:
+        """Apply additional non-gradient based updates to this Trainer.
+
+        For example, this could be used to do a polyak averaging update
+        of a target network in off policy algorithms like SAC or DQN.
+        """
+        raise NotImplementedError
+
     @abc.abstractmethod
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]]
