@@ -287,10 +287,15 @@ download_mnist() {
 install_pip_packages() {
 
   # Install modules needed in all jobs.
+  # shellcheck disable=SC2262
   alias pip="python -m pip"
 
   if [ "${MINIMAL_INSTALL-}" != 1 ]; then
+    # Some architectures will build dm-tree from source.
+    # Move bazelrc to a different location temporarily to disable --config=ci settings
+    mv "$HOME/.bazelrc" "$HOME/._brc" || true
     pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+    mv "$HOME/._brc" "$HOME/.bazelrc" || true
   fi
 
   if { [ -n "${PYTHON-}" ] || [ "${DL-}" = "1" ]; } && [ "${MINIMAL_INSTALL-}" != 1 ]; then
