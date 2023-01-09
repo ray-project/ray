@@ -30,7 +30,7 @@ if [ "$NODETYPE" = "head" ]; then
 
 sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --hostname=nexus --accept-dns
 nexus=$(tailscale ip -4 nexus)
-sudo chmod +x /etc/rc0.d/tailscaledown.sh
+
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.name=nexus.chimp-beta.ts.net \
             -Cnode.master=true
@@ -43,7 +43,7 @@ else
 
 sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --accept-dns
 nexus=$(tailscale ip -4 nexus)
-sudo chmod +x /etc/rc0.d/tailscaledown.sh
+
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             #-Cnode.name=${DDNS_HOST} \
             -Cnode.data=true
