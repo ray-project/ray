@@ -688,11 +688,11 @@ class Worker:
         )
 
     @Deprecated(
-        message="This function is deprecated and will be removed by Ray 2.4, "
-        "please use Runtime Environment "
+        message="This function is deprecated and will be removed by Ray 2.4. "
+        "Please use Runtime Environments "
         f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core"
         "/handling-dependencies.html "
-        "to manage worker's dependencies.",
+        "to manage dependencies in workers.",
         warning=True,
     )
     def run_function_on_all_workers(self, function: callable):
