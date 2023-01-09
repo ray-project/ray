@@ -213,7 +213,7 @@ class DataParallelIngestSpec:
                 else:
                     dataset = dataset.random_shuffle()
 
-            if config.split:
+            if config.split and len(training_worker_handles) > 1:
                 dataset_splits = dataset.split(
                     len(training_worker_handles),
                     equal=True,

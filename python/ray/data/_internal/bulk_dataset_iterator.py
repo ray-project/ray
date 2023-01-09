@@ -31,6 +31,8 @@ class BulkDatasetIterator(DatasetIterator):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[BatchType]:
+        # TODO(swang): Delegate Dataset.iter_batches to
+        # DatasetIterator.iter_batches instead of the other way around.
         return self._base_dataset.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
@@ -100,7 +102,7 @@ class BulkDatasetIteratorWithBackwardCompat(BulkDatasetIterator):
         if name in "_dataset_iterator":
             raise AttributeError
 
-        if getattr(self._dataset_iterator, name, None) is not None:
+        if hasattr(self._dataset_iterator, name):
             return getattr(self._dataset_iterator, name)
 
         warnings.warn(

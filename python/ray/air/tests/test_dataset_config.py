@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray.air import session
 from ray.air.config import DatasetConfig, ScalingConfig
+from ray.air.util.check_ingest import make_local_dataset_iterator
 from ray.data import DatasetIterator
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -214,23 +215,25 @@ class TestStream(DataParallelTrainer):
     }
 
     def __init__(self, check_results_fn, **kwargs):
-        def train_loop_per_worker():
-            data_shard = session.get_dataset_shard("train")
-            results = []
-            for _ in range(2):
-                result = []
-                for batch in data_shard.iter_batches():
-                    for row in batch["value"]:
-                        result.append(row)
-                results.append(result)
-            check_results_fn(data_shard, results)
-
         kwargs.pop("scaling_config", None)
         super().__init__(
-            train_loop_per_worker=train_loop_per_worker,
+            train_loop_per_worker=lambda: TestStream.train_loop_per_worker(
+                session.get_dataset_shard("train"), check_results_fn
+            ),
             scaling_config=ScalingConfig(num_workers=1),
             **kwargs,
         )
+
+    @staticmethod
+    def train_loop_per_worker(data_shard, check_results_fn):
+        results = []
+        for _ in range(2):
+            result = []
+            for batch in data_shard.iter_batches():
+                for row in batch["value"]:
+                    result.append(row)
+            results.append(result)
+        check_results_fn(data_shard, results)
 
 
 class TestBatch(TestStream):
@@ -362,6 +365,36 @@ def test_randomize_block_order(ray_start_4_cpus):
     ds = ray.data.range_table(5)
     test = TestBatch(
         checker,
+        datasets={"train": ds},
+    )
+    test.fit()
+
+
+def test_make_local_dataset_iterator(ray_start_4_cpus):
+    def checker(shard, results):
+        assert len(results[0]) == 5, results
+        assert results[0] != results[1], results
+        stats = shard.stats()
+        assert "randomize_block_order: 5/5 blocks executed in 0s" in stats, stats
+
+    ds = ray.data.range_table(5)
+    test = TestStream(
+        checker,
+        datasets={"train": ds},
+    )
+    test.fit()
+
+    it = make_local_dataset_iterator(ds, None, TestStream._dataset_config["train"])
+    TestStream.train_loop_per_worker(it, checker)
+
+    # Check that make_local_dataset_iterator throws an error when called by a
+    # worker.
+    def check_error(shard, results):
+        with pytest.raises(RuntimeError):
+            make_local_dataset_iterator(ds, None, TestStream._dataset_config["train"])
+
+    test = TestStream(
+        check_error,
         datasets={"train": ds},
     )
     test.fit()

@@ -134,6 +134,7 @@ class DummyTrainer(DataParallelTrainer):
         return train_loop_per_worker
 
 
+@DeveloperAPI
 def make_local_dataset_iterator(
     dataset: Dataset,
     preprocessor: Preprocessor,
@@ -143,11 +144,23 @@ def make_local_dataset_iterator(
     :py:class:`DatasetIterator <ray.data.DatasetIterator>`,
     like the one returned by :meth:`~ray.air.session.get_dataset_shard`.
 
+    This function should only be used for development and debugging. It will
+    raise an exception if called by a worker instead of the driver.
+
     Args:
         dataset: The input Dataset.
         preprocessor: The preprocessor that will be applied to the input dataset.
         dataset_config: The dataset config normally passed to the trainer.
     """
+    runtime_context = ray.runtime_context.get_runtime_context()
+    if runtime_context.worker.mode == ray._private.worker.WORKER_MODE:
+        raise RuntimeError(
+            "make_local_dataset_iterator should only be used by the driver "
+            "for development and debugging. To consume a dataset from a "
+            "worker or AIR trainer, see "
+            "https://docs.ray.io/en/latest/ray-air/check-ingest.html."
+        )
+
     dataset_config = dataset_config.fill_defaults()
     spec = DataParallelIngestSpec({"train": dataset_config})
     spec.preprocess_datasets(preprocessor, {"train": dataset})

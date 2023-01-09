@@ -120,7 +120,7 @@ class PipelinedDatasetIteratorWithBackwardCompat(PipelinedDatasetIterator):
         if name in "_dataset_iterator":
             raise AttributeError
 
-        if getattr(self._dataset_iterator, name, None) is not None:
+        if hasattr(self._dataset_iterator, name):
             return getattr(self._dataset_iterator, name)
 
         warnings.warn(
