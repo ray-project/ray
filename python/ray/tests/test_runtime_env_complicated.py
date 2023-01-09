@@ -1,4 +1,5 @@
 import os
+import platform
 from pathlib import Path
 import pytest
 import subprocess
@@ -776,6 +777,12 @@ CLIENT_SERVER_PORT = 24001
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
+)
+# Skip on Linux ARM64 as the test times out. This is probably because some
+# dependencies may not be available for arm64 and must be compiled from source.
+@pytest.mark.skipif(
+    sys.platform == "linux" and platform.processor() == "aarch64",
+    reason="This test is currently not supported on Linux ARM64",
 )
 @pytest.mark.parametrize(
     "call_ray_start",
