@@ -130,22 +130,26 @@ class MultiAgentConnect4(MultiAgentEnv):
         obs_d = {}
         rew_d = {}
         done_d = {}
+        trunc_d = {}
         info_d = {}
         while self.env.agents:
-            obs, rew, done, info = self.env.last()
+            obs, rew, done, trunc, info = self.env.last()
             a = self.env.agent_selection
             obs_d[a] = obs
             rew_d[a] = rew
             done_d[a] = done
+            trunc_d[a] = trunc
             info_d[a] = info
-            if self.env.dones[self.env.agent_selection]:
+            if self.env.terminations[self.env.agent_selection]:
                 self.env.step(None)
                 done_d["__all__"] = True
+                trunc_d["__all__"] = True
             else:
                 done_d["__all__"] = False
+                trunc_d["__all__"] = False
                 break
 
-        return obs_d, rew_d, done_d, info_d
+        return obs_d, rew_d, done_d, trunc_d, info_d
 
     def close(self):
         self.env.close()

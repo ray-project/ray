@@ -10,7 +10,6 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
-from ray.tune.registry import register_env
 
 
 class TestLeelaChessZero(unittest.TestCase):
@@ -24,10 +23,9 @@ class TestLeelaChessZero(unittest.TestCase):
 
     def test_leela_chess_zero_compilation(self):
         """Test whether LeelaChessZero can be built with PyTorch frameworks."""
-        register_env("ChessMultiAgent", lambda config: MultiAgentChess())
         config = (
             lz.LeelaChessZeroConfig()
-            .environment(env="ChessMultiAgent")
+            .environment(env=MultiAgentChess)
             .training(
                 sgd_minibatch_size=256,
                 train_batch_size=256,
