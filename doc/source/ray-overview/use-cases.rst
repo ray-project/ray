@@ -86,6 +86,14 @@ There are three ways of using Ray to express this workload.
     :img-top: /images/ray_logo.png
 
     +++
+    .. link-button:: https://www.anyscale.com/blog/training-one-million-machine-learning-models-in-record-time-with-ray
+        :type: url
+        :text: [Blog] Training One Million ML Models in Record Time with Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
     .. link-button:: /ray-core/examples/batch_training
         :type: ref
         :text: [Example] Batch Training with Ray Core
@@ -155,14 +163,6 @@ Ray Serve is particularly well suited for model composition, enabling you to bui
     :img-top: /images/serve.svg
 
     +++
-    .. link-button:: https://www.anyscale.com/blog/ray-serve-fastapi-the-best-of-both-worlds
-        :type: url
-        :text: [Blog] Ray Serve + FastAPI: The best of both worlds
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/serve.svg
-
-    +++
     .. link-button:: /serve/getting_started
         :type: ref
         :text: [Guide] Getting Started with Ray Serve
@@ -182,6 +182,14 @@ Ray Serve is particularly well suited for model composition, enabling you to bui
     .. link-button:: /serve/tutorials/index
         :type: ref
         :text: [Gallery] Serve Examples Gallery
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=ray_serve
+        :type: url
+        :text: [Gallery] More Serve Use Cases on the Blog
         :classes: btn-link btn-block stretched-link
 
 Hyperparameter Tuning
@@ -228,20 +236,20 @@ Learn more about the Tune library with the following talks and user guides.
         :text: [Blog] Hyperparameter Search with 🤗 Transformers
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/tune.png
-
-    +++
-    .. link-button:: /ray-air/examples/automl_with_ray_air
-        :type: ref
-        :text: [Example] Simple AutoML for time series with Ray AIR
-        :classes: btn-link btn-block stretched-link
-    ---
     :img-top: /images/grid.png
 
     +++
     .. link-button:: /tune/examples/index
         :type: ref
         :text: [Gallery] Ray Tune Examples Gallery
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=ray-tune
+        :type: url
+        :text: More Tune use cases on the Blog
         :classes: btn-link btn-block stretched-link
 
 Distributed Training
@@ -263,14 +271,6 @@ Learn more about the Train library with the following talks and user guides.
     .. link-button:: https://www.youtube.com/watch?v=e-A93QftCfc
         :type: url
         :text: [Talk] Ray Train, PyTorch, TorchX, and distributed deep learning
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/uber.png
-
-    +++
-    .. link-button:: https://www.uber.com/blog/horovod-ray/
-        :type: url
-        :text: [Blog] Elastic Deep Learning with Horovod on Ray
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/uber.png
@@ -303,6 +303,14 @@ Learn more about the Train library with the following talks and user guides.
     .. link-button:: /train/examples
         :type: ref
         :text: [Gallery] Ray Train Examples Gallery
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=ray_train
+        :type: url
+        :text: [Gallery] More Train Use Cases on the Blog
         :classes: btn-link btn-block stretched-link
 
 Reinforcement Learning
@@ -340,14 +348,6 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
         :text: [Guide] Getting Started with RLlib
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /rllib/images/rllib-logo.png
-
-    +++
-    .. link-button:: https://deumbra.com/2022/08/rllib-for-deep-hierarchical-multiagent-reinforcement-learning/
-        :type: url
-        :text: [Blog] RLlib for Deep Hierarchical Multiagent Reinforcement Learning
-        :classes: btn-link btn-block stretched-link
-    ---
     :img-top: /images/riot.png
 
     +++
@@ -363,7 +363,14 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
         :type: ref
         :text: [Gallery] RLlib Examples Gallery
         :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/grid.png
 
+    +++
+    .. link-button:: https://www.anyscale.com/blog?tag=rllib
+        :type: url
+        :text: [Gallery] More RL Use Cases on the Blog
+        :classes: btn-link btn-block stretched-link
 
 ML Platform
 -----------

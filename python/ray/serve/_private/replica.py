@@ -3,7 +3,6 @@ import asyncio
 from importlib import import_module
 import inspect
 import logging
-import os
 import pickle
 import time
 from typing import Any, Callable, Optional, Tuple, Dict
@@ -215,13 +214,25 @@ def create_replica_wrapper(name: str):
             """
             return ray.get_runtime_context().node_id
 
-        async def reconfigure(
+        async def is_initialized(
             self, user_config: Optional[Any] = None, _after: Optional[Any] = None
-        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        ):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
-            if self.replica is None:
-                await self._initialize_replica()
+            await self._initialize_replica()
+
+            if user_config is not None:
+                await self.reconfigure(user_config)
+
+            # A new replica should not be considered healthy until it passes an
+            # initial health check. If an initial health check fails, consider
+            # it an initialization failure.
+            await self.check_health()
+            return self.get_metadata()
+
+        async def reconfigure(
+            self, user_config: Optional[Any] = None
+        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             if user_config is not None:
                 await self.replica.reconfigure(user_config)
 
@@ -460,8 +471,11 @@ class RayServeReplica:
         except Exception as e:
             logger.exception(f"Request failed due to {type(e).__name__}:")
             success = False
-            if "RAY_PDB" in os.environ:
-                ray.util.pdb.post_mortem()
+
+            # If the debugger is enabled, drop into the remote pdb here.
+            if ray.util.pdb._is_ray_debugger_enabled():
+                ray.util.pdb._post_mortem()
+
             function_name = "unknown"
             if method_to_call is not None:
                 function_name = method_to_call.__name__

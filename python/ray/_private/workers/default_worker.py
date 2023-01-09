@@ -140,6 +140,12 @@ parser.add_argument(
     action="store_true",
     help="True if Ray debugger is made available externally.",
 )
+parser.add_argument("--session-name", required=False, help="The current session name")
+parser.add_argument(
+    "--webui",
+    required=False,
+    help="The address of web ui",
+)
 
 
 if __name__ == "__main__":
@@ -162,7 +168,6 @@ if __name__ == "__main__":
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
-
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
         raylet_ip_address=raylet_ip_address,
@@ -175,14 +180,16 @@ if __name__ == "__main__":
         storage=args.storage,
         metrics_agent_port=args.metrics_agent_port,
         gcs_address=args.gcs_address,
+        session_name=args.session_name,
+        webui=args.webui,
     )
-
     node = ray._private.node.Node(
         ray_params,
         head=False,
         shutdown_at_exit=False,
         spawn_reaper=False,
         connect_only=True,
+        default_worker=True,
     )
 
     # NOTE(suquark): We must initialize the external storage before we
@@ -222,6 +229,12 @@ if __name__ == "__main__":
                 p = os.path.dirname(p)
             sys.path.insert(0, p)
     ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
+    # Add driver's system path to sys.path
+    py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+    if py_driver_sys_path:
+        for p in py_driver_sys_path:
+            sys.path.insert(0, p)
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(

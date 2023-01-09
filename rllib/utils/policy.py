@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
 import re
@@ -178,9 +178,10 @@ def local_policy_inference(
     env_id: str,
     agent_id: str,
     obs: TensorStructType,
-    reward: float = None,
-    done: bool = None,
-    info: Mapping = None,
+    reward: Optional[float] = None,
+    terminated: Optional[bool] = None,
+    truncated: Optional[bool] = None,
+    info: Optional[Mapping] = None,
 ) -> TensorStructType:
     """Run a connector enabled policy using environment observation.
 
@@ -203,8 +204,12 @@ def local_policy_inference(
             may be left empty. Some policies have ViewRequirements that require this.
             This can be set to zero at the first inference step - for example after
             calling gmy.Env.reset.
-        done: Done that is potentially used during inference. If not required,
-            may be left empty. Some policies have ViewRequirements that require this.
+        terminated: `Terminated` flag that is potentially used during inference. If not
+            required, may be left None. Some policies have ViewRequirements that
+            require this extra information.
+        truncated: `Truncated` flag that is potentially used during inference. If not
+            required, may be left None. Some policies have ViewRequirements that
+            require this extra information.
         info: Info that is potentially used durin inference. If not required,
             may be left empty. Some policies have ViewRequirements that require this.
 
@@ -226,8 +231,10 @@ def local_policy_inference(
     input_dict = {SampleBatch.NEXT_OBS: obs}
     if reward is not None:
         input_dict[SampleBatch.REWARDS] = reward
-    if done is not None:
-        input_dict[SampleBatch.DONES] = done
+    if terminated is not None:
+        input_dict[SampleBatch.TERMINATEDS] = terminated
+    if truncated is not None:
+        input_dict[SampleBatch.TRUNCATEDS] = truncated
     if info is not None:
         input_dict[SampleBatch.INFOS] = info
 

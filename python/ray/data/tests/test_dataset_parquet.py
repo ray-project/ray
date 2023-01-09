@@ -194,7 +194,10 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
 
     # Expect precomputed row counts and block sizes to be missing.
     assert ds._meta_count() is None
-    assert ds._plan._snapshot_blocks.size_bytes() == -1
+    assert (
+        ds._plan._snapshot_blocks is None
+        or ds._plan._snapshot_blocks.size_bytes() == -1
+    )
 
     # Expect to lazily compute all metadata correctly.
     assert ds._plan.execute()._num_computed() == 1
@@ -904,6 +907,13 @@ def test_parquet_read_empty_file(ray_start_regular_shared, tmp_path):
     pq.write_table(table, path)
     ds = ray.data.read_parquet(path)
     pd.testing.assert_frame_equal(ds.to_pandas(), table.to_pandas())
+
+
+def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "data.parquet")
+    ray.data.range_tensor(1000, shape=(1000,)).write_parquet(path)
+    ds = ray.data.read_parquet(path, batch_size=10)
+    assert ds.count() == 1000
 
 
 if __name__ == "__main__":

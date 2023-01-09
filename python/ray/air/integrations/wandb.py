@@ -2,6 +2,7 @@ import enum
 import os
 import pickle
 import urllib
+import warnings
 
 import numpy as np
 from numbers import Number
@@ -41,6 +42,13 @@ WANDB_GROUP_ENV_VAR = "WANDB_GROUP_NAME"
 # It doesn't take in any arguments and returns the W&B API key.
 # Example: "your.module.wandb_setup_api_key_hook".
 WANDB_SETUP_API_KEY_HOOK = "WANDB_SETUP_API_KEY_HOOK"
+# Hook that is invoked before wandb.init in the setup method of WandbLoggerCallback
+# to populate environment variables to specify the location
+# (project and group) of the W&B run.
+# It doesn't take in any arguments and doesn't return anything, but it does populate
+# WANDB_PROJECT_NAME and WANDB_GROUP_NAME.
+# Example: "your.module.wandb_populate_run_location_hook".
+WANDB_POPULATE_RUN_LOCATION_HOOK = "WANDB_POPULATE_RUN_LOCATION_HOOK"
 # Hook that is invoked after running wandb.init in WandbLoggerCallback
 # to process information about the W&B run.
 # It takes in a W&B run object and doesn't return anything.
@@ -50,7 +58,11 @@ WANDB_PROCESS_RUN_INFO_HOOK = "WANDB_PROCESS_RUN_INFO_HOOK"
 
 @PublicAPI(stability="alpha")
 def setup_wandb(
-    config: Optional[Dict] = None, rank_zero_only: bool = True, **kwargs
+    config: Optional[Dict] = None,
+    api_key: Optional[str] = None,
+    api_key_file: Optional[str] = None,
+    rank_zero_only: bool = True,
+    **kwargs,
 ) -> Union[Run, RunDisabled]:
     """Set up a Weights & Biases session.
 
@@ -69,23 +81,19 @@ def setup_wandb(
     worker.
 
     The ``config`` argument will be passed to Weights and Biases and will be logged
-    as the run configuration. If wandb-specific settings are found, they will
-    be used to initialize the session. These settings can be
+    as the run configuration.
 
-    - api_key_file: Path to locally available file containing a W&B API key
-    - api_key: API key to authenticate with W&B
-
-    If no API information is found in the config, wandb will try to authenticate
+    If no API key or key file are passed, wandb will try to authenticate
     using locally stored credentials, created for instance by running ``wandb login``.
 
-    All other keys found in the ``wandb`` config parameter will be passed to
-    ``wandb.init()``. If the same keys are present in multiple locations, the
-    ``kwargs`` passed to ``setup_wandb()`` will take precedence over those passed
-    as config keys.
+    Keyword arguments passed to ``setup_wandb()`` will be passed to
+    ``wandb.init()`` and take precedence over any potential default settings.
 
     Args:
-        config: Configuration dict to be logged to weights and biases. Can contain
+        config: Configuration dict to be logged to Weights and Biases. Can contain
             arguments for ``wandb.init()`` as well as authentication information.
+        api_key: API key to use for authentication with Weights and Biases.
+        api_key_file: File pointing to API key for with Weights and Biases.
         rank_zero_only: If True, will return an initialized session only for the
             rank 0 worker in distributed training. If False, will initialize a
             session for all workers.
@@ -113,23 +121,36 @@ def setup_wandb(
         _session = session._get_session(warn=False)
         if _session and rank_zero_only and session.get_world_rank() != 0:
             return RunDisabled()
+
+        default_trial_id = session.get_trial_id()
+        default_trial_name = session.get_trial_name()
+        default_experiment_name = session.get_experiment_name()
+
     except RuntimeError:
-        pass
+        default_trial_id = None
+        default_trial_name = None
+        default_experiment_name = None
 
-    default_kwargs = {
-        "trial_id": kwargs.get("trial_id") or session.get_trial_id(),
-        "trial_name": kwargs.get("trial_name") or session.get_trial_name(),
-        "group": kwargs.get("group") or session.get_experiment_name(),
+    # Default init kwargs
+    wandb_init_kwargs = {
+        "trial_id": kwargs.get("trial_id") or default_trial_id,
+        "trial_name": kwargs.get("trial_name") or default_trial_name,
+        "group": kwargs.get("group") or default_experiment_name,
     }
-    default_kwargs.update(kwargs)
+    # Passed kwargs take precedence over default kwargs
+    wandb_init_kwargs.update(kwargs)
 
-    return _setup_wandb(config=config, **default_kwargs)
+    return _setup_wandb(
+        config=config, api_key=api_key, api_key_file=api_key_file, **wandb_init_kwargs
+    )
 
 
 def _setup_wandb(
     trial_id: str,
     trial_name: str,
     config: Optional[Dict] = None,
+    api_key: Optional[str] = None,
+    api_key_file: Optional[str] = None,
     _wandb: Optional[ModuleType] = None,
     **kwargs,
 ) -> Union[Run, RunDisabled]:
@@ -137,12 +158,27 @@ def _setup_wandb(
 
     wandb_config = _config.pop("wandb", {}).copy()
 
+    # Deprecate: 2.4
+    if wandb_config:
+        warnings.warn(
+            "Passing a `wandb` key in the config dict is deprecated and will raise an "
+            "error in the future. Please pass the actual arguments to `setup_wandb()` "
+            "instead.",
+            DeprecationWarning,
+        )
+
     # If key file is specified, set
-    api_key_file = wandb_config.pop("api_key_file", None)
+    api_key_file = api_key_file or wandb_config.pop("api_key_file", None)
     if api_key_file:
         api_key_file = os.path.expanduser(api_key_file)
 
-    _set_api_key(api_key_file, wandb_config.pop("api_key", None))
+    _set_api_key(api_key_file, api_key or wandb_config.pop("api_key", None))
+    wandb_config["project"] = _get_wandb_project(wandb_config.get("project"))
+    wandb_config["group"] = (
+        os.environ.get(WANDB_GROUP_ENV_VAR)
+        if (not wandb_config.get("group") and os.environ.get(WANDB_GROUP_ENV_VAR))
+        else wandb_config.get("group")
+    )
 
     # remove unpickleable items
     _config = _clean_log(_config)
@@ -168,7 +204,9 @@ def _setup_wandb(
 
     _wandb = _wandb or wandb
 
-    return _wandb.init(**wandb_init_kwargs)
+    run = _wandb.init(**wandb_init_kwargs)
+    _run_wandb_process_run_info_hook(run)
+    return run
 
 
 def _is_allowed_type(obj):
@@ -224,6 +262,31 @@ def _clean_log(obj: Any):
         return fallback
 
 
+def _get_wandb_project(project: Optional[str] = None) -> Optional[str]:
+    """Get W&B project from environment variable or external hook if not passed
+    as and argument."""
+    if (
+        not project
+        and not os.environ.get(WANDB_PROJECT_ENV_VAR)
+        and os.environ.get(WANDB_POPULATE_RUN_LOCATION_HOOK)
+    ):
+        # Try to populate WANDB_PROJECT_ENV_VAR and WANDB_GROUP_ENV_VAR
+        # from external hook
+        try:
+            _load_class(os.environ[WANDB_POPULATE_RUN_LOCATION_HOOK])()
+        except Exception as e:
+            logger.exception(
+                f"Error executing {WANDB_POPULATE_RUN_LOCATION_HOOK} to "
+                f"populate {WANDB_PROJECT_ENV_VAR} and {WANDB_GROUP_ENV_VAR}: {e}",
+                exc_info=e,
+            )
+    if not project and os.environ.get(WANDB_PROJECT_ENV_VAR):
+        # Try to get project and group from environment variables if not
+        # passed through WandbLoggerCallback.
+        project = os.environ.get(WANDB_PROJECT_ENV_VAR)
+    return project
+
+
 def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = None):
     """Set WandB API key from `wandb_config`. Will pop the
     `api_key_file` and `api_key` keys from `wandb_config` parameter"""
@@ -258,6 +321,17 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
             "`WandbLoggerCallback` class as arguments, "
             "or run `wandb login` from the command line".format(WANDB_ENV_VAR)
         )
+
+
+def _run_wandb_process_run_info_hook(run: Any) -> None:
+    """Run external hook to process information about wandb run"""
+    if WANDB_PROCESS_RUN_INFO_HOOK in os.environ:
+        try:
+            _load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
+        except Exception as e:
+            logger.exception(
+                f"Error calling {WANDB_PROCESS_RUN_INFO_HOOK}: {e}", exc_info=e
+            )
 
 
 class _QueueItem(enum.Enum):
@@ -310,14 +384,7 @@ class _WandbLoggingActor:
         run = self._wandb.init(*self.args, **self.kwargs)
         run.config.trial_log_path = self._logdir
 
-        # Run external hook to process information about wandb run
-        if WANDB_PROCESS_RUN_INFO_HOOK in os.environ:
-            try:
-                _load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
-            except Exception as e:
-                logger.exception(
-                    f"Error calling {WANDB_PROCESS_RUN_INFO_HOOK}: {e}", exc_info=e
-                )
+        _run_wandb_process_run_info_hook(run)
 
         while True:
             item_type, item_content = self.queue.get()
@@ -468,10 +535,7 @@ class WandbLoggerCallback(LoggerCallback):
         )
         _set_api_key(self.api_key_file, self.api_key)
 
-        # Try to get project and group from environment variables if not
-        # passed through WandbLoggerCallback.
-        if not self.project and os.environ.get(WANDB_PROJECT_ENV_VAR):
-            self.project = os.environ.get(WANDB_PROJECT_ENV_VAR)
+        self.project = _get_wandb_project(self.project)
         if not self.project:
             raise ValueError(
                 "Please pass the project name as argument or through "

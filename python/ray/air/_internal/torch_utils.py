@@ -1,5 +1,5 @@
 import warnings
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 
 import numpy as np
 import pandas as pd
@@ -227,3 +227,45 @@ def contains_tensor(obj):
             if contains_tensor(v):
                 return True
     return False
+
+
+# Not present in torch<=1.7.0
+# Adapted from https://github.com/pytorch/pytorch/blob/\
+# c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
+def consume_prefix_in_state_dict_if_present_not_in_place(
+    state_dict: Dict[str, Any], prefix: str
+) -> Dict[str, Any]:
+    """Strip the prefix in state_dict, if any and return a new dict.
+
+    Adapted from https://github.com/pytorch/pytorch/blob/\
+c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
+    The original method modified the dict in-place.
+
+    Args:
+        state_dict: a state-dict to be loaded to the model.
+        prefix: prefix.
+
+    """
+    copied = False
+
+    for key in state_dict:
+        if key.startswith(prefix):
+            newkey = key[len(prefix) :]
+            if not copied:
+                # We are doing shallow copies here, so the performance
+                # impact should be negligible anyway, but this is
+                # a simple optimization.
+                state_dict = state_dict.copy()
+                copied = True
+            state_dict[newkey] = state_dict.pop(key)
+
+    if "_metadata" in state_dict:
+        state_dict["_metadata"] = state_dict["_metadata"].copy()
+        metadata = state_dict["_metadata"]
+        for key in metadata:
+            if len(key) == 0:
+                continue
+            newkey = key[len(prefix) :]
+            metadata[newkey] = metadata.pop(key)
+
+    return state_dict

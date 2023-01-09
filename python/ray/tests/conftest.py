@@ -15,7 +15,7 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import List, Tuple
 from unittest import mock
-
+import psutil
 import pytest
 
 import ray
@@ -118,7 +118,8 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
 def get_default_fixure_system_config():
     system_config = {
         "object_timeout_milliseconds": 200,
-        "num_heartbeats_timeout": 10,
+        "health_check_initial_delay_ms": 0,
+        "health_check_failure_threshold": 10,
         "object_store_full_delay_ms": 100,
     }
     return system_config
@@ -230,6 +231,27 @@ def ray_start_with_dashboard(request, maybe_external_redis):
         param["num_cpus"] = 1
     with _ray_start(include_dashboard=True, **param) as address_info:
         yield address_info
+
+
+@pytest.fixture
+def make_sure_dashboard_http_port_unused():
+    """Make sure the dashboard agent http port is unused."""
+    for process in psutil.process_iter():
+        should_kill = False
+        try:
+            for conn in process.connections():
+                if conn.laddr.port == ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT:
+                    should_kill = True
+                    break
+        except Exception:
+            continue
+        if should_kill:
+            try:
+                process.kill()
+                process.wait()
+            except Exception:
+                pass
+    yield
 
 
 # The following fixture will start ray with 0 cpu.
@@ -546,7 +568,6 @@ def enable_mac_large_object_store():
 def two_node_cluster():
     system_config = {
         "object_timeout_milliseconds": 200,
-        "num_heartbeats_timeout": 10,
     }
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
@@ -717,8 +738,6 @@ def _ray_start_chaos_cluster(request):
     config = param.pop("_system_config", {})
     config.update(
         {
-            "num_heartbeats_timeout": 10,
-            "raylet_heartbeat_period_milliseconds": 100,
             "task_retry_delay_ms": 100,
         }
     )
