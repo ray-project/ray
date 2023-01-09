@@ -1,8 +1,9 @@
 import gymnasium as gym
 import tensorflow as tf
 import tensorflow_probability as tfp
-import unittest
+import threading
 from typing import Mapping
+import unittest
 
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
@@ -117,6 +118,21 @@ class TestRLModule(unittest.TestCase):
 
         # check that these 2 objects are not the same object
         self.assertNotEqual(id(module), id(new_module))
+
+        # check that unpickleable parameters are not allowed by the RL Module
+        # constructor
+        unpickleable_param = threading.Thread()
+
+        def bad_constructor():
+            return DiscreteBCTFModule(
+                input_dim=unpickleable_param,
+                hidden_dim=unpickleable_param,
+                output_dim=unpickleable_param,
+            )
+
+        self.assertRaisesRegex(
+            ValueError, "RLModule constructor arguments.*", bad_constructor
+        )
 
 
 if __name__ == "__main__":

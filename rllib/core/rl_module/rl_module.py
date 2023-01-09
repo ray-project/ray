@@ -7,7 +7,6 @@ if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
 import ray
-from ray.exceptions import RayError
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -370,19 +369,21 @@ class RLModule(abc.ABC):
                 # if the object is truly serializable we should be able to
                 # ray.put and ray.get it.
                 ray.get(ray.put(arg))
-            except RayError:
+            except TypeError as e:
                 raise ValueError(
                     "RLModule constructor arguments must be serializable. "
-                    f"Found non-serializable argument: {arg}"
+                    f"Found non-serializable argument: {arg}.\n"
+                    f"Original serialization error: {e}"
                 )
         for k, v in kwargs.items():
             try:
                 # if the object is truly serializable we should be able to
                 # ray.put and ray.get it.
                 ray.get(ray.put(v))
-            except RayError:
+            except TypeError as e:
                 raise ValueError(
                     "RLModule constructor arguments must be serializable. "
-                    f"Found non-serializable keyword argument: {k} = {v}"
+                    f"Found non-serializable keyword argument: {k} = {v}.\n"
+                    f"Original serialization error: {e}"
                 )
         return {"args": args, "kwargs": kwargs}

@@ -1,3 +1,4 @@
+import threading
 import gymnasium as gym
 import torch
 from typing import Mapping
@@ -111,6 +112,21 @@ class TestRLModule(unittest.TestCase):
 
         # check that these 2 objects are not the same object
         self.assertNotEqual(id(module), id(new_module))
+
+        # check that unpickleable parameters are not allowed by the RL Module
+        # constructor
+        unpickleable_param = threading.Thread()
+
+        def bad_constructor():
+            return DiscreteBCTorchModule(
+                input_dim=unpickleable_param,
+                hidden_dim=unpickleable_param,
+                output_dim=unpickleable_param,
+            )
+
+        self.assertRaisesRegex(
+            ValueError, "RLModule constructor arguments.*", bad_constructor
+        )
 
 
 if __name__ == "__main__":
