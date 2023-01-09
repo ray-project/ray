@@ -4,7 +4,7 @@ import heapq
 from typing import Union, Callable, Iterator, List, Tuple, Any, Optional, TYPE_CHECKING
 
 import numpy as np
-from ray.air.util.tensor_extensions.pandas import _create_possibly_ragged_ndarray
+
 
 if TYPE_CHECKING:
     import pandas
@@ -104,6 +104,12 @@ class SimpleBlockAccessor(BlockAccessor):
             if not isinstance(columns, list):
                 columns = [columns]
             return BlockAccessor.for_block(self.select(columns)).to_numpy()
+        # Import the utility function below only when needed
+        # in order to defer pyarrow import until runtime
+        from ray.air.util.tensor_extensions.pandas import (
+            _create_possibly_ragged_ndarray,
+        )
+
         return _create_possibly_ragged_ndarray(self._items)
 
     def to_arrow(self) -> "pyarrow.Table":
