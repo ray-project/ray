@@ -71,7 +71,7 @@ class MixInMultiAgentReplayBuffer:
         """
         self.capacity = capacity
         self.replay_ratio = replay_ratio
-        self.replay_proportion = 1
+        self.replay_proportion = None
         if self.replay_ratio != 1.0:
             self.replay_proportion = self.replay_ratio / (1.0 - self.replay_ratio)
 
