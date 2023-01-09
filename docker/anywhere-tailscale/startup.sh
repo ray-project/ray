@@ -30,13 +30,13 @@ mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
 CRATE_JAVA_OPTS="-Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
 
 sudo tailscaled &
-nexus=$(tailscale ip nexus)
+
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
 
 sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --hostname=nexus --accept-dns
-
+nexus=$(tailscale ip nexus)
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.name=nexus.chimp-beta.ts.net \
             -Cdiscovery.type=zen \
@@ -45,7 +45,7 @@ sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJo
 else
 
 sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-dns
-
+nexus=$(tailscale ip nexus)
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             #-Cnode.name=${DDNS_HOST} \
             -Cdiscovery.type=zen \
