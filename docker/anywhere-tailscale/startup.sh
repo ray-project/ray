@@ -30,11 +30,11 @@ if [ "$NODETYPE" = "head" ]; then
 
 sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --hostname=nexus --accept-dns
 nexus=$(tailscale ip -4 nexus)
-echo -e "#/bin/sh\nsudo tailscale down\n" | sudo tee /etc/rc0.d/tailscaledown.sh
 sudo chmod +x /etc/rc0.d/tailscaledown.sh
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.name=nexus.chimp-beta.ts.net \
-            -Cdiscovery.type=zen \
+            -Cnode.master=true
+            -Cnode.data=true
             -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net,$nexus \
             -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
             &
@@ -43,11 +43,10 @@ else
 
 sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --accept-dns
 nexus=$(tailscale ip -4 nexus)
-echo -e "#/bin/sh\nsudo tailscale down\n" | sudo tee /etc/rc0.d/tailscaledown.sh
 sudo chmod +x /etc/rc0.d/tailscaledown.sh
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             #-Cnode.name=${DDNS_HOST} \
-            -Cdiscovery.type=zen \
+            -Cnode.data=true
             -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net,$nexus \
             -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
             &
