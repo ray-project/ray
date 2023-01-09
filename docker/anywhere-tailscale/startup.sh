@@ -30,6 +30,7 @@ mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
 CRATE_JAVA_OPTS="-Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
 
 sudo tailscaled &
+nexus=$(tailscale ip nexus)
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
@@ -39,21 +40,17 @@ sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJo
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.name=nexus.chimp-beta.ts.net \
             -Cdiscovery.type=zen \
-            -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net \
-            -Cgateway.expected_data_nodes=2 \
-            -Cgateway.recover_after_data_nodes=2 \
+            -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
             &
 else
 
 sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-dns
-nexus=$(tailscale ip nexus)
+
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             #-Cnode.name=${DDNS_HOST} \
             -Cdiscovery.type=zen \
             -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net,$nexus \
-            -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
-            -Cgateway.expected_data_nodes=2 \
-            -Cgateway.recover_after_data_nodes=2 \
+            -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \\
             &
 fi
 
