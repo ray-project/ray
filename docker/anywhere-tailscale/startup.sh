@@ -36,7 +36,7 @@ sudo tailscaled &
 if [ "$NODETYPE" = "head" ]; then
 
 sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --hostname=nexus --accept-dns
-nexus=$(tailscale ip nexus)
+nexus=$(tailscale ip -4 nexus)
 sudo echo -e "#/bin/sh\nsudo tailscale down\n" >> /etc/rc0.d/tailscaledown.sh
 sudo chmod +x /etc/rc0.d/tailscaledown.sh
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
@@ -48,7 +48,7 @@ sudo chmod +x /etc/rc0.d/tailscaledown.sh
 else
 
 sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --accept-dns
-nexus=$(tailscale ip nexus)
+nexus=$(tailscale ip -4 nexus)
 echo -e "#/bin/sh\nsudo tailscale down\n" | sudo tee /etc/rc0.d/tailscaledown.sh
 sudo chmod +x /etc/rc0.d/tailscaledown.sh
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
