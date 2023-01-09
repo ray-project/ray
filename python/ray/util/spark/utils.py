@@ -234,14 +234,50 @@ def _get_num_physical_gpus():
         # `RAY_ON_SPARK_WORKER_CPU_CORES` for user.
         return int(os.environ[RAY_ON_SPARK_WORKER_GPU_NUM])
 
-    return int(
-        subprocess.run(
-            "nvidia-smi --query-gpu=name --format=csv,noheader | wc -l",
+    try:
+        completed_proc = subprocess.run(
+            "nvidia-smi --query-gpu=name --format=csv,noheader",
             shell=True,
             check=True,
             text=True,
             capture_output=True,
-        ).stdout.strip()
+        )
+    except Exception as e:
+        raise RuntimeError(
+            "Running command `nvidia-smi` for inferring GPU devices list failed."
+        ) from e
+    return len(completed_proc.stdout.strip().split("\n"))
+
+
+def _get_avail_mem_per_ray_worker_node(
+    num_cpus_per_node,
+    num_gpus_per_node,
+    object_store_memory_per_node,
+):
+    num_cpus = _get_cpu_cores()
+    num_task_slots = num_cpus // num_cpus_per_node
+
+    if num_gpus_per_node > 0:
+        num_gpus = _get_num_physical_gpus()
+        if num_task_slots > num_gpus // num_gpus_per_node:
+            num_task_slots = num_gpus // num_gpus_per_node
+
+    physical_mem_bytes = _get_total_physical_memory()
+    shared_mem_bytes = _get_total_shared_memory()
+
+    (
+        ray_worker_node_heap_mem_bytes,
+        ray_worker_node_object_store_bytes,
+    ) = _calc_mem_per_ray_worker_node(
+        num_task_slots,
+        physical_mem_bytes,
+        shared_mem_bytes,
+        object_store_memory_per_node,
+    )
+    return (
+        ray_worker_node_heap_mem_bytes,
+        ray_worker_node_object_store_bytes,
+        None,
     )
 
 
@@ -258,30 +294,10 @@ def get_avail_mem_per_ray_worker_node(
 
     def mapper(_):
         try:
-            num_cpus = _get_cpu_cores()
-            num_task_slots = num_cpus // num_cpus_per_node
-
-            if num_gpus_per_node > 0:
-                num_gpus = _get_num_physical_gpus()
-                if num_task_slots > num_gpus // num_gpus_per_node:
-                    num_task_slots = num_gpus // num_gpus_per_node
-
-            physical_mem_bytes = _get_total_physical_memory()
-            shared_mem_bytes = _get_total_shared_memory()
-
-            (
-                ray_worker_node_heap_mem_bytes,
-                ray_worker_node_object_store_bytes,
-            ) = _calc_mem_per_ray_worker_node(
-                num_task_slots,
-                physical_mem_bytes,
-                shared_mem_bytes,
+            return _get_avail_mem_per_ray_worker_node(
+                num_cpus_per_node,
+                num_gpus_per_node,
                 object_store_memory_per_node,
-            )
-            return (
-                ray_worker_node_heap_mem_bytes,
-                ray_worker_node_object_store_bytes,
-                None,
             )
         except Exception as e:
             return -1, -1, repr(e)

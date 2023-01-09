@@ -13,7 +13,6 @@ pytestmark = pytest.mark.skipif(
 class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
     @classmethod
     def setup_class(cls):
-        super().setup_class()
         cls.num_total_cpus = 4
         cls.num_total_gpus = 4
         cls.num_cpus_per_spark_task = 2
@@ -35,7 +34,7 @@ class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
                 "spark.worker.resource.gpu.discoveryScript", gpu_discovery_script_path
             )
             .config("spark.executorEnv.RAY_ON_SPARK_WORKER_CPU_CORES", "4")
-            .config("spark.executorEnv.RAY_ON_SPARK_WORKER_GPU_CORES", "4")
+            .config("spark.executorEnv.RAY_ON_SPARK_WORKER_GPU_NUM", "4")
             .getOrCreate()
         )
 

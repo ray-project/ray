@@ -44,10 +44,6 @@ class RayOnSparkCPUClusterTestBase(ABC):
     max_spark_tasks = None
 
     @classmethod
-    def setup_class(cls):
-        pass
-
-    @classmethod
     def teardown_class(cls):
         time.sleep(10)  # Wait all background spark job canceled.
         cls.spark.stop()
@@ -154,7 +150,6 @@ class RayOnSparkCPUClusterTestBase(ABC):
 class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
     @classmethod
     def setup_class(cls):
-        super().setup_class()
         cls.num_total_cpus = 2
         cls.num_total_gpus = 0
         cls.num_cpus_per_spark_task = 1
