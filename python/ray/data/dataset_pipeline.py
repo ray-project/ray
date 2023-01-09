@@ -1151,8 +1151,9 @@ class DatasetPipeline(Generic[T]):
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
 
-        # Peek has already been executed so we use the cached first dataset and
-        # remaining_dataset_iter.
+        # If the first dataset has already been executed (via a peek operation), then
+        # we don't re-execute the first dataset when iterating through the pipeline.
+        # We re-use the saved _first_dataset and _remaining_dataset_iter
         if self._first_dataset is not None:
 
             class _IterableWrapper(Iterable):
@@ -1291,6 +1292,8 @@ class DatasetPipeline(Generic[T]):
                 length=1,
                 progress_bars=True,
             )
+            # Cache the executed _first_dataset and store an iterator
+            # for the remaining dataset generators.
             self._first_dataset = next(peek_pipe.iter_datasets())
             self._remaining_dataset_iter = dataset_iter
         return self._first_dataset
