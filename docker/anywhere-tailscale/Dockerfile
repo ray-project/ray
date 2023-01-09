@@ -7,10 +7,6 @@ ENV NODETYPE=head
 
 ENV CFLAGS="-O3"
 
-ENV DDNS_LOGIN=username
-ENV DDNS_PASSWORD=password
-ENV DDNS_HOST=nexus.usethetools.com
-
 ENV N2N_INTERFACE=tailscale0
 
 

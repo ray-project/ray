@@ -10,13 +10,6 @@ export IPADDRESS=$IPADDRESS
 # Export the random string as an environment variable
 export RANDOMSTRING=$RANDOMSTRING
 
-
-# Create named pipes
-edgepipe=/tmp/f$RANDOMSTRING
-dhcppipe=/tmp/d$RANDOMSTRING
-mkfifo $edgepipe
-mkfifo $dhcppipe
-
 set -ae
 
 # GC logging set to default value of path.logs
