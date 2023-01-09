@@ -2721,7 +2721,7 @@ class Dataset(Generic[T]):
 
         yield from batch_block_refs(
             blocks.iter_blocks(),
-            stats,
+            stats=stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
