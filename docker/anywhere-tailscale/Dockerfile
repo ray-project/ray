@@ -11,12 +11,8 @@ ENV DDNS_LOGIN=username
 ENV DDNS_PASSWORD=password
 ENV DDNS_HOST=nexus.usethetools.com
 
-ENV N2N_COMMUNITY=community
-ENV N2N_FEDERATION=clusteranywhere
-ENV N2N_SUPERNODE=$DDNS_HOST
-ENV N2N_SUPERNODE_PORT=7654
 ENV N2N_INTERFACE=tailscale0
-ENV N2N_KEY=$DDNS_HOST
+
 
 #the $RANDOMSTRING variable is defined in the startup script
 #ENV N2N_KEY=$RANDOMSTRING
