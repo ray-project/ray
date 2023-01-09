@@ -2159,7 +2159,8 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   if (recursive_success) {
     return Status::OK();
   } else {
-    return Status::UnknownError("Recursive task cancelation failed--check warning logs.");
+    return Status::UnknownError(
+        "Recursive task cancellation failed--check warning logs.");
   }
 }
 
