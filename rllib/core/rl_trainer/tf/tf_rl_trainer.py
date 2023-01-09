@@ -3,7 +3,6 @@ import numpy as np
 from typing import (
     Any,
     Mapping,
-    Tuple,
     Union,
     Type,
     Optional,
@@ -13,7 +12,6 @@ from typing import (
     Hashable,
 )
 
-from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
     ParamOptimizerPairs,
@@ -92,9 +90,13 @@ class TfRLTrainer(RLTrainer):
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(RLTrainer)
-    def _make_distributed(self) -> Tuple[RLModule, RLOptimizer]:
+    def _make_distributed(self) -> RLModule:
         # TODO: Does strategy has to be an attribute here? if so it's very hidden to
         # the user of this class that there is such an attribute.
+
+        # TODO (Kourosh, Avnish): The optimizers still need to be created within
+        # strategy.scope. Otherwise parameters of optimizers won't be properly
+        # synced
         self.strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with self.strategy.scope():
             module = self._make_module()
