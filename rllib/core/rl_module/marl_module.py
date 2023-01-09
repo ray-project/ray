@@ -367,7 +367,7 @@ class MultiAgentRLModule(RLModule):
         """
         return {
             "class": self.__class__,
-            "serialized_rl_modules": {
+            "rl_modules": {
                 module_id: module.serialize()
                 for module_id, module in self._rl_modules.items()
             },
@@ -382,9 +382,9 @@ class MultiAgentRLModule(RLModule):
             The state should contain the keys "class", "kwargs", and "state".
 
             - "class" is the class of the RLModule to be constructed.
-            - "serialized_rl_modules" is a dict mapping module ids of the
-                RLModules to their serialized states. The serialized states
-                can be obtained from `RLModuleserialize()`.
+            - "rl_modules" is a dict mapping module ids of the RLModules to
+                their serialized states. The serialized states can be obtained
+                from `RLModule.serialize()`.
 
         NOTE: this state is typically obtained from `serialize()`.
 
@@ -392,10 +392,10 @@ class MultiAgentRLModule(RLModule):
             checkpointing and fault tolerance.
 
         Returns:
-            A deserialized RLModule.
+            A deserialized MultiAgentRLModule.
         """
         rl_modules = {}
-        for module_id, module_state in state["serialized_rl_modules"].items():
+        for module_id, module_state in state["rl_modules"].items():
             rl_modules[module_id] = RLModule.deserialize(module_state)
         return cls(rl_modules)
 
