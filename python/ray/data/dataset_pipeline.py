@@ -203,7 +203,7 @@ class DatasetPipeline(Generic[T]):
             blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
         yield from batch_block_refs(
             self._iter_blocks(),
-            self._stats,
+            stats=self._stats,
             prefetch_blocks=prefetch_blocks,
             clear_block_after_read=blocks_owned_by_consumer,
             batch_size=batch_size,
