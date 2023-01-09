@@ -79,7 +79,7 @@ class DatasetPipeline(Generic[T]):
         self,
         base_iterable: Iterable[Callable[[], Dataset[T]]],
         stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
-        length: int = None,
+        length: Optional[int] = None,
         progress_bars: bool = progress_bar._enabled,
         _executed: List[bool] = None,
     ):
@@ -1168,7 +1168,7 @@ class DatasetPipeline(Generic[T]):
             remaining_pipeline = DatasetPipeline(
                 base_iterable=_IterableWrapper(self._remaining_dataset_iter),
                 stages=self._stages.copy(),
-                length=self._length - 1,
+                length=(self._length - 1) if self._length else None,
                 progress_bars=True,
             )
             iter = itertools.chain(
