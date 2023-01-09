@@ -208,7 +208,7 @@ def _prefetch_blocks(
         itertools.islice(block_ref_iter, window_size), maxlen=window_size
     )
     with stats.iter_wait_s.timer() if stats else nullcontext():
-        prefetcher.prefetch_blocks(list(sliding_window.queue))
+        prefetcher.prefetch_blocks(list(sliding_window))
 
     while sliding_window:
         block_ref = sliding_window.popleft()
