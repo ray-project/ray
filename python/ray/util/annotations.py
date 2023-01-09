@@ -124,7 +124,7 @@ def Deprecated(*args, **kwargs):
         return Deprecated()(args[0])
 
     doc_message = (
-        "DEPRECATED: This API is deprecated and may be removed "
+        "**DEPRECATED**: This API is deprecated and may be removed "
         "in future Ray releases."
     )
     warning_message = (
