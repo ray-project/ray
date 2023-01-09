@@ -289,6 +289,7 @@ class RLTrainer:
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         """Add a module to the trainer.
 
@@ -299,35 +300,29 @@ class RLTrainer:
             set_optimizer_fn: A function that takes in the module and returns a list of
                 (param, optimizer) pairs. Each element in the tuple describes a
                 parameter group that share the same optimizer object, if None, the
-                default optimizer (obtained from the exiting optimizer dictionary) will
-                be used.
+                default optimizer_cls will be used with all the parameters from the
+                module.
+            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
+                should be provided.
         """
         module = module_cls.from_model_config(**module_kwargs)
 
         # construct a default set_optimizer_fn if not provided
         if set_optimizer_fn is None:
-            # default is to use the first optimizer class and default parameters
-            optimizer_obj = next(iter(self._optim_to_param))
-
-            if optimizer_obj is None:
+            if optimizer_cls is None:
                 raise ValueError(
-                    "No optimizer is specified. RLlib could not obtain the default "
-                    "optimizer from configure_optimizer() either. This is could "
-                    "mean that you module initially had no parameters and therefore "
-                    "no optimizers. Please specify set_optimizer_fn for new parameters."
+                    "Either set_optimizer_fn or optimizer_cls must be provided."
                 )
 
-            optimizer_cls = optimizer_obj.__class__
-
             def set_optimizer_fn(module):
-                optimizer = self.__get_optimizer_obj(module, optimizer_cls)
-                parameters = self.__get_parameters(module)
+                optimizer = self._get_optimizer_obj(module, optimizer_cls)
+                parameters = self._get_parameters(module)
                 return [(parameters, optimizer)]
 
         for param_seq, optimizer in set_optimizer_fn(module):
             self._optim_to_param[optimizer] = []
             for param in param_seq:
-                param_ref = self.__get_param_ref(param)
+                param_ref = self._get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
@@ -343,9 +338,9 @@ class RLTrainer:
         """
         module = self._module[module_id]
 
-        parameters = self.__get_parameters(module)
+        parameters = self._get_parameters(module)
         for param in parameters:
-            param_ref = self.__get_param_ref(param)
+            param_ref = self._get_param_ref(param)
             if param_ref in self._params:
                 del self._params[param_ref]
             if param_ref in self._param_to_optim:
@@ -391,7 +386,7 @@ class RLTrainer:
         for param_seq, optimizer in self.configure_optimizers():
             self._optim_to_param[optimizer] = []
             for param in param_seq:
-                param_ref = self.__get_param_ref(param)
+                param_ref = self._get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
@@ -420,49 +415,48 @@ class RLTrainer:
         """
         raise NotImplementedError
 
-    def __get_param_ref(self, param: ParamType) -> Hashable:
+    @abc.abstractmethod
+    def _get_param_ref(self, param: ParamType) -> Hashable:
         """Returns a reference to a parameter.
 
-        In torch this is simply the parameter itself. In tf this is the .ref() of the
+        This should be overriden in framework specific trainer. For example in torch it
+        will return the parameter itself, while in tf it returns the .ref() of the
         variable. The purpose is to retrieve a unique reference to the parameters.
+
+        Args:
+            param: The parameter to get the reference to.
+
+        Returns:
+            A reference to the parameter.
         """
-        if torch and isinstance(param, torch.nn.Parameter):
-            return param
-        elif tf and isinstance(param, tf.Variable):
-            return param.ref()
-        else:
-            raise ValueError(
-                "The parameter must be a torch.nn.Parameter or a tf.Variable."
-            )
 
-    def __get_parameters(self, module: RLModule) -> Sequence[ParamType]:
-        """Returns the parameters of a module."""
-        if torch and isinstance(module, torch.nn.Module):
-            return module.parameters()
-        elif tf and isinstance(module, tf.keras.Model):
-            return module.trainable_variables
-        else:
-            raise ValueError(
-                "The module must be a torch.nn.Module or a tf.keras.Model."
-            )
+    @abc.abstractmethod
+    def _get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+        """Returns the parameters of a module.
 
-    def __get_optimizer_obj(
+        This should be overriden in framework specific trainer. For example in torch it
+        will return .parameters(), while in tf it returns .trainable_variables.
+
+        Args:
+            module: The module to get the parameters from.
+
+        Returns:
+            The parameters of the module.
+        """
+
+    @abc.abstractmethod
+    def _get_optimizer_obj(
         self, module: RLModule, optimizer_cls: Type[Optimizer]
     ) -> Optimizer:
         """Returns the optimizer instance of type optimizer_cls from the module
 
         In torch this is the optimizer object initialize with module parameters. In tf
         this is initialized without module parameters.
-        """
-        lr = self.optimizer_config.get("lr", 1e-3)
-        if torch and isinstance(module, torch.nn.Module):
-            optimizer = optimizer_cls(module.parameters(), lr=lr)
-        elif tf and isinstance(module, tf.keras.Model):
-            optimizer = optimizer_cls(learning_rate=lr)
-        else:
-            raise ValueError(
-                "Unknown module type. Only torch.nn.Module and "
-                "tf.keras.Model are supported."
-            )
 
-        return optimizer
+        Args:
+            module: The module of type RLModule to get the optimizer from.
+            optimizer_cls: The optimizer class to use.
+
+        Returns:
+            The optimizer object.
+        """

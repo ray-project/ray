@@ -4,7 +4,11 @@ from typing import Any, List, Mapping, Type, Optional, Callable
 import ray
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer, ParamOptimizerPairs
+from ray.rllib.core.rl_trainer.rl_trainer import (
+    RLTrainer,
+    ParamOptimizerPairs,
+    Optimizer,
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
@@ -129,6 +133,7 @@ class TrainerRunner:
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         """Add a module to the RLTrainers maintained by this TrainerRunner.
 
@@ -141,6 +146,8 @@ class TrainerRunner:
                 parameter group that share the same optimizer object, if None, the
                 default optimizer (obtained from the exiting optimizer dictionary) will
                 be used.
+            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
+                should be provided.
         """
         refs = []
         for worker in self.workers:
@@ -149,6 +156,7 @@ class TrainerRunner:
                 module_cls=module_cls,
                 module_kwargs=module_kwargs,
                 set_optimizer_fn=set_optimizer_fn,
+                optimizer_cls=optimizer_cls,
             )
             refs.append(ref)
         ray.get(refs)

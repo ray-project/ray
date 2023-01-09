@@ -1,12 +1,25 @@
 import logging
 import numpy as np
-from typing import Any, Mapping, Tuple, Union, Type, Optional, Callable, Dict
+from typing import (
+    Any,
+    Mapping,
+    Tuple,
+    Union,
+    Type,
+    Optional,
+    Callable,
+    Dict,
+    Sequence,
+    Hashable,
+)
 
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
     ParamOptimizerPairs,
     ParamRef,
+    Optimizer,
+    ParamType,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -122,6 +135,7 @@ class TfRLTrainer(RLTrainer):
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         if self.distributed:
             with self.strategy.scope():
@@ -130,6 +144,7 @@ class TfRLTrainer(RLTrainer):
                     module_cls=module_cls,
                     module_kwargs=module_kwargs,
                     set_optimizer_fn=set_optimizer_fn,
+                    optimizer_cls=optimizer_cls,
                 )
         else:
             super().add_module(
@@ -137,6 +152,7 @@ class TfRLTrainer(RLTrainer):
                 module_cls=module_cls,
                 module_kwargs=module_kwargs,
                 set_optimizer_fn=set_optimizer_fn,
+                optimizer_cls=optimizer_cls,
             )
         self.traced_update_fn = tf.function(self._do_update_fn)
 
@@ -175,3 +191,18 @@ class TfRLTrainer(RLTrainer):
         for key, value in batch.items():
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
         return batch
+
+    @override(RLTrainer)
+    def _get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+        return module.trainable_variables
+
+    @override(RLTrainer)
+    def _get_param_ref(self, param: ParamType) -> Hashable:
+        return param.ref()
+
+    @override(RLTrainer)
+    def _get_optimizer_obj(
+        self, module: RLModule, optimizer_cls: Type[Optimizer]
+    ) -> Optimizer:
+        lr = self.optimizer_config.get("lr", 1e-3)
+        return optimizer_cls(learning_rate=lr)

@@ -1,6 +1,8 @@
 import gymnasium as gym
 import unittest
 import pytest
+
+import tensorflow as tf
 import ray
 
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
@@ -100,6 +102,7 @@ class TestTfRLTrainer(unittest.TestCase):
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
+            optimizer_cls=tf.keras.optimizers.Adam,
         )
 
         # do training that includes the test_module
