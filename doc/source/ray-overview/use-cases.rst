@@ -57,6 +57,8 @@ Batch inference refers to generating model predictions over a set of input obser
         :text: [Example] Batch OCR processing using Ray Data
         :classes: btn-link btn-block stretched-link
 
+.. _ref-use-cases-mmt:
+
 Many Model Training
 -------------------
 
