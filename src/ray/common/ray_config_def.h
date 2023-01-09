@@ -96,8 +96,7 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// memory_monitor_refresh_ms. If the task or actor is not retriable then this value is
 /// ignored. This retry counter is only used when the process is killed due to memory, and
 /// the retry counter of the task or actor is only used when it fails in other ways
-/// that is not related to running out of memory. Note infinite retry (-1) is not
-/// supported.
+/// that is not related to running out of memory. Retries indefinitely if the value is -1.
 RAY_CONFIG(uint64_t, task_oom_retries, 15)
 
 RAY_CONFIG(std::string, worker_killing_policy, "retriable_lifo")

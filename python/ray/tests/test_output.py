@@ -177,6 +177,30 @@ ray.get([f.remote() for _ in range(15)])
     assert "Tip:" not in err_str
 
 
+def test_autoscaler_prefix():
+    script = """
+import ray
+import time
+
+ray.init(num_cpus=1)
+
+@ray.remote(num_cpus=1)
+class A:
+    pass
+
+a = A.remote()
+b = A.remote()
+time.sleep(25)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "(autoscaler" in out_str
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = f"""
