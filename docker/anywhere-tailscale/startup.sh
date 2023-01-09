@@ -38,10 +38,10 @@ sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJo
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.name=nexus.chimp-beta.ts.net \
-            -Cdiscovery.type=zen
+            -Cdiscovery.type=zen \
             -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net \
             -Cgateway.expected_data_nodes=2 \
-            -Cgateway.recover_after_data_nodes=1 \
+            -Cgateway.recover_after_data_nodes=2 \
             &
 else
 
@@ -49,10 +49,11 @@ sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJo
 nexus=$(tailscale ip nexus)
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             #-Cnode.name=${DDNS_HOST} \
-            -Cdiscovery.type=zen
-            -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net \
+            -Cdiscovery.type=zen \
+            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net,$nexus \
+            -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
             -Cgateway.expected_data_nodes=2 \
-            -Cgateway.recover_after_data_nodes=1 \
+            -Cgateway.recover_after_data_nodes=2 \
             &
 fi
 
