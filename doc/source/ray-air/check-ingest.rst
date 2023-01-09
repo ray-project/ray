@@ -121,7 +121,7 @@ Enabling Streaming Ingest
     Use streaming ingest when:
 
     * you have large datasets that don't fit into memory; and
-    * reading the preprocessed dataset from disk is slower than re-executing the preprocessing step on each epoch
+    * re-executing the preprocessing step on each epoch is faster than caching the preprocessed dataset on disk and reloading from disk on each epoch
 
     Note that this feature is experimental and the actual object store memory
     usage may vary. Please file a `GitHub issue <https://github.com/ray-project/ray/issues>`_ if you run into problems.

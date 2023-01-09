@@ -147,7 +147,7 @@ class DatasetIterator(abc.ABC):
         Returns:
             An iterator over Torch Tensor batches.
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     def to_tf(
         self,
@@ -224,11 +224,11 @@ class DatasetIterator(abc.ABC):
         Returns:
             A ``tf.data.Dataset`` that yields inputs and targets.
         """  # noqa: E501
-        return NotImplementedError
+        raise NotImplementedError
 
     @abc.abstractmethod
     def stats(self) -> str:
-        return NotImplementedError
+        raise NotImplementedError
 
     def iter_epochs(self, max_epoch: int = -1) -> None:
         raise DeprecationWarning(
@@ -238,3 +238,10 @@ class DatasetIterator(abc.ABC):
             "To iterate over one epoch of data, use iter_batches(), "
             "iter_torch_batches(), or to_tf()."
         )
+
+    @abc.abstractmethod
+    def _with_backward_compat(self) -> "DatasetIterator":
+        """
+        Provide backwards compatibility for AIR users.
+        """
+        raise NotImplementedError

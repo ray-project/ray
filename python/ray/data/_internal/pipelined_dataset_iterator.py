@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
+import warnings
 
 from ray.data import Dataset
 from ray.data.dataset_iterator import DatasetIterator
@@ -103,3 +104,32 @@ class PipelinedDatasetIterator(DatasetIterator):
 
     def stats(self) -> str:
         return self._base_dataset_pipeline.stats()
+
+    def _with_backward_compat(self) -> DatasetIterator:
+        return PipelinedDatasetIteratorWithBackwardCompat(self)
+
+
+class PipelinedDatasetIteratorWithBackwardCompat(PipelinedDatasetIterator):
+    def __init__(
+        self,
+        dataset_iterator: PipelinedDatasetIterator,
+    ):
+        self._dataset_iterator = dataset_iterator
+
+    def __getattr__(self, name):
+        if name in "_dataset_iterator":
+            raise AttributeError
+
+        if getattr(self._dataset_iterator, name, None) is not None:
+            return getattr(self._dataset_iterator, name)
+
+        warnings.warn(
+            "session.get_dataset_shard returns a ray.data.DatasetIterator "
+            "instead of a DatasetPipeline as of Ray v2.3. "
+            "Use iter_torch_batches(), to_tf(), or iter_batches() to "
+            "iterate over one epoch. See "
+            "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
+            "for full DatasetIterator docs."
+        )
+
+        return getattr(self._dataset_iterator._base_dataset_pipeline, name)
