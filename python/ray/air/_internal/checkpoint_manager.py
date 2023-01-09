@@ -55,10 +55,11 @@ class _TrackedCheckpoint:
             into `"evaluation/episode_reward_mean"`.
         node_ip: IP of the node where the checkpoint was generated. Defaults
             to the current node.
-        local_dir_to_remote_uri_fn: Function that takes in this checkpoint's local directory path and returns the corresponding remote URI in the cloud. This should only be specified if cloud checkpointing is enabled.
-            If specified, it means the data was synced to cloud. Only applied during
-            conversion to AIR checkpoint and only if ``dir_or_data`` is or
-            resolves to a directory path.
+        local_dir_to_remote_uri_fn: Function that takes in this checkpoint's local
+            directory path and returns the corresponding remote URI in the cloud.
+            This should only be specified if the data was synced to cloud.
+            Only applied during conversion to AIR checkpoint and only
+            if ``dir_or_data`` is or resolves to a directory path.
     """
 
     def __init__(
