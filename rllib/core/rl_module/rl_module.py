@@ -329,13 +329,6 @@ class RLModule(abc.ABC):
 
         Args:
             state: The serialized state of the module.
-            The state should contain the keys "class", "kwargs", and "state".
-
-            - "class" is the class of the RLModule to be constructed.
-            - "kwargs" is a dict of keyword arguments to be passed to the
-                constructor of the RLModule.
-            - "state" is the state dict of the RLModule, which can be obtained
-                by calling `get_state()`.
 
         NOTE: this state is typically obtained from `serialize()`.
 
@@ -345,6 +338,12 @@ class RLModule(abc.ABC):
         Returns:
             A deserialized RLModule.
         """
+        for key in ["class", "args", "kwargs", "state"]:
+            if key not in state:
+                raise ValueError(
+                    "By default, the serialized state must contain the following "
+                    f"keys: 'class', 'args', 'args', and 'kwargs'. Got: {state.keys()}"
+                )
         constructor = state["class"]
         module = constructor(*state["args"], **state["kwargs"])
         module.set_state(state["state"])
