@@ -624,8 +624,8 @@ message GetTaskEventsRequest {
   // If set, the exact `limit` TaskEvents returned do not have any ordering or selection
   // guarantee.
   optional int64 limit = 3;
-  // True if only task events with non-empty task state changes should be returned.
-  bool task_state_only = 4;
+  // True if task events from driver (only profiling events) should be excluded.
+  bool exclude_driver_task = 4;
 }
 
 message GetTaskEventsReply {
