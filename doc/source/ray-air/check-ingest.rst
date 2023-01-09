@@ -88,7 +88,7 @@ Enabling Streaming Ingest
     You should use bulk ingest when:
 
     * you have enough memory to fit data blocks in cluster object store; or
-    * your preprocessing step is expensive to recompute on each epoch
+    * your preprocessing transform is expensive to recompute on each epoch
 
 .. tabbed:: Streaming Ingest (experimental)
 
@@ -96,7 +96,7 @@ Enabling Streaming Ingest
     Ray object store at once, AIR will load a fraction of the dataset at a
     time. This can be desirable when the dataset is very large, and caching it
     all at once would cause expensive disk spilling. The downside is that the
-    dataset will have to be recomputed on each epoch, which can add overhead if
+    dataset will have to be preprocessed on each epoch, which can add overhead if
     the computation is expensive.
 
     To enable this mode, use the :py:meth:`max_object_store_memory_fraction
