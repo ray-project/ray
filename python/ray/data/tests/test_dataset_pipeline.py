@@ -476,8 +476,8 @@ def test_schema_after_repeat(ray_start_regular_shared):
     assert pipe.schema() == int
     output = []
     for ds in pipe.iter_datasets():
-        output.extend(dataset.take())
-    assert output.sort() == (list(range(6)) * 2).sort()
+        output.extend(ds.take())
+    assert sorted(output) == sorted(list(range(6)) * 2)
 
     pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2).repeat(2)
     assert pipe.schema() == int
@@ -485,8 +485,8 @@ def test_schema_after_repeat(ray_start_regular_shared):
     pipe = pipe.map_batches(lambda batch: batch)
     output = []
     for ds in pipe.iter_datasets():
-        output.extend(dataset.take())
-    assert output.sort() == (list(range(6)) * 2).sort()
+        output.extend(ds.take())
+    assert sorted(output) == sorted(list(range(6)) * 2)
 
 
 def test_split(ray_start_regular_shared):
