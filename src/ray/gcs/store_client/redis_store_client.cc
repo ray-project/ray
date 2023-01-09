@@ -265,11 +265,11 @@ Status RedisStoreClient::DoPut(const std::string &key,
       overwrite ? "HSET" : "HSETNX", external_storage_namespace_, key, data};
   RedisCallback write_callback = nullptr;
   if (callback) {
-    write_callback = [callback = std::move(callback),
-                      overwrite](const std::shared_ptr<CallbackReply> &reply) {
-      auto added_num = reply->ReadAsInteger();
-      callback(added_num != 0);
-    };
+    write_callback =
+        [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
+          auto added_num = reply->ReadAsInteger();
+          callback(added_num != 0);
+        };
   }
 
   auto shard_context = redis_client_->GetShardContext(key);
