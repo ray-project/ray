@@ -6,6 +6,8 @@ from typing import Mapping, Any, TYPE_CHECKING, Union
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
+import ray
+from ray.exceptions import RayError
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -86,12 +88,19 @@ class RLModule(abc.ABC):
             next_obs = obs
 
     Args:
-        config: The config object for the module.
+        *args: Arguments for constructing the RLModule.
+        **kwargs: Keyword args for constructing the RLModule.
 
     Abstract Methods:
         forward_train: Forward pass during training.
         forward_exploration: Forward pass during training for exploration.
         forward_inference: Forward pass during inference.
+
+    Error:
+        The args and kwargs that are passed to the constructor are saved for
+        serialization and deserialization purposes. The RLModule checks if they
+        are serializable/deserializable using ray and if they are not, a
+        ValueError is thrown.
 
     Note: There is a reason that the specs are not written as abstract properties.
         The reason is that torch overrides `__getattr__` and `__setattr__`. This means
@@ -100,6 +109,9 @@ class RLModule(abc.ABC):
         `__getattr__` which will give a confusing error about the attribute not found.
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
+
+    def __init__(self, *args, **kwargs):
+        self._args_and_kwargs = self.__check_if_args_kwargs_serializable(args, kwargs)
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -303,13 +315,13 @@ class RLModule(abc.ABC):
         """Sets the state dict of the module."""
 
     def serialize(self) -> Mapping[str, Any]:
-        """Return the serialized state of the module
-
-        NOTE: This method needs to be implemented in order to support
-        checkpointing and fault tolerance.
-
-        """
-        raise NotImplementedError
+        """Return the serialized state of the module."""
+        return {
+            "class": self.__class__,
+            "args": self._args_and_kwargs["args"],
+            "kwargs": self._args_and_kwargs["kwargs"],
+            "state": self.get_state(),
+        }
 
     @classmethod
     def deserialize(cls, state: Mapping[str, Any]) -> "RLModule":
@@ -334,7 +346,7 @@ class RLModule(abc.ABC):
             A deserialized RLModule.
         """
         constructor = state["class"]
-        module = constructor(**state["kwargs"])
+        module = constructor(*state["args"], **state["kwargs"])
         module.set_state(state["state"])
         return module
 
@@ -351,3 +363,27 @@ class RLModule(abc.ABC):
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
         return MultiAgentRLModule({DEFAULT_POLICY_ID: self})
+
+    @staticmethod
+    def __check_if_args_kwargs_serializable(args, kwargs):
+        for arg in args:
+            try:
+                # if the object is truly serializable we should be able to
+                # ray.put and ray.get it.
+                ray.get(ray.put(arg))
+            except RayError:
+                raise ValueError(
+                    "RLModule constructor arguments must be serializable. "
+                    f"Found non-serializable argument: {arg}"
+                )
+        for k, v in kwargs.items():
+            try:
+                # if the object is truly serializable we should be able to
+                # ray.put and ray.get it.
+                ray.get(ray.put(v))
+            except RayError:
+                raise ValueError(
+                    "RLModule constructor arguments must be serializable. "
+                    f"Found non-serializable keyword argument: {k} = {v}"
+                )
+        return {"args": args, "kwargs": kwargs}

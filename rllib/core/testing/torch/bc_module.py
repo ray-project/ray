@@ -20,7 +20,7 @@ class DiscreteBCTorchModule(TorchRLModule):
         hidden_dim: int,
         output_dim: int,
     ) -> None:
-        super().__init__()
+        super().__init__(input_dim, hidden_dim, output_dim)
         self.policy = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
@@ -84,18 +84,6 @@ class DiscreteBCTorchModule(TorchRLModule):
         }
 
         return cls(**config)
-
-    @override(RLModule)
-    def serialize(self) -> Mapping[str, Any]:
-        return {
-            "class": self.__class__,
-            "kwargs": {
-                "input_dim": self._input_dim,
-                "hidden_dim": self._hidden_dim,
-                "output_dim": self._output_dim,
-            },
-            "state": self.get_state(),
-        }
 
     def _default_inputs(self) -> dict:
         return {

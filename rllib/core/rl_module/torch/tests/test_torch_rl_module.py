@@ -89,6 +89,29 @@ class TestRLModule(unittest.TestCase):
         state2_after = module2.get_state()
         check(state, state2_after)
 
+    def test_serialize_deserialize(self):
+        env = gym.make("CartPole-v1")
+        module = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
+
+        # create a new module from the old module
+        new_module = module.deserialize(module.serialize())
+
+        # check that the new module is the same type
+        self.assertIsInstance(new_module, type(module))
+
+        # check that a parameter of their's is the same
+        self.assertEqual(new_module.input_dim, module.input_dim)
+
+        # check that their states are the same
+        check(module.get_state(), new_module.get_state())
+
+        # check that these 2 objects are not the same object
+        self.assertNotEqual(id(module), id(new_module))
+
 
 if __name__ == "__main__":
     import pytest
