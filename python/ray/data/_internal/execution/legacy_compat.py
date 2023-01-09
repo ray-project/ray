@@ -8,6 +8,7 @@ from typing import Iterator
 
 import ray
 from ray.data.block import Block, BlockMetadata, List
+from ray.data.datasource import ReadTask
 from ray.data._internal.stats import StatsDict, DatasetStats
 from ray.data._internal.stage_impl import RandomizeBlocksStage
 from ray.data._internal.block_list import BlockList
@@ -82,6 +83,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
 
     if hasattr(blocks, "_tasks"):
         read_tasks = blocks._tasks
+        assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
         inputs = InputDataBuffer(
             [
                 RefBundle(
