@@ -383,27 +383,23 @@ class StageStatsSummary:
     stage_name: str
     # Whether the stage associated with this StageStatsSummary object is a substage
     is_substage: bool
-    # Total stage walltime
+    # This is the total walltime of the entire stage, typically obtained from
+    # `DatasetStats.time_total_s`. An important distinction is that this is the
+    # overall runtime of the stage, pulled from the stats actor, whereas the
+    # computed walltimes in `self.wall_time` are calculated on a substage level.
     time_total_s: float
     # String summarizing high-level statistics from executing the stage
     block_execution_summary_str: str
-    # Dict with aggregated stats of wall times:
+    # The fields below are dicts with stats aggregated across blocks
+    # processed in this stage. For example:
     # {"min": ..., "max": ..., "mean": ..., "sum": ...}
     wall_time: Optional[Dict[str, float]] = None
-    # Dict with aggregated stats of cpu times:
-    # {"min": ..., "max": ..., "mean": ..., "sum": ...}
     cpu_time: Optional[Dict[str, float]] = None
-    # Dict with aggregated stats of heap memory usage:
-    # {"min": ..., "max": ..., "mean": ...}
+    # memory: no "sum" stat
     memory: Optional[Dict[str, float]] = None
-    # Dict with aggregated stats of output rows count:
-    # {"min": ..., "max": ..., "mean": ..., "sum": ...}
     output_num_rows: Optional[Dict[str, float]] = None
-    # Dict with aggregated stats of output sizes:
-    # {"min": ..., "max": ..., "mean": ..., "sum": ...}
     output_size_bytes: Optional[Dict[str, float]] = None
-    # Dict with aggregated stats of node usage counts:
-    # {"min": ..., "max": ..., "mean": ..., "count": ...}
+    # node_count: "count" stat instead of "sum"
     node_count: Optional[Dict[str, float]] = None
 
     @classmethod
