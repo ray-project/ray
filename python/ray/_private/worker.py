@@ -687,7 +687,14 @@ class Worker:
             debugger_breakpoint,
         )
 
-    @Deprecated
+    @Deprecated(
+        message="This function is deprecated and will be removed by Ray 2.4, "
+        "please use Runtime Environment "
+        f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core"
+        "/handling-dependencies.html "
+        "to manage worker's dependencies.",
+        warning=True,
+    )
     def run_function_on_all_workers(self, function: callable):
         """This function has been deprecated given the following issues:
             - no guarantee that the function run before the remote function run.
