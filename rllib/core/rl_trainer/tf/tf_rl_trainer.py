@@ -3,7 +3,6 @@ import numpy as np
 from typing import (
     Any,
     Mapping,
-    Tuple,
     Union,
     Type,
     Optional,
@@ -13,7 +12,6 @@ from typing import (
     Hashable,
 )
 
-from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
     ParamOptimizerPairs,
