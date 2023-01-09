@@ -9,6 +9,7 @@ import json
 import logging
 import multiprocessing
 import os
+import platform
 import re
 import signal
 import subprocess
@@ -1246,6 +1247,7 @@ def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
     py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    architecture: Optional[str] = None,
 ) -> str:
     """Returns the filename used for the nightly Ray wheel.
 
@@ -1257,17 +1259,27 @@ def get_wheel_filename(
         py_version (str):
             The major and minor Python versions concatenated.  Examples: "36",
             "37", "38", "39"
+        architecture: Architecture, e.g. ``x86_64`` or ``aarch64``. If None, will
+            be determined by calling ``platform.processor()``.
+
     Returns:
         The wheel file name.  Examples:
             ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
     assert py_version in ["36", "37", "38", "39"], py_version
 
+    architecture = architecture or platform.processor()
+
+    if architecture == "aarch64":
+        linux_os_string = "manylinux2014_aarch64"
+    else:
+        linux_os_string = "manylinux2014_x86_64"
+
     os_strings = {
         "darwin": "macosx_10_15_x86_64"
         if py_version in ["38", "39"]
         else "macosx_10_15_intel",
-        "linux": "manylinux2014_x86_64",
+        "linux": linux_os_string,
         "win32": "win_amd64",
     }
 
