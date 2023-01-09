@@ -874,6 +874,10 @@ CoreWorker::GetAllReferenceCounts() const {
 
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
+bool CoreWorker::HasOwner(const ObjectID &object_id) const {
+  return reference_counter_->HasOwner(object_id);
+}
+
 rpc::Address CoreWorker::GetOwnerAddressOrDie(const ObjectID &object_id) const {
   rpc::Address owner_address;
   auto status = GetOwnerAddress(object_id, &owner_address);
@@ -1207,9 +1211,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   std::ostringstream ids_stream;
 
   for (size_t i = 0; i < ids.size(); i++) {
-    rpc::Address unused_owner_address;
-    auto status = GetOwnerAddress(ids[i], &unused_owner_address);
-    if (status.IsObjectUnknownOwner()) {
+    if (!HasOwner(ids[i])) {
       ids_stream << ids[i] << " ";
       got_exception = true;
     }
@@ -1379,9 +1381,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   std::ostringstream ids_stream;
 
   for (size_t i = 0; i < ids.size(); i++) {
-    rpc::Address unused_owner_address;
-    auto status = GetOwnerAddress(ids[i], &unused_owner_address);
-    if (status.IsObjectUnknownOwner()) {
+    if (!HasOwner(ids[i])) {
       ids_stream << ids[i] << " ";
       missing_owners += 1;
     }
@@ -2171,7 +2171,8 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   if (recursive_success) {
     return Status::OK();
   } else {
-    return Status::UnknownError("Recursive task cancelation failed--check warning logs.");
+    return Status::UnknownError(
+        "Recursive task cancellation failed--check warning logs.");
   }
 }
 

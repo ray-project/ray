@@ -428,6 +428,23 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   ASSERT_EQ(stored_error, rpc::ErrorType::WORKER_DIED);
 }
 
+TEST_F(TaskManagerTest, TestTaskOomInfiniteRetry) {
+  RayConfig::instance().initialize(R"({"task_oom_retries": -1})");
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  int num_retries = 1;
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+
+  for (int i = 0; i < 10000; i++) {
+    ASSERT_EQ(num_retries_, i);
+    manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
+  }
+
+  manager_.MarkTaskCanceled(spec.TaskId());
+  manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
+}
+
 TEST_F(TaskManagerTest, TestTaskNotRetriableOomFailsImmediatelyEvenWithOomRetryCounter) {
   RayConfig::instance().initialize(R"({"task_oom_retries": 1})");
   int num_retries = 0;

@@ -513,6 +513,11 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
   }
 }
 
+bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  return object_id_refs_.find(object_id) != object_id_refs_.end();
+}
+
 bool ReferenceCounter::GetOwner(const ObjectID &object_id,
                                 rpc::Address *owner_address) const {
   absl::MutexLock lock(&mutex_);
