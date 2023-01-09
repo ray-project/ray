@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Uni
 import numpy as np
 
 import ray
+from ray.air.util.tensor_extensions.pandas import _create_possibly_ragged_ndarray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -1609,7 +1610,7 @@ def _resolve_parquet_args(
                 # NOTE(Clark): We use NumPy to consolidate these potentially
                 # non-contiguous buffers, and to do buffer bookkeeping in
                 # general.
-                np_col = np.array(
+                np_col = _create_possibly_ragged_ndarray(
                     [
                         np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
                         for buf in block.column(tensor_col_name)

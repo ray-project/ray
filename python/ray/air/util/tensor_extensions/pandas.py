@@ -1425,7 +1425,7 @@ TensorArray._add_logical_ops()
 
 
 def _create_possibly_ragged_ndarray(
-    values: Union[np.ndarray, ABCSeries, Sequence[np.ndarray]]
+    values: Union[np.ndarray, ABCSeries, Sequence[Any]]
 ) -> np.ndarray:
     """
     Create a possibly ragged ndarray.
