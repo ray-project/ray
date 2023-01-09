@@ -375,10 +375,10 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.reconfigure.remote(user_config)
+            self._ready_obj_ref = self._actor_handle.is_initialized.remote(user_config)
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
                 user_config,
                 # Ensure that `is_allocated` will execute before `reconfigure`,
                 # because `reconfigure` runs user code that could block the replica
@@ -431,22 +431,23 @@ class ActorReplicaWrapper:
         Check if current replica has started by making ray API calls on
         relevant actor / object ref.
 
+        Replica initialization calls __init__(), reconfigure(), and check_health().
+
         Returns:
             state (ReplicaStartupStatus):
                 PENDING_ALLOCATION:
                     - replica is waiting for a worker to start
                 PENDING_INITIALIZATION
-                    - replica reconfigure() haven't returned.
+                    - replica initialization hasn't finished.
                 FAILED:
-                    - replica __init__() failed.
+                    - replica initialization failed.
                 SUCCEEDED:
-                    - replica __init__() and reconfigure() succeeded.
+                    - replica initialization succeeded.
             version:
                 None:
-                    - replica reconfigure() haven't returned OR
-                    - replica __init__() failed.
+                    - for PENDING_ALLOCATION, PENDING_INITIALIZATION, or FAILED states
                 version:
-                    - replica __init__() and reconfigure() succeeded.
+                    - for SUCCEEDED state
         """
 
         # Check whether the replica has been allocated.
@@ -1406,9 +1407,10 @@ class DeploymentState:
                     name=self._name,
                     status=DeploymentStatus.UNHEALTHY,
                     message=(
-                        "The Deployment constructor failed "
-                        f"{failed_to_start_count} times in a row. See "
-                        "logs for details."
+                        f"The Deployment failed to start {failed_to_start_count} "
+                        "times in a row. This may be due to a problem with the "
+                        "deployment constructor or the initial health check failing. "
+                        "See logs for details."
                     ),
                 )
                 return False
