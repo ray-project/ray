@@ -35,6 +35,7 @@ sudo chmod +x /etc/rc0.d/tailscaledown.sh
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.name=nexus.chimp-beta.ts.net \
             -Cdiscovery.type=zen \
+            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net,$nexus \
             -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
             &
 
