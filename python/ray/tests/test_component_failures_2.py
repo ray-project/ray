@@ -104,7 +104,10 @@ def check_components_alive(cluster, component_type, check_component_alive):
         {
             "num_cpus": 8,
             "num_nodes": 4,
-            "_system_config": {"num_heartbeats_timeout": 10},
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_failure_threshold": 10,
+            },
         }
     ],
     indirect=True,
