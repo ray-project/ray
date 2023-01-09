@@ -177,19 +177,19 @@ class Dataset(Generic[T]):
         >>> ds = ray.data.range(1000)
         >>> # Transform in parallel with map_batches().
         >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
-        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        Dataset(num_blocks=..., num_rows=..., schema=...)
         >>> # Compute max.
         >>> ds.max()
         999
         >>> # Group the data.
         >>> ds.groupby(lambda x: x % 3).count()
-        Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
+        Dataset(num_blocks=..., num_rows=..., schema=...)
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle()
-        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        Dataset(num_blocks=..., num_rows=..., schema=...)
         >>> # Sort it back in order.
         >>> ds.sort()
-        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        Dataset(num_blocks=..., num_rows=..., schema=...)
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors without incurring a copy. Datasets support
@@ -202,9 +202,7 @@ class Dataset(Generic[T]):
         self,
         plan: ExecutionPlan,
         epoch: int,
-        lazy: bool,
-        *,
-        defer_execution: bool = False,
+        lazy: bool = True,
     ):
         """Construct a Dataset (internal API).
 
@@ -219,7 +217,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
         self._lazy = lazy
 
-        if not lazy and not defer_execution:
+        if not lazy:
             self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
@@ -243,7 +241,7 @@ class Dataset(Generic[T]):
             >>> # Transform python objects.
             >>> ds = ray.data.range(1000)
             >>> ds.map(lambda x: x * 2)
-            Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=..., schema=...)
             >>> # Transform Arrow records.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
@@ -797,7 +795,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(1000)
             >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
-            Dataset(num_blocks=..., num_rows=3000, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=..., schema=...)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -865,7 +863,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds.filter(lambda x: x % 2 == 0)
-            Dataset(num_blocks=..., num_rows=50, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=..., schema=...)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -959,10 +957,10 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(100)
             >>> # Shuffle this dataset randomly.
             >>> ds.random_shuffle()
-            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=..., schema=...)
             >>> # Shuffle this dataset with a fixed random seed.
             >>> ds.random_shuffle(seed=12345)
-            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=..., schema=...)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1005,7 +1003,7 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
-        return Dataset(plan, self._epoch, self._lazy, defer_execution=True)
+        return Dataset(plan, self._epoch, self._lazy)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -1526,7 +1524,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> # Group by a key function and aggregate.
             >>> ray.data.range(100).groupby(lambda x: x % 3).count()
-            Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
+            Dataset(num_blocks=..., num_rows=..., schema=...)
             >>> # Group by an Arrow table column and aggregate.
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
@@ -1926,7 +1924,7 @@ class Dataset(Generic[T]):
             >>> # Sort using the entire record as the key.
             >>> ds = ray.data.range(100)
             >>> ds.sort()
-            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=..., schema=...)
             >>> # Sort by a single column in descending order.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
@@ -3990,6 +3988,7 @@ class Dataset(Generic[T]):
             If your dataset represents a list of Python objects, then the default batch
             format is ``list``.
 
+            >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds  # doctest: +SKIP
             Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)

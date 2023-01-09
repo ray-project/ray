@@ -877,6 +877,10 @@ CoreWorker::GetAllReferenceCounts() const {
 
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
+bool CoreWorker::HasOwner(const ObjectID &object_id) const {
+  return reference_counter_->HasOwner(object_id);
+}
+
 rpc::Address CoreWorker::GetOwnerAddressOrDie(const ObjectID &object_id) const {
   rpc::Address owner_address;
   auto status = GetOwnerAddress(object_id, &owner_address);
@@ -1210,9 +1214,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   std::ostringstream ids_stream;
 
   for (size_t i = 0; i < ids.size(); i++) {
-    rpc::Address unused_owner_address;
-    auto status = GetOwnerAddress(ids[i], &unused_owner_address);
-    if (status.IsObjectUnknownOwner()) {
+    if (!HasOwner(ids[i])) {
       ids_stream << ids[i] << " ";
       got_exception = true;
     }
@@ -1338,11 +1340,20 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
   for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
     auto current = iter++;
     const auto &mem_id = *current;
-    auto found = memory_store->GetIfExists(mem_id);
-    if (found != nullptr && found->IsInPlasmaError()) {
-      plasma_object_ids.insert(mem_id);
-      ready.erase(mem_id);
-      memory_object_ids.erase(current);
+    auto ready_iter = ready.find(mem_id);
+    if (ready_iter != ready.end()) {
+      std::vector<std::shared_ptr<RayObject>> found;
+      RAY_CHECK_OK(memory_store->Get({mem_id},
+                                     /*num_objects=*/1,
+                                     /*timeout=*/0,
+                                     worker_context,
+                                     /*remote_after_get=*/false,
+                                     &found));
+      if (found.size() == 1 && found[0]->IsInPlasmaError()) {
+        plasma_object_ids.insert(mem_id);
+        ready.erase(ready_iter);
+        memory_object_ids.erase(current);
+      }
     }
   }
 }
@@ -1373,9 +1384,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   std::ostringstream ids_stream;
 
   for (size_t i = 0; i < ids.size(); i++) {
-    rpc::Address unused_owner_address;
-    auto status = GetOwnerAddress(ids[i], &unused_owner_address);
-    if (status.IsObjectUnknownOwner()) {
+    if (!HasOwner(ids[i])) {
       ids_stream << ids[i] << " ";
       missing_owners += 1;
     }
@@ -2150,7 +2159,8 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   if (recursive_success) {
     return Status::OK();
   } else {
-    return Status::UnknownError("Recursive task cancelation failed--check warning logs.");
+    return Status::UnknownError(
+        "Recursive task cancellation failed--check warning logs.");
   }
 }
 
