@@ -1812,19 +1812,6 @@ py_test(
     srcs = ["core/rl_module/tests/test_marl_module.py"]
 )
 
-py_test(
-    name = "test_rl_optimizer_torch",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/optim/tests/test_rl_optimizer_torch.py"]
-)
-
-py_test(
-    name = "test_rl_optimizer_tf",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/optim/tests/test_rl_optimizer_tf.py"]
-)
 
 py_test(
     name = "test_tf_rl_trainer",
