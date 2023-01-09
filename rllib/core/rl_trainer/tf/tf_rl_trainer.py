@@ -1,6 +1,17 @@
 import logging
 import numpy as np
-from typing import Any, Mapping, Tuple, Union, Type, Optional, Callable, Dict
+from typing import (
+    Any,
+    Mapping,
+    Tuple,
+    Union,
+    Type,
+    Optional,
+    Callable,
+    Dict,
+    Sequence,
+    Hashable,
+)
 
 from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.core.rl_trainer.rl_trainer import (
@@ -8,6 +19,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamOptimizerPairs,
     ParamRef,
     Optimizer,
+    ParamType,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -179,3 +191,18 @@ class TfRLTrainer(RLTrainer):
         for key, value in batch.items():
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
         return batch
+
+    @override(RLTrainer)
+    def _get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+        return module.trainable_variables
+
+    @override(RLTrainer)
+    def _get_param_ref(self, param: ParamType) -> Hashable:
+        return param.ref()
+
+    @override(RLTrainer)
+    def _get_optimizer_obj(
+        self, module: RLModule, optimizer_cls: Type[Optimizer]
+    ) -> Optimizer:
+        lr = self.optimizer_config.get("lr", 1e-3)
+        return optimizer_cls(learning_rate=lr)
