@@ -228,6 +228,7 @@ class DatasetIterator(abc.ABC):
 
     @abc.abstractmethod
     def stats(self) -> str:
+        """Returns a string containing execution timing information."""
         raise NotImplementedError
 
     def iter_epochs(self, max_epoch: int = -1) -> None:
