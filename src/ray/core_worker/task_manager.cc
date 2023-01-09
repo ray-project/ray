@@ -438,6 +438,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       if (num_oom_retries_left > 0) {
         will_retry = true;
         it->second.num_oom_retries_left--;
+      } else if (num_oom_retries_left == -1) {
+        will_retry = true;
+      } else {
+        RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
       if (num_retries_left > 0) {
