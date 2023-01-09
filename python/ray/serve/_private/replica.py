@@ -214,25 +214,13 @@ def create_replica_wrapper(name: str):
             """
             return ray.get_runtime_context().node_id
 
-        async def is_initialized(
+        async def reconfigure(
             self, user_config: Optional[Any] = None, _after: Optional[Any] = None
-        ):
+        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
-            await self._initialize_replica()
-
-            if user_config is not None:
-                await self.reconfigure(user_config)
-
-            # A new replica should not be considered healthy until it passes an
-            # initial health check. If an initial health check fails, consider
-            # it an initialization failure.
-            await self.check_health()
-            return self.get_metadata()
-
-        async def reconfigure(
-            self, user_config: Optional[Any] = None
-        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            if self.replica is None:
+                await self._initialize_replica()
             if user_config is not None:
                 await self.replica.reconfigure(user_config)
 
