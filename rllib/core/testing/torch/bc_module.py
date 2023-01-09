@@ -85,6 +85,18 @@ class DiscreteBCTorchModule(TorchRLModule):
 
         return cls(**config)
 
+    @override(RLModule)
+    def serialize(self) -> Mapping[str, Any]:
+        return {
+            "class": self.__class__,
+            "kwargs": {
+                "input_dim": self._input_dim,
+                "hidden_dim": self._hidden_dim,
+                "output_dim": self._output_dim,
+            },
+            "state": self.get_state(),
+        }
+
     def _default_inputs(self) -> dict:
         return {
             "obs": TorchTensorSpec("b, do", do=self.input_dim),

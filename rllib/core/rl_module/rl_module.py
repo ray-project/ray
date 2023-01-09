@@ -302,6 +302,42 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
+    def serialize(self) -> Mapping[str, Any]:
+        """Return the serialized state of the module
+
+        NOTE: This method needs to be implemented in order to support
+        checkpointing and fault tolerance.
+
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def deserialize(cls, state: Mapping[str, Any]) -> "RLModule":
+        """Construct a module from a serialized state.
+
+        Args:
+            state: The serialized state of the module.
+            The state should contain the keys "class", "kwargs", and "state".
+
+            - "class" is the class of the RLModule to be constructed.
+            - "kwargs" is a dict of keyword arguments to be passed to the
+                constructor of the RLModule.
+            - "state" is the state dict of the RLModule, which can be obtained
+                by calling `get_state()`.
+
+        NOTE: this state is typically obtained from `serialize()`.
+
+        NOTE: This method needs to be implemented in order to support
+            checkpointing and fault tolerance.
+
+        Returns:
+            A deserialized RLModule.
+        """
+        constructor = state["class"]
+        module = constructor(**state["kwargs"])
+        module.set_state(state["state"])
+        return module
+
     @abc.abstractmethod
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
         """Reserved API, Makes the module distributed."""

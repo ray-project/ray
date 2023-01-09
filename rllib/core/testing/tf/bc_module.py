@@ -32,6 +32,7 @@ class DiscreteBCTFModule(TfRLModule):
         self.policy = tf.keras.Sequential(layers)
         self._input_dim = input_dim
         self._output_dim = output_dim
+        self._hidden_dim = hidden_dim
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
@@ -83,6 +84,18 @@ class DiscreteBCTFModule(TfRLModule):
     @override(RLModule)
     def set_state(self, state: Mapping[str, Any]) -> None:
         self.policy.set_weights(state["policy"])
+
+    @override(RLModule)
+    def serialize(self) -> Mapping[str, Any]:
+        return {
+            "class": self.__class__,
+            "kwargs": {
+                "input_dim": self._input_dim,
+                "hidden_dim": self._hidden_dim,
+                "output_dim": self._output_dim,
+            },
+            "state": self.get_state(),
+        }
 
     @classmethod
     @override(RLModule)
