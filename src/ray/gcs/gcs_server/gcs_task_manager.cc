@@ -149,7 +149,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskFailed(const TaskID &task_id
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailed(
     const TaskID &root_task_id) {
-  RAY_LOG(DEBUG) << "Marking task failure for : " << task_id.Hex();
+  RAY_LOG(DEBUG) << "Marking task failure for : " << root_task_id.Hex();
   auto parent_task_itr = child_to_parent_task_index_.find(root_task_id);
   if (parent_task_itr != child_to_parent_task_index_.end()) {
     // Check if parent has failed and mark itself as failure if parent has failed.
@@ -375,7 +375,7 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 
     // Mark the task tree that contains this task as failure if the parent task has failed
     // or the task itself failed and its children needs to be marked failed.
-    task_event_storage_->MarkTaskTreeFailure(task_id);
+    task_event_storage_->MarkTaskTreeFailed(task_id);
 
     if (replaced_task_events) {
       if (replaced_task_events->has_state_updates()) {
