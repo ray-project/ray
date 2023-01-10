@@ -7,6 +7,7 @@ import ray.cloudpickle as cloudpickle
 from typing import Iterator, Tuple
 
 import ray
+from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
 from ray.data.datasource import ReadTask
 from ray.data._internal.stats import StatsDict, DatasetStats
@@ -24,6 +25,22 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+
+
+def execute_to_legacy_block_iterator(
+    executor: Executor,
+    plan: ExecutionPlan,
+    allow_clear_input_blocks: bool,
+    dataset_uuid: str,
+) -> Iterator[ObjectRef[Block]]:
+    dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    bundle_iter = executor.execute(dag, initial_stats=stats)
+    # TODO where do stats go
+    _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
+
+    for bundle in bundle_iter:
+        for block, _ in bundle.blocks:
+            yield block
 
 
 def execute_to_legacy_block_list(

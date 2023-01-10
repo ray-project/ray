@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray.types import ObjectRef
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
@@ -317,6 +318,32 @@ class ExecutionPlan:
         else:
             return None
 
+    def execute_to_iterator(
+        self,
+        allow_clear_input_blocks: bool = True,
+        force_read: bool = False,
+    ) -> Iterator[ObjectRef[Block]]:
+        """TODO"""
+
+        legacy = False
+        if legacy:
+            return self.execute(allow_clear_input_blocks, force_read).iter_blocks()
+
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
+        from ray.data._internal.execution.interfaces import ExecutionOptions
+        from ray.data._internal.execution.legacy_compat import (
+            execute_to_legacy_block_iterator,
+        )
+
+        executor = StreamingExecutor(ExecutionOptions())
+        block_iter = execute_to_legacy_block_iterator(
+            executor,
+            self,
+            allow_clear_input_blocks=allow_clear_input_blocks,
+            dataset_uuid=self._dataset_uuid,
+        )
+        return block_iter
+
     def execute(
         self,
         allow_clear_input_blocks: bool = True,
@@ -332,6 +359,7 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
+        assert False
         if not self.has_computed_output():
             context = DatasetContext.get_current()
 

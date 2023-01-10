@@ -2712,13 +2712,14 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        blocks = self._plan.execute()
-        stats = self._plan.stats()
+        block_iterator = self._plan.execute_to_iterator()
+        # TODO real stats
+        stats = DatasetStats(stages={}, parent=None)
 
         time_start = time.perf_counter()
 
         yield from batch_block_refs(
-            blocks.iter_blocks(),
+            block_iterator,
             stats=stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
@@ -4069,6 +4070,7 @@ class Dataset(Generic[T]):
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
+        return None  # TODO FIXME
         # We need schema to properly validate, so synchronously
         # fetch it if necessary.
         schema = self.schema(fetch_if_missing=True)
