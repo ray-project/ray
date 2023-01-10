@@ -1,11 +1,14 @@
 import math
-from typing import Any, List, Mapping, Type
+from typing import Any, List, Mapping, Type, Optional, Callable
 
 import ray
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
-from ray.rllib.core.optim.rl_optimizer import RLOptimizer
+from ray.rllib.core.rl_trainer.rl_trainer import (
+    RLTrainer,
+    ParamOptimizerPairs,
+    Optimizer,
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
@@ -78,7 +81,7 @@ class TrainerRunner:
         )
         self.workers = [w.actor for w in self.backend_executor.worker_group.workers]
 
-        ray.get([w.init_trainer.remote() for w in self.workers])
+        ray.get([w.build.remote() for w in self.workers])
 
     def _compute_necessary_resources(self):
         num_gpus = self._compute_config.get("num_gpus", 0)
@@ -123,13 +126,34 @@ class TrainerRunner:
 
         return ray.get(refs)
 
+    def additional_update(self, *args, **kwargs) -> List[Mapping[str, Any]]:
+        """Apply additional non-gradient based updates to the RLTrainers.
+
+        For example, this could be used to do a polyak averaging update
+        of a target network in off policy algorithms like SAC or DQN.
+
+        By default this is a pass through that calls `RLTrainer.additional_update`
+
+        Args:
+            *args: Arguments to pass to each RLTrainer.
+            **kwargs: Keyword arguments to pass to each RLTrainer.
+
+        Returns:
+            A list of dictionaries of results from the updates from each worker.
+        """
+        refs = []
+        for worker in self.workers:
+            refs.append(worker.additional_update.remote(*args, **kwargs))
+        return ray.get(refs)
+
     def add_module(
         self,
+        *,
         module_id: ModuleID,
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
-        optimizer_cls: Type[RLOptimizer],
-        optimizer_kwargs: Mapping[str, Any],
+        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         """Add a module to the RLTrainers maintained by this TrainerRunner.
 
@@ -137,13 +161,22 @@ class TrainerRunner:
             module_id: The id of the module to add.
             module_cls: The module class to add.
             module_kwargs: The config for the module.
-            optimizer_cls: The optimizer class to use.
-            optimizer_kwargs: The config for the optimizer.
+            set_optimizer_fn: A function that takes in the module and returns a list of
+                (param, optimizer) pairs. Each element in the tuple describes a
+                parameter group that share the same optimizer object, if None, the
+                default optimizer (obtained from the exiting optimizer dictionary) will
+                be used.
+            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
+                should be provided.
         """
         refs = []
         for worker in self.workers:
             ref = worker.add_module.remote(
-                module_id, module_cls, module_kwargs, optimizer_cls, optimizer_kwargs
+                module_id=module_id,
+                module_cls=module_cls,
+                module_kwargs=module_kwargs,
+                set_optimizer_fn=set_optimizer_fn,
+                optimizer_cls=optimizer_cls,
             )
             refs.append(ref)
         ray.get(refs)

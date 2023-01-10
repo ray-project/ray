@@ -161,35 +161,20 @@ def test_external_storage_namespace_isolation(shutdown_only):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pull_based,ray_start_cluster",
+    "ray_start_cluster",
     [
-        (
-            False,
-            generate_system_config_map(
-                RAY_num_heartbeats_timeout=2, pull_based_healthcheck=False
-            ),
-        ),
-        (
-            True,
-            generate_system_config_map(
-                health_check_initial_delay_ms=0,
-                health_check_period_ms=1000,
-                health_check_failure_threshold=2,
-                pull_based_healthcheck=True,
-            ),
+        generate_system_config_map(
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=2,
         ),
     ],
     indirect=["ray_start_cluster"],
 )
-async def test_check_liveness(pull_based, monkeypatch, ray_start_cluster):
-    if pull_based:
-        monkeypatch.setenv("RAY_pull_based_healthcheck", "true")
-        monkeypatch.setenv("RAY_health_check_initial_delay_ms", "0")
-        monkeypatch.setenv("RAY_health_check_period_ms", "1000")
-        monkeypatch.setenv("RAY_health_check_failure_threshold", "2")
-    else:
-        monkeypatch.setenv("RAY_pull_based_healthcheck", "false")
-        monkeypatch.setenv("RAY_num_heartbeats_timeout", "2")
+async def test_check_liveness(monkeypatch, ray_start_cluster):
+    monkeypatch.setenv("RAY_health_check_initial_delay_ms", "0")
+    monkeypatch.setenv("RAY_health_check_period_ms", "1000")
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "2")
 
     cluster = ray_start_cluster
     h = cluster.add_node(node_manager_port=find_free_port())

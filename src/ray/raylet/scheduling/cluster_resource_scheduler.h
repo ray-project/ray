@@ -37,7 +37,6 @@ namespace ray {
 
 using raylet_scheduling_policy::SchedulingOptions;
 using raylet_scheduling_policy::SchedulingResult;
-using rpc::HeartbeatTableData;
 
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
