@@ -189,10 +189,10 @@ public class RayServeWrappedReplica implements RayServeReplica {
    *
    * @return
    */
-  public boolean isInitialized(Object userConfig) {
-    DeploymentVersion version = self.reconfigure(userConfig);
-    self.checkHealth();
-    return version;
+  public Object isInitialized(Object userConfig) {
+    Object deploymentVersion = reconfigure(userConfig);
+    checkHealth();
+    return deploymentVersion;
   }
 
   /**
