@@ -1,20 +1,46 @@
-
-
 import gymnasium as gym
 import unittest
-import pytest
+import tensorflow as tf
+import numpy as np
 
 import ray
 
-from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
-from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+
+
+def get_trainer(scaling_config=None, distributed: bool = False) -> RLTrainer:
+    env = gym.make("CartPole-v1")
+    scaling_config = {} or scaling_config
+    distributed = False
+
+    # TODO: Another way to make RLTrainer would be to construct the module first
+    # and then apply trainer to it. We should also allow that. In fact if we figure
+    # out the serialization of RLModules we can simply pass the module the trainer
+    # and internally it will serialize and deserialize the module for distributed
+    # construction.
+    trainer = BCTfRLTrainer(
+        module_class=DiscreteBCTFModule,
+        module_kwargs={
+            "observation_space": env.observation_space,
+            "action_space": env.action_space,
+            "model_config": {"hidden_dim": 32},
+        },
+        scaling_config=scaling_config,
+        optimizer_config={"lr": 1e-3},
+        distributed=distributed,
+        in_test=True,
+    )
+
+    trainer.build()
+
+    return trainer
 
 
 class TestRLTrainer(unittest.TestCase):
-
     @classmethod
     def setUp(cls) -> None:
         ray.init()
@@ -23,31 +49,9 @@ class TestRLTrainer(unittest.TestCase):
     def tearDown(cls) -> None:
         ray.shutdown()
 
-    def test_x(self):
-        env = gym.make("CartPole-v1")
-        scaling_config = {}
-        distributed = False
+    def test_end_to_end_update(self):
 
-        # TODO: Another way to make RLTrainer would be to construct the module first 
-        # and then apply trainer to it. We should also allow that. In fact if we figure 
-        # out the serialization of RLModules we can simply pass the module the trainer 
-        # and internally it will serialize and deserialize the module for distributed 
-        # construction.
-        trainer = BCTfRLTrainer(
-            module_class=DiscreteBCTFModule,
-            module_kwargs={
-                "observation_space": env.observation_space,
-                "action_space": env.action_space,
-                "model_config": {"hidden_dim": 32},
-            },
-            scaling_config=scaling_config,
-            optimizer_config={"lr": 1e-3},
-            distributed=distributed,
-            in_test=True
-        )
-
-        trainer.build()
-
+        trainer = get_trainer()
         reader = get_cartpole_dataset_reader(batch_size=512)
 
         min_loss = float("inf")
@@ -64,75 +68,93 @@ class TestRLTrainer(unittest.TestCase):
                 break
         self.assertLess(min_loss, 0.57)
 
+    def test_compute_gradients(self):
+        """Tests the compute_gradients correctness.
+
+        Tests that if we sum all the trainable variables the gradient of output w.r.t.
+        the weights is all ones.
+        """
+        trainer = get_trainer()
+
+        with tf.GradientTape() as tape:
+            params = trainer.module[DEFAULT_POLICY_ID].trainable_variables
+            loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
+            gradients = trainer.compute_gradients(loss, tape)
+
+        # type should be a mapping from ParamRefs to gradients
+        self.assertIsInstance(gradients, dict)
+
+        for grad in gradients.values():
+            check(grad, np.ones(grad.shape))
+
+    def test_apply_gradients(self):
+        """Tests the apply_gradients correctness.
+
+        Tests that if we apply gradients of all ones, the new params are equal to the
+        standard SGD/Adam update rule.
+        """
+
+        trainer = get_trainer()
+
+        # calculated the expected new params based on gradients of all ones.
+        params = trainer.module[DEFAULT_POLICY_ID].trainable_variables
+        n_steps = 100
+        expected = [
+            param - n_steps * trainer.optimizer_config["lr"] * np.ones(param.shape)
+            for param in params
+        ]
+        for _ in range(n_steps):
+            gradients = {trainer._get_param_ref(p): tf.ones_like(p) for p in params}
+            trainer.apply_gradients(gradients)
+
+        check(params, expected)
+
     def test_add_remove_module(self):
+        """Tests the compute/apply_gradients with add/remove modules.
+
+        Tests that if we add a module with SGD optimizer with a known lr (different
+        from default), and remove the default module, with a loss that is the sum of
+        all variables the updated parameters follow the SGD update rule.
+        """
         env = gym.make("CartPole-v1")
+        trainer = get_trainer()
 
-        scaling_config = {}
-        distributed = False
-        trainer = BCTfRLTrainer(
-            module_class=DiscreteBCTFModule,
-            module_kwargs={
-                "observation_space": env.observation_space,
-                "action_space": env.action_space,
-                "model_config": {"hidden_dim": 32},
-            },
-            scaling_config=scaling_config,
-            optimizer_config={"lr": 1e-3},
-            distributed=distributed,
-            in_test=True
-        )
-        trainer.build()
+        # add a test module with SGD optimizer with a known lr
+        lr = 1e-4
 
-        module_ids_before_add = {DEFAULT_POLICY_ID}
-        new_module_id = "test_module"
+        def set_optimizer_fn(module):
+            return [
+                (module.trainable_variables, tf.keras.optimizers.SGD(learning_rate=lr))
+            ]
 
-        # add a test_module
         trainer.add_module(
-            module_id=new_module_id,
+            module_id="test",
             module_cls=DiscreteBCTFModule,
             module_kwargs={
                 "observation_space": env.observation_space,
                 "action_space": env.action_space,
-                "model_config": {"hidden_dim": 32},
+                # the hidden size is different than the default module
+                "model_config": {"hidden_dim": 16},
             },
+            set_optimizer_fn=set_optimizer_fn,
         )
 
-        
-        # check that module weights are updated across workers and synchronized
-        for i in range(1, len(results)):
-            for module_id in results[i]["mean_weight"].keys():
-                assert (
-                    results[i]["mean_weight"][module_id]
-                    == results[i - 1]["mean_weight"][module_id]
-                )
+        trainer.remove_module(DEFAULT_POLICY_ID)
 
-        # check that module ids are updated to include the new module
-        module_ids_after_add = {DEFAULT_POLICY_ID, new_module_id}
-        for result in results:
-            # remove the total_loss key since its not a module key
-            self.assertEqual(set(result["loss"]) - {"total_loss"}, module_ids_after_add)
+        # only test module should be left
+        self.assertEqual(set(trainer.module.keys()), {"test"})
 
-        # remove the test_module
-        runner.remove_module(module_id=new_module_id)
+        # calculated the expected new params based on gradients of all ones.
+        params = trainer.module["test"].trainable_variables
+        n_steps = 100
+        expected = [param - n_steps * lr * np.ones(param.shape) for param in params]
+        for _ in range(n_steps):
+            with tf.GradientTape() as tape:
+                loss = {"total_loss": sum([tf.reduce_sum(param) for param in params])}
+                gradients = trainer.compute_gradients(loss, tape)
+                trainer.apply_gradients(gradients)
 
-        # run training without the test_module
-        results = runner.update(batch.as_multi_agent())
-
-        # check that module weights are updated across workers and synchronized
-        for i in range(1, len(results)):
-            for module_id in results[i]["mean_weight"].keys():
-                assert (
-                    results[i]["mean_weight"][module_id]
-                    == results[i - 1]["mean_weight"][module_id]
-                )
-
-        # check that module ids are updated after remove operation to not
-        # include the new module
-        for result in results:
-            # remove the total_loss key since its not a module key
-            self.assertEqual(
-                set(result["loss"]) - {"total_loss"}, module_ids_before_add
-            )
+        check(params, expected)
 
 
 if __name__ == "__main__":

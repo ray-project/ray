@@ -32,6 +32,7 @@ Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
 ParamType = Union["torch.Tensor", "tf.Variable"]
 ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
+ParamDictType = Dict[ParamRef, ParamType]
 
 
 class RLTrainer:
@@ -47,22 +48,22 @@ class RLTrainer:
     Abstract Methods:
         compute_gradients: Compute gradients for the module being optimized.
         apply_gradients: Apply gradients to the module being optimized with respect to
-            a loss that is computed by the optimizer. Both compute_gradients and 
+            a loss that is computed by the optimizer. Both compute_gradients and
             apply_gradients are meant for framework-specific specializations.
-        compute_loss: Compute the loss for the module being optimized. Override this 
-            method to customize the loss function of the multi-agent RLModule that is 
+        compute_loss: Compute the loss for the module being optimized. Override this
+            method to customize the loss function of the multi-agent RLModule that is
             being optimized.
-        configure_optimizers: Configure the optimizers for the module being optimized. 
-            Override this to cutomize the optimizers and the parameters that they are 
+        configure_optimizers: Configure the optimizers for the module being optimized.
+            Override this to cutomize the optimizers and the parameters that they are
             optimizing.
-        
+
 
     Example:
         .. code-block:: python
 
         trainer = MyRLTrainer(
-            module_class, 
-            module_kwargs, 
+            module_class,
+            module_kwargs,
             scaling_config,
             optimizer_config
         )
@@ -72,8 +73,8 @@ class RLTrainer:
 
         # add a new module, perhaps for league based training or lru caching
         trainer.add_module(
-            module_id="new_player", 
-            module_cls=NewPlayerCls, 
+            module_id="new_player",
+            module_cls=NewPlayerCls,
             module_kwargs=new_player_kwargs,
         )
 
@@ -113,11 +114,16 @@ class RLTrainer:
         self.distributed = distributed
         self.in_test = in_test
 
-        # These are the attributes that are set during build for properly applying
-        # optimizers and adding or removing modules.
+        # These are the attributes that are set during build
+        self._module: MultiAgentRLModule = None
+        # These are set for properly applying optimizers and adding or removing modules.
         self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
         self._param_to_optim: Dict[ParamRef, Optimizer] = {}
-        self._params: Dict[ParamRef, ParamType] = {}
+        self._params: ParamDictType = {}
+
+    @property
+    def module(self) -> MultiAgentRLModule:
+        return self._module
 
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
@@ -240,7 +246,7 @@ class RLTrainer:
     @abc.abstractmethod
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]]
-    ) -> Mapping[str, Any]:
+    ) -> ParamDictType:
         """Perform an update on self._module.
 
         For example compute and apply gradients to self._module if
