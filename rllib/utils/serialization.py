@@ -2,10 +2,12 @@ import base64
 import numpy as np
 import io
 import zlib
-from typing import Dict
+from typing import Dict, Any, Sequence
 
+import ray
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.gym import try_import_gymnasium_and_gym
+from ray.rllib.utils.error import NotSerializable
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -280,3 +282,39 @@ def space_from_dict(d: Dict) -> gym.spaces.Space:
     if "original_space" in d:
         space.original_space = gym_space_from_dict(d["original_space"])
     return space
+
+
+@DeveloperAPI
+def check_if_args_kwargs_serializable(args: Sequence[Any], kwargs: Dict[str, Any]):
+    """Check if parameters to a function are serializable by ray.
+
+    Args:
+        args: arguments to be checked.
+        kwargs: keyword arguments to be checked.
+
+    Raises:
+        NoteSerializable if either args are kwargs are not serializable
+            by ray.
+    """
+    for arg in args:
+        try:
+            # if the object is truly serializable we should be able to
+            # ray.put and ray.get it.
+            ray.get(ray.put(arg))
+        except TypeError as e:
+            raise NotSerializable(
+                "RLModule constructor arguments must be serializable. "
+                f"Found non-serializable argument: {arg}.\n"
+                f"Original serialization error: {e}"
+            )
+        for k, v in kwargs.items():
+            try:
+                # if the object is truly serializable we should be able to
+                # ray.put and ray.get it.
+                ray.get(ray.put(v))
+            except TypeError as e:
+                raise NotSerializable(
+                    "RLModule constructor arguments must be serializable. "
+                    f"Found non-serializable keyword argument: {k} = {v}.\n"
+                    f"Original serialization error: {e}"
+                )

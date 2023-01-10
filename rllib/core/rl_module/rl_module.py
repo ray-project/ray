@@ -6,12 +6,11 @@ from typing import Mapping, Any, TYPE_CHECKING, Union
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
-import ray
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.error import NotSerializable
+from ray.rllib.utils.serialization import check_if_args_kwargs_serializable
 
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
@@ -111,7 +110,8 @@ class RLModule(abc.ABC):
     """
 
     def __init__(self, *args, **kwargs):
-        self._args_and_kwargs = self.__check_if_args_kwargs_serializable(args, kwargs)
+        check_if_args_kwargs_serializable(args, kwargs)
+        self._args_and_kwargs = {"args": args, "kwargs": kwargs}
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -362,29 +362,3 @@ class RLModule(abc.ABC):
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
         return MultiAgentRLModule({DEFAULT_POLICY_ID: self})
-
-    @staticmethod
-    def __check_if_args_kwargs_serializable(args, kwargs):
-        for arg in args:
-            try:
-                # if the object is truly serializable we should be able to
-                # ray.put and ray.get it.
-                ray.get(ray.put(arg))
-            except TypeError as e:
-                raise NotSerializable(
-                    "RLModule constructor arguments must be serializable. "
-                    f"Found non-serializable argument: {arg}.\n"
-                    f"Original serialization error: {e}"
-                )
-        for k, v in kwargs.items():
-            try:
-                # if the object is truly serializable we should be able to
-                # ray.put and ray.get it.
-                ray.get(ray.put(v))
-            except TypeError as e:
-                raise NotSerializable(
-                    "RLModule constructor arguments must be serializable. "
-                    f"Found non-serializable keyword argument: {k} = {v}.\n"
-                    f"Original serialization error: {e}"
-                )
-        return {"args": args, "kwargs": kwargs}
