@@ -28,7 +28,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DatasetContext
-from ray.data.dataset import BatchType, Dataset
+from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI
 
 
@@ -247,7 +247,7 @@ class GroupedDataset(Generic[T]):
 
     def map_groups(
         self,
-        fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+        fn: Union[CallableClass, Callable[[DataBatch], DataBatch]],
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "default",
