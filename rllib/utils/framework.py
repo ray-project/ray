@@ -1,8 +1,11 @@
+import contextlib
 import logging
 import numpy as np
 import os
 import sys
-from typing import Any, Optional
+import traceback
+from typing import Any, Dict, Optional
+from types import ModuleType
 
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import Deprecated
@@ -173,6 +176,96 @@ def try_import_tfp(error: bool = False):
         if error:
             raise e
         return None
+
+
+@PublicAPI
+@contextlib.contextmanager
+def options(options: Dict, tf: ModuleType):
+    """Context manager for TensorFlow's optimizer options.
+
+    This function helps to strip away certain debugging nodes in
+    the Graph to ensure fast execution, when debugging is disabled.
+
+    Args:
+        options: Dict with key value pairs for optimizer option
+            enabling/disabling.
+        tf: TensorFlow module.
+    """
+    # Keep prior options for when the context ends.
+    old_opts = tf.config.optimizer.get_experimental_options()
+    # Set new options for the managed context.
+    tf.config.optimizer.set_experimental_options(options)
+    try:
+        yield
+    finally:
+        # Set old options after context was executed.
+        tf.config.optimizer.set_experimental_options(old_opts)
+
+
+@PublicAPI
+def debug_tensor(
+    tensor: TensorType,
+    name: str,
+    tf_debug: bool,
+    tf: ModuleType,
+    framework: str,
+    eager_tracing: bool,
+    prefix: str,
+    summarize: int = None,
+):
+    """Debugs a TensorFlow Tensor.
+
+    When debugging is enabled the Tensor gets checked for numerics
+    (NaN/Inf) and is printed with a given level. All debugging is
+    executed inside a context that enables or disables the
+    'debug_stripper' of the TensorFlow Graph optimizer (Grappler).
+    This enables execution at similar speed as without infusing the
+    debugging lines into code.
+
+    Args:
+        tensor: A TensorFlow tensor to be debugged.
+        name: Tensor name to appeat in the console output.
+        tf_debug: Whether debugging is on or off. Defined in the
+            `AlgorithmConfig`. Default is `False`.
+        tf: TensorFlow module. This is needed to ensure exeuction in
+            the same graph.
+        framework: TensorFlow framework, one of `"tf"`, `"tf2"`.
+        eager_tracing: Whether eager tracing is enabled for TF2.
+        prefix: Prefix for the tensor name to appear in the console
+            output. Usually the caller name (e.g. `loss()`). Improves
+            readabulity of debugging output.
+        summarize: The summarization level for `tf.print()`. See
+            `tf.print()` for further information. `None` is the
+            default and prints the 3 first and last entries of a tensor.
+
+    Returns:
+        `IbvalidArgumentError` in case the tensor contains NaN/Inf values,
+        otherwise the input tensor.
+    """
+    # If not in debugging mode or in TF2 eager execution return.
+    if not (tf_debug or framework == "tf" or eager_tracing):
+        return tensor
+    # Set optimizer options. This strips away the debugging nodes for TF2
+    # if debugging is off.
+    with options({"debug_stripper": not tf_debug}, tf):
+        debug_name = prefix + "_" + name
+        try:
+            tensor_print_op = tf.print(
+                debug_name + ":",
+                tensor,
+                output_stream=sys.stdout,
+                summarize=summarize,
+            )
+            # For TF1 the printing operation has to be added manually to
+            # the graph.
+            if tf_debug and framework == "tf":
+                with tf.control_dependencies([tensor_print_op]):
+                    return tf.debugging.check_numerics(tensor, debug_name)
+            else:
+                return tf.debugging.check_numerics(tensor, debug_name)
+        except tf.errors.InvalidArgumentError:
+            # Error out, if NaN/Inf detected and show where.
+            traceback.print_exc(limit=2)
 
 
 # Fake module for torch.nn.

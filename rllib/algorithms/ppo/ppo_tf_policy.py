@@ -4,6 +4,7 @@ TensorFlow policy class used for PPO.
 
 import logging
 from typing import Dict, List, Type, Union
+from functools import partial
 
 import ray
 from ray.rllib.evaluation.postprocessing import (
@@ -22,11 +23,12 @@ from ray.rllib.policy.tf_mixins import (
     ValueNetworkMixin,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, debug_tensor
 from ray.rllib.utils.tf_utils import explained_variance, warn_if_infinite_kl_divergence
 from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType, TFPolicyV2Type
 
 tf1, tf, tfv = try_import_tf()
+# from ray.rllib.utils.framework import options
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +99,9 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             )
             LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
+            self.framework = self.config["framework"]
+            self.eager_tracing = self.config["eager_tracing"]
+            self.tf_debug = self.config["tf_debug"]
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
             self.maybe_initialize_optimizer_and_loss()
@@ -108,12 +113,25 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             dist_class: Type[TFActionDistribution],
             train_batch: SampleBatch,
         ) -> Union[TensorType, List[TensorType]]:
+            # Debug tensors if needed.
+            debug_if_needed = partial(
+                debug_tensor,
+                tf_debug=self.tf_debug,
+                tf=tf,
+                framework=self.framework,
+                eager_tracing=self.eager_tracing,
+                prefix="ppo_loss",
+                summarize=None,
+            )
             if isinstance(model, tf.keras.Model):
                 logits, state, extra_outs = model(train_batch)
                 value_fn_out = extra_outs[SampleBatch.VF_PREDS]
             else:
                 logits, state = model(train_batch)
                 value_fn_out = model.value_function()
+
+            logits = debug_if_needed(tensor=logits, name="logits")
+            value_fn_out = debug_if_needed(tensor=value_fn_out, name="value_fn_out")
 
             curr_action_dist = dist_class(logits, model)
 
@@ -140,36 +158,55 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 train_batch[SampleBatch.ACTION_DIST_INPUTS], model
             )
 
-            logp_ratio = tf.exp(
-                curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
-                - train_batch[SampleBatch.ACTION_LOGP]
+            curr_action_logp = debug_if_needed(
+                curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]),
+                name="curr_action_logp",
+            )
+            prev_action_logp = debug_if_needed(
+                train_batch[SampleBatch.ACTION_LOGP], name="prev_action_logp"
+            )
+
+            logp_ratio = debug_if_needed(
+                tf.exp(curr_action_logp - prev_action_logp), name="logp_ratio"
             )
 
             # Only calculate kl loss if necessary (kl-coeff > 0.0).
             if self.config["kl_coeff"] > 0.0:
-                action_kl = prev_action_dist.kl(curr_action_dist)
+                action_kl = debug_if_needed(
+                    prev_action_dist.kl(curr_action_dist),
+                    name="action_kl",
+                )
                 mean_kl_loss = reduce_mean_valid(action_kl)
                 warn_if_infinite_kl_divergence(self, mean_kl_loss)
             else:
                 mean_kl_loss = tf.constant(0.0)
 
-            curr_entropy = curr_action_dist.entropy()
+            curr_entropy = debug_if_needed(
+                curr_action_dist.entropy(), name="curr_entropy"
+            )
             mean_entropy = reduce_mean_valid(curr_entropy)
 
-            surrogate_loss = tf.minimum(
-                train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
-                train_batch[Postprocessing.ADVANTAGES]
-                * tf.clip_by_value(
-                    logp_ratio,
-                    1 - self.config["clip_param"],
-                    1 + self.config["clip_param"],
+            debug_if_needed(train_batch[Postprocessing.ADVANTAGES], name="advantages")
+            surrogate_loss = debug_if_needed(
+                tf.minimum(
+                    train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
+                    train_batch[Postprocessing.ADVANTAGES]
+                    * tf.clip_by_value(
+                        logp_ratio,
+                        1 - self.config["clip_param"],
+                        1 + self.config["clip_param"],
+                    ),
                 ),
+                name="surrogate_loss",
             )
 
             # Compute a value function loss.
             if self.config["use_critic"]:
-                vf_loss = tf.math.square(
-                    value_fn_out - train_batch[Postprocessing.VALUE_TARGETS]
+                vf_loss = debug_if_needed(
+                    tf.math.square(
+                        value_fn_out - train_batch[Postprocessing.VALUE_TARGETS]
+                    ),
+                    name="vf_loss",
                 )
                 vf_loss_clipped = tf.clip_by_value(
                     vf_loss,

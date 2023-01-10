@@ -404,6 +404,7 @@ class AlgorithmConfig:
         self.fake_sampler = False
         self.seed = None
         self.worker_cls = None
+        self.tf_debug = True
 
         # `self.rl_module()`
         self.rl_module_class = None
@@ -2124,6 +2125,7 @@ class AlgorithmConfig:
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
         worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
+        tf_debug: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2163,6 +2165,8 @@ class AlgorithmConfig:
             self.seed = seed
         if worker_cls is not NotProvided:
             self.worker_cls = worker_cls
+        if tf_debug is not NotProvided:
+            self.tf_debug = tf_debug
 
         return self
 
