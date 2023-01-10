@@ -1,5 +1,4 @@
 from typing import Callable, Any, Optional
-import sys
 
 from ray.data.block import Block, DataBatch, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -21,7 +20,7 @@ class BlockOutputBuffer(object):
         >>> udf = ... # doctest: +SKIP
         >>> generator = ... # doctest: +SKIP
         >>> # Yield a stream of output blocks.
-        >>> output = BlockOutputBuffer(udf, 500 * 1024 * 1024, True) # doctest: +SKIP
+        >>> output = BlockOutputBuffer(udf, 500 * 1024 * 1024) # doctest: +SKIP
         >>> for item in generator(): # doctest: +SKIP
         ...     output.add(item) # doctest: +SKIP
         ...     if output.has_next(): # doctest: +SKIP
@@ -32,15 +31,9 @@ class BlockOutputBuffer(object):
     """
 
     def __init__(
-        self,
-        block_udf: Optional[Callable[[Block], Block]],
-        target_max_block_size: int,
-        splitting_enabled: bool,
+        self, block_udf: Optional[Callable[[Block], Block]], target_max_block_size: int
     ):
-        if splitting_enabled:
-            self._target_max_block_size = target_max_block_size
-        else:
-            self._target_max_block_size = sys.maxsize
+        self._target_max_block_size = target_max_block_size
         self._block_udf = block_udf
         self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = False

@@ -370,7 +370,6 @@ def _read_pieces(
     output_buffer = BlockOutputBuffer(
         block_udf=block_udf,
         target_max_block_size=ctx.target_max_block_size,
-        splitting_enabled=ctx.block_splitting_enabled,
     )
 
     logger.debug(f"Reading {len(pieces)} parquet pieces")

@@ -297,9 +297,7 @@ class Dataset(Generic[T]):
         @_adapt_for_multiple_blocks
         def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(
-                None, context.target_max_block_size, context.block_splitting_enabled
-            )
+            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows():
                 output_buffer.add(fn(row))
@@ -564,9 +562,7 @@ class Dataset(Generic[T]):
             **fn_kwargs,
         ) -> Iterable[Block]:
             DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(
-                None, context.target_max_block_size, context.block_splitting_enabled
-            )
+            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
 
             def validate_batch(batch: Block) -> None:
                 if not isinstance(
@@ -835,9 +831,7 @@ class Dataset(Generic[T]):
         @_adapt_for_multiple_blocks
         def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(
-                None, context.target_max_block_size, context.block_splitting_enabled
-            )
+            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows():
                 for r2 in fn(row):
