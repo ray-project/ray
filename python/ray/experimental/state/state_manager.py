@@ -236,7 +236,7 @@ class StateDataSourceClient:
     ) -> Optional[GetTaskEventsReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-        request = GetTaskEventsRequest(limit=limit)
+        request = GetTaskEventsRequest(limit=limit, exclude_driver_task=True)
         reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
         return reply
 
