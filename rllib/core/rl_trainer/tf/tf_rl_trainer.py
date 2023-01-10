@@ -1,103 +1,108 @@
+import logging
 import numpy as np
-from typing import Any, Mapping, Union, Type
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+from typing import (
+    Any,
+    Mapping,
+    Union,
+    Type,
+    Optional,
+    Callable,
+    Dict,
+    Sequence,
+    Hashable,
+)
+
+from ray.rllib.core.rl_trainer.rl_trainer import (
+    RLTrainer,
+    ParamOptimizerPairs,
+    ParamRef,
+    Optimizer,
+    ParamType,
+)
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
+import tree  # pip install dm-tree
+
 
 tf1, tf, tfv = try_import_tf()
 tf1.enable_eager_execution()
+
+logger = logging.getLogger(__name__)
 
 
 class TfRLTrainer(RLTrainer):
     """Base class for RLlib TF algorithm trainers."""
 
-    def _do_update_fn(self, batch: SampleBatch) -> Mapping[str, Any]:
+    def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         with tf.GradientTape() as tape:
             fwd_out = self._module.forward_train(batch)
-            loss = self._rl_optimizer.compute_loss(batch, fwd_out)
+            loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
             if isinstance(loss, tf.Tensor):
                 loss = {"total_loss": loss}
         gradients = self.compute_gradients(loss, tape)
+        gradients = self.on_after_compute_gradients(gradients)
         self.apply_gradients(gradients)
         return {"loss": loss, "fwd_out": fwd_out, "post_processed_gradients": gradients}
 
-    def update(self, batch: SampleBatch) -> Mapping[str, Any]:
-        """Perform an update on this Trainer.
+    @override(RLTrainer)
+    def configure_optimizers(self) -> ParamOptimizerPairs:
+        lr = self.optimizer_config.get("lr", 1e-3)
+        return [
+            (
+                self._module[key].trainable_variables,
+                tf.keras.optimizers.Adam(learning_rate=lr),
+            )
+            for key in self._module.keys()
+        ]
 
-        Args:
-            batch: A batch of data.
-
-        Returns:
-            A dictionary of results.
-        """
-        # TODO(sven): This is a hack to get around the fact that
-        # SampleBatch.count becomes 0 after decorating the function with
-        # tf.function. This messes with input spec checking. Other fields of
-        # the sample batch are possibly modified by tf.function which may lead
-        # to unwanted consequences. We'll need to further investigate this.
+    @override(RLTrainer)
+    def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         if not hasattr(self, "traced_update_fn"):
             self.traced_update_fn = tf.function(self._do_update_fn)
-        batch = NestedDict(batch.policy_batches)
-        for key, value in batch.items():
-            batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
+        batch = self.convert_batch_to_tf_tensor(batch)
         if self.distributed:
-            infos = self.strategy.run(self.traced_update_fn, args=(batch,))
+            update_outs = self.do_distributed_update(batch)
         else:
-            infos = self.traced_update_fn(batch)
-        loss = infos["loss"]
-        fwd_out = infos["fwd_out"]
-        post_processed_gradients = infos["post_processed_gradients"]
+            update_outs = self.traced_update_fn(batch)
+        loss = update_outs["loss"]
+        fwd_out = update_outs["fwd_out"]
+        post_processed_gradients = update_outs["post_processed_gradients"]
         results = self.compile_results(batch, fwd_out, loss, post_processed_gradients)
         return results
 
+    @override(RLTrainer)
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: tf.GradientTape
     ) -> Mapping[str, Any]:
-        """Perform an update on self._module
-
-            For example compute and apply gradients to self._module if
-                necessary.
-
-        Args:
-            loss: variable(s) used for optimizing self._module.
-
-        Returns:
-            A dictionary of extra information and statistics.
-        """
-        trainable_variables = {
-            module_id: self._module[module_id].trainable_variables()
-            for module_id in self._module.keys()
-        }
-        grads = tape.gradient(loss["total_loss"], trainable_variables)
+        grads = tape.gradient(loss["total_loss"], self._params)
         return grads
 
-    def apply_gradients(self, gradients: Mapping[str, Any]) -> None:
-        """Perform an update on self._module"""
-        trainable_variables = {
-            module_id: self._module[module_id].trainable_variables()
-            for module_id in self._module.keys()
-        }
-        for module_id, rl_optimizer in self._rl_optimizer.get_optimizers().items():
-            for key, optimizer in rl_optimizer.get_optimizers().items():
-                optimizer.apply_gradients(
-                    zip(gradients[module_id][key], trainable_variables[module_id][key])
-                )
+    @override(RLTrainer)
+    def apply_gradients(self, gradients: Dict[ParamRef, TensorType]) -> None:
+        for optim, param_ref_seq in self._optim_to_param.items():
+            variable_list = [self._params[param_ref] for param_ref in param_ref_seq]
+            gradient_list = [gradients[param_ref] for param_ref in param_ref_seq]
+            optim.apply_gradients(zip(gradient_list, variable_list))
 
-    def make_distributed(self):
+    @override(RLTrainer)
+    def _make_distributed(self) -> RLModule:
+        # TODO: Does strategy has to be an attribute here? if so it's very hidden to
+        # the user of this class that there is such an attribute.
+
+        # TODO (Kourosh, Avnish): The optimizers still need to be created within
+        # strategy.scope. Otherwise parameters of optimizers won't be properly
+        # synced
         self.strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with self.strategy.scope():
-            module = self.module_class.from_model_config(
-                **self.module_config
-            ).as_multi_agent()
-            optimizer = self.optimizer_class(
-                module, self.optimizer_config
-            ).as_multi_agent()
-        return module, optimizer
+            module = self._make_module()
+        return module
 
+    @override(RLTrainer)
     def compile_results(
         self,
         batch: NestedDict,
@@ -105,74 +110,101 @@ class TfRLTrainer(RLTrainer):
         postprocessed_loss: Mapping[str, Any],
         post_processed_gradients: Mapping[str, Any],
     ) -> Mapping[str, Any]:
-        """Compile results from the update.
-
-        Args:
-            batch: The batch that was used for the update.
-            fwd_out: The output of the forward train pass.
-            postprocessed_loss: The loss after postprocessing.
-            post_processed_gradients: The gradients after postprocessing.
-
-        Returns:
-            A dictionary of results.
-        """
         loss_numpy = convert_to_numpy(postprocessed_loss)
         batch = convert_to_numpy(batch)
-        post_processed_gradients = convert_to_numpy(dict(post_processed_gradients))
-        mean_grads = {}
-        for module_id, module_grads in post_processed_gradients.items():
-            mean_grads[module_id] = {}
-            for network, grads in module_grads.items():
-                mean_grads[module_id][network] = []
-                for grad in grads:
-                    mean_grads[module_id][network].append(grad.mean())
-                mean_grads[module_id][network] = np.mean(mean_grads[module_id][network])
+        post_processed_gradients = convert_to_numpy(post_processed_gradients)
+        mean_grads = [grad.mean() for grad in tree.flatten(post_processed_gradients)]
         ret = {
             "loss": loss_numpy,
-            "mean_gradient": mean_grads,
+            "mean_gradient": np.mean(mean_grads),
         }
-        module_avg_weights = {}
 
-        if self.debug:
+        if self.in_test:
+            # this is to check if in the multi-gpu case, the weights across workers are
+            # the same. It is really only needed during testing.
+            mean_ws = {}
             for module_id in self._module.keys():
-                avg_weights = []
-                weights = self._module[module_id].get_weights()
-                for weight_array in weights:
-                    avg_weights.append(weight_array.mean())
-                avg_weights = np.mean(avg_weights)
-                module_avg_weights[module_id] = avg_weights
-            ret["mean_weight"] = module_avg_weights
+                m = self._module[module_id]
+                mean_ws[module_id] = np.mean([w.mean() for w in m.get_weights()])
+            ret["mean_weight"] = mean_ws
         return ret
 
+    @override(RLTrainer)
     def add_module(
         self,
+        *,
         module_id: ModuleID,
         module_cls: Type[RLModule],
-        module_config,
-        optimizer_cls,
-        optimizer_config,
+        module_kwargs: Mapping[str, Any],
+        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
-        """Add a module to this trainer."""
         if self.distributed:
             with self.strategy.scope():
                 super().add_module(
-                    module_id,
-                    module_cls,
-                    module_config,
-                    optimizer_cls,
-                    optimizer_config,
+                    module_id=module_id,
+                    module_cls=module_cls,
+                    module_kwargs=module_kwargs,
+                    set_optimizer_fn=set_optimizer_fn,
+                    optimizer_cls=optimizer_cls,
                 )
         else:
             super().add_module(
-                module_id, module_cls, module_config, optimizer_cls, optimizer_config
+                module_id=module_id,
+                module_cls=module_cls,
+                module_kwargs=module_kwargs,
+                set_optimizer_fn=set_optimizer_fn,
+                optimizer_cls=optimizer_cls,
             )
         self.traced_update_fn = tf.function(self._do_update_fn)
 
+    @override(RLTrainer)
     def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from this trainer."""
         if self.distributed:
             with self.strategy.scope():
                 super().remove_module(module_id)
         else:
             super().remove_module(module_id)
         self.traced_update_fn = tf.function(self._do_update_fn)
+
+    @override(RLTrainer)
+    def do_distributed_update(self, batch: NestedDict) -> Mapping[str, Any]:
+        update_outs = self.strategy.run(self.traced_update_fn, args=(batch,))
+        return update_outs
+
+    def convert_batch_to_tf_tensor(self, batch: MultiAgentBatch) -> NestedDict:
+        """Convert the arrays of batch to tf.Tensor's.
+
+        Note: This is an in place operation.
+
+        Args:
+            batch: The batch to convert.
+
+        Returns:
+            The converted batch.
+
+        """
+        # TODO(sven): This is a hack to get around the fact that
+        # SampleBatch.count becomes 0 after decorating the function with
+        # tf.function. This messes with input spec checking. Other fields of
+        # the sample batch are possibly modified by tf.function which may lead
+        # to unwanted consequences. We'll need to further investigate this.
+        batch = NestedDict(batch.policy_batches)
+        for key, value in batch.items():
+            batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
+        return batch
+
+    @override(RLTrainer)
+    def _get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+        return module.trainable_variables
+
+    @override(RLTrainer)
+    def _get_param_ref(self, param: ParamType) -> Hashable:
+        return param.ref()
+
+    @override(RLTrainer)
+    def _get_optimizer_obj(
+        self, module: RLModule, optimizer_cls: Type[Optimizer]
+    ) -> Optimizer:
+        lr = self.optimizer_config.get("lr", 1e-3)
+        return optimizer_cls(learning_rate=lr)

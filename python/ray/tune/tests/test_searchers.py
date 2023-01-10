@@ -1,14 +1,16 @@
-import unittest
-import tempfile
-import shutil
-import os
+import contextlib
 from copy import deepcopy
-
 import numpy as np
+import os
+import shutil
+import tempfile
+import unittest
+from unittest.mock import patch
 
 import ray
 from ray import tune
 from ray.tune.result import TRAINING_ITERATION
+from ray.tune.search import ConcurrencyLimiter
 
 
 def _invalid_objective(config):
@@ -38,6 +40,8 @@ class InvalidValuesTest(unittest.TestCase):
     Test searcher handling of invalid values (NaN, -inf, inf).
     Implicitly tests automatic config conversion and default (anonymous)
     mode handling.
+    Also tests that searcher save doesn't throw any errors during
+    experiment checkpointing.
     """
 
     def setUp(self):
@@ -61,6 +65,19 @@ class InvalidValuesTest(unittest.TestCase):
         # Hyperopt converts lists to tuples, so check for either
         self.assertIn(best_trial.config["list"], ([1, 2, 3], (1, 2, 3)))
         self.assertEqual(best_trial.config["num"], 4)
+
+    @contextlib.contextmanager
+    def check_searcher_checkpoint_errors_scope(self):
+        buffer = []
+        from ray.tune.execution.trial_runner import logger
+
+        with patch.object(logger, "warning", lambda x: buffer.append(x)):
+            yield
+
+        assert not any(
+            "Trial Runner checkpointing failed: Can't pickle local object" in x
+            for x in buffer
+        ), "Searcher checkpointing failed (unable to serialize)."
 
     def testAxManualSetup(self):
         from ray.tune.search.ax import AxSearch
@@ -93,67 +110,74 @@ class InvalidValuesTest(unittest.TestCase):
     def testAx(self):
         from ray.tune.search.ax import AxSearch
 
-        searcher = AxSearch(random_seed=4321)
+        searcher = ConcurrencyLimiter(AxSearch(random_seed=4321), max_concurrent=2)
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=searcher,
-            metric="_metric",
-            mode="max",
-            num_samples=4,
-            reuse_actors=False,
-            config=self.config,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            # Make sure enough samples are used so that Ax actually fits a model
+            # for config suggestion
+            out = tune.run(
+                _invalid_objective,
+                search_alg=searcher,
+                metric="_metric",
+                mode="max",
+                num_samples=16,
+                reuse_actors=False,
+                config=self.config,
+            )
+
         self.assertCorrectExperimentOutput(out)
 
     def testBayesOpt(self):
         from ray.tune.search.bayesopt import BayesOptSearch
 
-        out = tune.run(
-            _invalid_objective,
-            # At least one nan, inf, -inf and float
-            search_alg=BayesOptSearch(random_state=1234),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=8,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                # At least one nan, inf, -inf and float
+                search_alg=BayesOptSearch(random_state=1234),
+                config=self.config,
+                metric="_metric",
+                mode="max",
+                num_samples=8,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
     def testBlendSearch(self):
         from ray.tune.search.flaml import BlendSearch
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=BlendSearch(
-                points_to_evaluate=[
-                    {"report": 1.0},
-                    {"report": 2.1},
-                    {"report": 3.1},
-                    {"report": 4.1},
-                ]
-            ),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=16,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                search_alg=BlendSearch(
+                    points_to_evaluate=[
+                        {"report": 1.0},
+                        {"report": 2.1},
+                        {"report": 3.1},
+                        {"report": 4.1},
+                    ]
+                ),
+                config=self.config,
+                metric="_metric",
+                mode="max",
+                num_samples=16,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=TuneBOHB(seed=1000),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=8,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                search_alg=TuneBOHB(seed=1000),
+                config=self.config,
+                metric="_metric",
+                mode="max",
+                num_samples=8,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
     def testCFO(self):
@@ -163,22 +187,23 @@ class InvalidValuesTest(unittest.TestCase):
         )
         from ray.tune.search.flaml import CFO
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=CFO(
-                points_to_evaluate=[
-                    {"report": 1.0},
-                    {"report": 2.1},
-                    {"report": 3.1},
-                    {"report": 4.1},
-                ]
-            ),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=16,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                search_alg=CFO(
+                    points_to_evaluate=[
+                        {"report": 1.0},
+                        {"report": 2.1},
+                        {"report": 3.1},
+                        {"report": 4.1},
+                    ]
+                ),
+                config=self.config,
+                metric="_metric",
+                mode="max",
+                num_samples=16,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
     def testDragonfly(self):
@@ -186,45 +211,48 @@ class InvalidValuesTest(unittest.TestCase):
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=DragonflySearch(domain="euclidean", optimizer="random"),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=8,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                search_alg=DragonflySearch(domain="euclidean", optimizer="random"),
+                config=self.config,
+                metric="_metric",
+                mode="max",
+                num_samples=8,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
     def testHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
 
-        out = tune.run(
-            _invalid_objective,
-            # At least one nan, inf, -inf and float
-            search_alg=HEBOSearch(random_state_seed=123),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=8,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                # At least one nan, inf, -inf and float
+                search_alg=HEBOSearch(random_state_seed=123),
+                config=self.config,
+                metric="_metric",
+                mode="max",
+                num_samples=8,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
     def testHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
-        out = tune.run(
-            _invalid_objective,
-            # At least one nan, inf, -inf and float
-            search_alg=HyperOptSearch(random_state_seed=1234),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=8,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                # At least one nan, inf, -inf and float
+                search_alg=HyperOptSearch(random_state_seed=1234),
+                config=self.config,
+                metric="_metric",
+                mode="max",
+                num_samples=8,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
     def testNevergrad(self):
@@ -233,14 +261,15 @@ class InvalidValuesTest(unittest.TestCase):
 
         np.random.seed(2020)  # At least one nan, inf, -inf and float
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=NevergradSearch(optimizer=ng.optimizers.RandomSearch),
-            config=self.config,
-            mode="max",
-            num_samples=16,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                search_alg=NevergradSearch(optimizer=ng.optimizers.RandomSearch),
+                config=self.config,
+                mode="max",
+                num_samples=16,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
     def testOptuna(self):
@@ -249,15 +278,16 @@ class InvalidValuesTest(unittest.TestCase):
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=OptunaSearch(sampler=RandomSampler(seed=1234)),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=8,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                search_alg=OptunaSearch(sampler=RandomSampler(seed=1234)),
+                config=self.config,
+                metric="_metric",
+                mode="max",
+                num_samples=8,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
     def testOptunaReportTooOften(self):
@@ -284,35 +314,39 @@ class InvalidValuesTest(unittest.TestCase):
 
         np.random.seed(1234)  # At least one nan, inf, -inf and float
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=SkOptSearch(),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=8,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                search_alg=SkOptSearch(),
+                config=self.config,
+                metric="_metric",
+                mode="max",
+                num_samples=8,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
     def testZOOpt(self):
         self.skipTest(
             "Recent ZOOpt versions fail handling invalid values gracefully. "
-            "Skipping until we or they found a workaround. "
+            "Skipping until a fix is added in a future ZOOpt release."
         )
         from ray.tune.search.zoopt import ZOOptSearch
 
-        np.random.seed(1000)  # At least one nan, inf, -inf and float
+        # This seed tests that a nan result doesn't cause an error if it shows
+        # up after the initial data collection phase.
+        np.random.seed(1002)  # At least one nan, inf, -inf and float
 
-        out = tune.run(
-            _invalid_objective,
-            search_alg=ZOOptSearch(budget=100, parallel_num=4),
-            config=self.config,
-            metric="_metric",
-            mode="max",
-            num_samples=8,
-            reuse_actors=False,
-        )
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                search_alg=ZOOptSearch(budget=25, parallel_num=4),
+                config=self.config,
+                metric="_metric",
+                mode="max",
+                num_samples=16,
+                reuse_actors=False,
+            )
         self.assertCorrectExperimentOutput(out)
 
 

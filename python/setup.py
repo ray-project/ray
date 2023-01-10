@@ -20,7 +20,7 @@ from itertools import chain
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -264,11 +264,8 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gym>=0.21.0,<0.24.0",
+        "gymnasium==0.26.3",
         "lz4",
-        # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
-        # Todo: Remove this when safe?
-        "matplotlib!=3.4.3",
         "scikit-image",
         "pyyaml",
         "scipy",
@@ -778,7 +775,7 @@ setuptools.setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 0.29.26", "wheel"],
+    setup_requires=["cython >= 0.29.32", "wheel"],
     extras_require=setup_spec.extras,
     entry_points={
         "console_scripts": [
