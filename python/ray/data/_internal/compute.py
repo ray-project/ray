@@ -258,11 +258,41 @@ class ActorPoolStrategy(ComputeStrategy):
         # Bin blocks by target block size.
         if target_block_size is not None:
             _check_batch_size(blocks_in, target_block_size, name)
-            block_bundles = _bundle_blocks_up_to_size(
-                blocks_in, target_block_size, name
-            )
+            block_bundles: List[
+                Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]
+            ] = _bundle_blocks_up_to_size(blocks_in, target_block_size, name)
         else:
-            block_bundles = [((b,), (m,)) for b, m in blocks_in]
+            block_bundles: List[
+                Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]
+            ] = [((b,), (m,)) for b, m in blocks_in]
+
+        # If the max number of the actor pool is set, the number of bundles should
+        # always be less than this max_size.
+        # Otherwise, it leads to inefficiencies with creating extra actor tasks and
+        # prevents the actor task from doing optimizations such as batch or block prefetching.
+        if self.max_size and len(block_bundles) > self.max_size:
+
+            def chunkify(bundles: List, num_chunks: int):
+                return [bundles[i::num_chunks] for i in range(num_chunks)]
+
+            bundle_groups: List[
+                List[Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]]
+            ] = chunkify(block_bundles, num_chunks=self.max_size)
+
+            final_bundles = []
+            for bundle_group in bundle_groups:
+                # bundle_group is a list of tuples of lists.
+                blocks = []
+                metadata = []
+                for bundle in bundle_group:
+                    blocks.extend(list(bundle[0]))
+                    metadata.extend(list(bundle[1]))
+
+                consolidated_bundle = (tuple(blocks), tuple(metadata))
+
+                final_bundles.append(consolidated_bundle)
+            block_bundles = final_bundles
+
         del blocks_in
         owned_by_consumer = block_list._owned_by_consumer
 
