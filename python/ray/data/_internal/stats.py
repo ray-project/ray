@@ -202,7 +202,9 @@ class DatasetStats:
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
         self.base_name = base_name
-        self.dataset_uuid: str = None
+        # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
+        # fully to streaming execution.
+        self.dataset_uuid: str = "unknown_uuid"
         self.time_total_s: float = 0
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
@@ -324,9 +326,7 @@ class DatasetStatsSummary:
         if len(self.stages_stats) == 1:
             stage_stats_summary = self.stages_stats[0]
             stage_name = stage_stats_summary.stage_name
-            # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
-            # fully to streaming execution.
-            stage_uuid = (self.dataset_uuid or "unknown_uuid") + stage_name
+            stage_uuid = self.dataset_uuid + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
