@@ -28,7 +28,7 @@ sudo tailscaled &
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
 
-    sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --hostname=nexus --accept-dns >> /tmp/tailscale.log
+    sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --hostname=nexus --accept-dns
 
     while [ not $status = "Running" ]
     do 
@@ -49,7 +49,7 @@ if [ "$NODETYPE" = "head" ]; then
 
 else
 
-    sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns >> /tmp/tailscale.log
+    sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
 
     while [ not $status = "Running" ]
     do 
