@@ -406,10 +406,9 @@ def train_func(config):
     print(f"Device: {device}")
 
     # Setup data.
-    train_dataset_pipeline = session.get_dataset_shard("train")
-    train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
-    test_dataset = session.get_dataset_shard("test")
-    test_torch_dataset = test_dataset.to_torch(
+    train_dataset_iterator = session.get_dataset_shard("train")
+    test_dataset_iterator = session.get_dataset_shard("test")
+    test_torch_dataset = test_dataset_iterator.to_torch(
         label_column="label", batch_size=batch_size, drop_last=True
     )
 
@@ -429,9 +428,7 @@ def train_func(config):
 
     print("Starting training...")
     for epoch in range(num_epochs):
-        train_dataset = next(train_dataset_epoch_iterator)
-
-        train_torch_dataset = train_dataset.to_torch(
+        train_torch_dataset = train_dataset_iterator.to_torch(
             label_column="label", batch_size=batch_size
         )
 

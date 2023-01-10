@@ -71,23 +71,13 @@ class DummyTrainer(DataParallelTrainer):
             rank = session.get_world_rank()
             data_shard = session.get_dataset_shard("train")
             start = time.perf_counter()
-            epochs_read, batches_read, bytes_read = 0, 0, 0
+            batches_read, bytes_read = 0, 0
             batch_delays = []
 
-            def generate_epochs(data: Union[Dataset, DatasetPipeline], epochs: int):
-                if isinstance(data, DatasetPipeline):
-                    for epoch in data_shard.iter_epochs(epochs):
-                        yield epoch
-                else:
-                    # Dataset
-                    for _ in range(epochs):
-                        yield data
-
             print("Starting train loop on worker", rank)
-            for epoch_data in generate_epochs(data_shard, num_epochs):
-                epochs_read += 1
+            for epoch in range(num_epochs):
                 batch_start = time.perf_counter()
-                for batch in epoch_data.iter_batches(
+                for batch in data_shard.iter_batches(
                     prefetch_blocks=prefetch_blocks, batch_size=batch_size
                 ):
                     batch_delay = time.perf_counter() - batch_start
@@ -107,7 +97,7 @@ class DummyTrainer(DataParallelTrainer):
                         dict(
                             bytes_read=bytes_read,
                             batches_read=batches_read,
-                            epochs_read=epochs_read,
+                            epochs_read=epoch + 1,
                             batch_delay=batch_delay,
                         )
                     )
