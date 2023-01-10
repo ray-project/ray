@@ -35,7 +35,7 @@ if [ "$NODETYPE" = "head" ]; then
         status="$(tailscale status -json | jq -r .BackendState)"
     done
 
-nexus=$(tailscale ip -4 nexus)
+    nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.name=nexus \
@@ -49,14 +49,14 @@ nexus=$(tailscale ip -4 nexus)
 
 else
 
-sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --accept-dns >> /tmp/tailscale.log
+    sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --accept-dns >> /tmp/tailscale.log
 
-while [ not $status = "Running" ]
-do 
-    status="$(tailscale status -json | jq -r .BackendState)"
-done
+    while [ not $status = "Running" ]
+    do 
+        status="$(tailscale status -json | jq -r .BackendState)"
+    done
 
-nexus=$(tailscale ip -4 nexus)
+    nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.data=true \
