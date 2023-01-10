@@ -1818,7 +1818,7 @@ py_test(
     srcs = ["core/rl_module/tests/test_marl_module.py"]
 )
 
-# to be removed
+# TODO: to be removed
 py_test(
     name = "test_tf_rl_trainer",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
