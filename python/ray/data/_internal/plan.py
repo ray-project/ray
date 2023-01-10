@@ -251,6 +251,11 @@ class ExecutionPlan:
                 self.execute()
             else:
                 return None
+        elif self._in_blocks is not None and self._snapshot_blocks is None:
+            # If the plan only has input blocks, we execute it, so snapshot has output.
+            # This applies to newly created dataset. For example, initial dataset from
+            # read, and output datasets of Dataset.split().
+            self.execute()
         # Snapshot is now guaranteed to be the output of the final stage or None.
         blocks = self._snapshot_blocks
         if not blocks:
@@ -375,15 +380,16 @@ class ExecutionPlan:
                         stats = stats_builder.build_multistage(stage_info)
                     else:
                         stats = stats_builder.build(blocks)
+                    stats.dataset_uuid = self._dataset_uuid
+                    stats_summary_string = stats.summary_string(include_parent=False)
+                    logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                        stats_summary_string,
+                    )
 
-            stats.dataset_uuid = self._dataset_uuid
-            stats_summary_string = stats.summary_string(include_parent=False)
-            logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                stats_summary_string,
-            )
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
+            self._snapshot_stats.dataset_uuid = self._dataset_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
             self._stages_after_snapshot = []
         if _is_lazy(self._snapshot_blocks) and force_read:
