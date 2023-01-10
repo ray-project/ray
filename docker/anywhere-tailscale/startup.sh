@@ -28,19 +28,33 @@ sudo tailscaled &
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
 
-sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --hostname=nexus --accept-dns
+    sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --hostname=nexus --accept-dns
+
+    while [ not $status = "Running" ]
+    do 
+        status="$(tailscale status -json | jq -r .BackendState)"
+    done
+
 nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.name=nexus.chimp-beta.ts.net \
             -Cnode.master=true \
             -Cnode.data=true \
-            -Cstats.enabled=false \
-            &
+            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net,$nexus \
+            -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
+            -Cstats.enabled=false
+            
 
 else
 
-sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-dns
+sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --accept-dns
+
+while [ not $status = "Running" ]
+do 
+    status="$(tailscale status -json | jq -r .BackendState)"
+done
+
 nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
@@ -48,8 +62,8 @@ nexus=$(tailscale ip -4 nexus)
             -Cnode.data=true \
             -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net,$nexus \
             -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
-            -Cstats.enabled=false \
-            &
+            -Cstats.enabled=false
+            
 fi
 
 
