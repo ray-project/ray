@@ -285,7 +285,7 @@ class AlgorithmConfig:
         self.clip_actions = False
         self.disable_env_checking = False
         # If environment should be checked for NaNs/Infs.
-        self.check_nan_env = (False,)
+        self.check_nan_env = False
         self.check_nan_env_config = {
             # If an NaN/Inf should raise an exception.
             "raise_exception": False,
