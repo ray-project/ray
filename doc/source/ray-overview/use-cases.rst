@@ -71,8 +71,8 @@ How do I do many model training on Ray?
 There are three ways of using Ray to express this workload.
 
 1. If you have a large amount of data, use Ray Data (:ref:`Tutorial <mmt-datasets>`).
-2. If you want to integrate with tools, such as wandb and mlflow, and if you have less than 20,000 models, use Ray Tune (:ref:`Tutorial <mmt-tune>`).
-3. If you want lower level control, better scale (up to 1 million models), maybe faster performance, use Ray Core (:ref:`Tutorial <mmt-core>`). Note that this requires you to be more careful about implementation.
+2. If you have a small amount of data (<10GB), want to integrate with tools, such as wandb and mlflow, and you have less than 20,000 models, use Ray Tune (:ref:`Tutorial <mmt-tune>`).
+3. If your use case does not fit in any of the above categories, for example if you need to scale up to 1 million models, use Ray Core (:ref:`Tutorial <mmt-core>`), which gives you finer-grained control over the application. However, note that this is for advanced users and will require understanding of Ray Core :ref:`design patterns and anti-patterns <core-patterns>`.
 
 .. TODO
   Add link to many model training blog.
