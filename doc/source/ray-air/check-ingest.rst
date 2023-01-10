@@ -96,8 +96,11 @@ Enabling Streaming Ingest
     Ray object store at once, AIR will load a fraction of the dataset at a
     time. This can be desirable when the dataset is very large, and caching it
     all at once would cause expensive disk spilling. The downside is that the
-    dataset will have to be preprocessed on each epoch, which can add overhead if
-    the computation is expensive.
+    dataset will have to be preprocessed on each epoch, which may be more
+    expensive. Preprocessing is overlapped with training computation, but
+    overall training throughput may still decrease if preprocessing is more
+    expensive than the training computation (forward pass, backward pass,
+    gradient sync).
 
     To enable this mode, use the :py:meth:`max_object_store_memory_fraction
     <ray.air.config.DatasetConfig>` argument. This argument defaults to -1,
