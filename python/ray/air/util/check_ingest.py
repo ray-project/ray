@@ -2,14 +2,14 @@
 
 import sys
 import time
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 
 import ray
 from ray.air import session
 from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import DatasetPipeline, Dataset, DatasetIterator, Preprocessor
+from ray.data import Dataset, DatasetIterator, Preprocessor
 from ray.data.preprocessors import BatchMapper, Chain
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -71,11 +71,12 @@ class DummyTrainer(DataParallelTrainer):
             rank = session.get_world_rank()
             data_shard = session.get_dataset_shard("train")
             start = time.perf_counter()
-            batches_read, bytes_read = 0, 0
+            epochs_read, batches_read, bytes_read = 0, 0, 0
             batch_delays = []
 
             print("Starting train loop on worker", rank)
             for epoch in range(num_epochs):
+                epochs_read += 1
                 batch_start = time.perf_counter()
                 for batch in data_shard.iter_batches(
                     prefetch_blocks=prefetch_blocks, batch_size=batch_size
@@ -97,7 +98,7 @@ class DummyTrainer(DataParallelTrainer):
                         dict(
                             bytes_read=bytes_read,
                             batches_read=batches_read,
-                            epochs_read=epoch + 1,
+                            epochs_read=epochs_read,
                             batch_delay=batch_delay,
                         )
                     )
