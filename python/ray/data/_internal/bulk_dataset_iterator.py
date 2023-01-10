@@ -3,12 +3,12 @@ import warnings
 
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import BatchType
-from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 if TYPE_CHECKING:
-    import tf
+    import tensorflow as tf
     import torch
     from ray.data import Dataset
+    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
 class BulkDatasetIterator(DatasetIterator):
@@ -52,7 +52,7 @@ class BulkDatasetIterator(DatasetIterator):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[TorchTensorBatchType]:
+    ) -> Iterator["TorchTensorBatchType"]:
         return self._base_dataset.iter_torch_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,

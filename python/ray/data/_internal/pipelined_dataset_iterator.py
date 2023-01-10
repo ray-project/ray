@@ -4,12 +4,12 @@ import warnings
 from ray.data import Dataset
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import BatchType
-from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 if TYPE_CHECKING:
-    import tf
+    import tensorflow as tf
     import torch
     from ray.data import DatasetPipeline
+    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
 class PipelinedDatasetIterator(DatasetIterator):
@@ -59,7 +59,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[TorchTensorBatchType]:
+    ) -> Iterator["TorchTensorBatchType"]:
         from ray.air._internal.torch_utils import (
             convert_ndarray_batch_to_torch_tensor_batch,
         )

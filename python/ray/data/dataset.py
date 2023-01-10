@@ -44,7 +44,6 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
@@ -130,6 +129,7 @@ if TYPE_CHECKING:
 
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
+    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
 logger = logging.getLogger(__name__)
@@ -2768,7 +2768,7 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[TorchTensorBatchType]:
+    ) -> Iterator["TorchTensorBatchType"]:
         """Return a local batched iterator of Torch Tensors over the dataset.
 
         This iterator will yield single-tensor batches if the underlying dataset

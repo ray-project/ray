@@ -6,7 +6,7 @@ from ray.data._internal.block_batching import BatchType
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    import tf
+    import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
