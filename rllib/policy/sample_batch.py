@@ -98,7 +98,7 @@ def attempt_count_timesteps(tensor_dict: dict):
             except TypeError:
                 # If input contains scalar arrays (that don't have a length),
                 # they should all be scalar arrays
-                same_lengths = all([sub_space.size == 0 for sub_space in v_list])
+                same_lengths = all(sub_space.size == 0 for sub_space in v_list)
             if not same_lengths:
                 if log_once("flattened_elements_have_different_lengths"):
                     deprecation_warning(
@@ -129,24 +129,48 @@ class SampleBatch(dict):
     samples, each with an "obs" and "reward" attribute.
     """
 
-    # Outputs from interacting with the environment
-    OBS = "obs"
-    CUR_OBS = "obs"
-    NEXT_OBS = "new_obs"
-    ACTIONS = "actions"
-    REWARDS = "rewards"
-    PREV_ACTIONS = "prev_actions"
-    PREV_REWARDS = "prev_rewards"
-    DONES = "dones"
-    INFOS = "infos"
-    SEQ_LENS = "seq_lens"
-    # This is only computed and used when RE3 exploration strategy is enabled
-    OBS_EMBEDS = "obs_embeds"
-    T = "t"
+    # On rows in SampleBatch:
+    # Each comment signifies how values relate to each other within a given row.
+    # A row generally signifies one timestep. Most importantly, at t=0, SampleBatch.OBS
+    # will usually be the reset-observation, while SampleBatch.ACTIONS will be the
+    # action based on the reset-observation and so on. This scheme is derived from
+    # RLlib's sampling logic.
 
-    # decision transformer
-    RETURNS_TO_GO = "returns_to_go"
-    ATTENTION_MASKS = "attention_masks"
+    # Outputs from interacting with the environment:
+
+    # Observation that we compute SampleBatch.ACTIONS from.
+    OBS = "obs"
+    # Observation returned after stepping with SampleBatch.ACTIONS.
+    NEXT_OBS = "new_obs"
+    # Action based on SampleBatch.OBS.
+    ACTIONS = "actions"
+    # Reward returned after stepping with SampleBatch.ACTIONS.
+    REWARDS = "rewards"
+    # Action chosen before SampleBatch.ACTIONS.
+    PREV_ACTIONS = "prev_actions"
+    # Reward received before SampleBatch.REWARDS.
+    PREV_REWARDS = "prev_rewards"
+    # Is the episode finished after stepping via SampleBatch.ACTIONS?
+    TERMINATEDS = "terminateds"
+    # Is the episode truncated (e.g. time limit) after stepping via SampleBatch.ACTIONS?
+    TRUNCATEDS = "truncateds"
+    # Infos returned after stepping with SampleBatch.ACTIONS
+    INFOS = "infos"
+
+    # Additional keys filled by RLlib to manage the data above:
+
+    SEQ_LENS = "seq_lens"  # Groups rows into sequences by defining their length.
+    T = "t"  # Timestep counter
+    EPS_ID = "eps_id"  # Uniquely identifies an episode
+    ENV_ID = "env_id"  # An env ID (e.g. the index for a vectorized sub-env).
+    AGENT_INDEX = "agent_index"  # Uniquely identifies an agent within an episode.
+
+    # Uniquely identifies a sample batch. This is important to distinguish RNN
+    # sequences from the same episode when multiple sample batches are
+    # concatenated (fusing sequences across batches can be unsafe).
+    UNROLL_ID = "unroll_id"
+
+    # Algorithm-specific keys:
 
     # Extra action fetches keys.
     ACTION_DIST_INPUTS = "action_dist_inputs"
@@ -154,21 +178,25 @@ class SampleBatch(dict):
     ACTION_LOGP = "action_logp"
     ACTION_DIST = "action_dist"
 
-    # Uniquely identifies an episode.
-    EPS_ID = "eps_id"
-    # An env ID (e.g. the index for a vectorized sub-env).
-    ENV_ID = "env_id"
-
-    # Uniquely identifies a sample batch. This is important to distinguish RNN
-    # sequences from the same episode when multiple sample batches are
-    # concatenated (fusing sequences across batches can be unsafe).
-    UNROLL_ID = "unroll_id"
-
-    # Uniquely identifies an agent within an episode.
-    AGENT_INDEX = "agent_index"
-
     # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
+
+    # RE 3
+    # This is only computed and used when RE3 exploration strategy is enabled.
+    OBS_EMBEDS = "obs_embeds"
+
+    # Decision Transformer
+    RETURNS_TO_GO = "returns_to_go"
+    ATTENTION_MASKS = "attention_masks"
+
+    # Deprecated keys:
+
+    # SampleBatches must already not be constructed anymore by setting this key
+    # directly. Instead, the values under this key are auto-computed via the values of
+    # the new TERMINATEDS and TRUNCATEDS keys.
+    DONES = "dones"
+    # Use SampleBatch.OBS instead.
+    CUR_OBS = "obs"
 
     @PublicAPI
     def __init__(self, *args, **kwargs):
@@ -190,6 +218,13 @@ class SampleBatch(dict):
                 training. If False, batch may be used for e.g. action
                 computations (inference).
         """
+
+        if SampleBatch.DONES in kwargs:
+            raise KeyError(
+                "SampleBatch cannot be constructed anymore with a `DONES` key! "
+                "Instead, set the new TERMINATEDS and TRUNCATEDS keys. The values under"
+                " DONES will then be automatically computed using terminated|truncated."
+            )
 
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
@@ -268,6 +303,25 @@ class SampleBatch(dict):
         """
         return len(self)
 
+    @ExperimentalAPI
+    def is_terminated_or_truncated(self) -> bool:
+        """Returns True if `self` is either terminated or truncated at idx -1."""
+        return self[SampleBatch.TERMINATEDS][-1] or (
+            SampleBatch.TRUNCATEDS in self and self[SampleBatch.TRUNCATEDS][-1]
+        )
+
+    @ExperimentalAPI
+    def is_single_trajectory(self) -> bool:
+        """Returns True if this SampleBatch only contains one trajectory.
+
+        This is determined by checking all timesteps (except for the last) for being
+        not terminated AND (if applicable) not truncated.
+        """
+        return not any(self[SampleBatch.TERMINATEDS][:-1]) and (
+            SampleBatch.TRUNCATEDS not in self
+            or not any(self[SampleBatch.TRUNCATEDS][:-1])
+        )
+
     @staticmethod
     @PublicAPI
     @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
@@ -294,7 +348,7 @@ class SampleBatch(dict):
             >>> print(b1.concat(b2)) # doctest: +SKIP
             {"a": np.array([1, 2, 3, 4, 5])}
         """
-        return self.concat_samples([self, other])
+        return concat_samples([self, other])
 
     @PublicAPI
     def copy(self, shallow: bool = False) -> "SampleBatch":
@@ -460,6 +514,11 @@ class SampleBatch(dict):
             [{"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]}]
         """
 
+        assert key is None or key in [SampleBatch.EPS_ID, SampleBatch.DONES], (
+            f"`SampleBatch.split_by_episode(key={key})` invalid! "
+            f"Must be [None|'dones'|'eps_id']."
+        )
+
         def slice_by_eps_id():
             slices = []
             # Produce a new slice whenever we find a new episode ID.
@@ -475,11 +534,13 @@ class SampleBatch(dict):
             slices.append(self[offset : self.count])
             return slices
 
-        def slice_by_dones():
+        def slice_by_terminateds_or_truncateds():
             slices = []
             offset = 0
             for i in range(self.count):
-                if self[SampleBatch.DONES][i]:
+                if self[SampleBatch.TERMINATEDS][i] or (
+                    SampleBatch.TRUNCATEDS in self and self[SampleBatch.TRUNCATEDS][i]
+                ):
                     # Since self[i] is the last timestep of the episode,
                     # append it to the batch, then set offset to the start
                     # of the next batch
@@ -492,7 +553,7 @@ class SampleBatch(dict):
 
         key_to_method = {
             SampleBatch.EPS_ID: slice_by_eps_id,
-            SampleBatch.DONES: slice_by_dones,
+            SampleBatch.DONES: slice_by_terminateds_or_truncateds,
         }
 
         # If key not specified, default to this order.
@@ -501,13 +562,13 @@ class SampleBatch(dict):
         slices = None
         if key is not None:
             # If key specified, directly use it.
-            if key not in self:
+            if key == SampleBatch.EPS_ID and key not in self:
                 raise KeyError(f"{self} does not have key `{key}`!")
             slices = key_to_method[key]()
         else:
             # If key not specified, go in order.
             for key in key_resolve_order:
-                if key in self:
+                if key == SampleBatch.DONES or key in self:
                     slices = key_to_method[key]()
                     break
             if slices is None:
@@ -803,8 +864,12 @@ class SampleBatch(dict):
         if isinstance(key, slice):
             return self._slice(key)
 
+        # Special key DONES -> Translate to `TERMINATEDS | TRUNCATEDS` to reflect
+        # the old meaning of DONES.
+        if key == SampleBatch.DONES:
+            return self[SampleBatch.TERMINATEDS]
         # Backward compatibility for when "input-dicts" were used.
-        if key == "is_training":
+        elif key == "is_training":
             if log_once("SampleBatch['is_training']"):
                 deprecation_warning(
                     old="SampleBatch['is_training']",
@@ -831,9 +896,16 @@ class SampleBatch(dict):
             key: The column name to set a value for.
             item: The data to insert.
         """
+        # Disallow setting DONES key directly.
+        if key == SampleBatch.DONES:
+            raise KeyError(
+                "Cannot set `DONES` anymore in a SampleBatch! "
+                "Instead, set the new TERMINATEDS and TRUNCATEDS keys. The values under"
+                " DONES will then be automatically computed using terminated|truncated."
+            )
         # Defend against creating SampleBatch via pickle (no property
         # `added_keys` and first item is already set).
-        if not hasattr(self, "added_keys"):
+        elif not hasattr(self, "added_keys"):
             dict.__setitem__(self, key, item)
             return
 
@@ -1304,7 +1376,7 @@ class MultiAgentBatch:
 
     @staticmethod
     @PublicAPI
-    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
+    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=True)
     def concat_samples(samples: List["MultiAgentBatch"]) -> "MultiAgentBatch":
         return concat_samples_into_ma_batch(samples)
 

@@ -177,6 +177,30 @@ ray.get([f.remote() for _ in range(15)])
     assert "Tip:" not in err_str
 
 
+def test_autoscaler_prefix():
+    script = """
+import ray
+import time
+
+ray.init(num_cpus=1)
+
+@ray.remote(num_cpus=1)
+class A:
+    pass
+
+a = A.remote()
+b = A.remote()
+time.sleep(25)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "(autoscaler" in out_str
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = f"""
@@ -624,8 +648,7 @@ time.sleep(5)
     assert actor_repr not in out
 
 
-@pytest.mark.parametrize("pull_based", [True, False])
-def test_node_name_in_raylet_death(pull_based):
+def test_node_name_in_raylet_death():
     NODE_NAME = "RAY_TEST_RAYLET_DEATH_NODE_NAME"
     script = f"""
 import time
@@ -633,22 +656,14 @@ import os
 
 WAIT_BUFFER_SECONDS=5
 
-if {pull_based}:
-    os.environ["RAY_pull_based_healthcheck"]="true"
-    os.environ["RAY_health_check_initial_delay_ms"]="0"
-    os.environ["RAY_health_check_period_ms"]="1000"
-    os.environ["RAY_health_check_timeout_ms"]="10"
-    os.environ["RAY_health_check_failure_threshold"]="2"
-    sleep_time = float(os.environ["RAY_health_check_period_ms"]) / 1000.0 * \
-        int(os.environ["RAY_health_check_failure_threshold"])
-    sleep_time += WAIT_BUFFER_SECONDS
-else:
-    NUM_HEARTBEATS=10
-    HEARTBEAT_PERIOD=500
-    os.environ["RAY_pull_based_healthcheck"]="false"
-    os.environ["RAY_num_heartbeats_timeout"]=str(NUM_HEARTBEATS)
-    os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
-    sleep_time = NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS
+os.environ["RAY_pull_based_healthcheck"]="true"
+os.environ["RAY_health_check_initial_delay_ms"]="0"
+os.environ["RAY_health_check_period_ms"]="1000"
+os.environ["RAY_health_check_timeout_ms"]="10"
+os.environ["RAY_health_check_failure_threshold"]="2"
+sleep_time = float(os.environ["RAY_health_check_period_ms"]) / 1000.0 * \
+    int(os.environ["RAY_health_check_failure_threshold"])
+sleep_time += WAIT_BUFFER_SECONDS
 
 import ray
 
