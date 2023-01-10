@@ -530,25 +530,32 @@ class DynamicTFPolicyV2(TFPolicy):
                     # Create a +time-axis placeholder if the shift is not an
                     # int (range or list of ints).
                     # Do not flatten actions if action flattening disabled.
-                    if self.config.get("_disable_action_flattening") and view_col in [
-                        SampleBatch.ACTIONS,
-                        SampleBatch.PREV_ACTIONS,
-                    ]:
-                        flatten = False
+                    if view_col in [SampleBatch.ACTIONS, SampleBatch.PREV_ACTIONS]:
+                        if self.config.get("_disable_action_flattening"):
+                            flatten = False
+                            one_hot = False
+                        else:
+                            flatten = True
+                            one_hot = False
                     # Do not flatten observations if no preprocessor API used.
                     elif (
                         view_col in [SampleBatch.OBS, SampleBatch.NEXT_OBS]
                         and self.config["_disable_preprocessor_api"]
                     ):
                         flatten = False
+                        one_hot = False
                     # Flatten everything else.
                     else:
                         flatten = True
+                        one_hot = True
+
                     input_dict[view_col] = get_placeholder(
                         space=view_req.space,
                         name=view_col,
                         time_axis=time_axis,
                         flatten=flatten,
+                        one_hot=one_hot,
+
                     )
         dummy_batch = self._get_dummy_batch_from_view_requirements(batch_size=32)
 

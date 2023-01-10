@@ -340,20 +340,21 @@ class ModelCatalog:
     @staticmethod
     @DeveloperAPI
     def get_action_shape(
-        action_space: gym.Space, framework: str = "tf"
+        action_space: gym.Space, framework: str = "tf", one_hot: bool = False
     ) -> (np.dtype, List[int]):
         """Returns action tensor dtype and shape for the action space.
 
         Args:
             action_space: Action space of the target gym env.
             framework: The framework identifier. One of "tf" or "torch".
+            one_hot: Whether to use one-hot encoding for discrete (sub-)spaces.
 
         Returns:
             (dtype, shape): Dtype and shape of the actions tensor.
         """
         dl_lib = torch if framework == "torch" else tf
         if isinstance(action_space, Discrete):
-            return action_space.dtype, (None,)
+            return action_space.dtype, (None, action_space.n) if one_hot else (None,)
         elif isinstance(action_space, (Box, Simplex)):
             if np.issubdtype(action_space.dtype, np.floating):
                 return dl_lib.float32, (None,) + action_space.shape
@@ -369,7 +370,7 @@ class ModelCatalog:
             all_discrete = True
             for i in range(len(flat_action_space)):
                 if isinstance(flat_action_space[i], Discrete):
-                    size += 1
+                    size += flat_action_space[i].n if one_hot else 1
                 else:
                     all_discrete = False
                     size += np.product(flat_action_space[i].shape)
@@ -383,7 +384,7 @@ class ModelCatalog:
     @staticmethod
     @DeveloperAPI
     def get_action_placeholder(
-        action_space: gym.Space, name: str = "action"
+        action_space: gym.Space, name: str = "action", one_hot: bool = False
     ) -> TensorType:
         """Returns an action placeholder consistent with the action space
 
@@ -391,11 +392,16 @@ class ModelCatalog:
             action_space: Action space of the target gym env.
             name: An optional string to name the placeholder by.
                 Default: "action".
+            one_hot: Whether to use one-hot encoding for discrete (sub-)spaces.
 
         Returns:
             action_placeholder: A placeholder for the actions
         """
-        dtype, shape = ModelCatalog.get_action_shape(action_space, framework="tf")
+        dtype, shape = ModelCatalog.get_action_shape(
+            action_space,
+            framework="tf",
+            one_hot=one_hot,
+        )
 
         return tf1.placeholder(dtype, shape=shape, name=name)
 

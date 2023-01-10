@@ -176,7 +176,8 @@ def get_placeholder(
     value: Optional[Any] = None,
     name: Optional[str] = None,
     time_axis: bool = False,
-    flatten: bool = True
+    flatten: bool = True,
+    one_hot: bool = False,
 ) -> "tf1.placeholder":
     """Returns a tf1.placeholder object given optional hints, such as a space.
 
@@ -193,6 +194,8 @@ def get_placeholder(
             dimension (None).
         flatten: Whether to flatten the given space into a plain Box space
             and then create the placeholder from the resulting space.
+        one_hot: Whether to one-hot discrete (sub-)spaces. For example, Discrete(2)
+            would yield a placeholder of Box((2,)).
 
     Returns:
         The tf1 placeholder.
@@ -202,18 +205,20 @@ def get_placeholder(
     if space is not None:
         if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
             if flatten:
-                return ModelCatalog.get_action_placeholder(space, None)
+                return ModelCatalog.get_action_placeholder(space, None, one_hot=one_hot)
             else:
                 return tree.map_structure_with_path(
                     lambda path, component: get_placeholder(
                         space=component,
                         name=name + "." + ".".join([str(p) for p in path]),
+                        one_hot=one_hot,
                     ),
                     get_base_struct_from_space(space),
                 )
+        _, shape = ModelCatalog.get_action_shape(space, framework="tf", one_hot=one_hot)
         return tf1.placeholder(
-            shape=(None,) + ((None,) if time_axis else ()) + space.shape,
-            dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
+            shape=(None,) + ((None,) if time_axis else ()) + shape[1:],
+            dtype=tf.float32 if (space.dtype == np.float64 or one_hot) else space.dtype,
             name=name,
         )
     else:
