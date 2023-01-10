@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
 import warnings
 
+from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data._internal.block_batching import BatchType
 
 if TYPE_CHECKING:
     import tensorflow as tf
@@ -30,7 +30,7 @@ class BulkDatasetIterator(DatasetIterator):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[BatchType]:
+    ) -> Iterator[DataBatch]:
         # TODO(swang): Delegate Dataset.iter_batches to
         # DatasetIterator.iter_batches instead of the other way around.
         return self._base_dataset.iter_batches(

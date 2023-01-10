@@ -2,7 +2,7 @@ import abc
 from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
 from typing_extensions import Literal
 
-from ray.data._internal.block_batching import BatchType
+from ray.data.block import DataBatch
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -53,7 +53,7 @@ class DatasetIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[BatchType]:
+    ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
         Examples:

@@ -2,8 +2,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
 import warnings
 
 from ray.data import Dataset
+from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data._internal.block_batching import BatchType
 
 if TYPE_CHECKING:
     import tensorflow as tf
@@ -38,7 +38,7 @@ class PipelinedDatasetIterator(DatasetIterator):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[BatchType]:
+    ) -> Iterator[DataBatch]:
         ds = self._get_next_dataset()
         return ds.iter_batches(
             prefetch_blocks=prefetch_blocks,
