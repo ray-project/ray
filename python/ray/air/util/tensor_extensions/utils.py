@@ -1,4 +1,5 @@
 from typing import Any, Sequence, Union
+import warnings
 
 import numpy as np
 from pandas.core.dtypes.generic import ABCSeries
@@ -57,9 +58,18 @@ def _create_possibly_ragged_ndarray(
     ndarray.
     """
     try:
-        return np.array(values, copy=False)
+        with warnings.catch_warnings():
+            # For NumPy < 1.24, constructing a ragged ndarray directly via
+            # `np.array(...)` without the `dtype=object` parameter will raise a
+            # VisibleDeprecationWarning which we suppress.
+            # More details: https://stackoverflow.com/q/63097829
+            warnings.simplefilter("ignore", category=np.VisibleDeprecationWarning)
+            return np.array(values, copy=False)
     except ValueError as e:
-        if "could not broadcast input array from shape" in str(e):
+        # For NumPy >= 1.24, constructing a ragged ndarray directly via `np.array(...)`
+        # without the `dtype=object` parameter will raise a ValueError.
+        # https://github.com/numpy/numpy/pull/22004
+        if "The requested array has an inhomogeneous shape" in str(e):
             # Fall back to strictly creating a ragged ndarray.
             return _create_strict_ragged_ndarray(values)
         else:

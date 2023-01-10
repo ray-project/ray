@@ -47,7 +47,6 @@ from pandas.io.formats.format import ExtensionArrayFormatter
 from ray.air.util.tensor_extensions.utils import (
     _create_possibly_ragged_ndarray,
     _is_ndarray_variable_shaped_tensor,
-    _create_strict_ragged_ndarray,
 )
 from ray.util.annotations import PublicAPI
 
