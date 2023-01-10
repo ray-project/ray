@@ -223,6 +223,7 @@ test_python() {
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_env=RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1" \
       --test_output=streamed \
       -- \
       ${test_shard_selection};
@@ -234,6 +235,7 @@ test_large() {
   # shellcheck disable=SC2046
   bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
+      --test_env=RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1" \
       --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}"  "$@" \
       -- python/ray/tests/...
 }
