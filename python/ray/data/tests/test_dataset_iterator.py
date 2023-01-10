@@ -1,6 +1,7 @@
 import pytest
 
 import tensorflow as tf
+import torch
 
 import ray
 
@@ -44,7 +45,8 @@ def test_torch_conversion(ray_start_regular_shared):
     ds = ray.data.range_table(5)
     it = ds.iterator()
     for batch in it.iter_torch_batches():
-        assert batch["value"] == list(range(5))
+        assert isinstance(batch["value"], torch.Tensor)
+        assert batch["value"].tolist() == list(range(5))
 
 
 if __name__ == "__main__":

@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
 from typing_extensions import Literal
 
 from ray.data._internal.block_batching import BatchType
-from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import tf
     import torch
+    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
 @PublicAPI(stability="beta")
@@ -102,7 +102,7 @@ class DatasetIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[TorchTensorBatchType]:
+    ) -> Iterator["TorchTensorBatchType"]:
         """Return a local batched iterator of Torch Tensors over the dataset.
 
         This iterator will yield single-tensor batches if the underlying dataset
