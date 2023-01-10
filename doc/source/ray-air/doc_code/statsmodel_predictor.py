@@ -3,7 +3,7 @@
 import os
 from typing import Optional
 
-import numpy as np
+import numpy as np  # noqa: F401
 import pandas as pd
 import statsmodels.api as sm
 import statsmodels.formula.api as smf

@@ -10,6 +10,7 @@ from mxnet import gluon
 import ray
 from ray.air import Checkpoint
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import Predictor
 # __mxnetpredictor_imports_end__
@@ -73,9 +74,22 @@ checkpoint = Checkpoint.from_directory("checkpoint")
 # __mxnetpredictor_checkpoint_end__
 
 # __mxnetpredictor_predict_start__
-predictor = BatchPredictor.from_checkpoint(checkpoint, MXNetPredictor, net=net)
-# These images aren't normalized. In practice, preprocess images before inference.
-dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
+# These images aren't normalized. In practice, normalize images before inference.
+dataset = ray.data.read_images(
+    "s3://anonymous@air-example-data-2/imagenet-sample-images", size=(224, 224)
+)
+
+
+def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    # (B, H, W, C) -> (B, C, H, W)
+    batch["image"] = batch["image"].transpose(0, 3, 1, 2)
+    return batch
+
+
+preprocessor = BatchMapper(preprocess, batch_format="numpy")
+predictor = BatchPredictor.from_checkpoint(
+    checkpoint, MXNetPredictor, net=net, preprocessor=preprocessor
+)
 predictor.predict(dataset)
 # __mxnetpredictor_predict_end__
 # fmt: on
