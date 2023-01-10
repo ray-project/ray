@@ -321,14 +321,14 @@ class RLTrainer:
                 )
 
             def set_optimizer_fn(module):
-                optimizer = self._get_optimizer_obj(module, optimizer_cls)
-                parameters = self._get_parameters(module)
+                optimizer = self.get_optimizer_obj(module, optimizer_cls)
+                parameters = self.get_parameters(module)
                 return [(parameters, optimizer)]
 
         for param_seq, optimizer in set_optimizer_fn(module):
             self._optim_to_param[optimizer] = []
             for param in param_seq:
-                param_ref = self._get_param_ref(param)
+                param_ref = self.get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
@@ -344,9 +344,9 @@ class RLTrainer:
         """
         module = self._module[module_id]
 
-        parameters = self._get_parameters(module)
+        parameters = self.get_parameters(module)
         for param in parameters:
-            param_ref = self._get_param_ref(param)
+            param_ref = self.get_param_ref(param)
             if param_ref in self._params:
                 del self._params[param_ref]
             if param_ref in self._param_to_optim:
@@ -392,7 +392,7 @@ class RLTrainer:
         for param_seq, optimizer in self.configure_optimizers():
             self._optim_to_param[optimizer] = []
             for param in param_seq:
-                param_ref = self._get_param_ref(param)
+                param_ref = self.get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
@@ -422,7 +422,7 @@ class RLTrainer:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def _get_param_ref(self, param: ParamType) -> Hashable:
+    def get_param_ref(self, param: ParamType) -> Hashable:
         """Returns a reference to a parameter.
 
         This should be overriden in framework specific trainer. For example in torch it
@@ -437,7 +437,7 @@ class RLTrainer:
         """
 
     @abc.abstractmethod
-    def _get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         """Returns the parameters of a module.
 
         This should be overriden in framework specific trainer. For example in torch it
@@ -451,7 +451,7 @@ class RLTrainer:
         """
 
     @abc.abstractmethod
-    def _get_optimizer_obj(
+    def get_optimizer_obj(
         self, module: RLModule, optimizer_cls: Type[Optimizer]
     ) -> Optimizer:
         """Returns the optimizer instance of type optimizer_cls from the module
