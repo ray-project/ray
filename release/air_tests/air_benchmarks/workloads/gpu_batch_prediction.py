@@ -37,12 +37,10 @@ def main(data_size_gb: int, smoke_test: bool = False):
     model = resnet18(pretrained=True)
 
     def to_tensor(batch: np.ndarray) -> torch.Tensor:
-        tensor = torch.as_tensor(batch)
+        tensor = torch.as_tensor(batch, dtype=torch.float)
         # (B, H, W, C) -> (B, C, H, W)
         tensor = tensor.permute(0, 3, 1, 2)
-        # torch.uint8 -> torch.float
-        tensor = tensor.to(torch.float)
-        # [0, 255] -> [0., 1.]
+        # [0., 255.] -> [0., 1.]
         tensor = tensor.div(255)
         return tensor
 
