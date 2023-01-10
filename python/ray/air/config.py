@@ -308,8 +308,8 @@ class DatasetConfig:
             This must be enabled at least for the dataset that is fit.
             True by default.
         max_object_store_memory_fraction [Experimental]: The maximum fraction
-            of Ray's shared-memory object store to use for the transformed
-            Dataset. The default value is -1, meaning that the preprocessed
+            of Ray's shared-memory object store to use for the
+            dataset. The default value is -1, meaning that the preprocessed
             dataset should be cached, which may cause spilling if its size is
             larger than the object store's capacity. Pipelined ingest (all
             other values, from 0 to 1) is experimental. Note that the absolute
