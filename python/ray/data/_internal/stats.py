@@ -62,10 +62,13 @@ class _DatasetStatsBuilder:
     def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
-            if i == 0:
-                stage_infos[self.stage_name + "_" + k] = v
+            if len(stages) > 1:
+                if i == 0:
+                    stage_infos[self.stage_name + "_" + k] = v
+                else:
+                    stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
             else:
-                stage_infos[self.stage_name.split("->")[-1] + "_" + k] = v
+                stage_infos[self.stage_name] = v
         stats = DatasetStats(
             stages=stage_infos,
             parent=self.parent,
@@ -197,7 +200,9 @@ class DatasetStats:
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
         self.base_name = base_name
-        self.dataset_uuid: str = None
+        # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
+        # fully to streaming execution.
+        self.dataset_uuid: str = "unknown_uuid"
         self.time_total_s: float = 0
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
@@ -209,6 +214,7 @@ class DatasetStats:
         self.iter_format_batch_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
+        self.extra_metrics = {}
 
     @property
     def stats_actor(self):
@@ -395,6 +401,10 @@ class DatasetStats:
                 int(np.mean(list(node_counts.values()))),
                 len(node_counts),
             )
+
+        if self.extra_metrics:
+            out += indent
+            out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
 
         return out
 

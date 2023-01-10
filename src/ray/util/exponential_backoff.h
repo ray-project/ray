@@ -25,22 +25,19 @@ class ExponentialBackoff {
  public:
   /// Computes the backoff delay using the exponential backoff algorithm,
   /// using the formula
-  /// delay = base * 2 ^ attempt
   ///
-  /// @param max_attempt the maximum acceptable attempt count
+  /// delay = min(base * 2 ^ attempt, max_backoff)
+  ///
+  ///
   /// @param max_backoff_ms the maximum backoff value
   /// @return the delay in ms based on the formula
   static uint64_t GetBackoffMs(uint64_t attempt,
                                uint64_t base_ms,
-                               uint64_t max_attempt = kMaxAttempt,
                                uint64_t max_backoff_ms = kMaxBackoffMs);
 
  private:
-  // The default cap on the attempt number;
-  static constexpr uint64_t kMaxAttempt = 50;
-
   // The default cap on the backoff delay.
-  static constexpr uint64_t kMaxBackoffMs = 10 * 60 * 1000;
+  static constexpr uint64_t kMaxBackoffMs = 1 * 60 * 1000;
 };
 
 }  // namespace ray
