@@ -71,7 +71,10 @@ available_node_types:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
             InstanceType: m5.large
-            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+            # Default AMI for us-west-2.
+            # Check https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/aws/config.py
+            # for default images for other zones.
+            ImageId: ami-0387d929287ab193e
             # You can provision additional disk space with a conf as follows
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
@@ -97,7 +100,10 @@ available_node_types:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
             InstanceType: m5.large
-            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+            # Default AMI for us-west-2.
+            # Check https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/aws/config.py
+            # for default images for other zones.
+            ImageId: ami-0387d929287ab193e
             # Run workers on spot by default. Comment this out to use on-demand.
             # NOTE: If relying on spot instances, it is best to specify multiple different instance
             # types to avoid interruption when one instance type is experiencing heightened demand.
