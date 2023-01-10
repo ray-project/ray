@@ -28,7 +28,7 @@ sudo tailscaled &
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
 
-sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --hostname=nexus --accept-dns
+sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --hostname=nexus --accept-dns
 nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
@@ -42,7 +42,7 @@ nexus=$(tailscale ip -4 nexus)
 
 else
 
-sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-risk=all --accept-routes --accept-dns
+sudo tailscale up --authkey=tskey-auth-kTSQbo3CNTRL-bWzNQtfVbgfmqTbd9zc5mffSAWJoMLLTB --accept-dns
 nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
