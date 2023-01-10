@@ -42,8 +42,8 @@ nexus=$(tailscale ip -4 nexus)
             -Cnode.master=true \
             -Cnode.data=true \
             -Cnode.store.allow_mmap=false \
-            -Cdiscovery.seed_hosts=nexus,$nexus \
-            -Ccluster.initial_master_nodes=nexus,$nexus \
+            -Cdiscovery.seed_hosts=nexus:4300 \
+            -Ccluster.initial_master_nodes=nexus \
             -Cstats.enabled=false
             
 
@@ -59,12 +59,11 @@ done
 nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
-            #-Cnode.name=${DDNS_HOST} \
             -Cnode.master=false \
             -Cnode.data=true \
             -Cnode.store.allow_mmap=false \
-            -Cdiscovery.seed_hosts=nexus,$nexus \
-            -Ccluster.initial_master_nodes=nexus,$nexus \
+            -Cdiscovery.seed_hosts=nexus:4300 \
+            -Ccluster.initial_master_nodes=nexus \
             -Cstats.enabled=false
             
 fi
