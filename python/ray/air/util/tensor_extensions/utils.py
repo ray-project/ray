@@ -66,10 +66,18 @@ def _create_possibly_ragged_ndarray(
             warnings.simplefilter("ignore", category=np.VisibleDeprecationWarning)
             return np.array(values, copy=False)
     except ValueError as e:
-        # For NumPy >= 1.24, constructing a ragged ndarray directly via `np.array(...)`
+        # Constructing a ragged ndarray directly via `np.array(...)`
         # without the `dtype=object` parameter will raise a ValueError.
-        # https://github.com/numpy/numpy/pull/22004
-        if "The requested array has an inhomogeneous shape" in str(e):
+        # For NumPy < 1.24, the message is of the form:
+        # "could not broadcast input array from shape..."
+        # For NumPy >= 1.24, the message is of the form:
+        # "The requested array has an inhomogeneous shape..."
+        # More details: https://github.com/numpy/numpy/pull/22004
+        error_str = str(e)
+        if (
+            "could not broadcast input array from shape" in error_str
+            or "The requested array has an inhomogeneous shape" in error_str
+        ):
             # Fall back to strictly creating a ragged ndarray.
             return _create_strict_ragged_ndarray(values)
         else:
