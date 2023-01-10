@@ -44,6 +44,24 @@ class RandomBytesReader(Reader):
         ]
 
 
+def test_disable_in_ray_client(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
+    cluster.add_node(num_cpus=4)
+    cluster.head_node._ray_params.ray_client_server_port = "10004"
+    cluster.head_node.start_ray_client_server()
+    address = "ray://localhost:10004"
+
+    # Import of ray.data.context module, and this triggers the initialization of
+    # default configuration values in DatasetContext.
+    from ray.data.context import DatasetContext
+
+    assert DatasetContext.get_current().block_splitting_enabled
+
+    # Verify Ray client disabling dynamic block splitting.
+    ray.init(address)
+    assert not DatasetContext.get_current().block_splitting_enabled
+
+
 def test_dataset(
     ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
 ):
@@ -64,10 +82,13 @@ def test_dataset(
     assert ds.size_bytes() >= 0.7 * block_size * num_blocks * num_tasks
 
     map_ds = ds.map_batches(lambda x: x)
+    map_ds.fully_executed()
     assert map_ds.num_blocks() == num_tasks
     map_ds = ds.map_batches(lambda x: x, batch_size=num_blocks * num_tasks)
+    map_ds.fully_executed()
     assert map_ds.num_blocks() == 1
     map_ds = ds.map(lambda x: x)
+    map_ds.fully_executed()
     assert map_ds.num_blocks() == num_blocks * num_tasks
 
     ds_list = ds.split(5)
@@ -91,6 +112,7 @@ def test_dataset(
     assert ds.groupby("one").count().count() == num_blocks * num_tasks
 
     new_ds = ds.zip(ds)
+    new_ds.fully_executed()
     assert new_ds.num_blocks() == num_blocks * num_tasks
 
     assert len(ds.take(5)) == 5

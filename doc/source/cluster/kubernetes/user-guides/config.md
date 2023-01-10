@@ -162,18 +162,6 @@ Note that CPU quantities will be rounded up to the nearest integer
 before being relayed to Ray.
 The resource capacities advertised to Ray may be overridden in the {ref}`rayStartParams`.
 
-:::{warning}
-Due to a  [bug](https://github.com/ray-project/kuberay/pull/497) in KubeRay 0.3.0,
-the following piece of configuration is required to advertise the presence of GPUs
-to Ray.
-```yaml
-rayStartParams:
-    num-gpus: "1"
-```
-Future releases of KubeRay will not require this. (GPU quantities will be correctly auto-detected
-from container limits.)
-:::
-
 On the other hand CPU, GPU, and memory **requests** will be ignored by Ray.
 For this reason, it is best when possible to **set resource requests equal to resource limits**.
 
@@ -292,7 +280,7 @@ The Ray Client server can be accessed from a pod in another namespace using
 ```python
 ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
 ```
-(This assumes the Ray cluster was deployed into the default Kuberentes namespace.
+(This assumes the Ray cluster was deployed into the default Kubernetes namespace.
 If the Ray cluster is deployed in a non-default namespace, use that namespace in
 place of `default`.)
 

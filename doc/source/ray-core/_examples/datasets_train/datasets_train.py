@@ -23,7 +23,6 @@ from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn.parallel import DistributedDataParallel
 
 import ray
 from ray import train
@@ -455,8 +454,7 @@ def train_func(config):
         )
 
         # Checkpoint model.
-        module = net.module if isinstance(net, DistributedDataParallel) else net
-        checkpoint = Checkpoint.from_dict(dict(model=module.state_dict()))
+        checkpoint = Checkpoint.from_dict(dict(model=net.state_dict()))
 
         # Record and log stats.
         print(f"session report on {session.get_world_rank()}")
@@ -582,7 +580,7 @@ if __name__ == "__main__":
         read_dataset(data_path)
     )
 
-    num_columns = len(train_dataset.schema().names)
+    num_columns = len(train_dataset.schema(fetch_if_missing=True).names)
     # remove label column.
     num_features = num_columns - 1
 

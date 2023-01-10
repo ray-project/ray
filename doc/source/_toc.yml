@@ -106,6 +106,7 @@ parts:
                 title: "Working with Checkpoints"
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
+              - file: tune/tutorials/tune_get_data_in_and_out
               - file: tune/examples/tune_analyze_results
               - file: tune/examples/pbt_guide
                 sections:
@@ -279,7 +280,7 @@ parts:
           - file: ray-core/examples/batch_prediction
           - file: ray-core/examples/batch_training
           - file: ray-core/examples/automl_for_time_series
-      - file: ray-core/package-ref
+      - file: ray-core/api
 
   - caption: Ray Clusters
     chapters:
@@ -328,6 +329,7 @@ parts:
       - file: cluster/running-applications/index
         title: Applications Guide
       - file: cluster/faq
+      - file: cluster/package-overview
 
   - caption: Monitoring and Debugging
     chapters:

@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
     UDF,
@@ -250,6 +251,11 @@ class ExecutionPlan:
                 self.execute()
             else:
                 return None
+        elif self._in_blocks is not None and self._snapshot_blocks is None:
+            # If the plan only has input blocks, we execute it, so snapshot has output.
+            # This applies to newly created dataset. For example, initial dataset from
+            # read, and output datasets of Dataset.split().
+            self.execute()
         # Snapshot is now guaranteed to be the output of the final stage or None.
         blocks = self._snapshot_blocks
         if not blocks:
@@ -261,14 +267,33 @@ class ExecutionPlan:
         metadata = blocks.get_metadata(fetch_if_missing=False)
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
+
+        # First check if there are blocks with computed schemas, then unify
+        # valid schemas from all such blocks.
+        schemas_to_unify = []
         for m in metadata:
             if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-                return m.schema
+                schemas_to_unify.append(m.schema)
+        if schemas_to_unify:
+            # Check valid pyarrow installation before attempting schema unification
+            try:
+                import pyarrow as pa
+            except ImportError:
+                pa = None
+            # If the result contains PyArrow schemas, unify them
+            if pa is not None and any(
+                isinstance(s, pa.Schema) for s in schemas_to_unify
+            ):
+                return unify_schemas(schemas_to_unify)
+            # Otherwise, if the resulting schemas are simple types (e.g. int),
+            # return the first schema.
+            return schemas_to_unify[0]
         if not fetch_if_missing:
             return None
         # Synchronously fetch the schema.
         # For lazy block lists, this launches read tasks and fetches block metadata
-        # until we find valid block schema.
+        # until we find the first valid block schema. This is to minimize new
+        # computations when fetching the schema.
         for _, m in blocks.iter_blocks_with_metadata():
             if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
                 return m.schema
@@ -432,11 +457,6 @@ class ExecutionPlan:
             # beginning.
             blocks = self._in_blocks
             stats = self._in_stats
-            if not self.has_lazy_input():
-                # If not a lazy datasource, unlink the input blocks from the plan so we
-                # can eagerly reclaim the input block memory after the first stage is
-                # done executing.
-                self._in_blocks = None
         return blocks, stats, stages
 
     def has_lazy_input(self) -> bool:
