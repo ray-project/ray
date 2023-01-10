@@ -7,6 +7,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
+from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
@@ -195,12 +196,14 @@ def _prefetch_blocks(
             the block will never be accessed again.
         stats: Dataset stats object used to store block wait time.
     """
+    eager_free = clear_block_after_read and DatasetContext.get_current().eager_free
 
     if num_blocks_to_prefetch == 0:
         for block_ref in block_ref_iter:
             yield block_ref
-            if clear_block_after_read:
-                ray._private.internal_api.free(block_ref, local_only=False)
+            trace_deallocation(
+                block_ref, "block_batching._prefetch_blocks", free=eager_free
+            )
 
     window_size = num_blocks_to_prefetch
     # Create the initial set of blocks to prefetch.
@@ -219,8 +222,9 @@ def _prefetch_blocks(
         except StopIteration:
             pass
         yield block_ref
-        if clear_block_after_read:
-            ray._private.internal_api.free(block_ref, local_only=False)
+        trace_deallocation(
+            block_ref, "block_batching._prefetch_blocks", free=eager_free
+        )
 
 
 def _blocks_to_batches(
