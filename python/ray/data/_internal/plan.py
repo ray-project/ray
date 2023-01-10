@@ -260,10 +260,13 @@ class ExecutionPlan:
         blocks = self._snapshot_blocks
         if not blocks:
             return None
-        # Don't force fetching in case it's a lazy block list, in which case we
-        # don't want to trigger full execution for a schema read. If we want to
-        # trigger execution to get schema, we'll trigger read tasks progressively
-        # until a viable schema is available, below.
+
+        # Only trigger the execution of first block in case it's a lazy block list.
+        # Don't trigger full execution for a schema read.
+        if isinstance(blocks, LazyBlockList):
+            blocks.compute_first_block()
+            blocks.ensure_metadata_for_first_block()
+
         metadata = blocks.get_metadata(fetch_if_missing=False)
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.

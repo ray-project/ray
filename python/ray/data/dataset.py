@@ -2128,7 +2128,7 @@ class Dataset(Generic[T]):
         )
 
     def schema(
-        self, fetch_if_missing: bool = False
+        self, fetch_if_missing: bool = True
     ) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset.
 
@@ -2139,8 +2139,8 @@ class Dataset(Generic[T]):
 
         Args:
             fetch_if_missing: If True, synchronously fetch the schema if it's
-                not known. Default is False, where None is returned if the
-                schema is not known.
+                not known. If False, None is returned if the schema is not known.
+                Default is True.
 
         Returns:
             The Python type or Arrow schema of the records, or None if the
@@ -4224,7 +4224,9 @@ class Dataset(Generic[T]):
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        schema = self.schema()
+        # Do not force execution for schema, as this method is expected to be very
+        # cheap.
+        schema = self.schema(fetch_if_missing=False)
         if schema is None:
             schema_str = "Unknown schema"
         elif isinstance(schema, type):
