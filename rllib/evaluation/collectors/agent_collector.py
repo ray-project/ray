@@ -12,7 +12,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import (
     flatten_to_single_ndarray,
-    flatten_space,
     get_dummy_batch_for_space,
 )
 from ray.rllib.utils.typing import (
@@ -22,7 +21,6 @@ from ray.rllib.utils.typing import (
     ViewRequirementsDict,
 )
 
-from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
