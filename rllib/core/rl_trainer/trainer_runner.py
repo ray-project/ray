@@ -5,7 +5,6 @@ import ray
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
-from ray.rllib.core.optim.rl_optimizer import RLOptimizer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
@@ -78,7 +77,7 @@ class TrainerRunner:
         )
         self.workers = [w.actor for w in self.backend_executor.worker_group.workers]
 
-        ray.get([w.init_trainer.remote() for w in self.workers])
+        ray.get([w.build.remote() for w in self.workers])
 
     def _compute_necessary_resources(self):
         num_gpus = self._compute_config.get("num_gpus", 0)
@@ -123,13 +122,31 @@ class TrainerRunner:
 
         return ray.get(refs)
 
+    def additional_update(self, *args, **kwargs) -> List[Mapping[str, Any]]:
+        """Apply additional non-gradient based updates to the RLTrainers.
+
+        For example, this could be used to do a polyak averaging update
+        of a target network in off policy algorithms like SAC or DQN.
+
+        By default this is a pass through that calls `RLTrainer.additional_update`
+
+        Args:
+            *args: Arguments to pass to each RLTrainer.
+            **kwargs: Keyword arguments to pass to each RLTrainer.
+
+        Returns:
+            A list of dictionaries of results from the updates from each worker.
+        """
+        refs = []
+        for worker in self.workers:
+            refs.append(worker.additional_update.remote(*args, **kwargs))
+        return ray.get(refs)
+
     def add_module(
         self,
         module_id: ModuleID,
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
-        optimizer_cls: Type[RLOptimizer],
-        optimizer_kwargs: Mapping[str, Any],
     ) -> None:
         """Add a module to the RLTrainers maintained by this TrainerRunner.
 
@@ -142,9 +159,7 @@ class TrainerRunner:
         """
         refs = []
         for worker in self.workers:
-            ref = worker.add_module.remote(
-                module_id, module_cls, module_kwargs, optimizer_cls, optimizer_kwargs
-            )
+            ref = worker.add_module.remote(module_id, module_cls, module_kwargs)
             refs.append(ref)
         ray.get(refs)
 
