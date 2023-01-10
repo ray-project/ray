@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
 #include <gtest/gtest_prod.h>
 
+#include <boost/container_hash/hash.hpp>
+#include <unordered_map>
+
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker.h"
+#include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
-#include "ray/raylet/worker_killing_policy_group_by_owner.h"
-#include "absl/container/flat_hash_map.h"
-#include <boost/container_hash/hash.hpp>
-#include <unordered_map>
 
 namespace ray {
 
@@ -45,39 +46,42 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   for (auto worker : workers) {
     TaskID owner_id = worker->GetAssignedTask().GetTaskSpecification().ParentTaskId();
     bool retriable = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
-    
+
     GroupKey group_key(owner_id, retriable);
     auto it = group_map.find(group_key);
 
     if (it == group_map.end()) {
-        Group group(owner_id, retriable);
-        group_map.insert({group_key, group});
-        group.AddToGroup(worker);
+      Group group(owner_id, retriable);
+      group_map.insert({group_key, group});
+      group.AddToGroup(worker);
     } else {
-        auto group = it->second;
-        group.AddToGroup(worker);
+      auto group = it->second;
+      group.AddToGroup(worker);
     }
   }
-  
+
   std::vector<Group> sorted;
-  for(auto it = group_map.begin(); it != group_map.end(); ++it) {
+  for (auto it = group_map.begin(); it != group_map.end(); ++it) {
     sorted.push_back(it->second);
   }
 
-  std::sort(sorted.begin(),
-            sorted.end(),
-            [](Group const &left,
-               Group const &right) -> bool {
-              int left_retriable = left.IsRetriable() ? 0 : 1;
-              int right_retriable = right.IsRetriable() ? 0 : 1;
-              if (left_retriable == right_retriable) {
-                return left.GetAssignedTaskTime() > right.GetAssignedTaskTime();
-              }
-              return left_retriable < right_retriable;
-              return 0;
-            });
-  
+  std::sort(
+      sorted.begin(), sorted.end(), [](Group const &left, Group const &right) -> bool {
+        int left_retriable = left.IsRetriable() ? 0 : 1;
+        int right_retriable = right.IsRetriable() ? 0 : 1;
+        if (left_retriable == right_retriable) {
+          return left.GetAssignedTaskTime() > right.GetAssignedTaskTime();
+        }
+        return left_retriable < right_retriable;
+      });
+
   Group selected_group = sorted.front();
+  for (Group group : sorted) {
+    if (group.GetAllWorkers().size() > 1) {
+      selected_group = group;
+      break;
+    }
+  }
   auto worker_to_kill = selected_group.SelectWorkerToKill();
   bool should_retry = selected_group.GetAllWorkers().size() > 1;
 
@@ -87,11 +91,14 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   return std::make_pair(worker_to_kill, should_retry);
 }
 
-std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(const std::vector<Group> &groups, const MemorySnapshot &system_memory) {
+std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
+    const std::vector<Group> &groups, const MemorySnapshot &system_memory) {
   std::stringstream result;
   int32_t group_index = 0;
   for (auto &group : groups) {
-    result << "Group (retriable: " << group.IsRetriable() << ") (owner id: " <<  group.OwnerId() << ") (time counter: " << group.GetAssignedTaskTime().time_since_epoch().count() << "):\n";
+    result << "Group (retriable: " << group.IsRetriable()
+           << ") (owner id: " << group.OwnerId() << ") (time counter: "
+           << group.GetAssignedTaskTime().time_since_epoch().count() << "):\n";
 
     int64_t worker_index = 0;
     for (auto &worker : group.GetAllWorkers()) {
@@ -105,9 +112,9 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(const std::vect
             << "Can't find memory usage for PID, reporting zero. PID: " << pid;
       }
       result << "Worker time counter "
-            << worker->GetAssignedTaskTime().time_since_epoch().count() << " worker id "
-            << worker->WorkerId() << " memory used " << used_memory << " task spec "
-            << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
+             << worker->GetAssignedTaskTime().time_since_epoch().count() << " worker id "
+             << worker->WorkerId() << " memory used " << used_memory << " task spec "
+             << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
 
       worker_index += 1;
       if (worker_index > 10) {
@@ -124,13 +131,9 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(const std::vect
   return result.str();
 }
 
-TaskID Group::OwnerId() const {
-  return owner_id_;
-}
+TaskID Group::OwnerId() const { return owner_id_; }
 
-bool Group::IsRetriable() const {
-  return retriable_;
-}
+bool Group::IsRetriable() const { return retriable_; }
 
 const std::chrono::steady_clock::time_point Group::GetAssignedTaskTime() const {
   return time_;
@@ -140,17 +143,18 @@ void Group::AddToGroup(std::shared_ptr<WorkerInterface> worker) {
   if (worker->GetAssignedTaskTime() < time_) {
     time_ = worker->GetAssignedTaskTime();
   }
+  bool retriable = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
   if (workers_.empty()) {
-    retriable_ = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
+    retriable_ = retriable;
   } else {
-    RAY_CHECK_EQ(retriable_, worker->GetAssignedTask().GetTaskSpecification().IsRetriable());
+    RAY_CHECK_EQ(retriable_, retriable);
   }
   workers_.push_back(worker);
 }
 
 const std::shared_ptr<WorkerInterface> Group::SelectWorkerToKill() const {
   RAY_CHECK(!workers_.empty());
-  
+
   std::vector<std::shared_ptr<WorkerInterface>> sorted(workers_.begin(), workers_.end());
 
   std::sort(sorted.begin(),
@@ -170,7 +174,7 @@ const std::shared_ptr<WorkerInterface> Group::SelectWorkerToKill() const {
   return sorted.front();
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> Group::GetAllWorkers() const{
+const std::vector<std::shared_ptr<WorkerInterface>> Group::GetAllWorkers() const {
   return workers_;
 }
 
@@ -181,7 +185,8 @@ unsigned long GroupByOwnerIdWorkerKillingPolicy::GroupKeyHash(const GroupKey &ke
   return hash;
 }
 
-bool GroupByOwnerIdWorkerKillingPolicy::GroupKeyEquals(const GroupKey &left, const GroupKey &right) {
+bool GroupByOwnerIdWorkerKillingPolicy::GroupKeyEquals(const GroupKey &left,
+                                                       const GroupKey &right) {
   return left.owner_id == right.owner_id && left.retriable == right.retriable;
 }
 
