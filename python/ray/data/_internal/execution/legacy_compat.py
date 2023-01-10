@@ -4,7 +4,7 @@ It should be deleted once we fully move to the new executor backend.
 """
 
 import ray.cloudpickle as cloudpickle
-from typing import Iterator
+from typing import Iterator, Tuple
 
 import ray
 from ray.data.block import Block, BlockMetadata, List
