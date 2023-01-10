@@ -380,15 +380,16 @@ class ExecutionPlan:
                         stats = stats_builder.build_multistage(stage_info)
                     else:
                         stats = stats_builder.build(blocks)
+                    stats.dataset_uuid = self._dataset_uuid
+                    stats_summary_string = stats.summary_string(include_parent=False)
+                    logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                        stats_summary_string,
+                    )
 
-            stats.dataset_uuid = self._dataset_uuid
-            stats_summary_string = stats.summary_string(include_parent=False)
-            logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                stats_summary_string,
-            )
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
+            self._snapshot_stats.dataset_uuid = self._dataset_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
             self._stages_after_snapshot = []
         if _is_lazy(self._snapshot_blocks) and force_read:
