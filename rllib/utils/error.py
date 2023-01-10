@@ -17,9 +17,10 @@ class EnvError(Exception):
 
 @PublicAPI
 class NotSerializable(Exception):
-  """Error if we encounter objects that can't be serialized by ray."""
+    """Error if we encounter objects that can't be serialized by ray."""
 
-  pass
+    pass
+
 
 # -------
 # Error messages

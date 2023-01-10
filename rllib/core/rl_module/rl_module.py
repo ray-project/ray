@@ -10,7 +10,6 @@ import ray
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-
 )
 from ray.rllib.utils.error import NotSerializable
 
