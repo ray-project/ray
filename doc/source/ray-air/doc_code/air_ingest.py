@@ -122,7 +122,8 @@ my_trainer.fit()
 
 # __config_5__
 import ray
-from ray.air import session, DatasetIterator
+from ray.air import session
+from ray.data import DatasetIterator
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig, DatasetConfig
 
