@@ -68,7 +68,7 @@ DEFAULT_USE_POLARS = False
 
 # Whether to use the new executor backend.
 DEFAULT_NEW_EXECUTION_BACKEND = bool(
-    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "1"))
+    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "0"))
 )
 
 # Whether to eagerly free memory (new backend only).

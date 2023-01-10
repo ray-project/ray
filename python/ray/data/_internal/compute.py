@@ -70,6 +70,9 @@ class TaskPoolStrategy(ComputeStrategy):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
+        assert (
+            not DatasetContext.get_current().new_execution_backend
+        ), "Legacy backend off"
         assert fn_constructor_args is None and fn_constructor_kwargs is None
         if fn_args is None:
             fn_args = tuple()
@@ -237,6 +240,9 @@ class ActorPoolStrategy(ComputeStrategy):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
         """Note: this is not part of the Dataset public API."""
+        assert (
+            not DatasetContext.get_current().new_execution_backend
+        ), "Legacy backend off"
         if fn_args is None:
             fn_args = tuple()
         if fn_kwargs is None:
