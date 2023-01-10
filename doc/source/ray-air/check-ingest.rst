@@ -104,14 +104,11 @@ Enabling Streaming Ingest
     meaning that bulk ingest should be used and the entire dataset should be
     computed and cached before execution.
 
-    Use a float value between 0 and 1 to indicate the "window" size, i.e. the
+    Use a float value 0 or greater to indicate the "window" size, i.e. the
     maximum fraction of object store memory that should be used at once. A
     reasonable value is 0.2, meaning 20% of available object store memory.
-    Larger window sizes can improve performance by increasing parallelism.
-
-    The value 1 means that the window size is the full dataset. In other words,
-    Ray will compute a full copy of the dataset in parallel with the current
-    copy that is being iterated upon.
+    Larger window sizes can improve performance by increasing parallelism. A
+    window size of 1 or greater will likely result in spilling.
 
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
@@ -159,9 +156,11 @@ Shuffling or data randomization is important for training high-quality models. B
     Global shuffling provides more uniformly random (decorrelated) samples and is carried
     out via a distributed map-reduce operation. This higher quality shuffle can often lead
     to more precision gain per training step, but it is also an expensive distributed
-    operation and will decrease the ingest throughput. As long as the shuffled ingest
-    throughput matches or exceeds the model training (forward pass, backward pass, gradient sync)
-    throughput, this higher-quality shuffle shouldn't slow down the overall training.
+    operation and will decrease the ingest throughput. The shuffle step is overlapped with
+    training computation, so as long as the shuffled ingest throughput matches
+    or exceeds the model training (forward pass, backward pass, gradient sync)
+    throughput, this higher-quality shuffle shouldn't slow down the overall
+    training.
 
     If global shuffling *is* causing the ingest throughput to become the training
     bottleneck, local shuffling may be a better option.

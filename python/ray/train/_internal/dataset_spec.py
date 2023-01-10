@@ -148,7 +148,7 @@ class DataParallelIngestSpec:
             for key, dataset in datasets.items():
                 conf = self._config(key)
                 if conf.transform:
-                    if 1 > conf.max_object_store_memory_fraction >= 0:
+                    if conf.max_object_store_memory_fraction >= 0:
                         # In windowed mode, preprocessor is applied in streaming way.
                         new_datasets[key] = dataset
                     else:
@@ -182,23 +182,16 @@ class DataParallelIngestSpec:
             config = self._config(key)
 
             if config.max_object_store_memory_fraction >= 0:
-                if config.max_object_store_memory_fraction < 1:
-                    object_store_memory = _estimate_avail_object_store_memory()
-                    stream_window_size = max(
-                        object_store_memory * config.max_object_store_memory_fraction, 1
-                    )
-                    dataset = dataset.window(
-                        bytes_per_window=stream_window_size
-                    ).repeat()
-                    # In windowed mode, we re-apply the preprocessor on each iteration.
-                    if self.preprocessor:
-                        # TODO: Replace with self.preprocessor.transform when possible.
-                        prep = self.preprocessor.transform_batch
-                        dataset = dataset.map_batches(prep, batch_format="pandas")
-                else:
-                    # If the window size is infinity, the preprocessor is cached and
-                    # we don't need to re-apply it each time.
-                    dataset = dataset.repeat()
+                object_store_memory = _estimate_avail_object_store_memory()
+                stream_window_size = max(
+                    object_store_memory * config.max_object_store_memory_fraction, 1
+                )
+                dataset = dataset.window(bytes_per_window=stream_window_size).repeat()
+                # In windowed mode, we re-apply the preprocessor on each iteration.
+                if self.preprocessor:
+                    # TODO: Replace with self.preprocessor.transform when possible.
+                    prep = self.preprocessor.transform_batch
+                    dataset = dataset.map_batches(prep, batch_format="pandas")
                 # Always re-randomize each window; this doesn't help with reducing
                 # cluster hot-spots since we already randomized the based blocks, but
                 # can help with improving randomness in combination with local shuffle.
@@ -208,10 +201,12 @@ class DataParallelIngestSpec:
                     dataset = dataset.randomize_block_order_each_window()
 
             if config.global_shuffle:
-                if config.max_object_store_memory_fraction >= 0:
-                    dataset = dataset.random_shuffle_each_window()
-                else:
-                    dataset = dataset.random_shuffle()
+                # If global shuffle is requested, then we should try to overlap
+                # this with other computation, so convert to a DatasetPipeline
+                # if not already being used.
+                if isinstance(dataset, Dataset):
+                    dataset = dataset.repeat()
+                dataset = dataset.random_shuffle_each_window()
 
             if config.split and len(training_worker_handles) > 1:
                 dataset_splits = dataset.split(

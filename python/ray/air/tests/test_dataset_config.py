@@ -262,7 +262,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         checker,
         preprocessor=prep,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=1)},
+        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=-1)},
     )
     test.fit()
 
@@ -313,9 +313,7 @@ def test_global_shuffle(ray_start_4_cpus):
 
     def checker(shard, results):
         assert len(results[0]) == 5, results
-        # Global shuffle for bulk ingest only executes once at the beginning,
-        # not once per epoch.
-        assert results[0] == results[1], results
+        assert results[0] != results[1], results
         stats = shard.stats()
         assert "Stage 1 read->random_shuffle" in stats, stats
 

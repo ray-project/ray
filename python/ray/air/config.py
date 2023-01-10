@@ -308,14 +308,14 @@ class DatasetConfig:
             This must be enabled at least for the dataset that is fit.
             True by default.
         max_object_store_memory_fraction [Experimental]: The maximum fraction
-            of Ray's shared-memory object store to use for the
-            dataset. The default value is -1, meaning that the preprocessed
-            dataset should be cached, which may cause spilling if its size is
-            larger than the object store's capacity. Pipelined ingest (all
-            other values, from 0 to 1) is experimental. Note that the absolute
-            memory capacity used is based on the object store capacity at
-            invocation time; this does not currently cover autoscaling cases
-            where the size of the cluster may change.
+            of Ray's shared-memory object store to use for the dataset. The
+            default value is -1, meaning that the preprocessed dataset should
+            be cached, which may cause spilling if its size is larger than the
+            object store's capacity. Pipelined ingest (all other values, 0 or
+            higher) is experimental. Note that the absolute memory capacity
+            used is based on the object store capacity at invocation time; this
+            does not currently cover autoscaling cases where the size of the
+            cluster may change.
         global_shuffle: Whether to enable global shuffle (per pipeline window
             in streaming mode). Note that this is an expensive all-to-all operation,
             and most likely you want to use local shuffle instead.
@@ -358,7 +358,7 @@ class DatasetConfig:
                 "DatasetConfig.use_stream_api and DatasetConfig.stream_window_size "
                 "have been removed as of Ray 2.3. Instead, use "
                 "DatasetConfig.max_object_store_memory_fraction with a value "
-                "between 0 and 1 "
+                "0 or greater "
                 "(https://docs.ray.io/en/latest/ray-air/package-ref.html"
                 "#ray.air.config.DatasetConfig)."
             )
@@ -434,16 +434,16 @@ class DatasetConfig:
                 raise ValueError(
                     f"Error configuring dataset `{k}`: "
                     "max_object_store_memory_fraction "
-                    "must be None or a float in the range [-1, 1]."
+                    "must be None or a float with value -1 or >=0."
                 )
-            if (
-                v.max_object_store_memory_fraction < -1
-                or v.max_object_store_memory_fraction > 1
+            if not (
+                v.max_object_store_memory_fraction == -1
+                or v.max_object_store_memory_fraction >= 0
             ):
                 raise ValueError(
                     f"Error configuring dataset `{k}`: "
                     "max_object_store_memory_fraction "
-                    "must be None or a float in the range [-1, 1]."
+                    "must be None or a float with value -1 or >=0."
                 )
 
         if len(fittable) > 1:

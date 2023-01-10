@@ -17,6 +17,7 @@ def test_basic_dataset(ray_start_regular_shared):
 
     # TODO(swang): This check currently fails nondeterministically because
     # stats are stored in an actor.
+    # https://github.com/ray-project/ray/issues/31571
     # assert it.stats() == ds.stats()
 
 
