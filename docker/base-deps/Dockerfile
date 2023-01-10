@@ -20,6 +20,7 @@ RUN apt-get update -y \
     && apt-get install -y sudo tzdata \
     && useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID \
     && usermod -aG sudo ray \
+    && chmod 777 /home/ray \
     && echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
