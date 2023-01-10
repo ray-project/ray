@@ -37,7 +37,8 @@ FAKE_BATCH = SampleBatch(
         SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
         SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
         SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-        SampleBatch.DONES: np.array([False, False, True]),
+        SampleBatch.TERMINATEDS: np.array([False, False, True]),
+        SampleBatch.TRUNCATEDS: np.array([False, False, False]),
         SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
         SampleBatch.ACTION_DIST_INPUTS: np.array(
             [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
@@ -124,7 +125,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for fw in framework_iterator(config, with_eager_tracing=True):
-            for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
+            for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
@@ -188,7 +189,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for fw in framework_iterator(config, with_eager_tracing=True):
-            for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
+            for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
                     print("LSTM={}".format(lstm))

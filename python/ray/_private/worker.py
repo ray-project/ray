@@ -687,7 +687,14 @@ class Worker:
             debugger_breakpoint,
         )
 
-    @Deprecated
+    @Deprecated(
+        message="This function is deprecated and will be removed by Ray 2.4. "
+        "Please use Runtime Environments "
+        f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core"
+        "/handling-dependencies.html "
+        "to manage dependencies in workers.",
+        warning=True,
+    )
     def run_function_on_all_workers(self, function: callable):
         """This function has been deprecated given the following issues:
             - no guarantee that the function run before the remote function run.
@@ -873,7 +880,10 @@ def get_gpu_ids():
     return assigned_ids
 
 
-@Deprecated(message="Use ray.get_runtime_context().get_assigned_resources() instead.")
+@Deprecated(
+    message="Use ray.get_runtime_context().get_assigned_resources() instead.",
+    warning=True,
+)
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
 
@@ -1786,7 +1796,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.CYAN
 
     if data.get("pid") == "autoscaler":
-        pid = "scheduler +{}".format(time_string())
+        pid = "autoscaler +{}".format(time_string())
         lines = filter_autoscaler_events(data.get("lines", []))
     else:
         pid = data.get("pid")
@@ -2036,6 +2046,29 @@ def connect(
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
 
+    if mode == SCRIPT_MODE:
+        # Add the directory containing the script that is running to the Python
+        # paths of the workers. Also add the current directory. Note that this
+        # assumes that the directory structures on the machines in the clusters
+        # are the same.
+        # When using an interactive shell, there is no script directory.
+        code_paths = []
+        if not interactive_mode:
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
+            # If driver's sys.path doesn't include the script directory
+            # (e.g driver is started via `python -m`,
+            # see https://peps.python.org/pep-0338/),
+            # then we shouldn't add it to the workers.
+            if script_directory in sys.path:
+                code_paths.append(script_directory)
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
+        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
+            current_directory = os.path.abspath(os.path.curdir)
+            code_paths.append(current_directory)
+        if len(code_paths) != 0:
+            job_config.py_driver_sys_path.extend(code_paths)
+
     serialized_job_config = job_config.serialize()
     if not node.should_redirect_logs():
         # Logging to stderr, so give core worker empty logs directory.
@@ -2106,29 +2139,6 @@ def connect(
             worker.logger_thread.start()
 
     if mode == SCRIPT_MODE:
-        # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        # When using an interactive shell, there is no script directory.
-        code_paths = []
-        if not interactive_mode:
-            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
-            # If driver's sys.path doesn't include the script directory
-            # (e.g driver is started via `python -m`,
-            # see https://peps.python.org/pep-0338/),
-            # then we shouldn't add it to the workers.
-            if script_directory in sys.path:
-                code_paths.append(script_directory)
-        # In client mode, if we use runtime envs with "working_dir", then
-        # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
-            current_directory = os.path.abspath(os.path.curdir)
-            code_paths.append(current_directory)
-        if len(code_paths) != 0:
-            worker.run_function_on_all_workers(
-                lambda worker_info: [sys.path.insert(1, path) for path in code_paths]
-            )
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
         # run may set the Python path, which is needed to import a module used
@@ -2290,7 +2300,13 @@ def get(
         object_refs: Object ref of the object to get or a list of object refs
             to get.
         timeout (Optional[float]): The maximum amount of time in seconds to
-            wait before returning.
+            wait before returning. Set this to None will block until the
+            corresponding object becomes available.
+            WARNING: In future ray releases ``timeout=0`` will return the object
+            immediately if it's available, else raise GetTimeoutError in accordance with
+            the above docstring. The current behavior of blocking until objects become
+            available of ``timeout=0`` is considered to be a bug, see
+            https://github.com/ray-project/ray/issues/28465.
 
     Returns:
         A Python object or a list of Python objects.
@@ -2301,6 +2317,26 @@ def get(
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
+    if timeout == 0:
+        if os.environ.get("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "1") == "1":
+            import warnings
+
+            warnings.warn(
+                (
+                    "Please use timeout=None if you expect ray.get() to block. "
+                    "Setting timeout=0 in future ray releases will raise "
+                    "GetTimeoutError if the objects references are not available. "
+                    "You could suppress this warning by setting "
+                    "RAY_WARN_RAY_GET_TIMEOUT_ZERO=0."
+                ),
+                UserWarning,
+            )
+
+        # Record this usage in telemetry
+        import ray._private.usage.usage_lib as usage_lib
+
+        usage_lib.record_extra_usage_tag(usage_lib.TagKey.RAY_GET_TIMEOUT_ZERO, "True")
+
     worker = global_worker
     worker.check_connected()
 

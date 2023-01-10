@@ -416,6 +416,14 @@ def test_multi_hot_encoder():
         null_encoder.transform_batch(null_df)
     null_encoder.transform_batch(nonnull_df)
 
+    # Verify that `fit` and `transform` work with ndarrays.
+    df = pd.DataFrame({"column": [np.array(["A"]), np.array(["A", "B"])]})
+    ds = ray.data.from_pandas(df)
+    encoder = MultiHotEncoder(["column"])
+    transformed = encoder.fit_transform(ds)
+    encodings = [record["column"] for record in transformed.take_all()]
+    assert encodings == [[1, 0], [1, 1]]
+
 
 def test_multi_hot_encoder_with_max_categories():
     """Tests basic MultiHotEncoder functionality with limit."""

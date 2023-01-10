@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict, Discrete
+from gymnasium.spaces import Box, Dict, Discrete
 import numpy as np
 
 from ray.rllib.examples.env.random_env import RandomEnv
@@ -21,10 +21,10 @@ class ActionMaskEnv(RandomEnv):
         )
         self.valid_actions = None
 
-    def reset(self):
-        obs = super().reset()
+    def reset(self, *, seed=None, options=None):
+        obs, info = super().reset()
         self._fix_action_mask(obs)
-        return obs
+        return obs, info
 
     def step(self, action):
         # Check whether action is valid.
@@ -32,9 +32,9 @@ class ActionMaskEnv(RandomEnv):
             raise ValueError(
                 f"Invalid action sent to env! " f"valid_actions={self.valid_actions}"
             )
-        obs, rew, done, info = super().step(action)
+        obs, rew, done, truncated, info = super().step(action)
         self._fix_action_mask(obs)
-        return obs, rew, done, info
+        return obs, rew, done, truncated, info
 
     def _fix_action_mask(self, obs):
         # Fix action-mask: Everything larger 0.5 is 1.0, everything else 0.0.
