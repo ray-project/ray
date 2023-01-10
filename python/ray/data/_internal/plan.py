@@ -387,7 +387,9 @@ class ExecutionPlan:
                     else:
                         stats = stats_builder.build(blocks)
                     stats.dataset_uuid = self._dataset_uuid
-                    stats_summary_string = stats.summary_string(include_parent=False)
+                    stats_summary_string = stats.to_summary().to_string(
+                        include_parent=False,
+                    )
                     logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                         stats_summary_string,
                     )
