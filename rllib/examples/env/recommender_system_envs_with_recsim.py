@@ -103,6 +103,4 @@ InterestEvolutionRecSimEnv = make_recsim_env(
 
 
 # Backward compatibility.
-gym.register(
-    "RecSim-v1", lambda env_ctx: InterestEvolutionRecSimEnv(env_ctx)
-)
+gym.register("RecSim-v1", lambda env_ctx: InterestEvolutionRecSimEnv(env_ctx))

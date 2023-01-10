@@ -85,4 +85,5 @@ def _gym_env_creator(
 
 def is_wrapped_multi_agent_env(env):
     from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
     return isinstance(env, gym.Env) and isinstance(env.unwrapped, MultiAgentEnv)

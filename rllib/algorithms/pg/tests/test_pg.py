@@ -17,7 +17,6 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
-from ray import tune
 from ray.rllib.utils.metrics.learner_info import (
     LEARNER_INFO,
     LEARNER_STATS_KEY,

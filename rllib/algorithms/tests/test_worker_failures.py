@@ -203,9 +203,7 @@ class TestWorkerFailures(unittest.TestCase):
         config.ignore_worker_failures = True
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
-        config.env_config = {
-            "c": {"bad_indices": [1]}
-        }
+        config.env_config = {"c": {"bad_indices": [1]}}
         if fail_eval:
             config.evaluation_num_workers = 2
             config.evaluation_interval = 1
