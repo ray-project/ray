@@ -75,7 +75,7 @@ checkpoint = Checkpoint.from_directory("checkpoint")
 # __mxnetpredictor_predict_start__
 predictor = BatchPredictor.from_checkpoint(checkpoint, MXNetPredictor, net=net)
 # These images aren't normalized. In practice, preprocess images before inference.
-dataset = ray.data.read_images("s3://air-example-data-2/imagenet-sample-images")
+dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
 predictor.predict(dataset)
 # __mxnetpredictor_predict_end__
 # fmt: on
