@@ -338,7 +338,8 @@ class ExecutionPlan:
                 "Warning: The Ray cluster currently does not have "
                 "any available CPUs. The Dataset job will hang unless more CPUs "
                 "are freed up. A common reason is that cluster resources are "
-                "used by Actors or Tune trials, see link for more details."
+                "used by Actors or Tune trials, see the link below for more details:"
+                "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
             )
         if not self.has_computed_output():
             # Read stage is handled with the legacy execution impl for now.
