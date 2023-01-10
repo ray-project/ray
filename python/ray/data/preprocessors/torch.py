@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Callable, Dict, List, Union
 
 import numpy as np
-from ray.air.util.tensor_extensions.pandas import _create_possibly_ragged_ndarray
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI

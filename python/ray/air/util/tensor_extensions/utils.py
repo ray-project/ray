@@ -1,6 +1,7 @@
-from typing import Any
+from typing import Any, Sequence, Union
 
 import numpy as np
+from pandas.core.dtypes.generic import ABCSeries
 
 
 def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
@@ -42,3 +43,25 @@ def _create_strict_ragged_ndarray(values: Any) -> np.ndarray:
     # Try to fill the 1D array of pointers with the (ragged) tensors.
     arr[:] = list(values)
     return arr
+
+
+def _create_possibly_ragged_ndarray(
+    values: Union[np.ndarray, ABCSeries, Sequence[Any]]
+) -> np.ndarray:
+    """
+    Create a possibly ragged ndarray.
+
+    Using the np.array() constructor will fail to construct a ragged ndarray that has a
+    uniform first dimension (e.g. uniform channel dimension in imagery). This function
+    catches this failure and tries a create-and-fill method to construct the ragged
+    ndarray.
+    """
+    try:
+        return np.array(values, copy=False)
+    except ValueError as e:
+        if "could not broadcast input array from shape" in str(e):
+            # Fall back to strictly creating a ragged ndarray.
+            return _create_strict_ragged_ndarray(values)
+        else:
+            # Re-raise original error if the failure wasn't a broadcast error.
+            raise e from None

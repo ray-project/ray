@@ -25,7 +25,7 @@ import warnings
 import numpy as np
 
 import ray
-from ray.air.util.tensor_extensions.pandas import _create_possibly_ragged_ndarray
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.util.data_batch_conversion import BlockFormat

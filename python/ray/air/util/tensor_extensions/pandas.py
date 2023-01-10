@@ -45,6 +45,7 @@ from pandas.core.indexers import check_array_indexer, validate_indices
 from pandas.io.formats.format import ExtensionArrayFormatter
 
 from ray.air.util.tensor_extensions.utils import (
+    _create_possibly_ragged_ndarray,
     _is_ndarray_variable_shaped_tensor,
     _create_strict_ragged_ndarray,
 )
@@ -1422,28 +1423,6 @@ TensorArrayElement._add_logical_ops()
 TensorArray._add_arithmetic_ops()
 TensorArray._add_comparison_ops()
 TensorArray._add_logical_ops()
-
-
-def _create_possibly_ragged_ndarray(
-    values: Union[np.ndarray, ABCSeries, Sequence[Any]]
-) -> np.ndarray:
-    """
-    Create a possibly ragged ndarray.
-
-    Using the np.array() constructor will fail to construct a ragged ndarray that has a
-    uniform first dimension (e.g. uniform channel dimension in imagery). This function
-    catches this failure and tries a create-and-fill method to construct the ragged
-    ndarray.
-    """
-    try:
-        return np.array(values, copy=False)
-    except ValueError as e:
-        if "could not broadcast input array from shape" in str(e):
-            # Fall back to strictly creating a ragged ndarray.
-            return _create_strict_ragged_ndarray(values)
-        else:
-            # Re-raise original error if the failure wasn't a broadcast error.
-            raise e from None
 
 
 @PublicAPI(stability="beta")
