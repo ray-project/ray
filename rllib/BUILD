@@ -1033,6 +1033,12 @@ py_test(
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace.py"]
 )
+py_test(
+    name = "test_impala_off_policyness",
+    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
+)
 
 # MARWIL
 py_test(
@@ -2555,7 +2561,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "multi_gpu"],
+     tags = ["team:rllib", "tests_dir", "multi_gpu", "exclusive"],
      size = "medium",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPPONoPreprocessorGPU"]

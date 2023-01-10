@@ -126,6 +126,26 @@ class TrainerRunner:
 
         return ray.get(refs)
 
+    def additional_update(self, *args, **kwargs) -> List[Mapping[str, Any]]:
+        """Apply additional non-gradient based updates to the RLTrainers.
+
+        For example, this could be used to do a polyak averaging update
+        of a target network in off policy algorithms like SAC or DQN.
+
+        By default this is a pass through that calls `RLTrainer.additional_update`
+
+        Args:
+            *args: Arguments to pass to each RLTrainer.
+            **kwargs: Keyword arguments to pass to each RLTrainer.
+
+        Returns:
+            A list of dictionaries of results from the updates from each worker.
+        """
+        refs = []
+        for worker in self.workers:
+            refs.append(worker.additional_update.remote(*args, **kwargs))
+        return ray.get(refs)
+
     def add_module(
         self,
         *,
