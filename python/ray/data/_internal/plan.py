@@ -251,6 +251,11 @@ class ExecutionPlan:
                 self.execute()
             else:
                 return None
+        elif self._in_blocks is not None and self._snapshot_blocks is None:
+            # If the plan only has input blocks, we execute it, so snapshot has output.
+            # This applies to newly created dataset. For example, initial dataset from
+            # read, and output datasets of Dataset.split().
+            self.execute()
         # Snapshot is now guaranteed to be the output of the final stage or None.
         blocks = self._snapshot_blocks
         if not blocks:
@@ -452,11 +457,6 @@ class ExecutionPlan:
             # beginning.
             blocks = self._in_blocks
             stats = self._in_stats
-            if not self.has_lazy_input():
-                # If not a lazy datasource, unlink the input blocks from the plan so we
-                # can eagerly reclaim the input block memory after the first stage is
-                # done executing.
-                self._in_blocks = None
         return blocks, stats, stages
 
     def has_lazy_input(self) -> bool:
