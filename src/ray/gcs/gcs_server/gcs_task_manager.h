@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -168,8 +170,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// tolerance where a parent task failure will lead to all child task fail to mark the
     /// task tree with failure status recursively.
     ///
-    ///  \param root_task_id ID of the task event that's the root of the task tree.
-    void MarkTaskTreeFailed(const TaskID &root_task_id);
+    /// \param root_task_id ID of the task event that's the root of the task tree.
+    /// \param parent_task_id ID of the task's parent.
+    void MarkTaskTreeFailed(const TaskID &root_task_id, const TaskID &parent_task_id);
 
     /// Update a task event.
     ///
@@ -216,6 +219,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// Get the total number of bytes of task events stored.
     uint64_t GetTaskEventsBytes() const { return num_bytes_task_events_; }
 
+    TaskID GetParentTaskId(const rpc::TaskEvents &task_event) const;
+
     /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;
 
@@ -232,18 +237,15 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     absl::flat_hash_map<TaskAttempt, size_t> task_attempt_index_;
 
     /// Secondary index from task id to task attempts.
+    /// TODO(rickyx): use unordered_multimap for these as well.
     absl::flat_hash_map<TaskID, absl::flat_hash_set<TaskAttempt>>
         task_to_task_attempt_index_;
     /// Secondary index from job id to task attempts of the job.
     absl::flat_hash_map<JobID, absl::flat_hash_set<TaskAttempt>>
         job_to_task_attempt_index_;
 
-    /// Secondary index from child task id to parent task id.
-    absl::flat_hash_map<TaskID, TaskID> child_to_parent_task_index_;
-
     /// Secondary index from parent task id to a set of children task ids.
-    absl::flat_hash_map<TaskID, absl::flat_hash_set<TaskID>>
-        parent_to_children_task_index_;
+    std::unordered_multimap<TaskID, TaskID> parent_to_children_task_index_;
 
     /// Counter for tracking the size of task event. This assumes tasks events are never
     /// removed actively.

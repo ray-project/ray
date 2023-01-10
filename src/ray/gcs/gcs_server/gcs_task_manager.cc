@@ -91,6 +91,14 @@ absl::optional<TaskAttempt> GcsTaskManager::GcsTaskManagerStorage::GetLatestTask
   return latest_task_attempt;
 }
 
+TaskID GcsTaskManager::GcsTaskManagerStorage::GetParentTaskId(
+    const rpc::TaskEvents &task_event) const {
+  if (task_event.has_task_info()) {
+    return TaskID::FromBinary(task_event.task_info().parent_task_id());
+  }
+  return TaskID::Nil();
+}
+
 absl::optional<int64_t> GcsTaskManager::GcsTaskManagerStorage::GetTaskFailedTime(
     const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Gettting task faield time for " << task_id.Hex();
@@ -148,12 +156,12 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskFailed(const TaskID &task_id
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailed(
-    const TaskID &root_task_id) {
+    const TaskID &root_task_id, const TaskID &parent_task_id) {
   RAY_LOG(DEBUG) << "Marking task failure for : " << root_task_id.Hex();
-  auto parent_task_itr = child_to_parent_task_index_.find(root_task_id);
-  if (parent_task_itr != child_to_parent_task_index_.end()) {
+
+  if (!parent_task_id.IsNil()) {
     // Check if parent has failed and mark itself as failure if parent has failed.
-    auto parent_failed_ts = GetTaskFailedTime(parent_task_itr->second);
+    auto parent_failed_ts = GetTaskFailedTime(parent_task_id);
     if (parent_failed_ts.has_value()) {
       // Mark current task as failed.
       MarkTaskFailed(root_task_id, *parent_failed_ts);
@@ -169,12 +177,12 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailed(
 
   for (size_t i = 0; i < failed_tasks.size(); ++i) {
     auto failed_task_id = failed_tasks[i];
-    auto children_tasks_itr = parent_to_children_task_index_.find(failed_task_id);
-    if (children_tasks_itr != parent_to_children_task_index_.end()) {
-      for (const auto &child_task_id : children_tasks_itr->second) {
-        MarkTaskFailed(child_task_id, task_failed_ts.value());
-        failed_tasks.push_back(child_task_id);
-      }
+    auto children_tasks_range =
+        parent_to_children_task_index_.equal_range(failed_task_id);
+    for (auto itr = children_tasks_range.first; itr != children_tasks_range.second;
+         ++itr) {
+      MarkTaskFailed(itr->second, task_failed_ts.value());
+      failed_tasks.push_back(itr->second);
     }
   }
 }
@@ -198,8 +206,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
             ? TaskID::FromBinary(events_by_task.task_info().parent_task_id())
             : TaskID::Nil();
     if (!parent_task_id.IsNil()) {
-      child_to_parent_task_index_[task_id] = parent_task_id;
-      parent_to_children_task_index_[parent_task_id].insert(task_id);
+      parent_to_children_task_index_.insert({parent_task_id, task_id});
     }
   }
 
@@ -265,29 +272,24 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
 
     // Update the parent <-> children mapping for the removed one.
     // Remove it's relationship with the parent.
-    auto replaced_task_parent_id_itr = child_to_parent_task_index_.find(replaced_task_id);
-    if (replaced_task_parent_id_itr != child_to_parent_task_index_.end()) {
+    auto replaced_parent_task_id = GetParentTaskId(replaced);
+    if (!replaced_parent_task_id.IsNil()) {
       // Remove itself from it's parent's children set if any.
-      auto sibling_itr =
-          parent_to_children_task_index_.find(replaced_task_parent_id_itr->second);
-      if (sibling_itr != parent_to_children_task_index_.end()) {
-        sibling_itr->second.erase(replaced_task_id);
-      }
-      if (sibling_itr->second.empty()) {
-        // No more siblings.
-        parent_to_children_task_index_.erase(replaced_task_parent_id_itr->second);
-      }
-    }
-    child_to_parent_task_index_.erase(replaced_task_id);
-    // Remove all children's edge to the replaced_task_id if it's a parent of any other
-    // tasks.
-    if (parent_to_children_task_index_.count(replaced_task_id)) {
-      for (const auto &child_task_id : parent_to_children_task_index_[replaced_task_id]) {
-        child_to_parent_task_index_.erase(child_task_id);
-      }
+      auto sibling_range =
+          parent_to_children_task_index_.equal_range(replaced_parent_task_id);
 
-      parent_to_children_task_index_.erase(replaced_task_id);
+      // Look for the replaced task among all the children of the parent, and erase it.
+      for (auto child_itr = sibling_range.first; child_itr != sibling_range.second;
+           ++child_itr) {
+        if (child_itr->second == replaced_task_id) {
+          parent_to_children_task_index_.erase(child_itr);
+          break;
+        }
+      }
     }
+
+    // Remove it's parent to children edges if it's a parent of any other tasks.
+    parent_to_children_task_index_.erase(replaced_task_id);
 
     // Update iter.
     next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % max_num_task_events_;
@@ -367,6 +369,7 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
   for (auto events_by_task : *data.mutable_events_by_task()) {
     total_num_task_events_reported_++;
     auto task_id = TaskID::FromBinary(events_by_task.task_id());
+    auto parent_task_id = task_event_storage_->GetParentTaskId(events_by_task);
     // TODO(rickyx): add logic to handle too many profile events for a single task
     // attempt.  https://github.com/ray-project/ray/issues/31279
 
@@ -375,7 +378,7 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
 
     // Mark the task tree that contains this task as failure if the parent task has failed
     // or the task itself failed and its children needs to be marked failed.
-    task_event_storage_->MarkTaskTreeFailed(task_id);
+    task_event_storage_->MarkTaskTreeFailed(task_id, parent_task_id);
 
     if (replaced_task_events) {
       if (replaced_task_events->has_state_updates()) {
