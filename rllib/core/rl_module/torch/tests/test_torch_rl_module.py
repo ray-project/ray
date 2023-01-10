@@ -6,6 +6,7 @@ import unittest
 
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.utils.error import NotSerializable
 from ray.rllib.utils.test_utils import check
 
 
@@ -124,9 +125,7 @@ class TestRLModule(unittest.TestCase):
                 output_dim=unpickleable_param,
             )
 
-        self.assertRaisesRegex(
-            ValueError, "RLModule constructor arguments.*", bad_constructor
-        )
+        self.assertRaises(NotSerializable, bad_constructor)
 
 
 if __name__ == "__main__":

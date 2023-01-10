@@ -15,6 +15,12 @@ class EnvError(Exception):
     pass
 
 
+@PublicAPI
+class NotSerializable(Exception):
+  """Error if we encounter objects that can't be serialized by ray."""
+
+  pass
+
 # -------
 # Error messages
 # -------

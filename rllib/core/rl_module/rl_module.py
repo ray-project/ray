@@ -10,7 +10,9 @@ import ray
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+
 )
+from ray.rllib.utils.error import NotSerializable
 
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
@@ -370,7 +372,7 @@ class RLModule(abc.ABC):
                 # ray.put and ray.get it.
                 ray.get(ray.put(arg))
             except TypeError as e:
-                raise ValueError(
+                raise NotSerializable(
                     "RLModule constructor arguments must be serializable. "
                     f"Found non-serializable argument: {arg}.\n"
                     f"Original serialization error: {e}"
@@ -381,7 +383,7 @@ class RLModule(abc.ABC):
                 # ray.put and ray.get it.
                 ray.get(ray.put(v))
             except TypeError as e:
-                raise ValueError(
+                raise NotSerializable(
                     "RLModule constructor arguments must be serializable. "
                     f"Found non-serializable keyword argument: {k} = {v}.\n"
                     f"Original serialization error: {e}"
