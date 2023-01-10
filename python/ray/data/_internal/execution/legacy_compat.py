@@ -113,8 +113,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
 
         def do_read(blocks: Iterator[Block]) -> Iterator[Block]:
             for read_task in blocks:
-                for output_block in read_task():
-                    yield output_block
+                yield from read_task()
 
         return MapOperator(do_read, inputs, name="DoRead")
     else:
@@ -145,12 +144,12 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         block_fn = stage.block_fn
         # TODO: implement arg packing and passing for test_map_batches_extra_args
         fn_args = (stage.fn,) if stage.fn else ()
-        fn_args = fn_args + (stage.fn_args or ())
+        if stage.fn_args:
+            fn_args += stage.fn_args
         fn_kwargs = stage.fn_kwargs or {}
 
         def do_map(blocks: Iterator[Block]) -> Iterator[Block]:
-            for output_block in block_fn(blocks, *fn_args, **fn_kwargs):
-                yield output_block
+            yield from block_fn(blocks, *fn_args, **fn_kwargs)
 
         return MapOperator(
             do_map,
@@ -166,7 +165,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         remote_args = stage.ray_remote_args
         stage_name = stage.name
 
-        def bulk_fn(refs: List[RefBundle]) -> (List[RefBundle], StatsDict):
+        def bulk_fn(refs: List[RefBundle]) -> Tuple[List[RefBundle], StatsDict]:
             input_owned = all(b.owns_blocks for b in refs)
             if isinstance(stage, RandomizeBlocksStage):
                 output_owned = input_owned  # Passthrough ownership hack.
