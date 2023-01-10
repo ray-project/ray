@@ -361,16 +361,6 @@ class NodeInfoAccessor {
   /// \return Whether the node is removed.
   virtual bool IsRemoved(const NodeID &node_id) const;
 
-  /// Report heartbeat of a node to GCS asynchronously.
-  ///
-  /// \param data_ptr The heartbeat that will be reported to GCS.
-  /// \param callback Callback that will be called after report finishes.
-  /// \return Status
-  virtual  // TODO(micafan) NodeStateAccessor will call this method to report heartbeat.
-      Status
-      AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-                           const StatusCallback &callback);
-
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
