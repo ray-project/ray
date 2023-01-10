@@ -65,6 +65,7 @@ RUN curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0
 ENV PATH /crate/bin/:$PATH
 ENV CRATE_HEAP_SIZE=512M
 ENV CRATE_HOME=/crate/bin/
+ENV CRATE_USE_IPV4=true
 
 VOLUME /data
 RUN sudo mkdir -p /data/data /data/log
