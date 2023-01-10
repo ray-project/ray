@@ -307,14 +307,14 @@ def check_if_args_kwargs_serializable(args: Sequence[Any], kwargs: Dict[str, Any
                 f"Found non-serializable argument: {arg}.\n"
                 f"Original serialization error: {e}"
             )
-        for k, v in kwargs.items():
-            try:
-                # if the object is truly serializable we should be able to
-                # ray.put and ray.get it.
-                ray.get(ray.put(v))
-            except TypeError as e:
-                raise NotSerializable(
-                    "RLModule constructor arguments must be serializable. "
-                    f"Found non-serializable keyword argument: {k} = {v}.\n"
-                    f"Original serialization error: {e}"
-                )
+    for k, v in kwargs.items():
+        try:
+            # if the object is truly serializable we should be able to
+            # ray.put and ray.get it.
+            ray.get(ray.put(v))
+        except TypeError as e:
+            raise NotSerializable(
+                "RLModule constructor arguments must be serializable. "
+                f"Found non-serializable keyword argument: {k} = {v}.\n"
+                f"Original serialization error: {e}"
+            )
