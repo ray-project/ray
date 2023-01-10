@@ -145,7 +145,7 @@ def test_async_batch_fetching():
     total_time = end_time - start_time
     # Total time should be based on number of times the udf is called
     # (which is equal to len(outputs)).
-    # The 2 seconds sleep in next_batch is overlapped, so does not count
+    # The 2 seconds sleep in sleep_batch_format is overlapped, so does not count
     # towards total time.
     assert total_time < len(outputs) * 3 + 3
 
