@@ -104,7 +104,7 @@ class TestRLTrainer(unittest.TestCase):
             for param in params
         ]
         for _ in range(n_steps):
-            gradients = {trainer._get_param_ref(p): tf.ones_like(p) for p in params}
+            gradients = {trainer.get_param_ref(p): tf.ones_like(p) for p in params}
             trainer.apply_gradients(gradients)
 
         check(params, expected)
