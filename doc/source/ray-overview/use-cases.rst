@@ -11,32 +11,31 @@ You can select (and deselect) multiple values:
 
 .. raw:: html
 
-    <!--Frameworks-->
-    <ul>
-      <li type="button" class="tag btn btn-outline-primary">PyTorch</li>
-      <li type="button" class="tag btn btn-outline-primary">TensorFlow</li>
-      <li type="button" class="tag btn btn-outline-primary">XGBoost</li>
-      <li type="button" class="tag btn btn-outline-primary">LightGBM</li>
-      <li type="button" class="tag btn btn-outline-primary">Sklearn</li>
-    </ul>
+    <!--Deselect all-->
+    <div>
+        <div id="allButton" type="button" class="tag btn btn-primary">All</div>
 
-    <!--Domains-->
-    <ul>
-      <li type="button" class="tag btn btn-outline-primary">Classification</li>
-      <li type="button" class="tag btn btn-outline-primary">Regression</li>
-      <li type="button" class="tag btn btn-outline-primary">Object Detection</li>
-      <li type="button" class="tag btn btn-outline-primary">Image Segmentation</li>
-      <li type="button" class="tag btn btn-outline-primary">Reinforcement Learning</li>
-    </ul>
+        <!--Frameworks-->
+        <div type="button" class="tag btn btn-outline-primary">PyTorch</div>
+        <div type="button" class="tag btn btn-outline-primary">TensorFlow</div>
+        <div type="button" class="tag btn btn-outline-primary">XGBoost</div>
+        <div type="button" class="tag btn btn-outline-primary">LightGBM</div>
+        <div type="button" class="tag btn btn-outline-primary">Sklearn</div>
 
-    <!--Components-->
-    <ul>
-      <li type="button" class="tag btn btn-outline-primary">Preprocessing</li>
-      <li type="button" class="tag btn btn-outline-primary">Training</li>
-      <li type="button" class="tag btn btn-outline-primary">Tuning</li>
-      <li type="button" class="tag btn btn-outline-primary">Prediction</li>
-      <li type="button" class="tag btn btn-outline-primary">Serving</li>
-    </ul>
+        <!--Domains-->
+        <div type="button" class="tag btn btn-outline-primary">Classification</div>
+        <div type="button" class="tag btn btn-outline-primary">Regression</div>
+        <div type="button" class="tag btn btn-outline-primary">Object Detection</div>
+        <div type="button" class="tag btn btn-outline-primary">Image Segmentation</div>
+        <div type="button" class="tag btn btn-outline-primary">Reinforcement Learning</div>
+
+        <!--Components-->
+        <div type="button" class="tag btn btn-outline-primary">Preprocessing</div>
+        <div type="button" class="tag btn btn-outline-primary">Training</div>
+        <div type="button" class="tag btn btn-outline-primary">Tuning</div>
+        <div type="button" class="tag btn btn-outline-primary">Prediction</div>
+        <div type="button" class="tag btn btn-outline-primary">Serving</div>
+    </div>
 
 
 Batch Inference
@@ -361,7 +360,7 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
     .. link-button:: https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70
         :type: url
         :text: [Blog] Intro to RLlib: Example Environments
-        :classes: btn-link btn-block stretched-link introRLlib
+        :classes: btn-link btn-block stretched-link introRllib
     ---
     :img-top: /rllib/images/rllib-logo.png
 
@@ -369,7 +368,7 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
     .. link-button:: /rllib/rllib-training
         :type: ref
         :text: [Guide] Getting Started with RLlib
-        :classes: btn-link btn-block stretched-link gettingStartedRLlib
+        :classes: btn-link btn-block stretched-link gettingStartedRllib
     ---
     :img-top: /images/riot.png
 
