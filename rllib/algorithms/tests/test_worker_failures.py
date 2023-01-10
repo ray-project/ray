@@ -204,7 +204,7 @@ class TestWorkerFailures(unittest.TestCase):
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
         config.env_config = {
-            "bad_indices": [1],
+            "c": {"bad_indices": [1]}
         }
         if fail_eval:
             config.evaluation_num_workers = 2
@@ -212,9 +212,11 @@ class TestWorkerFailures(unittest.TestCase):
             config.evaluation_config = {
                 "ignore_worker_failures": True,
                 "env_config": {
-                    # Make worker idx=1 fail. Other workers will be ok.
-                    "bad_indices": [1],
-                    "evaluation": True,
+                    "c": {
+                        # Make worker idx=1 fail. Other workers will be ok.
+                        "bad_indices": [1],
+                        "evaluation": True,
+                    }
                 },
             }
 
@@ -238,7 +240,7 @@ class TestWorkerFailures(unittest.TestCase):
         config.ignore_worker_failures = False
         config.env = "fault_env"
         # Make both worker idx=1 and 2 fail.
-        config.env_config = {"bad_indices": [1, 2]}
+        config.env_config = {"c": {"bad_indices": [1, 2]}}
         if fail_eval:
             config.evaluation_num_workers = 2
             config.evaluation_interval = 1
@@ -246,8 +248,10 @@ class TestWorkerFailures(unittest.TestCase):
                 "ignore_worker_failures": False,
                 # Make eval worker (index 1) fail.
                 "env_config": {
-                    "bad_indices": [1],
-                    "evaluation": True,
+                    "c": {
+                        "bad_indices": [1],
+                        "evaluation": True,
+                    }
                 },
             }
 
@@ -270,10 +274,12 @@ class TestWorkerFailures(unittest.TestCase):
             "recreate_failed_workers": True,
             # Make eval worker (index 1) fail.
             "env_config": {
-                "bad_indices": [1],
-                "failure_start_count": 3,
-                "failure_stop_count": 4,
-                "counter": COUNTER_NAME,
+                "c": {
+                    "bad_indices": [1],
+                    "failure_start_count": 3,
+                    "failure_stop_count": 4,
+                    "counter": COUNTER_NAME,
+                },
             },
         }
 
@@ -426,11 +432,13 @@ class TestWorkerFailures(unittest.TestCase):
             .environment(
                 env="fault_env",
                 env_config={
-                    # Make both worker idx=1 and 2 fail.
-                    "bad_indices": [1, 2],
-                    "failure_start_count": 3,
-                    "failure_stop_count": 4,
-                    "counter": COUNTER_NAME,
+                    "c": {
+                        # Make both worker idx=1 and 2 fail.
+                        "bad_indices": [1, 2],
+                        "failure_start_count": 3,
+                        "failure_stop_count": 4,
+                        "counter": COUNTER_NAME,
+                    },
                 },
             )
             .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
@@ -498,11 +506,13 @@ class TestWorkerFailures(unittest.TestCase):
             .environment(
                 env="multi-agent-fault_env",
                 env_config={
-                    # Make both worker idx=1 and 2 fail.
-                    "bad_indices": [1, 2],
-                    "failure_start_count": 3,
-                    "failure_stop_count": 4,
-                    "counter": COUNTER_NAME,
+                    "c": {
+                        # Make both worker idx=1 and 2 fail.
+                        "bad_indices": [1, 2],
+                        "failure_start_count": 3,
+                        "failure_stop_count": 4,
+                        "counter": COUNTER_NAME,
+                    },
                 },
             )
             .evaluation(
@@ -514,12 +524,14 @@ class TestWorkerFailures(unittest.TestCase):
                     # Restart the entire eval worker.
                     restart_failed_sub_environments=False,
                     env_config={
-                        "evaluation": True,
-                        # Make eval worker (index 1) fail.
-                        "bad_indices": [1],
-                        "failure_start_count": 3,
-                        "failure_stop_count": 4,
-                        "counter": COUNTER_NAME,
+                        "c": {
+                            "evaluation": True,
+                            # Make eval worker (index 1) fail.
+                            "bad_indices": [1],
+                            "failure_start_count": 3,
+                            "failure_stop_count": 4,
+                            "counter": COUNTER_NAME,
+                        },
                     },
                 ),
             )
@@ -593,15 +605,17 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_interval=1,
                 evaluation_config=PGConfig.overrides(
                     env_config={
-                        "evaluation": True,
-                        "p_terminated": 0.0,
-                        "max_episode_len": 20,
-                        # Make both eval workers fail.
-                        "bad_indices": [1, 2],
-                        # Env throws error between steps 10 and 12.
-                        "failure_start_count": 3,
-                        "failure_stop_count": 4,
-                        "counter": COUNTER_NAME,
+                        "c": {
+                            "evaluation": True,
+                            "p_terminated": 0.0,
+                            "max_episode_len": 20,
+                            # Make both eval workers fail.
+                            "bad_indices": [1, 2],
+                            # Env throws error between steps 10 and 12.
+                            "failure_start_count": 3,
+                            "failure_stop_count": 4,
+                            "counter": COUNTER_NAME,
+                        },
                     },
                 ),
             )
@@ -647,11 +661,13 @@ class TestWorkerFailures(unittest.TestCase):
             .environment(
                 env="fault_env",
                 env_config={
-                    # Make both worker idx=1 and 2 fail.
-                    "bad_indices": [1, 2],
-                    "failure_start_count": 3,
-                    "failure_stop_count": 4,
-                    "counter": COUNTER_NAME,
+                    "c": {
+                        # Make both worker idx=1 and 2 fail.
+                        "bad_indices": [1, 2],
+                        "failure_start_count": 3,
+                        "failure_stop_count": 4,
+                        "counter": COUNTER_NAME,
+                    },
                 },
             )
             .evaluation(
@@ -664,9 +680,11 @@ class TestWorkerFailures(unittest.TestCase):
                     # we want to recreate the failed sub env instead.
                     restart_failed_sub_environments=True,
                     env_config={
-                        "evaluation": True,
-                        # Make eval worker (index 1) fail.
-                        "bad_indices": [1],
+                        "c": {
+                            "evaluation": True,
+                            # Make eval worker (index 1) fail.
+                            "bad_indices": [1],
+                        },
                     },
                 ),
             )
@@ -742,14 +760,16 @@ class TestWorkerFailures(unittest.TestCase):
                     # we want to recreate the failed sub env instead.
                     restart_failed_sub_environments=True,
                     env_config={
-                        "evaluation": True,
-                        "p_terminated": 0.0,
-                        "max_episode_len": 20,
-                        # Make eval worker (index 1) fail.
-                        "bad_indices": [1],
-                        "counter": COUNTER_NAME,
-                        "failure_start_count": 3,
-                        "failure_stop_count": 5,
+                        "c": {
+                            "evaluation": True,
+                            "p_terminated": 0.0,
+                            "max_episode_len": 20,
+                            # Make eval worker (index 1) fail.
+                            "bad_indices": [1],
+                            "counter": COUNTER_NAME,
+                            "failure_start_count": 3,
+                            "failure_stop_count": 5,
+                        },
                     },
                 ),
             )
@@ -801,14 +821,16 @@ class TestWorkerFailures(unittest.TestCase):
             .environment(
                 env="fault_env",
                 env_config={
-                    "restart_failed_sub_environments": True,
-                    "p_terminated": 0.0,
-                    "max_episode_len": 100,
-                    "bad_indices": [1],
-                    # Env throws error between steps 30 and 80.
-                    "failure_start_count": 30,
-                    "failure_stop_count": 80,
-                    "counter": COUNTER_NAME,
+                    "c": {
+                        "restart_failed_sub_environments": True,
+                        "p_terminated": 0.0,
+                        "max_episode_len": 100,
+                        "bad_indices": [1],
+                        # Env throws error between steps 30 and 80.
+                        "failure_start_count": 30,
+                        "failure_stop_count": 80,
+                        "counter": COUNTER_NAME,
+                    },
                 },
             )
             .evaluation(
@@ -865,15 +887,17 @@ class TestWorkerFailures(unittest.TestCase):
                 env="fault_env",
                 # Workers do not fault and no fault tolerance.
                 env_config={
-                    "restart_failed_sub_environments": True,
-                    "p_terminated": 0.0,
-                    "max_episode_len": 10,
-                    "init_delay": 10,  # 10 sec init delay.
-                    # Make both worker idx=1 and 2 fail.
-                    "bad_indices": [1],
-                    "failure_start_count": 7,
-                    "failure_stop_count": 8,
-                    "counter": COUNTER_NAME,
+                    "c": {
+                        "restart_failed_sub_environments": True,
+                        "p_terminated": 0.0,
+                        "max_episode_len": 10,
+                        "init_delay": 10,  # 10 sec init delay.
+                        # Make both worker idx=1 and 2 fail.
+                        "bad_indices": [1],
+                        "failure_start_count": 7,
+                        "failure_stop_count": 8,
+                        "counter": COUNTER_NAME,
+                    },
                 },
             )
             .reporting(

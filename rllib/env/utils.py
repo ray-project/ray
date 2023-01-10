@@ -78,7 +78,6 @@ def _gym_env_creator(
                     disable_env_checker=True,
                     kwargs=r.kwargs,
                 )
-            print(gym.envs.registry[env_descriptor].entry_point, gym.envs.registry[env_descriptor].kwargs)
             return gym.make(env_descriptor, **env_context)
     except gym.error.Error:
         raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))

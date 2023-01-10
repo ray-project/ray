@@ -25,7 +25,7 @@ class TestSlateQ(unittest.TestCase):
         """Test whether SlateQ can be built with both frameworks."""
         config = (
             slateq.SlateQConfig()
-            .environment(env=InterestEvolutionRecSimEnv)
+            .environment(InterestEvolutionRecSimEnv)
             .training(num_steps_sampled_before_learning_starts=1000)
         )
 

@@ -222,11 +222,13 @@ class TestCuriosity(unittest.TestCase):
             .environment(
                 "mini-grid",
                 env_config={
-                    # Also works with:
-                    # - MiniGrid-MultiRoom-N4-S5-v0
-                    # - MiniGrid-MultiRoom-N2-S4-v0
-                    "name": "MiniGrid-Empty-8x8-v0",
-                    "framestack": 1,  # seems to work even w/o framestacking
+                    "config": {
+                        # Also works with:
+                        # - MiniGrid-MultiRoom-N4-S5-v0
+                        # - MiniGrid-MultiRoom-N2-S4-v0
+                        "name": "MiniGrid-Empty-8x8-v0",
+                        "framestack": 1,  # seems to work even w/o framestacking
+                    },
                 },
             )
             .rollouts(num_envs_per_worker=4, num_rollout_workers=0)

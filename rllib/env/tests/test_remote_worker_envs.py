@@ -12,7 +12,7 @@ from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 
 
 # Function that outputs the environment you wish to register.
-def env_creator(config):
+def env_creator():
     env = pistonball_v6.env()
     env = dtype_v0(env, dtype=np.float32)
     env = color_reduction_v0(env, mode="R")
@@ -22,7 +22,7 @@ def env_creator(config):
 
 gym.register("cartpole", lambda: gym.make("CartPole-v1"))
 
-gym.register("pistonball", lambda config: PettingZooEnv(env_creator(config)))
+gym.register("pistonball", lambda: PettingZooEnv(env_creator()))
 
 
 class TestRemoteWorkerEnvSetting(unittest.TestCase):

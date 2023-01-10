@@ -107,7 +107,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         before it wins or loses.
         """
 
-        gym.register("env_under_test", lambda config: GuessTheNumberGame(config))
+        gym.register("env_under_test", lambda: GuessTheNumberGame(config={}))
 
         def mapping_fn(agent_id, *args, **kwargs):
             return "pol1" if agent_id == 0 else "pol2"
@@ -220,7 +220,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         algo = PPO(config, env="basic_multiagent")
         local_worker = algo.workers.local_worker()
         env = local_worker.env
-
+        env.reset()
         obs, rewards, terminateds, truncateds, infos = local_worker.env.step(
             {0: env.action_space.sample(), 1: env.action_space.sample()}
         )

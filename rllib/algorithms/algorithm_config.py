@@ -1106,7 +1106,7 @@ class AlgorithmConfig:
 
         Args:
             env: The environment specifier. This can either be a gym-registered env
-                via `gym.register([name], [Callable returning env object])`,
+                via `gym.register([ID], [Callable returning env object])`,
                 a tune-registered env via
                 `tune.register_env([name], lambda env_ctx: [env object])`, or a string
                 specifier of an RLlib supported type. In the latter case,
