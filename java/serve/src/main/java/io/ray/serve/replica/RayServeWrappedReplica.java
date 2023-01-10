@@ -185,6 +185,17 @@ public class RayServeWrappedReplica implements RayServeReplica {
   }
 
   /**
+   * Tell the caller this replica is successfully initialized.
+   *
+   * @return
+   */
+  public boolean isInitialized(Object userConfig) {
+    DeploymentVersion version = self.reconfigure(userConfig);
+    self.checkHealth();
+    return version;
+  }
+
+  /**
    * Wait until there is no request in processing. It is used for stopping replica gracefully.
    *
    * @return true if it is ready for shutdown.

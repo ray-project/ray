@@ -221,14 +221,13 @@ def create_replica_wrapper(name: str):
             # allows delaying reconfiguration until after this call has returned.
             await self._initialize_replica()
 
-            if user_config is not None:
-                await self.reconfigure(user_config)
+            metadata = await self.reconfigure(user_config)
 
             # A new replica should not be considered healthy until it passes an
             # initial health check. If an initial health check fails, consider
             # it an initialization failure.
             await self.check_health()
-            return self.get_metadata()
+            return metadata
 
         async def reconfigure(
             self, user_config: Optional[Any] = None
