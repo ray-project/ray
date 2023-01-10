@@ -38,11 +38,11 @@ if [ "$NODETYPE" = "head" ]; then
 nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
-            -Cnode.name=nexus.chimp-beta.ts.net \
+            -Cnode.name=nexus \
             -Cnode.master=true \
             -Cnode.data=true \
             -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net,$nexus \
-            -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
+            -Ccluster.initial_master_nodes=nexus,$nexus \
             -Cstats.enabled=false
             
 
@@ -61,7 +61,7 @@ nexus=$(tailscale ip -4 nexus)
             #-Cnode.name=${DDNS_HOST} \
             -Cnode.data=true \
             -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net,$nexus \
-            -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
+            -Ccluster.initial_master_nodes=nexus,$nexus \
             -Cstats.enabled=false
             
 fi
