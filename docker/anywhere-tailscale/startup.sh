@@ -35,8 +35,6 @@ nexus=$(tailscale ip -4 nexus)
             -Cnode.name=nexus.chimp-beta.ts.net \
             -Cnode.master=true \
             -Cnode.data=true \
-            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net,$nexus \
-            -Ccluster.initial_master_nodes=nexus.chimp-beta.ts.net,$nexus \
             -Cstats.enabled=false \
             &
 
