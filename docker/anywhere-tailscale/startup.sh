@@ -60,6 +60,7 @@ nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             #-Cnode.name=${DDNS_HOST} \
+            -Cnode.master=false \
             -Cnode.data=true \
             -Cnode.store.allow_mmap=false \
             -Cdiscovery.seed_hosts=nexus,$nexus \
