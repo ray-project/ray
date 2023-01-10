@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import json
 from pathlib import Path
 import os
 import sys
@@ -299,6 +300,65 @@ nb_render_priority = {
         "text/plain",
     ),
 }
+
+tag_mapping = {
+    # Tags for use-cases gallery
+    "scalableBatchInference": "PyTorch,Image Segmentation,Prediction",
+    "batchActorPool": "Prediction",
+    "batchCore": "Prediction",
+    "nycTaxiData": "Prediction",
+    "batchOcr": "Preprocessing",
+    "millionModels": "Regression,Training,Sklearn",
+    "batchTrainingCore": "Regression,Training,Sklearn",
+    "batchTrainingDatasets": "Regression,Training,Sklearn",
+    "tuneBasicParallel": "Regression,Training,Sklearn",
+    "tuneBatch": "Regression,Training,Tuning,Sklearn",
+    "instacartFulfillment": "Training,Prediction",
+    "productionizingMLServe": "Serving",
+    "simplifyMLOpsServe": "Serving",
+    "gettingStartedServe": "Serving",
+    "compositionServe": "Serving",
+    "examplesServe": "Serving",
+    "useCasesServe": "Serving",
+    "gettingStartedTune": "Tuning",
+    "distributeHPOTune": "Tuning",
+    "simpleDistributedHPO": "Tuning",
+    "HPOTransformers": "Tuning,PyTorch,Classification",
+    "examplesTune": "Tuning",
+    "useCasesTune": "Tuning",
+    "pyTorchTrain": "Training,PyTorch",
+    "xgboostTrain": "Training,XGBoost",
+    "gettingStartedTrain": "Training",
+    "trainingTransformers": "Training,PyTorch,Classification,Prediction",
+    "examplesTrain": "Training",
+    "useCasesTrain": "Training",
+    "appliedRLCourse": "Reinforcement Learning",
+    "introRllib": "Reinforcement Learning",
+    "gettingStartedRllib": "Reinforcement Learning",
+    "riotRL": "Reinforcement Learning",
+    "examplesRL": "Reinforcement Learning",
+    "useCasesRL": "Reinforcement Learning",
+    "merlin": "Preprocessing,Training,Prediction",
+    "uberScaleDL": "Preprocessing,Training,Prediction,Tuning,XGBoost,"
+    "TensorFlow,PyTorch",
+    "instacartMLPlatformTripled": "Preprocessing,Prediction,Training,Tuning",
+    "predibase": "Preprocessing,Training,Prediction,Tuning,PyTorch",
+    "GKEMLPlatform": "Preprocessing,Training,Prediction,Tuning,TensorFlow,Serving",
+    "summitMLPlatform": "Preprocessing,Prediction,Training,Tuning,Serving",
+    "torchImageExample": "Preprocessing,Prediction,Training,PyTorch,Classification",
+    "feastExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
+    "xgboostExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
+    "timeSeriesAutoML": "Regression,Sklearn,Tuning",
+    "AIRExamples": "Regression,Classification,Training,Tuning,Prediction,"
+    "Preprocessing,Serving,PyTorch,TensorFlow,XGBoost,LightGBM,Sklearn"
+    # TODO add and integrate tags for other libraries.
+    # Tune has a proper example library
+    # Train, Serve, Rllib and AIR could use one.
+}
+
+# Create file with tag mappings for tags.js to use.
+with open("./_static/tag-mapping.json", "w") as f:
+    json.dump(tag_mapping, f)
 
 
 def setup(app):
