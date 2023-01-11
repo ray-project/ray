@@ -44,6 +44,7 @@ if [ "$NODETYPE" = "head" ]; then
             -Cnode.store.allow_mmap=false \
             -Cdiscovery.seed_hosts=nexus:4300 \
             -Ccluster.initial_master_nodes=nexus \
+            -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false
             
 
@@ -61,6 +62,7 @@ else
             -Cnode.store.allow_mmap=false \
             -Cdiscovery.seed_hosts=nexus:4300 \
             -Ccluster.initial_master_nodes=nexus \
+            -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false
             
 fi
