@@ -436,9 +436,10 @@ class DatasetPipelineStats:
 
     # Make iteration stats also accessible via attributes.
     def __getattr__(self, name):
+        if name == "_iter_stats":
+            raise AttributeError
         if name in self._iter_stats:
             return self._iter_stats[name]
-
         raise AttributeError
 
     def add(self, stats: DatasetStats) -> None:
