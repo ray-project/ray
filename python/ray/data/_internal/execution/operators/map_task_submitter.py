@@ -55,6 +55,10 @@ class MapTaskSubmitter(ABC):
         pass
 
     @abstractmethod
-    def cancellable(self) -> bool:
-        """Whether the submitted tasks are cancellable."""
+    def shutdown(self, task_refs: List[ObjectRef[Union[ObjectRefGenerator, Block]]]):
+        """Shutdown the submitter, i.e. release any reserved resources.
+
+        Args:
+            task_refs: The output refs for all of the tasks submitted by this submitter.
+        """
         raise NotImplementedError

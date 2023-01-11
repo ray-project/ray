@@ -6,8 +6,7 @@ from ray.data._internal.execution.operators.actor_pool_submitter import ActorPoo
 
 
 # TODO(Clark): Split into separate tests.
-def test_actor_pool():
-    ray.init(num_cpus=4)
+def test_actor_pool(ray_start_regular_shared):
     # Create actor pool.
     pool = ActorPool()
     assert pool.num_actors == 0

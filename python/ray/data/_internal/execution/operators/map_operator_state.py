@@ -154,22 +154,10 @@ class MapOperatorState:
         return bundle
 
     def get_work_refs(self) -> List[ray.ObjectRef]:
-        return list(self._tasks)
+        return list(self._tasks.keys())
 
     def shutdown(self) -> None:
-        if self._task_submitter.cancellable():
-            # Cancel all active tasks.
-            for task in self._tasks:
-                ray.cancel(task)
-            # Wait until all tasks have failed or been cancelled.
-            for task in self._tasks:
-                try:
-                    ray.get(task)
-                except ray.exceptions.RayError:
-                    # Cancellation either succeeded, or the task had already failed with
-                    # a different error, or cancellation failed. In all cases, we
-                    # swallow the exception.
-                    pass
+        self._task_submitter.shutdown(self.get_work_refs())
 
     @property
     def obj_store_mem_alloc(self) -> int:

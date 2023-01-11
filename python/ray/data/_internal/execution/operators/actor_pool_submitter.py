@@ -58,9 +58,8 @@ class ActorPoolSubmitter(MapTaskSubmitter):
         self._actor_pool.kill_idle_actors()
         self._actor_pool.kill_future_idle_actors()
 
-    def cancellable(self) -> bool:
-        # Actor tasks are not cancellable.
-        return False
+    def shutdown(self, _):
+        self._actor_pool.kill_all_actors()
 
     @staticmethod
     def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
@@ -165,6 +164,14 @@ class ActorPool:
         This is called once the task submitter is done submitting work to the pool.
         """
         self._should_kill_idle_actors = True
+
+    def kill_all_actors(self):
+        """Kills all currently idle actors.
+
+        This is called once the task submitter is shutting down.
+        """
+        for actor in self._tasks_in_flight.keys():
+            self._kill_actor(actor)
 
     def _kill_actor(self, actor: ray.actor.ActorHandle):
         """Kill the provided actor and remove it from the pool."""

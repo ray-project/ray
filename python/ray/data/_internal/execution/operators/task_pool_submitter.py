@@ -1,4 +1,6 @@
 from typing import Dict, Any, Iterator, Callable, Union, List
+
+import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data._internal.execution.operators.map_task_submitter import MapTaskSubmitter
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -28,9 +30,19 @@ class TaskPoolSubmitter(MapTaskSubmitter):
             transform_fn, *input_blocks
         )
 
-    def cancellable(self) -> bool:
-        # Normal Ray tasks are cancellable.
-        return True
+    def shutdown(self, task_refs: List[ObjectRef[Union[ObjectRefGenerator, Block]]]):
+        # Cancel all active tasks.
+        for task in task_refs:
+            ray.cancel(task)
+        # Wait until all tasks have failed or been cancelled.
+        for task in task_refs:
+            try:
+                ray.get(task)
+            except ray.exceptions.RayError:
+                # Cancellation either succeeded, or the task had already failed with
+                # a different error, or cancellation failed. In all cases, we
+                # swallow the exception.
+                pass
 
 
 def _map_task(
