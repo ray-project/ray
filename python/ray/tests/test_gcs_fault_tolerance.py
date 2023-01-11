@@ -718,7 +718,8 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     gcs_server_pid = gcs_server_process.pid
 
     # Wait until all data is updated in the replica
-    sleep(5)
+    leader_cli.set("_hole", "0")
+    wait_for_condition(lambda: all([b"_hole" in f.keys("*") for f in follower_cli]))
 
     # Now kill pid
     leader_process = psutil.Process(pid=leader_pid)
@@ -726,15 +727,15 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
 
     print(">>> Waiting gcs server to exit", gcs_server_pid)
     wait_for_pid_to_exit(gcs_server_pid, 1000)
-
     print("GCS killed")
+
     follower_cli[0].cluster("failover", "takeover")
 
     # Kill Counter actor. It should restart after GCS is back
     c_process.kill()
     # Cleanup the in memory data and then start gcs
     cluster.head_node.kill_gcs_server(False)
-    sleep(1)
+
     print("Start gcs")
     cluster.head_node.start_gcs_server()
 
@@ -753,6 +754,16 @@ assert ray.get(c.r.remote(10)) == 10
 """
     # Make sure the cluster is usable
     run_string_as_driver(driver_script)
+
+    # Now make follower_cli[0] become replica
+    # and promote follower_cli[1] as leader
+    follower_cli[1].cluster("failover", "takeover")
+    head_node = cluster.head_node
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+    # GCS should exit in this case
+    print(">>> Waiting gcs server to exit", gcs_server_pid)
+    wait_for_pid_to_exit(gcs_server_pid, 1000)
 
 
 if __name__ == "__main__":
