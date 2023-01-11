@@ -352,7 +352,7 @@ class DatasetConfig:
             title = type(self).__name__
         return make_table_html_repr(obj=self, title=title)
 
-    def _check_deprecations(self):
+    def __post_init__(self):
         if self.use_stream_api is not None or self.stream_window_size is not None:
             raise DeprecationWarning(
                 "DatasetConfig.use_stream_api and DatasetConfig.stream_window_size "
@@ -365,7 +365,6 @@ class DatasetConfig:
 
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
-        self._check_deprecations()
         return DatasetConfig(
             fit=self.fit or False,
             split=self.split or False,
@@ -428,9 +427,7 @@ class DatasetConfig:
                     raise ValueError(
                         f"The required dataset `{k}` was not found in {datasets}."
                     )
-            if not isinstance(
-                v.max_object_store_memory_fraction, (float, int)
-            ):
+            if not isinstance(v.max_object_store_memory_fraction, (float, int)):
                 raise ValueError(
                     f"Error configuring dataset `{k}`: "
                     "max_object_store_memory_fraction "
@@ -463,7 +460,6 @@ class DatasetConfig:
 
     def _merge(self, other: "DatasetConfig") -> "DatasetConfig":
         """Merge the given DatasetConfig into this one."""
-        self._check_deprecations()
         new_config = DatasetConfig(
             fit=self.fit if other.fit is None else other.fit,
             split=self.split if other.split is None else other.split,

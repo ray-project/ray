@@ -620,11 +620,7 @@ if __name__ == "__main__":
             resources_per_worker=resources_per_worker,
         ),
         run_config=RunConfig(callbacks=callbacks),
-        dataset_config={
-            "train": DatasetConfig(
-                use_stream_api=True, stream_window_size=-1, global_shuffle=True
-            )
-        },
+        dataset_config={"train": DatasetConfig(global_shuffle=True)},
     )
     results = trainer.fit()
     state_dict = results.checkpoint.to_dict()["model"]

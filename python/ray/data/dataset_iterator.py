@@ -37,8 +37,8 @@ class DatasetIterator(abc.ABC):
         >>> ds.iterator()
         DatasetIterator(DatasetPipeline(num_windows=inf, num_stages=2))
 
-   .. tip::
-       For debugging purposes, use
+    .. tip::
+        For debugging purposes, use
         :meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to create a
         local `DatasetIterator` from a :class:`~ray.data.Dataset`, a
         :class:`~ray.data.Preprocessor`, and a :class:`~ray.air.DatasetConfig`.
