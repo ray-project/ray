@@ -24,6 +24,7 @@ def test_get_spark_task_assigned_physical_gpus():
         assert get_spark_task_assigned_physical_gpus([0, 2]) == [2, 6]
 
 
+@patch("ray._private.ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES", 1)
 def test_calc_mem_per_ray_worker_node():
     assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, 100000) == (120000, 80000)
     assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, 70000) == (130000, 70000)
@@ -31,6 +32,7 @@ def test_calc_mem_per_ray_worker_node():
     assert _calc_mem_per_ray_worker_node(4, 1000000, 200000, None) == (160000, 40000)
 
 
+@patch("ray._private.ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES", 1)
 def test_get_avail_mem_per_ray_worker_node(monkeypatch):
     monkeypatch.setenv("RAY_ON_SPARK_WORKER_CPU_CORES", "4")
     monkeypatch.setenv("RAY_ON_SPARK_WORKER_GPU_NUM", "8")
