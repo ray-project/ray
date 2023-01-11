@@ -130,7 +130,7 @@ class RLTrainer:
     def compute_loss(
         self,
         *,
-        fwd_out: MultiAgentBatch,
+        fwd_out: NestedDict[TensorType],
         batch: MultiAgentBatch,
     ) -> Union[TensorType, Mapping[str, Any]]:
         """Computes the loss for the module being optimized.

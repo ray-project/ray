@@ -115,7 +115,7 @@ class PPOTfModule(TfRLModule):
 
     @override(TfRLModule)
     def _forward_inference(self, batch) -> Mapping[str, Any]:
-        action_logits = self.pi(batch[SampleBatch.OBS])
+        action_logits = self.policy(batch[SampleBatch.OBS])
 
         if self._is_discrete:
             action = tf.math.argmax(action_logits, axis=-1)
@@ -218,4 +218,6 @@ if __name__ == "__main__":
             SampleBatch.ACTIONS: tf.convert_to_tensor(action),
         }
     )
-    module.forward_train(batch)
+    print(module.forward_train(batch))
+    print(module.forward_inference(batch))
+    print(module.forward_exploration(batch))
