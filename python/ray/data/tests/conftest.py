@@ -224,10 +224,7 @@ def assert_base_partitioned_ds():
         if sorted_values is None:
             sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
         # Test metadata ops.
-        if num_computed is not None:
-            assert (
-                ds._plan.execute()._num_computed() == 1
-            ), f"{ds._plan.execute()._num_computed()} != 1"
+        assert ds._plan.execute()._num_computed() == 0
         assert ds.count() == count, f"{ds.count()} != {count}"
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
         assert ds.schema() is not None

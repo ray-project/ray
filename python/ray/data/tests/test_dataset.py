@@ -45,13 +45,6 @@ def maybe_pipeline(ds, enabled):
         return ds
 
 
-def maybe_lazy(ds, enabled):
-    if enabled:
-        return ds.lazy()
-    else:
-        return ds
-
-
 class SlowCSVDatasource(CSVDatasource):
     def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
         for block in CSVDatasource._read_stream(self, f, path, **reader_args):
@@ -234,18 +227,15 @@ def test_transform_failure(shutdown_only):
         ds.map(mapper)
 
 
-@pytest.mark.parametrize("lazy", [False, True])
-def test_dataset_lineage_serialization(shutdown_only, lazy):
+def test_dataset_lineage_serialization(shutdown_only):
     ray.init()
     ds = ray.data.range(10)
-    ds = maybe_lazy(ds, lazy)
     ds = ds.map(lambda x: x + 1)
     ds = ds.map(lambda x: x + 1)
     ds = ds.random_shuffle()
     epoch = ds._get_epoch()
     uuid = ds._get_uuid()
     plan_uuid = ds._plan._dataset_uuid
-    lazy = ds._lazy
 
     serialized_ds = ds.serialize_lineage()
     # Confirm that the original Dataset was properly copied before clearing/mutating.
@@ -253,10 +243,7 @@ def test_dataset_lineage_serialization(shutdown_only, lazy):
     # Should not raise.
     in_blocks._check_if_cleared()
     assert isinstance(in_blocks, LazyBlockList)
-    if lazy:
-        assert in_blocks._block_partition_refs[0] is not None
-    else:
-        assert ds._plan._snapshot_blocks is not None
+    assert in_blocks._block_partition_refs[0] is None
 
     ray.shutdown()
     ray.init()
@@ -266,18 +253,15 @@ def test_dataset_lineage_serialization(shutdown_only, lazy):
     assert ds._get_epoch() == epoch
     assert ds._get_uuid() == uuid
     assert ds._plan._dataset_uuid == plan_uuid
-    assert ds._lazy == lazy
     # Check Dataset content.
     assert ds.count() == 10
     assert sorted(ds.take()) == list(range(2, 12))
 
 
-@pytest.mark.parametrize("lazy", [False, True])
-def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
+def test_dataset_lineage_serialization_unsupported(shutdown_only):
     ray.init()
     # In-memory data sources not supported.
     ds = ray.data.from_items(list(range(10)))
-    ds = maybe_lazy(ds, lazy)
     ds = ds.map(lambda x: x + 1)
     ds = ds.map(lambda x: x + 1)
 
@@ -286,7 +270,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
 
     # In-memory data source unions not supported.
     ds = ray.data.from_items(list(range(10)))
-    ds = maybe_lazy(ds, lazy)
     ds1 = ray.data.from_items(list(range(10, 20)))
     ds2 = ds.union(ds1)
 
@@ -295,7 +278,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
 
     # Post-lazy-read unions not supported.
     ds = ray.data.range(10).map(lambda x: x + 1)
-    ds = maybe_lazy(ds, lazy)
     ds1 = ray.data.range(20).map(lambda x: 2 * x)
     ds2 = ds.union(ds1)
 
@@ -304,7 +286,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
 
     # Lazy read unions supported.
     ds = ray.data.range(10)
-    ds = maybe_lazy(ds, lazy)
     ds1 = ray.data.range(20)
     ds2 = ds.union(ds1)
 
@@ -314,7 +295,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
 
     # Zips not supported.
     ds = ray.data.from_items(list(range(10)))
-    ds = maybe_lazy(ds, lazy)
     ds1 = ray.data.from_items(list(range(10, 20)))
     ds2 = ds.zip(ds1)
 
@@ -337,7 +317,7 @@ def test_zip(ray_start_regular_shared):
     ds1 = ray.data.range(5, parallelism=5)
     ds2 = ray.data.range(5, parallelism=5).map(lambda x: x + 1)
     ds = ds1.zip(ds2)
-    assert ds.schema(fetch_if_missing=True) == tuple
+    assert ds.schema() == tuple
     assert ds.take() == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
     with pytest.raises(ValueError):
         ds.zip(ray.data.range(3)).fully_executed()
@@ -1494,17 +1474,18 @@ def test_schema(ray_start_regular_shared):
 
 def test_schema_lazy(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=10)
-    # We kick off the read task for the first block by default.
-    assert ds._plan._in_blocks._num_computed() == 1
+    # We do not kick off the read task by default.
+    assert ds._plan._in_blocks._num_computed() == 0
     schema = ds.schema()
     assert schema == int
+    assert ds._plan._in_blocks._num_computed() == 1
     # Fetching the schema should not trigger execution of extra read tasks.
     assert ds._plan.execute()._num_computed() == 1
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
-    assert ds._plan.execute()._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 0
     assert ds.take(10) == list(range(10))
     assert ds._plan.execute()._num_computed() == 2
     assert ds.take(20) == list(range(20))
