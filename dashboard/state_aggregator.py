@@ -386,6 +386,7 @@ class StateAPIManager:
                         "language",
                         "required_resources",
                         "runtime_env_info",
+                        "parent_task_id",
                     ],
                 ),
                 (task_attempt, ["task_id", "attempt_number", "job_id"]),
