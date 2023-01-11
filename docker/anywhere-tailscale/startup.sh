@@ -68,7 +68,8 @@ else
 fi
 
 
-
-
-
+#CREATE REPOSITORY s3backup TYPE s3
+#[ WITH (parameter_name [= value], [, ...]) ]
+#[ WITH (access_key = ${AWS_ACCESS_KEY_ID}, secret_key = ${AWS_SECRET_ACCESS_KEY}), endpoint = s3.us-west-2.amazonaws.com ]
+#
 
