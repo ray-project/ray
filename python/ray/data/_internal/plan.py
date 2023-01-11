@@ -251,14 +251,22 @@ class ExecutionPlan:
                 self.execute()
             else:
                 return None
+        elif self._in_blocks is not None and self._snapshot_blocks is None:
+            # If the plan only has input blocks, we execute it, so snapshot has output.
+            # This applies to newly created dataset. For example, initial dataset from
+            # read, and output datasets of Dataset.split().
+            self.execute()
         # Snapshot is now guaranteed to be the output of the final stage or None.
         blocks = self._snapshot_blocks
         if not blocks:
             return None
-        # Don't force fetching in case it's a lazy block list, in which case we
-        # don't want to trigger full execution for a schema read. If we want to
-        # trigger execution to get schema, we'll trigger read tasks progressively
-        # until a viable schema is available, below.
+
+        # Only trigger the execution of first block in case it's a lazy block list.
+        # Don't trigger full execution for a schema read.
+        if isinstance(blocks, LazyBlockList):
+            blocks.compute_first_block()
+            blocks.ensure_metadata_for_first_block()
+
         metadata = blocks.get_metadata(fetch_if_missing=False)
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
@@ -328,29 +336,59 @@ class ExecutionPlan:
             The blocks of the output dataset.
         """
         if not self.has_computed_output():
-            blocks, stats, stages = self._optimize()
             context = DatasetContext.get_current()
-            for stage_idx, stage in enumerate(stages):
-                if allow_clear_input_blocks:
-                    clear_input_blocks = self._should_clear_input_blocks(
-                        blocks, stage_idx
-                    )
-                else:
-                    clear_input_blocks = False
-                stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(
-                    blocks, clear_input_blocks, self._run_by_consumer
-                )
-                if stage_info:
-                    stats = stats_builder.build_multistage(stage_info)
-                else:
-                    stats = stats_builder.build(blocks)
-                stats.dataset_uuid = uuid.uuid4().hex
 
-                stats_summary_string = stats.summary_string(include_parent=False)
-                logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                    stats_summary_string,
+            # Read stage is handled with the legacy execution impl for now.
+            if (
+                context.new_execution_backend
+                and not self.is_read_stage_equivalent()
+                and self._stages_after_snapshot
+            ):
+                from ray.data._internal.execution.bulk_executor import BulkExecutor
+                from ray.data._internal.execution.interfaces import ExecutionOptions
+                from ray.data._internal.execution.legacy_compat import (
+                    execute_to_legacy_block_list,
                 )
+
+                executor = BulkExecutor(ExecutionOptions())
+                blocks = execute_to_legacy_block_list(
+                    executor,
+                    self,
+                    allow_clear_input_blocks=allow_clear_input_blocks,
+                    dataset_uuid=self._dataset_uuid,
+                )
+                # TODO(ekl) we shouldn't need to set this in the future once we move
+                # to a fully lazy execution model, unless .cache() is used. The reason
+                # we need it right now is since the user may iterate over a Dataset
+                # multiple times after fully executing it once.
+                if not self._run_by_consumer:
+                    blocks._owned_by_consumer = False
+                stats = executor.get_stats()
+
+            else:
+                blocks, stats, stages = self._optimize()
+
+                for stage_idx, stage in enumerate(stages):
+                    if allow_clear_input_blocks:
+                        clear_input_blocks = self._should_clear_input_blocks(
+                            blocks, stage_idx
+                        )
+                    else:
+                        clear_input_blocks = False
+                    stats_builder = stats.child_builder(stage.name)
+                    blocks, stage_info = stage(
+                        blocks, clear_input_blocks, self._run_by_consumer
+                    )
+                    if stage_info:
+                        stats = stats_builder.build_multistage(stage_info)
+                    else:
+                        stats = stats_builder.build(blocks)
+                    stats.dataset_uuid = self._dataset_uuid
+                    stats_summary_string = stats.summary_string(include_parent=False)
+                    logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                        stats_summary_string,
+                    )
+
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
@@ -452,11 +490,6 @@ class ExecutionPlan:
             # beginning.
             blocks = self._in_blocks
             stats = self._in_stats
-            if not self.has_lazy_input():
-                # If not a lazy datasource, unlink the input blocks from the plan so we
-                # can eagerly reclaim the input block memory after the first stage is
-                # done executing.
-                self._in_blocks = None
         return blocks, stats, stages
 
     def has_lazy_input(self) -> bool:

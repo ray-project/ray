@@ -18,7 +18,11 @@ def _start_new_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 1,
-            "_system_config": {"num_heartbeats_timeout": 10},
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 1000,
+                "health_check_failure_threshold": 10,
+            },
         },
     )
     return cluster
