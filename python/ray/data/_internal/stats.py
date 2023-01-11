@@ -448,7 +448,7 @@ class DatasetPipelineStats:
             self.history_buffer.pop(0)
         self.count += 1
 
-    def add_pipeline(self, other_stats: "DatasetPipelineStats"):
+    def add_pipeline_stats(self, other_stats: "DatasetPipelineStats"):
         """Add the provided pipeline stats to the current stats."""
         for _, dataset_stats in other_stats.history_buffer:
             self.add(dataset_stats)

@@ -1296,7 +1296,7 @@ class DatasetPipeline(Generic[T]):
             self._first_dataset = next(peek_pipe.iter_datasets())
 
             # Store the stats from the peek pipeline.
-            self._stats.add_pipeline(peek_pipe._stats)
+            self._stats.add_pipeline_stats(peek_pipe._stats)
 
         return self._first_dataset
 
