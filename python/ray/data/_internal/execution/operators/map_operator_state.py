@@ -40,7 +40,13 @@ class MapOperatorState:
         if isinstance(compute_strategy, TaskPoolStrategy):
             task_submitter = TaskPoolSubmitter(ray_remote_args)
         elif isinstance(compute_strategy, ActorPoolStrategy):
-            task_submitter = ActorPoolSubmitter(compute_strategy, ray_remote_args)
+            # TODO(Clark): Better mapping from configured min/max pool size to static
+            # pool size?
+            pool_size = compute_strategy.max_size
+            if pool_size == float("inf"):
+                # Use min_size if max_size is unbounded (default).
+                pool_size = compute_strategy.min_size
+            task_submitter = ActorPoolSubmitter(pool_size, ray_remote_args)
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
         self._task_submitter: MapTaskSubmitter = task_submitter

@@ -2,7 +2,6 @@ from typing import Dict, Any, Iterator, Callable, List, Tuple
 import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
-from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.operators.map_task_submitter import MapTaskSubmitter
 from ray.types import ObjectRef
@@ -11,20 +10,13 @@ from ray.types import ObjectRef
 class ActorPoolSubmitter(MapTaskSubmitter):
     """A task submitter for MapOperator that uses a Ray actor pool."""
 
-    def __init__(
-        self, compute_strategy: ActorPoolStrategy, ray_remote_args: Dict[str, Any]
-    ):
+    def __init__(self, pool_size: int, ray_remote_args: Dict[str, Any]):
         """Create an ActorPoolSubmitter instance.
 
         Args:
-            compute_strategy: The configured ActorPoolStrategy.
+            pool_size: The size of the actor pool.
             ray_remote_args: Remote arguments for the Ray actors to be created.
         """
-        # TODO(Clark): Better mapping from configured min/max pool size to static pool
-        # size?
-        pool_size = compute_strategy.max_size
-        if pool_size == float("inf"):
-            pool_size = compute_strategy.min_size
         self._pool_size = pool_size
         self._ray_remote_args = ray_remote_args
         # A map from task output futures to the actors on which they are running.
@@ -155,8 +147,7 @@ class ActorPool:
         return len(self._tasks_in_flight)
 
     def kill_idle_actors(self):
-        """Kills all currently idle actors, and ensures that all actors that become idle
-        in the future will be eagerly killed.
+        """Kills all currently idle actors.
 
         This is called once the task submitter is done submitting work to the pool.
         """
