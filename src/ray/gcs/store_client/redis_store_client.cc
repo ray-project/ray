@@ -320,24 +320,8 @@ RedisStoreClient::RedisScanner::RedisScanner(
 Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
     const std::string &match_pattern,
     const MapCallback<std::string, std::string> &callback) {
-  auto on_done = [this, callback](const Status &status,
-                                  const std::vector<std::string> &result) {
-    if (result.empty()) {
-      callback(absl::flat_hash_map<std::string, std::string>());
-    } else {
-      RAY_CHECK_OK(MGetValues(
-          redis_client_, external_storage_namespace_, table_name_, result, callback));
-    }
-  };
-  return ScanKeys(match_pattern, on_done);
-}
-
-Status RedisStoreClient::RedisScanner::ScanKeys(
-    const std::string &match_pattern, const MultiItemCallback<std::string> &callback) {
   auto on_done = [this, callback](const Status &status) {
-    std::vector<std::string> result;
-    result.insert(result.begin(), keys_.begin(), keys_.end());
-    callback(status, std::move(result));
+    callback(std::move(results_));
   };
   Scan(match_pattern, on_done);
   return Status::OK();
@@ -389,7 +373,7 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
   RAY_CHECK(reply);
   std::vector<std::string> scan_result;
   size_t cursor = reply->ReadAsScanArray(&scan_result);
-  // Update shard cursors and keys_.
+  // Update shard cursors and results_.
   {
     absl::MutexLock lock(&mutex_);
     auto shard_it = shard_to_cursor_.find(shard_index);
@@ -401,8 +385,11 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
     } else {
       shard_it->second = cursor;
     }
-
-    keys_.insert(scan_result.begin(), scan_result.end());
+    RAY_CHECK(scan_result.size() % 2 == 0);
+    for(size_t i = 0; i < scan_result.size(); i += 2) {
+      auto key = GetKeyFromRedisKey(external_storage_namespace_, std::move(scan_result[i]), table_name_);
+      results_.emplace(std::move(key), std::move(scan_result[i+1]));
+    }
   }
 
   // If pending_request_count_ is equal to 0, it means that the scan of this batch is
@@ -422,16 +409,16 @@ Status RedisStoreClient::AsyncGetKeys(
       GenKeyRedisMatchPattern(external_storage_namespace_, table_name, prefix);
   auto scanner = std::make_shared<RedisScanner>(
       redis_client_, external_storage_namespace_, table_name);
-  auto on_done = [this, table_name, callback, scanner](auto /* status*/, auto keys) {
+
+  auto on_done = [this, table_name, callback, scanner](auto redis_result) {
     std::vector<std::string> result;
-    result.reserve(keys.size());
-    for (auto &key : keys) {
-      result.push_back(
-          GetKeyFromRedisKey(external_storage_namespace_, std::move(key), table_name));
+    result.reserve(redis_result.size());
+    for (const auto &[key, _] : redis_result) {
+      result.push_back(key);
     }
     callback(std::move(result));
   };
-  return scanner->ScanKeys(match_pattern, on_done);
+  return scanner->ScanKeysAndValues(match_pattern, on_done);
 }
 
 Status RedisStoreClient::AsyncExists(const std::string &table_name,
