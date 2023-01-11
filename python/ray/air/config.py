@@ -429,12 +429,13 @@ class DatasetConfig:
                         f"The required dataset `{k}` was not found in {datasets}."
                     )
             if not isinstance(
-                v.max_object_store_memory_fraction, float
-            ) and not isinstance(v.max_object_store_memory_fraction, int):
+                v.max_object_store_memory_fraction, (float, int)
+            ):
                 raise ValueError(
                     f"Error configuring dataset `{k}`: "
                     "max_object_store_memory_fraction "
-                    "must be None or a float with value -1 or >=0."
+                    "must be None or a float with value -1 or >=0, but got "
+                    f"{v.max_object_store_memory_fraction}."
                 )
             if not (
                 v.max_object_store_memory_fraction == -1
@@ -443,7 +444,8 @@ class DatasetConfig:
                 raise ValueError(
                     f"Error configuring dataset `{k}`: "
                     "max_object_store_memory_fraction "
-                    "must be None or a float with value -1 or >=0."
+                    "must be None or a float with value -1 or >=0, but got "
+                    f"{v.max_object_store_memory_fraction}."
                 )
 
         if len(fittable) > 1:

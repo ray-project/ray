@@ -18,8 +18,8 @@ class DatasetIterator(abc.ABC):
 
     For Datasets, each iteration call represents a complete read of all items in the
     Dataset. For DatasetPipelines, each iteration call represents one pass (epoch)
-    over the Dataset. Note that for DatasetPipelines, each pass iterates over
-    the original Dataset, instead of a window (if `.window()` was used).
+    over the base Dataset. Note that for DatasetPipelines, each pass iterates over
+    the original Dataset, instead of a window (if ``.window()`` was used).
 
     If using Ray AIR, each trainer actor should get its own iterator by calling
     :meth:`session.get_dataset_shard("train")
@@ -37,10 +37,11 @@ class DatasetIterator(abc.ABC):
         >>> ds.iterator()
         DatasetIterator(DatasetPipeline(num_windows=inf, num_stages=2))
 
-    Tip: For debugging purposes, use
-    :meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to create a
-    local `DatasetIterator` from a :class:`~ray.data.Dataset`, a
-    :class:`~ray.data.Preprocessor`, and a :class:`~ray.air.DatasetConfig`.
+   .. tip::
+       For debugging purposes, use
+        :meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to create a
+        local `DatasetIterator` from a :class:`~ray.data.Dataset`, a
+        :class:`~ray.data.Preprocessor`, and a :class:`~ray.air.DatasetConfig`.
     """
 
     @abc.abstractmethod

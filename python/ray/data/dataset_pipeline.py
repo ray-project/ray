@@ -107,11 +107,11 @@ class DatasetPipeline(Generic[T]):
         self._stats = DatasetPipelineStats()
 
     def iterator(self) -> DatasetIterator:
-        """Return a :class:`DatasetIterator <ray.data.DatasetIterator>` that
+        """Return a :class:`~ray.data.DatasetIterator` that
         can be used to repeatedly iterate over the dataset.
 
         Note that each pass iterates over the entire original Dataset, even if
-        the dataset was windowed with `.window()`.
+        the dataset was windowed with ``.window()``.
 
         Examples:
             >>> import ray
@@ -121,8 +121,8 @@ class DatasetPipeline(Generic[T]):
             >>> for batch in ds.iterator().iter_batches(batch_size=2):
             ...     print(batch) # doctest: +SKIP
 
-        It is recommended to use `DatasetIterator` methods over directly
-        calling methods such as `iter_batches()`.
+        It is recommended to use ``DatasetIterator`` methods over directly
+        calling methods such as ``iter_batches()``.
         """
         return PipelinedDatasetIterator(self)
 
