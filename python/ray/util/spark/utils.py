@@ -172,7 +172,10 @@ _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
 def _calc_mem_per_ray_worker_node(
     num_task_slots, physical_mem_bytes, shared_mem_bytes, configured_object_store_bytes
 ):
-    from ray._private.ray_constants import DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+    from ray._private.ray_constants import (
+        DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+        OBJECT_STORE_MINIMUM_MEMORY_BYTES,
+    )
 
     available_physical_mem_per_node = int(
         physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET
@@ -192,6 +195,9 @@ def _calc_mem_per_ray_worker_node(
             available_physical_mem_per_node * _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION
         )
     )
+
+    if object_store_bytes < OBJECT_STORE_MINIMUM_MEMORY_BYTES:
+        object_store_bytes = OBJECT_STORE_MINIMUM_MEMORY_BYTES
 
     heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
     return heap_mem_bytes, object_store_bytes
