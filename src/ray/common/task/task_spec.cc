@@ -361,7 +361,7 @@ ActorID TaskSpecification::ActorCreationId() const {
 }
 
 int64_t TaskSpecification::MaxActorRestarts() const {
-  // RAY_CHECK(IsActorCreationTask());
+  RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().max_actor_restarts();
 }
 
@@ -521,7 +521,6 @@ std::string TaskSpecification::RuntimeEnvDebugString() const {
 }
 
 bool TaskSpecification::IsRetriable() const {
-  RAY_LOG(ERROR) << IsActorTask() << IsActorCreationTask() << IsNormalTask() << MaxActorRestarts() << MaxRetries();
   if (IsActorTask()) {
     return false;
   }

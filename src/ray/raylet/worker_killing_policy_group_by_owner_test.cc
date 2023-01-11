@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/test/util.h"
+#include "ray/raylet/worker_killing_policy.h"
 
 namespace ray {
 
@@ -34,7 +34,8 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
   int32_t has_retry = 1;
   GroupByOwnerIdWorkerKillingPolicy worker_killing_policy_;
 
-  std::shared_ptr<WorkerInterface> CreateActorCreationWorker(TaskID owner_id, int32_t max_restarts) {
+  std::shared_ptr<WorkerInterface> CreateActorCreationWorker(TaskID owner_id,
+                                                             int32_t max_restarts) {
     rpc::TaskSpec message;
     message.set_task_id(TaskID::FromRandom(job_id_).Binary());
     message.set_parent_task_id(owner_id.Binary());
@@ -48,7 +49,8 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
     return worker;
   }
 
-  std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id, int32_t max_retries) {
+  std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
+                                                    int32_t max_retries) {
     rpc::TaskSpec message;
     message.set_task_id(TaskID::FromRandom(job_id_).Binary());
     message.set_parent_task_id(owner_id.Binary());
@@ -71,15 +73,15 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestEmptyWorkerPoolSelectsNullWorker) {
   ASSERT_TRUE(worker_to_kill == nullptr);
 }
 
-TEST_F(WorkerKillingGroupByOwnerTest,
-       TestLastWorkerInGroupShouldNotRetry) {
+TEST_F(WorkerKillingGroupByOwnerTest, TestLastWorkerInGroupShouldNotRetry) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   auto owner_id = TaskID::ForDriverTask(job_id_);
-  auto first_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(owner_id, has_retry);
+  auto first_submitted =
+      WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(owner_id, has_retry);
   auto second_submitted =
       WorkerKillingGroupByOwnerTest::CreateTaskWorker(owner_id, has_retry);
-  
+
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
 
@@ -99,21 +101,23 @@ TEST_F(WorkerKillingGroupByOwnerTest,
   }
 }
 
-TEST_F(WorkerKillingGroupByOwnerTest,
-       TestNonRetriableBelongsToItsOwnGroup) {
+TEST_F(WorkerKillingGroupByOwnerTest, TestNonRetriableBelongsToItsOwnGroup) {
   auto owner_id = TaskID::ForDriverTask(job_id_);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  auto first_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(owner_id, no_retry);
-  auto second_submitted = WorkerKillingGroupByOwnerTest::CreateTaskWorker(owner_id, no_retry);
+  auto first_submitted =
+      WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(owner_id, no_retry);
+  auto second_submitted =
+      WorkerKillingGroupByOwnerTest::CreateTaskWorker(owner_id, no_retry);
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
-  
+
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> expected;
   expected.push_back(std::make_pair(second_submitted, should_not_retry));
-  
-  auto worker_to_kill_and_should_retry = worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
-  
+
+  auto worker_to_kill_and_should_retry =
+      worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
+
   auto worker_to_kill = worker_to_kill_and_should_retry.first;
   bool retry = worker_to_kill_and_should_retry.second;
   ASSERT_EQ(worker_to_kill->WorkerId(), second_submitted->WorkerId());
@@ -126,19 +130,25 @@ TEST_F(WorkerKillingGroupByOwnerTest,
   auto second_group_owner_id = TaskID::FromRandom(job_id_);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  auto first_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(first_group_owner_id, has_retry);
-  auto second_submitted = WorkerKillingGroupByOwnerTest::CreateTaskWorker(second_group_owner_id, has_retry);
-  auto third_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(second_group_owner_id, has_retry);
-  auto fourth_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(second_group_owner_id, has_retry);
-  auto fifth_submitted = WorkerKillingGroupByOwnerTest::CreateTaskWorker(first_group_owner_id, has_retry);
-  auto sixth_submitted = WorkerKillingGroupByOwnerTest::CreateTaskWorker(first_group_owner_id, has_retry);
+  auto first_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(
+      first_group_owner_id, has_retry);
+  auto second_submitted =
+      WorkerKillingGroupByOwnerTest::CreateTaskWorker(second_group_owner_id, has_retry);
+  auto third_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(
+      second_group_owner_id, has_retry);
+  auto fourth_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(
+      second_group_owner_id, has_retry);
+  auto fifth_submitted =
+      WorkerKillingGroupByOwnerTest::CreateTaskWorker(first_group_owner_id, has_retry);
+  auto sixth_submitted =
+      WorkerKillingGroupByOwnerTest::CreateTaskWorker(first_group_owner_id, has_retry);
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
   workers.push_back(third_submitted);
   workers.push_back(fourth_submitted);
   workers.push_back(fifth_submitted);
   workers.push_back(sixth_submitted);
-  
+
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> expected;
   expected.push_back(std::make_pair(fourth_submitted, should_retry));
   expected.push_back(std::make_pair(third_submitted, should_retry));
@@ -146,7 +156,7 @@ TEST_F(WorkerKillingGroupByOwnerTest,
   expected.push_back(std::make_pair(fifth_submitted, should_retry));
   expected.push_back(std::make_pair(second_submitted, should_not_retry));
   expected.push_back(std::make_pair(first_submitted, should_not_retry));
-  
+
   for (const auto &entry : expected) {
     auto worker_to_kill_and_should_retry =
         worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
@@ -164,16 +174,17 @@ TEST_F(WorkerKillingGroupByOwnerTest,
 //   auto owner_id = TaskID::ForDriverTask(job_id_);
 
 //   std::vector<std::shared_ptr<WorkerInterface>> workers;
-//   auto first_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(owner_id, no_retry);
-//   auto second_submitted = WorkerKillingGroupByOwnerTest::CreateTaskWorker(owner_id, no_retry);
-//   workers.push_back(first_submitted);
-//   workers.push_back(second_submitted);
-  
+//   auto first_submitted =
+//   WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(owner_id, no_retry); auto
+//   second_submitted = WorkerKillingGroupByOwnerTest::CreateTaskWorker(owner_id,
+//   no_retry); workers.push_back(first_submitted); workers.push_back(second_submitted);
+
 //   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> expected;
 //   expected.push_back(std::make_pair(second_submitted, should_not_retry));
-  
-//   auto worker_to_kill_and_should_retry = worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
-  
+
+//   auto worker_to_kill_and_should_retry =
+//   worker_killing_policy_.SelectWorkerToKill(workers, MemorySnapshot());
+
 //   auto worker_to_kill = worker_to_kill_and_should_retry.first;
 //   bool retry = worker_to_kill_and_should_retry.second;
 //   ASSERT_EQ(worker_to_kill->WorkerId(), second_submitted->WorkerId());
@@ -186,13 +197,17 @@ TEST_F(WorkerKillingGroupByOwnerTest,
 
 //   JobID job_id = JobID::FromInt(75);
 
-//   auto first_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(TaskID::FromRandom(job_id), has_retry);
-//   auto second_submitted =
-//       WorkerKillingGroupByOwnerTest::CreateTaskWorker(TaskID::FromRandom(job_id), has_retry);
-//   auto third_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(TaskID::FromRandom(job_id), no_retry);
-//   auto fourth_submitted =
-//       WorkerKillingGroupByOwnerTest::CreateTaskWorker(TaskID::FromRandom(job_id), no_retry);
-  
+//   auto first_submitted =
+//   WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(TaskID::FromRandom(job_id),
+//   has_retry); auto second_submitted =
+//       WorkerKillingGroupByOwnerTest::CreateTaskWorker(TaskID::FromRandom(job_id),
+//       has_retry);
+//   auto third_submitted =
+//   WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(TaskID::FromRandom(job_id),
+//   no_retry); auto fourth_submitted =
+//       WorkerKillingGroupByOwnerTest::CreateTaskWorker(TaskID::FromRandom(job_id),
+//       no_retry);
+
 //   workers.push_back(first_submitted);
 //   workers.push_back(second_submitted);
 //   workers.push_back(third_submitted);

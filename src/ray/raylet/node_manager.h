@@ -834,6 +834,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;
 
+  /// The Policy for selecting the worker to kill when the nodes runs out of memory.
   std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.

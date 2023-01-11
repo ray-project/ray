@@ -95,9 +95,7 @@ class MockWorker : public WorkerInterface {
     return -1;
   }
   void SetAssignedPort(int port) override { RAY_CHECK(false) << "Method unused"; }
-  const TaskID &GetAssignedTaskId() const override {
-    return task_id_;
-  }
+  const TaskID &GetAssignedTaskId() const override { return task_id_; }
   bool AddBlockedTaskId(const TaskID &task_id) override {
     RAY_CHECK(false) << "Method unused";
     return false;
