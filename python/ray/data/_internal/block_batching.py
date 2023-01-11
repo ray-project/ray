@@ -181,11 +181,14 @@ def _make_async_gen(
 
     fetch_queue = queue.Queue(maxsize=prefetch_buffer_size)
 
+    sentinel = object()
+
     def _async_fetch():
         for item in base_iterator:
             fetch_queue.put(item, block=True)
-        # sentinel value.
-        fetch_queue.put(None, block=True)
+
+        # Indicate done adding items.
+        fetch_queue.put(sentinel, block=True)
 
     fetch_thread = threading.Thread(target=_async_fetch)
     fetch_thread.start()
@@ -195,7 +198,7 @@ def _make_async_gen(
         if next_item is not None:
             yield next_item
         fetch_queue.task_done()
-        if next_item is None:
+        if next_item is sentinel:
             break
 
     fetch_queue.join()
