@@ -217,7 +217,7 @@ class TestStream(DataParallelTrainer):
     def __init__(self, check_results_fn, **kwargs):
         kwargs.pop("scaling_config", None)
         super().__init__(
-            train_loop_per_worker=lambda: TestStream.train_loop_per_worker(
+            train_loop_per_worker=lambda: self.train_loop_per_worker(
                 session.get_dataset_shard("train"), check_results_fn
             ),
             scaling_config=ScalingConfig(num_workers=1),
