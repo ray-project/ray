@@ -1,6 +1,5 @@
 import gymnasium as gym
 import unittest
-import pytest
 
 import tensorflow as tf
 import ray
@@ -9,10 +8,10 @@ from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
-from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
+from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 
 
-class TestTfRLTrainer(unittest.TestCase):
+class TestTrainerRunner(unittest.TestCase):
     """This test is setup for 2 gpus."""
 
     # TODO: Make a unittest that does not need 2 gpus to run.
@@ -25,7 +24,6 @@ class TestTfRLTrainer(unittest.TestCase):
     def tearDown(cls) -> None:
         ray.shutdown()
 
-    @pytest.mark.skip
     def test_update_multigpu(self):
         """Test training in a 2 gpu setup and that weights are synchronized."""
         env = gym.make("CartPole-v1")
@@ -40,9 +38,7 @@ class TestTfRLTrainer(unittest.TestCase):
             optimizer_config={"lr": 1e-3},
             in_test=True,
         )
-        runner = TrainerRunner(
-            trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
-        )
+        runner = TrainerRunner(trainer_class, trainer_cfg, num_gpus=2)
 
         reader = get_cartpole_dataset_reader(batch_size=500)
 
@@ -67,7 +63,6 @@ class TestTfRLTrainer(unittest.TestCase):
             )
         self.assertLess(min_loss, 0.57)
 
-    @pytest.mark.skip
     def test_add_remove_module(self):
         env = gym.make("CartPole-v1")
         trainer_class = BCTfRLTrainer
@@ -81,9 +76,7 @@ class TestTfRLTrainer(unittest.TestCase):
             optimizer_config={"lr": 1e-3},
             in_test=True,
         )
-        runner = TrainerRunner(
-            trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
-        )
+        runner = TrainerRunner(trainer_class, trainer_cfg, num_gpus=2)
 
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
@@ -147,6 +140,60 @@ class TestTfRLTrainer(unittest.TestCase):
             self.assertEqual(
                 set(result["loss"]) - {"total_loss"}, module_ids_before_add
             )
+
+    def test_trainer_runner_no_gpus(self):
+        env = gym.make("CartPole-v1")
+        trainer_class = BCTfRLTrainer
+        trainer_cfg = dict(
+            module_class=DiscreteBCTFModule,
+            module_kwargs={
+                "observation_space": env.observation_space,
+                "action_space": env.action_space,
+                "model_config": {"hidden_dim": 32},
+            },
+            optimizer_config={"lr": 1e-3},
+            in_test=True,
+        )
+        runner = TrainerRunner(trainer_class, trainer_cfg, num_gpus=0)
+
+        local_trainer = trainer_class(**trainer_cfg)
+        local_trainer.build()
+
+        # make the state of the trainer and the local runner identical
+        local_trainer.set_state(runner.get_state()[0])
+
+        reader = get_cartpole_dataset_reader(batch_size=500)
+        batch = reader.next()
+        batch = batch.as_multi_agent()
+        check(local_trainer.update(batch), runner.update(batch)[0])
+
+        new_module_id = "test_module"
+
+        # add a test_module
+        runner.add_module(
+            module_id=new_module_id,
+            module_cls=DiscreteBCTFModule,
+            module_kwargs={
+                "observation_space": env.observation_space,
+                "action_space": env.action_space,
+                "model_config": {"hidden_dim": 32},
+            },
+            optimizer_cls=tf.keras.optimizers.Adam,
+        )
+        local_trainer.add_module(
+            module_id=new_module_id,
+            module_cls=DiscreteBCTFModule,
+            module_kwargs={
+                "observation_space": env.observation_space,
+                "action_space": env.action_space,
+                "model_config": {"hidden_dim": 32},
+            },
+            optimizer_cls=tf.keras.optimizers.Adam,
+        )
+
+        # make the state of the trainer and the local runner identical
+        local_trainer.set_state(runner.get_state()[0])
+        check(local_trainer.get_state(), runner.get_state()[0])
 
 
 if __name__ == "__main__":

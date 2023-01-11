@@ -1820,10 +1820,10 @@ py_test(
 
 
 py_test(
-    name = "test_tf_rl_trainer",
+    name = "test_trainer_runner",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "medium",
-    srcs = ["core/rl_trainer/tests/tf/test_tf_rl_trainer.py"]
+    srcs = ["core/rl_trainer/tests/test_trainer_runner.py"]
 )
 
 
