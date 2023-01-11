@@ -25,22 +25,35 @@ namespace ray {
 
 namespace raylet {
 
+/// Key groups on its owner id. For non-retriable task the owner id is itself,
+/// Since non-retriable task forms its own group.
 struct GroupKey {
-  GroupKey(const TaskID &owner_id, const TaskID &non_retriable_task_id)
-      : owner_id(owner_id), non_retriable_task_id(non_retriable_task_id) {}
+  GroupKey(const TaskID &owner_id) : owner_id(owner_id) {}
   const TaskID &owner_id;
-  const TaskID &non_retriable_task_id;
 };
 
 class Group {
  public:
   Group(const TaskID &owner_id, bool retriable)
       : owner_id_(owner_id), retriable_(retriable) {}
+
+  /// The parent task id of the tasks belonging to this group
   TaskID OwnerId() const;
+
+  /// Whether tasks in this group are retriable.
   bool IsRetriable() const;
+
+  /// Gets the task time of the earliest task of this group, to be
+  /// used for group priority.
   const std::chrono::steady_clock::time_point GetAssignedTaskTime() const;
+
+  /// Returns the worker to be killed in this group, in LIFO order.
   const std::shared_ptr<WorkerInterface> SelectWorkerToKill() const;
+
+  /// Tasks belonging to this group.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllWorkers() const;
+
+  /// Adds worker that the task belongs to to the group.
   void AddToGroup(std::shared_ptr<WorkerInterface> worker);
 
  private:
@@ -57,19 +70,13 @@ class Group {
   bool retriable_;
 };
 
-typedef std::unordered_map<GroupKey,
-                           Group,
-                           std::function<unsigned long(const GroupKey &)>,
-                           std::function<bool(const GroupKey &, const GroupKey &)>>
-    GroupMap;
-
-/// Groups worker by its owner id if it is a task. Each actor belongs to its own group.
-/// The inter-group policy prioritizes killing groups that are retriable first, then in
-/// LIFO order, where each group's priority is based on the time of its earliest submitted
-/// member. The intra-group policy prioritizes killing in LIFO order.
+/// Groups task by its owner id. Non-retriable task (whether it be task or actor) forms
+/// its own group. Prioritizes killing groups that are retriable first, then in LIFO
+/// order, where each group's order is based on the time of its earliest submitted member.
+/// Within the group it prioritizes killing task in LIFO order of the submission time.
 ///
-/// It will set the task to-be-killed to be non-retriable if it is the last member of the
-/// group. Otherwise the task is set to be retriable.
+/// When selecting a worker / task to be killed, it will set the task to-be-killed to be
+/// non-retriable if it is the last member of the group, and retriable otherwise.
 class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
   GroupByOwnerIdWorkerKillingPolicy();
@@ -78,10 +85,9 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
       const MemorySnapshot &system_memory) const;
 
  private:
+  /// Creates the debug string of the groups created by the policy.
   static std::string PolicyDebugString(const std::vector<Group> &groups,
                                        const MemorySnapshot &system_memory);
-  static unsigned long GroupKeyHash(const GroupKey &key);
-  static bool GroupKeyEquals(const GroupKey &left, const GroupKey &right);
 };
 
 }  // namespace raylet

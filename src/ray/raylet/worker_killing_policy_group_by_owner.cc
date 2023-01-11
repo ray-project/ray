@@ -41,21 +41,19 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
     return std::make_pair(nullptr, /*should retry*/ false);
   }
 
-  GroupMap group_map(10, GroupKeyHash, GroupKeyEquals);
-
+  std::unordered_map<std::string, Group> group_map;
   for (auto worker : workers) {
-    TaskID owner_id = worker->GetAssignedTask().GetTaskSpecification().ParentTaskId();
     bool retriable = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
-    TaskID non_retriable_task_id =
-        retriable ? TaskID::FromHex("Retriable") : worker->GetAssignedTaskId();
+    TaskID owner_id =
+        retriable ? worker->GetAssignedTask().GetTaskSpecification().ParentTaskId()
+                  : worker->GetAssignedTaskId();
 
-    GroupKey group_key(owner_id, non_retriable_task_id);
-    auto it = group_map.find(group_key);
+    auto it = group_map.find(owner_id.Binary());
 
     if (it == group_map.end()) {
       Group group(owner_id, retriable);
       group.AddToGroup(worker);
-      group_map.emplace(group_key, std::move(group));
+      group_map.emplace(owner_id.Binary(), std::move(group));
     } else {
       auto &group = it->second;
       group.AddToGroup(worker);
@@ -87,7 +85,8 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   auto worker_to_kill = selected_group.SelectWorkerToKill();
   bool should_retry = selected_group.GetAllWorkers().size() > 1;
 
-  RAY_LOG(INFO) << "Groups sorted based on the policy:\n" << PolicyDebugString(sorted, system_memory);
+  RAY_LOG(INFO) << "Groups sorted based on the policy:\n"
+                << PolicyDebugString(sorted, system_memory);
 
   return std::make_pair(worker_to_kill, should_retry);
 }
@@ -176,19 +175,6 @@ const std::shared_ptr<WorkerInterface> Group::SelectWorkerToKill() const {
 
 const std::vector<std::shared_ptr<WorkerInterface>> Group::GetAllWorkers() const {
   return workers_;
-}
-
-unsigned long GroupByOwnerIdWorkerKillingPolicy::GroupKeyHash(const GroupKey &key) {
-  unsigned long hash = 0;
-  boost::hash_combine(hash, key.owner_id.Hex());
-  boost::hash_combine(hash, key.non_retriable_task_id.Hex());
-  return hash;
-}
-
-bool GroupByOwnerIdWorkerKillingPolicy::GroupKeyEquals(const GroupKey &left,
-                                                       const GroupKey &right) {
-  return left.owner_id == right.owner_id &&
-         left.non_retriable_task_id == right.non_retriable_task_id;
 }
 
 }  // namespace raylet
