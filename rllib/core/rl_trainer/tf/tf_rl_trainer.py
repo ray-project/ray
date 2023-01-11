@@ -47,6 +47,8 @@ class TfRLTrainer(RLTrainer):
         scaling_config: A mapping that holds the world size and rank of this
             trainer. Note this is only used for distributed training.
         distributed: Whether this trainer is distributed or not.
+        enable_tf_function: Whether to enable tf.function tracing for the update
+            function.
 
     Abstract Methods:
         compute_gradients: Compute gradients for the module being optimized.
