@@ -30,7 +30,7 @@ RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.noarmor.gpg | sudo
         && sudo apt-get install -y --no-install-recommends ca-certificates iptables ip6tables tailscale \ 
         && sudo apt-get clean  \
         && sudo rm -rf /var/lib/apt/lists/* \
-        && mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale
+        && sudo mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale
 
 ### begin installing crate
 RUN sudo groupadd crate  \
