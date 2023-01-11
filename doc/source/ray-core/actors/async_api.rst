@@ -158,16 +158,24 @@ You can set the number of "concurrent" task running at once using the
 Threaded Actors
 ---------------
 
-Sometimes, asyncio is not an ideal solution for your actor. For example, you may
-have one method that performs some computation heavy task while blocking the event loop, not giving up control via ``await``. This would hurt the performance of an Async Actor because Async Actors can only execute 1 task at a time and rely on ``await`` to context switch.
+Ray provides a "threaded actor" functionality, which allows multiple actor method invocations to run in parallel in a thread pool. 
+You can configure this by setting the ``max_concurrency`` of the actor, which defaults to 1 if no `async` methods are defined in the class.
 
-
-Instead, you can use the ``max_concurrency`` Actor options without any async methods, allowng you to achieve threaded concurrency (like a thread pool).
+As a reminder, this will not provide "true" parallel threading due to Python's `Global Interpreter Lock (GIL) <https://wiki.python.org/moin/GlobalInterpreterLock>`_, which will only allow one thread of Python code running at once.
 
 
 .. warning::
     When there is at least one ``async def`` method in actor definition, Ray
-    will recognize the actor as AsyncActor instead of ThreadedActor.
+    will recognize the actor as an async actor instead of a threaded actor.
+    
+
+When would I use this over Async Actors?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In certain situations, threaded actors can be more performant. For example, you may
+have one method that performs some computation heavy task while blocking the event loop, not giving up control via ``await``. This would hurt the performance of an Async Actor because Async Actors can only execute 1 task at a time and rely on ``await`` to context switch.
+
+
 
 
 .. code-block:: python
@@ -181,7 +189,6 @@ Instead, you can use the ``max_concurrency`` Actor options without any async met
     ray.get([a.task_1.remote(), a.task_2.remote()])
 
 
-Each invocation of the threaded actor will be running in a thread pool. The size of the threadpool is limited by the ``max_concurrency`` value.
 
 AsyncIO for Remote Tasks
 ------------------------
