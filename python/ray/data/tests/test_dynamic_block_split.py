@@ -165,6 +165,7 @@ def test_lazy_block_list(
         num_blocks=num_blocks,
         block_size=block_size,
     )
+    ds.schema()
 
     # Check internal states of LazyBlockList before execution
     block_list = ds._plan._in_blocks

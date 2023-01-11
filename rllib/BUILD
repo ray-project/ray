@@ -1831,6 +1831,12 @@ py_test(
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "medium",
     srcs = ["core/rl_trainer/tests/test_trainer_runner.py"]
+
+py_test(
+    name = "test_rl_trainer",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/test_rl_trainer.py"]
 )
 
 # --------------------------------------------------------------------
