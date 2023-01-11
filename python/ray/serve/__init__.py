@@ -10,6 +10,7 @@ try:
         run,
         shutdown,
         start,
+        delete,
     )
     from ray.serve.air_integrations import PredictorDeployment
     from ray.serve.batching import batch
@@ -38,4 +39,5 @@ __all__ = [
     "list_deployments",
     "run",
     "PredictorDeployment",
+    "delete",
 ]

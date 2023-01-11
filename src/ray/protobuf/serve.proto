@@ -203,6 +203,9 @@ enum ApplicationStatus {
   DEPLOYING = 0;
   RUNNING = 1;
   DEPLOY_FAILED = 2;
+  DELETING = 3;
+  NOT_EXISTED = 4;
+  NOT_STARTED = 5;
 }
 
 message ApplicationStatusInfo {
@@ -214,6 +217,7 @@ message ApplicationStatusInfo {
 message StatusOverview {
   ApplicationStatusInfo app_status = 1;
   DeploymentStatusInfoList deployment_statuses = 2;
+  string app_name = 3;
 }
 
 // RPC Schema

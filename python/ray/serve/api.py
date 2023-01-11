@@ -457,6 +457,8 @@ def run(
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
+    name: str = "",
+    route_prefix: str = "/",
 ) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
@@ -473,6 +475,10 @@ def run(
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0".
         port: Port for HTTP server. Defaults to 8000.
+        name: Application name. If not provided, destroy all existing applications.
+        route_prefix: Route prefix for HTTP requests. If not provided, it will use
+            ingrerss deployment route prefix. By default, the ingress route
+            prefix is '/'.
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
@@ -517,9 +523,16 @@ def run(
             f"Got unexpected type {type(target)} instead."
         )
 
+    remove_past_deployments = True
+    if name:
+        remove_past_deployments = False
+
     parameter_group = []
 
     for deployment in deployments:
+        # Overwrite route prefix
+        if route_prefix != "/" and deployment._route_prefix:
+            deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
             "func_or_class": deployment._func_or_class,
@@ -534,7 +547,10 @@ def run(
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(
-        parameter_group, _blocking=_blocking, remove_past_deployments=True
+        name,
+        parameter_group,
+        _blocking=_blocking,
+        remove_past_deployments=remove_past_deployments,
     )
 
     if ingress is not None:
@@ -574,3 +590,14 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
     return Application(pipeline_build(target))
+
+
+@PublicAPI(stability="alpha")
+def delete(app_name: str, _blocking: bool = True):
+    """Delete app by name
+    Delete the app with all corresponding deployments
+    Args:
+        app_name: the name of app to delete
+    """
+    client = get_global_client()
+    client.delete_apps([app_name], blocking=_blocking)
