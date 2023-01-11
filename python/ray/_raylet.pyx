@@ -742,62 +742,73 @@ cdef void execute_task(
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
-    function_name = execution_info.function_name
-    extra_data = (b'{"name": ' + function_name.encode("ascii") +
-                  b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
-    name_of_concurrency_group_to_execute = \
-        c_name_of_concurrency_group_to_execute.decode("ascii")
-
-    if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        next_title = "ray::IDLE"
-        function_executor = execution_info.function
-        # Record the task name via :task_name: magic token in the log file.
-        # This is used for the prefix in driver logs `(task_name pid=123) ...`
-        task_name_magic_token = "{}{}\n".format(
-            ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", ""))
-        # Print on both .out and .err
-        print(task_name_magic_token, end="")
-        print(task_name_magic_token, file=sys.stderr, end="")
+    if not execution_info:
+        # Code path that the function to invoke doesn't exist.
+        function_name = function_descriptor.function_name
+        function_not_found_error = AttributeError(
+                    f"The function `{function_name}` couldn't be found on callee "
+                    "side.")
+        extra_data = (b'{"name": ' + function_name.encode("ascii") +
+                    b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
     else:
-        actor = worker.actors[core_worker.get_actor_id()]
-        class_name = actor.__class__.__name__
-        next_title = f"ray::{class_name}"
+        function_not_found_error = None
+        function_name = execution_info.function_name
+        extra_data = (b'{"name": ' + function_name.encode("ascii") +
+                    b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
-        def function_executor(*arguments, **kwarguments):
-            function = execution_info.function
+        name_of_concurrency_group_to_execute = \
+            c_name_of_concurrency_group_to_execute.decode("ascii")
 
-            if core_worker.current_actor_is_asyncio():
-                if len(inspect.getmembers(
-                        actor.__class__,
-                        predicate=inspect.iscoroutinefunction)) == 0:
-                    raise RayActorError(
-                        f"Failed to create the actor {core_worker.get_actor_id()}. "
-                        "The failure reason is that you set the async flag, "
-                        "but the actor has no any coroutine function.")
-                # Increase recursion limit if necessary. In asyncio mode,
-                # we have many parallel callstacks (represented in fibers)
-                # that's suspended for execution. Python interpreter will
-                # mistakenly count each callstack towards recusion limit.
-                # We don't need to worry about stackoverflow here because
-                # the max number of callstacks is limited in direct actor
-                # transport with max_concurrency flag.
-                increase_recursion_limit()
+        if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
+            next_title = "ray::IDLE"
+            function_executor = execution_info.function
+            # Record the task name via :task_name: magic token in the log file.
+            # This is used for the prefix in driver logs `(task_name pid=123) ...`
+            task_name_magic_token = "{}{}\n".format(
+                ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", ""))
+            # Print on both .out and .err
+            print(task_name_magic_token, end="")
+            print(task_name_magic_token, file=sys.stderr, end="")
+        else:
+            actor = worker.actors[core_worker.get_actor_id()]
+            class_name = actor.__class__.__name__
+            next_title = f"ray::{class_name}"
 
-                if inspect.iscoroutinefunction(function.method):
-                    async_function = function
-                else:
-                    # Just execute the method if it's ray internal method.
-                    if function.name.startswith("__ray"):
-                        return function(actor, *arguments, **kwarguments)
-                    async_function = sync_to_async(function)
+            def function_executor(*arguments, **kwarguments):
+                function = execution_info.function
 
-                return core_worker.run_async_func_in_event_loop(
-                    async_function, function_descriptor,
-                    name_of_concurrency_group_to_execute, actor,
-                    *arguments, **kwarguments)
+                if core_worker.current_actor_is_asyncio():
+                    if len(inspect.getmembers(
+                            actor.__class__,
+                            predicate=inspect.iscoroutinefunction)) == 0:
+                        raise RayActorError(
+                            f"Failed to create the actor {core_worker.get_actor_id()}. "
+                            "The failure reason is that you set the async flag, "
+                            "but the actor has no any coroutine function.")
+                    # Increase recursion limit if necessary. In asyncio mode,
+                    # we have many parallel callstacks (represented in fibers)
+                    # that's suspended for execution. Python interpreter will
+                    # mistakenly count each callstack towards recusion limit.
+                    # We don't need to worry about stackoverflow here because
+                    # the max number of callstacks is limited in direct actor
+                    # transport with max_concurrency flag.
+                    increase_recursion_limit()
 
-            return function(actor, *arguments, **kwarguments)
+                    if inspect.iscoroutinefunction(function.method):
+                        async_function = function
+                    else:
+                        # Just execute the method if it's ray internal method.
+                        if function.name.startswith("__ray"):
+                            return function(actor, *arguments, **kwarguments)
+                        async_function = sync_to_async(function)
+
+                    return core_worker.run_async_func_in_event_loop(
+                        async_function, function_descriptor,
+                        name_of_concurrency_group_to_execute, actor,
+                        *arguments, **kwarguments)
+
+                return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
@@ -805,6 +816,9 @@ cdef void execute_task(
                      and function_name == "__ray_terminate__") and
                     ray._config.memory_monitor_refresh_ms() == 0):
                 worker.memory_monitor.raise_if_low_memory()
+
+            if function_not_found_error:
+                raise function_not_found_error
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
@@ -1117,7 +1131,9 @@ cdef execute_task_with_cancellation_handler(
             # Reset the OMP_NUM_THREADS environ if it was set.
             os.environ.pop("OMP_NUM_THREADS", None)
 
-    if execution_info.max_calls != 0:
+    # `execution_info` is None when the function couldn't be found,
+    # so we should skip to increase the counter.
+    if execution_info and execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
         manager.increase_task_counter(function_descriptor)
