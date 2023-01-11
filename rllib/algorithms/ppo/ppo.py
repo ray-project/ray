@@ -384,8 +384,8 @@ class PPO(Algorithm):
                 pid: pinfo[LEARNER_STATS_KEY].get("kl")
                 for pid, pinfo in train_results.items()
             }
-            # triggers a special update method on RLOptimizer
-            self.trainer_runner.update_sync(update={"kl_values": kl_dict})
+            # triggers a special update method on RLOptimizer to update the KL values.
+            self.trainer_runner.additional_update(kl_values=kl_dict)
 
             # Update global vars on local worker as well.
             self.workers.local_worker().set_global_vars(global_vars)

@@ -86,6 +86,7 @@ path: /tmp/
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.core.rl_module import RLModule
+    from ray.rllib.core.rl_trainer import RLTrainer
 
 logger = logging.getLogger(__name__)
 
@@ -348,6 +349,7 @@ class AlgorithmConfig:
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
+        self.rl_trainer_class = None
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -902,6 +904,11 @@ class AlgorithmConfig:
             rl_module_class_path = self.get_default_rl_module_class()
             self.rl_module_class = _resolve_class_path(rl_module_class_path)
 
+        # resolve rl_trainer class
+        if self._enable_trainer_runner and self.rl_trainer_class is None:
+            rl_trainer_class_path = self.get_default_rl_trainer_class()
+            self.rl_trainer_class = _resolve_class_path(rl_trainer_class_path)
+
     def build(
         self,
         env: Optional[Union[str, EnvType]] = None,
@@ -1397,6 +1404,8 @@ class AlgorithmConfig:
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        _enable_trainer_runner: Optional[bool] = NotProvided,
+        rl_trainer_class: Optional[Type["RLTrainer"]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1420,6 +1429,7 @@ class AlgorithmConfig:
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
+            _enable_trainer_runner: Whether to enable the TrainerRunner for training.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1460,6 +1470,10 @@ class AlgorithmConfig:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
+        if _enable_trainer_runner is not NotProvided:
+            self._enable_trainer_runner = _enable_trainer_runner
+        if rl_trainer_class is not NotProvided:
+            self.rl_trainer_class = rl_trainer_class
 
         return self
 
@@ -2124,7 +2138,6 @@ class AlgorithmConfig:
         *,
         rl_module_class: Optional[Type["RLModule"]] = NotProvided,
         _enable_rl_module_api: Optional[bool] = NotProvided,
-        _enable_trainer_runner: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
@@ -2134,8 +2147,6 @@ class AlgorithmConfig:
                 By default if you call `config.rl_module(rl_module=MyRLModule)`, the
                 RLModule API will NOT be enabled. If you want to enable it, you can call
                 `config.rl_module(_enable_rl_module_api=True)`.
-            _enable_trainer_runner: Whether to enable the TrainerRunner for training.
-
         Returns:
             This updated AlgorithmConfig object.
         """
@@ -2151,9 +2162,6 @@ class AlgorithmConfig:
                 "have not enabled the RLModule API. To enable it, call "
                 "`config.rl_module(_enable_rl_module_api=True)`."
             )
-
-        if _enable_trainer_runner is not NotProvided:
-            self._enable_trainer_runner = _enable_trainer_runner
 
         return self
 
@@ -2607,6 +2615,18 @@ class AlgorithmConfig:
 
         Returns:
             The RLModule class to use for this algorithm either as a class type or as
+            a string (e.g. x.y.z).
+        """
+        raise NotImplementedError
+
+    def get_default_rl_trainer_class(self) -> Union[Type["RLTrainer"], str]:
+        """Returns the RLTrainer class to use for this algorithm.
+
+        Override this method in the sub-class to return the RLTrainer class type given
+        the input framework.
+
+        Returns:
+            The RLTrainer class to use for this algorithm either as a class type or as
             a string (e.g. x.y.z).
         """
         raise NotImplementedError

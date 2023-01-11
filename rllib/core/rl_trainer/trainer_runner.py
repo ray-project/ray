@@ -1,5 +1,5 @@
 import math
-from typing import Any, List, Mapping, Type, Optional, Callable
+from typing import Any, List, Mapping, Type, Optional, Callable, NewType
 
 import ray
 
@@ -12,6 +12,8 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
+
+Parameters = NewType("Parameters")
 
 
 class TrainerRunner:
@@ -193,6 +195,15 @@ class TrainerRunner:
             ref = worker.remove_module.remote(module_id)
             refs.append(ref)
         ray.get(refs)
+
+    def get_weight(self) -> Parameters:
+        """Get the weights of the MARLModule.
+
+        Returns:
+            The weights of the neural networks that can be exchanged with the policy.
+        """
+        # TODO (Avnish): implement this.
+        pass
 
     def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
         """Get the states of the RLTrainers"""

@@ -674,14 +674,15 @@ class Algorithm(Trainable):
 
         self.trainer_runner = None
         if self.config.get("_enable_trainer_runner", False):
-            # TODO (Kourosh/Avnishn) worker should not give us observation/action 
+            # TODO (Kourosh/Avnishn) worker should not give us observation/action
             # space. It should be part of the global config.
             worker = self.workers.local_worker()
 
-            # TODO: The constructor is not clean and comprehensive. 
+            # TODO: The constructor is not clean and comprehensive.
             self.trainer_runner = TrainerRunner(
                 trainer_class=self.config.rl_trainer_class,
-                # TODO: What should be part of trainer_config. For example 
+                # TODO: What should be for example scaling_config? it's not clear what
+                # should be passed in as trainer_config and what will be inferred
                 trainer_config={
                     "module_class": self.config.rl_module_class,
                     "module_config": {
@@ -689,10 +690,8 @@ class Algorithm(Trainable):
                         "action_space": worker.action_space,
                         "model_config": self.config.model,
                     },
-                    
-                    "scaling_config": {"num_gpus": self.config.num_gpus},
                     # TODO: should this be inferred inside the constructor?
-                    "distributed": self.config.num_gpus > 1, 
+                    "distributed": self.config.num_gpus > 1,
                     # TODO: add this
                     # "enable_tf_function": self.config.eager_tracing,
                 },
@@ -1362,6 +1361,9 @@ class Algorithm(Trainable):
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.config.get("_enable_trainer_runner", False):
+                # TODO (Avnish): Implement this on trainer_runner.
+                # TODO (Kourosh): figure out how we are going to sync MARLModule
+                # weights to MARLModule weights under the policy_map objects?
                 weights = self.trainer_runner.get_weights()
                 self.workers.foreach_worker(
                     lambda worker: worker.set_weights(weights),
