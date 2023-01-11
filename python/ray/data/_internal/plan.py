@@ -333,7 +333,7 @@ class ExecutionPlan:
             The blocks of the output dataset.
         """
         context = DatasetContext.get_current()
-        if ray.available_resources().get("CPU", None) is None:
+        if not ray.available_resources().get("CPU"):
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).warning(
                 "Warning: The Ray cluster currently does not have "
                 "any available CPUs. The Dataset job will hang unless more CPUs "
