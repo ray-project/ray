@@ -882,15 +882,17 @@ async def test_api_manager_summarize_tasks(state_api_manager):
                 generate_task_event(id, first_task_name, node_id=node_id),
                 generate_task_event(b"2345", first_task_name, node_id=node_id),
                 generate_task_event(b"3456", second_task_name, node_id=None),
-                generate_task_event(b"4567", first_task_name, node_id=node_id, job_id=b"0002"),
+                generate_task_event(
+                    b"4567", first_task_name, node_id=node_id, job_id=b"0002"
+                ),
             ]
         )
     ]
     result = await state_api_manager.summarize_tasks(option=SummaryApiOptions())
     data_source_client.get_all_task_info.assert_any_await(timeout=DEFAULT_RPC_TIMEOUT)
     data = result.result.node_id_to_summary.cluster.summary
-    assert len(data) == 2 # 2 task names
-    assert result.total == 4 # 4 total tasks
+    assert len(data) == 2  # 2 task names
+    assert result.total == 4  # 4 total tasks
 
     verify_schema(TaskSummaryPerFuncOrClassName, data[first_task_name])
     assert data[first_task_name]["state_counts"]["PENDING_NODE_ASSIGNMENT"] == 3
@@ -906,15 +908,19 @@ async def test_api_manager_summarize_tasks(state_api_manager):
                 generate_task_event(id, first_task_name, node_id=node_id),
                 generate_task_event(b"2345", first_task_name, node_id=node_id),
                 generate_task_event(b"3456", second_task_name, node_id=None),
-                generate_task_event(b"4567", first_task_name, node_id=node_id, job_id=b"0002"),
+                generate_task_event(
+                    b"4567", first_task_name, node_id=node_id, job_id=b"0002"
+                ),
             ]
         )
     ]
-    result = await state_api_manager.summarize_tasks(option=SummaryApiOptions(filters=[("job_id", "=", "0002")]))
+    result = await state_api_manager.summarize_tasks(
+        option=SummaryApiOptions(filters=[("job_id", "=", "0002")])
+    )
     data_source_client.get_all_task_info.assert_any_await(timeout=DEFAULT_RPC_TIMEOUT)
     data = result.result.node_id_to_summary.cluster.summary
-    assert len(data) == 1 # 1 task name
-    assert result.total == 1 # 1 total task
+    assert len(data) == 1  # 1 task name
+    assert result.total == 1  # 1 total task
 
     verify_schema(TaskSummaryPerFuncOrClassName, data[second_task_name])
     assert data[second_task_name]["state_counts"]["PENDING_NODE_ASSIGNMENT"] == 1
