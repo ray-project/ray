@@ -20,7 +20,9 @@ class DiscreteBCTorchModule(TorchRLModule):
         hidden_dim: int,
         output_dim: int,
     ) -> None:
-        super().__init__()
+        super().__init__(
+            input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim
+        )
         self.policy = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
