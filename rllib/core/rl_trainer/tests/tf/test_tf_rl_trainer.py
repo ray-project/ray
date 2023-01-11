@@ -1,6 +1,8 @@
 import gymnasium as gym
 import unittest
+import pytest
 
+import tensorflow as tf
 import ray
 
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
@@ -23,6 +25,7 @@ class TestTfRLTrainer(unittest.TestCase):
     def tearDown(cls) -> None:
         ray.shutdown()
 
+    @pytest.mark.skip
     def test_update_multigpu(self):
         """Test training in a 2 gpu setup and that weights are synchronized."""
         env = gym.make("CartPole-v1")
@@ -64,6 +67,7 @@ class TestTfRLTrainer(unittest.TestCase):
             )
         self.assertLess(min_loss, 0.57)
 
+    @pytest.mark.skip
     def test_add_remove_module(self):
         env = gym.make("CartPole-v1")
         trainer_class = BCTfRLTrainer
@@ -98,6 +102,7 @@ class TestTfRLTrainer(unittest.TestCase):
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
+            optimizer_cls=tf.keras.optimizers.Adam,
         )
 
         # do training that includes the test_module

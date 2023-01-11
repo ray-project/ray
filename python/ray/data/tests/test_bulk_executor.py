@@ -3,6 +3,7 @@ import pytest
 from typing import List, Any
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.bulk_executor import BulkExecutor
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
@@ -60,11 +61,21 @@ def test_basic_stats():
     output = ref_bundles_to_list(it)
     expected = [[x * 4] for x in range(20)]
     assert output == expected, (output, expected)
-    stats_str = executor.get_stats().summary_string()
+    stats_str = executor.get_stats().to_summary().to_string()
     assert "Stage 0 read:" in stats_str, stats_str
     assert "Stage 1 Foo:" in stats_str, stats_str
     assert "Stage 2 Bar:" in stats_str, stats_str
     assert "Extra metrics:" in stats_str, stats_str
+
+
+# TODO(ekl) remove this test once we have the new backend on by default.
+def test_e2e_bulk_sanity():
+    DatasetContext.get_current().new_execution_backend = True
+    result = ray.data.range(5).map(lambda x: x + 1)
+    assert result.take_all() == [1, 2, 3, 4, 5], result
+
+    # Checks new executor was enabled.
+    assert "obj_store_mem_alloc" in result.stats(), result.stats()
 
 
 if __name__ == "__main__":
