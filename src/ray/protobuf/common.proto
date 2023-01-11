@@ -532,8 +532,6 @@ message ActorTaskSpec {
   bytes actor_creation_dummy_object_id = 4;
   // Number of tasks that have been submitted to this actor so far.
   uint64 actor_counter = 5;
-  // The dummy object ID of the previous actor task.
-  bytes previous_actor_task_dummy_object_id = 7;
 }
 
 // Represents a task, including task spec.

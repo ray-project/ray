@@ -126,18 +126,14 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
       ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
   builder.SetActorTaskSpec(GetActorID(),
                            actor_creation_dummy_object_id,
-                           /*previous_actor_task_dummy_object_id=*/actor_cursor_,
                            task_counter_++);
-  actor_cursor_ = new_cursor;
 }
 
 void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,
                                               const ObjectID new_cursor) {
   absl::MutexLock guard(&mutex_);
   auto mutable_spec = spec.GetMutableMessage().mutable_actor_task_spec();
-  mutable_spec->set_previous_actor_task_dummy_object_id(actor_cursor_.Binary());
   mutable_spec->set_actor_counter(task_counter_++);
-  actor_cursor_ = new_cursor;
 }
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }

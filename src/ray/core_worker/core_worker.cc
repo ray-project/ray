@@ -2060,9 +2060,6 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   // number of connections. The method is idempotent.
   actor_manager_->SubscribeActorState(actor_id);
 
-  // Add one for actor cursor object id for tasks.
-  const int num_returns = task_options.num_returns + 1;
-
   // Build common task spec.
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
@@ -2089,7 +2086,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       rpc_address_,
                       function,
                       args,
-                      num_returns,
+                      task_options.num_returns,
                       task_options.resources,
                       required_resources,
                       "",    /* debugger_breakpoint */
@@ -2099,10 +2096,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
-  // TODO(swang): Do we actually need to set this ObjectID?
-  const ObjectID new_cursor = ObjectID::FromIndex(actor_task_id, num_returns);
-  actor_handle->SetActorTaskSpec(builder, new_cursor);
-
+  actor_handle->SetActorTaskSpec(builder, ObjectID::Nil());
   // Submit task.
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
@@ -2427,8 +2421,6 @@ Status CoreWorker::ExecuteTask(
   Status status;
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
-    RAY_CHECK(return_objects->size() > 0);
-    return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
     task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());
@@ -2444,8 +2436,6 @@ Status CoreWorker::ExecuteTask(
     }
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
-    RAY_CHECK(return_objects->size() > 0);
-    return_objects->pop_back();
     task_type = TaskType::ACTOR_TASK;
   }
 

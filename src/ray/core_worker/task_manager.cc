@@ -61,9 +61,6 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
-  if (spec.IsActorTask()) {
-    num_returns--;
-  }
   std::vector<rpc::ObjectReference> returned_refs;
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < num_returns; i++) {
@@ -617,9 +614,6 @@ void TaskManager::RemoveFinishedTaskReferences(
 
   std::vector<ObjectID> return_ids;
   size_t num_returns = spec.NumReturns();
-  if (spec.IsActorTask()) {
-    num_returns--;
-  }
   for (size_t i = 0; i < num_returns; i++) {
     return_ids.push_back(spec.ReturnId(i));
   }
