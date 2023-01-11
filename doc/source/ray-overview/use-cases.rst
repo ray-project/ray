@@ -360,7 +360,7 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
     .. link-button:: https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70
         :type: url
         :text: [Blog] Intro to RLlib: Example Environments
-        :classes: btn-link btn-block stretched-link introRllib
+        :classes: btn-link btn-block stretched-link introRLlib
     ---
     :img-top: /rllib/images/rllib-logo.png
 
@@ -368,7 +368,7 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
     .. link-button:: /rllib/rllib-training
         :type: ref
         :text: [Guide] Getting Started with RLlib
-        :classes: btn-link btn-block stretched-link gettingStartedRllib
+        :classes: btn-link btn-block stretched-link gettingStartedRLlib
     ---
     :img-top: /images/riot.png
 

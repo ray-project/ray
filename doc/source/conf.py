@@ -333,8 +333,8 @@ tag_mapping = {
     "examplesTrain": "Training",
     "useCasesTrain": "Training",
     "appliedRLCourse": "Reinforcement Learning",
-    "introRllib": "Reinforcement Learning",
-    "gettingStartedRllib": "Reinforcement Learning",
+    "introRLlib": "Reinforcement Learning",
+    "gettingStartedRLlib": "Reinforcement Learning",
     "riotRL": "Reinforcement Learning",
     "examplesRL": "Reinforcement Learning",
     "useCasesRL": "Reinforcement Learning",
@@ -353,7 +353,7 @@ tag_mapping = {
     "Preprocessing,Serving,PyTorch,TensorFlow,XGBoost,LightGBM,Sklearn"
     # TODO add and integrate tags for other libraries.
     # Tune has a proper example library
-    # Train, Serve, Rllib and AIR could use one.
+    # Train, Serve, RLlib and AIR could use one.
 }
 
 # Create file with tag mappings for tags.js to use.
