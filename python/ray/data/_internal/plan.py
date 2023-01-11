@@ -29,7 +29,7 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block
 from ray.data.context import DatasetContext
 
@@ -260,10 +260,13 @@ class ExecutionPlan:
         blocks = self._snapshot_blocks
         if not blocks:
             return None
-        # Don't force fetching in case it's a lazy block list, in which case we
-        # don't want to trigger full execution for a schema read. If we want to
-        # trigger execution to get schema, we'll trigger read tasks progressively
-        # until a viable schema is available, below.
+
+        # Only trigger the execution of first block in case it's a lazy block list.
+        # Don't trigger full execution for a schema read.
+        if isinstance(blocks, LazyBlockList):
+            blocks.compute_first_block()
+            blocks.ensure_metadata_for_first_block()
+
         metadata = blocks.get_metadata(fetch_if_missing=False)
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
@@ -368,6 +371,12 @@ class ExecutionPlan:
                 if not self._run_by_consumer:
                     blocks._owned_by_consumer = False
                 stats = executor.get_stats()
+                stats_summary_string = stats.to_summary().to_string(
+                    include_parent=False
+                )
+                logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                    stats_summary_string,
+                )
 
             else:
                 blocks, stats, stages = self._optimize()
@@ -388,7 +397,9 @@ class ExecutionPlan:
                     else:
                         stats = stats_builder.build(blocks)
                     stats.dataset_uuid = self._dataset_uuid
-                    stats_summary_string = stats.summary_string(include_parent=False)
+                    stats_summary_string = stats.to_summary().to_string(
+                        include_parent=False,
+                    )
                     logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                         stats_summary_string,
                     )
@@ -421,6 +432,10 @@ class ExecutionPlan:
         """Return stats for this plan, forcing execution if needed."""
         self.execute()
         return self._snapshot_stats
+
+    def stats_summary(self) -> DatasetStatsSummary:
+        self.execute()
+        return self._snapshot_stats.to_summary()
 
     def _should_clear_input_blocks(
         self,
