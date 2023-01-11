@@ -180,7 +180,9 @@ class CoreWorkerPlasmaStoreProvider {
 
   std::string MemoryUsageString();
 
-  Status FetchFromPlasmaStore(const std::vector<ObjectID> &batch_ids, bool in_direct_call, const TaskID &task_id);
+  Status FetchFromPlasmaStore(const std::vector<ObjectID> &batch_ids,
+                              bool in_direct_call,
+                              const TaskID &task_id);
 
  private:
   /// Ask the raylet to fetch a set of objects and then attempt to get them

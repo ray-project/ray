@@ -1035,7 +1035,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<int64_t>> GetActorCallStats() const;
 
  private:
-
   bool first_time_prefetch_;
 
   static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);

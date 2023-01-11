@@ -102,7 +102,9 @@ class CoreWorkerMemoryStore {
   /// \return Pointer to the object if it exists, otherwise nullptr.
   std::shared_ptr<RayObject> GetIfExists(const ObjectID &object_id);
 
-  void GetIfExistsBatch(absl::flat_hash_set<ObjectID> &memory_object_ids, absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> &existing);
+  void GetIfExistsBatch(
+      absl::flat_hash_set<ObjectID> &memory_object_ids,
+      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> &existing);
 
   /// Asynchronously get an object from the object store. The object will not be removed
   /// from storage after GetAsync (TODO(ekl): integrate this with object GC).

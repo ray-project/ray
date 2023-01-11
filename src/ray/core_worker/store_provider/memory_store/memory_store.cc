@@ -199,26 +199,24 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
 void CoreWorkerMemoryStore::GetIfExistsBatch(
     absl::flat_hash_set<ObjectID> &memory_object_ids,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> &existing) {
-
   {
     absl::MutexLock lock(&mu_);
 
     for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
-        auto current = iter++;
-        const auto &mem_id = *current;
+      auto current = iter++;
+      const auto &mem_id = *current;
 
-        auto iter_obj = objects_.find(mem_id);
-        if (iter_obj == objects_.end()) {
-          continue;
-        }
+      auto iter_obj = objects_.find(mem_id);
+      if (iter_obj == objects_.end()) {
+        continue;
+      }
 
-        std::shared_ptr<RayObject> ptr = iter_obj->second;
+      std::shared_ptr<RayObject> ptr = iter_obj->second;
 
-        if (ptr != nullptr) {
-          ptr->SetAccessed();
-          existing.emplace(mem_id, ptr);
-        }
-
+      if (ptr != nullptr) {
+        ptr->SetAccessed();
+        existing.emplace(mem_id, ptr);
+      }
     }
   }
 }

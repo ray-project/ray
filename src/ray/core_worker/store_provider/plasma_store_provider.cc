@@ -161,16 +161,17 @@ Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
   return store_client_.Release(object_id);
 }
 
-Status CoreWorkerPlasmaStoreProvider::FetchFromPlasmaStore(const std::vector<ObjectID> &batch_ids, bool in_direct_call, const TaskID &task_id) {
-    const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
-    RAY_RETURN_NOT_OK(
-        raylet_client_->FetchOrReconstruct(batch_ids,
-                                           owner_addresses,
-                                           /*fetch_only*/true,
-                                           /*mark_worker_blocked*/ !in_direct_call,
-                                           task_id));
+Status CoreWorkerPlasmaStoreProvider::FetchFromPlasmaStore(
+    const std::vector<ObjectID> &batch_ids, bool in_direct_call, const TaskID &task_id) {
+  const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
+  RAY_RETURN_NOT_OK(
+      raylet_client_->FetchOrReconstruct(batch_ids,
+                                         owner_addresses,
+                                         /*fetch_only*/ true,
+                                         /*mark_worker_blocked*/ !in_direct_call,
+                                         task_id));
 
-    return Status::OK();
+  return Status::OK();
 }
 
 Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
