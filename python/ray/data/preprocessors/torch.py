@@ -39,7 +39,7 @@ class TorchVisionPreprocessor(Preprocessor):
         >>> def to_tensor(batch: np.ndarray) -> torch.Tensor:
         ...     tensor = torch.as_tensor(batch, dtype=torch.float)
         ...     # (B, H, W, C) -> (B, C, H, W)
-        ...     tensor = tensor.permute(0, 3, 1, 2)
+        ...     tensor = tensor.permute(0, 3, 1, 2).contiguous()
         ...     # [0., 255.] -> [0., 1.]
         ...     tensor = tensor.div(255)
         ...     return tensor
