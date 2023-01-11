@@ -46,17 +46,20 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   for (auto worker : workers) {
     TaskID owner_id = worker->GetAssignedTask().GetTaskSpecification().ParentTaskId();
     bool retriable = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
+    TaskID non_retriable_task_id = retriable ? TaskID::FromHex("Retriable") : worker->GetAssignedTaskId();
 
-    GroupKey group_key(owner_id, retriable);
+    GroupKey group_key(owner_id, non_retriable_task_id);
     auto it = group_map.find(group_key);
 
     if (it == group_map.end()) {
       Group group(owner_id, retriable);
-      group_map.insert({group_key, group});
       group.AddToGroup(worker);
+      group_map.emplace(group_key, std::move(group));
+      RAY_LOG(ERROR) << group.OwnerId() << "ne group size " << group.GetAllWorkers().size() << " " << retriable << " " << group_key.non_retriable_task_id;
     } else {
-      auto group = it->second;
+      auto &group = it->second;
       group.AddToGroup(worker);
+      RAY_LOG(ERROR) << group.OwnerId() << "update group size " << group.GetAllWorkers().size() << " " << retriable << " " << group_key.non_retriable_task_id;
     }
   }
 
@@ -75,6 +78,9 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
         return left_retriable < right_retriable;
       });
 
+  RAY_LOG(ERROR) << "groups sorted:\n"
+                << PolicyDebugString(sorted, system_memory);
+
   Group selected_group = sorted.front();
   for (Group group : sorted) {
     if (group.GetAllWorkers().size() > 1) {
@@ -84,9 +90,6 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   }
   auto worker_to_kill = selected_group.SelectWorkerToKill();
   bool should_retry = selected_group.GetAllWorkers().size() > 1;
-
-  RAY_LOG(INFO) << "The top 10 groups to be killed based on the worker killing policy:\n"
-                << PolicyDebugString(sorted, system_memory);
 
   return std::make_pair(worker_to_kill, should_retry);
 }
@@ -154,7 +157,6 @@ void Group::AddToGroup(std::shared_ptr<WorkerInterface> worker) {
 
 const std::shared_ptr<WorkerInterface> Group::SelectWorkerToKill() const {
   RAY_CHECK(!workers_.empty());
-
   std::vector<std::shared_ptr<WorkerInterface>> sorted(workers_.begin(), workers_.end());
 
   std::sort(sorted.begin(),
@@ -181,13 +183,13 @@ const std::vector<std::shared_ptr<WorkerInterface>> Group::GetAllWorkers() const
 unsigned long GroupByOwnerIdWorkerKillingPolicy::GroupKeyHash(const GroupKey &key) {
   unsigned long hash = 0;
   boost::hash_combine(hash, key.owner_id.Hex());
-  boost::hash_combine(hash, key.retriable);
+  boost::hash_combine(hash, key.non_retriable_task_id.Hex());
   return hash;
 }
 
 bool GroupByOwnerIdWorkerKillingPolicy::GroupKeyEquals(const GroupKey &left,
                                                        const GroupKey &right) {
-  return left.owner_id == right.owner_id && left.retriable == right.retriable;
+  return left.owner_id == right.owner_id && left.non_retriable_task_id == right.non_retriable_task_id;
 }
 
 }  // namespace raylet

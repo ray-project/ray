@@ -34,7 +34,7 @@ class MockWorker : public WorkerInterface {
 
   void SetOwnerAddress(const rpc::Address &address) override { address_ = address; }
 
-  void AssignTaskId(const TaskID &task_id) override {}
+  void AssignTaskId(const TaskID &task_id) override { task_id_ = task_id; }
 
   void SetAssignedTask(const RayTask &assigned_task) override {
     task_ = assigned_task;
@@ -96,8 +96,7 @@ class MockWorker : public WorkerInterface {
   }
   void SetAssignedPort(int port) override { RAY_CHECK(false) << "Method unused"; }
   const TaskID &GetAssignedTaskId() const override {
-    RAY_CHECK(false) << "Method unused";
-    return TaskID::Nil();
+    return task_id_;
   }
   bool AddBlockedTaskId(const TaskID &task_id) override {
     RAY_CHECK(false) << "Method unused";
@@ -191,6 +190,7 @@ class MockWorker : public WorkerInterface {
   RayTask task_;
   std::chrono::steady_clock::time_point task_assign_time_;
   int runtime_env_hash_;
+  TaskID task_id_;
 };
 
 }  // namespace raylet

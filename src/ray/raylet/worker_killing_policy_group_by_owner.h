@@ -26,10 +26,10 @@ namespace ray {
 namespace raylet {
 
 struct GroupKey {
-  GroupKey(const TaskID &owner_id, bool retriable)
-      : owner_id(owner_id), retriable(retriable) {}
+  GroupKey(const TaskID &owner_id, const TaskID &non_retriable_task_id)
+      : owner_id(owner_id), non_retriable_task_id(non_retriable_task_id) {}
   const TaskID &owner_id;
-  bool retriable;
+  const TaskID &non_retriable_task_id;
 };
 
 class Group {
