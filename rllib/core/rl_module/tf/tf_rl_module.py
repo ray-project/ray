@@ -11,11 +11,9 @@ _, tf, _ = try_import_tf()
 class TfRLModule(RLModule, tf.keras.Model):
     """Base class for RLlib TF RLModules."""
 
-    def __init__(
-        self,
-    ) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         tf.keras.Model.__init__(self)
-        RLModule.__init__(self)
+        RLModule.__init__(self, *args, **kwargs)
 
     @override(tf.keras.Model)
     def call(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:

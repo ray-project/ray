@@ -215,6 +215,30 @@ class TestMARLModule(unittest.TestCase):
 
         self.assertDictEqual(_get_module_configs(config), expected_config)
 
+    def test_serialize_deserialize(self):
+        env_class = make_multi_agent("CartPole-v0")
+        env = env_class({"num_agents": 2})
+        module1 = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
+        module2 = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
+
+        multi_agent_dict = {"module1": module1, "module2": module2}
+        marl_module = MultiAgentRLModule(multi_agent_dict)
+        new_marl_module = marl_module.deserialize(marl_module.serialize())
+
+        self.assertNotEqual(id(marl_module), id(new_marl_module))
+        self.assertEqual(set(marl_module.keys()), set(new_marl_module.keys()))
+        for key in marl_module.keys():
+            self.assertNotEqual(id(marl_module[key]), id(new_marl_module[key]))
+            check(marl_module[key].get_state(), new_marl_module[key].get_state())
+
 
 if __name__ == "__main__":
     import pytest
