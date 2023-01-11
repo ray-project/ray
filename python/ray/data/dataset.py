@@ -2716,10 +2716,7 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        block_iterator = self._plan.execute_to_iterator()
-        # TODO real stats
-        stats = DatasetStats(stages={}, parent=None)
-
+        block_iterator, stats = self._plan.execute_to_iterator()
         time_start = time.perf_counter()
 
         yield from batch_block_refs(

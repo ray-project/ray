@@ -33,9 +33,19 @@ def execute_to_legacy_block_iterator(
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
 ) -> Iterator[ObjectRef[Block]]:
+    """Execute a plan with the new executor and return a block iterator.
+
+    Args:
+        executor: The executor to use.
+        plan: The legacy plan to execute.
+        allow_clear_input_blocks: Whether the executor may consider clearing blocks.
+        dataset_uuid: UUID of the dataset for this execution.
+
+    Returns:
+        The output as a block iterator.
+    """
     dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
     bundle_iter = executor.execute(dag, initial_stats=stats)
-    # TODO where do stats go
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
 
     for bundle in bundle_iter:

@@ -322,7 +322,7 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
-    ) -> Iterator[ObjectRef[Block]]:
+    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats]:
         """Execute this plan, returning an iterator.
 
         If the streaming execution backend is enabled, this will use streaming
@@ -334,7 +334,7 @@ class ExecutionPlan:
             force_read: Whether to force the read stage to fully execute.
 
         Returns:
-            Iterator over output blocks.
+            Tuple of iterator over output blocks and Dataset stats.
         """
 
         ctx = DatasetContext.get_current()
@@ -354,7 +354,7 @@ class ExecutionPlan:
             allow_clear_input_blocks=allow_clear_input_blocks,
             dataset_uuid=self._dataset_uuid,
         )
-        return block_iter
+        return block_iter, executor.get_stats()
 
     def execute(
         self,
