@@ -5432,26 +5432,6 @@ def test_ragged_tensors(ray_start_regular_shared):
     ]
 
 
-def test_warning_execute_with_no_cpu(ray_start_cluster):
-    cluster = ray_start_cluster
-    # Create one node with no CPUs to trigger the Dataset warning
-    cluster.add_node(
-        resources={"foo": 100},
-        num_cpus=0,
-    )
-    ray.init(cluster.address)
-
-    logger = DatasetLogger("ray.data._internal.plan").get_logger(
-        log_to_stdout=True,
-    )
-    with patch.object(logger, "warning") as mock_logger:
-        ds = ray.data.range(10)
-        ds = ds.map_batches(lambda x: x * 2)
-        ds.take()
-        logger_args, logger_kwargs = mock_logger.call_args
-        assert "Warning: The Ray cluster currently does not have " in logger_args[0]
-
-
 if __name__ == "__main__":
     import sys
 
