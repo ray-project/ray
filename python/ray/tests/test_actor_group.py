@@ -15,6 +15,8 @@ class DummyActor:
         return "metadata"
 
 
+# Use default filterwarnings behavior for this test
+@pytest.mark.filterwarnings("default")
 def test_actor_creation(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
     with warnings.catch_warnings(record=True) as w:
