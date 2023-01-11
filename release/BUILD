@@ -240,6 +240,22 @@ py_test(
      args = ["--dataset-size-gb=1", "--smoke-test"]
 )
 
+py_test(
+    name = "air_benchmark_pytorch_training_e2e_smoke_test",
+    size = "small",
+    src = test_srcs,
+    main = "air_tests/air_benchmarks/workloads/pytorch_training_e2e.py",
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/air:ml_lib",
+    ],
+    args = ["--dataset-size-gb=1", "--smoke-test"]
+)
+
 # MISSING: PyTorch training e2e, add after https://github.com/ray-project/ray/issues/29524
 
 py_test(

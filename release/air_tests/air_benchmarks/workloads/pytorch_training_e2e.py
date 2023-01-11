@@ -65,7 +65,8 @@ def train_loop_per_worker(config):
 @click.option("--data-size-gb", type=int, default=1)
 @click.option("--num-epochs", type=int, default=2)
 @click.option("--num-workers", type=int, default=1)
-def main(data_size_gb: int, num_epochs=2, num_workers=1):
+@click.option("--smoke-test", is_flag=True, default=False)
+def main(data_size_gb: int, num_epochs=2, num_workers=1, smoke_test: bool = False):
     data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
     print(
         "Running Pytorch image model training with "
@@ -73,6 +74,14 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     )
     print(f"Training for {num_epochs} epochs with {num_workers} workers.")
     start = time.time()
+
+    if smoke_test:
+        # Only read one image
+        data_url = [data_url + "/dog.jpg"]
+        print("Running smoke test on CPU with a single example")
+    else:
+        print(f"Running GPU training with {data_size_gb}GB data from {data_url}")
+
     dataset = ray.data.read_images(data_url, size=(256, 256))
 
     transform = transforms.Compose(
@@ -93,7 +102,9 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
         train_loop_config={"batch_size": 64, "num_epochs": num_epochs},
         datasets={"train": dataset},
         preprocessor=preprocessor,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(
+            num_workers=num_workers, use_gpu=int(not smoke_test)
+        ),
     )
     trainer.fit()
 
