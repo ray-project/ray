@@ -1164,7 +1164,7 @@ class DatasetPipeline(Generic[T]):
                 def __init__(self, base_iterable):
                     # Skip the first dataset since it's already been peeked.
                     self.base_iterator: Iterator = itertools.islice(
-                        self._base_iterator, start=1
+                        base_iterable, start=1
                     )
 
                 def __iter__(self):
@@ -1172,7 +1172,7 @@ class DatasetPipeline(Generic[T]):
 
             # Update the base iterable to skip the first dataset.
             # It is ok to update the base iterable here since
-            # the dataset can never be # executed again.
+            # the pipeline can never be executed again.
             self._base_iterable = _IterableWrapper(self._base_iterable)
 
             iter = itertools.chain([self._first_dataset], PipelineExecutor(self))
