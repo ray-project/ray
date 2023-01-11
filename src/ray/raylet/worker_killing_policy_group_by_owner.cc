@@ -75,15 +75,16 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
         return left_retriable < right_retriable;
       });
 
+  bool should_retry = false;
   Group selected_group = sorted.front();
   for (Group group : sorted) {
     if (group.GetAllWorkers().size() > 1) {
       selected_group = group;
+      should_retry = true;
       break;
     }
   }
   auto worker_to_kill = selected_group.SelectWorkerToKill();
-  bool should_retry = selected_group.GetAllWorkers().size() > 1;
 
   RAY_LOG(INFO) << "Groups sorted based on the policy:\n"
                 << PolicyDebugString(sorted, system_memory);

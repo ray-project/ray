@@ -101,7 +101,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestLastWorkerInGroupShouldNotRetry) {
   }
 }
 
-TEST_F(WorkerKillingGroupByOwnerTest, TestNonRetriableBelongsToItsOwnGroup) {
+TEST_F(WorkerKillingGroupByOwnerTest, TestNonRetriableBelongsToItsOwnGroupAndLIFOKill) {
   auto owner_id = TaskID::ForDriverTask(job_id_);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
