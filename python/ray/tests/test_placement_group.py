@@ -512,6 +512,7 @@ def test_placement_group_empty_bundle_error(ray_start_regular, connect_to_client
             ray.util.placement_group([])
 
 
+@pytest.mark.filterwarnings("default:placement_group parameter is deprecated")
 def test_placement_group_scheduling_warning(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -557,6 +558,12 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
     assert not w
 
 
+@pytest.mark.filterwarnings(
+    "default:Setting 'object_store_memory' for actors is deprecated"
+)
+@pytest.mark.filterwarnings(
+    "default:Setting 'object_store_memory' for bundles is deprecated"
+)
 def test_object_store_memory_deprecation_warning(ray_start_regular_shared):
     with warnings.catch_warnings(record=True) as w:
 

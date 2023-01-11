@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class R2D2Config(DQNConfig):
-    """Defines a configuration class from which a R2D2 Algorithm can be built.
+    r"""Defines a configuration class from which a R2D2 Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.r2d2.r2d2 import R2D2Config
