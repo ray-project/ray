@@ -95,6 +95,9 @@ class StreamingExecutor(Executor):
             yield output.outqueue.pop(0)
 
     def get_stats(self):
+        # TODO: implement stats recording. We might want to mutate a single stats
+        # object as data is streamed through (similar to how iterating over the output
+        # data updates the stats object in legacy code).
         return DatasetStats(stages={}, parent=None)
 
     def _init_operator_state(self, dag: PhysicalOperator) -> None:
