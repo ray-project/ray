@@ -36,7 +36,6 @@ if [ "$NODETYPE" = "head" ]; then
         status="$(tailscale status -json | jq -r .BackendState)"
     done
 
-    nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.name=nexus \
@@ -56,8 +55,6 @@ else
     do 
         status="$(tailscale status -json | jq -r .BackendState)"
     done
-
-    nexus=$(tailscale ip -4 nexus)
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.data=true \
