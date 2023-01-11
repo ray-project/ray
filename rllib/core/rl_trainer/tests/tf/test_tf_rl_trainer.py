@@ -1,5 +1,6 @@
 import gymnasium as gym
 import unittest
+import pytest
 
 import tensorflow as tf
 import ray
@@ -24,6 +25,7 @@ class TestTfRLTrainer(unittest.TestCase):
     def tearDown(cls) -> None:
         ray.shutdown()
 
+    @pytest.mark.skip
     def test_update_multigpu(self):
         """Test training in a 2 gpu setup and that weights are synchronized."""
         env = gym.make("CartPole-v1")
@@ -65,6 +67,7 @@ class TestTfRLTrainer(unittest.TestCase):
             )
         self.assertLess(min_loss, 0.57)
 
+    @pytest.mark.skip
     def test_add_remove_module(self):
         env = gym.make("CartPole-v1")
         trainer_class = BCTfRLTrainer

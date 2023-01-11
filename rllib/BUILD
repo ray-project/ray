@@ -1826,6 +1826,14 @@ py_test(
     srcs = ["core/rl_trainer/tests/tf/test_tf_rl_trainer.py"]
 )
 
+
+py_test(
+    name = "test_rl_trainer",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/test_rl_trainer.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/

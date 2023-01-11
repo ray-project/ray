@@ -18,6 +18,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamRef,
     Optimizer,
     ParamType,
+    ParamDictType,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -27,7 +28,6 @@ from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 import tree  # pip install dm-tree
-
 
 tf1, tf, tfv = try_import_tf()
 tf1.enable_eager_execution()
@@ -78,7 +78,7 @@ class TfRLTrainer(RLTrainer):
     @override(RLTrainer)
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: tf.GradientTape
-    ) -> Mapping[str, Any]:
+    ) -> ParamDictType:
         grads = tape.gradient(loss["total_loss"], self._params)
         return grads
 
@@ -195,15 +195,15 @@ class TfRLTrainer(RLTrainer):
         return batch
 
     @override(RLTrainer)
-    def _get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         return module.trainable_variables
 
     @override(RLTrainer)
-    def _get_param_ref(self, param: ParamType) -> Hashable:
+    def get_param_ref(self, param: ParamType) -> Hashable:
         return param.ref()
 
     @override(RLTrainer)
-    def _get_optimizer_obj(
+    def get_optimizer_obj(
         self, module: RLModule, optimizer_cls: Type[Optimizer]
     ) -> Optimizer:
         lr = self.optimizer_config.get("lr", 1e-3)
