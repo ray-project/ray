@@ -176,12 +176,6 @@ if __name__ == "__main__":
         help="Number of blocks to prefetch when reading data.",
     )
 
-    parser.add_argument(
-        "--use-stream-api",
-        "-s",
-        action="store_true",
-        help="If enabled, the input Dataset will be streamed (as a DatasetPipeline).",
-    )
     args = parser.parse_args()
 
     # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
@@ -202,7 +196,7 @@ if __name__ == "__main__":
         preprocessor=preprocessor,
         num_epochs=args.num_epochs,
         prefetch_blocks=args.prefetch_blocks,
-        dataset_config={"train": DatasetConfig(use_stream_api=args.use_stream_api)},
+        dataset_config={"train": DatasetConfig()},
         batch_size=None,
     )
     print("Dataset config", trainer.get_dataset_config())
