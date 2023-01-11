@@ -1,116 +1,30 @@
 .. _tune-checkpoint-syncing:
 
-A Guide To Tune Checkpoint Synchronization
-==========================================
+Synchronizing Tune Experiment Data in a Distributed Ray Cluster
+===============================================================
 
-This user guide covers how to configure synchronization of experiment data including
-**experiment and trial checkpoints** between nodes, when running a multi-node experiment.
-See :ref:`tune-two-types-of-ckpt` for an overview of these two types of Tune checkpoints.
+This user guide covers how to configure the synchronization of experiment data
+when running a Tune experiment on a distributed Ray cluster.
 
-Why is synchronization needed?
-------------------------------
+When running in a distributed setting, Tune trials will be scheduled to run on different machines,
+which means that data such as model checkpoints will be spread all across the cluster.
 
-To motivate the need for synchronization, we'll start by examining the differences
-between how experiment and trial data is saved
-when running on a single-node vs. multi-node Tune experiment.
+Synchronization is useful to enable the following functionality:
 
-When running a Tune experiment with 2 trials locally on a single node,
-the resulting experiment log directory may look something like this:
+- When trials are restored (e.g. after a node failure or when the experiment was paused),
+  they may be scheduled on different nodes, but still would need access to their latest checkpoint.
+- Furthermore, for an entire experiment to be restored (e.g. if the cluster crashes unexpectedly),
+  Tune needs to be able to access the latest experiment state, along with all trial
+  checkpoints to start from where the experiment left off.
+- A consolidated location storing data from all trials is useful for post-experiment analysis
+  such as accessing the best checkpoints and hyperparameter configs after the cluster has already been terminated.
 
-.. code-block::
-
-    ~/ray_results/experiment_name/
-        experiment_state-2022-12-06_09-26-55.json      <- Experiment state
-        basic-variant-state-2022-12-06_09-26-55.json   <- Searcher state
-
-        trainable_2e5ff_00000/
-            params.json
-            params.pkl
-            progress.csv
-            result.json
-
-            checkpoint_000000/                         <- Trial checkpoint directory
-                dict_checkpoint.pkl
-            checkpoint_000001/
-                dict_checkpoint.pkl
-
-        trainable_2e5ff_00001/
-            params.json
-            params.pkl
-            progress.csv
-            result.json
-
-            checkpoint_000000/
-                dict_checkpoint.pkl
-            checkpoint_000001/
-                dict_checkpoint.pkl
-
-In the simplest case, all trials are run on the same node (machine), and all checkpoints and data
-will be saved to the same local directory.
-
-The files saved at the top-level experiment directory include the experiment checkpoint
-data, and the files saved within ``checkpoint_00000x`` folders within each trial directories
-are the trial checkpoint data.
-
-When a Tune experiment is being run on more than one node, this data will be split
-across multiple filesystems.
-Experiment checkpoints are stored on the driver node (the head node),
-and trial checkpoints are stored on the node where the trials are executed.
-**If you are training on more than one node, this means that some trial checkpoints may
-be on the head node and others are not.**
-
-Without any synchronization, running 2 trials on 2 machines would end up with log
-directories on each node looking like:
-
-.. code-block::
-
-    Head Node:
-
-    ~/ray_results/experiment_name/
-        experiment_state-2022-12-06_09-26-55.json      <- Experiment state
-        basic-variant-state-2022-12-06_09-26-55.json   <- Searcher state
-
-        trainable_2e5ff_00000/      <- Trial 0 runs on the head node
-            params.json
-            params.pkl
-            progress.csv
-            result.json
-
-            checkpoint_000000/
-                dict_checkpoint.pkl
-            checkpoint_000001/
-                dict_checkpoint.pkl
-
-        trainable_2e5ff_00001/      <- Trial 1 runs on the worker node
-            params.json
-            params.pkl
-            progress.csv
-            result.json
-
-    Worker Node:
-
-    ~/ray_results/experiment_name/
-        trainable_2e5ff_00001/
-            checkpoint_000000/
-                dict_checkpoint.pkl
-            checkpoint_000001/
-                dict_checkpoint.pkl
-
-
-When trials are restored (e.g. after a node failure or when the experiment was paused), they may be scheduled on
-different nodes, but still would need access to the latest checkpoint.
-Furthermore, for an entire experiment to be restored (e.g. after a user interrupt),
-Tune needs to be able to access the latest experiment state, along with all trial checkpoints
-to start from where the experiment left off.
-
-To enable this fault tolerance functionality, Ray Tune
-comes with facilities to synchronize checkpoints between nodes to provide a
-consolidated directory containing the experiment checkpoint and all trial checkpoints.
+See :ref:`tune-two-types-of-ckpt` for an overview of the data that Tune needs to synchronize.
 
 Synchronization Options
 -----------------------
 
-Generally, we consider three cases:
+Tune provides support for three synchronization options:
 
 1. When using a shared directory (e.g. via NFS)
 2. When using cloud storage (e.g. S3 or GS)
@@ -136,9 +50,11 @@ Using a shared directory
 If all Ray nodes have access to a shared filesystem, e.g. via NFS, they can all write to this directory.
 In this case, we don't need any synchronization at all, as it is implicitly done by the operating system.
 
-For this case, we only need to tell Ray Tune not to do any syncing at all (as syncing is the default):
+All we need to do is **set the shared storage as the path to save results** and
+**disable Ray Tune's default syncing behavior**.
 
 .. code-block:: python
+    :emphasize-lines: 7, 8, 9, 10
 
     from ray import air, tune
 
@@ -154,27 +70,22 @@ For this case, we only need to tell Ray Tune not to do any syncing at all (as sy
     )
     tuner.fit()
 
-Note that the driver (on the head node) will have access to all checkpoints locally (in the
-shared directory) for further processing. The experiment directory will look exactly like
-the local single-node case, except the path will be under ``"/path/to/shared/storage/my_experiment_name"``
-in the shared filesystem.
-
+In this example, all experiment results can be found in the shared storage at ``/path/to/shared/storage/experiment_name`` for further processing.
 
 .. _tune-cloud-checkpointing:
 
 Using cloud storage
 ~~~~~~~~~~~~~~~~~~~
-Using cloud storage (e.g. S3 or GS) is similar to using a shared filesystem: the only difference is
-that the consolidated directory (including all logs and checkpoints) lives in the cloud.
 
-Because all nodes have access to cloud storage, **remote trials will directly upload their
-trial checkpoints to the cloud storage.**
-This approach is especially useful when training a large number of distributed trials,
-where :ref:`the default syncing behavior <tune-default-syncing>` with many worker nodes can introduce significant overhead.
 
-For this case, we tell Ray Tune to store experiment and trial checkpoints at a remote ``upload_dir``:
+This approach is preferred when training a large number of distributed trials,
+since :ref:`the default syncing behavior <tune-default-syncing>` with many worker nodes can introduce significant overhead.
+
+For this case, we tell Ray Tune to **upload to a remote** ``upload_dir`` and specify a
+:class:`Syncer <ray.tune.syncer.Syncer>` to perform the syncing operations:
 
 .. code-block:: python
+    :emphasize-lines: 8, 9, 10, 11
 
     from ray import tune
     from ray.air.config import RunConfig
@@ -198,14 +109,15 @@ if you want to implement custom syncing logic.
 See :ref:`tune-cloud-syncing` and :ref:`tune-cloud-syncing-command-line-example`
 for more details and examples.
 
-The consolidated experiment data will be available in the cloud bucket at ``s3://bucket-name/sub-path/experiment_name``,
-and the experiment directory structure will look exactly like the local single-node case.
+In this example, all experiment results can be found in the shared storage at ``s3://bucket-name/sub-path/experiment_name`` ``/path/to/shared/storage/experiment_name`` for further processing.
 
-The driver (on the head node) will not have access to all checkpoints locally. If you want to process
-e.g. the best checkpoint further, you will first have to fetch it from the cloud storage.
+.. note::
 
-Experiment restoration should also be done using the experiment directory at the cloud storage
-URI, rather than the local experiment directory on the head node. See :ref:`here for an example <tune-syncing-restore-from-uri>`.
+    The head node will not have access to all experiment results locally. If you want to process
+    e.g. the best checkpoint further, you will first have to fetch it from the cloud storage.
+
+    Experiment restoration should also be done using the experiment directory at the cloud storage
+    URI, rather than the local experiment directory on the head node. See :ref:`here for an example <tune-syncing-restore-from-uri>`.
 
 
 .. _tune-default-syncing:
@@ -213,18 +125,14 @@ URI, rather than the local experiment directory on the head node. See :ref:`here
 Default syncing (no shared/cloud storage)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 If you're using neither a shared filesystem nor cloud storage, Ray Tune will resort to the
-default syncing mechanism, which uses the Ray object store to send the contents of the trial directory
-(containing checkpoints) from worker nodes to the head node.
+default syncing mechanism: Tune periodically syncs data saved on worker nodes to the head node.
 
-.. note::
-
-    If you don't provide a ``tune.SyncConfig`` at all, this is the method of syncing that will be used.
-
-By default, the driver will pull a trial's directory to the head node whenever that trial
+By default, workers will sync to the head node whenever a trial running on that workers
 has finished saving a checkpoint. This can be configured by ``sync_on_checkpoint`` and
 ``sync_period`` in :class:`SyncConfig <ray.tune.syncer.SyncConfig>`:
 
 .. code-block:: python
+    :emphasize-lines: 9, 10, 11, 12, 13, 14
 
     from ray import tune
     from ray.air.config import RunConfig
@@ -233,6 +141,7 @@ has finished saving a checkpoint. This can be configured by ``sync_on_checkpoint
         trainable,
         run_config=RunConfig(
             name="experiment_name",
+            local_dir="~/ray_results",
             sync_config=tune.SyncConfig(
                 syncer="auto",
                 # Sync approximately every minute rather than on every checkpoint
@@ -243,12 +152,16 @@ has finished saving a checkpoint. This can be configured by ``sync_on_checkpoint
     )
     tuner.fit()
 
-In the example above, we disabled forceful syncing on trial checkpoints and adjusted the sync period to 60 seconds.
-Setting the sync period to a lower number will pull checkpoints from remote nodes more often.
+In the snippet above, we disabled forceful syncing on trial checkpoints and adjusted the sync period to 60 seconds.
+Setting the sync period to a lower value (in seconds) will sync from remote nodes more often.
 This will lead to more robust trial recovery, but it will also lead to more synchronization overhead.
 
-As in the first case, the driver (on the head node) will have access to all checkpoints locally
-for further processing, and the experiment directory will be identical to the local single-node case.
+In this example, all experiment results can found on the head node at ``~/ray_results/experiment_name`` for further processing.
+
+.. note::
+
+    If you don't provide a :class:`~ray.tune.syncer.SyncConfig` at all, this is the method of syncing that will be used.
+
 
 .. tip::
     Please note that this approach is likely the least efficient one - you should always try to use
@@ -269,8 +182,7 @@ A simple cloud checkpointing example
 
     Cloud storage-backed Tune checkpointing is the recommended best practice for both performance and reliability reasons.
 
-Let's assume for this example you're running this script from your laptop, and connecting to your remote Ray cluster
-via ``ray.init(address="<cluster-IP>:<port>")``.
+Let's assume that you're running this example script from your Ray cluster's head node.
 
 In the example below, ``my_trainable`` is a Tune :ref:`trainable <trainable-docs>`
 that implements saving and loading checkpoints.
@@ -281,7 +193,8 @@ that implements saving and loading checkpoints.
     from ray import air, tune
     from your_module import my_trainable
 
-    ray.init(address="<cluster-IP>:<port>")
+    # Look for the existing cluster and connect to it
+    ray.init()
 
     # Configure how experiment data and checkpoints are sync'd
     # We recommend cloud storage checkpointing as it survives the cluster when
@@ -302,8 +215,9 @@ that implements saving and loading checkpoints.
             sync_config=sync_config,
             checkpoint_config=air.CheckpointConfig(
                 # We'll keep the best five checkpoints at all times
-                # checkpoints (by AUC score, reported by the trainable, descending)
+                # (with the highest AUC scores, a metric reported by the trainable)
                 checkpoint_score_attribute="max-auc",
+                checkpoint_score_order="max",
                 num_to_keep=5,
             ),
         ),
@@ -311,18 +225,14 @@ that implements saving and loading checkpoints.
     # This starts the run!
     results = tuner.fit()
 
-In this example, here's how checkpoints will be saved:
+In this example, here's how trial checkpoints will be saved:
 
-- **Locally on laptop**: Not saved here! Nothing will be sync'd to your laptop, since the experiment is being run on the remote cluster.
-- On head node:
-    - Experiment checkpoint: all checkpoint data stored at the experiment directory level (ex: ``/tmp/mypath/my-tune-exp/experiment-state-<date>.json``)
-    - Trial checkpoints: ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials running on this node)
+- On head node where we are running from:
+    - ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials running on this node)
 - On worker nodes:
-    - Experiment checkpoint: not stored on worker nodes!
-    - Trial checkpoints: ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials running on this node)
+    - ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials running on this node)
 - S3:
-    - Experiment checkpoint: all checkpoint data stored at the experiment directory level (ex: ``s3://my-checkpoints-bucket/path/my-tune-exp/experiment-state-<date>.json``)
-    - Trial checkpoints: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>`` (all trials)
+    - ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>`` (all trials)
 
 .. _tune-syncing-restore-from-uri:
 
@@ -350,9 +260,7 @@ A simple example using default checkpoint syncing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Now, let's take a look at an example using default syncing behavior described above.
-
-This time, we'll consider the case of running the Tune experiment directly on the head node of an existing
-Ray cluster: ``ray.init()`` in the example below will automatically detect and connect to it.
+Again, we're running this example script from the Ray cluster's head node.
 
 .. code-block:: python
 
@@ -363,8 +271,6 @@ Ray cluster: ``ray.init()`` in the example below will automatically detect and c
     # Look for the existing cluster and connect to it
     ray.init()
 
-    sync_config = tune.SyncConfig()
-
     # This starts the run!
     tuner = tune.Tuner(
         my_trainable,
@@ -374,22 +280,21 @@ Ray cluster: ``ray.init()`` in the example below will automatically detect and c
             # Use the default syncing behavior
             # You don't have to pass an empty sync config - but we
             # do it here for clarity and comparison
-            sync_config=sync_config,
+            sync_config=tune.SyncConfig(),
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_score_attribute="max-auc",
+                checkpoint_score_order="max",
                 num_to_keep=5,
             ),
         )
     )
 
-In this example, here's how checkpoints will be saved:
+In this example, here's how trial checkpoints will be saved:
 
 - On head node where we are running from:
-    - Experiment checkpoint: all checkpoint data stored at the experiment directory level (ex: ``/tmp/mypath/my-tune-exp/experiment-state-<date>.json``)
-    - Trial checkpoints: ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (all trials, since they have been synced to the head node)
+    - ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (**all trials**, since they have been synced to the head node)
 - On worker nodes:
-    - Experiment checkpoint: not stored on worker nodes!
-    - Trial checkpoints: ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials running on this node)
+    - ``/tmp/mypath/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials running on this node)
 
 This experiment can be resumed from the head node:
 
@@ -407,9 +312,6 @@ This experiment can be resumed from the head node:
 
 Appendix: Two Types of Tune Checkpoints
 ---------------------------------------
-
-The guide above mentioned the two main types of checkpoints that Tune maintains: experiment-level checkpoints and trial-level
-checkpoints.
 
 Experiment Checkpoints
 ~~~~~~~~~~~~~~~~~~~~~~

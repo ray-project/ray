@@ -63,9 +63,9 @@ Tune Feature Guides
     ---
     :img-top: /images/tune.png
 
-    .. link-button:: tune-checkpoints
+    .. link-button:: tune-syncing
         :type: ref
-        :text: Configuring Tune Checkpoint Synchronization
+        :text: Synchronizing Tune Experiment Data in a Distributed Ray Cluster
         :classes: btn-link btn-block stretched-link
 
     ---
