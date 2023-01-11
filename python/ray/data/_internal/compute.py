@@ -269,7 +269,8 @@ class ActorPoolStrategy(ComputeStrategy):
         # If the max number of the actor pool is set, the number of bundles should
         # always be less than this max_size.
         # Otherwise, it leads to inefficiencies with creating extra actor tasks and
-        # prevents the actor task from doing optimizations such as batch or block prefetching.
+        # prevents the actor task from doing optimizations
+        # such as batch or block prefetching.
         if self.max_size and len(block_bundles) > self.max_size:
 
             def chunkify(bundles: List, num_chunks: int):

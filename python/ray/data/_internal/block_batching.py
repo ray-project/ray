@@ -173,13 +173,11 @@ def _make_async_gen(
         base_iterator: The iterator to asynchronously fetch from.
         prefetch_buffer_size: The maximum number of items to prefetch. Increasing the
             size allows for more computation overlap for very expensive downstream udfs.
-            However it comes at the cost of additional memory overhead.
+            However it comes at the cost of additional memory overhead. Defaults to 1.
 
     Returns:
         An iterator with the same elements as the base_iterator.
     """
-
-    # TODO: Add other async implementations: ThreadPool, Ray Actors.
 
     fetch_queue = queue.Queue(maxsize=prefetch_buffer_size)
 

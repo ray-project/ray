@@ -306,7 +306,7 @@ class BatchPredictor:
             if self.get_preprocessor() is not None
             else predict_stage_batch_format,
             batch_size=batch_size,
-            prefetch_batches=num_gpus_per_worker > 0,
+            prefetch_batches=int(num_gpus_per_worker > 0),
             **ray_remote_args,
         )
 
