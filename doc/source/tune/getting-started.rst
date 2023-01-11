@@ -57,8 +57,8 @@ If you know how to do this, skip ahead to the next section.
 
 .. _tutorial-tune-setup:
 
-Setting up Tune for a Training Run
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Setting up a ``Tuner`` for a Training Run with Tune
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Below, we define a function that trains the Pytorch model for multiple epochs.
 This function will be executed on a separate :ref:`Ray Actor (process) <actor-guide>` underneath the hood,
