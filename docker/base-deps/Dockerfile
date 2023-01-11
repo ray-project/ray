@@ -76,8 +76,8 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     fi;) \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean \
-    # For OpenShift (a Kubernetes distribution), a random non-root UID will be used when we log in to a ray Pod.
-    # However, only UID=1000 (i.e. RAY_UID) has the write access of /home/ray. Hence, open the write access here.
+    # Ensure all users are able to write to /home/ray because OpenShift uses a random UID when logging into
+    # pods. See #30959 for more context.
     && chmod --recursive 777 /home/ray
 
 WORKDIR $HOME
