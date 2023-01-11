@@ -323,10 +323,22 @@ class ExecutionPlan:
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
     ) -> Iterator[ObjectRef[Block]]:
-        """TODO"""
+        """Execute this plan, returning an iterator.
 
-        legacy = False
-        if legacy:
+        If the streaming execution backend is enabled, this will use streaming
+        execution to generate outputs, otherwise it will fall back to bulk exec.
+
+        Args:
+            allow_clear_input_blocks: Whether we should try to clear the input blocks
+                for each stage.
+            force_read: Whether to force the read stage to fully execute.
+
+        Returns:
+            Iterator over output blocks.
+        """
+
+        ctx = DatasetContext.get_current()
+        if not ctx.use_streaming_executor:
             return self.execute(allow_clear_input_blocks, force_read).iter_blocks()
 
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
@@ -351,6 +363,8 @@ class ExecutionPlan:
     ) -> BlockList:
         """Execute this plan.
 
+        This will always execute the plan using bulk execution.
+
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
                 for each stage.
@@ -359,7 +373,6 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        assert False
         if not self.has_computed_output():
             context = DatasetContext.get_current()
 
