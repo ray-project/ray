@@ -296,38 +296,39 @@ class BatchPredictor:
         ray_remote_args["num_gpus"] = num_gpus_per_worker
 
         preprocessor = self.get_preprocessor()
+        if preprocessor:
+            # TODO: Delegate separate_gpu_stage flag to Datasets.
+            if not separate_gpu_stage and num_gpus_per_worker > 0:
+                override_prep = preprocessor
+            else:
+                # In batch prediction, preprocessing is always done in a separate stage.
+                # We should not in-line it with prediction, unless separate_gpu_stage is
+                # False.
+                # Dataset optimizer will fuse preprocessing+prediction stage as
+                # necessary.
+                override_prep = None
 
-        # In batch prediction, preprocessing is always done in a separate stage.
-        # We should not in-line it with prediction, unless separate_gpu_stage is
-        # False.
-        # Dataset optimizer will fuse preprocessing+prediction stage as
-        # necessary.
+                # TODO: Use preprocessor.transform here.
+                # preprocessor.transform will break for DatasetPipeline as it
+                # does not support _dataset_format()
+                batch_fn = preprocessor._transform_batch
 
-        # TODO: Delegate separate_gpu_stage flag to Datasets.
-        if not separate_gpu_stage and num_gpus_per_worker > 0:
-            override_prep = preprocessor
-        else:
-            override_prep = None
+                # Dataset is lazy by default so this map_batches
+                # will not trigger execution.
+                data = data.map_batches(
+                    batch_fn, batch_format=predict_stage_batch_format
+                )
 
-            # TODO: Use preprocessor.transform here.
-            # preprocessor.transform will break for DatasetPipeline as it
-            # does not support _dataset_format()
-            batch_fn = preprocessor._transform_batch
-
-            # Dataset is lazy by default so this map_batches
-            # will not trigger execution.
-            data = data.map_batches(batch_fn, batch_format=predict_stage_batch_format)
-
-        prediction_results = data.map_batches(
-            ScoringWrapper,
-            compute=compute,
-            batch_format=preprocessor_batch_format
-            if self.get_preprocessor() is not None
-            else predict_stage_batch_format,
-            batch_size=batch_size,
-            fn_constructor_kwargs={"override_prep": override_prep},
-            **ray_remote_args,
-        )
+            prediction_results = data.map_batches(
+                ScoringWrapper,
+                compute=compute,
+                batch_format=preprocessor_batch_format
+                if self.get_preprocessor() is not None
+                else predict_stage_batch_format,
+                batch_size=batch_size,
+                fn_constructor_kwargs={"override_prep": override_prep},
+                **ray_remote_args,
+            )
 
         if isinstance(prediction_results, ray.data.Dataset):
             # Force execution because Dataset uses lazy execution by default.
