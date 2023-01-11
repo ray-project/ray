@@ -424,13 +424,22 @@ class DatasetPipelineStats:
         self.wait_time_s = []
 
         # Iteration stats, filled out if the user iterates over the pipeline.
-        self.iter_ds_wait_s: Timer = Timer()
-        self.iter_wait_s: Timer = Timer()
-        self.iter_get_s: Timer = Timer()
-        self.iter_next_batch_s: Timer = Timer()
-        self.iter_format_batch_s: Timer = Timer()
-        self.iter_user_s: Timer = Timer()
-        self.iter_total_s: Timer = Timer()
+        self._iter_stats = {
+            "iter_ds_wait_s": Timer(),
+            "iter_wait_s": Timer(),
+            "iter_get_s": Timer(),
+            "iter_next_batch_s": Timer(),
+            "iter_format_batch_s": Timer(),
+            "iter_user_s": Timer(),
+            "iter_total_s": Timer(),
+        }
+
+    # Make iteration stats also accessible via attributes.
+    def __getattr__(self, name):
+        if name in self._iter_stats:
+            return self._iter_stats[name]
+
+        raise AttributeError
 
     def add(self, stats: DatasetStats) -> None:
         """Called to add stats for a newly computed window."""
@@ -438,6 +447,16 @@ class DatasetPipelineStats:
         if len(self.history_buffer) > self.max_history:
             self.history_buffer.pop(0)
         self.count += 1
+
+    def add_pipeline(self, other_stats: "DatasetPipelineStats"):
+        """Add the provided pipeline stats to the current stats."""
+        for _, dataset_stats in other_stats.history_buffer:
+            self.add(dataset_stats)
+
+        self.wait_time_s.extend(other_stats.wait_time_s)
+
+        for stat_name, timer in self._iter_stats:
+            timer.add(other_stats._iter_stats[stat_name].get())
 
     def _summarize_iter(self) -> str:
         out = ""
