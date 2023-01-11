@@ -17,6 +17,7 @@
 #include <unordered_map>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
@@ -244,8 +245,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     absl::flat_hash_map<JobID, absl::flat_hash_set<TaskAttempt>>
         job_to_task_attempt_index_;
 
-    /// Secondary index from parent task id to a set of children task ids.
-    std::unordered_multimap<TaskID, TaskID> parent_to_children_task_index_;
+    /// Secondary index from string serialized parent task id to a set of children task
+    /// ids.
+    absl::btree_multimap<const std::string, TaskID> parent_to_children_task_index_;
 
     /// Counter for tracking the size of task event. This assumes tasks events are never
     /// removed actively.

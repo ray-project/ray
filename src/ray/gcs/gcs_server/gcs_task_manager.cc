@@ -178,7 +178,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailed(
   for (size_t i = 0; i < failed_tasks.size(); ++i) {
     auto failed_task_id = failed_tasks[i];
     auto children_tasks_range =
-        parent_to_children_task_index_.equal_range(failed_task_id);
+        parent_to_children_task_index_.equal_range(failed_task_id.Binary());
     for (auto itr = children_tasks_range.first; itr != children_tasks_range.second;
          ++itr) {
       MarkTaskFailed(itr->second, task_failed_ts.value());
@@ -206,7 +206,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
             ? TaskID::FromBinary(events_by_task.task_info().parent_task_id())
             : TaskID::Nil();
     if (!parent_task_id.IsNil()) {
-      parent_to_children_task_index_.insert({parent_task_id, task_id});
+      parent_to_children_task_index_.insert({parent_task_id.Binary(), task_id});
     }
   }
 
@@ -276,7 +276,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     if (!replaced_parent_task_id.IsNil()) {
       // Remove itself from it's parent's children set if any.
       auto sibling_range =
-          parent_to_children_task_index_.equal_range(replaced_parent_task_id);
+          parent_to_children_task_index_.equal_range(replaced_parent_task_id.Binary());
 
       // Look for the replaced task among all the children of the parent, and erase it.
       for (auto child_itr = sibling_range.first; child_itr != sibling_range.second;
@@ -289,7 +289,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     }
 
     // Remove it's parent to children edges if it's a parent of any other tasks.
-    parent_to_children_task_index_.erase(replaced_task_id);
+    parent_to_children_task_index_.erase(replaced_task_id.Binary());
 
     // Update iter.
     next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % max_num_task_events_;
