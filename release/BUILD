@@ -243,7 +243,7 @@ py_test(
 py_test(
     name = "air_benchmark_pytorch_training_e2e_smoke_test",
     size = "small",
-    src = test_srcs,
+    srcs = test_srcs,
     main = "air_tests/air_benchmarks/workloads/pytorch_training_e2e.py",
     tags = [
         "exclusive",

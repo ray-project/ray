@@ -204,7 +204,7 @@ class BatchPredictor:
         cast_tensor_columns = ctx.enable_tensor_extension_casting
 
         class ScoringWrapper:
-            def __init__(self):
+            def __init__(self, override_prep: Preprocessor = None):
                 checkpoint = ray.get(checkpoint_ref)
                 predictor_kwargs = ray.get(predictor_kwargs_ref)
                 self._predictor = predictor_cls.from_checkpoint(
@@ -214,10 +214,10 @@ class BatchPredictor:
                     # Enable automatic tensor column casting at UDF boundaries.
                     self._predictor._set_cast_tensor_columns()
 
-                # In batch prediction, preprocessing is always done in a separate stage.
-                # We should not in-line it with prediction.
-                # Dataset optimizer will fuse preprocessing+prediction stage as
-                # necessary.
+                # We want preprocessing to happen before feature column selection.
+                # So we manually apply preprocessing in BatchPredictor rather
+                # than in Predictor.
+                self.override_prep = override_prep
                 self._predictor.set_preprocessor(None)
 
             def _select_columns_from_input_batch(
@@ -266,9 +266,9 @@ class BatchPredictor:
 
             def __call__(self, input_batch: DataBatchType) -> DataBatchType:
                 # TODO: Delegate separate_gpu_stage flag to Datasets.
-                if override_prep:
+                if self.override_prep:
                     # Apply preprocessing before selecting feature columns.
-                    input_batch = override_prep.transform_batch(input_batch)
+                    input_batch = self.override_prep.transform_batch(input_batch)
 
                 # TODO (jiaodong): Investigate if there's room to optimize prediction
                 # result joins to minimize GPU <> CPU transfer
@@ -297,10 +297,18 @@ class BatchPredictor:
 
         preprocessor = self.get_preprocessor()
 
+        # In batch prediction, preprocessing is always done in a separate stage.
+        # We should not in-line it with prediction, unless separate_gpu_stage is
+        # False.
+        # Dataset optimizer will fuse preprocessing+prediction stage as
+        # necessary.
+
         # TODO: Delegate separate_gpu_stage flag to Datasets.
         if not separate_gpu_stage and num_gpus_per_worker > 0:
             override_prep = preprocessor
         else:
+            override_prep = None
+
             # TODO: Use preprocessor.transform here.
             # preprocessor.transform will break for DatasetPipeline as it
             # does not support _dataset_format()
@@ -317,6 +325,7 @@ class BatchPredictor:
             if self.get_preprocessor() is not None
             else predict_stage_batch_format,
             batch_size=batch_size,
+            fn_constructor_kwargs={"override_prep": override_prep},
             **ray_remote_args,
         )
 
