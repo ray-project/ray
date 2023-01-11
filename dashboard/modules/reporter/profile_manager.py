@@ -11,19 +11,11 @@ logger = logging.getLogger(__name__)
 def _format_failed_pyspy_command(cmd, stdout, stderr) -> str:
     return f"""Failed to execute `{cmd}`.
 
-Note that this command requires `py-spy` to be installed with root permissions. You
-can install `py-spy` and give it root permissions as follows:
-  $ pip install py-spy
-  $ sudo chown root:root `which py-spy`
-  $ sudo chmod u+s `which py-spy`
-
-Alternatively, you can start Ray with passwordless sudo / root permissions.
+=== stderr ===
+{stderr.decode("utf-8")}
 
 === stdout ===
 {stdout.decode("utf-8")}
-
-=== stderr ===
-{stderr.decode("utf-8")}
 """
 
 
