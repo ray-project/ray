@@ -1,7 +1,7 @@
 .. _tune-distributed-ref:
 
-Tune Distributed Experiments
-============================
+Running  Distributed Experiments with Ray Tune
+==============================================
 
 Tune is commonly used for large-scale distributed hyperparameter optimization. This page will overview how to setup and launch a distributed experiment along with :ref:`commonly used commands <tune-distributed-common>` for Tune when running distributed experiments.
 
@@ -19,8 +19,8 @@ To run a distributed experiment with Tune, you need to:
 
 .. tune-distributed-cloud:
 
-Example: Tune on AWS VMs
-------------------------
+Example: Distributed Tune on AWS VMs
+------------------------------------
 
 Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <cluster-index>`. Save the below cluster configuration (``tune-default.yaml``):
 
@@ -55,10 +55,11 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
 Note that you can customize the directory of results by specifying: ``air.RunConfig(local_dir=..)``, taken in by ``Tuner``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
 
 
-Running a distributed experiment
---------------------------------
+Running a distributed Tune experiment
+-------------------------------------
 
-Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud.
+Running a distributed (multi-node) experiment requires Ray to be started already.
+You can do this on local machines or on the cloud.
 
 Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
 
@@ -96,8 +97,8 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
     2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
 
 
-Syncing
--------
+Syncing Checkpoints in a distributed Tune run
+---------------------------------------------
 
 In a distributed experiment, you should try to use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to
 reduce synchronization overhead. For this, you just have to specify an ``upload_dir`` in the
@@ -121,11 +122,10 @@ For more details or customization, see our
 :ref:`guide on checkpointing <tune-checkpoint-syncing>`.
 
 
-
 .. _tune-distributed-spot:
 
-Pre-emptible Instances (Cloud)
-------------------------------
+Tune runs on pre-emptible instances
+-----------------------------------
 
 Running on spot instances (or pre-emptible instances) can reduce the cost of your experiment. You can enable spot instances in AWS via the following configuration modification:
 
