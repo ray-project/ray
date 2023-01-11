@@ -2004,6 +2004,39 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+def test_parent_task_id(shutdown_only):
+    """Test parent task id set up properly"""
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def child():
+        pass
+
+    @ray.remote
+    def parent():
+        ray.get(child.remote())
+
+    ray.get(parent.remote())
+
+    def verify():
+        tasks = list_tasks()
+        assert len(tasks) == 2, "Expect 2 tasks to finished"
+        parent_task_id = None
+        child_parent_task_id = None
+        for task in tasks:
+            if task["func_or_class_name"] == "parent":
+                parent_task_id = task["task_id"]
+            elif task["func_or_class_name"] == "child":
+                child_parent_task_id = task["parent_task_id"]
+
+        assert (
+            parent_task_id == child_parent_task_id
+        ), "Child should have the parent task id"
+        return True
+
+    wait_for_condition(verify)
+
+
 def test_list_get_task_multiple_attempt_all_failed(shutdown_only):
     ray.init(num_cpus=2)
     job_id = ray.get_runtime_context().get_job_id()

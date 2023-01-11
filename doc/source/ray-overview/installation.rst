@@ -49,16 +49,16 @@ You can install the nightly Ray wheels via the following links. These daily rele
   # pip install -U LINK_TO_WHEEL.whl
 
 
-=============================================== ================================================  =====================  =======================
-Linux (x86_64)                                  Linux (arm64/aarch64)                             MacOS                  Windows (beta)
-=============================================== ================================================  =====================  =======================
-`Linux Python 3.10 (x86_64)`_                   `Linux Python 3.10 (aarch64)`_                    `MacOS Python 3.10`_   `Windows Python 3.10`_
-`Linux Python 3.9 (x86_64)`_                    `Linux Python 3.9 (aarch64)`_                     `MacOS Python 3.9`_    `Windows Python 3.9`_
-`Linux Python 3.8 (x86_64)`_                    `Linux Python 3.8 (aarch64)`_                     `MacOS Python 3.8`_    `Windows Python 3.8`_
-`Linux Python 3.7 (x86_64)`_                    `Linux Python 3.7 (aarch64)`_                     `MacOS Python 3.7`_    `Windows Python 3.7`_
-`Linux Python 3.6 (x86_64)`_                    `Linux Python 3.6 (aarch64)`_                     `MacOS Python 3.6`_
-`Linux Python 3.11 (x86_64) (EXPERIMENTAL)`_    `Linux Python 3.11 (aarch64) (EXPERIMENTAL)`_
-=============================================== ================================================  =====================  =======================
+=============================================== ================================================  ====================  =======================
+       Linux (x86_64)                                   Linux (arm64/aarch64)                      MacOS                 Windows (beta)
+=============================================== ================================================  ====================  =======================
+`Linux Python 3.10 (x86_64)`_                    `Linux Python 3.10 (aarch64)`_                   `MacOS Python 3.10`_  `Windows Python 3.10`_
+`Linux Python 3.9 (x86_64)`_                     `Linux Python 3.9 (aarch64)`_                    `MacOS Python 3.9`_   `Windows Python 3.9`_
+`Linux Python 3.8 (x86_64)`_                     `Linux Python 3.8 (aarch64)`_                    `MacOS Python 3.8`_   `Windows Python 3.8`_
+`Linux Python 3.7 (x86_64)`_                     `Linux Python 3.7 (aarch64)`_                    `MacOS Python 3.7`_   `Windows Python 3.7`_
+`Linux Python 3.6 (x86_64)`_                     `Linux Python 3.6 (aarch64)`_                    `MacOS Python 3.6`_
+`Linux Python 3.11 (x86_64) (EXPERIMENTAL)`_     `Linux Python 3.11 (aarch64) (EXPERIMENTAL)`_
+=============================================== ================================================  ====================  =======================
 
 .. note::
 
