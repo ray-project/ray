@@ -1,5 +1,5 @@
 import logging
-from rllib.core.rl_trainer.rl_trainer import RLTrainer
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
 
 logger = logging.getLogger(__name__)
 
