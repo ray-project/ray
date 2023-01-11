@@ -1631,7 +1631,7 @@
       cluster_compute: tpl_20x2.yaml
 
     run:
-      timeout: 400
+      timeout: 500
       prepare_timeout: 600
       wait_for_nodes:
         num_nodes: 20
