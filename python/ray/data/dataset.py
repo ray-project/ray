@@ -4217,27 +4217,7 @@ class Dataset(Generic[T]):
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        # Do not force execution for schema, as this method is expected to be very
-        # cheap.
-        schema = self.schema(fetch_if_missing=False)
-        if schema is None:
-            schema_str = "Unknown schema"
-        elif isinstance(schema, type):
-            schema_str = str(schema)
-        else:
-            schema_str = []
-            for n, t in zip(schema.names, schema.types):
-                if hasattr(t, "__name__"):
-                    t = t.__name__
-                schema_str.append(f"{n}: {t}")
-            schema_str = ", ".join(schema_str)
-            schema_str = "{" + schema_str + "}"
-        count = self._meta_count()
-        if count is None:
-            count = "?"
-        return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            self._plan.initial_num_blocks(), count, schema_str
-        )
+        return self._plan.get_plan_as_string()
 
     def __str__(self) -> str:
         return repr(self)
