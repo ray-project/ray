@@ -701,10 +701,11 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     class Counter:
         def r(self, v):
             return v
+
         def pid(self):
             import os
-            return os.getpid()
 
+            return os.getpid()
 
     c = Counter.options(name="c", namespace="test", lifetime="detached").remote()
     c_pid = ray.get(c.pid.remote())
