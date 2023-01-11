@@ -411,7 +411,7 @@ Status RedisStoreClient::AsyncGetKeys(
   auto scanner = std::make_shared<RedisScanner>(
       redis_client_, external_storage_namespace_, table_name);
 
-  auto on_done = [this, table_name, callback, scanner](auto redis_result) {
+  auto on_done = [table_name, callback, scanner](auto redis_result) {
     std::vector<std::string> result;
     result.reserve(redis_result.size());
     for (const auto &[key, _] : redis_result) {

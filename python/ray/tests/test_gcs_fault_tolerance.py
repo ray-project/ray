@@ -666,6 +666,15 @@ def redis_replicas(monkeypatch):
     indirect=True,
 )
 def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_redis):
+    """This test is to cover ray cluster's behavior when Redis master failed.
+    The management of the Redis cluster is not covered by Ray, but Ray should handle
+    the failure correctly.
+    For this test we ensure:
+    - When Redis master failed, Ray should crash (TODO: make ray automatically switch to
+      new master).
+    - After Redis recovered, Ray should be able to use the new Master.
+    - When the master becomes slaves, Ray should crash.
+    """
     cluster = ray_start_cluster_head_with_external_redis
     import redis
 
@@ -692,8 +701,14 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     class Counter:
         def r(self, v):
             return v
+        def pid(self):
+            import os
+            return os.getpid()
 
-    c = Counter.options(name="c", lifetime="detached").remote()
+
+    c = Counter.options(name="c", namespace="test", lifetime="detached").remote()
+    c_pid = ray.get(c.pid.remote())
+    c_process = psutil.Process(pid=c_pid)
     r = ray.get(c.r.remote(10))
     assert r == 10
 
@@ -714,6 +729,8 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     print("GCS killed")
     follower_cli[0].cluster("failover", "takeover")
 
+    # Kill Counter actor. It should restart after GCS is back
+    c_process.kill()
     # Cleanup the in memory data and then start gcs
     cluster.head_node.kill_gcs_server(False)
     sleep(1)
@@ -730,6 +747,8 @@ ray.init('{cluster.address}')
 def f():
     return 10
 assert ray.get(f.remote()) == 10
+c = ray.get_actor("c", namespace="test")
+assert ray.get(c.r.remote(10)) == 10
 """
     # Make sure the cluster is usable
     run_string_as_driver(driver_script)
