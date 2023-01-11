@@ -90,7 +90,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # https://github.com/ray-project/ray/pull/29534 for more info.
 
             _, request_timed_out = await asyncio.wait(
-                [object_ref], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                [asyncio.wrap_future(object_ref.future())], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
             )
             if request_timed_out:
                 logger.info(
@@ -421,11 +421,12 @@ class HTTPProxyActor:
         """Returns when HTTP proxy is ready to serve traffic.
         Or throw exception when it is not able to serve traffic.
         """
+        setup_task = get_or_create_event_loop().create_task(self.setup_complete.wait())
         done_set, _ = await asyncio.wait(
             [
                 # Either the HTTP setup has completed.
                 # The event is set inside self.run.
-                self.setup_complete.wait(),
+                setup_task,
                 # Or self.run errored.
                 self.running_task,
             ],
