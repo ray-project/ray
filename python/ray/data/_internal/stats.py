@@ -456,7 +456,7 @@ class DatasetPipelineStats:
 
         self.wait_time_s.extend(other_stats.wait_time_s)
 
-        for stat_name, timer in self._iter_stats:
+        for stat_name, timer in self._iter_stats.items():
             timer.add(other_stats._iter_stats[stat_name].get())
 
     def _summarize_iter(self) -> str:
