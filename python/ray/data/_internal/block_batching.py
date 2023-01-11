@@ -195,7 +195,7 @@ def _make_async_gen(
 
     while True:
         next_item = fetch_queue.get(block=True)
-        if next_item is not None:
+        if next_item is not sentinel:
             yield next_item
         fetch_queue.task_done()
         if next_item is sentinel:

@@ -123,38 +123,6 @@ def test_format_batches(batch_format):
             assert isinstance(batch["foo"], np.ndarray)
 
 
-def test_async_batch_fetching():
-    blocks = block_generator(num_blocks=5, num_rows=8)
-
-    def sleep_batch_format(batch_iter, *args, **kwargs):
-        for batch in batch_iter:
-            time.sleep(2)
-            yield batch
-
-    with mock.patch(
-        "ray.data._internal.block_batching._format_batches", sleep_batch_format
-    ):
-        batch_iter = batch_blocks(blocks=blocks, prefetch_batches=1)
-        outputs = []
-        start_time = time.time()
-        for batch in batch_iter:
-            time.sleep(3)
-            outputs.append(batch)
-        end_time = time.time()
-
-    total_time = end_time - start_time
-    # Total time should be based on number of times the udf is called
-    # (which is equal to len(outputs)).
-    # The 2 seconds sleep in sleep_batch_format is overlapped, so does not count
-    # towards total time.
-    assert total_time < len(outputs) * 3 + 3
-
-    # There should be no dropped rows.
-    assert sum(len(output_batch) for output_batch in outputs) == 40, sum(
-        len(output_batch) for output_batch in outputs
-    )  # 5 blocks with 8 rows each.
-
-
 def test_make_async_gen():
     """Tests that make_async_gen overlaps compute."""
 
@@ -211,6 +179,45 @@ def test_make_async_gen_buffer_size():
 
     # 1 second for first item, 5 seconds for udf, 0.5 seconds buffer
     assert end_time - start_time < 6.5
+
+
+# Test for 3 cases
+# 1. Batch size is less than block size
+# 2. Batch size is more than block size
+# 3. Block size is not divisble by batch size
+@pytest.mark.parametrize("batch_size", [4, 10, 7])
+def test_async_batch_fetching(batch_size):
+    blocks = block_generator(num_blocks=5, num_rows=8)
+
+    def sleep_batch_format(batch_iter, *args, **kwargs):
+        for batch in batch_iter:
+            time.sleep(2)
+            yield batch
+
+    with mock.patch(
+        "ray.data._internal.block_batching._format_batches", sleep_batch_format
+    ):
+        batch_iter = batch_blocks(
+            batch_size=batch_size, blocks=blocks, prefetch_batches=1
+        )
+        outputs = []
+        start_time = time.time()
+        for batch in batch_iter:
+            time.sleep(3)
+            outputs.append(batch)
+        end_time = time.time()
+
+    total_time = end_time - start_time
+    # Total time should be based on number of times the udf is called
+    # (which is equal to len(outputs)).
+    # The 2 seconds sleep in sleep_batch_format is overlapped, so does not count
+    # towards total time.
+    assert total_time < len(outputs) * 3 + 3
+
+    # There should be no dropped rows.
+    assert sum(len(output_batch) for output_batch in outputs) == 40, sum(
+        len(output_batch) for output_batch in outputs
+    )  # 5 blocks with 8 rows each.
 
 
 if __name__ == "__main__":
