@@ -99,7 +99,7 @@ class BulkDatasetIteratorWithBackwardCompat(BulkDatasetIterator):
         self._dataset_iterator = dataset_iterator
 
     def __getattr__(self, name):
-        if name in "_dataset_iterator":
+        if name == "_dataset_iterator":
             raise AttributeError
 
         if hasattr(self._dataset_iterator, name):

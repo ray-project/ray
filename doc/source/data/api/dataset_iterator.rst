@@ -5,6 +5,8 @@ DatasetIterator API
 
 .. currentmodule:: ray.data
 
+.. autoclass:: DatasetIterator
+
 .. autosummary::
    :toctree: doc/
 
