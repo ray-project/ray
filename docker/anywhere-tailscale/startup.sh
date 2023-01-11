@@ -22,7 +22,8 @@ mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
 # Special VM options for Java in Docker
 CRATE_JAVA_OPTS="-Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
 
-sudo tailscaled &
+
+sudo tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
 
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
