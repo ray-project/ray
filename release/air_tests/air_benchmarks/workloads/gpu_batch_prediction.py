@@ -3,6 +3,7 @@ import time
 import json
 import os
 
+import numpy as np
 import torch
 from torchvision import transforms
 from torchvision.models import resnet18
@@ -35,9 +36,17 @@ def main(data_size_gb: int, smoke_test: bool = False):
 
     model = resnet18(pretrained=True)
 
+    def to_tensor(batch: np.ndarray) -> torch.Tensor:
+        tensor = torch.as_tensor(batch, dtype=torch.float)
+        # (B, H, W, C) -> (B, C, H, W)
+        tensor = tensor.permute(0, 3, 1, 2).contiguous()
+        # [0., 255.] -> [0., 1.]
+        tensor = tensor.div(255)
+        return tensor
+
     transform = transforms.Compose(
         [
-            transforms.Lambda(lambda batch: torch.as_tensor(batch).permute(0, 3, 1, 2)),
+            transforms.Lambda(to_tensor),
             transforms.CenterCrop(224),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
