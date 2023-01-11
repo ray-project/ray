@@ -1,8 +1,11 @@
+from collections import Counter
 import re
+import numpy as np
 
 import pytest
 
 import ray
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.context import DatasetContext
 from ray.tests.conftest import *  # noqa
@@ -417,6 +420,155 @@ DatasetPipeline iterator time breakdown:
 * Total time: T
 """
     )
+
+
+def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+
+    block_params, block_meta_list = stage_two_block
+    stats = DatasetStats(
+        stages={"read": block_meta_list},
+        parent=None,
+    )
+    calculated_stats = stats.to_summary().stages_stats[0]
+
+    assert calculated_stats.output_num_rows == {
+        "min": min(block_params["num_rows"]),
+        "max": max(block_params["num_rows"]),
+        "mean": np.mean(block_params["num_rows"]),
+        "sum": sum(block_params["num_rows"]),
+    }
+    assert calculated_stats.output_size_bytes == {
+        "min": min(block_params["size_bytes"]),
+        "max": max(block_params["size_bytes"]),
+        "mean": np.mean(block_params["size_bytes"]),
+        "sum": sum(block_params["size_bytes"]),
+    }
+    assert calculated_stats.wall_time == {
+        "min": min(block_params["wall_time"]),
+        "max": max(block_params["wall_time"]),
+        "mean": np.mean(block_params["wall_time"]),
+        "sum": sum(block_params["wall_time"]),
+    }
+    assert calculated_stats.cpu_time == {
+        "min": min(block_params["cpu_time"]),
+        "max": max(block_params["cpu_time"]),
+        "mean": np.mean(block_params["cpu_time"]),
+        "sum": sum(block_params["cpu_time"]),
+    }
+
+    node_counts = Counter(block_params["node_id"])
+    assert calculated_stats.node_count == {
+        "min": min(node_counts.values()),
+        "max": max(node_counts.values()),
+        "mean": np.mean(list(node_counts.values())),
+        "count": len(node_counts),
+    }
+
+
+def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+
+    block_params, block_meta_list = stage_two_block
+    stats = DatasetStats(
+        stages={"read": block_meta_list},
+        parent=None,
+    )
+    stats.dataset_uuid = "test-uuid"
+
+    calculated_stats = stats.to_summary()
+    summarized_lines = calculated_stats.to_string().split("\n")
+
+    assert (
+        "Stage 0 read: 2/2 blocks executed in {}s".format(
+            max(round(stats.time_total_s, 2), 0)
+        )
+        == summarized_lines[0]
+    )
+    assert (
+        "* Remote wall time: {}s min, {}s max, {}s mean, {}s total".format(
+            min(block_params["wall_time"]),
+            max(block_params["wall_time"]),
+            np.mean(block_params["wall_time"]),
+            sum(block_params["wall_time"]),
+        )
+        == summarized_lines[1]
+    )
+    assert (
+        "* Remote cpu time: {}s min, {}s max, {}s mean, {}s total".format(
+            min(block_params["cpu_time"]),
+            max(block_params["cpu_time"]),
+            np.mean(block_params["cpu_time"]),
+            sum(block_params["cpu_time"]),
+        )
+        == summarized_lines[2]
+    )
+    assert (
+        "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
+            min(block_params["max_rss_bytes"]) / (1024 * 1024),
+            max(block_params["max_rss_bytes"]) / (1024 * 1024),
+            int(np.mean(block_params["max_rss_bytes"]) / (1024 * 1024)),
+        )
+        == summarized_lines[3]
+    )
+    assert (
+        "* Output num rows: {} min, {} max, {} mean, {} total".format(
+            min(block_params["num_rows"]),
+            max(block_params["num_rows"]),
+            int(np.mean(block_params["num_rows"])),
+            sum(block_params["num_rows"]),
+        )
+        == summarized_lines[4]
+    )
+    assert (
+        "* Output size bytes: {} min, {} max, {} mean, {} total".format(
+            min(block_params["size_bytes"]),
+            max(block_params["size_bytes"]),
+            int(np.mean(block_params["size_bytes"])),
+            sum(block_params["size_bytes"]),
+        )
+        == summarized_lines[5]
+    )
+
+    node_counts = Counter(block_params["node_id"])
+    assert (
+        "* Tasks per node: {} min, {} max, {} mean; {} nodes used".format(
+            min(node_counts.values()),
+            max(node_counts.values()),
+            int(np.mean(list(node_counts.values()))),
+            len(node_counts),
+        )
+        == summarized_lines[6]
+    )
+
+
+def test_get_total_stats(ray_start_regular_shared, stage_two_block):
+    """Tests a set of similar getter methods which pull aggregated
+    statistics values after calculating stage-level stats:
+    `DatasetStats.get_max_wall_time()`,
+    `DatasetStats.get_total_cpu_time()`,
+    `DatasetStats.get_max_heap_memory()`."""
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+
+    block_params, block_meta_list = stage_two_block
+    stats = DatasetStats(
+        stages={"read": block_meta_list},
+        parent=None,
+    )
+
+    dataset_stats_summary = stats.to_summary()
+    stage_stats = dataset_stats_summary.stages_stats[0]
+    wall_time_stats = stage_stats.wall_time
+    assert dataset_stats_summary.get_total_wall_time() == wall_time_stats.get("max")
+
+    cpu_time_stats = stage_stats.cpu_time
+    assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.get("sum")
+
+    peak_memory_stats = stage_stats.memory
+    assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
 if __name__ == "__main__":
