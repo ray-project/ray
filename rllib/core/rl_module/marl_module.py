@@ -358,6 +358,47 @@ class MultiAgentRLModule(RLModule):
         for module_id, module in self._rl_modules.items():
             module.set_state(state_dict[module_id])
 
+    def serialize(self) -> Mapping[str, Any]:
+        """Return the serialized state of the module.
+
+        NOTE: This method needs to be implemented in order to support
+        checkpointing and fault tolerance.
+
+        """
+        return {
+            "class": self.__class__,
+            "rl_modules": {
+                module_id: module.serialize()
+                for module_id, module in self._rl_modules.items()
+            },
+        }
+
+    @classmethod
+    def deserialize(cls, state: Mapping[str, Any]) -> "MultiAgentRLModule":
+        """Construct a module from a serialized state.
+
+        Args:
+            state: The serialized state of the module.
+            The state should contain the keys "class", "kwargs", and "state".
+
+            - "class" is the class of the RLModule to be constructed.
+            - "rl_modules" is a dict mapping module ids of the RLModules to
+                their serialized states. The serialized states can be obtained
+                from `RLModule.serialize()`.
+
+        NOTE: this state is typically obtained from `serialize()`.
+
+        NOTE: This method needs to be implemented in order to support
+            checkpointing and fault tolerance.
+
+        Returns:
+            A deserialized MultiAgentRLModule.
+        """
+        rl_modules = {}
+        for module_id, module_state in state["rl_modules"].items():
+            rl_modules[module_id] = RLModule.deserialize(module_state)
+        return cls(rl_modules)
+
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
 

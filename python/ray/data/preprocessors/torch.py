@@ -37,10 +37,15 @@ class TorchVisionPreprocessor(Preprocessor):
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
         with a batch-supporting ``Lambda``.
 
+        >>> def to_tensor(batch: np.ndarray) -> torch.Tensor:
+        ...     tensor = torch.as_tensor(batch, dtype=torch.float)
+        ...     # (B, H, W, C) -> (B, C, H, W)
+        ...     tensor = tensor.permute(0, 3, 1, 2).contiguous()
+        ...     # [0., 255.] -> [0., 1.]
+        ...     tensor = tensor.div(255)
+        ...     return tensor
         >>> transform = transforms.Compose([
-        ...     transforms.Lambda(
-        ...         lambda batch: torch.as_tensor(batch).permute(0, 3, 1, 2))
-        ...     ),
+        ...     transforms.Lambda(to_tensor),
         ...     transforms.Resize((224, 224))
         ... ])
         >>> preprocessor = TorchVisionPreprocessor(

@@ -335,7 +335,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
     @classmethod
     def construct_from_string(cls, string: str):
-        """
+        r"""
         Construct this type from a string.
 
         This is useful mainly for data types that accept parameters.

@@ -29,8 +29,7 @@ from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.util.data_batch_conversion import BlockFormat
-from ray.data._internal.batcher import Batcher
-from ray.data._internal.block_batching import BatchType, batch_blocks
+from ray.data._internal.block_batching import batch_block_refs, batch_blocks
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -69,6 +68,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
+    DataBatch,
     KeyFn,
     RowUDF,
     T,
@@ -564,10 +564,6 @@ class Dataset(Generic[T]):
         ) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
-            # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
-            batcher = Batcher(
-                batch_size, ensure_copy=not zero_copy_batch and batch_size is not None
-            )
 
             def validate_batch(batch: Block) -> None:
                 if not isinstance(
@@ -592,9 +588,7 @@ class Dataset(Generic[T]):
                                 f"the {type(value)} to a `numpy.ndarray`."
                             )
 
-            def process_next_batch(batch: Block) -> Iterator[Block]:
-                # Convert to batch format.
-                batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
+            def process_next_batch(batch: DataBatch) -> Iterator[Block]:
                 # Apply UDF.
                 try:
                     batch = batch_fn(batch, *fn_args, **fn_kwargs)
@@ -622,17 +616,16 @@ class Dataset(Generic[T]):
                 if output_buffer.has_next():
                     yield output_buffer.next()
 
-            # Process batches for each block.
-            for block in blocks:
-                batcher.add(block)
-                while batcher.has_batch():
-                    batch = batcher.next_batch()
-                    yield from process_next_batch(batch)
+            # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
+            formatted_batch_iter = batch_blocks(
+                blocks=blocks,
+                stats=None,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                ensure_copy=not zero_copy_batch and batch_size is not None,
+            )
 
-            # Process any last remainder batch.
-            batcher.done_adding()
-            if batcher.has_any():
-                batch = batcher.next_batch()
+            for batch in formatted_batch_iter:
                 yield from process_next_batch(batch)
 
             # Yield remainder block from output buffer.
@@ -2131,7 +2124,7 @@ class Dataset(Generic[T]):
         )
 
     def schema(
-        self, fetch_if_missing: bool = False
+        self, fetch_if_missing: bool = True
     ) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset.
 
@@ -2142,8 +2135,8 @@ class Dataset(Generic[T]):
 
         Args:
             fetch_if_missing: If True, synchronously fetch the schema if it's
-                not known. Default is False, where None is returned if the
-                schema is not known.
+                not known. If False, None is returned if the schema is not known.
+                Default is True.
 
         Returns:
             The Python type or Arrow schema of the records, or None if the
@@ -2682,7 +2675,7 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[BatchType]:
+    ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
         Examples:
@@ -2727,9 +2720,9 @@ class Dataset(Generic[T]):
 
         time_start = time.perf_counter()
 
-        yield from batch_blocks(
+        yield from batch_block_refs(
             blocks.iter_blocks(),
-            stats,
+            stats=stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
@@ -4227,7 +4220,9 @@ class Dataset(Generic[T]):
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        schema = self.schema()
+        # Do not force execution for schema, as this method is expected to be very
+        # cheap.
+        schema = self.schema(fetch_if_missing=False)
         if schema is None:
             schema_str = "Unknown schema"
         elif isinstance(schema, type):
