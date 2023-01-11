@@ -674,18 +674,14 @@ class Algorithm(Trainable):
 
         self.trainer_runner = None
         if self.config.get("_enable_trainer_runner", False):
-            # create the fault tolerant trainer runner
-            # TODO (Kourosh) Create this api in the config
-            trainer_class = self.config.get_trainer_class()
-            if trainer_class is None:
-                raise ValueError(
-                    "Must specify a trainer class to use the TrainerRunner"
-                )
-
-            # TODO (Kourosh/Avnishn) figure out the construction pattern
+            # TODO (Kourosh/Avnishn) worker should not give us observation/action 
+            # space. It should be part of the global config.
             worker = self.workers.local_worker()
+
+            # TODO: The constructor is not clean and comprehensive. 
             self.trainer_runner = TrainerRunner(
-                trainer_class=trainer_class,
+                trainer_class=self.config.rl_trainer_class,
+                # TODO: What should be part of trainer_config. For example 
                 trainer_config={
                     "module_class": self.config.rl_module_class,
                     "module_config": {
@@ -693,11 +689,17 @@ class Algorithm(Trainable):
                         "action_space": worker.action_space,
                         "model_config": self.config.model,
                     },
-                    "optimizer_class": self.config.rl_optimizer_class,
-                    "optimizer_config": {},
+                    
+                    "scaling_config": {"num_gpus": self.config.num_gpus},
+                    # TODO: should this be inferred inside the constructor?
+                    "distributed": self.config.num_gpus > 1, 
+                    # TODO: add this
+                    # "enable_tf_function": self.config.eager_tracing,
                 },
                 compute_config={
                     "num_gpus": self.config.num_gpus,
+                    # TODO: add this
+                    # "fake_gpus": self.config._fake_gpus,
                 },
             )
 
