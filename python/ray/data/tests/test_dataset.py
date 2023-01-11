@@ -4,7 +4,6 @@ import os
 import random
 import signal
 import time
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -15,7 +14,6 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorType
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
