@@ -650,6 +650,9 @@ def _init_ray_cluster(
             target=inheritable_thread_target(background_job_thread_fn), args=()
         ).start()
 
+        # Call hook immediately after spark job started.
+        start_hook.on_spark_background_job_created(spark_job_group_id)
+
         # wait background spark task starting.
         for _ in range(_BACKGROUND_JOB_STARTUP_WAIT):
             time.sleep(1)
@@ -658,7 +661,6 @@ def _init_ray_cluster(
                     "Ray workers failed to start."
                 ) from ray_cluster_handler.background_job_exception
 
-        start_hook.on_spark_background_job_created(spark_job_group_id)
         return ray_cluster_handler
     except Exception:
         # If driver side setup ray-cluster routine raises exception, it might result
