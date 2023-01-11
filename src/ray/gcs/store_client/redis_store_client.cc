@@ -386,9 +386,10 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
       shard_it->second = cursor;
     }
     RAY_CHECK(scan_result.size() % 2 == 0);
-    for(size_t i = 0; i < scan_result.size(); i += 2) {
-      auto key = GetKeyFromRedisKey(external_storage_namespace_, std::move(scan_result[i]), table_name_);
-      results_.emplace(std::move(key), std::move(scan_result[i+1]));
+    for (size_t i = 0; i < scan_result.size(); i += 2) {
+      auto key = GetKeyFromRedisKey(
+          external_storage_namespace_, std::move(scan_result[i]), table_name_);
+      results_.emplace(std::move(key), std::move(scan_result[i + 1]));
     }
   }
 
