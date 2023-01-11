@@ -580,7 +580,7 @@ if __name__ == "__main__":
         read_dataset(data_path)
     )
 
-    num_columns = len(train_dataset.schema(fetch_if_missing=True).names)
+    num_columns = len(train_dataset.schema().names)
     # remove label column.
     num_features = num_columns - 1
 
