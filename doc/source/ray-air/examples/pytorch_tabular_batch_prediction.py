@@ -23,7 +23,10 @@ dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 # All columns are features except the target column.
 num_features = len(dataset.schema().names) - 1
 
-prep = Concatenator(exclude=["target"], dtype=np.float32)
+# Specify a preprocessor to concatenate all feature columns.
+prep = Concatenator(
+    output_column_name="concat_features", exclude=["target"], dtype=np.float32
+)
 
 checkpoint = TorchCheckpoint.from_model(
     model=create_model(num_features), preprocessor=prep
@@ -33,7 +36,10 @@ checkpoint = TorchCheckpoint.from_model(
 
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
 
-predicted_probabilities = batch_predictor.predict(dataset)
+# Predict on the features.
+predicted_probabilities = batch_predictor.predict(
+    dataset, feature_columns=["concat_features"]
+)
 predicted_probabilities.show()
 # {'predictions': array([1.], dtype=float32)}
 # {'predictions': array([0.], dtype=float32)}
