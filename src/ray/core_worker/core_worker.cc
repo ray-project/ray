@@ -1258,12 +1258,20 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
                                absl::flat_hash_set<ObjectID> &plasma_object_ids,
                                absl::flat_hash_set<ObjectID> &ready) {
 
-  if (RayConfig::instance().core_worker_use_old_path()) {
+  /*
+    0 -> Old codepath.
+    1 -> Eric's change
+    2 -> Eric's change plus batching of the GetIfExists calls.
+    3 -> No prefetching.
+    4 -> Loop through all existing, but do not do any operation on them.
+    5 -> Loop through all existing, except bounded.
+    6 -> Loop through all existing. Bounded by number of bytes.
+  */
+
+  if (RayConfig::instance().core_worker_new_path() == 0) {
     for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
       auto current = iter++;
       const auto &mem_id = *current;
-      // Batch the requests to prefetch, 100 each
-      // Until object store capacity.
       auto ready_iter = ready.find(mem_id);
       if (ready_iter != ready.end()) {
         std::vector<std::shared_ptr<RayObject>> found;
@@ -1280,82 +1288,80 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
         }
       }
     }
-  } else {
-    if (RayConfig::instance().core_worker_new_path() == 0 || RayConfig::instance().core_worker_new_path() == 1) {
-      for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
-        auto current = iter++;
-        const auto &mem_id = *current;
-        // GetIfExistsBatch
-        auto found = memory_store->GetIfExists(mem_id);
-        if (found != nullptr && found->IsInPlasmaError()) {
-          plasma_object_ids.insert(mem_id);
-          ready.erase(mem_id);
-          memory_object_ids.erase(current);
-        }
+  } else if (RayConfig::instance().core_worker_new_path() == 1) {
+    for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
+      auto current = iter++;
+      const auto &mem_id = *current;
+      // GetIfExistsBatch
+      auto found = memory_store->GetIfExists(mem_id);
+      if (found != nullptr && found->IsInPlasmaError()) {
+        plasma_object_ids.insert(mem_id);
+        ready.erase(mem_id);
+        memory_object_ids.erase(current);
       }
-    } else if (RayConfig::instance().core_worker_new_path() == 2) {
-        absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> existing;
-        memory_store->GetIfExistsBatch(memory_object_ids, existing);
-
-        for (auto iter = existing.begin(); iter != existing.end();) {
-            auto current = iter++;
-            if (current->second != nullptr && current->second->IsInPlasmaError()) {
-              plasma_object_ids.insert(current->first);
-              ready.erase(current->first);
-              memory_object_ids.erase(current->first);
-            }
-        }
-    } else if (RayConfig::instance().core_worker_new_path() == 3) {
-        // noop
-    } else if (RayConfig::instance().core_worker_new_path() == 4) {
-        absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> existing;
-        memory_store->GetIfExistsBatch(memory_object_ids, existing);
-
-        for (auto iter = existing.begin(); iter != existing.end();) {
-            auto current = iter++;
-            if (current->second != nullptr && current->second->WasAccessed()) {
-              //plasma_object_ids.insert(current->first);
-              //ready.erase(current->first);
-              //memory_object_ids.erase(current->first);
-            }
-        }
-    } else if (RayConfig::instance().core_worker_new_path() == 5) {
-      size_t max_to_send_to_plasma = 128;
-      size_t max_to_look_through = 1024;
-      size_t looked_through = 0;
-      for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end() && plasma_object_ids.size() < max_to_send_to_plasma && looked_through < max_to_look_through; ++looked_through) {
-        auto current = iter++;
-        const auto &mem_id = *current;
-        auto found = memory_store->GetIfExists(mem_id);
-        if (found != nullptr && found->IsInPlasmaError()) {
-          plasma_object_ids.insert(mem_id);
-          ready.erase(mem_id);
-          memory_object_ids.erase(current);
-        }
-      }
-    } else if (RayConfig::instance().core_worker_new_path() == 6) {
-      size_t max_bytes_to_send_to_plasma = 1024 * 1024 * 2; // 64MB
-      size_t cur_bytes_to_plasma = 0;
-      size_t max_to_look_through = 1024;
-      size_t looked_through = 0;
-      for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end() && looked_through < max_to_look_through; ++looked_through) {
-        auto current = iter++;
-        const auto &mem_id = *current;
-        auto found = memory_store->GetIfExists(mem_id);
-        if (found != nullptr && found->IsInPlasmaError()) {
-          plasma_object_ids.insert(mem_id);
-          ready.erase(mem_id);
-          memory_object_ids.erase(current);
-          cur_bytes_to_plasma += found->GetSize();
-
-          if (cur_bytes_to_plasma >= max_bytes_to_send_to_plasma) {
-            break;
-          }
-        }
-      }
-    } else {
-        RAY_CHECK(false);
     }
+  } else if (RayConfig::instance().core_worker_new_path() == 2) {
+      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> existing;
+      memory_store->GetIfExistsBatch(memory_object_ids, existing);
+
+      for (auto iter = existing.begin(); iter != existing.end();) {
+          auto current = iter++;
+          if (current->second != nullptr && current->second->IsInPlasmaError()) {
+            plasma_object_ids.insert(current->first);
+            ready.erase(current->first);
+            memory_object_ids.erase(current->first);
+          }
+      }
+  } else if (RayConfig::instance().core_worker_new_path() == 3) {
+      // noop
+  } else if (RayConfig::instance().core_worker_new_path() == 4) {
+      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> existing;
+      memory_store->GetIfExistsBatch(memory_object_ids, existing);
+
+      for (auto iter = existing.begin(); iter != existing.end();) {
+          auto current = iter++;
+          if (current->second != nullptr && current->second->WasAccessed()) {
+            //plasma_object_ids.insert(current->first);
+            //ready.erase(current->first);
+            //memory_object_ids.erase(current->first);
+          }
+      }
+  } else if (RayConfig::instance().core_worker_new_path() == 5) {
+    size_t max_to_send_to_plasma = 128;
+    size_t max_to_look_through = 1024;
+    size_t looked_through = 0;
+    for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end() && plasma_object_ids.size() < max_to_send_to_plasma && looked_through < max_to_look_through; ++looked_through) {
+      auto current = iter++;
+      const auto &mem_id = *current;
+      auto found = memory_store->GetIfExists(mem_id);
+      if (found != nullptr && found->IsInPlasmaError()) {
+        plasma_object_ids.insert(mem_id);
+        ready.erase(mem_id);
+        memory_object_ids.erase(current);
+      }
+    }
+  } else if (RayConfig::instance().core_worker_new_path() == 6) {
+    size_t max_bytes_to_send_to_plasma = 1024 * 1024 * 2; // 64MB
+    size_t cur_bytes_to_plasma = 0;
+    size_t max_to_look_through = 1024;
+    size_t looked_through = 0;
+    for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end() && looked_through < max_to_look_through; ++looked_through) {
+      auto current = iter++;
+      const auto &mem_id = *current;
+      auto found = memory_store->GetIfExists(mem_id);
+      if (found != nullptr && found->IsInPlasmaError()) {
+        plasma_object_ids.insert(mem_id);
+        ready.erase(mem_id);
+        memory_object_ids.erase(current);
+        cur_bytes_to_plasma += found->GetSize();
+
+        if (cur_bytes_to_plasma >= max_bytes_to_send_to_plasma) {
+          break;
+        }
+      }
+    }
+  } else {
+      RAY_CHECK(false) << "Invalid core_worker_new_path";
   }
 }
 
@@ -1405,33 +1411,19 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     auto end = absl::GetCurrentTimeNanos();
 
     //if (RayConfig::instance().core_worker_new_path() == 1) {
-    RAY_LOG(WARNING) << "time spent in RetryObjectInPlasmaErrors " << (absl::Nanoseconds(end - start) / absl::Nanoseconds(1)) << " ns";
-    RAY_LOG(WARNING) << "size of objects:"
-        << " num_objects " << num_objects
-        << ", memory_object_ids " << memory_object_ids.size()
-        << ", plasma_object_ids " << plasma_object_ids.size()
-        << ", ready " << ready.size();
-    //}
-
-    if (RayConfig::instance().core_worker_prefetch_waits()
-        //&& ids.size() > (9 * 1000)
-        //&& first_time_prefetch_
-        ) {
-        // I might have to batch these if this is too large.
-        //RAY_RETURN_NOT_OK(plasma_store_provider_->FetchFromPlasmaStore(
-        //    ids,
-        //    /*in_direct_call*/ worker_context_.CurrentTaskIsDirectCall(),
-        //    /*task_id*/ worker_context_.GetCurrentTaskID()
-        //));
-        RAY_LOG(WARNING) << "FetchFromPlasmaStore called first_time_prefetch_: " << first_time_prefetch_ << ", ids.size: " << ids.size() << ", core_worker_prefetch_waits: " << RayConfig::instance().core_worker_prefetch_waits()
-            << ", core_worker_new_path: " << RayConfig::instance().core_worker_new_path() << ", core_worker_use_old_path: " << RayConfig::instance().core_worker_use_old_path();
-        first_time_prefetch_ = false;
+    if (RayConfig::instance().core_worker_metrics_to_print() == 0) {
+        // Noop
+    } else if (RayConfig::instance().core_worker_metrics_to_print() == 1) {
+        RAY_LOG(WARNING) << "time spent in RetryObjectInPlasmaErrors " << (absl::Nanoseconds(end - start) / absl::Nanoseconds(1)) << " ns";
+        RAY_LOG(WARNING) << "size of objects:"
+            << " num_objects " << num_objects
+            << ", memory_object_ids " << memory_object_ids.size()
+            << ", plasma_object_ids " << plasma_object_ids.size()
+            << ", ready " << ready.size();
+        RAY_LOG(WARNING) << "plasma_store_provider_->Wait stats plasma_object_ids size " << static_cast<int>(plasma_object_ids.size()) << ", other " << (num_objects - static_cast<int>(ready.size()));
     } else {
-        RAY_LOG(WARNING) << "FetchFromPlasmaStore skipped first_time_prefetch_: " << first_time_prefetch_ << ", ids.size: " << ids.size() << ", core_worker_prefetch_waits: " << RayConfig::instance().core_worker_prefetch_waits()
-            << ", core_worker_new_path: " << RayConfig::instance().core_worker_new_path() << ", core_worker_use_old_path: " << RayConfig::instance().core_worker_use_old_path();
+        RAY_CHECK(false) << "Invalid core_worker_metrics_to_print";
     }
-
-    RAY_LOG(WARNING) << "plasma_store_provider_->Wait stats plasma_object_ids size " << static_cast<int>(plasma_object_ids.size()) << ", other " << (num_objects - static_cast<int>(ready.size()));
 
     if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(

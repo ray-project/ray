@@ -727,6 +727,5 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 
-RAY_CONFIG(bool, core_worker_use_old_path, true)
 RAY_CONFIG(int64_t, core_worker_new_path, 0)
-RAY_CONFIG(bool, core_worker_prefetch_waits, true)
+RAY_CONFIG(int64_t, core_worker_metrics_to_print, 0)
