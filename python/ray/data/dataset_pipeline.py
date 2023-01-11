@@ -1164,7 +1164,7 @@ class DatasetPipeline(Generic[T]):
                 def __init__(self, base_iterable):
                     # Skip the first dataset since it's already been peeked.
                     self.base_iterator: Iterator = itertools.islice(
-                        base_iterable, start=1
+                        base_iterable, 1, None
                     )
 
                 def __iter__(self):
