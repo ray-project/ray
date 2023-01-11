@@ -265,11 +265,17 @@ class BatchPredictor:
                     return prediction_output_batch
 
             def __call__(self, input_batch: DataBatchType) -> DataBatchType:
+                # TODO: Delegate separate_gpu_stage flag to Datasets.
+                if override_prep:
+                    # Apply preprocessing before selecting feature columns.
+                    input_batch = override_prep.transform_batch(input_batch)
+
                 # TODO (jiaodong): Investigate if there's room to optimize prediction
                 # result joins to minimize GPU <> CPU transfer
                 prediction_batch: DataBatchType = self._select_columns_from_input_batch(
                     input_batch, select_columns=feature_columns
                 )
+
                 prediction_output_batch: DataBatchType = self._predictor.predict(
                     prediction_batch, **predict_kwargs
                 )
@@ -289,15 +295,20 @@ class BatchPredictor:
         ray_remote_args["num_cpus"] = num_cpus_per_worker
         ray_remote_args["num_gpus"] = num_gpus_per_worker
 
-        # TODO: Use preprocessor.transform here.
-        # preprocessor.transform will break for DatasetPipeline as it
-        # does not support _dataset_format()
         preprocessor = self.get_preprocessor()
-        batch_fn = preprocessor._transform_batch
 
-        # Dataset is lazy by default so this map_batches
-        # will not trigger execution.
-        data = data.map_batches(batch_fn, batch_format=predict_stage_batch_format)
+        # TODO: Delegate separate_gpu_stage flag to Datasets.
+        if not separate_gpu_stage and num_gpus_per_worker > 0:
+            override_prep = preprocessor
+        else:
+            # TODO: Use preprocessor.transform here.
+            # preprocessor.transform will break for DatasetPipeline as it
+            # does not support _dataset_format()
+            batch_fn = preprocessor._transform_batch
+
+            # Dataset is lazy by default so this map_batches
+            # will not trigger execution.
+            data = data.map_batches(batch_fn, batch_format=predict_stage_batch_format)
 
         prediction_results = data.map_batches(
             ScoringWrapper,

@@ -256,8 +256,6 @@ py_test(
     args = ["--dataset-size-gb=1", "--smoke-test"]
 )
 
-# MISSING: PyTorch training e2e, add after https://github.com/ray-project/ray/issues/29524
-
 py_test(
     name = "air_benchmark_tensorflow_smoke_test",
     size = "large",
