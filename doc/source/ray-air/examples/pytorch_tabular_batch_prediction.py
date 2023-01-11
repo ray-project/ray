@@ -1,4 +1,3 @@
-from typing import List
 import numpy as np
 import torch.nn as nn
 
@@ -20,12 +19,11 @@ def create_model(input_features: int):
 
 
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
-all_features: List[str] = dataset.schema().names
-all_features.remove("target")
 
-num_features = len(all_features)
+# All columns are features except the target column.
+num_features = len(dataset.schema().names) - 1
 
-prep = Concatenator(dtype=np.float32)
+prep = Concatenator(exclude=["target"], dtype=np.float32)
 
 checkpoint = TorchCheckpoint.from_model(
     model=create_model(num_features), preprocessor=prep
@@ -35,7 +33,7 @@ checkpoint = TorchCheckpoint.from_model(
 
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
 
-predicted_probabilities = batch_predictor.predict(dataset, feature_columns=all_features)
+predicted_probabilities = batch_predictor.predict(dataset)
 predicted_probabilities.show()
 # {'predictions': array([1.], dtype=float32)}
 # {'predictions': array([0.], dtype=float32)}

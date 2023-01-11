@@ -224,22 +224,21 @@ py_test(
     args = ["--dataset-size-gb=1", "--num-workers=1"]
 )
 
-# Enable after https://github.com/ray-project/ray/issues/29524
-# py_test(
-#     name = "air_benchmark_gpu_batch_prediction_smoke_test",
-#     size = "small",
-#     srcs = test_srcs,
-#     main = "air_tests/air_benchmarks/workloads/gpu_batch_prediction.py",
-#     tags = [
-#         "exclusive",
-#         "team:ml",
-#     ],
-#     deps = [
-#         "//:ray_lib",
-#         "//python/ray/air:ml_lib",
-#     ],
-#     args = ["--dataset-size-gb=1", "--smoke-test"]
-# )
+py_test(
+     name = "air_benchmark_gpu_batch_prediction_smoke_test",
+     size = "small",
+     srcs = test_srcs,
+     main = "air_tests/air_benchmarks/workloads/gpu_batch_prediction.py",
+     tags = [
+         "exclusive",
+         "team:ml",
+     ],
+     deps = [
+         "//:ray_lib",
+         "//python/ray/air:ml_lib",
+     ],
+     args = ["--dataset-size-gb=1", "--smoke-test"]
+)
 
 # MISSING: PyTorch training e2e, add after https://github.com/ray-project/ray/issues/29524
 
