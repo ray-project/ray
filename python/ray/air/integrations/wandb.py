@@ -419,10 +419,10 @@ class _WandbLoggingActor:
         flat_result = flatten_dict(result, delimiter="/")
 
         for k, v in flat_result.items():
-            if any(k.startswith(item + "/") or k == item for item in self._to_config):
-                config_update[k] = v
-            elif any(k.startswith(item + "/") or k == item for item in self._exclude):
+            if any(k.startswith(item + "/") or k == item for item in self._exclude):
                 continue
+            elif any(k.startswith(item + "/") or k == item for item in self._to_config):
+                config_update[k] = v
             elif not _is_allowed_type(v):
                 continue
             else:
@@ -448,7 +448,7 @@ class WandbLoggerCallback(LoggerCallback):
             file only needs to be present on the node running the Tune script
             if using the WandbLogger.
         api_key: Wandb API Key. Alternative to setting ``api_key_file``.
-        excludes: List of metrics that should be excluded from
+        excludes: List of metrics and config that should be excluded from
             the log.
         log_config: Boolean indicating if the ``config`` parameter of
             the ``results`` dict should be logged. This makes sense if
@@ -488,8 +488,7 @@ class WandbLoggerCallback(LoggerCallback):
     # Do not log these result keys
     _exclude_results = ["done", "should_checkpoint"]
 
-    # Use these result keys to update `wandb.config`
-    _config_results = [
+    AUTO_CONFIG_KEYS = [
         "trial_id",
         "experiment_tag",
         "node_ip",
@@ -498,6 +497,7 @@ class WandbLoggerCallback(LoggerCallback):
         "pid",
         "date",
     ]
+    """Results that are saved with `wandb.config` instead of `wandb.log`."""
 
     _logger_actor_cls = _WandbLoggingActor
 
@@ -570,6 +570,9 @@ class WandbLoggerCallback(LoggerCallback):
 
         # remove unpickleable items!
         config = _clean_log(config)
+        config = {
+            key: value for key, value in config.items() if key not in self.excludes
+        }
 
         wandb_init_kwargs = dict(
             id=trial_id,
@@ -606,7 +609,7 @@ class WandbLoggerCallback(LoggerCallback):
             logdir=trial.logdir,
             queue=self._trial_queues[trial],
             exclude=exclude_results,
-            to_config=self._config_results,
+            to_config=self.AUTO_CONFIG_KEYS,
             **wandb_init_kwargs,
         )
         self._trial_logging_futures[trial] = self._trial_logging_actors[
