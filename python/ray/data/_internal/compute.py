@@ -70,6 +70,9 @@ class TaskPoolStrategy(ComputeStrategy):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
+        assert (
+            not DatasetContext.get_current().new_execution_backend
+        ), "Legacy backend off"
         assert fn_constructor_args is None and fn_constructor_kwargs is None
         if fn_args is None:
             fn_args = tuple()
@@ -136,7 +139,7 @@ class TaskPoolStrategy(ComputeStrategy):
         # Common wait for non-data refs.
         try:
             results = map_bar.fetch_until_complete(refs)
-        except (ray.exceptions.RayTaskError, KeyboardInterrupt) as e:
+        except (ray.exceptions.RayError, KeyboardInterrupt) as e:
             # One or more mapper tasks failed, or we received a SIGINT signal
             # while waiting; either way, we cancel all map tasks.
             for ref in refs:
@@ -145,7 +148,10 @@ class TaskPoolStrategy(ComputeStrategy):
             for ref in refs:
                 try:
                     ray.get(ref)
-                except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
+                except ray.exceptions.RayError:
+                    # Cancellation either succeeded, or the task had already failed with
+                    # a different error, or cancellation failed. In all cases, we
+                    # swallow the exception.
                     pass
             # Reraise the original task failure exception.
             raise e from None
@@ -234,6 +240,9 @@ class ActorPoolStrategy(ComputeStrategy):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
         """Note: this is not part of the Dataset public API."""
+        assert (
+            not DatasetContext.get_current().new_execution_backend
+        ), "Legacy backend off"
         if fn_args is None:
             fn_args = tuple()
         if fn_kwargs is None:
@@ -418,7 +427,7 @@ class ActorPoolStrategy(ComputeStrategy):
             except Exception as err:
                 logger.exception(f"Error killing workers: {err}")
             finally:
-                raise e
+                raise e from None
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:

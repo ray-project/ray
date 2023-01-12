@@ -138,7 +138,7 @@ class RedisInternalKV : public InternalKVInterface {
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
-  explicit GcsInternalKVManager(std::shared_ptr<InternalKVInterface> kv_instance)
+  explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance)
       : kv_instance_(std::move(kv_instance)) {}
 
   void HandleInternalKVGet(rpc::InternalKVGetRequest request,
@@ -164,7 +164,7 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
   InternalKVInterface &GetInstance() { return *kv_instance_; }
 
  private:
-  std::shared_ptr<InternalKVInterface> kv_instance_;
+  std::unique_ptr<InternalKVInterface> kv_instance_;
   Status ValidateKey(const std::string &key) const;
 };
 

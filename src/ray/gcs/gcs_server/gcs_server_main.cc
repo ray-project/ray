@@ -106,9 +106,10 @@ int main(int argc, char *argv[]) {
   auto handler = [&main_service, &gcs_server](const boost::system::error_code &error,
                                               int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
+    main_service.stop();
+    ray::rpc::DrainAndResetServerCallExecutor();
     gcs_server.Stop();
     ray::stats::Shutdown();
-    main_service.stop();
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32

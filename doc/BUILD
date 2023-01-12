@@ -60,7 +60,7 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "statsforecast"],
+    tags = ["exclusive", "team:ml", "timeseries_libs"],
     data = ["//doc/source/ray-core/examples:core_examples"],
     args = ["--path", "doc/source/ray-core/examples/automl_for_time_series.ipynb"]
 )
@@ -144,7 +144,7 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "medium",
-    include = ["source/serve/doc_code/*.py"],
+    include = ["source/serve/doc_code/**/*.py"],
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],

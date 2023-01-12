@@ -69,7 +69,7 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
 #endif
   } else {
     RAY_LOG(INFO) << "MemoryMonitor disabled. Specify "
-                  << "`memory_monitor_interval_ms` > 0 to enable the monitor.";
+                  << "`memory_monitor_refresh_ms` > 0 to enable the monitor.";
   }
 }
 

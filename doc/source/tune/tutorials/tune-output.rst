@@ -38,8 +38,8 @@ To learn more about Trials, see its detailed API documentation: :ref:`trial-docs
 
 .. _tensorboard:
 
-How to log to TensorBoard?
---------------------------
+How to log your Tune runs to TensorBoard?
+-----------------------------------------
 
 Tune automatically outputs TensorBoard files during ``Tuner.fit()``.
 To visualize learning in tensorboard, install tensorboardX:
@@ -82,8 +82,8 @@ If using TensorFlow ``2.x``, Tune also automatically generates TensorBoard HPara
 
 .. _tune-console-output:
 
-How to control console output?
-------------------------------
+How to control console output with Tune?
+----------------------------------------
 
 User-provided fields will be outputted automatically on a best-effort basis.
 You can use a :ref:`Reporter <tune-reporter-doc>` object to customize the console output.
@@ -108,8 +108,8 @@ You can use a :ref:`Reporter <tune-reporter-doc>` object to customize the consol
 
 .. _tune-log_to_file:
 
-How to redirect stdout and stderr to files?
--------------------------------------------
+How to redirect stdout and stderr to files in a Tune run?
+---------------------------------------------------------
 
 The stdout and stderr streams are usually printed to the console.
 For remote actors, Ray collects these logs and prints them to the head process.
@@ -154,8 +154,8 @@ for Ray's base logger and log the output to the specified stderr output file.
 
 .. _trainable-logging:
 
-How to Configure Trainable Logging?
------------------------------------
+How to configure logging of Tune Trainables?
+--------------------------------------------
 
 By default, Tune only logs the *training result dictionaries* from your Trainable.
 However, you may want to visualize the model weights, model graph,
@@ -225,8 +225,8 @@ In the distributed case, these logs will be sync'ed back to the driver under you
 This will allow you to visualize and analyze logs of all distributed training workers on a single machine.
 
 
-How to Build Custom Loggers?
-----------------------------
+How to Build Custom Tune Loggers?
+---------------------------------
 
 You can create a custom logger by inheriting the LoggerCallback interface (:ref:`logger-interface`):
 

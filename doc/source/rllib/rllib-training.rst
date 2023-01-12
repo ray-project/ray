@@ -572,7 +572,7 @@ traces to ``/tmp/debug``.
 
 .. code-block:: bash
 
-    rllib train --run=PPO --env=CartPole-v0 \
+    rllib train --run=PPO --env=CartPole-v1 \
         --config='{"output": "/tmp/debug", "output_compress_columns": []}'
 
     # episode traces will be saved in /tmp/debug, for example

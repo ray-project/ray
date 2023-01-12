@@ -90,21 +90,21 @@ void GcsWorkerManager::HandleReportWorkerFailure(
 
   if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR ||
       request.worker_failure().exit_type() == rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
-    const char *key = "";
+    usage::TagKey key;
     int count = 0;
     if (request.worker_failure().exit_type() == rpc::WorkerExitType::SYSTEM_ERROR) {
       worker_crash_system_error_count_ += 1;
-      key = "extra_usage_tag_worker_crash_system_error";
+      key = usage::TagKey::WORKER_CRASH_SYSTEM_ERROR;
       count = worker_crash_system_error_count_;
     } else if (request.worker_failure().exit_type() ==
                rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
       worker_crash_oom_count_ += 1;
-      key = "extra_usage_tag_worker_crash_oom";
+      key = usage::TagKey::WORKER_CRASH_OOM;
       count = worker_crash_oom_count_;
     }
-    /// TODO(clarng): migrate to usage lib client once it doesn't hang
-    kv_instance_->Put(
-        "usage_stats", key, std::to_string(count), true, [](bool newly_added) {});
+    if (usage_stats_client_) {
+      usage_stats_client_->RecordExtraUsageCounter(key, count);
+    }
   }
 }
 

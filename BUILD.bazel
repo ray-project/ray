@@ -935,17 +935,6 @@ cc_test(
 )
 
 cc_test(
-    name = "gcs_heartbeat_manager_test",
-    srcs = ["src/ray/gcs/gcs_server/test/gcs_heartbeat_manager_test.cc"],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "dependency_resolver_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/dependency_resolver_test.cc"],
@@ -1050,6 +1039,20 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "task_event_buffer_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/task_event_buffer_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1635,6 +1638,7 @@ cc_test(
     deps = [
         ":ray_common",
         "@boost//:filesystem",
+        "@boost//:thread",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1887,6 +1891,23 @@ cc_test(
 )
 
 cc_test(
+    name = "gcs_task_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_task_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "gcs_placement_group_manager_test",
     size = "small",
     srcs = [
@@ -2115,10 +2136,12 @@ cc_library(
     srcs = [
         "src/ray/gcs/gcs_client/accessor.cc",
         "src/ray/gcs/gcs_client/gcs_client.cc",
+        "src/ray/gcs/gcs_client/usage_stats_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_client/accessor.h",
         "src/ray/gcs/gcs_client/gcs_client.h",
+        "src/ray/gcs/gcs_client/usage_stats_client.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",
@@ -2129,6 +2152,7 @@ cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
+        "//src/ray/protobuf:usage_cc_proto",
     ],
 )
 
@@ -2229,6 +2253,21 @@ cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_client_lib",
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "usage_stats_client_test",
+    srcs = [
+        "src/ray/gcs/gcs_client/test/usage_stats_client_test.cc",
+    ],
+    copts = COPTS,
     tags = ["team:core"],
     deps = [
         ":gcs_client_lib",
@@ -2781,6 +2820,7 @@ filegroup(
         "//src/ray/protobuf:reporter_py_proto",
         "//src/ray/protobuf:runtime_env_agent_py_proto",
         "//src/ray/protobuf:runtime_env_common_py_proto",
+        "//src/ray/protobuf:usage_py_proto",
     ],
 )
 

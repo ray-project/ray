@@ -2,7 +2,7 @@
 # to ~750 reward in 40k timesteps. Run e.g. on a g3.4xlarge with `num_gpus=1`.
 # Uses the hyperparameters published in [2] (see rllib/agents/sac/README.md).
 mspacman-sac-tf:
-    env: MsPacmanNoFrameskip-v4
+    env: ALE/MsPacman-v5
     run: SAC
     stop:
         episode_reward_mean: 800
@@ -10,6 +10,8 @@ mspacman-sac-tf:
     config:
         # Works for both torch and tf.
         framework: tf
+        env_config:
+            frameskip: 1  # no frameskip
         gamma: 0.99
         q_model_config:
             fcnet_hiddens: [512]
@@ -24,7 +26,6 @@ mspacman-sac-tf:
         # paper uses: 0.98 * -log(1/|A|)
         target_entropy: 1.755
         clip_rewards: 1.0
-        no_done_at_end: False
         n_step: 1
         rollout_fragment_length: 1
         train_batch_size: 64

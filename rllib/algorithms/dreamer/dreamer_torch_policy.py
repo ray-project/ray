@@ -169,7 +169,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
         ] = None,
         episode: Optional["Episode"] = None,
     ) -> SampleBatch:
-        """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
+        """Batch format should be in the form of (s_t, a_(t-1), r_t)
         When t=0, the resetted obs is paired with action and reward of 0.
         """
         obs = sample_batch[SampleBatch.OBS]
@@ -230,7 +230,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
         if timestep <= policy.config["prefill_timesteps"]:
             logp = None
             # Random action in space [-1.0, 1.0]
-            eps = torch.rand(1, model.action_space.shape[0], device=obs.device)
+            eps = torch.rand(bsize, model.action_space.shape[0], device=obs.device)
             action = 2.0 * eps - 1.0
             state_batches = model.get_initial_state()
             # batchify the intial states to match the batch size of the obs tensor

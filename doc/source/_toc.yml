@@ -5,6 +5,7 @@ parts:
     chapters:
       - file: ray-overview/index
       - file: ray-overview/installation
+      - file: ray-overview/use-cases
       - file: ray-overview/ray-libraries
 
   - caption: Ray AI Runtime
@@ -41,6 +42,7 @@ parts:
         - file: ray-air/examples/feast_example
         - file: ray-air/examples/automl_with_ray_air
         - file: ray-air/examples/batch_tuning
+        - file: ray-air/examples/batch_forecasting
     - file: ray-air/package-ref
     - file: ray-air/benchmarks
 
@@ -87,7 +89,9 @@ parts:
         title: Ray Tune
         sections:
           - file: tune/getting-started
+            title: "Getting Started"
           - file: tune/key-concepts
+            title: "Key Concepts"
           - file: tune/tutorials/overview
             sections:
               - file: tune/tutorials/tune-run
@@ -104,6 +108,7 @@ parts:
                 title: "Working with Checkpoints"
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
+              - file: tune/tutorials/tune_get_data_in_and_out
               - file: tune/examples/tune_analyze_results
               - file: tune/examples/pbt_guide
                 sections:
@@ -243,7 +248,7 @@ parts:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
-          - file: ray-core/examples/using-ray-with-pytorch-lightning
+          - file: ray-more-libs/using-ray-with-pytorch-lightning
           - file: workflows/index
             title: Ray Workflows (Alpha)
             sections:
@@ -277,7 +282,7 @@ parts:
           - file: ray-core/examples/batch_prediction
           - file: ray-core/examples/batch_training
           - file: ray-core/examples/automl_for_time_series
-      - file: ray-core/package-ref
+      - file: ray-core/api
 
   - caption: Ray Clusters
     chapters:
@@ -326,6 +331,7 @@ parts:
       - file: cluster/running-applications/index
         title: Applications Guide
       - file: cluster/faq
+      - file: cluster/package-overview
 
   - caption: Monitoring and Debugging
     chapters:
@@ -350,4 +356,3 @@ parts:
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
       - file: ray-contribute/whitepaper
-      - file: ray-use-cases/overview

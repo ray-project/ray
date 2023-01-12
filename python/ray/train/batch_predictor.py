@@ -99,7 +99,7 @@ class BatchPredictor:
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
-    ) -> ray.data.Dataset:
+    ) -> Union[ray.data.Dataset, ray.data.DatasetPipeline]:
         """Run batch scoring on a Dataset.
 
         Args:
@@ -172,13 +172,12 @@ class BatchPredictor:
 
         predictor_cls = self._predictor_cls
         checkpoint_ref = self._checkpoint_ref
-        predictor_kwargs = self._predictor_kwargs
         override_prep = self._override_preprocessor
         # Automatic set use_gpu in predictor constructor if user provided
         # explicit GPU resources
         if (
             "use_gpu" in inspect.signature(predictor_cls.from_checkpoint).parameters
-            and "use_gpu" not in predictor_kwargs
+            and "use_gpu" not in self._predictor_kwargs
             and num_gpus_per_worker > 0
         ):
             logger.info(
@@ -186,7 +185,9 @@ class BatchPredictor:
                 "Automatically enabling GPU prediction for this predictor. To "
                 "disable set `use_gpu` to `False` in `BatchPredictor.predict`."
             )
-            predictor_kwargs["use_gpu"] = True
+            self._predictor_kwargs["use_gpu"] = True
+
+        predictor_kwargs_ref = ray.put(self._predictor_kwargs)
 
         # In case of [arrow block] -> [X] -> [Pandas UDF] -> [Y] -> [TorchPredictor]
         # We have two places where we can chose data format with less conversion cost.
@@ -204,6 +205,7 @@ class BatchPredictor:
         class ScoringWrapper:
             def __init__(self):
                 checkpoint = ray.get(checkpoint_ref)
+                predictor_kwargs = ray.get(predictor_kwargs_ref)
                 self._predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )
@@ -306,6 +308,10 @@ class BatchPredictor:
             batch_size=batch_size,
             **ray_remote_args,
         )
+
+        if isinstance(prediction_results, ray.data.Dataset):
+            # Force execution because Dataset uses lazy execution by default.
+            prediction_results.fully_executed()
 
         return prediction_results
 
@@ -442,11 +448,7 @@ class BatchPredictor:
         if preprocessor is None:
             # No preprocessor, just use the predictor format.
             return self._predictor_cls._batch_format_to_use()
-        elif hasattr(preprocessor, "preprocessors"):
-            # For Chain preprocessor, we picked the first one as entry point.
-            # TODO (jiaodong): We should revisit if our Chain preprocessor is
-            # still optimal with context of lazy execution.
-            preprocessor = preprocessor.preprocessors[0]
+        # Code dealing with Chain preprocessor is in Chain._determine_transform_to_use
 
         # Use same batch format as first preprocessor to minimize data copies.
         return preprocessor._determine_transform_to_use(dataset_block_format)

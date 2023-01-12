@@ -1,6 +1,7 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import random
+import tree  # pip install dm-tree
 import unittest
 
 import ray
@@ -11,8 +12,7 @@ from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent, MultiAgentEnvWrapper
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.rollout_worker import get_global_worker
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.rollout_worker import get_global_worker, RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import (
@@ -43,30 +43,30 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_basic_mock(self):
         env = BasicMultiAgent(4)
-        obs = env.reset()
+        obs, info = env.reset()
         self.assertEqual(obs, {0: 0, 1: 0, 2: 0, 3: 0})
         for _ in range(24):
-            obs, rew, done, info = env.step({0: 0, 1: 0, 2: 0, 3: 0})
+            obs, rew, done, truncated, info = env.step({0: 0, 1: 0, 2: 0, 3: 0})
             self.assertEqual(obs, {0: 0, 1: 0, 2: 0, 3: 0})
             self.assertEqual(rew, {0: 1, 1: 1, 2: 1, 3: 1})
             self.assertEqual(
                 done, {0: False, 1: False, 2: False, 3: False, "__all__": False}
             )
-        obs, rew, done, info = env.step({0: 0, 1: 0, 2: 0, 3: 0})
+        obs, rew, done, truncated, info = env.step({0: 0, 1: 0, 2: 0, 3: 0})
         self.assertEqual(done, {0: True, 1: True, 2: True, 3: True, "__all__": True})
 
     def test_round_robin_mock(self):
         env = RoundRobinMultiAgent(2)
-        obs = env.reset()
+        obs, info = env.reset()
         self.assertEqual(obs, {0: 0})
         for _ in range(5):
-            obs, rew, done, info = env.step({0: 0})
+            obs, rew, done, truncated, info = env.step({0: 0})
             self.assertEqual(obs, {1: 0})
             self.assertEqual(done["__all__"], False)
-            obs, rew, done, info = env.step({1: 0})
+            obs, rew, done, truncated, info = env.step({1: 0})
             self.assertEqual(obs, {0: 0})
             self.assertEqual(done["__all__"], False)
-        obs, rew, done, info = env.step({0: 0})
+        obs, rew, done, truncated, info = env.step({0: 0})
         self.assertEqual(done["__all__"], True)
 
     def test_no_reset_until_poll(self):
@@ -77,67 +77,85 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_vectorize_basic(self):
         env = MultiAgentEnvWrapper(lambda v: BasicMultiAgent(2), [], 2)
-        obs, rew, dones, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {}, 1: {}})
         self.assertEqual(
-            dones,
+            terminateds,
             {
                 0: {"__all__": False},
                 1: {"__all__": False},
             },
         )
+        self.assertEqual(truncateds, terminateds)
         for _ in range(24):
             env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
-            obs, rew, dones, _, _ = env.poll()
+            obs, rew, terminateds, truncateds, _, _ = env.poll()
             self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
             self.assertEqual(rew, {0: {0: 1, 1: 1}, 1: {0: 1, 1: 1}})
             self.assertEqual(
-                dones,
+                terminateds,
                 {
                     0: {0: False, 1: False, "__all__": False},
                     1: {0: False, 1: False, "__all__": False},
                 },
             )
+            self.assertEqual(truncateds, terminateds)
         env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
-        obs, rew, dones, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(
-            dones,
+            terminateds,
             {
                 0: {0: True, 1: True, "__all__": True},
                 1: {0: True, 1: True, "__all__": True},
             },
         )
+        self.assertEqual(truncateds, terminateds)
 
         # Reset processing
         self.assertRaises(
             ValueError, lambda: env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         )
-        self.assertEqual(env.try_reset(0), {0: {0: 0, 1: 0}})
-        self.assertEqual(env.try_reset(1), {1: {0: 0, 1: 0}})
+        init_obs, init_infos = env.try_reset(0)
+        self.assertEqual(init_obs, {0: {0: 0, 1: 0}})
+        self.assertEqual(init_infos, {0: {0: {}, 1: {}}})
+        init_obs, init_infos = env.try_reset(1)
+        self.assertEqual(init_obs, {1: {0: 0, 1: 0}})
+        self.assertEqual(init_infos, {1: {0: {}, 1: {}}})
+
         env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
-        obs, rew, dones, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {0: 1, 1: 1}, 1: {0: 1, 1: 1}})
         self.assertEqual(
-            dones,
+            terminateds,
             {
                 0: {0: False, 1: False, "__all__": False},
                 1: {0: False, 1: False, "__all__": False},
             },
         )
+        self.assertEqual(truncateds, terminateds)
 
     def test_vectorize_round_robin(self):
         env = MultiAgentEnvWrapper(lambda v: RoundRobinMultiAgent(2), [], 2)
-        obs, rew, dones, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
         self.assertEqual(rew, {0: {}, 1: {}})
+        self.assertEqual(truncateds, {0: {"__all__": False}, 1: {"__all__": False}})
         env.send_actions({0: {0: 0}, 1: {0: 0}})
-        obs, rew, dones, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {1: 0}, 1: {1: 0}})
+        self.assertEqual(
+            truncateds,
+            {0: {"__all__": False, 1: False}, 1: {"__all__": False, 1: False}},
+        )
         env.send_actions({0: {1: 0}, 1: {1: 0}})
-        obs, rew, dones, _, _ = env.poll()
+        obs, rew, terminateds, truncateds, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
+        self.assertEqual(
+            truncateds,
+            {0: {"__all__": False, 0: False}, 1: {"__all__": False, 0: False}},
+        )
 
     def test_multi_agent_sample(self):
         def policy_mapping_fn(agent_id, episode, worker, **kwargs):
@@ -176,10 +194,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, episode, worker, **kwargs: "p{}".format(
-                        agent_id % 2
-                    )
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id % 2)
                 ),
             ),
         )
@@ -199,33 +215,13 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwargs: "p{}".format(agent_id % 2)
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id % 2)
                 ),
             ),
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 200)
-
-    def test_multi_agent_sample_with_horizon(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: BasicMultiAgent(5),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig()
-            .rollouts(
-                rollout_fragment_length=50,
-                num_rollout_workers=0,
-                horizon=10,  # test with episode horizon set
-            )
-            .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwarg: "p{}".format(agent_id % 2)
-                ),
-            ),
-        )
-        batch = ev.sample()
-        self.assertEqual(batch.count, 50)
 
     def test_sample_from_early_done_env(self):
         ev = RolloutWorker(
@@ -239,8 +235,8 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwargs: "p{}".format(agent_id % 2)
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id % 2)
                 ),
             ),
         )
@@ -308,7 +304,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0"},
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
             ),
         )
         batch = ev.sample()
@@ -329,7 +325,11 @@ class TestMultiAgentEnv(unittest.TestCase):
             [100, 100, 100, 100, 0] * 2,
         )
         self.assertEqual(
-            batch.policy_batches["p0"]["dones"].tolist()[:10],
+            batch.policy_batches["p0"]["terminateds"].tolist()[:10],
+            [False, False, False, False, True] * 2,
+        )
+        self.assertEqual(
+            batch.policy_batches["p0"]["truncateds"].tolist()[:10],
             [False, False, False, False, True] * 2,
         )
         self.assertEqual(
@@ -338,7 +338,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         )
 
     def test_custom_rnn_state_values(self):
-        h = {"some": {"arbitrary": "structure", "here": [1, 2, 3]}}
+        h = {"some": {"here": np.array([1.0, 2.0, 3.0])}}
 
         class StatefulPolicy(RandomPolicy):
             def compute_actions(
@@ -352,7 +352,13 @@ class TestMultiAgentEnv(unittest.TestCase):
                 timestep=None,
                 **kwargs
             ):
-                return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
+                obs_shape = (len(obs_batch),)
+                actions = np.zeros(obs_shape, dtype=np.int32)
+                states = tree.map_structure(
+                    lambda x: np.ones(obs_shape + x.shape) * x, h
+                )
+
+                return actions, [states], {}
 
             def get_initial_state(self):
                 return [{}]  # empty dict
@@ -377,11 +383,11 @@ class TestMultiAgentEnv(unittest.TestCase):
         batch = ev.sample()
         batch = convert_ma_batch_to_sample_batch(batch)
         self.assertEqual(batch.count, 5)
-        self.assertEqual(batch["state_in_0"][0], {})
-        self.assertEqual(batch["state_out_0"][0], h)
+        check(batch["state_in_0"][0], {})
+        check(batch["state_out_0"][0], h)
         for i in range(1, 5):
-            self.assertEqual(batch["state_in_0"][i], h)
-            self.assertEqual(batch["state_out_0"][i], h)
+            check(batch["state_in_0"][i], h)
+            check(batch["state_out_0"][i], h)
 
     def test_returning_model_based_rollouts_data(self):
         # TODO(avnishn): This test only works with the old api
@@ -413,6 +419,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                         policy_id=policy_id,
                         env_id=env_id,
                         init_obs=obs_batch[0],
+                        init_infos={},
                     )
                     for t in range(4):
                         builder.add_action_reward_next_obs(
@@ -425,7 +432,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 t=t,
                                 actions=0,
                                 rewards=0,
-                                dones=t == 3,
+                                terminateds=False,
+                                truncateds=t == 3,
                                 infos={},
                                 new_obs=obs_batch[0],
                             ),
@@ -447,7 +455,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             )
             .multi_agent(
                 policies={"p0", "p1"},
-                policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
             ),
         )
         batch = ev.sample()
@@ -490,10 +498,10 @@ class TestMultiAgentEnv(unittest.TestCase):
         )
 
         def gen_policy():
-            config = {
-                "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
-                "n_step": random.choice([1, 2, 3, 4, 5]),
-            }
+            config = PGConfig.overrides(
+                gamma=random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
+                lr=random.choice([0.001, 0.002, 0.003]),
+            )
             return PolicySpec(config=config)
 
         config = (
@@ -505,7 +513,9 @@ class TestMultiAgentEnv(unittest.TestCase):
                     "policy_1": gen_policy(),
                     "policy_2": gen_policy(),
                 },
-                policy_mapping_fn=lambda agent_id, **kwargs: "policy_1",
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "policy_1"
+                ),
             )
             .framework("tf")
         )
@@ -533,18 +543,15 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_space_in_preferred_format(self):
         env = NestedMultiAgentEnv()
-        action_spaces_in_preferred_format = (
+        action_space_in_preferred_format = (
             env._check_if_action_space_maps_agent_id_to_sub_space()
         )
         obs_space_in_preferred_format = (
             env._check_if_obs_space_maps_agent_id_to_sub_space()
         )
-        spaces_in_preferred_format = env._check_if_space_maps_agent_id_to_sub_space()
-        assert action_spaces_in_preferred_format, "Space is not in preferred format."
-        assert obs_space_in_preferred_format, "Space is not in preferred format."
-        assert spaces_in_preferred_format, "Space is not in preferred format."
+        assert action_space_in_preferred_format, "Act space is not in preferred format."
+        assert obs_space_in_preferred_format, "Obs space is not in preferred format."
         env2 = make_multi_agent("CartPole-v1")()
-        spaces_in_preferred_format = env2._check_if_space_maps_agent_id_to_sub_space()
         action_spaces_in_preferred_format = (
             env2._check_if_action_space_maps_agent_id_to_sub_space()
         )
@@ -553,13 +560,10 @@ class TestMultiAgentEnv(unittest.TestCase):
         )
         assert (
             not action_spaces_in_preferred_format
-        ), "Space should not be in preferred format but is."
+        ), "Action space should not be in preferred format but is."
         assert (
             not obs_space_in_preferred_format
-        ), "Space should not be in preferred format but is."
-        assert (
-            not spaces_in_preferred_format
-        ), "Space should not be in preferred format but is."
+        ), "Observation space should not be in preferred format but is."
 
     def test_spaces_sample_contain_in_preferred_format(self):
         env = NestedMultiAgentEnv()

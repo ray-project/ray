@@ -79,11 +79,11 @@ def load_experiments_from_file(
         The experiments dict ready to be passed into `tune.run_experiments()`.
     """
 
-    #
+    # Yaml file.
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
             experiments = yaml.safe_load(f)
-            if stop is not None:
+            if stop is not None and stop != "{}":
                 raise ValueError("`stop` criteria only supported for python files.")
     # Python file case (ensured by file type enum)
     else:
@@ -92,6 +92,7 @@ def load_experiments_from_file(
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
+
         if not hasattr(module, "config"):
             raise ValueError(
                 "Your Python file must contain a 'config' variable "
@@ -127,7 +128,7 @@ def file(
     # File-based arguments.
     config_file: str = cli.ConfigFile,
     # stopping conditions
-    stop: str = cli.Stop,
+    stop: Optional[str] = cli.Stop,
     # Checkpointing
     checkpoint_freq: int = cli.CheckpointFreq,
     checkpoint_at_end: bool = cli.CheckpointAtEnd,

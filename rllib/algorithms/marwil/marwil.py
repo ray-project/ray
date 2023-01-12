@@ -178,7 +178,7 @@ class MARWILConfig(AlgorithmConfig):
     ) -> "Algorithm":
         if not self._set_off_policy_estimation_methods:
             deprecation_warning(
-                old="MARWIL used to have off_policy_estimation_methods "
+                old=r"MARWIL used to have off_policy_estimation_methods "
                 "is and wis by default. This has"
                 "changed to off_policy_estimation_methods: \{\}."
                 "If you want to use an off-policy estimator, specify it in"
@@ -194,9 +194,6 @@ class MARWILConfig(AlgorithmConfig):
 
         if self.beta < 0.0 or self.beta > 1.0:
             raise ValueError("`beta` must be within 0.0 and 1.0!")
-
-        if self.num_gpus > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 
         if self.postprocess_inputs is False and self.beta > 0.0:
             raise ValueError(
