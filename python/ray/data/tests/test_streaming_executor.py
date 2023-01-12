@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 import time
 from unittest.mock import MagicMock
 
@@ -95,7 +96,7 @@ def test_select_operator_to_run():
     topo, _ = build_streaming_topology(o3)
 
     # Test empty.
-    assert select_operator_to_run(topo) == None
+    assert select_operator_to_run(topo) is None
 
     # Test backpressure based on queue length between operators.
     topo[o1].outqueue.append("dummy1")
@@ -143,13 +144,27 @@ def test_pipelined_execution():
 
 # TODO(ekl) remove this test once we have the new backend on by default.
 def test_e2e_streaming_sanity():
-    raise NotImplementedError
     DatasetContext.get_current().new_execution_backend = True
-    result = ray.data.range(5).map(lambda x: x + 1)
-    assert result.take_all() == [1, 2, 3, 4, 5], result
+    DatasetContext.get_current().use_streaming_executor = True
 
-    # Checks new executor was enabled.
-    assert "obj_store_mem_alloc" in result.stats(), result.stats()
+    @ray.remote
+    class Barrier:
+        async def admit(self, x):
+            if x == 4:
+                print("Not allowing 4 to pass")
+                await asyncio.sleep(999)
+            else:
+                print(f"Allowing {x} to pass")
+
+    barrier = Barrier.remote()
+
+    def f(x):
+        ray.get(barrier.admit.remote(x))
+        return x + 1
+
+    # Check we can take the first items even if the last one gets stuck.
+    result = ray.data.range(5, parallelism=5).map(f)
+    assert result.take(4) == [1, 2, 3, 4]
 
 
 if __name__ == "__main__":
