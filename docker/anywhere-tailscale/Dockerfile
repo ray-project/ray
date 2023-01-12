@@ -19,7 +19,7 @@ ENV N2N_INTERFACE=tailscale0
 #ENV N2N_KEY=$RANDOMSTRING
 
 RUN sudo apt-get update \
-        && sudo apt-get install -y --no-install-recommends ca-certificates curl wget lsb-release sudo \ 
+        && sudo apt-get install -y --no-install-recommends ca-certificates curl wget lsb-release \ 
         && sudo apt-get clean \
         && sudo rm -rf /var/lib/apt/lists/*
 
