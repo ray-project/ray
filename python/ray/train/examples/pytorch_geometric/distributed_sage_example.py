@@ -45,7 +45,7 @@ class SAGE(torch.nn.Module):
             for batch_size, n_id, adj in subgraph_loader:
 
                 edge_index, _, size = adj
-                x = x_all[n_id]
+                x = x_all[n_id.to(x_all.device)].to(train.torch.get_device())
                 x_target = x[: size[1]]
                 x = self.convs[i]((x, x_target), edge_index)
                 if i != self.num_layers - 1:
