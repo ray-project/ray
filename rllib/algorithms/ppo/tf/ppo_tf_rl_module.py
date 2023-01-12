@@ -3,18 +3,17 @@ import gymnasium as gym
 from typing import Mapping, Any, List
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-
-from ray.rllib.core.rl_module.encoder_tf import FCTfConfig
-
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-
-from ray.rllib.utils.annotations import override
-
-from ray.rllib.utils.nested_dict import NestedDict
-
+from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.rl_module.encoder_tf import FCTfConfig
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
+from ray.rllib.utils.nested_dict import NestedDict
+
+
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -44,7 +43,8 @@ class PPOTfModule(TfRLModule):
         self.value_function = config.vf_config.build()
         self._obs_space = config.observation_space
         self._action_space = config.action_space
-        self._is_discrete = isinstance(self._action_space, gym.spaces.Discrete)
+        self._is_discrete = isinstance(convert_old_gym_space_to_gymnasium_space(
+            self._action_space), gym.spaces.Discrete)
         self._action_dim = (
             self._action_space.shape[0]
             if not self._is_discrete
@@ -52,32 +52,13 @@ class PPOTfModule(TfRLModule):
         )
 
     @override(TfRLModule)
-    def input_specs_train(self) -> SpecDict:
-        if self._is_discrete:
-            action_spec = TFTensorSpecs("b")
-        else:
-            action_spec = TFTensorSpecs("b, h", h=self._action_dim)
-        spec_dict = {}
-        spec_dict[SampleBatch.ACTIONS] = action_spec
-        spec_dict[SampleBatch.OBS] = TFTensorSpecs("b, h", h=self._obs_space.shape[0])
-        spec = SpecDict(spec_dict)
-        return spec
+    def input_specs_train(self) -> SpecType:
+        return [SampleBatch.OBS, SampleBatch.ACTIONS]
 
     @override(TfRLModule)
     def output_specs_train(self) -> SpecDict:
-        if self._is_discrete:
-            dist_class = tfp.distributions.Categorical
-        else:
-            dist_class = tfp.distributions.MultivariateNormalDiag
-        spec = SpecDict(
-            {
-                SampleBatch.ACTION_DIST: dist_class,
-                SampleBatch.ACTION_LOGP: TFTensorSpecs("b"),
-                SampleBatch.VF_PREDS: TFTensorSpecs("b"),
-                "entropy": None,
-            }
-        )
-        return spec
+        return [SampleBatch.ACTION_DIST, SampleBatch.ACTION_LOGP,
+                    SampleBatch.VF_PREDS, "entropy"]
 
     @override(TfRLModule)
     def _forward_train(self, batch: NestedDict):
@@ -104,14 +85,11 @@ class PPOTfModule(TfRLModule):
 
     @override(TfRLModule)
     def input_specs_inference(self) -> SpecDict:
-        spec_dict = {}
-        spec_dict[SampleBatch.OBS] = TFTensorSpecs("b, h", h=self._obs_space.shape[0])
-        spec = SpecDict(spec_dict)
-        return spec
+        return [SampleBatch.OBS]
 
     @override(TfRLModule)
     def output_specs_inference(self) -> SpecDict:
-        return SpecDict({SampleBatch.ACTION_DIST: tfp.distributions.Deterministic})
+        return [SampleBatch.ACTION_DIST]
 
     @override(TfRLModule)
     def _forward_inference(self, batch) -> Mapping[str, Any]:
@@ -127,15 +105,11 @@ class PPOTfModule(TfRLModule):
 
     @override(TfRLModule)
     def input_specs_exploration(self) -> SpecDict:
-        return super().input_specs_exploration()
+        return self.input_specs_inference()
 
     @override(TfRLModule)
     def output_specs_exploration(self) -> SpecDict:
-        if self._is_discrete:
-            dist_class = tfp.distributions.Categorical
-        else:
-            dist_class = tfp.distributions.MultivariateNormalDiag
-        return SpecDict({SampleBatch.ACTION_DIST: dist_class})
+        return self.output_specs_inference()
 
     @override(TfRLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
