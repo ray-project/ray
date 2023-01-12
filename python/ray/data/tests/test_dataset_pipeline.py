@@ -775,7 +775,11 @@ def test_pipeline_executor_cannot_serialize_once_started(ray_start_regular_share
             return lambda: ds
 
     p1 = ray.data.range(10).repeat()
-    p2 = DatasetPipeline.from_iterable(Iterable(p1.iter_datasets()))
+    # Start the pipeline.
+    data_iter = p1.iter_datasets()
+    next(data_iter)
+
+    p2 = DatasetPipeline.from_iterable(Iterable(data_iter))
     with pytest.raises(RuntimeError) as error:
         p2.split(2)
     assert "PipelineExecutor is not serializable once it has started" in str(error)
