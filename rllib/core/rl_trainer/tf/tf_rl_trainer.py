@@ -42,11 +42,9 @@ class TfRLTrainer(RLTrainer):
     Args:
         module_class: The (MA)RLModule class to use.
         module_kwargs: The kwargs for the (MA)RLModule.
-        optimizer_class: The optimizer class to use.
-        optimizer_kwargs: The kwargs for the optimizer.
-        scaling_config: A mapping that holds the world size and rank of this
-            trainer. Note this is only used for distributed training.
+        optimizer_config: The config for the optimizer.
         distributed: Whether this trainer is distributed or not.
+        in_test: Whether to enable additional logging behavior for testing purposes.
         enable_tf_function: Whether to enable tf.function tracing for the update
             function.
 
@@ -58,8 +56,7 @@ class TfRLTrainer(RLTrainer):
     Example:
         .. code-block:: python
 
-        trainer = MyRLTrainer(module_class, module_kwargs, optimizer_class,
-                optimizer_kwargs, scaling_config)
+        trainer = MyRLTrainer(module_class, module_kwargs, optimizer_config)
         trainer.init_trainer()
         batch = ...
         results = trainer.update(batch)
@@ -91,7 +88,6 @@ class TfRLTrainer(RLTrainer):
         self,
         module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
         module_kwargs: Mapping[str, Any],
-        scaling_config: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
         in_test: bool = False,
@@ -100,7 +96,6 @@ class TfRLTrainer(RLTrainer):
         super().__init__(
             module_class=module_class,
             module_kwargs=module_kwargs,
-            scaling_config=scaling_config,
             optimizer_config=optimizer_config,
             distributed=distributed,
             in_test=in_test,

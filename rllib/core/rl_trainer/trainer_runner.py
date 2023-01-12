@@ -68,8 +68,6 @@ class TrainerRunner:
 
             # TODO: let's not pass this into the config which will cause
             # information leakage into the SARLTrainer about other workers.
-            scaling_config = {"world_size": num_gpus}
-            trainer_config["scaling_config"] = scaling_config
             trainer_config["distributed"] = self._distributed = True
             self.backend_executor.start(
                 train_cls=trainer_class, train_cls_kwargs=trainer_config
@@ -81,8 +79,6 @@ class TrainerRunner:
             ray.get([w.build.remote() for w in self._workers])
 
         else:
-            scaling_config = {"world_size": num_gpus}
-            trainer_config["scaling_config"] = scaling_config
             trainer_config["distributed"] = self._distributed = False
             self._trainer = trainer_class(**trainer_config)
             self._trainer.build()

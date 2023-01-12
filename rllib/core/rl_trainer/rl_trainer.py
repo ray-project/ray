@@ -41,8 +41,8 @@ class RLTrainer:
     Args:
         module_class: The (MA)RLModule class to use.
         module_kwargs: The kwargs for the (MA)RLModule.
-        scaling_config: A mapping that holds the world size and rank of this
-            trainer. Note this is only used for distributed training.
+        optimizer_config: The config for the optimizer.
+        in_test: Whether to enable additional logging behavior for testing purposes.
         distributed: Whether this trainer is distributed or not.
 
     Abstract Methods:
@@ -64,7 +64,6 @@ class RLTrainer:
         trainer = MyRLTrainer(
             module_class,
             module_kwargs,
-            scaling_config,
             optimizer_config
         )
         trainer.build()
@@ -101,7 +100,6 @@ class RLTrainer:
         self,
         module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
         module_kwargs: Mapping[str, Any],
-        scaling_config: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
         in_test: bool = False,
@@ -109,7 +107,6 @@ class RLTrainer:
         # TODO: convert scaling and optimizer configs to dataclasses
         self.module_class = module_class
         self.module_kwargs = module_kwargs
-        self.scaling_config = scaling_config
         self.optimizer_config = optimizer_config
         self.distributed = distributed
         self.in_test = in_test
