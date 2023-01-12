@@ -2007,7 +2007,7 @@ def test_exponential_backoff(mock_get_all_node_ids, mock_deployment_state):
     assert deployment_state._replica_constructor_retry_counter == 6
     last_retry = timer.time()
 
-    for i in range(6):
+    for i in range(7):
         while timer.time() - last_retry < 2**i:
             deployment_state.update()
             assert deployment_state._replica_constructor_retry_counter == 6 + 2 * i

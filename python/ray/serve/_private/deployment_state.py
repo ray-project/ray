@@ -980,8 +980,8 @@ class DeploymentState:
         self._prev_startup_warning: float = time.time()
         # Exponential backoff when retrying a consistently failing deployment
         self._last_retry: float = 0.0
-        self._backoff_time: float = 1.0
-        self._max_backoff: float = 64.0
+        self._backoff_time: int = 1
+        self._max_backoff: int = 64
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
@@ -1327,8 +1327,6 @@ class DeploymentState:
                     ):
                         return replicas_stopped
 
-                    self._backoff_time = min(2 * self._backoff_time, self._max_backoff)
-
                 self._last_retry = time.time()
                 logger.info(
                     f"Adding {to_add} replica{'s' if to_add > 1 else ''} "
@@ -1475,6 +1473,7 @@ class DeploymentState:
         """
         slow_replicas = []
         transitioned_to_running = False
+        replicas_failed = False
         for replica in self._replicas.pop(states=[original_state]):
             start_status = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
@@ -1488,6 +1487,7 @@ class DeploymentState:
                     # Increase startup failure counter if we're tracking it
                     self._replica_constructor_retry_counter += 1
 
+                replicas_failed = True
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
             elif start_status in [
@@ -1506,6 +1506,18 @@ class DeploymentState:
                     self._replicas.add(ReplicaState.STOPPING, replica)
                 else:
                     self._replicas.add(original_state, replica)
+
+        # If replicas have failed enough times, execute exponential backoff
+        # Wait 1, 2, 4, ... seconds before consecutive retries
+        failed_to_start_threshold = min(
+            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+            self._target_state.num_replicas * 3,
+        )
+        if (
+            replicas_failed
+            and self._replica_constructor_retry_counter > failed_to_start_threshold
+        ):
+            self._backoff_time = min(2 * self._backoff_time, self._max_backoff)
 
         return slow_replicas, transitioned_to_running
 
