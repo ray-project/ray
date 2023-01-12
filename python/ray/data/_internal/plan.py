@@ -335,9 +335,17 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
+        context = DatasetContext.get_current()
+        if not ray.available_resources().get("CPU"):
+            logger.get_logger().warning(
+                "Warning: The Ray cluster currently does not have "
+                "any available CPUs. The Dataset job will hang unless more CPUs "
+                "are freed up. A common reason is that cluster resources are "
+                "used by Actors or Tune trials; see the following link "
+                "for more details: "
+                "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
+            )
         if not self.has_computed_output():
-            context = DatasetContext.get_current()
-
             # Read stage is handled with the legacy execution impl for now.
             if (
                 context.new_execution_backend
