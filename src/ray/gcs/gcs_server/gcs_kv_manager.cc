@@ -119,22 +119,29 @@ void RedisInternalKV::Del(const std::string &ns,
                           std::function<void(int64_t)> callback) {
   auto true_key = MakeKey(ns, key);
   if (del_by_prefix) {
-    std::vector<std::string> cmd = {"HKEYS", external_storage_namespace_, true_key + "*"};
+    std::vector<std::string> cmd = {"HKEYS", external_storage_namespace_};
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-        cmd, [this, callback = std::move(callback)](auto redis_reply) {
+        cmd,
+        [this, true_key = std::move(true_key), callback = std::move(callback)](
+            auto redis_reply) {
           const auto &reply = redis_reply->ReadAsStringArray();
+          std::vector<std::string> del_cmd = {"HDEL", external_storage_namespace_};
+          size_t del_num = 0;
+          for (const auto &r : reply) {
+            RAY_CHECK(r.has_value());
+            if (absl::StartsWith(*r, true_key)) {
+              del_cmd.emplace_back(*r);
+              ++del_num;
+            }
+          }
+
           // If there are no keys with this prefix, we don't need to send
           // another delete.
-          if (reply.size() == 0) {
+          if (del_num == 0) {
             if (callback) {
               callback(0);
             }
           } else {
-            std::vector<std::string> del_cmd = {"HDEL", external_storage_namespace_};
-            for (const auto &r : reply) {
-              RAY_CHECK(r.has_value());
-              del_cmd.emplace_back(*r);
-            }
             RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
                 del_cmd, [callback = std::move(callback)](auto redis_reply) {
                   if (callback) {
