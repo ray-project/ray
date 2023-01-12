@@ -406,7 +406,7 @@ class Policy(metaclass=ABCMeta):
                     self.view_requirements[k] = v
 
     def get_connector_throughput_metrics(self) -> Dict:
-        """Get timers from connectors for this policy and build a dict of throughputs."""
+        """Get throughputs from connectors."""
         return {
             "agent_connectors": {
                 name + "_throughput": timer.mean_throughput
