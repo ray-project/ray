@@ -1319,7 +1319,8 @@ class DeploymentState:
                     self._target_state.num_replicas * 3,
                 )
                 if self._replica_constructor_retry_counter >= failed_to_start_threshold:
-                    # Wait 1, 2, 4, ... seconds before consecutive retries
+                    # Wait 1, 2, 4, ... seconds before consecutive retries, with random
+                    # offset added to avoid synchronization
                     if (
                         time.time() - self._last_retry
                         < self._backoff_time + random.uniform(0, 3)
