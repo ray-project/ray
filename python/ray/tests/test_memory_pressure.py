@@ -9,7 +9,6 @@ import ray
 from ray._private import (
     ray_constants,
 )
-from ray._private import test_utils
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import wait_for_condition, raw_metrics
 
@@ -303,7 +302,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
             oom_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3)
         )
 
-    state_api_client = test_utils.get_local_state_client()
+    state_api_client = get_local_state_client()
     result = await state_api_client.get_all_worker_info(timeout=5, limit=10)
     verified = False
     for worker in result.worker_table_data:
@@ -344,7 +343,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
             )
         )
 
-    state_api_client = test_utils.get_local_state_client()
+    state_api_client = get_local_state_client()
     result = await state_api_client.get_all_worker_info(timeout=5, limit=10)
     verified = False
     for worker in result.worker_table_data:

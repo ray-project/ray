@@ -133,7 +133,8 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
         )
 
 
-def test_opentelemetry_conflict():
+def test_opentelemetry_conflict(shutdown_only):
+    ray.init()
     # If opencensus protobuf doesn't conflict, this shouldn't raise an exception.
     # Otherwise, it raises an error saying
     # opencensus/proto/resource/v1/resource.proto:
@@ -141,6 +142,9 @@ def test_opentelemetry_conflict():
     from opentelemetry.exporter.opencensus.trace_exporter import (  # noqa
         OpenCensusSpanExporter,
     )
+
+    # Make sure the similar resource protobuf also doesn't raise an exception.
+    from opentelemetry.proto.resource.v1 import resource_pb2  # noqa
 
 
 if __name__ == "__main__":
