@@ -879,25 +879,23 @@ async def test_api_manager_summarize_tasks(state_api_manager):
     data_source_client.get_all_task_info.side_effect = [
         generate_task_data(
             [
-                generate_task_event(id, first_task_name, node_id=node_id),
-                generate_task_event(b"2345", first_task_name, node_id=node_id),
-                generate_task_event(b"3456", second_task_name, node_id=None),
+                generate_task_event(id, first_task_name, func_or_class=first_task_name, node_id=node_id),
+                generate_task_event(b"2345", first_task_name, func_or_class=first_task_name, node_id=node_id),
+                generate_task_event(b"3456", second_task_name, func_or_class=second_task_name, node_id=None),
                 generate_task_event(
-                    b"4567", first_task_name, node_id=node_id, job_id=b"0002"
+                    b"4567", first_task_name, func_or_class=first_task_name, node_id=node_id, job_id=b"0002"
                 ),
             ]
         )
     ]
     result = await state_api_manager.summarize_tasks(option=SummaryApiOptions())
     data_source_client.get_all_task_info.assert_any_await(timeout=DEFAULT_RPC_TIMEOUT)
-    data = result.result.node_id_to_summary.cluster.summary
+    data = result.result.node_id_to_summary["cluster"].summary
     assert len(data) == 2  # 2 task names
     assert result.total == 4  # 4 total tasks
 
-    verify_schema(TaskSummaryPerFuncOrClassName, data[first_task_name])
-    assert data[first_task_name]["state_counts"]["PENDING_NODE_ASSIGNMENT"] == 3
-    verify_schema(TaskSummaryPerFuncOrClassName, data[second_task_name])
-    assert data[second_task_name]["state_counts"]["PENDING_NODE_ASSIGNMENT"] == 1
+    assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 3
+    assert data[second_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
 
     """
     With job_id filter
@@ -905,25 +903,25 @@ async def test_api_manager_summarize_tasks(state_api_manager):
     data_source_client.get_all_task_info.side_effect = [
         generate_task_data(
             [
-                generate_task_event(id, first_task_name, node_id=node_id),
-                generate_task_event(b"2345", first_task_name, node_id=node_id),
-                generate_task_event(b"3456", second_task_name, node_id=None),
+                generate_task_event(id, first_task_name, func_or_class=first_task_name, node_id=node_id),
+                generate_task_event(b"2345", first_task_name, func_or_class=first_task_name, node_id=node_id),
+                generate_task_event(b"3456", second_task_name, func_or_class=second_task_name, node_id=None),
                 generate_task_event(
-                    b"4567", first_task_name, node_id=node_id, job_id=b"0002"
+                    b"4567", first_task_name, func_or_class=first_task_name, node_id=node_id, job_id=b"0002"
                 ),
             ]
         )
     ]
     result = await state_api_manager.summarize_tasks(
-        option=SummaryApiOptions(filters=[("job_id", "=", "0002")])
+        option=SummaryApiOptions(filters=[("job_id", "=", b"0002".hex())])
     )
     data_source_client.get_all_task_info.assert_any_await(timeout=DEFAULT_RPC_TIMEOUT)
-    data = result.result.node_id_to_summary.cluster.summary
+    data = result.result.node_id_to_summary["cluster"].summary
     assert len(data) == 1  # 1 task name
-    assert result.total == 1  # 1 total task
+    assert result.total == 4  # 4 total task (across all jobs)
+    assert result.num_filtered == 1  # 1 total task (for single job)
 
-    verify_schema(TaskSummaryPerFuncOrClassName, data[second_task_name])
-    assert data[second_task_name]["state_counts"]["PENDING_NODE_ASSIGNMENT"] == 1
+    assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
 
 
 @pytest.mark.skipif(
