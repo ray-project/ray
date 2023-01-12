@@ -142,10 +142,12 @@ def process_completed_tasks(topology: Topology) -> None:
 
     # Call inputs_done() on ops where no more inputs are coming.
     for op, op_state in topology.items():
-        inputs_done = [
-            dep.completed() and not topology[dep].outqueue
-            for dep in op.input_dependencies
-        ]
+        inputs_done = all(
+            [
+                dep.completed() and not topology[dep].outqueue
+                for dep in op.input_dependencies
+            ]
+        )
         if inputs_done and not op_state.inputs_done_called:
             op.inputs_done()
             op_state.inputs_done_called = True

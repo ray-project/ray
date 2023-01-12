@@ -133,7 +133,7 @@ class PhysicalOperator:
         self._input_dependencies = input_dependencies
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
-        self._inputs_complete = False
+        self._inputs_complete = not input_dependencies
 
     @property
     def name(self) -> str:
@@ -150,7 +150,7 @@ class PhysicalOperator:
     def completed(self) -> bool:
         """Return True when this operator is done and all outputs are taken."""
         return (
-            self.inputs_complete
+            self._inputs_complete
             and len(self.get_work_refs()) == 0
             and not self.has_next()
         )
