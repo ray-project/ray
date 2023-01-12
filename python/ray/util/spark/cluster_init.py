@@ -85,6 +85,7 @@ class RayClusterOnSpark:
         self.num_worker_nodes = num_workers_node
         self.temp_dir = temp_dir
         self.cluster_unique_id = cluster_unique_id
+        self.ray_init_options = ray_init_options
 
         self.ray_context = None
         self.is_shutdown = False
@@ -113,6 +114,9 @@ class RayClusterOnSpark:
                 self.ray_context = ray.init(
                     address=self.address, **self.ray_init_options
                 )
+                # Set RAY_ADDRESS so that if user reinit ray context
+                # it still uses this cluster by default.
+                os.environ["RAY_ADDRESS"] = self.address
             except Exception:
                 self.shutdown()
                 raise
@@ -175,6 +179,7 @@ class RayClusterOnSpark:
         if not self.is_shutdown:
             if self.ray_context is not None:
                 self.disconnect()
+            os.environ.pop("RAY_ADDRESS", None)
             if cancel_background_job:
                 try:
                     self._cancel_background_spark_job()
