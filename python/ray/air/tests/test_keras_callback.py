@@ -1,9 +1,13 @@
+from typing import Dict, Tuple
+from unittest.mock import patch
+
+import pytest
 import numpy as np
 import tensorflow as tf
 
 import ray
 from ray.air import session
-from ray.air.integrations.keras import Callback
+from ray.air.integrations.keras import Callback, ReportCheckpointCallback
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.air.config import ScalingConfig
 from ray.train.tensorflow import (
@@ -11,6 +15,119 @@ from ray.train.tensorflow import (
     TensorflowTrainer,
     TensorflowPredictor,
 )
+
+
+class TestReportCheckpointCallback:
+    @pytest.fixture(name="model")
+    def model_fixture(self):
+        model = tf.keras.Sequential(
+            [tf.keras.layers.InputLayer(input_shape=(1,)), tf.keras.layers.Dense(1)]
+        )
+        model.compile(
+            optimizer="sgd",
+            loss="mean_squared_error",
+        )
+        return model
+
+    @patch("ray.air.session.report")
+    @pytest.mark.parametrize(
+        "metrics, expected_metrics_keys",
+        [
+            (None, {"loss", "accuracy", "val_loss", "val_accuracy"}),
+            ("loss", {"loss"}),
+            (["loss", "accuracy"], {"loss", "accuracy"}),
+            ({"spam": "loss"}, {"spam"}),
+        ],
+    )
+    def test_metrics_keys(self, mock_report, metrics, expected_metrics_keys):
+        model = tf.keras.Sequential([tf.keras.layers.Dense(1)])
+        model.compile(
+            optimizer="sgd",
+            loss="mean_squared_error",
+            metrics=["accuracy"],
+        )
+        model.fit(
+            x=np.zeros((1, 1)),
+            y=np.zeros((1, 1)),
+            validation_data=(np.zeros((1, 1)), np.zeros((1, 1))),
+            callbacks=[ReportCheckpointCallback(metrics=metrics)],
+        )
+
+        for (metrics,), _ in ray.air.session.report.call_args_list:
+            assert metrics.keys() == expected_metrics_keys
+
+    @patch("ray.air.session.report")
+    def test_basic(self, mock_report, model):
+        callback = ReportCheckpointCallback()
+        callback.model = model
+
+        callback.on_epoch_end(0, {"loss": 0})
+
+        assert len(ray.air.session.report.call_args_list) == 1
+        metrics, checkpoint = self.parse_call(ray.air.session.report.call_args_list[0])
+        assert metrics == {"loss": 0}
+        assert checkpoint is not None
+
+    @patch("ray.air.session.report")
+    def test_checkpoint_on_multiple_events(self, mock_report, model):
+        callback = ReportCheckpointCallback(
+            checkpoint_on=["epoch_end", "train_batch_end"]
+        )
+        callback.model = model
+
+        callback.on_train_batch_end(0, {"loss": 0})
+        callback.on_epoch_end(0, {"loss": 0})
+
+        assert len(ray.air.session.report.call_args_list) == 2
+        _, first_checkpoint = self.parse_call(ray.air.session.report.call_args_list[0])
+        assert first_checkpoint is not None
+        _, second_checkpoint = self.parse_call(ray.air.session.report.call_args_list[0])
+        assert second_checkpoint is not None
+
+    @patch("ray.air.session.report")
+    def test_report_metrics_on_multiple_events(self, mock_report, model):
+        callback = ReportCheckpointCallback(
+            report_metrics_on=["epoch_end", "train_batch_end"]
+        )
+        callback.model = model
+
+        callback.on_train_batch_end(0, {"loss": 0})
+        callback.on_epoch_end(0, {"loss": 1})
+
+        assert len(ray.air.session.report.call_args_list) == 2
+        first_metric, _ = self.parse_call(ray.air.session.report.call_args_list[0])
+        assert first_metric == {"loss": 0}
+        second_metric, _ = self.parse_call(ray.air.session.report.call_args_list[1])
+        assert second_metric == {"loss": 1}
+
+    @patch("ray.air.session.report")
+    def test_report_and_checkpoint_on_different_events(self, mock_report, model):
+        callback = ReportCheckpointCallback(
+            report_metrics_on="train_batch_end", checkpoint_on="epoch_end"
+        )
+        callback.model = model
+
+        callback.on_train_batch_end(0, {"loss": 0})
+        callback.on_epoch_end(0, {"loss": 1})
+
+        assert len(ray.air.session.report.call_args_list) == 2
+        first_metric, first_checkpoint = self.parse_call(
+            ray.air.session.report.call_args_list[0]
+        )
+        assert first_metric == {"loss": 0}
+        assert first_checkpoint is None
+        second_metric, second_checkpoint = self.parse_call(
+            ray.air.session.report.call_args_list[1]
+        )
+        # We should always include metrics, even if it isn't during one of the events
+        # specified in `report_metrics_on`.
+        assert second_metric == {"loss": 1}
+        assert second_checkpoint is not None
+
+    def parse_call(self, call) -> Tuple[Dict, ray.air.Checkpoint]:
+        (metrics,), kwargs = call
+        checkpoint = kwargs["checkpoint"]
+        return metrics, checkpoint
 
 
 def get_dataset(a=5, b=10, size=1000):
@@ -71,6 +188,11 @@ def test_keras_callback_e2e():
 
     items = np.random.uniform(0, 1, size=(10, 1))
     predictor.predict(data=items)
+
+
+def test_keras_callback_is_deprecated():
+    with pytest.warns(DeprecationWarning):
+        Callback()
 
 
 if __name__ == "__main__":
