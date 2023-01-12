@@ -101,9 +101,8 @@ def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
                 bar.update(1)
                 output.append(op.get_next())
         bar.close()
-    # An operator is finished only after it has no remaining work as well as no
-    # remaining outputs.
-    while op.has_next():
-        output.append(op.get_next())
-    assert not op.get_work_refs(), "Should not have any remaining work"
+    else:
+        while op.has_next():
+            output.append(op.get_next())
+    assert op.completed(), "Should have finished execution of the op."
     return output

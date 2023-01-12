@@ -34,6 +34,7 @@ class AllToAllOperator(PhysicalOperator):
         self._num_outputs = num_outputs
         self._input_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
+        self._completed = False
         self._stats: StatsDict = {}
         super().__init__(name, [input_op])
 
@@ -41,6 +42,7 @@ class AllToAllOperator(PhysicalOperator):
         return self._num_outputs
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
+        assert not self.completed()
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
 
@@ -48,6 +50,10 @@ class AllToAllOperator(PhysicalOperator):
         assert input_index == 0, input_index
         self._output_buffer, self._stats = self._bulk_fn(self._input_buffer)
         self._input_buffer.clear()
+        self._completed = True
+
+    def completed(self) -> bool:
+        return self._completed
 
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0

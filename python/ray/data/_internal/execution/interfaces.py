@@ -146,6 +146,10 @@ class PhysicalOperator:
         ), "PhysicalOperator.__init__() was not called."
         return self._input_dependencies
 
+    def completed(self) -> bool:
+        """Return True when this operator is done and all outputs are taken."""
+        raise NotImplementedError
+
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
         raise NotImplementedError

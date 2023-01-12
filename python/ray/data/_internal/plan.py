@@ -357,7 +357,10 @@ class ExecutionPlan:
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
         gen = iter(block_iter)
-        block_iter = itertools.chain([next(gen)], gen)
+        try:
+            block_iter = itertools.chain([next(gen)], gen)
+        except StopIteration:
+            pass
         return block_iter, executor.get_stats()
 
     def execute(

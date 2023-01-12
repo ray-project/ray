@@ -63,6 +63,7 @@ class MapOperator(PhysicalOperator):
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
         self._output_metadata: List[BlockMetadata] = []
+        self._inputs_done = False
         super().__init__(name, [input_op])
 
     def get_metrics(self) -> Dict[str, int]:
@@ -78,6 +79,7 @@ class MapOperator(PhysicalOperator):
 
     def inputs_done(self, input_index: int) -> None:
         self._execution_state.inputs_done(input_index)
+        self._inputs_done = True
 
     def has_next(self) -> bool:
         return self._execution_state.has_next()
@@ -93,6 +95,11 @@ class MapOperator(PhysicalOperator):
 
     def notify_work_completed(self, task: ray.ObjectRef) -> None:
         self._execution_state.work_completed(task)
+
+    def completed(self) -> bool:
+        return (
+            self._inputs_done and len(self.get_work_refs()) == 0 and not self.has_next()
+        )
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}

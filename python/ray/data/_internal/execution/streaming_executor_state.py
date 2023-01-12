@@ -3,7 +3,7 @@
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Set, Optional
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -34,10 +34,11 @@ class OpState:
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
+        self.finalized_input_indices: Set[int] = set()
 
     def initialize_progress_bar(self, index: int) -> None:
         self.progress_bar = ProgressBar(
-            self.op.name, self.op.num_outputs_total(), index
+            self.op.name, self.op.num_outputs_total() or 1, index
         )
 
     def num_queued(self) -> int:
@@ -107,7 +108,7 @@ def process_completed_tasks(topology: Topology) -> bool:
     """Process any newly completed tasks and update operator state.
 
     Returns:
-        Whether there remain incomplete tasks in the topology.
+        Whether there remain incomplete work (Ray futures) in the topology.
     """
     for op_state in topology.values():
         op_state.refresh_progress_bar()
@@ -135,7 +136,18 @@ def process_completed_tasks(topology: Topology) -> bool:
         while op.has_next():
             op_state.add_output(op.get_next())
 
-    return len(active_tasks)
+    # Call inputs_done() on ops where no more inputs are coming.
+    for op, op_state in topology.items():
+        for i, dep in enumerate(op.input_dependencies):
+            if (
+                dep.completed()
+                and not topology[dep].outqueue
+                and i not in op_state.finalized_input_indices
+            ):
+                op.inputs_done(input_index=i)
+                op_state.finalized_input_indices.add(i)
+
+    return len(active_tasks) > 0
 
 
 def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
