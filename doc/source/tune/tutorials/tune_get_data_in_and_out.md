@@ -44,7 +44,7 @@ from ray import tune
 tuner = Tuner(training_function, tune_config=tune.TuneConfig(num_samples=4))
 ```
 
-## Getting data in
+## Getting data into Tune
 
 First order of business is to provide the inputs for the Trainable. We can broadly separate them into two categories - variables and constants.
 
@@ -56,7 +56,7 @@ Constants are the parameters that are the same for every Trial. Those can be the
 Objects from the outer scope of the `training_function` will also be automatically serialized and sent to Trial Actors, which may lead to unintended behavior. Examples include global locks not working (as each Actor operates on a copy) or general errors related to serialization. Best practice is to not refer to any objects from outer scope in the `training_function`.
 ```
 
-### Search space
+### Passing data into a Tune run through search spaces
 
 ```{note}
 TL;DR - use the `param_space` argument to specify small, serializable constants and variables.
@@ -110,7 +110,7 @@ tuner = Tuner(
 )
 ```
 
-### Parameters
+### Using `tune.with_parameters` access data in Tune runs
 
 ```{note}
 TL;DR - use the `tune.with_parameters` util function to specify large constant parameters.
@@ -172,7 +172,7 @@ tuner = Tuner(
 )
 ```
 
-### Loading data in Trainable
+### Loading data in a Tune Trainable
 
 You can also load data directly in Trainable from e.g. cloud storage, shared file storage such as NFS, or from the local disk of the Trainable worker.
 
@@ -193,13 +193,13 @@ results = tuner.fit()
 ```
 
 
-## Getting data out
+## Getting data out of Ray Tune
 
 We can now run our tuning run using the `training_function` Trainable. The next step is to report *metrics* to Tune that can be used to guide the optimization. We will also want to *checkpoint* our trained models so that we can resume the training after an interruption, and to use them for prediction later.
 
 The [`ray.air.session`](air-session-ref) API is used to get data out of the Trainable workers. `session.report` can be called multiple times in the Trainable function. Each call corresponds to one iteration (epoch, step, tree) of training.
 
-### Reporting metrics
+### Reporting metrics with Tune
 
 *Metrics* are values passed through the `metrics` argument in a `session.report` call. Metrics can be used by Tune [Search Algorithms](search-alg-ref) and [Schedulers](schedulers-ref) to direct the search. After the tuning run is complete, you can [analyze the results](/tune/examples/tune_analyze_results), which include the reported metrics.
 
@@ -247,7 +247,7 @@ tuner = Tuner(
 )
 ```
 
-### Logging metrics with callbacks
+### Logging metrics with Tune callbacks
 
 Every metric logged using `session.report` can be accessed during the tuning run through Tune [Callbacks](tune-logging). Ray AIR provides [several built-in integrations](air-builtin-callbacks) with popular frameworks, such as MLFlow, Weights & Biases, CometML and more. You can also use the [Callback API](tune-callbacks-docs) to create your own callbacks.
 
@@ -293,9 +293,9 @@ tuner = Tuner(
 )
 ```
 
-### Checkpoints & other artifacts
+### Getting data out of Tune using checkpoints & other artifacts
 
-Aside from metrics, you may want to save the state of your trained model and any other artifacts to allow resumption from training failure and further inspection and usage. Those cannot be saved as metrics, as they often are far too large and may not be easily serializable. Finally, they should be persisted on disk or cloud storage to allow access after the Tune run is interrupted or terminated.
+Aside from metrics, you may want to save the state of your trained model and any other artifacts to allow resumption from training failure and further inspection and usage. Those cannot be saved as metrics, as they are often far too large and may not be easily serializable. Finally, they should be persisted on disk or cloud storage to allow access after the Tune run is interrupted or terminated.
 
 Ray AIR (which contains Ray Tune) provides a [`Checkpoint`](air-checkpoints-doc) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage) and used between different AIR components.
 
@@ -520,7 +520,7 @@ results.get_dataframe()
 Checkpoints, metrics, and the log directory for each trial can be accessed through the `ResultGrid` output of a Tune experiment. For more information on how to interact with the returned `ResultGrid`, see {doc}`/tune/examples/tune_analyze_results`.
 
 
-### How do I access results after I am finished?
+### How do I access Tune results after I am finished?
 
 After you have finished running the Python session, you can still access the results and checkpoints. By default, Tune will save the experiment results to the `~/ray_results` local directory. You can configure Tune to persist results in the cloud as well. See {ref}`tune-checkpoint-syncing` for more information on how to configure syncing.
 
