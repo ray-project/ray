@@ -35,7 +35,6 @@ from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
@@ -678,30 +677,8 @@ class Algorithm(Trainable):
             # space. It should be part of the a globally accessible config that is not
             # the worker.
             worker = self.workers.local_worker()
-
-            # TODO: The constructor is not clean and comprehensive.
-            self.trainer_runner = TrainerRunner(
-                trainer_class=self.config.rl_trainer_class,
-                # TODO: What should be for example scaling_config? it's not clear what
-                # should be passed in as trainer_config and what will be inferred
-                trainer_config={
-                    "module_class": self.config.rl_module_class,
-                    "module_config": {
-                        "observation_space": worker.observation_space,
-                        "action_space": worker.action_space,
-                        "model_config": self.config.model,
-                    },
-                    # TODO: should this be inferred inside the constructor?
-                    "distributed": self.config.num_gpus > 1,
-                    # TODO: add this
-                    # "enable_tf_function": self.config.eager_tracing,
-                },
-                compute_config={
-                    "num_gpus": self.config.num_gpus,
-                    # TODO: add this
-                    # "fake_gpus": self.config._fake_gpus,
-                },
-            )
+            trainer_runner_config = self.config.get_trainer_runner_config(worker)
+            self.trainer_runner = trainer_runner_config.build()
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)

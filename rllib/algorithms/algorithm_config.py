@@ -15,8 +15,9 @@ from typing import (
 )
 
 import ray
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.rl_trainer import TrainerRunnerConfig
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -37,7 +38,7 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.from_config import from_config, NotProvided
 from ray.rllib.utils.gym import (
     convert_old_gym_space_to_gymnasium_space,
     try_import_gymnasium_and_gym,
@@ -89,47 +90,6 @@ if TYPE_CHECKING:
     from ray.rllib.core.rl_trainer import RLTrainer
 
 logger = logging.getLogger(__name__)
-
-
-class _NotProvided:
-    """Singleton class to provide a "not provided" value for AlgorithmConfig signatures.
-
-    Using the only instance of this class indicates that the user does NOT wish to
-    change the value of some property.
-
-    Examples:
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        >>> config = AlgorithmConfig()
-        >>> # Print out the default learning rate.
-        >>> print(config.lr)
-        ... 0.001
-        >>> # Print out the default `preprocessor_pref`.
-        >>> print(config.preprocessor_pref)
-        ... "deepmind"
-        >>> # Will only set the `preprocessor_pref` property (to None) and leave
-        >>> # all other properties at their default values.
-        >>> config.training(preprocessor_pref=None)
-        >>> config.preprocessor_pref is None
-        ... True
-        >>> # Still the same value (didn't touch it in the call to `.training()`.
-        >>> print(config.lr)
-        ... 0.001
-    """
-
-    class __NotProvided:
-        pass
-
-    instance = None
-
-    def __init__(self):
-        if _NotProvided.instance is None:
-            _NotProvided.instance = _NotProvided.__NotProvided()
-
-
-# Use this object as default values in all method signatures of
-# AlgorithmConfig, indicating that the respective property should NOT be touched
-# in the call.
-NotProvided = _NotProvided()
 
 
 # TODO (Kourosh): Move this to rllib.utils.importlib
@@ -2632,6 +2592,36 @@ class AlgorithmConfig:
             a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCTrainer).
         """
         raise NotImplementedError
+
+    def get_trainer_runner_config(
+        self, worker: RolloutWorker, validate: bool = False
+    ) -> TrainerRunnerConfig:
+
+        if not self._is_frozen:
+            raise ValueError(
+                "Cannot call `get_trainer_runner_config()` on an unfrozen "
+                "AlgorithmConfig! Please call `freeze()` first."
+            )
+
+        config = (
+            TrainerRunnerConfig()
+            .module(
+                module_class=self.rl_module_class,
+                observation_space=worker.observation_space,
+                action_space=worker.action_space,
+                model_config=self.model_config,
+            )
+            .trainer(
+                trainer_class=self.rl_trainer_class,
+                eager_tracing=self.eager_tracing,
+            )
+            .resources(num_gpus=self.num_gpus, fake_gpus=self._fake_gpus)
+        )
+
+        if validate:
+            config.validate()
+
+        return config
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
