@@ -280,8 +280,9 @@ if __name__ == "__main__":
     num_gpus = 1 if use_gpu else 0
     num_cpus = 0 if use_gpu else 1
 
-    # each file is 2GBs
-    stream_window_size = 2 * 1024 * 1024 * 1024
+    # Each file is 2GBs. Use 10% of available object store
+    # memory (256GiB on g4dn.16xlarge).
+    max_object_store_memory_fraction = 0.1
 
     trainer = TorchTrainer(
         train_func,
@@ -294,11 +295,10 @@ if __name__ == "__main__":
         ),
         dataset_config={
             "train": DatasetConfig(
-                use_stream_api=True,
-                stream_window_size=stream_window_size,
+                max_object_store_memory_fraction=max_object_store_memory_fraction,
                 global_shuffle=True,
             ),
-            "test": DatasetConfig(use_stream_api=False),
+            "test": DatasetConfig(),
         },
     )
     results = trainer.fit()

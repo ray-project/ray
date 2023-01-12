@@ -68,6 +68,7 @@ Consuming DatasetPipelines
    DatasetPipeline.show_windows
    DatasetPipeline.take
    DatasetPipeline.take_all
+   DatasetPipeline.iterator
    DatasetPipeline.iter_rows
    DatasetPipeline.iter_batches
    DatasetPipeline.iter_torch_batches

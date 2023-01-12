@@ -597,11 +597,7 @@ if __name__ == "__main__":
         train_func,
         train_loop_config=config,
         datasets=datasets,
-        dataset_config={
-            "train": DatasetConfig(
-                use_stream_api=True, stream_window_size=-1, global_shuffle=True
-            )
-        },
+        dataset_config={"train": DatasetConfig(global_shuffle=True)},
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             use_gpu=use_gpu,

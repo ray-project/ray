@@ -27,9 +27,12 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
+from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs, batch_blocks
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -40,7 +43,11 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.util import _estimate_available_parallelism, _is_local_scheme
+from ray.data._internal.util import (
+    _estimate_available_parallelism,
+    _is_local_scheme,
+    _is_tensor_schema,
+)
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
@@ -58,7 +65,6 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -123,6 +129,7 @@ if TYPE_CHECKING:
 
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
+    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
 logger = logging.getLogger(__name__)
@@ -131,7 +138,6 @@ TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
 
-TorchTensorBatchType = Union["torch.Tensor", Dict[str, "torch.Tensor"]]
 TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 
 
@@ -2449,7 +2455,7 @@ class Dataset(Generic[T]):
         self,
         path: str,
         *,
-        column: str = VALUE_COL_NAME,
+        column: str = TENSOR_COLUMN_NAME,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -2630,6 +2636,23 @@ class Dataset(Generic[T]):
         finally:
             progress.close()
 
+    def iterator(self) -> DatasetIterator:
+        """Return a :class:`~ray.data.DatasetIterator` that
+        can be used to repeatedly iterate over the dataset.
+
+        Examples:
+            >>> import ray
+            >>> for batch in ray.data.range(
+            ...     1000000
+            ... ).iterator().iter_batches(): # doctest: +SKIP
+            ...     print(batch) # doctest: +SKIP
+
+        .. note::
+            It is recommended to use ``DatasetIterator`` methods over directly
+            calling methods such as ``iter_batches()``.
+        """
+        return BulkDatasetIterator(self)
+
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the dataset.
 
@@ -2751,7 +2774,7 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[TorchTensorBatchType]:
+    ) -> Iterator["TorchTensorBatchType"]:
         """Return a local batched iterator of Torch Tensors over the dataset.
 
         This iterator will yield single-tensor batches if the underlying dataset
@@ -4063,18 +4086,16 @@ class Dataset(Generic[T]):
             return list
 
         if isinstance(schema, (PandasBlockSchema, pa.Schema)):
-            if schema.names == [VALUE_COL_NAME]:
+            if schema.names == [TENSOR_COLUMN_NAME]:
                 return np.ndarray
             return pd.DataFrame
 
     def _is_tensor_dataset(self) -> bool:
         """Return ``True`` if this dataset is a tensor dataset."""
-        from ray.air.constants import TENSOR_COLUMN_NAME
-
         schema = self.schema()
         if schema is None or isinstance(schema, type):
             return False
-        return schema.names == [TENSOR_COLUMN_NAME]
+        return _is_tensor_schema(schema.names)
 
     def dataset_format(self) -> BlockFormat:
         """The format of the dataset's underlying data blocks. Possible values
