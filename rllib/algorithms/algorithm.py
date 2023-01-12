@@ -673,9 +673,10 @@ class Algorithm(Trainable):
                 )
 
         self.trainer_runner = None
-        if self.config.get("_enable_trainer_runner", False):
+        if self.config._enable_trainer_runner_api:
             # TODO (Kourosh/Avnishn) worker should not give us observation/action
-            # space. It should be part of the global config.
+            # space. It should be part of the a globally accessible config that is not 
+            # the worker. 
             worker = self.workers.local_worker()
 
             # TODO: The constructor is not clean and comprehensive.
@@ -1344,7 +1345,7 @@ class Algorithm(Trainable):
             # cases should use the multi-GPU optimizer, even if only using 1 GPU).
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
-            if self.config.get("_enable_trainer_runner", False):
+            if self.config._enable_trainer_runner_api:
                 train_results = self.trainer_runner.update(train_batch)
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
@@ -1360,7 +1361,7 @@ class Algorithm(Trainable):
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.config.get("_enable_trainer_runner", False):
+            if self.config._enable_trainer_runner_api:
                 # TODO (Avnish): Implement this on trainer_runner.
                 # TODO (Kourosh): figure out how we are going to sync MARLModule
                 # weights to MARLModule weights under the policy_map objects?
