@@ -473,4 +473,13 @@ public class CrossLanguageInvocationTest extends BaseTest {
             .remote();
     Assert.assertEquals(true, res.get());
   }
+
+  @Test
+  public void testCallingPythonActorNotFound() {
+    PyActorHandle actor =
+        Ray.actor(PyActorClass.of(PYTHON_MODULE, "Counter"), "1".getBytes()).remote();
+    ObjectRef<byte[]> res =
+        actor.task(PyActorMethod.of("unknown_py_function", byte[].class), "1".getBytes()).remote();
+    Assert.expectThrows(CrossLanguageException.class, res::get);
+  }
 }
