@@ -23,48 +23,52 @@
 namespace ray {
 namespace rpc {
 
-class KeepAliveSocketMutator : public ::grpc::grpc_socket_mutator {
+class KeepAliveSocketMutator : public grpc_socket_mutator {
  public:
-  KeepAliveSocketMutator()::grpc::grpc_socket_mutator_init(this, &VTable);
-} private : static KeepAliveSocketMutator *Cast(::grpc::grpc_socket_mutator *mutator) {
-  return static_cast<KeepAliveSocketMutator *>(mutator);
-}
+  KeepAliveSocketMutator() : { grpc_socket_mutator_init(this, &VTable); }
 
-template <typename TVal>
-bool SetOption(int fd, int level, int optname, const TVal &value) {
-  return setsockopt(
-             fd, level, optname, reinterpret_cast<const char *>(&value), sizeof(value)) ==
-         0;
-}
-bool SetOption(int fd) {
-  if (!SetOption(fd, SOL_SOCKET, SO_KEEPALIVE, 1)) {
-    Cerr << Sprintf("Failed to set SO_KEEPALIVE option: %s", strerror(errno)) << Endl;
-    return false;
+ private:
+  static KeepAliveSocketMutator *Cast(grpc_socket_mutator *mutator) {
+    return static_cast<KeepAliveSocketMutator *>(mutator);
   }
-  return true;
-}
-static bool Mutate(int fd, ::grpc::grpc_socket_mutator *mutator) {
-  auto self = Cast(mutator);
-  return self->SetOption(fd);
-}
-static int Compare(::grpc::grpc_socket_mutator *a, ::grpc::grpc_socket_mutator *b) {
-  const auto *selfA = Cast(a);
-  const auto *selfB = Cast(b);
-  auto tupleA = std::make_tuple(selfA->Idle_, selfA->Count_, selfA->Interval_);
-  auto tupleB = std::make_tuple(selfB->Idle_, selfB->Count_, selfB->Interval_);
-  return tupleA < tupleB ? -1 : tupleA > tupleB ? 1 : 0;
-}
-static void Destroy(::grpc::grpc_socket_mutator *mutator) { delete Cast(mutator); }
-static bool Mutate2(const ::grpc::grpc_mutate_socket_info *info,
-                    ::grpc::grpc_socket_mutator *mutator) {
-  auto self = Cast(mutator);
-  return self->SetOption(info->fd);
-}
 
-static grpc_socket_mutator_vtable VTable;
+  template <typename TVal>
+  bool SetOption(int fd, int level, int optname, const TVal &value) {
+    return setsockopt(fd,
+                      level,
+                      optname,
+                      reinterpret_cast<const char *>(&value),
+                      sizeof(value)) == 0;
+  }
+  bool SetOption(int fd) {
+    if (!SetOption(fd, SOL_SOCKET, SO_KEEPALIVE, 1)) {
+      Cerr << Sprintf("Failed to set SO_KEEPALIVE option: %s", strerror(errno)) << Endl;
+      return false;
+    }
+    return true;
+  }
+  static bool Mutate(int fd, grpc_socket_mutator *mutator) {
+    auto self = Cast(mutator);
+    return self->SetOption(fd);
+  }
+  static int Compare(grpc_socket_mutator *a, grpc_socket_mutator *b) {
+    const auto *selfA = Cast(a);
+    const auto *selfB = Cast(b);
+    auto tupleA = std::make_tuple(selfA->Idle_, selfA->Count_, selfA->Interval_);
+    auto tupleB = std::make_tuple(selfB->Idle_, selfB->Count_, selfB->Interval_);
+    return tupleA < tupleB ? -1 : tupleA > tupleB ? 1 : 0;
+  }
+  static void Destroy(grpc_socket_mutator *mutator) { delete Cast(mutator); }
+  static bool Mutate2(const ::grpc::grpc_mutate_socket_info *info,
+                      grpc_socket_mutator *mutator) {
+    auto self = Cast(mutator);
+    return self->SetOption(info->fd);
+  }
+
+  static grpc_socket_mutator_vtable VTable;
 };
 
-::grpc::grpc_socket_mutator_vtable KeepAliveSocketMutator::VTable = {
+grpc_socket_mutator_vtable KeepAliveSocketMutator::VTable = {
     &KeepAliveSocketMutator::Mutate,
     &KeepAliveSocketMutator::Compare,
     &KeepAliveSocketMutator::Destroy,

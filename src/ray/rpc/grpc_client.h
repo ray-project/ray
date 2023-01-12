@@ -23,6 +23,7 @@
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/common.h"
+#include "ray/rpc/grpc_socket_mutator.h"
 
 namespace ray {
 namespace rpc {
@@ -53,10 +54,13 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
     arguments = grpc::ChannelArguments();
   }
 
+  static KeepAliveSocketMutator kKeepAliveSocketMutator;
+
   arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
                     ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
   arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
   arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
+  arguments->SetSocketMutator(&kKeepAliveSocketMutator);
 
   std::shared_ptr<grpc::Channel> channel;
   if (::RayConfig::instance().USE_TLS()) {
