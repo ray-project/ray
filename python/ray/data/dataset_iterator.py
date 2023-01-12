@@ -170,10 +170,10 @@ class DatasetIterator(abc.ABC):
 
         Examples:
             >>> import ray
-            >>> it = ray.data.read_csv(
+            >>> ds = ray.data.read_csv(
             ...     "s3://anonymous@air-example-data/iris.csv"
-            ... ).iterator()
-            >>> it
+            ... )
+            >>> it = ds.iterator(); it
             DatasetIterator(Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64}))
 
             If your model accepts a single tensor as input, specify a single feature column.
