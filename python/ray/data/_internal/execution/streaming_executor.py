@@ -14,7 +14,6 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
-    dispatch_next_task,
 )
 from ray.data._internal.stats import DatasetStats
 
@@ -79,11 +78,16 @@ class StreamingExecutor(Executor):
         Returns:
             True if we should continue running the scheduling loop.
         """
-        keep_going = process_completed_tasks(topology)
+
+        # Note: calling process_completed_tasks() is expensive since it incurs
+        # ray.wait() overhead, so make sure to allow multiple dispatch per call.
+        process_completed_tasks(topology)
+
+        # Dispatch as many operators as we can for completed tasks.
         op = select_operator_to_run(topology)
         while op is not None:
-            dispatch_next_task(topology[op])
-            process_completed_tasks(topology)
+            topology[op].dispatch_next_task()
             op = select_operator_to_run(topology)
-            keep_going = True
-        return keep_going
+
+        # Keep going until all operators run to completion.
+        return not all(op.completed() for op in topology)

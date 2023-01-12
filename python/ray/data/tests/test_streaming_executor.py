@@ -14,7 +14,6 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
-    dispatch_next_task,
 )
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -64,7 +63,7 @@ def test_process_completed_tasks():
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
-    assert process_completed_tasks(topo) is False
+    process_completed_tasks(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
     # Test processing completed work items.
@@ -73,7 +72,7 @@ def test_process_completed_tasks():
     o2.get_work_refs = MagicMock(return_value=[sleep_ref, done_ref])
     o2.notify_work_completed = MagicMock()
     o2.inputs_done = MagicMock()
-    assert process_completed_tasks(topo) is True
+    process_completed_tasks(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
     o2.inputs_done.assert_not_called()
 
@@ -83,7 +82,7 @@ def test_process_completed_tasks():
     o2.inputs_done = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
-    assert process_completed_tasks(topo) is False
+    process_completed_tasks(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
     o2.inputs_done.assert_called_once_with(input_index=0)
 
@@ -118,10 +117,18 @@ def test_dispatch_next_task():
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
     op_state = OpState(o2)
-    o2.add_input = MagicMock()
+
+    # TODO: test multiple inqueues with the union operator.
     op_state.inqueues[0].append("dummy1")
-    dispatch_next_task(op_state)
+    op_state.inqueues[0].append("dummy2")
+
+    o2.add_input = MagicMock()
+    op_state.dispatch_next_task()
     assert o2.add_input.called_once_with("dummy1")
+
+    o2.add_input = MagicMock()
+    op_state.dispatch_next_task()
+    assert o2.add_input.called_once_with("dummy2")
 
 
 def test_pipelined_execution():

@@ -38,6 +38,7 @@ def test_input_data_buffer(ray_start_regular_shared):
     op = InputDataBuffer(inputs)
 
     # Check we return all bundles in order.
+    assert not op.completed()
     assert _take_outputs(op) == [[1, 2], [3], [4, 5]]
     assert op.completed()
 
@@ -57,6 +58,7 @@ def test_all_to_all_operator():
     op.inputs_done(0)
 
     # Check we return transformed bundles.
+    assert not op.completed()
     assert _take_outputs(op) == [[1, 2], [3, 4]]
     stats = op.get_stats()
     assert "FooStats" in stats
@@ -77,7 +79,9 @@ def test_map_operator_bulk(ray_start_regular_shared):
         op.notify_work_completed(work)
 
     # Check we return transformed bundles in order.
+    assert not op.completed()
     assert _take_outputs(op) == [[i * 2] for i in range(100)]
+    assert op.completed()
 
     # Check dataset stats.
     stats = op.get_stats()
@@ -89,7 +93,6 @@ def test_map_operator_bulk(ray_start_regular_shared):
     assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(8800, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
-    assert op.completed()
 
 
 def test_map_operator_streamed(ray_start_regular_shared):

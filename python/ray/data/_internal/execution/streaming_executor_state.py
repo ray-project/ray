@@ -61,6 +61,13 @@ class OpState:
                 f"{self.op.name}: {self.num_active_tasks()} active, {queued} queued"
             )
 
+    def dispatch_next_task(self) -> None:
+        for i, inqueue in enumerate(self.inqueues):
+            if inqueue:
+                self.op.add_input(inqueue.pop(0), input_index=i)
+                return
+        assert False, "Nothing to dispatch"
+
 
 def build_streaming_topology(dag: PhysicalOperator) -> Topology:
     """Build the streaming operator state topology for the given DAG.
@@ -104,32 +111,30 @@ def build_streaming_topology(dag: PhysicalOperator) -> Topology:
     return topology, DatasetStats(stages={}, parent=None)
 
 
-def process_completed_tasks(topology: Topology) -> bool:
-    """Process any newly completed tasks and update operator state.
-
-    Returns:
-        Whether there remain incomplete work (Ray futures) in the topology.
-    """
+def process_completed_tasks(topology: Topology, up_only: bool = False) -> None:
+    """Process any newly completed tasks and update operator state."""
     for op_state in topology.values():
         op_state.refresh_progress_bar()
 
     # Update active tasks.
     active_tasks: Dict[ray.ObjectRef, PhysicalOperator] = {}
-    for op in topology:
-        for ref in op.get_work_refs():
-            active_tasks[ref] = op
 
-    # Process completed Ray tasks and notify operators.
-    if active_tasks:
-        completed, _ = ray.wait(
-            list(active_tasks),
-            num_returns=len(active_tasks),
-            fetch_local=False,
-            timeout=0.1,
-        )
-        for ref in completed:
-            op = active_tasks.pop(ref)
-            op.notify_work_completed(ref)
+    if not up_only:
+        for op in topology:
+            for ref in op.get_work_refs():
+                active_tasks[ref] = op
+
+        # Process completed Ray tasks and notify operators.
+        if active_tasks:
+            completed, _ = ray.wait(
+                list(active_tasks),
+                num_returns=len(active_tasks),
+                fetch_local=False,
+                timeout=0.1,
+            )
+            for ref in completed:
+                op = active_tasks.pop(ref)
+                op.notify_work_completed(ref)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
@@ -147,14 +152,16 @@ def process_completed_tasks(topology: Topology) -> bool:
                 op.inputs_done(input_index=i)
                 op_state.finalized_input_indices.add(i)
 
-    return len(active_tasks) > 0
-
 
 def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
     The objective of this function is to maximize the throughput of the overall
     pipeline, subject to defined memory and parallelism limits.
+
+    This is currently implemented by applying backpressure on operators that are
+    producing outputs faster than they are consuming them `len(outqueue)`, as well as
+    operators with a large number of running tasks `num_active_tasks()`.
     """
 
     # TODO: set limits properly based on resources and execution options. This is just
@@ -166,9 +173,7 @@ def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
     if num_active_tasks >= PARALLELISM_LIMIT:
         return None
 
-    # This implements simple backpressure on operators that are producing outputs
-    # faster than they are consuming them `len(outqueue),` as well as operators with
-    # a large number of running tasks `num_active_tasks()`.
+    # Equally penalize outqueue length and active tasks for backpressure.
     pairs = list(topology.items())
     pairs.sort(key=lambda p: len(p[1].outqueue) + p[1].num_active_tasks())
 
@@ -179,18 +184,3 @@ def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
             break
 
     return selected
-
-
-def dispatch_next_task(op_state: OpState) -> None:
-    """Schedule the next task for the given operator.
-
-    It is an error to call this if the given operator has no next tasks.
-
-    Args:
-        op_state: The operator state to schedule a task for.
-    """
-    for i, inqueue in enumerate(op_state.inqueues):
-        if inqueue:
-            op_state.op.add_input(inqueue.pop(0), input_index=i)
-            return
-    assert False, "Nothing to dispatch"

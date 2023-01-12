@@ -36,9 +36,6 @@ class InputDataBuffer(PhysicalOperator):
     def get_next(self) -> RefBundle:
         return self._input_data.pop(0)
 
-    def completed(self) -> bool:
-        return not self.has_next()
-
     def num_outputs_total(self) -> Optional[int]:
         return self._num_outputs
 

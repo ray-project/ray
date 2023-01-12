@@ -133,6 +133,7 @@ class PhysicalOperator:
         self._input_dependencies = input_dependencies
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
+        self._num_incomplete_inputs = len(input_dependencies)
 
     @property
     def name(self) -> str:
@@ -148,7 +149,11 @@ class PhysicalOperator:
 
     def completed(self) -> bool:
         """Return True when this operator is done and all outputs are taken."""
-        raise NotImplementedError
+        return (
+            self._num_incomplete_inputs == 0
+            and len(self.get_work_refs()) == 0
+            and not self.has_next()
+        )
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
@@ -209,7 +214,8 @@ class PhysicalOperator:
                 input. For most operators, this is always `0` since there is only
                 one upstream input operator.
         """
-        pass
+        self._num_incomplete_inputs -= 1
+        assert self._num_incomplete_inputs >= 0
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available.
