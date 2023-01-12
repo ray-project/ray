@@ -1160,7 +1160,7 @@ class DatasetPipeline(Generic[T]):
 
             class _IterableWrapper(Iterable):
                 """Wrapper that takes an iterator and converts it to an
-                iterable with the first dataset skipped."""
+                iterable."""
 
                 def __init__(self, base_iterator):
                     self.base_iterator = base_iterator
