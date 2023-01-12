@@ -2630,9 +2630,6 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
 
   std::vector<rpc::ObjectReference> returned_refs;
   size_t num_returns = task_spec.NumReturns();
-  if (task_spec.IsActorTask()) {
-    num_returns--;
-  }
   for (size_t i = 0; i < num_returns; i++) {
     if (!task_spec.IsActorCreationTask()) {
       reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
