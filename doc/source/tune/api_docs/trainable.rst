@@ -4,8 +4,8 @@
     API does not really have a signature to just describe.
 .. TODO: Reusing actors and advanced resources allocation seem ill-placed.
 
-Training (tune.Trainable, session.report)
-==========================================
+Training in Tune (tune.Trainable, session.report)
+=================================================
 
 Training can be done with either a **Function API** (:ref:`session.report <tune-function-docstring>`) or **Class API** (:ref:`tune.Trainable <tune-trainable-docstring>`).
 
@@ -18,8 +18,8 @@ For the sake of example, let's maximize this objective function:
 
 .. _tune-function-api:
 
-Function API
-------------
+Tune's Function API
+-------------------
 
 The Function API allows you to define a custom training function that Tune will run in parallel Ray actor processes,
 one for each Tune trial.
@@ -80,8 +80,8 @@ references to framework-specific checkpoints such as `TensorflowCheckpoint`.
 
 .. _tune-class-api:
 
-Trainable Class API
--------------------
+Tune's Trainable Class API
+--------------------------
 
 .. caution:: Do not use ``session.report`` within a ``Trainable`` class.
 
@@ -180,8 +180,8 @@ Use ``validate_save_restore`` to catch ``save_checkpoint``/``load_checkpoint`` e
 
 
 
-Advanced: Reusing Actors
-~~~~~~~~~~~~~~~~~~~~~~~~
+Advanced: Reusing Actors in Tune
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. note:: This feature is only for the Trainable Class API.
 
@@ -217,8 +217,8 @@ It is up to the user to correctly update the hyperparameters of your trainable.
             return True
 
 
-Comparing the Function API and Class API
-----------------------------------------
+Comparing Tune's Function API and Class API
+-------------------------------------------
 
 Here are a few key concepts and what they look like for the Function and Class API's.
 

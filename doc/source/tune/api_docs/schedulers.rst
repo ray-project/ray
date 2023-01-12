@@ -1,7 +1,7 @@
 .. _tune-schedulers:
 
-Trial Schedulers (tune.schedulers)
-==================================
+Tune Trial Schedulers (tune.schedulers)
+=======================================
 
 In Tune, some hyperparameter optimization algorithms are written as "scheduling algorithms".
 These Trial Schedulers can early terminate bad trials, pause trials, clone trials,

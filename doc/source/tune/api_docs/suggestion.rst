@@ -1,7 +1,7 @@
 .. _tune-search-alg:
 
-Search Algorithms (tune.search)
-===============================
+Tune Search Algorithms (tune.search)
+====================================
 
 Tune's Search Algorithms are wrappers around open-source optimization libraries for efficient hyperparameter selection.
 Each library has a specific way of defining the search space - please refer to their documentation for more details.
@@ -17,8 +17,8 @@ You can utilize these search algorithms as follows:
     results = tuner.fit()
 
 
-Saving and Restoring
---------------------
+Saving and Restoring Tune Runs
+------------------------------
 
 .. TODO: what to do about this section? It doesn't really belong here and is not worth its own guide.
 .. TODO: at least check that this pseudo-code runs.

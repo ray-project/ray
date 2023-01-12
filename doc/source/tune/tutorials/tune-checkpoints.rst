@@ -1,5 +1,5 @@
-A Guide To Using Checkpoints
-============================
+A Guide To Using Tune Checkpoints
+=================================
 
 .. _tune-two-types-of-ckpt:
 
@@ -61,8 +61,9 @@ Generally we consider three cases:
 
 The default option here is 3, which will be automatically used if nothing else is configured.
 
-Using a shared directory
-~~~~~~~~~~~~~~~~~~~~~~~~
+Using a shared directory for checkpoints
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 If all Ray nodes have access to a shared filesystem, e.g. via NFS, they can all write to this directory.
 In this case, we don't need any synchronization at all, as it is implicitly done by the operating system.
 
@@ -90,8 +91,9 @@ shared directory) for further processing.
 
 .. _tune-cloud-checkpointing:
 
-Using cloud storage
-~~~~~~~~~~~~~~~~~~~
+Using cloud storage for Tune checkpoints
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 If all nodes have access to cloud storage, e.g. S3 or GS, the remote trials can automatically synchronize their
 checkpoints. For the filesystem, we end up with a similar situation as in the first case,
 only that the consolidated directory including all logs and checkpoints lives on cloud storage.
@@ -147,8 +149,9 @@ The consolidated data will live be available in the cloud bucket. This means tha
 e.g. the best checkpoint further, you will first have to fetch it from the cloud storage.
 
 
-Default syncing (no shared/cloud storage)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Default syncing Tune checkpoints (no shared/cloud storage)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 If you're using neither a shared filesystem nor cloud storage, Ray Tune will resort to the
 default syncing mechanisms, which utilizes ``rsync`` (via SSH) to synchronize checkpoints across
 nodes.
@@ -213,13 +216,13 @@ but it will also lead to more synchronization overhead (as SSH is usually slow).
 As in the first case, the driver (on the head node) will have access to all checkpoints locally
 for further processing.
 
-Checkpointing examples
-----------------------
+Tune checkpointing examples
+---------------------------
 
 Let's cover how to configure your checkpoints storage location, checkpointing frequency, and how to resume from a previous run.
 
-A simple (cloud) checkpointing example
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A simple (cloud) checkpointing example with Tune
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Cloud storage-backed Tune checkpointing is the recommended best practice for both performance and reliability reasons.
 It also enables checkpointing if using Ray on Kubernetes, which does not work out of the box with rsync-based sync,
@@ -312,8 +315,8 @@ Please see the documentation of
 
 .. _rsync-checkpointing:
 
-A simple local/rsync checkpointing example
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A simple local/rsync checkpointing example with Tune
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Local or rsync checkpointing can be a good option if:
 
@@ -353,8 +356,8 @@ Let's take a look at an example:
 
 .. _tune-distributed-checkpointing:
 
-Distributed Checkpointing
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Distributed Checkpointing with Ray Tune
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node.
 This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-index>` and also

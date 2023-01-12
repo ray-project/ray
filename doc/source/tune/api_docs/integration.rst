@@ -1,7 +1,7 @@
 .. _tune-integration:
 
-External library integrations (tune.integration)
-================================================
+External library integrations for Ray Tune (tune.integration)
+=============================================================
 
 .. contents::
     :local:
