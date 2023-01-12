@@ -149,6 +149,10 @@ JobID TaskSpecification::JobId() const {
   return JobID::FromBinary(message_->job_id());
 }
 
+const rpc::JobConfig &TaskSpecification::JobConfig() const {
+  return message_->job_config();
+}
+
 TaskID TaskSpecification::ParentTaskId() const {
   if (message_->parent_task_id().empty() /* e.g., empty proto default */) {
     return TaskID::Nil();
@@ -477,10 +481,26 @@ std::string TaskSpecification::DebugString() const {
     stream << ", max_retries=" << MaxRetries();
   }
 
-  // Print runtime env.
+  // Print non-sensitive runtime env info.
   if (HasRuntimeEnv()) {
     const auto &runtime_env_info = RuntimeEnvInfo();
-    stream << ", serialized_runtime_env=" << SerializedRuntimeEnv();
+    stream << ", runtime_env_hash=" << GetRuntimeEnvHash();
+    if (runtime_env_info.has_runtime_env_config()) {
+      stream << ", eager_install="
+             << runtime_env_info.runtime_env_config().eager_install();
+      stream << ", setup_timeout_seconds="
+             << runtime_env_info.runtime_env_config().setup_timeout_seconds();
+    }
+  }
+
+  return stream.str();
+}
+
+std::string TaskSpecification::RuntimeEnvDebugString() const {
+  std::ostringstream stream;
+  if (HasRuntimeEnv()) {
+    const auto &runtime_env_info = RuntimeEnvInfo();
+    stream << "serialized_runtime_env=" << SerializedRuntimeEnv();
     const auto &uris = runtime_env_info.uris();
     if (!uris.working_dir_uri().empty() || uris.py_modules_uris().size() > 0) {
       stream << ", runtime_env_uris=";
@@ -493,6 +513,7 @@ std::string TaskSpecification::DebugString() const {
       // Erase the last ":"
       stream.seekp(-1, std::ios_base::end);
     }
+    stream << ", runtime_env_hash=" << GetRuntimeEnvHash();
     if (runtime_env_info.has_runtime_env_config()) {
       stream << ", eager_install="
              << runtime_env_info.runtime_env_config().eager_install();
@@ -500,7 +521,6 @@ std::string TaskSpecification::DebugString() const {
              << runtime_env_info.runtime_env_config().setup_timeout_seconds();
     }
   }
-
   return stream.str();
 }
 

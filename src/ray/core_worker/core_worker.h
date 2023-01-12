@@ -28,7 +28,7 @@
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
-#include "ray/core_worker/profiling.h"
+#include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
@@ -326,7 +326,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
-  const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
+  JobID GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
   const int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
 
@@ -391,7 +391,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// us, or the caller previously added the ownership information (via
   /// RegisterOwnershipInfoAndResolveFuture).
   /// \param[out] The RPC address of the worker that owns this object.
-  rpc::Address GetOwnerAddress(const ObjectID &object_id) const;
+  Status GetOwnerAddress(const ObjectID &object_id, rpc::Address *owner_address) const;
+
+  /// Get the RPC address of the worker that owns the given object. If the
+  /// object has no owner, then we terminate the process.
+  ///
+  /// \param[in] object_id The object ID. The object must either be owned by
+  /// us, or the caller previously added the ownership information (via
+  /// RegisterOwnershipInfoAndResolveFuture).
+  /// \param[out] The RPC address of the worker that owns this object.
+  rpc::Address GetOwnerAddressOrDie(const ObjectID &object_id) const;
 
   /// Get the RPC address of the worker that owns the given object.
   ///
@@ -418,9 +427,30 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
   /// \param[out] serialized_object_status The serialized object status protobuf.
-  void GetOwnershipInfo(const ObjectID &object_id,
-                        rpc::Address *owner_address,
-                        std::string *serialized_object_status);
+  Status GetOwnershipInfo(const ObjectID &object_id,
+                          rpc::Address *owner_address,
+                          std::string *serialized_object_status);
+
+  /// Get the owner information of an object. This should be
+  /// called when serializing an object ID, and the returned information should
+  /// be stored with the serialized object ID. If the ownership of the object
+  /// cannot be established, then we terminate the process.
+  ///
+  /// This can only be called on object IDs that we created via task
+  /// submission, ray.put, or object IDs that we deserialized. It cannot be
+  /// called on object IDs that were created randomly, e.g.,
+  /// ObjectID::FromRandom.
+  ///
+  /// Postcondition: Get(object_id) is valid.
+  ///
+  /// \param[in] object_id The object ID to serialize.
+  /// appended to the serialized object ID.
+  /// \param[out] owner_address The address of the object's owner. This should
+  /// be appended to the serialized object ID.
+  /// \param[out] serialized_object_status The serialized object status protobuf.
+  void GetOwnershipInfoOrDie(const ObjectID &object_id,
+                             rpc::Address *owner_address,
+                             std::string *serialized_object_status);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
@@ -605,11 +635,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Delete a list of objects from the plasma object store.
   ///
+  /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely
+  /// for objects we do not own.
+  ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
+
+  /// Delete a list of objects from the plasma object store; called by Delete().
+  ///
+  /// \param[in] object_ids IDs of the objects to delete.
+  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
+  /// the cluster.
+  /// \return Status.
+  Status DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
 
   /// Get the locations of a list objects. Locations that failed to be retrieved
   /// will be returned as nullptrs.
@@ -800,8 +841,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Get the resource IDs available to this worker (as assigned by the raylet).
   const ResourceMappingType GetResourceIDs() const;
 
-  /// Create a profile event with a reference to the core worker's profiler.
-  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
+  /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
+  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(
+
+      const std::string &event_name);
 
   int64_t GetNumTasksSubmitted() const {
     return direct_task_submitter_->GetNumTasksSubmitted();
@@ -988,6 +1031,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Delete objects explicitly.
+  void HandleDeleteObjects(rpc::DeleteObjectsRequest request,
+                           rpc::DeleteObjectsReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
   // Spill objects to external storage.
   void HandleSpillObjects(rpc::SpillObjectsRequest request,
                           rpc::SpillObjectsReply *reply,
@@ -1038,7 +1086,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 void *python_future);
 
   // Get serialized job configuration.
-  const rpc::JobConfig &GetJobConfig() const;
+  rpc::JobConfig GetJobConfig() const;
 
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
@@ -1062,7 +1110,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
-      const std::string &serialized_runtime_env_info);
+      const std::string &serialized_runtime_env_info) const;
 
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder,
@@ -1081,7 +1129,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
-      const std::string &concurrency_group_name = "");
+      const std::string &concurrency_group_name = "",
+      bool include_job_config = false);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1120,6 +1169,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Record metric for executed and owned tasks. Will be run periodically.
   void RecordMetrics();
+
+  /// Check if there is an owner of the object from the ReferenceCounter.
+  bool HasOwner(const ObjectID &object_id) const;
 
   /// Helper method to fill in object status reply given an object.
   void PopulateObjectStatus(const ObjectID &object_id,
@@ -1434,9 +1486,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
 
-  /// Profiler including a background thread that pushes profiling events to the GCS.
-  std::shared_ptr<worker::Profiler> profiler_;
-
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
@@ -1490,12 +1539,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
-
-  std::unique_ptr<rpc::JobConfig> job_config_;
-
-  std::shared_ptr<json> job_runtime_env_;
-
-  std::shared_ptr<rpc::RuntimeEnvInfo> job_runtime_env_info_;
 
   TaskCounter task_counter_;
 

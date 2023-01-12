@@ -19,6 +19,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
 )
 from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
 from ray.data.block import BlockMetadata
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
@@ -351,15 +352,63 @@ def test_tuner_api_kwargs(shutdown_only, params_expected):
     assert assertion(caught_kwargs)
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_true(shutdown_only):
+def test_tuner_fn_trainable_invalid_checkpoint_config(shutdown_only):
     tuner = Tuner(
-        lambda config, checkpoint_dir: 1,
+        lambda config: 1,
         run_config=ray.air.RunConfig(
             checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=True)
         ),
     )
     with pytest.raises(ValueError):
         tuner.fit()
+
+    tuner = Tuner(
+        lambda config: 1,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_frequency=1)
+        ),
+    )
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+
+def test_tuner_trainer_checkpoint_config(shutdown_only):
+    custom_training_loop_trainer = DataParallelTrainer(
+        train_loop_per_worker=lambda config: 1
+    )
+    tuner = Tuner(
+        custom_training_loop_trainer,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=True)
+        ),
+    )
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+    tuner = Tuner(
+        custom_training_loop_trainer,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_frequency=1)
+        ),
+    )
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+    handles_checkpoints_trainer = XGBoostTrainer(
+        label_column="target",
+        params={},
+        datasets={"train": ray.data.from_items(list(range(5)))},
+    )
+    tuner = Tuner(
+        handles_checkpoints_trainer,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(
+                checkpoint_at_end=True, checkpoint_frequency=1
+            )
+        ),
+    )._local_tuner
+    # Check that validation passes for a Trainer that does handle checkpointing
+    tuner._get_tune_run_arguments(tuner.converted_trainable)
 
 
 def test_tuner_fn_trainable_checkpoint_at_end_false(shutdown_only):
@@ -380,6 +429,18 @@ def test_tuner_fn_trainable_checkpoint_at_end_none(shutdown_only):
         ),
     )
     tuner.fit()
+
+
+def test_nonserializable_trainable(capsys):
+    import threading
+
+    lock = threading.Lock()
+    with pytest.raises(TypeError):
+        Tuner(lambda config: print(lock))
+
+    # Check that the `inspect_serializability` trace was printed
+    out, _ = capsys.readouterr()
+    assert "was found to be non-serializable." in out
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])

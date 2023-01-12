@@ -28,18 +28,14 @@ flask==2.1.3
 google-api-python-client==2.65.0
 google-cloud-storage==2.5.0
 gradio==3.5; platform_system != "Windows"
-gym-minigrid==1.0.3
 jsonpatch==1.32
 kubernetes==24.2.0
-# higher version of llvmlite breaks windows
-llvmlite==0.39.1; platform_system != "Windows"
-llvmlite==0.34.0; platform_system == "Windows"
+llvmlite==0.39.1; python_version < '3.11'
 lxml==4.9.1
 moto[s3,server]==4.0.7
 mypy==0.982
 networkx==2.6.3
-numba==0.56.3; platform_system != "Windows"
-numba==0.51.2; platform_system == "Windows"
+numba==0.56.4
 openpyxl==3.0.10
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
@@ -47,14 +43,16 @@ opentelemetry-exporter-otlp==1.1.0
 pexpect==4.8.0
 Pillow==9.2.0; platform_system != "Windows"
 proxy.py==2.4.3
-pyarrow==6.0.1
-pydantic==1.9.2
+pyarrow==6.0.1; python_version < '3.11'
+pyarrow==10.0.1; python_version >= '3.11'
+pydantic==1.9.2; python_version < '3.11'
+pydantic==1.10.2; python_version >= '3.11'
 # Keep in sync with `ci/build/upload_build_info.sh`
 PyOpenSSL==22.1.0
-pygame==2.1.2
+pygame==2.1.2; python_version < '3.11'
 Pygments==2.13.0
 pymongo==4.3.2
-pyspark==3.1.2
+pyspark==3.3.1
 pytest==7.0.1
 pytest-asyncio==0.16.0
 pytest-rerunfailures==10.2
@@ -63,7 +61,7 @@ pytest-lazy-fixture==0.6.3
 pytest-timeout==2.1.0
 pytest-virtualenv==1.7.0
 redis==3.5.3
-scikit-learn==1.0.2
+scikit-learn==1.0.2; python_version < '3.11'
 smart_open[s3]==6.2.0
 tqdm==4.64.1
 testfixtures==7.0.0

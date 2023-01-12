@@ -31,7 +31,7 @@ This creates a pod that runs the `KubeRay` controller. The `KubeRay` controller 
 
 Install the operator using `kubectl apply` and check that the controller pod is running:
 ```console
-$ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
+$ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.4.0&timeout=90s"
 $ kubectl get deployments -n ray-system
 NAME                READY   UP-TO-DATE   AVAILABLE   AGE
 kuberay-operator    1/1     1            1           13s

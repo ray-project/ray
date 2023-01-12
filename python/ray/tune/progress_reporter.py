@@ -12,9 +12,10 @@ import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from ray._private.dict import flatten_dict
+import pandas as pd
 
 import ray
+from ray._private.dict import flatten_dict
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
 from ray.tune.result import (
@@ -431,10 +432,11 @@ class TuneReporterBase(ProgressReporter):
         for t in trials:
             if not t.last_result:
                 continue
-            if metric not in t.last_result:
+            metric_value = unflattened_lookup(metric, t.last_result, default=None)
+            if pd.isnull(metric_value):
                 continue
-            if not best_trial or t.last_result[metric] * metric_op > best_metric:
-                best_metric = t.last_result[metric] * metric_op
+            if not best_trial or metric_value * metric_op > best_metric:
+                best_metric = metric_value * metric_op
                 best_trial = t
         return best_trial, metric
 
@@ -987,7 +989,7 @@ def _get_progress_table_data(
         trials_by_state[Trial.TERMINATED] = sorted(
             trials_by_state[Trial.TERMINATED],
             reverse=(mode == "max"),
-            key=lambda t: t.last_result[metric],
+            key=lambda t: unflattened_lookup(metric, t.last_result, default=None),
         )
 
     state_tbl_order = [
@@ -1188,7 +1190,7 @@ def _best_trial_str(
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
 ):
     """Returns a readable message stating the current best trial."""
-    val = trial.last_result[metric]
+    val = unflattened_lookup(metric, trial.last_result, default=None)
     config = trial.last_result.get("config", {})
     parameter_columns = parameter_columns or list(config.keys())
     if isinstance(parameter_columns, Mapping):

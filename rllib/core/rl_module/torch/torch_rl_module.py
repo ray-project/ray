@@ -1,17 +1,15 @@
-from typing import Any, Mapping, Type
+from typing import Any, Mapping
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.core.rl_module import RLModule, MultiAgentRLModule
-from ray.rllib.core.rl_module.rl_module import ModuleID
-
+from ray.rllib.core.rl_module import RLModule
 
 torch, nn = try_import_torch()
 
 
-class TorchRLModule(RLModule, nn.Module):
-    def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
+class TorchRLModule(nn.Module, RLModule):
+    def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
-        RLModule.__init__(self, rl_modules)
+        RLModule.__init__(self, *args, **kwargs)
 
     @override(nn.Module)
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
@@ -41,13 +39,3 @@ class TorchRLModule(RLModule, nn.Module):
         """Returns True if the module is distributed."""
         # TODO (Avnish): Implement this.
         return False
-
-    @classmethod
-    @override(RLModule)
-    def get_multi_agent_class(cls) -> Type["MultiAgentRLModule"]:
-        """Returns the multi-agent wrapper class for this module."""
-        from ray.rllib.core.rl_module.torch.torch_marl_module import (
-            TorchMultiAgentRLModule,
-        )
-
-        return TorchMultiAgentRLModule
