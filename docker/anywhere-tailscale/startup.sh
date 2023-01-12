@@ -17,13 +17,13 @@ CRATE_GC_LOG_DIR="/data/log"
 CRATE_HEAP_DUMP_PATH="/data/data"
 # Make sure directories exist as they are not automatically created
 # This needs to happen at runtime, as the directory could be mounted.
-mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
+mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH /data/tailscale/
 
 # Special VM options for Java in Docker
 CRATE_JAVA_OPTS="-Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
 
 sudo sysctl -w vm.max_map_count=262144
-sudo tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
+sudo tailscaled --state=/data/tailscale/tailscaled.state --socket=/data/tailscale/tailscaled.sock &
 
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
