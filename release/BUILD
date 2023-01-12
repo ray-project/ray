@@ -237,7 +237,7 @@ py_test(
          "//:ray_lib",
          "//python/ray/air:ml_lib",
      ],
-     args = ["--dataset-size-gb=1", "--smoke-test"]
+     args = ["--data-size-gb=1", "--smoke-test"]
 )
 
 py_test(
@@ -253,7 +253,7 @@ py_test(
         "//:ray_lib",
         "//python/ray/air:ml_lib",
     ],
-    args = ["--dataset-size-gb=1", "--smoke-test"]
+    args = ["--data-size-gb=1", "--smoke-test"]
 )
 
 py_test(

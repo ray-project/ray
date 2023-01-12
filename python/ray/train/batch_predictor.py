@@ -319,16 +319,16 @@ class BatchPredictor:
                     batch_fn, batch_format=predict_stage_batch_format
                 )
 
-            prediction_results = data.map_batches(
-                ScoringWrapper,
-                compute=compute,
-                batch_format=preprocessor_batch_format
-                if self.get_preprocessor() is not None
-                else predict_stage_batch_format,
-                batch_size=batch_size,
-                fn_constructor_kwargs={"override_prep": override_prep},
-                **ray_remote_args,
-            )
+        prediction_results = data.map_batches(
+            ScoringWrapper,
+            compute=compute,
+            batch_format=preprocessor_batch_format
+            if self.get_preprocessor() is not None
+            else predict_stage_batch_format,
+            batch_size=batch_size,
+            fn_constructor_kwargs={"override_prep": override_prep},
+            **ray_remote_args,
+        )
 
         if isinstance(prediction_results, ray.data.Dataset):
             # Force execution because Dataset uses lazy execution by default.
