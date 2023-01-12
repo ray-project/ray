@@ -1818,6 +1818,12 @@ py_test(
     srcs = ["core/rl_module/tests/test_marl_module.py"]
 )
 
+py_test(
+    name = "test_trainer_runner_config",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/test_trainer_runner_config.py"]
+)
 
 py_test(
     name = "test_tf_rl_trainer",
