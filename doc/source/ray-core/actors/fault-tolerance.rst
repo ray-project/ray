@@ -3,7 +3,7 @@
 Fault Tolerance
 ===============
 
-Ray will automatically restart actors that crash unexpectedly (not including application failures raised in the ``__init__`` function).
+Ray will automatically restart actors that crash unexpectedly (i.e. the process that runs the actor dies) .
 This behavior is controlled using ``max_restarts``,
 which sets the maximum number of times that an actor will be restarted.
 If 0, the actor won't be restarted. If -1, it will be restarted infinitely.
@@ -16,7 +16,7 @@ You can experiment with this behavior by running the following code.
 
 .. note:: 
 
-    If the ``__init__`` function of the actor fails (e.g. raises an exception that's not caught), the actor will not be restarted (ignoring the ``max_restarts`` config), but a ``RayActorError`` will be raised on subsequent actor methods.
+    If the ``__init__`` function of the actor fails to run (e.g. raises an exception that's not caught), the actor will fail to start. If this happens during an actor restart, Ray will ignore the ``max_restarts`` value, but raises an ``RayActorError`` on subsequent actor methods.
 
 .. code-block:: python
 
@@ -69,6 +69,10 @@ if one of the following occurs: (1) the actor’s ``max_restarts`` limit has bee
 exceeded and the actor cannot be restarted anymore, or (2) the
 ``max_task_retries`` limit has been exceeded for this particular task. The
 limit can be set to infinity with ``max_task_retries = -1``.
+
+.. note:: 
+
+    If the ``__init__`` function of the actor fails to run (e.g. raises an exception that's not caught), the actor will not be restarted (ignoring the ``max_restarts`` config), but a ``RayActorError`` will be raised on subsequent actor methods.
 
 You can experiment with this behavior by running the following code.
 
