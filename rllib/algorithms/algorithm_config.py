@@ -2277,7 +2277,7 @@ class AlgorithmConfig:
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
     ) -> Tuple[MultiAgentPolicyConfigDict, Callable[[PolicyID, SampleBatchType], bool]]:
-        """Compiles complete multi-agent config (dict) from the information in `self`.
+        r"""Compiles complete multi-agent config (dict) from the information in `self`.
 
         Infers the observation- and action spaces, the policy classes, and the policy's
         configs. The returned `MultiAgentPolicyConfigDict` is fully unified and strictly
