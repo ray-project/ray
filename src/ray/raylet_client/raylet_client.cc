@@ -110,10 +110,10 @@ raylet::RayletClient::RayletClient(
     Status *status,
     NodeID *raylet_id,
     int *port,
-    std::string *serialized_job_config,
+    const std::string &serialized_job_config,
     StartupToken startup_token,
     const std::string &entrypoint)
-    : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
+    : grpc_client_(std::move(grpc_client)), worker_id_(worker_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
   flatbuffers::FlatBufferBuilder fbb;
@@ -129,7 +129,7 @@ raylet::RayletClient::RayletClient(
                                             language,
                                             fbb.CreateString(ip_address),
                                             /*port=*/0,
-                                            fbb.CreateString(*serialized_job_config),
+                                            fbb.CreateString(serialized_job_config),
                                             fbb.CreateString(entrypoint));
   fbb.Finish(message);
   // Register the process ID with the raylet.
@@ -154,8 +154,6 @@ raylet::RayletClient::RayletClient(
   }
   *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
-
-  *serialized_job_config = reply_message->serialized_job_config()->str();
 }
 
 Status raylet::RayletClient::Disconnect(

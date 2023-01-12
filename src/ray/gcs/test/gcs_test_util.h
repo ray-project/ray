@@ -41,6 +41,7 @@ struct Mocker {
       std::unordered_map<std::string, double> required_placement_resources =
           std::unordered_map<std::string, double>()) {
     TaskSpecBuilder builder;
+    static rpc::JobConfig kJobConfig;
     auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     FunctionDescriptor function_descriptor;
@@ -50,6 +51,7 @@ struct Mocker {
                               Language::PYTHON,
                               function_descriptor,
                               job_id,
+                              kJobConfig,
                               TaskID::Nil(),
                               0,
                               TaskID::Nil(),

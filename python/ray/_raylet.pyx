@@ -165,6 +165,8 @@ logger = logging.getLogger(__name__)
 current_task_id = None
 current_task_id_lock = threading.Lock()
 
+job_config_initialized = False
+
 
 class ObjectRefGenerator:
     def __init__(self, refs):
@@ -1156,6 +1158,10 @@ cdef CRayStatus task_execution_handler(
         c_bool is_reattempt) nogil:
 
     with gil, disable_client_hook():
+        # Initialize job_config if it hasn't already.
+        # Setup system paths configured in job_config.
+        maybe_initialize_job_config()
+
         try:
             try:
                 # Exceptions, including task cancellation, should be handled
@@ -1380,6 +1386,30 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
         # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
         object_ids = [None]
         worker.raise_errors([(data, metadata)], object_ids)
+
+
+def maybe_initialize_job_config():
+    global job_config_initialized
+    if job_config_initialized:
+        return
+    # Add code search path to sys.path, set load_code_from_local.
+    core_worker = ray._private.worker.global_worker.core_worker
+    code_search_path = core_worker.get_job_config().code_search_path
+    load_code_from_local = False
+    if code_search_path:
+        load_code_from_local = True
+        for p in code_search_path:
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.insert(0, p)
+    ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
+    # Add driver's system path to sys.path
+    py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+    if py_driver_sys_path:
+        for p in py_driver_sys_path:
+            sys.path.insert(0, p)
+    job_config_initialized = True
 
 
 # This function introduces ~2-7us of overhead per call (i.e., it can be called

@@ -36,11 +36,13 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                                 std::string serialized_runtime_env = "") {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
+  rpc::JobConfig config;
   builder.SetCommonTaskSpec(TaskID::Nil(),
                             "dummy_task",
                             Language::PYTHON,
                             function_descriptor,
                             JobID::Nil(),
+                            config,
                             TaskID::Nil(),
                             0,
                             TaskID::Nil(),

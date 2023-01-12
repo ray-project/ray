@@ -149,6 +149,10 @@ JobID TaskSpecification::JobId() const {
   return JobID::FromBinary(message_->job_id());
 }
 
+const rpc::JobConfig &TaskSpecification::JobConfig() const {
+  return message_->job_config();
+}
+
 TaskID TaskSpecification::ParentTaskId() const {
   if (message_->parent_task_id().empty() /* e.g., empty proto default */) {
     return TaskID::Nil();
