@@ -24,8 +24,72 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/common.h"
 
+#include "src/core/lib/iomgr/socket_mutator.h"
+
 namespace ray {
 namespace rpc {
+
+//static grpc_socket_mutator* cade = nullptr;
+
+class KeepAliveSocketMutator : public grpc_socket_mutator {
+ public:
+  KeepAliveSocketMutator() {
+    grpc_socket_mutator_init(this, &VTable);
+  }
+
+ private:
+  static KeepAliveSocketMutator *Cast(grpc_socket_mutator *mutator) {
+    return nullptr;
+    //return static_cast<KeepAliveSocketMutator *>(mutator);
+  }
+
+  template <typename TVal>
+  bool SetOption(int fd, int level, int optname, const TVal &value) {
+    return false;
+    //return setsockopt(fd,
+    //                  level,
+    //                  optname,
+    //                  reinterpret_cast<const char *>(&value),
+    //                  sizeof(value)) == 0;
+  }
+  bool SetOption(int fd) {
+    //if (!SetOption(fd, SOL_SOCKET, SO_KEEPALIVE, 1)) {
+    //  Cerr << Sprintf("Failed to set SO_KEEPALIVE option: %s", strerror(errno)) << Endl;
+    //  return false;
+    //}
+    return true;
+  }
+  static bool Mutate(int fd, grpc_socket_mutator *mutator) {
+    //auto self = Cast(mutator);
+    //return self->SetOption(fd);
+    return false;
+  }
+  static int Compare(grpc_socket_mutator *a, grpc_socket_mutator *b) {
+    //const auto *selfA = Cast(a);
+    //const auto *selfB = Cast(b);
+    //auto tupleA = std::make_tuple(selfA->Idle_, selfA->Count_, selfA->Interval_);
+    //auto tupleB = std::make_tuple(selfB->Idle_, selfB->Count_, selfB->Interval_);
+    //return tupleA < tupleB ? -1 : tupleA > tupleB ? 1 : 0;
+    return -1;
+  }
+  static void Destroy(grpc_socket_mutator *mutator) {
+    //delete Cast(mutator);
+}
+  static bool Mutate2(const grpc_mutate_socket_info *info,
+  //static bool Mutate2(const ::grpc::grpc_mutate_socket_info *info,
+                      grpc_socket_mutator *mutator) {
+    //auto self = Cast(mutator);
+    //return self->SetOption(info->fd);
+    return false;
+  }
+
+  constexpr static const grpc_socket_mutator_vtable VTable = {
+      &KeepAliveSocketMutator::Mutate,
+      &KeepAliveSocketMutator::Compare,
+      &KeepAliveSocketMutator::Destroy,
+      &KeepAliveSocketMutator::Mutate2
+  };
+};
 
 // This macro wraps the logic to call a specific RPC method of a service,
 // to make it easier to implement a new RPC client.
@@ -52,11 +116,13 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
   if (!arguments.has_value()) {
     arguments = grpc::ChannelArguments();
   }
-
   arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
                     ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
   arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
   arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
+
+  static KeepAliveSocketMutator kKeepAliveSocketMutator;
+  arguments->SetSocketMutator(&kKeepAliveSocketMutator);
 
   std::shared_ptr<grpc::Channel> channel;
   if (::RayConfig::instance().USE_TLS()) {
