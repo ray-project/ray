@@ -169,6 +169,9 @@ def _get_total_shared_memory():
 # The maximum proportion for Ray worker node object store memory size
 _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
 
+# The buffer offset for calculating Ray node memory.
+_RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET = 0.8
+
 
 def _calc_mem_per_ray_worker_node(
     num_task_slots, physical_mem_bytes, shared_mem_bytes, configured_object_store_bytes
@@ -224,9 +227,6 @@ RAY_ON_SPARK_WORKER_CPU_CORES = "RAY_ON_SPARK_WORKER_CPU_CORES"
 RAY_ON_SPARK_WORKER_GPU_NUM = "RAY_ON_SPARK_WORKER_GPU_NUM"
 RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES = 'RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES'
 RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES = 'RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES'
-
-
-_RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET = 0.8
 
 
 def _get_cpu_cores():

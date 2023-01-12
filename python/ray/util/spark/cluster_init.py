@@ -77,6 +77,7 @@ class RayClusterOnSpark:
         num_workers_node,
         temp_dir,
         cluster_unique_id,
+        ray_init_options,
     ):
         self.address = address
         self.head_proc = head_proc
@@ -109,7 +110,9 @@ class RayClusterOnSpark:
         if self.ray_context is None:
             try:
                 # connect to the ray cluster.
-                self.ray_context = ray.init(address=self.address)
+                self.ray_context = ray.init(
+                    address=self.address, **self.ray_init_options
+                )
             except Exception:
                 self.shutdown()
                 raise
@@ -356,18 +359,19 @@ def _init_ray_cluster(
     num_worker_nodes,
     num_cpus_per_node,
     num_gpus_per_node,
-    resource_profile,
-    heap_mem_bytes_per_node,
-    object_store_mem_bytes_per_node,
-    head_options,
-    worker_options,
+    using_stage_scheduling,
+    heap_memory_per_node,
+    object_store_memory_per_node,
+    head_node_options,
+    worker_node_options,
+    ray_init_options,
     ray_temp_root_dir,
     collect_log_to_path,
 ):
     """
-    This function is used in testing, it has the same arguments with
-    `ray.util.spark.init_ray_cluster` API, but it returns a `RayClusterOnSpark`
-    instance instead.
+    The public API `ray.util.spark.init_ray_cluster` does some argument
+    validation and then pass validated arguments to this interface.
+    and it returns a `RayClusterOnSpark` instance.
 
     The returned instance can be used to connect to, disconnect from and shutdown the
     ray cluster. This instance can also be used as a context manager (used by
@@ -387,8 +391,9 @@ def _init_ray_cluster(
     else:
         start_hook = RayOnSparkStartHook()
 
-    head_options = head_options or {}
-    worker_options = worker_options or {}
+    head_node_options = head_node_options or {}
+    worker_node_options = worker_node_options or {}
+    ray_init_options = ray_init_options or {}
 
     spark = get_spark_session()
 
@@ -438,7 +443,7 @@ def _init_ray_cluster(
         # limit the object store memory allocation to the head node (actual usage
         # may increase beyond this for processing of tasks and actors).
         f"--object-store-memory={128 * 1024 * 1024}",
-        *_convert_ray_node_options(head_options),
+        *_convert_ray_node_options(head_node_options),
     ]
 
     _logger.info(f"Starting Ray head, command: {' '.join(ray_head_node_cmd)}")
@@ -521,12 +526,12 @@ def _init_ray_cluster(
             f"--num-cpus={num_cpus_per_node}",
             "--block",
             f"--address={ray_head_ip}:{ray_head_port}",
-            f"--memory={heap_mem_bytes_per_node}",
-            f"--object-store-memory={object_store_mem_bytes_per_node}",
+            f"--memory={heap_memory_per_node}",
+            f"--object-store-memory={object_store_memory_per_node}",
             f"--min-worker-port={worker_port_range_begin}",
             f"--max-worker-port={worker_port_range_end - 1}",
             f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
-            *_convert_ray_node_options(worker_options),
+            *_convert_ray_node_options(worker_node_options),
         ]
 
         ray_worker_node_extra_envs = {
@@ -587,6 +592,7 @@ def _init_ray_cluster(
         num_workers_node=num_worker_nodes,
         temp_dir=ray_temp_dir,
         cluster_unique_id=cluster_unique_id,
+        ray_init_options=ray_init_options,
     )
 
     def background_job_thread_fn():
@@ -621,7 +627,11 @@ def _init_ray_cluster(
                 list(range(num_worker_nodes)), num_worker_nodes
             )
 
-            if resource_profile is not None:
+            if using_stage_scheduling is not None:
+                resource_profile = _create_resource_profile(
+                    num_cpus_per_node,
+                    num_gpus_per_node,
+                )
                 job_rdd = job_rdd.withResources(resource_profile)
 
             job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
@@ -674,14 +684,25 @@ def _init_ray_cluster(
 _active_ray_cluster = None
 
 
+def _create_resource_profile(num_cpus_per_node, num_gpus_per_node):
+    from pyspark.resource.profile import ResourceProfileBuilder
+    from pyspark.resource.requests import TaskResourceRequests
+
+    task_res_req = TaskResourceRequests().cpus(num_cpus_per_node)
+    if num_gpus_per_node > 0:
+        task_res_req = task_res_req.resource("gpu", num_gpus_per_node)
+    return ResourceProfileBuilder().require(task_res_req).build
+
+
 @PublicAPI(stability="alpha")
 def init_ray_cluster(
     num_worker_nodes: int,
     num_cpus_per_node: Optional[int] = None,
     num_gpus_per_node: Optional[int] = None,
     object_store_memory_per_node: Optional[int] = None,
-    head_options: Optional[Dict] = None,
-    worker_options: Optional[Dict] = None,
+    head_node_options: Optional[Dict] = None,
+    worker_node_options: Optional[Dict] = None,
+    ray_init_options: Optional[Dict] = None,
     ray_temp_root_dir: Optional[str] = None,
     safe_mode: Optional[bool] = False,
     collect_log_to_path: Optional[str] = None,
@@ -711,21 +732,23 @@ def init_ray_cluster(
         num_cpus_per_node: Number of cpus available to per-ray worker node, if not
             provided, use spark application configuration 'spark.task.cpus' instead.
             Limitation: Only spark version >= 3.4 or Databricks Runtime 12.x supports
-            this argument.
+            setting this argument.
         num_gpus_per_node: Number of gpus available to per-ray worker node, if not
             provided, use spark application configuration
             'spark.task.resource.gpu.amount' instead.
             This argument is only available on spark cluster that is configured with
             'gpu' resources.
             Limitation: Only spark version >= 3.4 or Databricks Runtime 12.x supports
-            this argument.
+            setting this argument.
         object_store_memory_per_node: Object store memory available to per-ray worker
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
             The default value equals to
             "0.3 * spark_worker_physical_memory * 0.8 / num_tasks_per_spark_worker".
-        head_options: A dict representing Ray head node options.
-        worker_options: A dict representing Ray worker node options.
+        head_node_options: A dict representing Ray head node extra options.
+        worker_node_options: A dict representing Ray worker node extra options.
+        ray_init_options: A dict representing extra options for calling `ray.init`
+                          after Ray cluster started.
         ray_temp_root_dir: A local disk path to store the ray temporary data. The
             created cluster will create a subdirectory
             "ray-{head_port}-{random_suffix}" beneath this path.
@@ -746,8 +769,6 @@ def init_ray_cluster(
         The address of the initiated Ray cluster on spark.
     """
     import pyspark
-    from pyspark.resource.profile import ResourceProfileBuilder
-    from pyspark.resource.requests import TaskResourceRequests
 
     global _active_ray_cluster
 
@@ -811,20 +832,16 @@ def init_ray_cluster(
             num_cpus_per_node = num_cpus_per_node or num_spark_task_cpus
             num_gpus_per_node = num_gpus_per_node or num_spark_task_gpus
 
-            task_res_req = TaskResourceRequests().cpus(num_cpus_per_node)
-            if num_gpus_per_node > 0:
-                task_res_req = task_res_req.resource("gpu", num_gpus_per_node)
-            res_profile = ResourceProfileBuilder().require(task_res_req).build
+            using_stage_scheduling = True
+            res_profile = _create_resource_profile(
+                num_cpus_per_node, num_gpus_per_node
+            )
         else:
-            res_profile = None
-
-            num_cpus_per_node = num_spark_task_cpus
-            num_gpus_per_node = num_spark_task_gpus
-
-            _logger.warning(
+            raise ValueError(
                 "Current spark version does not support stage scheduling, so that "
-                "the argument `num_cpus_per_node` and `num_gpus_per_node` values are "
-                "ignored and per-ray node will be assigned with number of "
+                "you cannot set the argument `num_cpus_per_node` and "
+                "`num_gpus_per_node` values. Without setting the 2 arguments, "
+                "per-Ray worker node will be assigned with number of "
                 f"'spark.task.cpus' (equals to {num_spark_task_cpus}) cpu cores "
                 "and number of 'spark.task.resource.gpu.amount' "
                 f"(equals to {num_spark_task_gpus}) GPUs. To enable spark stage "
@@ -832,6 +849,7 @@ def init_ray_cluster(
                 "Databricks Runtime 12.x."
             )
     else:
+        using_stage_scheduling = False
         res_profile = None
 
         num_cpus_per_node = num_spark_task_cpus
@@ -863,7 +881,7 @@ def init_ray_cluster(
         insufficient_resources.append(
             "The provided CPU resources for each ray worker are inadequate to start "
             "a ray cluster. Based on the total cpu resources available and the "
-            "configured task sizing, each ray worker would start with "
+            "configured task sizing, each ray worker node would start with "
             f"{num_cpus_per_node} CPU cores. This is less than the recommended "
             "value of `4` CPUs per worker. On spark version >= 3.4 or Databricks "
             "Runtime 12.x, you can set the argument `num_cpus_per_node` to "
@@ -874,9 +892,9 @@ def init_ray_cluster(
 
     if ray_worker_node_heap_mem_bytes < 10 * 1024 * 1024 * 1024:
         insufficient_resources.append(
-            "The provided memory resources for each ray worker are inadequate. Based "
-            "on the total memory available on the spark cluster and the configured "
-            "task sizing, each ray worker would start with "
+            "The provided memory resources for each ray worker node are inadequate. "
+            "Based on the total memory available on the spark cluster and the "
+            "configured task sizing, each ray worker would start with "
             f"{ray_worker_node_heap_mem_bytes} bytes heap memory. This is less than "
             "the recommended value of 10GB. The ray worker node heap memory size is "
             "calculated by "
@@ -902,11 +920,12 @@ def init_ray_cluster(
         num_worker_nodes=num_worker_nodes,
         num_cpus_per_node=num_cpus_per_node,
         num_gpus_per_node=num_gpus_per_node,
-        resource_profile=res_profile,
-        heap_mem_bytes_per_node=ray_worker_node_heap_mem_bytes,
-        object_store_mem_bytes_per_node=ray_worker_node_object_store_mem_bytes,
-        head_options=head_options,
-        worker_options=worker_options,
+        using_stage_scheduling=using_stage_scheduling,
+        heap_memory_per_node=ray_worker_node_heap_mem_bytes,
+        object_store_memory_per_node=ray_worker_node_object_store_mem_bytes,
+        head_node_options=head_node_options,
+        ray_init_options=ray_init_options,
+        worker_node_options=worker_node_options,
         ray_temp_root_dir=ray_temp_root_dir,
         collect_log_to_path=collect_log_to_path,
     )
