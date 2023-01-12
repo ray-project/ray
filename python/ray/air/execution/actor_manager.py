@@ -1,15 +1,14 @@
-from typing import Any, Dict, Iterable, Optional, Tuple, Type
+from numbers import Number
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from ray.air import AcquiredResources
 from ray.air.execution.actor_spec import ActorSpec, TrackedActor
 from ray.air.execution.resources.resource_manager import ResourceManager
-from ray.air.execution.event import (
-    ExecutionEvent,
-    FutureResult,
-)
 
 
 # Tuple of (method_name, args, kwargs)
+from ray.air.execution.futures import TrackedFutures
+
 TaskSpec = Tuple[str, Iterable[Any], Dict[str, Any]]
 
 
@@ -21,18 +20,13 @@ class ActorManager:
 
     The actor manager can be used to start actors, stop actors, and schedule and
     track task futures on these actors. The manager will then yield events related
-    to the tracked entities.
+    to the tracked entities in the form of callbacks.
 
-    For instance, when an actor is added with ``add_actor()``, the event
-    ``ActorStarted`` will be emitted once the actor was successfully started.
-    Likewise, after calling ``remove_actor()``, the event ``ActorStopped`` will
-    be emitted once the actor stopped.
-    If the actor fails at any time, the ``ActorFailed`` event will be emitted.
-
-    For actor task futures, a subclass of the ``FutureResult`` event will be emitted
-    when the future resolves. This is either a custom subclass provided when
-    scheduling the future, or a ``FutureFailed`` event if resolving the future lead
-    to a ``RayTaskError``.
+    For instance, when an actor is added with ``add_actor()``, the callback passed
+    to :meth:`on_actor_start` will be invoked.
+    Likewise, after calling ``remove_actor()``, the callback passed to
+    meth:`on_actor_stop`
+    will be invoked once the actor stopped.
 
     Actor properties are defined via an ``ActorSpec`` object. This object specifies
     the actor class, the keyword arguments used for initialization, and the resources
@@ -44,6 +38,12 @@ class ActorManager:
     has been scheduled. This status can be inquired from the actor manager using the
     ``TrackedActor`` object.
 
+    After scheduling futures, a :class:`TrackedFutures` object is returned. Again,
+    callbacks can be defined to be invoked when these futures
+    resolve (:meth:`on_result <TrackedFutures.on_result>`),
+    error (:meth:`on_error <TrackedFutures.on_error>`),
+    or time out (:meth:`on_timeout <TrackedFutures.on_timeout>`).
+
     Args:
         resource_manager: Resource manager used to request resources for the actors.
 
@@ -54,27 +54,8 @@ class ActorManager:
 
         raise NotImplementedError
 
-    def wait(self) -> None:
-        """Wait until next event is available."""
-        raise RuntimeError
-
-    def has_event_available(self) -> bool:
-        """Return True if there is an event immediately available."""
-        raise RuntimeError
-
-    def get_next_event(self, block: bool = True) -> Optional[ExecutionEvent]:
-        """Get next event, if available.
-
-        If ``block=False`` and there is no event immediately available, this
-        method will return ``None``.
-
-        Args:
-            block: If True, will block until an event is available. Otherwise,
-                will return immediately, which can be None if no event is ready.
-
-        Returns:
-            Execution event to act upon.
-        """
+    def handle(self) -> None:
+        """Wait until next event is available and handle callbacks."""
         raise RuntimeError
 
     @property
@@ -92,6 +73,28 @@ class ActorManager:
         """Return number of total actors."""
         raise NotImplementedError
 
+    def on_actor_start(self, callback: Callable[[TrackedActor], None]) -> bool:
+        """Define callback to handle actor starts.
+
+        This callback is invoked when an actor successfully started.
+        """
+        raise NotImplementedError
+
+    def on_actor_stop(self, callback: Callable[[TrackedActor], None]) -> bool:
+        """Define callback to handle actor stops.
+
+        This callback is invoked when an actor gracefully stopped.
+        """
+        raise NotImplementedError
+
+    def on_actor_error(self, callback: Callable[[TrackedActor], None]) -> bool:
+        """Define callback to handle actor errors.
+
+        This callback is invoked when an actor ungracefully terminated, e.g.
+        when the actor process died.
+        """
+        raise NotImplementedError
+
     def add_actor(self, actor_spec: ActorSpec) -> TrackedActor:
         """Add an actor to be tracked.
 
@@ -99,10 +102,8 @@ class ActorManager:
         start the actor with are provided in the ``actor_spec`` argument.
 
         This method will request resources to start the actor. Once the resources
-        are available, the actor will be started and an event will be emitted.
-
-        Events:
-            ``ActorStarted``: Emitted once the actor has been started.
+        are available, the actor will be started and the callback passed to
+        :meth:`on_actor_start` will be invoked.
 
         Args:
             actor_spec: Spec for the actor to be started once resources are available.
@@ -132,12 +133,8 @@ class ActorManager:
         actor. Otherwise, graceful actor deconstruction will be scheduled after
         all currently tracked futures are resolved.
 
-        After stopping the actor, an ``ActorStopped`` event will be emitted.
-
-        Events:
-            ``ActorStopped``: Emitted once the actor has been started. If the actor
-                has only been requested (but has not been started, yet),
-                this event won't be emitted.
+        After stopping the actor, the callback passed to
+        :meth:`on_actor_stop` will be invoked.
 
         Args:
             tracked_actor: Tracked actor to be removed.
@@ -168,80 +165,37 @@ class ActorManager:
         """
         raise NotImplementedError
 
-    def schedule_task(
+    def schedule_tasks(
         self,
-        tracked_actor: TrackedActor,
-        task_spec: TaskSpec,
-        result_cls: Type[FutureResult],
-    ) -> None:
-        """Track (asynchronous) future associated to a tracked actor.
+        tracked_actors: Iterable[TrackedActor],
+        method_name: str,
+        args: Optional[Union[Tuple, List[Tuple]]] = None,
+        kwargs: Optional[Union[Dict, List[Dict]]] = None,
+        timeout: Optional[Number] = None,
+    ) -> TrackedFutures:
+        """Schedule and track tasks on a list of actors.
 
-        This method will schedule the remote task and track its execution. Once the
-        future is resolved, it will be emitted as an event. The event
-        class will be ``result_cls``, which should extend ``FutureResult``.
+        This method will schedule a remote task ``method_name`` on the supplied
+        ``tracked_actors`` and return a
+        :ref:`TrackedFuture <ray.air.execution.futures.TrackedFutures>` object.
 
-        The ``task_spec`` argument is submitted as a tuple of
-        ``(method_name, args, kwargs)``. This will result in the future
-        ``future = actor.method_name.remote(*args, **kwargs)`` to be scheduled on
-        the actor and tracked in the manager.
+        The ``TrackedFutures`` object can be used to define callbacks that are invoked
+        when the futures resolve.
 
-        Events:
-            ``result_cls``: Emitted once the future resolved.
-            ``FutureFailed``: Emitted if the future resolution fails due to a
-                ``RayTaskError`, indicating method execution ran into an exception.
-            ``ActorFailed``: Emitted if the future resolution fails due to a
-                ``RayActorError``, indicating the actor died.
+        ``args`` and ``kwargs`` can be a single tuple/dict, in which case the same
+        (keyword) arguments are passed to all actors. If a list is passed instead,
+        they are mapped to the respective actors. In that case, the list of
+        (keyword) arguments must be the same length as the list of actors.
 
         Args:
-            tracked_actor: Tracked actor to schedule task for.
-            task_spec: Tuple of ``(method_name, args, kwargs)`` to be scheduled as
-                task futures on the actor.
-            result_cls: Class extending ``FutureResult`` to emit when the future
-                resolves successfully.
+            tracked_actors: List of actors to schedule task on.
+            method_name: Remote actor method to invoke on the actors. If this is
+                e.g. ``foo``, then ``actor.foo.remote(*args, **kwargs)`` will be
+                invoked on all actors.
+            args: Arguments to pass to remote method.
+            kwargs: Keyword arguments to pass to remote method.
+            timeout: Timeout in seconds after which the future is cancelled and the
+                ``on_timeout()`` callback is invoked.
 
-        """
-        raise NotImplementedError
-
-    def schedule_sync_tasks(
-        self,
-        actors_tasks: Dict[TrackedActor, TaskSpec],
-        result_cls: Type[FutureResult],
-    ) -> None:
-        """Track synchronous futures associated to multiple tracked actors.
-
-        This method will schedule remote tasks and track their execution
-        synchronously on all provided actors. This means the multi result event will
-        only be emitted once _all_ provided tasks resolved.
-
-        Once all futures resolved successfully, a ``MultiFutureResult`` event
-        containing all sub results will be emitted as an event.
-        The sub results will be of type ``result_cls``, which should
-        extend ``FutureResult``.
-
-        If any of the tasks fail, a ``MultiFutureFailed`` event will be emitted.
-        The ``exception`` parameter will contain the first observed exception.
-        Unfinished tasks will be cancelled. The sub results will be of type
-        ``FutureFailed`` if for each failed task future, ``FutureCancelled`` for each
-        cancelled, and ``result_cls`` for all futures that resolved before
-        one of the other futures failed.
-
-        If any of the actors fail, the same ``MultiFutureFailed`` event will be
-        emitted. The sub results can then also be of type ``ActorFailed``.
-        Additionally, for each failed actor, a separate ``ActorFailed`` event will be
-        emitted.
-
-        Events:
-            ``MultiFutureResult``: Emitted once all futures resolved. Contains
-                sub result of type ``result_cls``.
-            ``MultiFutureFailed``: Emitted if any of the future resolution fails due
-                to a ``RayTaskError`` or ``RayActorError``.
-            ``ActorFailed``: Emitted if the future resolution fails due to a
-                ``RayActorError``, indicating the actor died. This will be emitted
-                in addition to the ``MultiFutureFailed`` event.
-
-        Args:
-            actors_tasks: Tracked actors mapping to actor method specifications.
-            result_cls: Class extending ``FutureResult`` to emit as sub results of
-                ``MultiFutureResult`` when the futures resolve successfully.
         """
         raise NotImplementedError
