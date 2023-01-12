@@ -123,18 +123,6 @@ class GrpcClient {
     stub_ = GrpcService::NewStub(channel_);
   }
 
-  grpc::ChannelArguments CreateDefaultChannelArguments() {
-    grpc::ChannelArguments arguments;
-    if (::RayConfig::instance().grpc_client_keepalive_time_ms() > 0) {
-      arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS,
-                       ::RayConfig::instance().grpc_client_keepalive_time_ms());
-      arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
-                       ::RayConfig::instance().grpc_client_keepalive_timeout_ms());
-      arguments.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
-    }
-    return arguments;
-  }
-
   /// Create a new `ClientCall` and send request.
   ///
   /// \tparam Request Type of the request message.
