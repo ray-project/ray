@@ -201,18 +201,32 @@ class TestWandbLogger:
         assert logger.project == "test_project_from_env_var"
         assert logger.group == "test_group_from_env_var"
 
-    def test_wandb_logger_api_key_config(self):
+    def test_wandb_logger_api_key_config(self, monkeypatch):
         # No API key
         with pytest.raises(ValueError):
             logger = WandbTestExperimentLogger(project="test_project")
             logger.setup()
 
+        # Fetch API key from argument even if external hook and WANDB_ENV_VAR set
+        monkeypatch.setenv(
+            WANDB_SETUP_API_KEY_HOOK,
+            "ray._private.test_utils.wandb_setup_api_key_hook",
+            WANDB_ENV_VAR,
+            "abcde",
+        )
         # API Key in config
         logger = WandbTestExperimentLogger(project="test_project", api_key="1234")
         logger.setup()
         assert os.environ[WANDB_ENV_VAR] == "1234"
 
-    def test_wandb_logger_api_key_file(self):
+    def test_wandb_logger_api_key_file(self, monkeypatch):
+        # Fetch API key from file even if external hook and WANDB_ENV_VAR set
+        monkeypatch.setenv(
+            WANDB_SETUP_API_KEY_HOOK,
+            "ray._private.test_utils.wandb_setup_api_key_hook",
+            WANDB_ENV_VAR,
+            "abcde",
+        )
         # API Key file
         with tempfile.NamedTemporaryFile("wt") as fp:
             fp.write("5678")
@@ -224,8 +238,21 @@ class TestWandbLogger:
             logger.setup()
             assert os.environ[WANDB_ENV_VAR] == "5678"
 
+    def test_wandb_logger_api_key_env_var(self, monkeypatch):
+        # API Key from env var takes precedence over external hook
+        monkeypatch.setenv(
+            WANDB_SETUP_API_KEY_HOOK,
+            "ray._private.test_utils.wandb_setup_api_key_hook",
+            WANDB_ENV_VAR,
+            "1234",
+        )
+        logger = WandbTestExperimentLogger(project="test_project")
+        logger.setup()
+        assert os.environ[WANDB_ENV_VAR] == "1234"
+
     def test_wandb_logger_api_key_external_hook(self, monkeypatch):
-        # API Key from external hook
+        # API Key from external hook if API key not provided through
+        # argument or WANDB_ENV_VAR
         monkeypatch.setenv(
             WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
         )

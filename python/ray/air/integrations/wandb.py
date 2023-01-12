@@ -289,14 +289,23 @@ def _get_wandb_project(project: Optional[str] = None) -> Optional[str]:
 
 def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = None):
     """Set WandB API key from `wandb_config`. Will pop the
-    `api_key_file` and `api_key` keys from `wandb_config` parameter"""
+    `api_key_file` and `api_key` keys from `wandb_config` parameter.
+
+    The order of fetching the API key is:
+      1) From `api_key` or `api_key_file` arguments
+      2) From WANDB_API_KEY environment variables
+      3) From external hook WANDB_SETUP_API_KEY_HOOK"""
     if api_key_file:
         if api_key:
             raise ValueError("Both WandB `api_key_file` and `api_key` set.")
         with open(api_key_file, "rt") as fp:
             api_key = fp.readline().strip()
     # Try to get API key from external hook
-    if not api_key and WANDB_SETUP_API_KEY_HOOK in os.environ:
+    if (
+        not api_key
+        and not os.environ.get(WANDB_ENV_VAR)
+        and WANDB_SETUP_API_KEY_HOOK in os.environ
+    ):
         try:
             api_key = _load_class(os.environ[WANDB_SETUP_API_KEY_HOOK])()
         except Exception as e:
