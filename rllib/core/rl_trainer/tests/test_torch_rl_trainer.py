@@ -12,6 +12,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.numpy import convert_to_numpy
 
+
 def get_trainer(scaling_config=None, distributed: bool = False) -> RLTrainer:
     env = gym.make("CartPole-v1")
     scaling_config = {} or scaling_config
@@ -99,7 +100,8 @@ class TestRLTrainer(unittest.TestCase):
         params = trainer.get_parameters(trainer.module[DEFAULT_POLICY_ID])
         n_steps = 100
         expected = [
-            convert_to_numpy(param) - n_steps * trainer.optimizer_config["lr"] * np.ones(param.shape)
+            convert_to_numpy(param)
+            - n_steps * trainer.optimizer_config["lr"] * np.ones(param.shape)
             for param in params
         ]
         for _ in range(n_steps):
@@ -122,9 +124,7 @@ class TestRLTrainer(unittest.TestCase):
         lr = 1e-4
 
         def set_optimizer_fn(module):
-            return [
-                (module.parameters(), torch.optim.Adam(module.parameters(), lr=lr))
-            ]
+            return [(module.parameters(), torch.optim.Adam(module.parameters(), lr=lr))]
 
         trainer.add_module(
             module_id="test",
@@ -147,7 +147,9 @@ class TestRLTrainer(unittest.TestCase):
         params = trainer.get_parameters(trainer.module["test"])
         n_steps = 100
         expected = [
-            convert_to_numpy(param) - n_steps * lr * np.ones(param.shape) for param in params]
+            convert_to_numpy(param) - n_steps * lr * np.ones(param.shape)
+            for param in params
+        ]
         for _ in range(n_steps):
             loss = {"total_loss": sum([param.sum() for param in params])}
             gradients = trainer.compute_gradients(loss)

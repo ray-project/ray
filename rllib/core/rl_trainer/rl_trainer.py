@@ -233,9 +233,9 @@ class RLTrainer:
             return self._update(batch)
         else:
             return self.do_distributed_update(batch)
-    
+
     def _update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
-        # TODO: remove the MultiAgentBatch from the type, it should be NestedDict from 
+        # TODO: remove the MultiAgentBatch from the type, it should be NestedDict from
         # the base class.
         batch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(batch)
@@ -248,7 +248,9 @@ class RLTrainer:
     def _convert_batch_type(self, batch):
         # TODO: remove this method, it should be handled by the base class.
         batch = NestedDict(batch.policy_batches)
-        batch = NestedDict({k: torch.as_tensor(v, dtype=torch.float32) for k, v in batch.items()})
+        batch = NestedDict(
+            {k: torch.as_tensor(v, dtype=torch.float32) for k, v in batch.items()}
+        )
         return batch
 
     def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:

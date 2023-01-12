@@ -1,61 +1,51 @@
 import logging
-import numpy as np
 from typing import (
     Any,
     Mapping,
     Union,
     Type,
-    Optional,
-    Callable,
-    Dict,
     Sequence,
     Hashable,
 )
+import torch
+from torch.nn.parallel import DistributedDataParallel as DDP
 
-from ray.rllib.utils.annotations import override
+import ray
+
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
     MultiAgentRLModule,
     ParamOptimizerPairs,
-    ParamRef,
     Optimizer,
     ParamType,
     ParamDictType,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 
 
 logger = logging.getLogger(__name__)
 
-# TODO: Implement this
-import torch
-import torch.nn as nn
-from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.distributed as dist
-import os
-import ray
-
 
 class TorchRLTrainer(RLTrainer):
-
     def __init__(
-        self, 
+        self,
         module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
-        module_kwargs: Mapping[str, Any], 
-        scaling_config: Mapping[str, Any], 
-        optimizer_config: Mapping[str, Any], 
-        distributed: bool = False, 
-        in_test: bool = False
+        module_kwargs: Mapping[str, Any],
+        scaling_config: Mapping[str, Any],
+        optimizer_config: Mapping[str, Any],
+        distributed: bool = False,
+        in_test: bool = False,
     ):
         super().__init__(
-            module_class=module_class, 
-            module_kwargs=module_kwargs, 
-            scaling_config=scaling_config, 
-            optimizer_config=optimizer_config, 
-            distributed=distributed, 
-            in_test=in_test
+            module_class=module_class,
+            module_kwargs=module_kwargs,
+            scaling_config=scaling_config,
+            optimizer_config=optimizer_config,
+            distributed=distributed,
+            in_test=in_test,
         )
 
         gpu_ids = ray.get_gpu_ids()
@@ -81,9 +71,11 @@ class TorchRLTrainer(RLTrainer):
         ]
 
     @override(RLTrainer)
-    def compute_gradients(self, loss: Union[TensorType, Mapping[str, Any]]) -> ParamDictType:
+    def compute_gradients(
+        self, loss: Union[TensorType, Mapping[str, Any]]
+    ) -> ParamDictType:
         for optim in self._optim_to_param:
-            optim.zero_grad(set_to_none=True)   
+            optim.zero_grad(set_to_none=True)
         loss[self.TOTAL_LOSS_KEY].backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
         return grads
@@ -93,16 +85,16 @@ class TorchRLTrainer(RLTrainer):
 
         # make sure the parameters do not carry gradients on their own
         for optim in self._optim_to_param:
-            optim.zero_grad(set_to_none=True) 
-        
+            optim.zero_grad(set_to_none=True)
+
         # set the gradient of the parameters
         for pid, grad in gradients.items():
             self._params[pid].grad = grad
-        
+
         # for each optimizer call its step function with the gradients
         for optim in self._optim_to_param:
             optim.step()
-    
+
     @override(RLTrainer)
     def _make_distributed(self) -> MultiAgentRLModule:
         module = self._make_module()
@@ -113,7 +105,7 @@ class TorchRLTrainer(RLTrainer):
         else:
             module = DDP(module, process_group=pg)
         return module
-    
+
     @override(RLTrainer)
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         # in torch the distributed update is no different than the normal update
@@ -134,4 +126,3 @@ class TorchRLTrainer(RLTrainer):
         # TODO: the abstraction should take in optimizer_config as a parameter as well.
         lr = self.optimizer_config.get("lr", 1e-3)
         return optimizer_cls(module.parameters, lr=lr)
-    
