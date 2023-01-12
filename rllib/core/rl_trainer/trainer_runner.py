@@ -9,7 +9,11 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamOptimizerPairs,
     Optimizer,
 )
+from ray.rllib.core.rl_trainer.tf.tf_rl_trainer import TfRLTrainer
+from ray.rllib.core.rl_trainer.torch.torch_rl_trainer import TorchRLTrainer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+
+
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 
@@ -17,7 +21,9 @@ from ray.train._internal.backend_executor import BackendExecutor
 class TrainerRunner:
     """Coordinator of RLTrainers.
     Public API:
-        .update()
+        .update(batch) -> updates the RLModule based on gradient descent algos.
+        .additional_update() -> any additional non-gradient based updates will get
+                                called from this entry point.
         .get_state() -> returns the state of the RLModule and RLOptimizer from
                         all of the RLTrainers
         .set_state() -> sets the state of all the RLTrainers
@@ -37,9 +43,10 @@ class TrainerRunner:
         trainer_class: Type[RLTrainer],
         trainer_config: Mapping[str, Any],
         compute_config: Mapping[str, Any],
-        framework: str = "tf",
     ):
-        """ """
+        # TODO: trainer_config and compute_config should become dataclasses.
+        # It's hard for the user to know what the trainer / compute parameters are
+        # expected.
         self._trainer_config = trainer_config
         self._compute_config = compute_config
 
@@ -51,11 +58,11 @@ class TrainerRunner:
             use_gpu=resources["use_gpu"],
         )
         # the only part of this class that is framework agnostic:
-        if framework == "torch":
+        if issubclass(trainer_class, TorchRLTrainer):
             from ray.train.torch import TorchConfig
 
             backend_config = TorchConfig()
-        elif framework == "tf":
+        elif issubclass(trainer_class, TfRLTrainer):
             from ray.train.tensorflow import TensorflowConfig
 
             backend_config = TensorflowConfig()
@@ -101,28 +108,22 @@ class TrainerRunner:
         return {"num_workers": num_workers, "use_gpu": bool(num_gpus)}
 
     def update(self, batch: MultiAgentBatch = None, **kwargs):
-        """TODO: account for **kwargs
-        Example in DQN:
+        """
+        Example:
             >>> trainer_runner.update(batch) # updates the gradient
-            >>> trainer_runner.update(update_target=True) # should soft-update
-                the target network
         """
         refs = []
-        if batch is None:
-            for worker in self.workers:
-                refs.append(worker.update.remote(**kwargs))
-        else:
-            global_size = len(self.workers)
-            batch_size = math.ceil(len(batch) / global_size)
-            for i, worker in enumerate(self.workers):
-                batch_to_send = {}
-                for pid, sub_batch in batch.policy_batches.items():
-                    batch_size = math.ceil(len(sub_batch) / global_size)
-                    start = batch_size * i
-                    end = min(start + batch_size, len(sub_batch))
-                    batch_to_send[pid] = sub_batch[int(start) : int(end)]
-                new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
-                refs.append(worker.update.remote(new_batch))
+        global_size = len(self.workers)
+        batch_size = math.ceil(len(batch) / global_size)
+        for i, worker in enumerate(self.workers):
+            batch_to_send = {}
+            for pid, sub_batch in batch.policy_batches.items():
+                batch_size = math.ceil(len(sub_batch) / global_size)
+                start = batch_size * i
+                end = min(start + batch_size, len(sub_batch))
+                batch_to_send[pid] = sub_batch[int(start) : int(end)]
+            new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
+            refs.append(worker.update.remote(new_batch))
 
         return ray.get(refs)
 
