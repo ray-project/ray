@@ -101,7 +101,6 @@ class TestActionConnector(unittest.TestCase):
             immutable.output[0][0] = 5
 
 
-
 if __name__ == "__main__":
     import pytest
     import sys

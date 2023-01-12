@@ -383,7 +383,9 @@ class EnvRunnerV2:
 
         return outputs
 
-    def _get_rollout_metrics(self, episode: EpisodeV2, policy_map: Dict[str, Policy]) -> List[RolloutMetrics]:
+    def _get_rollout_metrics(
+        self, episode: EpisodeV2, policy_map: Dict[str, Policy]
+    ) -> List[RolloutMetrics]:
         """Get rollout metrics from completed episode."""
         # TODO(jungong) : why do we need to handle atari metrics differently?
         # Can we unify atari and normal env metrics?
@@ -800,7 +802,11 @@ class EnvRunnerV2:
         else:
             episode_or_exception: EpisodeV2 = self._active_episodes[env_id]
             # Add rollout metrics.
-            outputs.extend(self._get_rollout_metrics(episode_or_exception, policy_map=self._worker.policy_map))
+            outputs.extend(
+                self._get_rollout_metrics(
+                    episode_or_exception, policy_map=self._worker.policy_map
+                )
+            )
             # Output the collected episode after adding rollout metrics so that we
             # always fetch metrics with RolloutWorker before we fetch samples.
             # This is because we need to behave like env_runner() for now.

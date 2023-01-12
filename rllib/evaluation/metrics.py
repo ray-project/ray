@@ -25,7 +25,7 @@ RolloutMetrics = DeveloperAPI(
             "hist_data",
             "media",
             "episode_faulty",
-            "connector_metrics"
+            "connector_metrics",
         ],
     )
 )

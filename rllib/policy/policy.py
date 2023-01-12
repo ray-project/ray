@@ -404,16 +404,18 @@ class Policy(metaclass=ABCMeta):
             for k, v in view_reqs.items():
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
-    
+
     def get_connector_throughput_metrics(self) -> Dict:
         """Get timers from connectors for this policy and build a dict of throughputs."""
         return {
             "agent_connectors": {
-                name + "_throughput": timer.mean_throughput for name, timer in self.agent_connectors.timers.items()
+                name + "_throughput": timer.mean_throughput
+                for name, timer in self.agent_connectors.timers.items()
             },
             "action_connectors": {
-                name + "_throughput": timer.mean_throughput for name, timer in self.agent_connectors.timers.items()
-            }
+                name + "_throughput": timer.mean_throughput
+                for name, timer in self.agent_connectors.timers.items()
+            },
         }
 
     def reset_connectors(self, env_id) -> None:
