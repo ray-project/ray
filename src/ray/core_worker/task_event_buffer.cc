@@ -30,7 +30,9 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
 
-  buffer_.reserve(RayConfig::instance().task_events_max_num_task_events_in_buffer());
+  data_ = std::make_unique<rpc::TaskEventData>();
+  data_->mutable_events_by_task()->Reserve(
+      RayConfig::instance().task_events_max_num_task_events_in_buffer());
 
   // Reporting to GCS, set up gcs client and and events flushing.
   auto status = gcs_client_->Connect(io_service_);
@@ -100,38 +102,39 @@ void TaskEventBufferImpl::AddTaskEvent(rpc::TaskEvents task_events) {
   absl::MutexLock lock(&mutex_);
 
   auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
-  if (limit > 0 && buffer_.size() >= static_cast<size_t>(limit)) {
+  if (limit > 0 && data_->events_by_task_size() >= limit) {
     // Too many task events, start overriding older ones.
-    if (buffer_[next_idx_to_overwrite_].has_profile_events()) {
+    if (data_->events_by_task().at(next_idx_to_overwrite_).has_profile_events()) {
       num_profile_task_events_dropped_++;
     } else {
       num_status_task_events_dropped_++;
     }
 
-    buffer_[next_idx_to_overwrite_] = std::move(task_events);
+    // The two should be from different arena : so calling Swap will not improve
+    // performance.
+    data_->mutable_events_by_task(next_idx_to_overwrite_)->CopyFrom(task_events);
     next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % limit;
     return;
   }
-  buffer_.push_back(std::move(task_events));
+
+  data_->mutable_events_by_task()->Add(std::move(task_events));
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
   if (!enabled_) {
     return;
   }
-  std::vector<rpc::TaskEvents> task_events;
-  size_t num_status_task_events_dropped = 0;
-  size_t num_profile_task_events_dropped = 0;
+  std::unique_ptr<rpc::TaskEventData> data_to_send =
+      std::make_unique<rpc::TaskEventData>();
   {
     absl::MutexLock lock(&mutex_);
 
     RAY_LOG_EVERY_MS(INFO, 15000)
-        << "Pushed task state events to GCS. [total_bytes="
-        << (1.0 * total_events_bytes_) / 1024 / 1024
-        << "MiB][total_count=" << total_num_events_
+        << "Pushed task state events to GCS. "
+        << "[total_count=" << total_num_events_
         << "][total_status_task_events_dropped=" << num_status_task_events_dropped_
         << "][total_profile_task_events_dropped=" << num_profile_task_events_dropped_
-        << "][cur_buffer_size=" << buffer_.size() << "].";
+        << "][cur_buffer_size=" << data_->events_by_task_size() << "].";
 
     // Skip if GCS hasn't finished processing the previous message.
     if (grpc_in_progress_ && !forced) {
@@ -139,51 +142,38 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
           << "GCS hasn't replied to the previous flush events call (likely "
              "overloaded). "
              "Skipping reporting task state events and retry later."
-          << "[cur_buffer_size=" << buffer_.size() << "].";
+          << "[cur_buffer_size=" << data_->events_by_task_size() << "].";
       return;
     }
 
-    if (buffer_.size() == 0) {
+    if (data_->events_by_task_size() == 0) {
       return;
     }
 
-    task_events.reserve(
+    // Reserve enough space for allocated arena.
+    data_to_send->mutable_events_by_task()->Reserve(
         RayConfig::instance().task_events_max_num_task_events_in_buffer());
-    buffer_.swap(task_events);
-    next_idx_to_overwrite_ = 0;
+    // Swap with in memory buffered data.
+    data_.swap(data_to_send);
+    data_to_send->set_num_profile_task_events_dropped(num_profile_task_events_dropped_);
+    data_to_send->set_num_status_task_events_dropped(num_status_task_events_dropped_);
 
-    num_profile_task_events_dropped = num_profile_task_events_dropped_;
+    // Reset counters.
     num_profile_task_events_dropped_ = 0;
-
-    num_status_task_events_dropped = num_status_task_events_dropped_;
     num_status_task_events_dropped_ = 0;
+    next_idx_to_overwrite_ = 0;
   }
 
-  // Merge multiple events from a single task attempt run into one task event.
-  absl::flat_hash_map<std::pair<std::string, int>, rpc::TaskEvents> task_events_map;
-
-  size_t num_profile_event_to_send = 0;
   size_t num_status_event_to_send = 0;
-  for (auto event : task_events) {
-    if (event.has_profile_events()) {
+  size_t num_profile_event_to_send = 0;
+  size_t num_task_events = data_to_send->events_by_task_size();
+
+  for (const auto &task_event : data_to_send->events_by_task()) {
+    if (task_event.has_profile_events()) {
       num_profile_event_to_send++;
     } else {
       num_status_event_to_send++;
     }
-    auto &task_events_itr =
-        task_events_map[std::make_pair(event.task_id(), event.attempt_number())];
-    task_events_itr.MergeFrom(event);
-  }
-
-  // Convert to rpc::TaskEventsData
-  auto data = std::make_unique<rpc::TaskEventData>();
-  data->set_num_profile_task_events_dropped(num_profile_task_events_dropped);
-  data->set_num_status_task_events_dropped(num_status_task_events_dropped);
-
-  auto num_task_events = task_events_map.size();
-  for (auto itr : task_events_map) {
-    auto events_by_task = data->add_events_by_task();
-    events_by_task->Swap(&itr.second);
   }
 
   {
@@ -191,7 +181,6 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     absl::MutexLock lock(&mutex_);
     // Some debug tracking.
     total_num_events_ += num_task_events;
-    total_events_bytes_ += data->ByteSizeLong();
 
     auto on_complete = [this, num_task_events](const Status &status) {
       absl::MutexLock lock(&mutex_);
@@ -208,7 +197,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     // The flag should be unset when on_complete is invoked.
     grpc_in_progress_ = true;
     auto status =
-        gcs_client_->Tasks().AsyncAddTaskEventData(std::move(data), on_complete);
+        gcs_client_->Tasks().AsyncAddTaskEventData(std::move(data_to_send), on_complete);
     if (!status.ok()) {
       // If we couldn't even send the data by invoking client side callbacks, there's
       // something seriously wrong, and losing data in this case should not be too

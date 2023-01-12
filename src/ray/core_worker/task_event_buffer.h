@@ -121,7 +121,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Test only functions.
   std::vector<rpc::TaskEvents> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
-    std::vector<rpc::TaskEvents> copy(buffer_);
+    std::vector<rpc::TaskEvents> copy(data_->events_by_task().begin(),
+                                      data_->events_by_task().end());
     return copy;
   }
 
@@ -165,7 +166,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Buffered task events.
-  std::vector<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
+  std::unique_ptr<rpc::TaskEventData> data_ GUARDED_BY(mutex_);
 
   /// A iterator into buffer_ that determines which element to be overwritten.
   size_t next_idx_to_overwrite_ GUARDED_BY(mutex_) = 0;
@@ -180,9 +181,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
   bool grpc_in_progress_ GUARDED_BY(mutex_) = false;
-
-  /// Debug stats: total number of bytes of task events sent so far to GCS.
-  uint64_t total_events_bytes_ GUARDED_BY(mutex_) = 0;
 
   /// Debug stats: total number of task events sent so far to GCS.
   uint64_t total_num_events_ GUARDED_BY(mutex_) = 0;
