@@ -1,5 +1,6 @@
 import logging
 from typing import Any, List
+from collections import defaultdict
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
@@ -10,6 +11,7 @@ from ray.rllib.connectors.connector import (
 from ray.rllib.connectors.registry import get_connector, register_connector
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
 from ray.util.annotations import PublicAPI
+from ray.util.timer import _Timer
 
 
 logger = logging.getLogger(__name__)
@@ -19,10 +21,12 @@ logger = logging.getLogger(__name__)
 class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
     def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
         super().__init__(ctx, connectors)
+        self.timers = defaultdict(_Timer)
 
     def reset(self, env_id: str):
         for c in self.connectors:
             c.reset(env_id)
+        self.timers.clear()
 
     def on_policy_output(self, output: ActionConnectorDataType):
         for c in self.connectors:
@@ -33,7 +37,10 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
     ) -> List[AgentConnectorDataType]:
         ret = acd_list
         for c in self.connectors:
-            ret = c(ret)
+            timer = self.timers[str(c)]
+            with timer:
+                ret = c(ret)
+            timer.push_units_processed(1)
         return ret
 
     def to_state(self):

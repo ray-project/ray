@@ -25,6 +25,8 @@ class TestActionConnector(unittest.TestCase):
         restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ActionConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ConvertToNumpyConnector))
+        pipeline.timers
+        pipeline.reset()
 
     def test_convert_to_numpy_connector(self):
         ctx = ConnectorContext()
@@ -97,6 +99,7 @@ class TestActionConnector(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             immutable.output[0][0] = 5
+
 
 
 if __name__ == "__main__":
