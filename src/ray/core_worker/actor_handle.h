@@ -28,8 +28,7 @@ namespace core {
 
 class ActorHandle {
  public:
-  ActorHandle(rpc::ActorHandle inner)
-      : inner_(inner), {}
+  ActorHandle(rpc::ActorHandle inner) : inner_(inner) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id,

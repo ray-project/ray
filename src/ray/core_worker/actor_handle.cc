@@ -124,9 +124,7 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
   const ObjectID actor_creation_dummy_object_id =
       ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
-  builder.SetActorTaskSpec(GetActorID(),
-                           actor_creation_dummy_object_id,
-                           task_counter_++);
+  builder.SetActorTaskSpec(GetActorID(), actor_creation_dummy_object_id, task_counter_++);
 }
 
 void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,

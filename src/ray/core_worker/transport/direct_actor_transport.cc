@@ -209,7 +209,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   };
 
-  auto dependencies = task_spec.GetDependencies(false);
+  auto dependencies = task_spec.GetDependencies();
 
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
