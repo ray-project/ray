@@ -241,7 +241,8 @@ class TestWandbLogger:
             assert os.environ[WANDB_ENV_VAR] == "5678"
 
     def test_wandb_logger_api_key_env_var(self, monkeypatch):
-        # API Key from env var takes precedence over external hook
+        # API Key from env var takes precedence over external hook and
+        # logged in W&B API key
         monkeypatch.setenv(
             WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
         )
@@ -249,19 +250,47 @@ class TestWandbLogger:
             WANDB_ENV_VAR,
             "1234",
         )
-        logger = WandbTestExperimentLogger(project="test_project")
-        logger.setup()
+        mock_wandb = Mock(api=Mock(api_key="efgh"))
+        with patch.multiple("ray.air.integrations.wandb", wandb=mock_wandb):
+            logger = WandbTestExperimentLogger(project="test_project")
+            logger.setup()
         assert os.environ[WANDB_ENV_VAR] == "1234"
+        mock_wandb.ensure_configured.assert_not_called()
 
     def test_wandb_logger_api_key_external_hook(self, monkeypatch):
         # API Key from external hook if API key not provided through
-        # argument or WANDB_ENV_VAR
+        # argument or WANDB_ENV_VAR and user not already logged in to W&B
         monkeypatch.setenv(
             WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
         )
-        logger = WandbTestExperimentLogger(project="test_project")
-        logger.setup()
+
+        mock_wandb = Mock(api=Mock(api_key=None))
+        with patch.multiple("ray.air.integrations.wandb", wandb=mock_wandb):
+            logger = WandbTestExperimentLogger(project="test_project")
+            logger.setup()
         assert os.environ[WANDB_ENV_VAR] == "abcd"
+        mock_wandb.ensure_configured.assert_called_once()
+
+        mock_wandb = Mock(ensure_configured=Mock(side_effect=AttributeError()))
+        with patch.multiple("ray.air.integrations.wandb", wandb=mock_wandb):
+            logger = WandbTestExperimentLogger(project="test_project")
+            logger.setup()
+        assert os.environ[WANDB_ENV_VAR] == "abcd"
+
+    def test_wandb_logger_api_key_from_wandb_login(self, monkeypatch):
+        # No API key should get set if user is already logged in to W&B
+        # and they didn't pass API key through argument or env var.
+        # External hook should not be called because user already logged
+        # in takes precedence.
+        monkeypatch.setenv(
+            WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
+        )
+        mock_wandb = Mock()
+        with patch.multiple("ray.air.integrations.wandb", wandb=mock_wandb):
+            logger = WandbTestExperimentLogger(project="test_project")
+            logger.setup()
+        assert os.environ.get(WANDB_ENV_VAR) is None
+        mock_wandb.ensure_configured.assert_called_once()
 
     def test_wandb_logger_run_location_external_hook(self, monkeypatch):
         # No project
