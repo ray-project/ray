@@ -841,7 +841,7 @@ class EnvRunnerV2:
 
         # Reset connector state if this is a hard reset.
         for p in self._worker.policy_map.cache.values():
-            p.agent_connectors.reset(env_id)
+            p.reset_connectors(env_id)
 
         # Creates a new episode if this is not async return.
         # If reset is async, we will get its result in some future poll.
