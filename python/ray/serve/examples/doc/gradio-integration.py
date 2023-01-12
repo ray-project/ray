@@ -7,6 +7,7 @@ from transformers import pipeline
 
 # __doc_import_end__
 
+
 # __doc_gradio_app_begin__
 def gradio_summarizer_builder():
     summarizer = pipeline("summarization", model="t5-small")
