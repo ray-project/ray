@@ -656,7 +656,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
             convert_options=csv.ConvertOptions(
                 column_types={"one": "int64", "two": "string"}
             ),
-        )
+        ).schema()
 
     # Parsing scientific notation in double should work.
     ds = ray.data.read_csv(
@@ -692,12 +692,12 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
     # Single non-CSV file.
     error_message = "Failed to read CSV file"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path3)
+        ray.data.read_csv(path3).schema()
 
     # Single non-CSV file with filter.
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path3, partition_filter=FileExtensionFilter("csv"))
+        ray.data.read_csv(path3, partition_filter=FileExtensionFilter("csv")).schema()
 
     # Single CSV file without extension.
     ds = ray.data.read_csv(path2)
@@ -706,12 +706,12 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
     # Single CSV file without extension with filter.
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path2, partition_filter=FileExtensionFilter("csv"))
+        ray.data.read_csv(path2, partition_filter=FileExtensionFilter("csv")).schema()
 
     # Directory of CSV and non-CSV files.
     error_message = "Failed to read CSV file"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(tmp_path)
+        ray.data.read_csv(tmp_path).schema()
 
     # Directory of CSV and non-CSV files with filter.
     ds = ray.data.read_csv(tmp_path, partition_filter=FileExtensionFilter("csv"))
