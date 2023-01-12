@@ -14,6 +14,7 @@ from typing import (
 
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
+    MultiAgentRLModule,
     ParamOptimizerPairs,
     ParamRef,
     Optimizer,
@@ -79,7 +80,7 @@ class TfRLTrainer(RLTrainer):
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: tf.GradientTape
     ) -> ParamDictType:
-        grads = tape.gradient(loss["total_loss"], self._params)
+        grads = tape.gradient(loss[self.TOTAL_LOSS_KEY], self._params)
         return grads
 
     @override(RLTrainer)
@@ -90,7 +91,7 @@ class TfRLTrainer(RLTrainer):
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(RLTrainer)
-    def _make_distributed(self) -> RLModule:
+    def _make_distributed(self) -> MultiAgentRLModule:
         # TODO: Does strategy has to be an attribute here? if so it's very hidden to
         # the user of this class that there is such an attribute.
 

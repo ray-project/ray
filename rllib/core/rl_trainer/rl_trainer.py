@@ -234,13 +234,16 @@ class RLTrainer:
             A dictionary of results.
         """
         if not self.distributed:
-            fwd_out = self._module.forward_train(batch)
-            loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
-            gradients = self.compute_gradients(loss)
-            post_processed_gradients = self.on_after_compute_gradients(gradients)
-            self.apply_gradients(post_processed_gradients)
+            return self._update(batch)
         else:
-            self.do_distributed_update(batch)
+            return self.do_distributed_update(batch)
+    
+    def _update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        fwd_out = self._module.forward_train(batch)
+        loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        gradients = self.compute_gradients(loss)
+        post_processed_gradients = self.on_after_compute_gradients(gradients)
+        self.apply_gradients(post_processed_gradients)
         return self.compile_results(batch, fwd_out, loss, post_processed_gradients)
 
     def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
