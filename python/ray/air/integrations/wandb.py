@@ -440,6 +440,40 @@ class WandbLoggerCallback(LoggerCallback):
     ``LoggerCallback`` sends metrics to Wandb for automatic tracking and
     visualization.
 
+    Example:
+
+        .. testcode::
+            import random
+
+            from ray import tune
+            from ray.air import session, RunConfig
+            from ray.air.integrations.wandb import WandbLoggerCallback
+
+
+            def train_func(config):
+                offset = random.random() / 5
+                for epoch in range(2, config["epochs"]):
+                    acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
+                    loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
+                    session.report({"acc": acc, "loss": loss})
+
+
+            tuner = tune.Tuner(
+                train_func,
+                param_space={
+                    "lr": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
+                    "epochs": 10,
+                },
+                run_config=RunConfig(
+                    callbacks=[WandbLoggerCallback(project="Optimization_Project")]
+                ),
+            )
+            results = tuner.fit()
+
+        .. testoutput::
+            :hide:
+            :options: +ELLIPSIS
+
     Args:
         project: Name of the Wandb project. Mandatory.
         group: Name of the Wandb group. Defaults to the trainable
@@ -464,26 +498,7 @@ class WandbLoggerCallback(LoggerCallback):
 
     Please see here for all other valid configuration settings:
     https://docs.wandb.ai/library/init
-
-    Example:
-
-    .. code-block:: python
-
-        from ray.tune.logger import DEFAULT_LOGGERS
-        from ray.air.integrations.wandb import WandbLoggerCallback
-        tune.run(
-            train_fn,
-            config={
-                # define search space here
-                "parameter_1": tune.choice([1, 2, 3]),
-                "parameter_2": tune.choice([4, 5, 6]),
-            },
-            callbacks=[WandbLoggerCallback(
-                project="Optimization_Project",
-                api_key_file="/path/to/file",
-                log_config=True)])
-
-    """
+    """  # noqa: E501
 
     # Do not log these result keys
     _exclude_results = ["done", "should_checkpoint"]

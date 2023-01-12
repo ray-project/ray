@@ -573,6 +573,7 @@
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
     - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
     - bazel clean --expunge
+    - python ./ci/env/setup_credentials.py wandb
     - ./ci/ci.sh build
 
 - label: ":octopus: Tune multinode tests"
@@ -623,7 +624,7 @@
     - pip install -U typing-extensions
     - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat_py36 
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat_py36
       python/ray/tests/horovod/...
       python/ray/tests/lightgbm/...
       python/ray/tests/ml_py36_compat/...
