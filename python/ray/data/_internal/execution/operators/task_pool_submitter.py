@@ -11,23 +11,28 @@ from ray._raylet import ObjectRefGenerator
 class TaskPoolSubmitter(MapTaskSubmitter):
     """A task submitter for MapOperator that uses normal Ray tasks."""
 
-    def __init__(self, ray_remote_args: Dict[str, Any]):
+    def __init__(
+        self,
+        transform_fn_ref: ObjectRef[Callable[[Iterator[Block]], Iterator[Block]]],
+        ray_remote_args: Dict[str, Any],
+    ):
         """Create a TaskPoolSubmitter instance.
 
         Args:
+            transform_fn_ref: The function to apply to a block bundle in the submitted
+                map task.
             ray_remote_args: Remote arguments for the Ray tasks to be launched.
         """
+        self._transform_fn_ref = transform_fn_ref
         self._ray_remote_args = ray_remote_args
 
     def submit(
-        self,
-        transform_fn: ObjectRef[Callable[[Iterator[Block]], Iterator[Block]]],
-        input_blocks: List[ObjectRef[Block]],
+        self, input_blocks: List[ObjectRef[Block]]
     ) -> ObjectRef[ObjectRefGenerator]:
         # Submit the task as a normal Ray task.
         map_task = cached_remote_fn(_map_task, num_returns="dynamic")
         return map_task.options(**self._ray_remote_args).remote(
-            transform_fn, *input_blocks
+            self._transform_fn_ref, *input_blocks
         )
 
     def shutdown(self, task_refs: List[ObjectRef[Union[ObjectRefGenerator, Block]]]):

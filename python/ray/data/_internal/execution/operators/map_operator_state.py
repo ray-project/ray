@@ -34,11 +34,15 @@ class MapOperatorState:
         # Execution arguments.
         self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
 
+        # Put the function def in the object store to avoid repeated serialization
+        # in case it's large (i.e., closure captures large objects).
+        transform_fn_ref = ray.put(transform_fn)
+
         # Submitter of Ray tasks mapping transform_fn over data.
         if ray_remote_args is None:
             ray_remote_args = {}
         if isinstance(compute_strategy, TaskPoolStrategy):
-            task_submitter = TaskPoolSubmitter(ray_remote_args)
+            task_submitter = TaskPoolSubmitter(transform_fn_ref, ray_remote_args)
         elif isinstance(compute_strategy, ActorPoolStrategy):
             # TODO(Clark): Better mapping from configured min/max pool size to static
             # pool size?
@@ -46,16 +50,14 @@ class MapOperatorState:
             if pool_size == float("inf"):
                 # Use min_size if max_size is unbounded (default).
                 pool_size = compute_strategy.min_size
-            task_submitter = ActorPoolSubmitter(pool_size, ray_remote_args)
+            task_submitter = ActorPoolSubmitter(
+                transform_fn_ref, ray_remote_args, pool_size
+            )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
         self._task_submitter: MapTaskSubmitter = task_submitter
         # Whether we have started the task submitter yet.
         self._have_started_submitter = False
-
-        # Put the function def in the object store to avoid repeated serialization
-        # in case it's large (i.e., closure captures large objects).
-        self._transform_fn_ref = ray.put(transform_fn)
 
         # The temporary block bundle used to accumulate inputs until they meet the
         # min_rows_per_bundle requirement.
@@ -186,7 +188,7 @@ class MapOperatorState:
         ref: Union[
             ObjectRef[ObjectRefGenerator],
             Tuple[ObjectRef[Block], ObjectRef[BlockMetadata]],
-        ] = self._task_submitter.submit(self._transform_fn_ref, input_blocks)
+        ] = self._task_submitter.submit(input_blocks)
         task = _TaskState(bundle)
         if isinstance(ref, tuple):
             # Task submitter returned a block ref and block metadata ref tuple; we make

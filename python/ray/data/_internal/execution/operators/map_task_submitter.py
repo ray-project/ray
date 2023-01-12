@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, List, Union, Tuple, Iterator
+from typing import List, Union, Tuple
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
@@ -24,17 +24,13 @@ class MapTaskSubmitter(ABC):
 
     @abstractmethod
     def submit(
-        self,
-        transform_fn: ObjectRef[Callable[[Iterator[Block]], Iterator[Block]]],
-        input_blocks: List[ObjectRef[Block]],
+        self, input_blocks: List[ObjectRef[Block]]
     ) -> Union[
         ObjectRef[ObjectRefGenerator], Tuple[ObjectRef[Block], ObjectRef[BlockMetadata]]
     ]:
         """Submit a map task.
 
         Args:
-            transform_fn: The function to apply to a block bundle in the submitted
-                map task.
             input_blocks: The block bundle on which to apply transform_fn.
 
         Returns:

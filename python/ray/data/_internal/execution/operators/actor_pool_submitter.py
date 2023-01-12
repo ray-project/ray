@@ -10,15 +10,23 @@ from ray.types import ObjectRef
 class ActorPoolSubmitter(MapTaskSubmitter):
     """A task submitter for MapOperator that uses a Ray actor pool."""
 
-    def __init__(self, pool_size: int, ray_remote_args: Dict[str, Any]):
+    def __init__(
+        self,
+        transform_fn_ref: ObjectRef[Callable[[Iterator[Block]], Iterator[Block]]],
+        ray_remote_args: Dict[str, Any],
+        pool_size: int,
+    ):
         """Create an ActorPoolSubmitter instance.
 
         Args:
-            pool_size: The size of the actor pool.
+            transform_fn_ref: The function to apply to a block bundle in the submitted
+                map task.
             ray_remote_args: Remote arguments for the Ray actors to be created.
+            pool_size: The size of the actor pool.
         """
-        self._pool_size = pool_size
+        self._transform_fn_ref = transform_fn_ref
         self._ray_remote_args = ray_remote_args
+        self._pool_size = pool_size
         # A map from task output futures to the actors on which they are running.
         self._active_actors: Dict[ObjectRef[Block], ray.actor.ActorHandle] = {}
         # The actor pool on which we are running map tasks.
@@ -34,15 +42,13 @@ class ActorPoolSubmitter(MapTaskSubmitter):
             self._actor_pool.add_actor(cls_.remote())
 
     def submit(
-        self,
-        transform_fn: ObjectRef[Callable[[Iterator[Block]], Iterator[Block]]],
-        input_blocks: List[ObjectRef[Block]],
+        self, input_blocks: List[ObjectRef[Block]]
     ) -> Tuple[ObjectRef[Block], ObjectRef[BlockMetadata]]:
         # Pick an actor from the pool.
         actor = self._actor_pool.pick_actor()
         # Submit the map task.
         block, block_metadata = actor.submit.options(num_returns=2).remote(
-            transform_fn, *input_blocks
+            self._transform_fn_ref, *input_blocks
         )
         self._active_actors[block] = actor
         return block, block_metadata
@@ -170,7 +176,8 @@ class ActorPool:
 
         This is called once the task submitter is shutting down.
         """
-        for actor in self._tasks_in_flight.keys():
+        all_actors = list(self._tasks_in_flight.keys())
+        for actor in all_actors:
             self._kill_actor(actor)
 
     def _kill_actor(self, actor: ray.actor.ActorHandle):
