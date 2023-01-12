@@ -22,7 +22,7 @@ mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
 # Special VM options for Java in Docker
 CRATE_JAVA_OPTS="-Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
 
-sudo sysctl -w vm.max_map_count=262144
+
 sudo tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
 
 
