@@ -17,5 +17,4 @@ for x in (
     .map(sleep, num_cpus=0.5)
     .iter_rows()
 ):
-    pass
-#    print("OUTPUT", x)
+    print("OUTPUT", x)

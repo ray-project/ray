@@ -44,8 +44,6 @@ class StreamingExecutor(Executor):
         We take an event-loop approach to scheduling. We block on the next scheduling
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
-        assert False
-
         if not isinstance(dag, InputDataBuffer):
             logger.info("Executing DAG %s", dag)
 
@@ -67,6 +65,7 @@ class StreamingExecutor(Executor):
 
         The stats object will be updated as streaming execution progresses.
         """
+        assert self._stats, self._stats
         return self._stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:

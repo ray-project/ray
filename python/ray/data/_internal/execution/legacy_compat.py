@@ -46,7 +46,6 @@ def execute_to_legacy_block_iterator(
     """
     dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
     bundle_iter = executor.execute(dag, initial_stats=stats)
-    _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
 
     for bundle in bundle_iter:
         for block, _ in bundle.blocks:

@@ -148,7 +148,9 @@ def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
     # TODO: set limits properly based on resources and execution options. This is just
     # a hard-coded development placeholder.
     PARALLELISM_LIMIT = 8
-    num_active_tasks = sum(op.num_active_tasks() for op in topology)
+    num_active_tasks = sum(
+        op_state.num_active_tasks() for op_state in topology.values()
+    )
     if num_active_tasks >= PARALLELISM_LIMIT:
         return None
 
