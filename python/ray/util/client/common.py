@@ -482,14 +482,14 @@ class ClientActorHandle(ClientStub):
 
         if self._method_num_returns is None:
             self._init_class_info()
-        if key in self._method_signatures:
-            return ClientRemoteMethod(
-                self,
-                key,
-                self._method_num_returns.get(key),
-                self._method_signatures.get(key),
-            )
-        raise AttributeError(f"ClientActorRef has no attribute '{key}'")
+        if key not in self._method_signatures:
+            raise AttributeError(f"ClientActorRef has no attribute '{key}'")
+        return ClientRemoteMethod(
+            self,
+            key,
+            self._method_num_returns.get(key),
+            self._method_signatures.get(key),
+        )
 
     def __repr__(self):
         return "ClientActorHandle(%s)" % (self.actor_ref.id.hex())

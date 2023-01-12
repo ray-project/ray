@@ -855,7 +855,8 @@ def test_ignore_reinit(call_ray_start_shared, shutdown_only):
 
 def test_client_actor_missing_field(call_ray_start_shared):
     """
-    Test remote calls with large (multiple chunk) arguments
+    Tests that trying to access methods that don't exist for an actor
+    raises the correct exception.
     """
 
     class SomeSuperClass:
