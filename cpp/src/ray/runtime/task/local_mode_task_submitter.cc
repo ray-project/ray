@@ -83,7 +83,6 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
         ObjectID::FromIndex(actor_creation_task_id, 1);
     builder.SetActorTaskSpec(invocation.actor_id,
                              actor_creation_dummy_object_id,
-                             ObjectID(),
                              invocation.actor_counter);
   } else {
     throw RayException("unknown task type");
