@@ -216,13 +216,9 @@ class RLTrainer:
         Returns:
             A dictionary of results.
         """
+        # TODO: figure out a universal compilation of results in the baseclass
         loss_numpy = convert_to_numpy(postprocessed_loss)
-        rewards = batch["rewards"]
-        rewards = convert_to_numpy(rewards)
-        return {
-            "avg_reward": rewards.mean(),
-            **loss_numpy,
-        }
+        return {"loss": loss_numpy}
 
     def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform an update on this Trainer.
@@ -239,12 +235,21 @@ class RLTrainer:
             return self.do_distributed_update(batch)
     
     def _update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        # TODO: remove the MultiAgentBatch from the type, it should be NestedDict from 
+        # the base class.
+        batch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(batch)
         loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
         gradients = self.compute_gradients(loss)
         post_processed_gradients = self.on_after_compute_gradients(gradients)
         self.apply_gradients(post_processed_gradients)
         return self.compile_results(batch, fwd_out, loss, post_processed_gradients)
+
+    def _convert_batch_type(self, batch):
+        # TODO: remove this method, it should be handled by the base class.
+        batch = NestedDict(batch.policy_batches)
+        batch = NestedDict({k: torch.as_tensor(v, dtype=torch.float32) for k, v in batch.items()})
+        return batch
 
     def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
         """Apply additional non-gradient based updates to this Trainer.
@@ -471,6 +476,7 @@ class RLTrainer:
         Returns:
             The parameters of the module.
         """
+        # TODO: Make this method a classmethod
 
     @abc.abstractmethod
     def get_optimizer_obj(

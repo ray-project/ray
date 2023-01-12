@@ -62,6 +62,7 @@ class TorchRLTrainer(RLTrainer):
         self._world_size = scaling_config.get("num_workers", 1)
         self._gpu_id = gpu_ids[0] if gpu_ids else None
 
+    @property
     @override(RLTrainer)
     def module(self) -> MultiAgentRLModule:
         if self.distributed:
@@ -73,8 +74,8 @@ class TorchRLTrainer(RLTrainer):
         lr = self.optimizer_config.get("lr", 1e-3)
         return [
             (
-                self._module[key].parmaeters(),
-                torch.optim.Adam(self._module[key].parmaeters(), lr=lr),
+                self.get_parameters(self._module[key]),
+                torch.optim.Adam(self.get_parameters(self._module[key]), lr=lr),
             )
             for key in self._module.keys()
         ]
@@ -84,7 +85,7 @@ class TorchRLTrainer(RLTrainer):
         for optim in self._optim_to_param:
             optim.zero_grad(set_to_none=True)   
         loss[self.TOTAL_LOSS_KEY].backward()
-        grads = {pid: p.grad for pid, p in self._params}
+        grads = {pid: p.grad for pid, p in self._params.items()}
         return grads
 
     @override(RLTrainer)
