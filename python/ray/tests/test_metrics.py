@@ -138,7 +138,9 @@ def test_opentelemetry_conflict():
     # Otherwise, it raises an error saying
     # opencensus/proto/resource/v1/resource.proto:
     # A file with this name is already in the pool.
-    from opentelemetry.exporter.opencensus.trace_exporter import OpenCensusSpanExporter # noqa
+    from opentelemetry.exporter.opencensus.trace_exporter import (  # noqa
+        OpenCensusSpanExporter,
+    )
 
 
 if __name__ == "__main__":
