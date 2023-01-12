@@ -632,7 +632,7 @@ def _init_ray_cluster(
                 list(range(num_worker_nodes)), num_worker_nodes
             )
 
-            if using_stage_scheduling is not None:
+            if using_stage_scheduling:
                 resource_profile = _create_resource_profile(
                     num_cpus_per_node,
                     num_gpus_per_node,
