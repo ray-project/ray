@@ -25,7 +25,7 @@ def _format_failed_pyspy_command(cmd, stdout, stderr) -> str:
     # If some sort of permission error returned, show a message about how
     # to set up permissions correctly.
     extra_message = (
-        PYSPY_PERMISSIONS_ERROR_MESSAGE if "permission" in stderr_str else ""
+        PYSPY_PERMISSIONS_ERROR_MESSAGE if "permission" in stderr_str.lower() else ""
     )
 
     return f"""Failed to execute `{cmd}`.
