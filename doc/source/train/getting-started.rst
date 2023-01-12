@@ -1,7 +1,7 @@
 .. _train-getting-started:
 
-Getting Started
-===============
+Getting Started with Distributed Model Training in Ray Train
+============================================================
 
 Ray Train offers multiple ``Trainers`` which implement scalable model training for different machine learning frameworks.
 Here are examples for some of the commonly used trainers:

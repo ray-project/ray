@@ -354,10 +354,20 @@ tag_mapping = {
     "xgboostExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
     "timeSeriesAutoML": "Regression,Sklearn,Tuning",
     "AIRExamples": "Regression,Classification,Training,Tuning,Prediction,"
-    "Preprocessing,Serving,PyTorch,TensorFlow,XGBoost,LightGBM,Sklearn"
+    "Preprocessing,Serving,PyTorch,TensorFlow,XGBoost,LightGBM,Sklearn",
+    # Tags for Ray Train examples gallery
+    "trainTorchFashionMnist": "PyTorch,Training",
+    "trainTransformers": "PyTorch,Training,HuggingFace",
+    "trainTensorflowMnist": "TensorFlow,Training",
+    "trainHorovod": "Horovod, PyTorch,Training",
+    "trainMlflow": "MLflow,Training",
+    "trainTuneTensorflow": "TensorFlow,Training,Tuning",
+    "trainTunePyTorch": "PyTorch,Training,Tuning",
+    "trainBenchmark": "PyTorch,Training"
+
     # TODO add and integrate tags for other libraries.
     # Tune has a proper example library
-    # Train, Serve, RLlib and AIR could use one.
+    # Serve, RLlib and AIR could use one.
 }
 
 # Create file with tag mappings for tags.js to use.

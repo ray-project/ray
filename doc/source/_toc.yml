@@ -74,15 +74,40 @@ parts:
         title: Ray Train
         sections:
           - file: train/getting-started
+            title: "Getting Started"
           - file: train/key-concepts
+            title: "Key Concepts"
           - file: train/user-guides
+            title: "User Guides"
             sections:
               - file: train/config_guide
+                title: "Configuring Ray Train"
               - file: train/dl_guide
+                title: "Deep Learning Guide"
               - file: train/gbdt
+                title: "Boosted Tree Guide"
               - file: train/architecture
-          - file: train/faq
+                title: "Ray Train Architecture"
           - file: train/examples
+            title: "Examples"
+            sections:
+              - file: train/examples/pytorch/torch_fashion_mnist_example
+                title: "PyTorch Fashion MNIST Example"
+              - file: train/examples/transformers/transformers_example
+                title: "HF Transformers Example"
+              - file: train/examples/tf/tensorflow_mnist_example
+                title: "TensorFlow MNIST Example"
+              - file: train/examples/horovod/horovod_example
+                title: "Horovod Example"
+              - file: train/examples/mlflow_fashion_mnist_example
+                title: "MLflow Callback Example"
+              - file: train/examples/tf/tune_tensorflow_mnist_example
+                title: "Tune & TensorFlow Example"
+              - file: train/examples/pytorch/tune_cifar_torch_pbt_example
+                title: "Tune & PyTorch Example"
+              - file: train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example
+                title: "Ray Train Benchmark"
+          - file: train/faq
           - file: train/api
 
       - file: tune/index
