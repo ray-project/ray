@@ -26,6 +26,7 @@ class TestReportCheckpointCallback:
         model.compile(
             optimizer="sgd",
             loss="mean_squared_error",
+            metrics=["accuracy"],
         )
         return model
 
@@ -39,13 +40,7 @@ class TestReportCheckpointCallback:
             ({"spam": "loss"}, {"spam"}),
         ],
     )
-    def test_metrics_keys(self, mock_report, metrics, expected_metrics_keys):
-        model = tf.keras.Sequential([tf.keras.layers.Dense(1)])
-        model.compile(
-            optimizer="sgd",
-            loss="mean_squared_error",
-            metrics=["accuracy"],
-        )
+    def test_metrics_keys(self, mock_report, metrics, expected_metrics_keys, model):
         model.fit(
             x=np.zeros((1, 1)),
             y=np.zeros((1, 1)),
