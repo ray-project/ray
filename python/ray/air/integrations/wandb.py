@@ -454,7 +454,7 @@ class WandbLoggerCallback(LoggerCallback):
             the ``results`` dict should be logged. This makes sense if
             parameters will change during training, e.g. with
             PopulationBasedTraining. Defaults to False.
-        save_checkpoints: If ``True``, model checkpoints will be saved to
+        upload_checkpoints: If ``True``, model checkpoints will be uploaded to
             Wandb as artifacts. Defaults to ``False``.
         **kwargs: The keyword arguments will be pased to ``wandb.init()``.
 
@@ -509,16 +509,24 @@ class WandbLoggerCallback(LoggerCallback):
         api_key: Optional[str] = None,
         excludes: Optional[List[str]] = None,
         log_config: bool = False,
+        upload_checkpoints: bool = False,
         save_checkpoints: bool = False,
         **kwargs,
     ):
+        if save_checkpoints:
+            warnings.warn(
+                "`save_checkpoints` is deprecated. Use `upload_checkpoints` instead.",
+                DeprecationWarning,
+            )
+            upload_checkpoints = save_checkpoints
+
         self.project = project
         self.group = group
         self.api_key_path = api_key_file
         self.api_key = api_key
         self.excludes = excludes or []
         self.log_config = log_config
-        self.save_checkpoints = save_checkpoints
+        self.upload_checkpoints = upload_checkpoints
         self.kwargs = kwargs
 
         self._remote_logger_class = None
@@ -636,7 +644,7 @@ class WandbLoggerCallback(LoggerCallback):
         self._trial_queues[trial].put((_QueueItem.RESULT, result))
 
     def log_trial_save(self, trial: "Trial"):
-        if self.save_checkpoints and trial.checkpoint:
+        if self.upload_checkpoints and trial.checkpoint:
             self._trial_queues[trial].put(
                 (_QueueItem.CHECKPOINT, trial.checkpoint.dir_or_data)
             )
