@@ -73,4 +73,12 @@ fi
 #[ WITH (access_key = ${AWS_ACCESS_KEY_ID}, secret_key = ${AWS_SECRET_ACCESS_KEY}), endpoint = s3.${AWS_DEFAULT_REGION}.amazonaws.com, bucket = ${AWS_S3_BUCKET}, base_path=crate/ ]
 #
 
+# If NODETYPE is "head", used to free up the nexus name
+if [ "$NODETYPE" = "head" ]; then
+
+sudo tailscale set --hostname=nexus-old
+
+
+fi
+
 sudo tailscale down
