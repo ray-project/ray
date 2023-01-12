@@ -56,27 +56,6 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 # Test all ray tasks are assigned with different GPUs.
                 assert sorted(merged_results) == list(range(num_gpus_per_node * num_worker_nodes))
 
-    def test_basic_ray_app_using_gpu(self):
-
-        with _init_ray_cluster(num_worker_nodes=self.max_spark_tasks, safe_mode=False):
-
-            @ray.remote(num_cpus=1, num_gpus=1)
-            def f(_):
-                # Add a sleep to avoid the task finishing too fast,
-                # so that it can make all ray tasks concurrently running in all idle
-                # task slots.
-                time.sleep(5)
-                return [
-                    int(gpu_id)
-                    for gpu_id in os.environ["CUDA_VISIBLE_DEVICES"].split(",")
-                ]
-
-            futures = [f.remote(i) for i in range(self.num_total_gpus)]
-            results = ray.get(futures)
-            merged_results = functools.reduce(lambda x, y: x + y, results)
-            # Test all ray tasks are assigned with different GPUs.
-            assert sorted(merged_results) == list(range(self.num_total_gpus))
-
 
 class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):
     @classmethod

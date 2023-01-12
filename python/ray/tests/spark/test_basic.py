@@ -10,7 +10,7 @@ from abc import ABC
 import ray
 
 import ray.util.spark.cluster_init
-from ray.util.spark import init_ray_cluster, shutdown_ray_cluster
+from ray.util.spark import init_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
 from ray.util.spark.utils import check_port_open
 from pyspark.sql import SparkSession
 import time
@@ -58,13 +58,13 @@ class RayOnSparkCPUClusterTestBase(ABC):
         return wr_list
 
     def test_cpu_allocation(self):
-        for num_worker_nodes, num_cpus_per_node in [
-            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task),
-            (self.max_spark_tasks, self.num_cpus_per_spark_task),
-            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2),
+        for num_worker_nodes, num_cpus_per_node, num_worker_nodes_arg in [
+            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task, self.max_spark_tasks // 2),
+            (self.max_spark_tasks, self.num_cpus_per_spark_task, MAX_NUM_WORKER_NODES),
+            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2, MAX_NUM_WORKER_NODES),
         ]:
             with _init_ray_cluster(
-                num_worker_nodes=num_worker_nodes,
+                num_worker_nodes=num_worker_nodes_arg,
                 num_cpus_per_node=num_cpus_per_node,
                 safe_mode=False
             ):
@@ -78,7 +78,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             ray_temp_root_dir = tempfile.mkdtemp()
             collect_log_to_path = tempfile.mkdtemp()
             init_ray_cluster(
-                num_worker_nodes=self.max_spark_tasks,
+                num_worker_nodes=MAX_NUM_WORKER_NODES,
                 safe_mode=False,
                 collect_log_to_path=collect_log_to_path,
                 ray_temp_root_dir=ray_temp_root_dir,
