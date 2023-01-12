@@ -1,5 +1,5 @@
 import math
-from typing import Any, List, Mapping, Type, Optional, Callable, NewType
+from typing import Any, List, Mapping, Type, Optional, Callable, Dict
 
 import ray
 
@@ -12,8 +12,6 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
-
-Parameters = NewType("Parameters")
 
 
 class TrainerRunner:
@@ -196,7 +194,7 @@ class TrainerRunner:
             refs.append(ref)
         ray.get(refs)
 
-    def get_weight(self) -> Parameters:
+    def get_weight(self) -> Dict:
         """Get the weights of the MARLModule.
 
         Returns:
