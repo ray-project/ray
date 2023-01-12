@@ -521,6 +521,8 @@ class TaskState(StateSchema):
     required_resources: dict = state_column(detail=True, filterable=False)
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
+    #: The parent task id.
+    parent_task_id: str = state_column(filterable=True)
 
 
 @dataclass(init=True)
