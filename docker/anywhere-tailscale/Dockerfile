@@ -18,9 +18,9 @@ ENV N2N_INTERFACE=tailscale0
 #the $RANDOMSTRING variable is defined in the startup script
 #ENV N2N_KEY=$RANDOMSTRING
 
-RUN sudo apt-get update  \
+RUN sudo apt-get update \
         && sudo apt-get install -y --no-install-recommends ca-certificates curl wget lsb-release \ 
-        && sudo apt-get clean  \
+        && sudo apt-get clean \
         && sudo rm -rf /var/lib/apt/lists/*
 
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
@@ -30,33 +30,33 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
 
 #installing tailscale
 RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null \
-        && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list \ 
-        && sudo apt-get update  \
-        && sudo apt-get install -y --no-install-recommends ca-certificates tailscale iptables dnsutils \ 
-        && sudo apt-get clean  \
+        && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list \
+        && sudo apt-get update \
+        && sudo apt-get install -y --no-install-recommends ca-certificates tailscale iptables dnsutils \
+        && sudo apt-get clean \
         && sudo rm -rf /var/lib/apt/lists/* \
         && sudo mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale
 
 ### begin installing crate
-RUN sudo groupadd crate  \
-        && export PLATFORM="$( case $(uname --m) in x86_64) echo x64_linux ;; aarch64) echo aarch64_linux ;; esac)"  \
-        && sudo mkdir -pv /crate  \
-        && sudo chgrp -R crate /crate  \
-        && export CRATE_URL=https://cdn.crate.io/downloads/releases/cratedb/${PLATFORM}/crate-5.1.2.tar.gz  \
-        && curl -fSL -O ${CRATE_URL}  \
-        && curl -fSL -O ${CRATE_URL}.asc  \
-        && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/master/config/crate.yml"  \
-        && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/master/config/log4j2.properties"  \
-        && sudo tar -xf crate-5.1.2.tar.gz -C /crate --strip-components=1  \
-        && sudo chown 1000 crate.yml  \
-        && sudo mv crate.yml /crate/config/crate.yml  \
-        && sudo chown 1000 log4j2.properties  \
-        && sudo mv log4j2.properties /crate/config/log4j2.properties  \
+RUN sudo groupadd crate \
+        && export PLATFORM="$( case $(uname --m) in x86_64) echo x64_linux ;; aarch64) echo aarch64_linux ;; esac)" \
+        && sudo mkdir -pv /crate \
+        && sudo chgrp -R crate /crate \
+        && export CRATE_URL=https://cdn.crate.io/downloads/releases/cratedb/${PLATFORM}/crate-5.1.2.tar.gz \
+        && curl -fSL -O ${CRATE_URL} \
+        && curl -fSL -O ${CRATE_URL}.asc \
+        && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/master/config/crate.yml" \
+        && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/master/config/log4j2.properties" \
+        && sudo tar -xf crate-5.1.2.tar.gz -C /crate --strip-components=1 \
+        && sudo chown 1000 crate.yml \
+        && sudo mv crate.yml /crate/config/crate.yml \
+        && sudo chown 1000 log4j2.properties \
+        && sudo mv log4j2.properties /crate/config/log4j2.properties \
         && rm crate-5.1.2.tar.gz
 
-RUN curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0  \
-        && curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0.asc  \
-        && sudo mv crash_standalone_0.28.0 /usr/local/bin/crash  \
+RUN curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0 \
+        && curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0.asc \
+        && sudo mv crash_standalone_0.28.0 /usr/local/bin/crash \
         && sudo chmod +x /usr/local/bin/crash
 
 ENV PATH /crate/bin/:$PATH
