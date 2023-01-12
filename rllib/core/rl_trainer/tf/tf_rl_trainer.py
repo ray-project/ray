@@ -131,6 +131,11 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        if set(batch.policy_batches.keys()) != set(self._module.keys()):
+            raise ValueError(
+                "Batch keys must match module keys. RLTrainer does not "
+                "currently support training of only some modules and not others"
+            )
         batch = self.convert_batch_to_tf_tensor(batch)
         if self.distributed:
             update_outs = self.do_distributed_update(batch)
@@ -151,6 +156,11 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def apply_gradients(self, gradients: Dict[ParamRef, TensorType]) -> None:
+
+        # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
+        # only some agents have a sample batch that is passed but not others.
+        # This is probably because of the way that we are iterating over the
+        # parameters in the optim_to_param_dictionary
         for optim, param_ref_seq in self._optim_to_param.items():
             variable_list = [self._params[param_ref] for param_ref in param_ref_seq]
             gradient_list = [gradients[param_ref] for param_ref in param_ref_seq]

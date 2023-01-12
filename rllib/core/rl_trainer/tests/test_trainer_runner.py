@@ -87,16 +87,7 @@ class TestTrainerRunner(unittest.TestCase):
         new_module_id = "test_module"
 
         # add a test_module
-        runner.add_module(
-            module_id=new_module_id,
-            module_cls=DiscreteBCTFModule,
-            module_kwargs={
-                "observation_space": env.observation_space,
-                "action_space": env.action_space,
-                "model_config": {"hidden_dim": 32},
-            },
-            optimizer_cls=tf.keras.optimizers.Adam,
-        )
+        self.add_module_helper(env, new_module_id, runner)
 
         # do training that includes the test_module
         results = runner.update(
@@ -170,30 +161,32 @@ class TestTrainerRunner(unittest.TestCase):
         new_module_id = "test_module"
 
         # add a test_module
-        runner.add_module(
-            module_id=new_module_id,
-            module_cls=DiscreteBCTFModule,
-            module_kwargs={
-                "observation_space": env.observation_space,
-                "action_space": env.action_space,
-                "model_config": {"hidden_dim": 32},
-            },
-            optimizer_cls=tf.keras.optimizers.Adam,
-        )
-        local_trainer.add_module(
-            module_id=new_module_id,
-            module_cls=DiscreteBCTFModule,
-            module_kwargs={
-                "observation_space": env.observation_space,
-                "action_space": env.action_space,
-                "model_config": {"hidden_dim": 32},
-            },
-            optimizer_cls=tf.keras.optimizers.Adam,
-        )
+        self.add_module_helper(env, new_module_id, runner)
+        self.add_module_helper(env, new_module_id, local_trainer)
 
         # make the state of the trainer and the local runner identical
         local_trainer.set_state(runner.get_state()[0])
+
+        # do another update
+        batch = reader.next()
+        ma_batch = MultiAgentBatch(
+            {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
+        )
+        check(local_trainer.update(ma_batch), runner.update(ma_batch)[0])
+
         check(local_trainer.get_state(), runner.get_state()[0])
+
+    def add_module_helper(self, env, module_id, runner_or_trainer):
+        runner_or_trainer.add_module(
+            module_id=module_id,
+            module_cls=DiscreteBCTFModule,
+            module_kwargs={
+                "observation_space": env.observation_space,
+                "action_space": env.action_space,
+                "model_config": {"hidden_dim": 32},
+            },
+            optimizer_cls=tf.keras.optimizers.Adam,
+        )
 
 
 if __name__ == "__main__":
