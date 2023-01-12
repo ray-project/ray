@@ -166,6 +166,7 @@ def _get_total_shared_memory():
     return shutil.disk_usage("/dev/shm").total
 
 
+# The maximum proportion for Ray worker node object store memory size
 _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
 
 
@@ -176,6 +177,7 @@ def _calc_mem_per_ray_worker_node(
         DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
         OBJECT_STORE_MINIMUM_MEMORY_BYTES,
     )
+    warning_msg = None
 
     available_physical_mem_per_node = int(
         physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET
@@ -188,19 +190,29 @@ def _calc_mem_per_ray_worker_node(
         available_physical_mem_per_node * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
     )
 
-    object_store_bytes = int(
-        min(
-            object_store_bytes,
-            available_shared_mem_per_node,
-            available_physical_mem_per_node * _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION
-        )
-    )
+    if object_store_bytes > available_shared_mem_per_node:
+        object_store_bytes = available_shared_mem_per_node
+
+    object_store_bytes_upper_bound = \
+        available_physical_mem_per_node * _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION
+
+    if object_store_bytes > object_store_bytes_upper_bound:
+        object_store_bytes = object_store_bytes_upper_bound
+        warning_msg = "Your configured `object_store_memory_per_node` value " \
+                      "is too high and it is capped by 80% of per-Ray node " \
+                      "allocated memory."
 
     if object_store_bytes < OBJECT_STORE_MINIMUM_MEMORY_BYTES:
         object_store_bytes = OBJECT_STORE_MINIMUM_MEMORY_BYTES
+        warning_msg = "Your operating system is configured with too small /dev/shm " \
+                      "size, so `object_store_memory_per_node` value is configured " \
+                      f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes)," \
+                      f"Please increase system /dev/shm size."
+
+    object_store_bytes = int(object_store_bytes)
 
     heap_mem_bytes = available_physical_mem_per_node - object_store_bytes
-    return heap_mem_bytes, object_store_bytes
+    return heap_mem_bytes, object_store_bytes, warning_msg
 
 
 # User can manually set these environment variables
@@ -274,6 +286,7 @@ def _get_avail_mem_per_ray_worker_node(
     (
         ray_worker_node_heap_mem_bytes,
         ray_worker_node_object_store_bytes,
+        warning_msg,
     ) = _calc_mem_per_ray_worker_node(
         num_task_slots,
         physical_mem_bytes,
@@ -284,6 +297,7 @@ def _get_avail_mem_per_ray_worker_node(
         ray_worker_node_heap_mem_bytes,
         ray_worker_node_object_store_bytes,
         None,
+        warning_msg,
     )
 
 
@@ -294,7 +308,11 @@ def get_avail_mem_per_ray_worker_node(
     num_gpus_per_node,
 ):
     """
-    Return the available heap memory and object store memory for each ray worker.
+    Return the available heap memory and object store memory for each ray worker,
+    and error / warning message if it has.
+    Return value is a tuple of
+    (ray_worker_node_heap_mem_bytes, ray_worker_node_object_store_bytes,
+     error_message, warning_message)
     NB: We have one ray node per spark task.
     """
 
@@ -306,7 +324,7 @@ def get_avail_mem_per_ray_worker_node(
                 object_store_memory_per_node,
             )
         except Exception as e:
-            return -1, -1, repr(e)
+            return -1, -1, repr(e), None
 
     # Running memory inference routine on spark executor side since the spark worker
     # nodes may have a different machine configuration compared to the spark driver
@@ -315,6 +333,7 @@ def get_avail_mem_per_ray_worker_node(
         inferred_ray_worker_node_heap_mem_bytes,
         inferred_ray_worker_node_object_store_bytes,
         err,
+        warning_msg,
     ) = (
         spark.sparkContext.parallelize([1], 1).map(mapper).collect()[0]
     )
@@ -328,6 +347,8 @@ def get_avail_mem_per_ray_worker_node(
             "spark.executorEnv.RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES, "
             "spark.executorEnv.RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES."
         )
+    if warning_msg is not None:
+        _logger.warning(warning_msg)
     return (
         inferred_ray_worker_node_heap_mem_bytes,
         inferred_ray_worker_node_object_store_bytes,
