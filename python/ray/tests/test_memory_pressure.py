@@ -6,12 +6,17 @@ import time
 import pytest
 
 import ray
+from ray._private import (
+    ray_constants,
+)
 from ray._private import test_utils
+import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import wait_for_condition, raw_metrics
 
 import numpy as np
 from ray._private.utils import get_system_memory
 from ray._private.utils import get_used_memory
+from ray.experimental.state.state_manager import StateDataSourceClient
 
 
 memory_usage_threshold = 0.65
@@ -21,6 +26,23 @@ expected_worker_eviction_message = (
     "Task was killed due to the node running low on memory"
 )
 
+def get_local_state_client():
+    hostname = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
+    )
+
+    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        client.register_agent_client(node_id, ip, port)
+
+    return client
 
 @pytest.fixture
 def ray_with_memory_monitor(shutdown_only):
