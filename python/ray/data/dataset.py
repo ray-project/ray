@@ -64,7 +64,7 @@ from ray.data._internal.stage_impl import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -2127,7 +2127,7 @@ class Dataset(Generic[T]):
         )
 
     def schema(
-        self, fetch_if_missing: bool = False
+        self, fetch_if_missing: bool = True
     ) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset.
 
@@ -2138,8 +2138,8 @@ class Dataset(Generic[T]):
 
         Args:
             fetch_if_missing: If True, synchronously fetch the schema if it's
-                not known. Default is False, where None is returned if the
-                schema is not known.
+                not known. If False, None is returned if the schema is not known.
+                Default is True.
 
         Returns:
             The Python type or Arrow schema of the records, or None if the
@@ -3858,7 +3858,10 @@ class Dataset(Generic[T]):
 
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
-        return self._plan.stats().summary_string()
+        return self._get_stats_summary().to_string()
+
+    def _get_stats_summary(self) -> DatasetStatsSummary:
+        return self._plan.stats_summary()
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
@@ -4238,7 +4241,9 @@ class Dataset(Generic[T]):
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        schema = self.schema()
+        # Do not force execution for schema, as this method is expected to be very
+        # cheap.
+        schema = self.schema(fetch_if_missing=False)
         if schema is None:
             schema_str = "Unknown schema"
         elif isinstance(schema, type):

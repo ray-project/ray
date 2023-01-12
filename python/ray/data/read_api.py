@@ -336,8 +336,6 @@ def read_datasource(
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
     )
-    block_list.compute_first_block()
-    block_list.ensure_metadata_for_first_block()
 
     return Dataset(
         plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
