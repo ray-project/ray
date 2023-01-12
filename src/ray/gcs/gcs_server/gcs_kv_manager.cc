@@ -179,16 +179,19 @@ void RedisInternalKV::Keys(const std::string &ns,
                            const std::string &prefix,
                            std::function<void(std::vector<std::string>)> callback) {
   auto true_prefix = MakeKey(ns, prefix);
-  std::vector<std::string> cmd = {
-      "HKEYS", external_storage_namespace_, true_prefix + "*"};
+  std::vector<std::string> cmd = {"HKEYS", external_storage_namespace_};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-      cmd, [this, callback = std::move(callback)](auto redis_reply) {
+      cmd,
+      [this, true_prefix = std::move(true_prefix), callback = std::move(callback)](
+          auto redis_reply) {
         if (callback) {
           const auto &reply = redis_reply->ReadAsStringArray();
           std::vector<std::string> results;
           for (const auto &r : reply) {
             RAY_CHECK(r.has_value());
-            results.emplace_back(ExtractKey(*r));
+            if (absl::StartsWith(*r, true_prefix)) {
+              results.emplace_back(ExtractKey(*r));
+            }
           }
           callback(std::move(results));
         }
