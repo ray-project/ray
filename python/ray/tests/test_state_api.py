@@ -48,7 +48,7 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllWorkerInfoReply,
 )
 from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
-# from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
+from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as RuntimeEnvStateProto,

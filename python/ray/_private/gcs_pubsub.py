@@ -62,9 +62,7 @@ class _PublisherBase:
                 pubsub_pb2.PubMessage(
                     channel_type=pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL,
                     key_id=key.encode(),
-                    node_resource_usage_message=common_pb2.NodeResourceUsage(
-                        json=json
-                    ),
+                    node_resource_usage_message=common_pb2.NodeResourceUsage(json=json),
                 )
             ]
         )

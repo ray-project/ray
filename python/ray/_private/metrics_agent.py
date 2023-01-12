@@ -31,6 +31,7 @@ from opencensus.tags import tag_value as tag_value_module
 
 import ray
 from ray._private.gcs_utils import GcsClient
+
 # from opencensus.proto.metrics.v1.metrics_pb2 import Metric
 from ray.core.generated.metrics_pb2 import Metric
 

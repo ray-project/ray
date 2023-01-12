@@ -26,6 +26,7 @@ expected_worker_eviction_message = (
     "Task was killed due to the node running low on memory"
 )
 
+
 def get_local_state_client():
     hostname = ray.worker._global_node.gcs_address
 
@@ -43,6 +44,7 @@ def get_local_state_client():
         client.register_agent_client(node_id, ip, port)
 
     return client
+
 
 @pytest.fixture
 def ray_with_memory_monitor(shutdown_only):
