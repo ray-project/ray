@@ -103,7 +103,10 @@ def test_fault_tolerance_parent_failed(shutdown_only):
 
     def verify():
         tasks = list_tasks()
-        assert len(tasks) == 5, "1 parent + 2 child + 2 grand_child tasks"
+        assert len(tasks) == 5, (
+            "Incorrect number of tasks are reported. "
+            "Expected length: 1 parent + 2 child + 2 grand_child tasks"
+        )
         print(tasks)
         for task in tasks:
             assert task["scheduling_state"] == "FAILED"

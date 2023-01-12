@@ -216,6 +216,18 @@ inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info
   return ss.str();
 }
 
+/// Get the parent task id from the task event.
+///
+/// @param task_event Task event.
+/// @return TaskID::Nil() if parent task id info not available, else the parent task id
+/// for the task.
+inline TaskID GetParentTaskId(const rpc::TaskEvents &task_event) {
+  if (task_event.has_task_info()) {
+    return TaskID::FromBinary(task_event.task_info().parent_task_id());
+  }
+  return TaskID::Nil();
+}
+
 /// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
 ///
 /// \param task_status The task status.
