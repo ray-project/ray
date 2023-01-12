@@ -3013,7 +3013,8 @@ def remote(
             unexpectedly. The minimum valid value is 0 (default),
             which indicates that the actor doesn't need to be restarted.
             A value of -1 indicates that an actor should be restarted
-            indefinitely.
+            indefinitely. However, if the __init__ function fails, actor will
+            not be restarted even if max_restarts limit is set.
         max_task_retries: Only for *actors*. How many times to
             retry an actor task if the task fails due to a system error,
             e.g., the actor has died. If set to -1, the system will
