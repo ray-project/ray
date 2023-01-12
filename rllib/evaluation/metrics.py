@@ -182,11 +182,12 @@ def summarize_episodes(
             hist_stats[k] += v
         for k, v in episode.media.items():
             episode_media[k].append(v)
-        # Group connector metrics by connector_metric name for all policies
-        for per_pipeline_metrics in episode.connector_metrics.values():
-            for per_connector_metrics in per_pipeline_metrics.values():
-                for connector_metric_name, val in per_connector_metrics.items():
-                    connector_metrics[connector_metric_name].append(val)
+        if hasattr(episode, "connector_metrics"):
+            # Group connector metrics by connector_metric name for all policies
+            for per_pipeline_metrics in episode.connector_metrics.values():
+                for per_connector_metrics in per_pipeline_metrics.values():
+                    for connector_metric_name, val in per_connector_metrics.items():
+                        connector_metrics[connector_metric_name].append(val)
 
     if episode_rewards:
         min_reward = min(episode_rewards)
@@ -233,8 +234,9 @@ def summarize_episodes(
     for k, v_list in perf_stats.copy().items():
         perf_stats[k] = np.mean(v_list)
 
-    for k, v_list in connector_metrics.copy().items():
-        connector_metrics[k] = np.mean(v_list)
+    mean_connector_metrics = dict()
+    for k, v_list in connector_metrics.items():
+        mean_connector_metrics[k] = np.mean(v_list)
 
     return dict(
         episode_reward_max=max_reward,
@@ -250,5 +252,5 @@ def summarize_episodes(
         hist_stats=dict(hist_stats),
         sampler_perf=dict(perf_stats),
         num_faulty_episodes=num_faulty_episodes,
-        connector_metrics=connector_metrics,
+        connector_metrics=mean_connector_metrics,
     )
