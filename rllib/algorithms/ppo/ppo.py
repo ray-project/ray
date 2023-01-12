@@ -347,7 +347,7 @@ class PPO(Algorithm):
         # Standardize advantages
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config.get("enable_trainer_runner", False):
+        if self.config._enable_rl_trainer_api:
             train_results = self.trainer_runner.update(train_batch)
         elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
@@ -379,7 +379,7 @@ class PPO(Algorithm):
                         global_vars=global_vars,
                     )
 
-        if self.config._enable_trainer_runner_api:
+        if self.config._enable_rl_trainer_api:
             kl_dict = {
                 pid: pinfo[LEARNER_STATS_KEY].get("kl")
                 for pid, pinfo in train_results.items()

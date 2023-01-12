@@ -350,6 +350,7 @@ class AlgorithmConfig:
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self.rl_trainer_class = None
+        self._enable_rl_trainer_api = False
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -431,7 +432,6 @@ class AlgorithmConfig:
         # `self.rl_module()`
         self.rl_module_class = None
         self._enable_rl_module_api = False
-        self._enable_trainer_runner_api = False
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -905,7 +905,7 @@ class AlgorithmConfig:
             self.rl_module_class = _resolve_class_path(rl_module_class_path)
 
         # resolve rl_trainer class
-        if self._enable_trainer_runner_api and self.rl_trainer_class is None:
+        if self._enable_rl_trainer_api and self.rl_trainer_class is None:
             rl_trainer_class_path = self.get_default_rl_trainer_class()
             self.rl_trainer_class = _resolve_class_path(rl_trainer_class_path)
 
@@ -1404,7 +1404,7 @@ class AlgorithmConfig:
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
-        _enable_trainer_runner_api: Optional[bool] = NotProvided,
+        _enable_rl_trainer_api: Optional[bool] = NotProvided,
         rl_trainer_class: Optional[Type["RLTrainer"]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
@@ -1429,7 +1429,9 @@ class AlgorithmConfig:
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
-            _enable_trainer_runner_api: Whether to enable the TrainerRunner for training.
+            _enable_rl_trainer_api: Whether to enable the TrainerRunner and RLTrainer
+                for training. This API uses ray.train to run the training loop which
+                allows for a more flexible distributed training.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1470,8 +1472,8 @@ class AlgorithmConfig:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
-        if _enable_trainer_runner_api is not NotProvided:
-            self._enable_trainer_runner_api = _enable_trainer_runner_api
+        if _enable_rl_trainer_api is not NotProvided:
+            self._enable_rl_trainer_api = _enable_rl_trainer_api
         if rl_trainer_class is not NotProvided:
             self.rl_trainer_class = rl_trainer_class
 
@@ -2615,7 +2617,7 @@ class AlgorithmConfig:
 
         Returns:
             The RLModule class to use for this algorithm either as a class type or as
-            a string (e.g. x.y.z).
+            a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCModule).
         """
         raise NotImplementedError
 
@@ -2627,7 +2629,7 @@ class AlgorithmConfig:
 
         Returns:
             The RLTrainer class to use for this algorithm either as a class type or as
-            a string (e.g. x.y.z).
+            a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCTrainer).
         """
         raise NotImplementedError
 
