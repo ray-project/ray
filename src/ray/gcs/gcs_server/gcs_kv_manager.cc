@@ -83,7 +83,7 @@ void RedisInternalKV::Get(const std::string &ns,
                           const std::string &key,
                           std::function<void(std::optional<std::string>)> callback) {
   auto true_key = MakeKey(ns, key);
-  std::vector<std::string> cmd = {"HGET", true_key, "value"};
+  std::vector<std::string> cmd = {"HGET", external_storage_namespace_, true_key};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
         if (callback) {
@@ -103,7 +103,7 @@ void RedisInternalKV::Put(const std::string &ns,
                           std::function<void(bool)> callback) {
   auto true_key = MakeKey(ns, key);
   std::vector<std::string> cmd = {
-      overwrite ? "HSET" : "HSETNX", true_key, "value", value};
+      overwrite ? "HSET" : "HSETNX", external_storage_namespace_, true_key, value};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
         if (callback) {
@@ -119,7 +119,7 @@ void RedisInternalKV::Del(const std::string &ns,
                           std::function<void(int64_t)> callback) {
   auto true_key = MakeKey(ns, key);
   if (del_by_prefix) {
-    std::vector<std::string> cmd = {"KEYS", true_key + "*"};
+    std::vector<std::string> cmd = {"HKEYS", external_storage_namespace_, true_key + "*"};
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
         cmd, [this, callback = std::move(callback)](auto redis_reply) {
           const auto &reply = redis_reply->ReadAsStringArray();
@@ -130,7 +130,7 @@ void RedisInternalKV::Del(const std::string &ns,
               callback(0);
             }
           } else {
-            std::vector<std::string> del_cmd = {"DEL"};
+            std::vector<std::string> del_cmd = {"HDEL", external_storage_namespace_};
             for (const auto &r : reply) {
               RAY_CHECK(r.has_value());
               del_cmd.emplace_back(*r);
@@ -144,7 +144,7 @@ void RedisInternalKV::Del(const std::string &ns,
           }
         }));
   } else {
-    std::vector<std::string> cmd = {"DEL", true_key};
+    std::vector<std::string> cmd = {"HDEL", external_storage_namespace_, true_key};
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
         cmd, [callback = std::move(callback)](auto redis_reply) {
           if (callback) {
@@ -158,7 +158,7 @@ void RedisInternalKV::Exists(const std::string &ns,
                              const std::string &key,
                              std::function<void(bool)> callback) {
   auto true_key = MakeKey(ns, key);
-  std::vector<std::string> cmd = {"HEXISTS", true_key, "value"};
+  std::vector<std::string> cmd = {"HEXISTS", external_storage_namespace_, true_key};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
         if (callback) {
@@ -172,7 +172,8 @@ void RedisInternalKV::Keys(const std::string &ns,
                            const std::string &prefix,
                            std::function<void(std::vector<std::string>)> callback) {
   auto true_prefix = MakeKey(ns, prefix);
-  std::vector<std::string> cmd = {"KEYS", true_prefix + "*"};
+  std::vector<std::string> cmd = {
+      "HKEYS", external_storage_namespace_, true_prefix + "*"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [this, callback = std::move(callback)](auto redis_reply) {
         if (callback) {

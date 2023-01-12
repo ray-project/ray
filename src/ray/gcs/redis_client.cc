@@ -60,7 +60,8 @@ static int DoGetNextJobID(redisContext *context) {
   static const std::string kClusterSeparator = "@";
   static std::string key = RayConfig::instance().external_storage_namespace() +
                            kClusterSeparator + kTableSeparator + "JobCounter";
-  static std::string cmd = "INCR " + key;
+  static std::string cmd =
+      "HINCRBY " + RayConfig::instance().external_storage_namespace() + " " + key + " 1";
 
   redisReply *reply = nullptr;
   bool under_retry_limit = RunRedisCommandWithRetries(

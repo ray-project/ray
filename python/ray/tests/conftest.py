@@ -460,7 +460,7 @@ def call_ray_start_context(request):
 
     if isinstance(parameter, dict):
         if "env" in parameter:
-            env = {**parameter.get("env"), **os.environ}
+            env = {**os.environ, **parameter.get("env")}
 
         parameter = parameter.get("cmd", default_cmd)
 
