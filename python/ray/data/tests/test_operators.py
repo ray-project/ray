@@ -39,6 +39,7 @@ def test_input_data_buffer(ray_start_regular_shared):
 
     # Check we return all bundles in order.
     assert _take_outputs(op) == [[1, 2], [3], [4, 5]]
+    assert op.completed()
 
 
 def test_all_to_all_operator():
@@ -59,6 +60,7 @@ def test_all_to_all_operator():
     assert _take_outputs(op) == [[1, 2], [3, 4]]
     stats = op.get_stats()
     assert "FooStats" in stats
+    assert op.completed()
 
 
 def test_map_operator_bulk(ray_start_regular_shared):
@@ -87,6 +89,7 @@ def test_map_operator_bulk(ray_start_regular_shared):
     assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(8800, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert op.completed()
 
 
 def test_map_operator_streamed(ray_start_regular_shared):
@@ -113,6 +116,7 @@ def test_map_operator_streamed(ray_start_regular_shared):
     assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert not op.completed()
 
 
 def test_map_operator_min_rows_per_bundle(ray_start_regular_shared):
@@ -142,6 +146,7 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared):
 
     # Check we return transformed bundles in order.
     assert _take_outputs(op) == [[i] for i in range(10)]
+    assert op.completed()
 
 
 def test_map_operator_ray_args(shutdown_only):
@@ -166,6 +171,7 @@ def test_map_operator_ray_args(shutdown_only):
 
     # Check we don't hang and complete with num_gpus=1.
     assert _take_outputs(op) == [[i * 2] for i in range(10)]
+    assert op.completed()
 
 
 def test_map_operator_shutdown():
