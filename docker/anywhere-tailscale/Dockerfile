@@ -46,10 +46,6 @@ RUN sudo groupadd crate  \
         && curl -fSL -O ${CRATE_URL}.asc  \
         && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/master/config/crate.yml"  \
         && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/master/config/log4j2.properties"  \
-        && export GNUPGHOME="$(mktemp -d)"  \
-        && gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 90C23FC6585BC0717F8FBFC37FAAE51A06F6EAEB  \
-        && gpg --batch --verify crate-5.1.2.tar.gz.asc crate-5.1.2.tar.gz  \
-        && rm -rf "$GNUPGHOME" crate-5.1.2.tar.gz.asc  \
         && sudo tar -xf crate-5.1.2.tar.gz -C /crate --strip-components=1  \
         && sudo chown 1000 crate.yml  \
         && sudo mv crate.yml /crate/config/crate.yml  \
@@ -59,10 +55,6 @@ RUN sudo groupadd crate  \
 
 RUN curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0  \
         && curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0.asc  \
-        && export GNUPGHOME="$(mktemp -d)"  \
-        && gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 90C23FC6585BC0717F8FBFC37FAAE51A06F6EAEB  \
-        && gpg --batch --verify crash_standalone_0.28.0.asc crash_standalone_0.28.0  \
-        && rm -rf "$GNUPGHOME" crash_standalone_0.28.0.asc  \
         && sudo mv crash_standalone_0.28.0 /usr/local/bin/crash  \
         && sudo chmod +x /usr/local/bin/crash
 
