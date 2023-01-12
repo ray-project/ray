@@ -56,7 +56,6 @@ class MinimalClusterManager(ClusterManager):
                 if not paging_token or self.cluster_env_id:
                     break
 
-            self.cluster_env_id = "bld_5y65xqzd8pwt8kzuz6uadbjx6h"
             if not self.cluster_env_id:
                 logger.info("Cluster env not found. Creating new one.")
                 try:

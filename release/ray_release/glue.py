@@ -247,7 +247,6 @@ def run_release_test(
         pip_package_string = "\n".join(pip_packages)
         logger.info(f"Installed python packages:\n{pip_package_string}")
 
-        cluster_id = "ses_sv38twkjkbxbw98z7x4yq29k"
         # Start cluster
         if cluster_id:
             buildkite_group(":rocket: Using existing cluster")
@@ -309,7 +308,6 @@ def run_release_test(
                 command, env=command_env, timeout=command_timeout
             )
         except CommandError as e:
-            import ipdb; ipdb.set_trace()
             raise TestCommandError(e)
         except CommandTimeout as e:
             if not is_long_running:
