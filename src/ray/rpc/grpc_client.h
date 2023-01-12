@@ -126,9 +126,9 @@ class GrpcClient {
   grpc::ChannelArguments CreateDefaultChannelArguments() {
     grpc::ChannelArguments arguments;
     arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS,
-                     RayConfig::instance().grpc_client_keepalive_time_ms());
+                     ::RayConfig::instance().grpc_client_keepalive_time_ms());
     arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
-                     RayConfig::instance().grpc_client_keepalive_timeout_ms());
+                     ::RayConfig::instance().grpc_client_keepalive_timeout_ms());
     arguments.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
     return arguments;
   }
