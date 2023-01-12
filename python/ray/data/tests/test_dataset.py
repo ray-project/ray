@@ -72,7 +72,7 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
         ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
         if not block_split:
             # Setting infinite block size effectively disables block splitting.
-            ctx.target_max_block_size = float('inf')
+            ctx.target_max_block_size = float("inf")
         ds = ray.data.read_datasource(
             SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
         )
