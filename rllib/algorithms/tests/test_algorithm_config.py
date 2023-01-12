@@ -166,6 +166,22 @@ class TestAlgorithmConfig(unittest.TestCase):
         config.validate()
         self.assertEqual(config.rl_module_class, A)
 
+    def test_rl_trainer_api(self):
+        # TODO (Kourosh): the default rl_trainer of PPO is not implemented yet. When
+        # that's done this test should be updated
+        class A:
+            pass
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .rollouts(enable_connectors=True)
+            .training(rl_trainer_class=A, _enable_rl_trainer_api=True)
+        )
+
+        config.validate()
+        self.assertEqual(config.rl_trainer_class, A)
+
 
 if __name__ == "__main__":
     import pytest
