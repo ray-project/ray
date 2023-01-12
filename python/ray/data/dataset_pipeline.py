@@ -98,7 +98,8 @@ class DatasetPipeline(Generic[T]):
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
-        self._first_dataset: Dataset = None
+        self._first_dataset: Optional[Dataset] = None
+        self._remaining_datasets_iter: Optional[Iterator[Callable[[], Dataset]]] = None
         self._schema = None
         self._stats = DatasetPipelineStats()
 
@@ -1154,18 +1155,15 @@ class DatasetPipeline(Generic[T]):
 
         # If the first dataset has already been executed (via a peek operation), then
         # we don't re-execute the first dataset when iterating through the pipeline.
-        # We re-use the saved _first_dataset.
+        # We re-use the saved _first_dataset and _remaining_dataset_iter.
         if self._first_dataset is not None:
 
             class _IterableWrapper(Iterable):
                 """Wrapper that takes an iterator and converts it to an
                 iterable with the first dataset skipped."""
 
-                def __init__(self, base_iterable):
-                    # Skip the first dataset since it's already been peeked.
-                    self.base_iterator: Iterator = itertools.islice(
-                        base_iterable, 1, None
-                    )
+                def __init__(self, base_iterator):
+                    self.base_iterator = base_iterator
 
                 def __iter__(self):
                     return self.base_iterator
@@ -1173,10 +1171,11 @@ class DatasetPipeline(Generic[T]):
             # Update the base iterable to skip the first dataset.
             # It is ok to update the base iterable here since
             # the pipeline can never be executed again.
-            self._base_iterable = _IterableWrapper(self._base_iterable)
+            self._base_iterable = _IterableWrapper(self._remaining_datasets_iter)
 
             iter = itertools.chain([self._first_dataset], PipelineExecutor(self))
             self._first_dataset = None
+            self._remaining_datasets_iter = None
             return iter
         else:
             return PipelineExecutor(self)
@@ -1294,6 +1293,7 @@ class DatasetPipeline(Generic[T]):
             )
             # Cache the executed _first_dataset.
             self._first_dataset = next(peek_pipe.iter_datasets())
+            self._remaining_datasets_iter = dataset_iter
 
             # Store the stats from the peek pipeline.
             self._stats.add_pipeline_stats(peek_pipe._stats)
