@@ -209,8 +209,9 @@ class TestWandbLogger:
 
         # Fetch API key from argument even if external hook and WANDB_ENV_VAR set
         monkeypatch.setenv(
-            WANDB_SETUP_API_KEY_HOOK,
-            "ray._private.test_utils.wandb_setup_api_key_hook",
+            WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
+        )
+        monkeypatch.setenv(
             WANDB_ENV_VAR,
             "abcde",
         )
@@ -222,8 +223,9 @@ class TestWandbLogger:
     def test_wandb_logger_api_key_file(self, monkeypatch):
         # Fetch API key from file even if external hook and WANDB_ENV_VAR set
         monkeypatch.setenv(
-            WANDB_SETUP_API_KEY_HOOK,
-            "ray._private.test_utils.wandb_setup_api_key_hook",
+            WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
+        )
+        monkeypatch.setenv(
             WANDB_ENV_VAR,
             "abcde",
         )
@@ -241,8 +243,9 @@ class TestWandbLogger:
     def test_wandb_logger_api_key_env_var(self, monkeypatch):
         # API Key from env var takes precedence over external hook
         monkeypatch.setenv(
-            WANDB_SETUP_API_KEY_HOOK,
-            "ray._private.test_utils.wandb_setup_api_key_hook",
+            WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
+        )
+        monkeypatch.setenv(
             WANDB_ENV_VAR,
             "1234",
         )
