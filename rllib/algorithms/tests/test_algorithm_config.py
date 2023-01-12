@@ -3,13 +3,14 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 
 
 class TestAlgorithmConfig(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=6)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -145,6 +146,25 @@ class TestAlgorithmConfig(unittest.TestCase):
         config = AlgorithmConfig().environment(env="NotAtari")
         config.validate()
         self.assertFalse(config.is_atari)
+
+    def test_rl_module_api(self):
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .framework("torch")
+            .rollouts(enable_connectors=True)
+            .rl_module(_enable_rl_module_api=True)
+        )
+
+        config.validate()
+        self.assertEqual(config.rl_module_class, PPOTorchRLModule)
+
+        class A:
+            pass
+
+        config = config.rl_module(rl_module_class=A)
+        config.validate()
+        self.assertEqual(config.rl_module_class, A)
 
 
 if __name__ == "__main__":
