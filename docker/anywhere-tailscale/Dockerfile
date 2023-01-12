@@ -81,5 +81,5 @@ RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/rele
 #EXPOSE 5432/tcp
 
 COPY startup.sh /home/ray/startup.sh
-RUN sudo chmod +x /home/ray/startup.sh
+RUN sudo chmod +x /home/ray/startup.sh && sudo apt-get -y autoremove
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
