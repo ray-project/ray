@@ -9,7 +9,11 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamOptimizerPairs,
     Optimizer,
 )
+from ray.rllib.core.rl_trainer.tf.tf_rl_trainer import TfRLTrainer
+from ray.rllib.core.rl_trainer.torch.torch_rl_trainer import TorchRLTrainer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+
+
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 
@@ -17,7 +21,9 @@ from ray.train._internal.backend_executor import BackendExecutor
 class TrainerRunner:
     """Coordinator of RLTrainers.
     Public API:
-        .update()
+        .update(batch) -> updates the RLModule based on gradient descent algos.
+        .additional_update() -> any additional non-gradient based updates will get
+                                called from this entry point.
         .get_state() -> returns the state of the RLModule and RLOptimizer from
                         all of the RLTrainers
         .set_state() -> sets the state of all the RLTrainers
@@ -38,8 +44,9 @@ class TrainerRunner:
         trainer_config: Mapping[str, Any],
         num_gpus: int,
         use_fake_gpus: bool = False,
-        framework: str = "tf",
     ):
+        """ """
+        self._trainer_config = trainer_config
 
         if num_gpus > 0:
             scaling_config = ScalingConfig(
@@ -47,11 +54,11 @@ class TrainerRunner:
                 use_gpu=(not use_fake_gpus),
             )
 
-            if framework == "torch":
+            if issubclass(trainer_class, TorchRLTrainer):
                 from ray.train.torch import TorchConfig
 
                 backend_config = TorchConfig()
-            elif framework == "tf":
+            elif issubclass(trainer_class, TfRLTrainer):
                 from ray.train.tensorflow import TensorflowConfig
 
                 backend_config = TensorflowConfig()
