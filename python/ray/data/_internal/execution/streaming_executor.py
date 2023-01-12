@@ -80,7 +80,8 @@ class StreamingExecutor(Executor):
         """
 
         # Note: calling process_completed_tasks() is expensive since it incurs
-        # ray.wait() overhead, so make sure to allow multiple dispatch per call.
+        # ray.wait() overhead, so make sure to allow multiple dispatch per call for
+        # greater parallelism.
         process_completed_tasks(topology)
 
         # Dispatch as many operators as we can for completed tasks.

@@ -84,7 +84,7 @@ def test_process_completed_tasks():
     topo[o1].outqueue.clear()
     process_completed_tasks(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
-    o2.inputs_done.assert_called_once_with(input_index=0)
+    o2.inputs_done.assert_called_once_with()
 
 
 def test_select_operator_to_run():

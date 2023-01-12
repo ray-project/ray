@@ -55,7 +55,7 @@ def test_all_to_all_operator():
     # Feed data.
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done(0)
+    op.inputs_done()
 
     # Check we return transformed bundles.
     assert not op.completed()
@@ -73,7 +73,7 @@ def test_map_operator_bulk(ray_start_regular_shared):
     # Feed data and block on exec.
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done(0)
+    op.inputs_done()
     for work in op.get_work_refs():
         ray.get(work)
         op.notify_work_completed(work)
@@ -142,7 +142,7 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared):
     # Feed data and block on exec.
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done(0)
+    op.inputs_done()
     for work in op.get_work_refs():
         ray.get(work)
         op.notify_work_completed(work)
@@ -167,7 +167,7 @@ def test_map_operator_ray_args(shutdown_only):
     # Feed data and block on exec.
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done(0)
+    op.inputs_done()
     for work in op.get_work_refs():
         ray.get(work)
         op.notify_work_completed(work)

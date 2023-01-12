@@ -133,7 +133,7 @@ class PhysicalOperator:
         self._input_dependencies = input_dependencies
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
-        self._num_incomplete_inputs = len(input_dependencies)
+        self._inputs_complete = False
 
     @property
     def name(self) -> str:
@@ -150,7 +150,7 @@ class PhysicalOperator:
     def completed(self) -> bool:
         """Return True when this operator is done and all outputs are taken."""
         return (
-            self._num_incomplete_inputs == 0
+            self.inputs_complete
             and len(self.get_work_refs()) == 0
             and not self.has_next()
         )
@@ -202,20 +202,13 @@ class PhysicalOperator:
         """
         raise NotImplementedError
 
-    def inputs_done(self, input_index: int) -> None:
-        """Called when an upstream operator finishes.
+    def inputs_done(self) -> None:
+        """Called when all upstream operator have completed().
 
-        This is called exactly once per input dependency. After this is called, the
-        upstream operator guarantees no more inputs will be added via `add_input`
-        for that input index.
-
-        Args:
-            input_index: The index identifying the input dependency producing the
-                input. For most operators, this is always `0` since there is only
-                one upstream input operator.
+        After this is called, the executor guarantees more inputs will be added via
+        `add_input` for any input index.
         """
-        self._num_incomplete_inputs -= 1
-        assert self._num_incomplete_inputs >= 0
+        self._inputs_complete = True
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available.

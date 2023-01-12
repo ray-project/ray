@@ -57,7 +57,7 @@ class BulkExecutor(Executor):
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
                         op.add_input(r, input_index=i)
-                    op.inputs_done(i)
+                op.inputs_done()
                 output = _naive_run_until_complete(op)
             finally:
                 op.shutdown()

@@ -76,9 +76,9 @@ class MapOperator(PhysicalOperator):
         assert input_index == 0, input_index
         self._execution_state.add_input(refs)
 
-    def inputs_done(self, input_index: int) -> None:
-        self._execution_state.inputs_done(input_index)
-        super().inputs_done(input_index)
+    def inputs_done(self) -> None:
+        self._execution_state.inputs_done()
+        super().inputs_done()
 
     def has_next(self) -> bool:
         return self._execution_state.has_next()

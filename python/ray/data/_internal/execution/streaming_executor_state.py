@@ -3,7 +3,7 @@
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
-from typing import Dict, List, Set, Optional
+from typing import Dict, List, Optional
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -34,7 +34,7 @@ class OpState:
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
-        self.finalized_input_indices: Set[int] = set()
+        self.inputs_done_called = False
 
     def initialize_progress_bar(self, index: int) -> None:
         self.progress_bar = ProgressBar(
@@ -111,7 +111,7 @@ def build_streaming_topology(dag: PhysicalOperator) -> Topology:
     return topology, DatasetStats(stages={}, parent=None)
 
 
-def process_completed_tasks(topology: Topology, up_only: bool = False) -> None:
+def process_completed_tasks(topology: Topology) -> None:
     """Process any newly completed tasks and update operator state."""
     for op_state in topology.values():
         op_state.refresh_progress_bar()
@@ -119,22 +119,21 @@ def process_completed_tasks(topology: Topology, up_only: bool = False) -> None:
     # Update active tasks.
     active_tasks: Dict[ray.ObjectRef, PhysicalOperator] = {}
 
-    if not up_only:
-        for op in topology:
-            for ref in op.get_work_refs():
-                active_tasks[ref] = op
+    for op in topology:
+        for ref in op.get_work_refs():
+            active_tasks[ref] = op
 
-        # Process completed Ray tasks and notify operators.
-        if active_tasks:
-            completed, _ = ray.wait(
-                list(active_tasks),
-                num_returns=len(active_tasks),
-                fetch_local=False,
-                timeout=0.1,
-            )
-            for ref in completed:
-                op = active_tasks.pop(ref)
-                op.notify_work_completed(ref)
+    # Process completed Ray tasks and notify operators.
+    if active_tasks:
+        completed, _ = ray.wait(
+            list(active_tasks),
+            num_returns=len(active_tasks),
+            fetch_local=False,
+            timeout=0.1,
+        )
+        for ref in completed:
+            op = active_tasks.pop(ref)
+            op.notify_work_completed(ref)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
@@ -143,14 +142,13 @@ def process_completed_tasks(topology: Topology, up_only: bool = False) -> None:
 
     # Call inputs_done() on ops where no more inputs are coming.
     for op, op_state in topology.items():
-        for i, dep in enumerate(op.input_dependencies):
-            if (
-                dep.completed()
-                and not topology[dep].outqueue
-                and i not in op_state.finalized_input_indices
-            ):
-                op.inputs_done(input_index=i)
-                op_state.finalized_input_indices.add(i)
+        inputs_done = [
+            dep.completed() and not topology[dep].outqueue
+            for dep in op.input_dependencies
+        ]
+        if inputs_done and not op_state.inputs_done_called:
+            op.inputs_done()
+            op_state.inputs_done_called = True
 
 
 def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
