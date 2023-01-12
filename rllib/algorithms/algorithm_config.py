@@ -2594,7 +2594,7 @@ class AlgorithmConfig:
         raise NotImplementedError
 
     def get_trainer_runner_config(
-        self, worker: RolloutWorker, validate: bool = False
+        self, policy: Policy, validate: bool = False
     ) -> TrainerRunnerConfig:
 
         if not self._is_frozen:
@@ -2607,13 +2607,15 @@ class AlgorithmConfig:
             TrainerRunnerConfig()
             .module(
                 module_class=self.rl_module_class,
-                observation_space=worker.observation_space,
-                action_space=worker.action_space,
-                model_config=self.model_config,
+                observation_space=policy.observation_space,
+                action_space=policy.action_space,
+                model_config=self.model,
             )
             .trainer(
                 trainer_class=self.rl_trainer_class,
                 eager_tracing=self.eager_tracing,
+                # TODO (Kourosh): optimizer config can not be more complicated.
+                optimizer_config={"lr": self.lr},
             )
             .resources(num_gpus=self.num_gpus, fake_gpus=self._fake_gpus)
         )

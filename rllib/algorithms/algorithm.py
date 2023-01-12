@@ -673,11 +673,8 @@ class Algorithm(Trainable):
 
         self.trainer_runner = None
         if self.config._enable_rl_trainer_api:
-            # TODO (Kourosh/Avnishn) worker should not give us observation/action
-            # space. It should be part of the a globally accessible config that is not
-            # the worker.
-            worker = self.workers.local_worker()
-            trainer_runner_config = self.config.get_trainer_runner_config(worker)
+            policy = self.get_policy()
+            trainer_runner_config = self.config.get_trainer_runner_config(policy)
             self.trainer_runner = trainer_runner_config.build()
 
         # Run `on_algorithm_init` callback after initialization is done.
