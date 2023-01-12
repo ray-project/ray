@@ -339,7 +339,10 @@ class ExecutionPlan:
 
         ctx = DatasetContext.get_current()
         if not ctx.use_streaming_executor:
-            return self.execute(allow_clear_input_blocks, force_read).iter_blocks()
+            return (
+                self.execute(allow_clear_input_blocks, force_read).iter_blocks(),
+                self._snapshot_stats,
+            )
 
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
         from ray.data._internal.execution.interfaces import ExecutionOptions
