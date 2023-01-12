@@ -32,16 +32,15 @@ Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
 ParamType = Union["torch.Tensor", "tf.Variable"]
 ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
+ParamDictType = Dict[ParamRef, ParamType]
 
 
 class RLTrainer:
-    """Base class for rllib algorithm trainers.
+    """Base class for RLlib algorithm trainers.
 
     Args:
         module_class: The (MA)RLModule class to use.
         module_kwargs: The kwargs for the (MA)RLModule.
-        optimizer_class: The optimizer class to use.
-        optimizer_kwargs: The kwargs for the optimizer.
         scaling_config: A mapping that holds the world size and rank of this
             trainer. Note this is only used for distributed training.
         distributed: Whether this trainer is distributed or not.
@@ -49,20 +48,35 @@ class RLTrainer:
     Abstract Methods:
         compute_gradients: Compute gradients for the module being optimized.
         apply_gradients: Apply gradients to the module being optimized with respect to
-            a loss that is computed by the optimizer.
+            a loss that is computed by the optimizer. Both compute_gradients and
+            apply_gradients are meant for framework-specific specializations.
+        compute_loss: Compute the loss for the module being optimized. Override this
+            method to customize the loss function of the multi-agent RLModule that is
+            being optimized.
+        configure_optimizers: Configure the optimizers for the module being optimized.
+            Override this to cutomize the optimizers and the parameters that they are
+            optimizing.
+
 
     Example:
         .. code-block:: python
 
-        trainer = MyRLTrainer(module_class, module_kwargs, optimizer_class,
-                optimizer_kwargs, scaling_config)
-        trainer.init_trainer()
+        trainer = MyRLTrainer(
+            module_class,
+            module_kwargs,
+            scaling_config,
+            optimizer_config
+        )
+        trainer.build()
         batch = ...
         results = trainer.update(batch)
 
         # add a new module, perhaps for league based training or lru caching
-        trainer.add_module("new_player", NewPlayerCls, new_player_kwargs,
-            NewPlayerOptimCls, new_player_optim_kwargs)
+        trainer.add_module(
+            module_id="new_player",
+            module_cls=NewPlayerCls,
+            module_kwargs=new_player_kwargs,
+        )
 
         batch = ...
         results = trainer.update(batch)  # will train previous and new modules.
@@ -100,11 +114,16 @@ class RLTrainer:
         self.distributed = distributed
         self.in_test = in_test
 
-        # These are the attributes that are set during build for properly applying
-        # optimizers and adding or removing modules.
+        # These are the attributes that are set during build
+        self._module: MultiAgentRLModule = None
+        # These are set for properly applying optimizers and adding or removing modules.
         self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
         self._param_to_optim: Dict[ParamRef, Optimizer] = {}
-        self._params: Dict[ParamRef, ParamType] = {}
+        self._params: ParamDictType = {}
+
+    @property
+    def module(self) -> MultiAgentRLModule:
+        return self._module
 
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
@@ -246,7 +265,7 @@ class RLTrainer:
     @abc.abstractmethod
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]]
-    ) -> Mapping[str, Any]:
+    ) -> ParamDictType:
         """Perform an update on self._module.
 
         For example compute and apply gradients to self._module if
@@ -321,14 +340,14 @@ class RLTrainer:
                 )
 
             def set_optimizer_fn(module):
-                optimizer = self._get_optimizer_obj(module, optimizer_cls)
-                parameters = self._get_parameters(module)
+                optimizer = self.get_optimizer_obj(module, optimizer_cls)
+                parameters = self.get_parameters(module)
                 return [(parameters, optimizer)]
 
         for param_seq, optimizer in set_optimizer_fn(module):
             self._optim_to_param[optimizer] = []
             for param in param_seq:
-                param_ref = self._get_param_ref(param)
+                param_ref = self.get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
@@ -344,9 +363,9 @@ class RLTrainer:
         """
         module = self._module[module_id]
 
-        parameters = self._get_parameters(module)
+        parameters = self.get_parameters(module)
         for param in parameters:
-            param_ref = self._get_param_ref(param)
+            param_ref = self.get_param_ref(param)
             if param_ref in self._params:
                 del self._params[param_ref]
             if param_ref in self._param_to_optim:
@@ -392,7 +411,7 @@ class RLTrainer:
         for param_seq, optimizer in self.configure_optimizers():
             self._optim_to_param[optimizer] = []
             for param in param_seq:
-                param_ref = self._get_param_ref(param)
+                param_ref = self.get_param_ref(param)
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
@@ -422,7 +441,7 @@ class RLTrainer:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def _get_param_ref(self, param: ParamType) -> Hashable:
+    def get_param_ref(self, param: ParamType) -> Hashable:
         """Returns a reference to a parameter.
 
         This should be overriden in framework specific trainer. For example in torch it
@@ -437,7 +456,7 @@ class RLTrainer:
         """
 
     @abc.abstractmethod
-    def _get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         """Returns the parameters of a module.
 
         This should be overriden in framework specific trainer. For example in torch it
@@ -451,7 +470,7 @@ class RLTrainer:
         """
 
     @abc.abstractmethod
-    def _get_optimizer_obj(
+    def get_optimizer_obj(
         self, module: RLModule, optimizer_cls: Type[Optimizer]
     ) -> Optimizer:
         """Returns the optimizer instance of type optimizer_cls from the module
