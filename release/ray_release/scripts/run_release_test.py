@@ -22,6 +22,86 @@ from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
+def run(
+    test_name: str,
+    test_collection_file: Optional[str] = None,
+    smoke_test: bool = False,
+    report: bool = False,
+    ray_wheels: Optional[str] = None,
+    cluster_id: Optional[str] = None,
+    cluster_env_id: Optional[str] = None,
+    env: Optional[str] = None,
+    no_terminate: bool = False,
+) -> Result:
+    test_collection_file = test_collection_file or os.path.join(
+        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
+    )
+    test_collection = read_and_validate_release_test_collection(test_collection_file)
+    test = find_test(test_collection, test_name)
+
+    if not test:
+        raise ReleaseTestCLIError(
+            f"Test `{test_name}` not found in collection file: "
+            f"{test_collection_file}"
+        )
+
+    if smoke_test:
+        test = as_smoke_test(test)
+
+    env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
+    env_dict = load_environment(env_to_use)
+    populate_os_env(env_dict)
+
+    if "python" in test:
+        python_version = parse_python_version(test["python"])
+    else:
+        python_version = DEFAULT_PYTHON_VERSION
+
+    ray_wheels_url = find_and_wait_for_ray_wheels_url(
+        ray_wheels, python_version=python_version, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
+    )
+
+    anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)
+    if not anyscale_project:
+        raise ReleaseTestCLIError(
+            "You have to set the ANYSCALE_PROJECT environment variable!"
+        )
+
+    maybe_fetch_api_token()
+
+    result = Result()
+
+    reporters = [LogReporter()]
+
+    if "BUILDKITE" in os.environ:
+        reporters.append(ArtifactsReporter())
+
+    if report:
+        reporters.append(DBReporter())
+
+    try:
+        result = run_release_test(
+            test,
+            anyscale_project=anyscale_project,
+            result=result,
+            ray_wheels_url=ray_wheels_url,
+            reporters=reporters,
+            smoke_test=smoke_test,
+            cluster_id=cluster_id,
+            cluster_env_id=cluster_env_id,
+            no_terminate=no_terminate,
+        )
+        return_code = result.return_code
+    except ReleaseTestError as e:
+        logger.exception(e)
+        return_code = e.exit_code.value
+
+    logger.info(
+        f"Release test pipeline for test {test['name']} completed. "
+        f"Returning with exit code = {return_code}"
+    )
+    return result
+
 
 @click.command()
 @click.argument("test_name", required=True, type=str)
@@ -94,73 +174,18 @@ def main(
     env: Optional[str] = None,
     no_terminate: bool = False,
 ):
-    test_collection_file = test_collection_file or os.path.join(
-        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
+    result = run(
+        test_name,
+        test_collection_file,
+        smoke_test,
+        report,
+        ray_wheels,
+        cluster_id,
+        cluster_env_id,
+        env,
+        no_terminate,
     )
-    test_collection = read_and_validate_release_test_collection(test_collection_file)
-    test = find_test(test_collection, test_name)
-
-    if not test:
-        raise ReleaseTestCLIError(
-            f"Test `{test_name}` not found in collection file: "
-            f"{test_collection_file}"
-        )
-
-    if smoke_test:
-        test = as_smoke_test(test)
-
-    env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
-    env_dict = load_environment(env_to_use)
-    populate_os_env(env_dict)
-
-    if "python" in test:
-        python_version = parse_python_version(test["python"])
-    else:
-        python_version = DEFAULT_PYTHON_VERSION
-
-    ray_wheels_url = find_and_wait_for_ray_wheels_url(
-        ray_wheels, python_version=python_version, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
-    )
-
-    anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)
-    if not anyscale_project:
-        raise ReleaseTestCLIError(
-            "You have to set the ANYSCALE_PROJECT environment variable!"
-        )
-
-    maybe_fetch_api_token()
-
-    result = Result()
-
-    reporters = [LogReporter()]
-
-    if "BUILDKITE" in os.environ:
-        reporters.append(ArtifactsReporter())
-
-    if report:
-        reporters.append(DBReporter())
-
-    try:
-        result = run_release_test(
-            test,
-            anyscale_project=anyscale_project,
-            result=result,
-            ray_wheels_url=ray_wheels_url,
-            reporters=reporters,
-            smoke_test=smoke_test,
-            cluster_id=cluster_id,
-            cluster_env_id=cluster_env_id,
-            no_terminate=no_terminate,
-        )
-        return_code = result.return_code
-    except ReleaseTestError as e:
-        logger.exception(e)
-        return_code = e.exit_code.value
-
-    logger.info(
-        f"Release test pipeline for test {test['name']} completed. "
-        f"Returning with exit code = {return_code}"
-    )
+    return_code = result.return_code
     sys.exit(return_code)
 
 
