@@ -2893,8 +2893,6 @@ genrule(
         # shellcheck disable=SC2006
         files=(`ls python/ray/core/generated/*_pb2*.py` `ls python/ray/serve/generated/*_pb2*.py`)
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
-        # sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
-        # sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
         echo "$${PWD}" > $@
     """,
     local = 1,
