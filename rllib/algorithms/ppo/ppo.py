@@ -124,6 +124,10 @@ class PPOConfig(PGConfig):
             )
 
             return PPOTorchRLModule
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfModule
+
+            return PPOTfModule
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -325,9 +329,17 @@ class PPO(Algorithm):
 
             return PPOTF1Policy
         else:
-            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
+            if config._enable_rl_module_api:
+                from ray.rllib.algorithms.ppo.tf.ppo_tf_policy_rlm import (
+                    PPOTfPolicyWithRLModule,
+                )
 
-            return PPOTF2Policy
+                return PPOTfPolicyWithRLModule
+            else:
+
+                from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
+
+                return PPOTF2Policy
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
