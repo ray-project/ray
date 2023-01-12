@@ -76,7 +76,7 @@ fi
 # If NODETYPE is "head", used to free up the nexus name
 if [ "$NODETYPE" = "head" ]; then
 
-sudo tailscale set --hostname=nexus-old
+sudo tailscale --authkey=${TSKEY} set --hostname=nexus-old
 
 
 fi
