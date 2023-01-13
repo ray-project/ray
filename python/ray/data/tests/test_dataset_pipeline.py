@@ -490,7 +490,7 @@ def test_split(ray_start_regular_shared):
 def test_split_at_indices(ray_start_regular_shared):
     indices = [2, 5]
     n = 8
-    pipe = ray.data.range(n).map(lambda x: x + 1).repeat(2)
+    pipe = ray.data.range(n).map(lambda x: x + 1).fully_executed().repeat(2)
 
     @ray.remote(num_cpus=0)
     def consume(shard, i):
@@ -511,10 +511,8 @@ def test_split_at_indices(ray_start_regular_shared):
     refs = [consume.remote(s, i) for i, s in enumerate(shards)]
     outs = ray.get(refs)
     np.testing.assert_equal(
-        np.array(outs, dtype=np.object),
-        np.array(
-            [[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]], dtype=np.object
-        ),
+        np.array(outs, dtype=object),
+        np.array([[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]], dtype=object),
     )
 
 
@@ -767,7 +765,12 @@ def test_if_blocks_owned_by_consumer(ray_start_regular_shared):
     ds = ray.data.from_items([1, 2, 3, 4, 5, 6], parallelism=3)
     assert not ds._plan.execute()._owned_by_consumer
     assert not ds.randomize_block_order()._plan.execute()._owned_by_consumer
-    assert not ds.map_batches(lambda x: x)._plan.execute()._owned_by_consumer
+    assert ds.map_batches(lambda x: x)._plan.execute()._owned_by_consumer
+    assert (
+        not ds.map_batches(lambda x: x)
+        ._plan.execute(cache_output_blocks=True)
+        ._owned_by_consumer
+    )
 
     def verify_blocks(pipe, owned_by_consumer):
         for ds in pipe.iter_datasets():

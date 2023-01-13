@@ -100,7 +100,7 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import ensure_notebook_deps
@@ -219,10 +219,11 @@ class Dataset(Generic[T]):
         self._plan = plan
         self._uuid = uuid4().hex
         self._epoch = epoch
-        self._lazy = lazy
 
         if not lazy:
-            self._plan.execute(allow_clear_input_blocks=False)
+            logger.warning("Dataset is lazy-only, so `lazy=False` arg has no effect")
+
+        self._lazy = True
 
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":
@@ -3833,7 +3834,7 @@ class Dataset(Generic[T]):
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        self._plan.execute(force_read=True)
+        self._plan.execute(force_read=True, cache_output_blocks=True)
         return self
 
     def is_fully_executed(self) -> bool:
@@ -3865,6 +3866,10 @@ class Dataset(Generic[T]):
         """
         return self._plan.execute().get_blocks()
 
+    @Deprecated(
+        message="Dataset is lazy-only, so this conversion call is no longer "
+        "needed and this API will be removed in future release"
+    )
     def lazy(self) -> "Dataset[T]":
         """Enable lazy evaluation.
 

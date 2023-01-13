@@ -123,7 +123,7 @@ class ExecutionPlan:
         if not stats.dataset_uuid:
             stats.dataset_uuid = self._dataset_uuid
 
-        self._run_by_consumer = run_by_consumer
+        self._run_by_consumer = True
 
     def __repr__(self) -> str:
         return (
@@ -412,6 +412,7 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
+        cache_output_blocks: bool = False,
     ) -> BlockList:
         """Execute this plan.
 
@@ -419,6 +420,10 @@ class ExecutionPlan:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
                 for each stage.
             force_read: Whether to force the read stage to fully execute.
+            cache_output_blocks: Whether to cache the output blocks from this execution.
+                If True, the consumer cannot own the output blocks and as a result
+                consumer cannot eagerly release blocks after consumption. This could
+                be the case for e.g. fully_executed().
 
         Returns:
             The blocks of the output dataset.
@@ -433,6 +438,8 @@ class ExecutionPlan:
                 "for more details: "
                 "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
             )
+        # Dataset is lazy-only, so it always allows clearing input blocks.
+        allow_clear_input_blocks = True
         if not self.has_computed_output():
             # Read stage is handled with the legacy execution impl for now.
             if (
@@ -453,12 +460,6 @@ class ExecutionPlan:
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
                 )
-                # TODO(ekl) we shouldn't need to set this in the future once we move
-                # to a fully lazy execution model, unless .cache() is used. The reason
-                # we need it right now is since the user may iterate over a Dataset
-                # multiple times after fully executing it once.
-                if not self._run_by_consumer:
-                    blocks._owned_by_consumer = False
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False
@@ -492,6 +493,14 @@ class ExecutionPlan:
                     logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                         stats_summary_string,
                     )
+
+            # When we need to cache output blocks, the consumer cannot own the output
+            # blocks -- this prevents the consumer from eagerly releasing the blocks
+            # after the consumption.
+            # The reason we need to do this is since the user may iterate/consume over
+            # a Dataset multiple times after fully executing it once.
+            if cache_output_blocks:
+                blocks._owned_by_consumer = False
 
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
