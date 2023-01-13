@@ -368,16 +368,14 @@ class PPO(Algorithm):
         # workers.
         if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                if self.config._enable_trainer_runner_api:
-                    weights = self.trainer_runner.get_weights()
-                    self.workers.foreach_worker(
-                        lambda worker: worker.set_weights(weights),
-                    )
-                else:
-                    self.workers.sync_weights(
-                        policies=policies_to_update,
-                        global_vars=global_vars,
-                    )
+                src_weights = None
+                if self.config._enable_rl_trainer_api:
+                    src_weights = self.trainer_runner
+                self.workers.sync_weights(
+                    from_worker=src_weights,
+                    policies=list(train_results.keys()),
+                    global_vars=global_vars,
+                )
 
         if self.config._enable_rl_trainer_api:
             kl_dict = {

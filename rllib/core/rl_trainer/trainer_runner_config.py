@@ -8,8 +8,8 @@ if TYPE_CHECKING:
     import gymnasium as gym
 
 
-# TODO: We should make all configs come from a standard base class that defines the
-# general interfaces for validation, from_dict, to_dict etc.
+# TODO (Kourosh): We should make all configs come from a standard base class that
+# defines the general interfaces for validation, from_dict, to_dict etc.
 class TrainerRunnerConfig:
     """Configuration object for TrainerRunner."""
 

@@ -1335,19 +1335,17 @@ class Algorithm(Trainable):
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            # TODO (Avnish): Implement this on trainer_runner.get_weights().
+            # TODO (Kourosh): figure out how we are going to sync MARLModule
+            # weights to MARLModule weights under the policy_map objects?
+            src_weights = None
             if self.config._enable_rl_trainer_api:
-                # TODO (Avnish): Implement this on trainer_runner.
-                # TODO (Kourosh): figure out how we are going to sync MARLModule
-                # weights to MARLModule weights under the policy_map objects?
-                weights = self.trainer_runner.get_weights()
-                self.workers.foreach_worker(
-                    lambda worker: worker.set_weights(weights),
-                )
-            else:
-                self.workers.sync_weights(
-                    policies=list(train_results.keys()),
-                    global_vars=global_vars,
-                )
+                src_weights = self.trainer_runner
+            self.workers.sync_weights(
+                from_worker=src_weights,
+                policies=list(train_results.keys()),
+                global_vars=global_vars,
+            )
 
         return train_results
 
