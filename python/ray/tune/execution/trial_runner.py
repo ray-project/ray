@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, DefaultDict, List, Mapping, Optional, Union, Tuple, Set
+from typing import DefaultDict, List, Optional, Union, Tuple, Set
 
 import click
 from datetime import datetime
@@ -65,65 +65,6 @@ def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     if not full_paths:
         return None
     return max(full_paths)
-
-
-def _load_trial_from_checkpoint(
-    trial_cp: dict, stub: bool = False, new_local_dir: Optional[str] = None
-) -> Trial:
-    """Create a Trial from the state stored in the experiment checkpoint.
-
-    Args:
-        trial_cp: Trial state from the experiment checkpoint, which is loaded
-            from the trial's `Trial.get_json_state`.
-        stub: Whether or not to validate the trainable name when creating the Trial.
-            Used for testing purposes for creating mocks.
-        new_local_dir: If set, this `local_dir` will overwrite what's saved in the
-            `trial_cp` state. Used in the case that the trial directory has moved.
-            The Trial `logdir` and the persistent trial checkpoints will have their
-            paths updated relative to this new directory.
-
-    Returns:
-        new_trial: New trial with state loaded from experiment checkpoint
-    """
-    new_trial = Trial(
-        trial_cp["trainable_name"],
-        stub=stub,
-        _setup_default_resource=False,
-    )
-    if new_local_dir:
-        trial_cp["local_dir"] = new_local_dir
-    new_trial.__setstate__(trial_cp)
-    new_trial.refresh_default_resource_request()
-    return new_trial
-
-
-def _load_trials_from_experiment_checkpoint(
-    experiment_checkpoint: Mapping[str, Any],
-    stub: bool = False,
-    new_local_dir: Optional[str] = None,
-) -> List[Trial]:
-    """Create trial objects from experiment checkpoint.
-
-    Given an experiment checkpoint (TrialRunner state dict), return
-    list of trials. See `_ExperimentCheckpointManager.checkpoint` for
-    what's saved in the TrialRunner state dict.
-    """
-    checkpoints = [
-        json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp
-        for cp in experiment_checkpoint["checkpoints"]
-    ]
-
-    trials = []
-    for trial_cp in checkpoints:
-        trials.append(
-            _load_trial_from_checkpoint(
-                trial_cp,
-                stub=stub,
-                new_local_dir=new_local_dir,
-            )
-        )
-
-    return trials
 
 
 @dataclass

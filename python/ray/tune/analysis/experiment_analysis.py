@@ -30,10 +30,7 @@ from ray.tune.result import (
     TRAINING_ITERATION,
 )
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import (
-    _find_newest_experiment_checkpoint,
-    _load_trial_from_checkpoint,
-)
+from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
