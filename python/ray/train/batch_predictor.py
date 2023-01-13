@@ -296,6 +296,8 @@ class BatchPredictor:
         ray_remote_args["num_gpus"] = num_gpus_per_worker
 
         preprocessor = self.get_preprocessor()
+
+        override_prep = None
         if preprocessor:
             # TODO: Delegate separate_gpu_stage flag to Datasets.
             if not separate_gpu_stage and num_gpus_per_worker > 0:
@@ -306,7 +308,6 @@ class BatchPredictor:
                 # False.
                 # Dataset optimizer will fuse preprocessing+prediction stage as
                 # necessary.
-                override_prep = None
 
                 # TODO: Use preprocessor.transform here.
                 # preprocessor.transform will break for DatasetPipeline as it
