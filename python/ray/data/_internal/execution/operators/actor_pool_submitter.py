@@ -33,8 +33,6 @@ class ActorPoolSubmitter(MapTaskSubmitter):
         self._actor_pool = ActorPool()
 
     def start(self):
-        # Check that actor pool hasn't yet been initialized.
-        assert self._actor_pool.num_actors == 0
         # Create the actor workers and add them to the pool.
         ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         cls_ = ray.remote(**ray_remote_args)(MapWorker)
@@ -62,7 +60,6 @@ class ActorPoolSubmitter(MapTaskSubmitter):
         # Kill all idle actors in the pool, and ensure that all remaining actors in the
         # pool will be killed as they become idle.
         self._actor_pool.kill_idle_actors()
-        self._actor_pool.kill_future_idle_actors()
 
     def shutdown(self, _):
         self._actor_pool.kill_all_actors()
@@ -115,60 +112,54 @@ class ActorPool:
 
     def __init__(self):
         # Number of tasks in flight per actor.
-        self._tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
+        self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
         # Whether actors that become idle should be eagerly killed. This is False until
         # the first call to kill_idle_actors().
         self._should_kill_idle_actors = False
 
     def add_actor(self, actor: ray.actor.ActorHandle):
         """Adds an actor to the pool."""
-        self._tasks_in_flight[actor] = 0
+        self._num_tasks_in_flight[actor] = 0
 
     def pick_actor(self) -> ray.actor.ActorHandle:
         """Provides the least heavily loaded actor in the pool for task submission."""
+        if not self._num_tasks_in_flight:
+            raise ValueError("Actor pool is empty.")
+
         actor = min(
-            self._tasks_in_flight.keys(), key=lambda actor: self._tasks_in_flight[actor]
+            self._num_tasks_in_flight.keys(),
+            key=lambda actor: self._num_tasks_in_flight[actor],
         )
-        self._tasks_in_flight[actor] += 1
+        self._num_tasks_in_flight[actor] += 1
         return actor
 
     def return_actor(self, actor: ray.actor.ActorHandle):
         """Returns the provided actor to the pool."""
-        self._tasks_in_flight[actor] -= 1
-        if self._should_kill_idle_actors and self._tasks_in_flight[actor] == 0:
+        if actor not in self._num_tasks_in_flight:
+            raise ValueError(
+                f"Actor {actor} doesn't exist in pool: "
+                f"{list(self._num_tasks_in_flight.keys())}"
+            )
+        if self._num_tasks_in_flight[actor] == 0:
+            raise ValueError(f"Actor {actor} has already been returned by all pickers.")
+
+        self._num_tasks_in_flight[actor] -= 1
+        if self._should_kill_idle_actors and self._num_tasks_in_flight[actor] == 0:
             self._kill_actor(actor)
 
-    def has_actor(self, actor: ray.actor.ActorHandle) -> bool:
-        """Whether the provided actor is in this pool."""
-        return actor in self._tasks_in_flight
-
-    def get_tasks_in_flight(self, actor: ray.actor.ActorHandle) -> int:
-        """The number of tasks in flight for the provided actor."""
-        return self._tasks_in_flight[actor]
-
-    @property
-    def num_actors(self) -> int:
-        """The number of actors in the pool."""
-        return len(self._tasks_in_flight)
-
     def kill_idle_actors(self):
-        """Kills all currently idle actors.
+        """Kills all currently idle actors and ensures that all actors that become idle
+        in the future will be eagerly killed.
 
         This is called once the task submitter is done submitting work to the pool.
         """
         idle_actors = [
             actor
-            for actor, tasks_in_flight in self._tasks_in_flight.items()
+            for actor, tasks_in_flight in self._num_tasks_in_flight.items()
             if tasks_in_flight == 0
         ]
         for actor in idle_actors:
             self._kill_actor(actor)
-
-    def kill_future_idle_actors(self):
-        """Ensure that all actors that become idle in the future will be eagerly killed.
-
-        This is called once the task submitter is done submitting work to the pool.
-        """
         self._should_kill_idle_actors = True
 
     def kill_all_actors(self):
@@ -176,11 +167,11 @@ class ActorPool:
 
         This is called once the task submitter is shutting down.
         """
-        all_actors = list(self._tasks_in_flight.keys())
+        all_actors = list(self._num_tasks_in_flight.keys())
         for actor in all_actors:
             self._kill_actor(actor)
 
     def _kill_actor(self, actor: ray.actor.ActorHandle):
         """Kill the provided actor and remove it from the pool."""
         ray.kill(actor)
-        del self._tasks_in_flight[actor]
+        del self._num_tasks_in_flight[actor]
