@@ -220,3 +220,13 @@ TEST(RayApiTest, ExceptionTask) {
   auto r4 = ray::Task(ExceptionFunc).Remote(2);
   EXPECT_THROW(r4.Get(), ray::internal::RayTaskException);
 }
+
+TEST(RayApiTest, GetClassNameByFuncNameTest) {
+  using ray::internal::FunctionManager;
+  EXPECT_EQ(FunctionManager::GetClassNameByFuncName("RAY_FUNC(Counter::FactoryCreate)"),
+            "Counter");
+  EXPECT_EQ(FunctionManager::GetClassNameByFuncName("Counter::FactoryCreate"), "Counter");
+  EXPECT_EQ(FunctionManager::GetClassNameByFuncName("FactoryCreate"), "");
+  EXPECT_EQ(FunctionManager::GetClassNameByFuncName(""), "");
+  EXPECT_EQ(FunctionManager::GetClassNameByFuncName("::FactoryCreate"), "");
+}
