@@ -27,10 +27,12 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
-from ray.data._internal.batcher import Batcher
-from ray.data._internal.block_batching import BatchType, batch_blocks
+from ray.data.dataset_iterator import DatasetIterator
+from ray.data._internal.block_batching import batch_block_refs, batch_blocks
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -41,7 +43,11 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.util import _estimate_available_parallelism, _is_local_scheme
+from ray.data._internal.util import (
+    _estimate_available_parallelism,
+    _is_local_scheme,
+    _is_tensor_schema,
+)
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
@@ -58,8 +64,7 @@ from ray.data._internal.stage_impl import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
-from ray.data._internal.stats import DatasetStats
-from ray.data._internal.table_block import VALUE_COL_NAME
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -68,6 +73,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
+    DataBatch,
     KeyFn,
     RowUDF,
     T,
@@ -123,6 +129,7 @@ if TYPE_CHECKING:
 
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
+    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
 logger = logging.getLogger(__name__)
@@ -131,7 +138,6 @@ TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
 
-TorchTensorBatchType = Union["torch.Tensor", Dict[str, "torch.Tensor"]]
 TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 
 
@@ -177,19 +183,23 @@ class Dataset(Generic[T]):
         >>> ds = ray.data.range(1000)
         >>> # Transform in parallel with map_batches().
         >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
-        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        MapBatches
+        +- Dataset(num_blocks=17, num_rows=1000, schema=<class 'int'>)
         >>> # Compute max.
         >>> ds.max()
         999
         >>> # Group the data.
         >>> ds.groupby(lambda x: x % 3).count()
-        Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
+        Aggregate
+        +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle()
-        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        RandomShuffle
+        +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Sort it back in order.
         >>> ds.sort()
-        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        Sort
+        +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors without incurring a copy. Datasets support
@@ -202,9 +212,7 @@ class Dataset(Generic[T]):
         self,
         plan: ExecutionPlan,
         epoch: int,
-        lazy: bool,
-        *,
-        defer_execution: bool = False,
+        lazy: bool = True,
     ):
         """Construct a Dataset (internal API).
 
@@ -219,7 +227,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
         self._lazy = lazy
 
-        if not lazy and not defer_execution:
+        if not lazy:
             self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
@@ -243,7 +251,8 @@ class Dataset(Generic[T]):
             >>> # Transform python objects.
             >>> ds = ray.data.range(1000)
             >>> ds.map(lambda x: x * 2)
-            Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+            Map
+            +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
             >>> # Transform Arrow records.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
@@ -565,10 +574,6 @@ class Dataset(Generic[T]):
         ) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
-            # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
-            batcher = Batcher(
-                batch_size, ensure_copy=not zero_copy_batch and batch_size is not None
-            )
 
             def validate_batch(batch: Block) -> None:
                 if not isinstance(
@@ -593,9 +598,7 @@ class Dataset(Generic[T]):
                                 f"the {type(value)} to a `numpy.ndarray`."
                             )
 
-            def process_next_batch(batch: Block) -> Iterator[Block]:
-                # Convert to batch format.
-                batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
+            def process_next_batch(batch: DataBatch) -> Iterator[Block]:
                 # Apply UDF.
                 try:
                     batch = batch_fn(batch, *fn_args, **fn_kwargs)
@@ -623,17 +626,16 @@ class Dataset(Generic[T]):
                 if output_buffer.has_next():
                     yield output_buffer.next()
 
-            # Process batches for each block.
-            for block in blocks:
-                batcher.add(block)
-                while batcher.has_batch():
-                    batch = batcher.next_batch()
-                    yield from process_next_batch(batch)
+            # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
+            formatted_batch_iter = batch_blocks(
+                blocks=blocks,
+                stats=None,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                ensure_copy=not zero_copy_batch and batch_size is not None,
+            )
 
-            # Process any last remainder batch.
-            batcher.done_adding()
-            if batcher.has_any():
-                batch = batcher.next_batch()
+            for batch in formatted_batch_iter:
                 yield from process_next_batch(batch)
 
             # Yield remainder block from output buffer.
@@ -804,7 +806,8 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(1000)
             >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
-            Dataset(num_blocks=..., num_rows=3000, schema=<class 'int'>)
+            FlatMap
+            +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -872,7 +875,8 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds.filter(lambda x: x % 2 == 0)
-            Dataset(num_blocks=..., num_rows=50, schema=<class 'int'>)
+            Filter
+            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -966,10 +970,12 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(100)
             >>> # Shuffle this dataset randomly.
             >>> ds.random_shuffle()
-            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            RandomShuffle
+            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Shuffle this dataset with a fixed random seed.
             >>> ds.random_shuffle(seed=12345)
-            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            RandomShuffle
+            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1012,7 +1018,7 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
-        return Dataset(plan, self._epoch, self._lazy, defer_execution=True)
+        return Dataset(plan, self._epoch, self._lazy)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -1533,7 +1539,8 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> # Group by a key function and aggregate.
             >>> ray.data.range(100).groupby(lambda x: x % 3).count()
-            Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
+            Aggregate
+            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Group by an Arrow table column and aggregate.
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
@@ -1933,7 +1940,8 @@ class Dataset(Generic[T]):
             >>> # Sort using the entire record as the key.
             >>> ds = ray.data.range(100)
             >>> ds.sort()
-            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            Sort
+            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Sort by a single column in descending order.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
@@ -2130,7 +2138,7 @@ class Dataset(Generic[T]):
         )
 
     def schema(
-        self, fetch_if_missing: bool = False
+        self, fetch_if_missing: bool = True
     ) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset.
 
@@ -2141,8 +2149,8 @@ class Dataset(Generic[T]):
 
         Args:
             fetch_if_missing: If True, synchronously fetch the schema if it's
-                not known. Default is False, where None is returned if the
-                schema is not known.
+                not known. If False, None is returned if the schema is not known.
+                Default is True.
 
         Returns:
             The Python type or Arrow schema of the records, or None if the
@@ -2447,7 +2455,7 @@ class Dataset(Generic[T]):
         self,
         path: str,
         *,
-        column: str = VALUE_COL_NAME,
+        column: str = TENSOR_COLUMN_NAME,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -2628,6 +2636,23 @@ class Dataset(Generic[T]):
         finally:
             progress.close()
 
+    def iterator(self) -> DatasetIterator:
+        """Return a :class:`~ray.data.DatasetIterator` that
+        can be used to repeatedly iterate over the dataset.
+
+        Examples:
+            >>> import ray
+            >>> for batch in ray.data.range(
+            ...     1000000
+            ... ).iterator().iter_batches(): # doctest: +SKIP
+            ...     print(batch) # doctest: +SKIP
+
+        .. note::
+            It is recommended to use ``DatasetIterator`` methods over directly
+            calling methods such as ``iter_batches()``.
+        """
+        return BulkDatasetIterator(self)
+
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the dataset.
 
@@ -2681,7 +2706,7 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[BatchType]:
+    ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the dataset.
 
         Examples:
@@ -2726,9 +2751,9 @@ class Dataset(Generic[T]):
 
         time_start = time.perf_counter()
 
-        yield from batch_blocks(
+        yield from batch_block_refs(
             blocks.iter_blocks(),
-            stats,
+            stats=stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
@@ -2749,7 +2774,7 @@ class Dataset(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[TorchTensorBatchType]:
+    ) -> Iterator["TorchTensorBatchType"]:
         """Return a local batched iterator of Torch Tensors over the dataset.
 
         This iterator will yield single-tensor batches if the underlying dataset
@@ -3844,7 +3869,10 @@ class Dataset(Generic[T]):
 
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
-        return self._plan.stats().summary_string()
+        return self._get_stats_summary().to_string()
+
+    def _get_stats_summary(self) -> DatasetStatsSummary:
+        return self._plan.stats_summary()
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
@@ -3997,6 +4025,7 @@ class Dataset(Generic[T]):
             If your dataset represents a list of Python objects, then the default batch
             format is ``list``.
 
+            >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds  # doctest: +SKIP
             Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)
@@ -4057,18 +4086,16 @@ class Dataset(Generic[T]):
             return list
 
         if isinstance(schema, (PandasBlockSchema, pa.Schema)):
-            if schema.names == [VALUE_COL_NAME]:
+            if schema.names == [TENSOR_COLUMN_NAME]:
                 return np.ndarray
             return pd.DataFrame
 
     def _is_tensor_dataset(self) -> bool:
         """Return ``True`` if this dataset is a tensor dataset."""
-        from ray.air.constants import TENSOR_COLUMN_NAME
-
         schema = self.schema()
         if schema is None or isinstance(schema, type):
             return False
-        return schema.names == [TENSOR_COLUMN_NAME]
+        return _is_tensor_schema(schema.names)
 
     def dataset_format(self) -> BlockFormat:
         """The format of the dataset's underlying data blocks. Possible values
@@ -4225,25 +4252,7 @@ class Dataset(Generic[T]):
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        schema = self.schema()
-        if schema is None:
-            schema_str = "Unknown schema"
-        elif isinstance(schema, type):
-            schema_str = str(schema)
-        else:
-            schema_str = []
-            for n, t in zip(schema.names, schema.types):
-                if hasattr(t, "__name__"):
-                    t = t.__name__
-                schema_str.append(f"{n}: {t}")
-            schema_str = ", ".join(schema_str)
-            schema_str = "{" + schema_str + "}"
-        count = self._meta_count()
-        if count is None:
-            count = "?"
-        return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            self._plan.initial_num_blocks(), count, schema_str
-        )
+        return self._plan.get_plan_as_string()
 
     def __str__(self) -> str:
         return repr(self)

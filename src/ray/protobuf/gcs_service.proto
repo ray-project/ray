@@ -177,14 +177,6 @@ message GetAllNodeInfoReply {
   repeated GcsNodeInfo node_info_list = 2;
 }
 
-message ReportHeartbeatRequest {
-  HeartbeatTableData heartbeat = 1;
-}
-
-message ReportHeartbeatReply {
-  GcsStatus status = 1;
-}
-
 message CheckAliveRequest {
   repeated string raylet_address = 1;
 }
@@ -228,12 +220,6 @@ message ReportResourceUsageRequest {
 
 message ReportResourceUsageReply {
   GcsStatus status = 1;
-}
-
-// Service for heartbeat info access.
-service HeartbeatInfoGcsService {
-  // Report heartbeat of a node to GCS Service.
-  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
 }
 
 message ReportWorkerFailureRequest {
@@ -624,6 +610,8 @@ message GetTaskEventsRequest {
   // If set, the exact `limit` TaskEvents returned do not have any ordering or selection
   // guarantee.
   optional int64 limit = 3;
+  // True if task events from driver (only profiling events) should be excluded.
+  bool exclude_driver_task = 4;
 }
 
 message GetTaskEventsReply {

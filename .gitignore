@@ -200,10 +200,6 @@ tools/prometheus*
 project-id
 .mypy_cache/
 
-# gitpod cache related
-.pip-cache/
-.bazel-cache/
-
 # release test related
 .anyscale.yaml
 test_state.json
@@ -224,3 +220,6 @@ workflow_data/
 /compile_commands.json
 # Directory where clangd puts its indexing work
 /.cache/
+
+# Auto-generated tag mapping
+tag-mapping.json
