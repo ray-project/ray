@@ -21,7 +21,6 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamType,
     ParamDictType,
 )
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
@@ -164,8 +163,8 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def _make_distributed(self) -> MultiAgentRLModule:
-        # TODO: Does strategy has to be an attribute here? if so it's very hidden to
-        # the user of this class that there is such an attribute.
+        # TODO (Kourosh): Does strategy has to be an attribute here? if so it's very
+        # hidden to the user of this class that there is such an attribute.
 
         # TODO (Kourosh, Avnish): The optimizers still need to be created within
         # strategy.scope. Otherwise parameters of optimizers won't be properly

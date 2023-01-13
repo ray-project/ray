@@ -106,7 +106,7 @@ class RLTrainer:
         distributed: bool = False,
         in_test: bool = False,
     ):
-        # TODO: convert scaling and optimizer configs to dataclasses
+        # TODO (Kourosh): convert scaling and optimizer configs to dataclasses
         self.module_class = module_class
         self.module_kwargs = module_kwargs
         self.scaling_config = scaling_config
@@ -173,10 +173,10 @@ class RLTrainer:
             must contain one protected key "total_loss" which will be used for
             computing gradients through.
         """
-        # TODO: This method is built for multi-agent. While it is still possible to
-        # write single-agent losses, it may become confusing to users. We should find a
-        # way to allow them to specify single-agent losses as well, without having to
-        # think about one extra layer of hierarchy for module ids.
+        # TODO (Kourosh): This method is built for multi-agent. While it is still
+        # possible to write single-agent losses, it may become confusing to users. We
+        # should find a way to allow them to specify single-agent losses as well,
+        # without having to think about one extra layer of hierarchy for module ids.
 
     def on_after_compute_gradients(
         self, gradients_dict: Mapping[str, Any]
@@ -216,7 +216,7 @@ class RLTrainer:
         Returns:
             A dictionary of results.
         """
-        # TODO: figure out a universal compilation of results in the baseclass
+        # TODO (Kourosh): figure out a universal compilation of results in the baseclass
         loss_numpy = convert_to_numpy(postprocessed_loss)
         return {"loss": loss_numpy}
 
@@ -235,8 +235,8 @@ class RLTrainer:
             return self.do_distributed_update(batch)
 
     def _update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
-        # TODO: remove the MultiAgentBatch from the type, it should be NestedDict from
-        # the base class.
+        # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
+        # NestedDict from  the base class.
         batch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(batch)
         loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
@@ -246,7 +246,6 @@ class RLTrainer:
         return self.compile_results(batch, fwd_out, loss, post_processed_gradients)
 
     def _convert_batch_type(self, batch):
-        # TODO: remove this method, it should be handled by the base class.
         batch = NestedDict(batch.policy_batches)
         batch = NestedDict(
             {k: torch.as_tensor(v, dtype=torch.float32) for k, v in batch.items()}
@@ -478,7 +477,7 @@ class RLTrainer:
         Returns:
             The parameters of the module.
         """
-        # TODO: Make this method a classmethod
+        # TODO (Kourosh): Make this method a classmethod
 
     @abc.abstractmethod
     def get_optimizer_obj(

@@ -123,6 +123,7 @@ class TorchRLTrainer(RLTrainer):
     def get_optimizer_obj(
         self, module: RLModule, optimizer_cls: Type[Optimizer]
     ) -> Optimizer:
-        # TODO: the abstraction should take in optimizer_config as a parameter as well.
+        # TODO (Kourosh): the abstraction should take in optimizer_config as a
+        # parameter as well.
         lr = self.optimizer_config.get("lr", 1e-3)
         return optimizer_cls(module.parameters, lr=lr)
