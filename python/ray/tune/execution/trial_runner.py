@@ -154,17 +154,16 @@ class _ExperimentCheckpointManager:
 
     def __init__(
         self,
-        checkpoint_dir: str,
+        local_checkpoint_dir: str,
         checkpoint_period: Union[int, float, str],
         start_time: float,
         session_str: str,
         syncer: Syncer,
         sync_trial_checkpoints: bool,
-        local_dir: str,
-        remote_dir: str,
+        remote_checkpoint_dir: str,
         sync_every_n_trial_checkpoints: Optional[int] = None,
     ):
-        self._checkpoint_dir = checkpoint_dir
+        self._local_checkpoint_dir = local_checkpoint_dir
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
         if self._auto_checkpoint_enabled:
             self._checkpoint_period = 10.0  # Initial value
@@ -176,8 +175,7 @@ class _ExperimentCheckpointManager:
 
         self._syncer = syncer
         self._sync_trial_checkpoints = sync_trial_checkpoints
-        self._local_dir = local_dir
-        self._remote_dir = remote_dir
+        self._remote_checkpoint_dir = remote_checkpoint_dir
 
         self._last_checkpoint_time = 0.0
         self._last_sync_time = 0.0
@@ -225,7 +223,7 @@ class _ExperimentCheckpointManager:
         Args:
             force: Forces a checkpoint despite checkpoint_period.
         """
-        if not self._checkpoint_dir:
+        if not self._local_checkpoint_dir:
             return
 
         force = force or self._should_force_cloud_sync
@@ -243,12 +241,14 @@ class _ExperimentCheckpointManager:
                     "timestamp": self._last_checkpoint_time,
                 },
             }
-            tmp_file_name = os.path.join(self._checkpoint_dir, ".tmp_checkpoint")
+            tmp_file_name = os.path.join(self._local_checkpoint_dir, ".tmp_checkpoint")
             with open(tmp_file_name, "w") as f:
                 json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
 
             os.replace(tmp_file_name, checkpoint_file)
-            search_alg.save_to_dir(self._checkpoint_dir, session_str=self._session_str)
+            search_alg.save_to_dir(
+                self._local_checkpoint_dir, session_str=self._session_str
+            )
 
         checkpoint_time_start = time.monotonic()
         with out_of_band_serialize_dataset():
@@ -274,14 +274,14 @@ class _ExperimentCheckpointManager:
                         "`sync_timeout` in `SyncConfig`."
                     )
                 synced = self._syncer.sync_up(
-                    local_dir=self._local_dir,
-                    remote_dir=self._remote_dir,
+                    local_dir=self._local_checkpoint_dir,
+                    remote_dir=self._remote_checkpoint_dir,
                     exclude=exclude,
                 )
             else:
                 synced = self._syncer.sync_up_if_needed(
-                    local_dir=self._local_dir,
-                    remote_dir=self._remote_dir,
+                    local_dir=self._local_checkpoint_dir,
+                    remote_dir=self._remote_checkpoint_dir,
                     exclude=exclude,
                 )
 
@@ -320,7 +320,7 @@ class _ExperimentCheckpointManager:
             )
 
         self._last_checkpoint_time = time.time()
-        return self._checkpoint_dir
+        return self._local_checkpoint_dir
 
 
 @DeveloperAPI
@@ -562,14 +562,13 @@ class TrialRunner:
 
     def _create_checkpoint_manager(self, sync_trial_checkpoints: bool = True):
         return _ExperimentCheckpointManager(
-            checkpoint_dir=self._local_checkpoint_dir,
+            local_checkpoint_dir=self._local_checkpoint_dir,
             checkpoint_period=self._checkpoint_period,
             start_time=self._start_time,
             session_str=self._session_str,
             syncer=self._syncer,
             sync_trial_checkpoints=sync_trial_checkpoints,
-            local_dir=self._local_checkpoint_dir,
-            remote_dir=self._remote_checkpoint_dir,
+            remote_checkpoint_dir=self._remote_checkpoint_dir,
             sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
         )
 
