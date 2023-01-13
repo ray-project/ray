@@ -20,20 +20,26 @@
 namespace ray {
 
 PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
-    : io_service_(io_service), mutex_() {}
+    : io_service_(io_service), mutex_(), stopped_(std::make_shared<bool>(false)) {}
 
 PeriodicalRunner::~PeriodicalRunner() {
+  RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
+}
+
+void PeriodicalRunner::Clear() {
   absl::MutexLock lock(&mutex_);
+  *stopped_ = true;
   for (const auto &timer : timers_) {
     timer->cancel();
   }
   timers_.clear();
-  RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
+  *stopped_ = true;
 }
 
 void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
                                          uint64_t period_ms,
                                          const std::string name) {
+  *stopped_ = false;
   if (period_ms > 0) {
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
     {
@@ -41,7 +47,10 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
       timers_.push_back(timer);
     }
     io_service_.post(
-        [this, fn = std::move(fn), period_ms, name, timer = std::move(timer)]() {
+        [this, stopped = stopped_, fn = std::move(fn), period_ms, name, timer = std::move(timer)]() {
+          if(*stopped) {
+            return;
+          }
           if (RayConfig::instance().event_stats()) {
             DoRunFnPeriodicallyInstrumented(
                 fn, boost::posix_time::milliseconds(period_ms), timer, name);
@@ -92,7 +101,10 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
                      stats_handle = std::move(stats_handle),
                      name](const boost::system::error_code &error) {
     io_service_.stats().RecordExecution(
-        [this, fn = std::move(fn), error, period, timer = std::move(timer), name]() {
+        [this, stopped = stopped_, fn = std::move(fn), error, period, timer = std::move(timer), name]() {
+          if(*stopped) {
+            return;
+          }
           if (error == boost::asio::error::operation_aborted) {
             // `operation_aborted` is set when `timer` is canceled or destroyed.
             // The Monitor lifetime may be short than the object who use it. (e.g.
