@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 import ray
 from ray.data._internal.execution.interfaces import (
-    ExecutionOptions,
+    ExecutionResources,
     RefBundle,
     PhysicalOperator,
 )
@@ -154,7 +154,9 @@ def process_completed_tasks(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
 
-def select_operator_to_run(topology: Topology, options: ExecutionOptions) -> Optional[PhysicalOperator]:
+def select_operator_to_run(
+    topology: Topology, limits: ExecutionResources
+) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
     The objective of this function is to maximize the throughput of the overall
@@ -165,17 +167,15 @@ def select_operator_to_run(topology: Topology, options: ExecutionOptions) -> Opt
     operators with a large number of running tasks `num_active_tasks()`.
     """
 
-    # TODO: set limits properly based on resources and execution options. This is just
-    # a hard-coded development placeholder.
-    PARALLELISM_LIMIT = 8
-    num_active_tasks = sum(
-        op_state.num_active_tasks() for op_state in topology.values()
-    )
-    if num_active_tasks >= PARALLELISM_LIMIT:
-        return None
+    cur_usage = ExecutionResources()
+    for op in topology:
+        cur_usage = cur_usage.add(op.current_resource_usage())
+
+    # Select candidate operators that are allowable under resource limits.
+    pairs = list(topology.items())
+    pairs = [p for p in pairs if _execution_allowed(p[0], cur_usage, limits)]
 
     # Equally penalize outqueue length and active tasks for backpressure.
-    pairs = list(topology.items())
     pairs.sort(key=lambda p: len(p[1].outqueue) + p[1].num_active_tasks())
 
     selected = None
@@ -185,3 +185,15 @@ def select_operator_to_run(topology: Topology, options: ExecutionOptions) -> Opt
             break
 
     return selected
+
+
+def _execution_allowed(
+    op: PhysicalOperator, cur_usage: ExecutionResources, limits: ExecutionResources
+) -> bool:
+    cur_usage = op.current_resource_usage()
+
+    # If no resources are currently used, execution is always allowed.
+    if cur_usage.empty():
+        return True
+
+    return cur_usage.add(op.incremental_resource_usage()).satisfies_limits(limits)

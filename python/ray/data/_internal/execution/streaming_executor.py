@@ -85,10 +85,10 @@ class StreamingExecutor(Executor):
         process_completed_tasks(topology)
 
         # Dispatch as many operators as we can for completed tasks.
-        op = select_operator_to_run(topology, self._options)
+        op = select_operator_to_run(topology, self._options.resource_limits)
         while op is not None:
             topology[op].dispatch_next_task()
-            op = select_operator_to_run(topology, self._options)
+            op = select_operator_to_run(topology, self._options.resource_limits)
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
