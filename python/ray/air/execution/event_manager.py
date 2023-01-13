@@ -80,7 +80,7 @@ class RayEventManager:
     def wait(
         self, max_num_events: Optional[int] = None, timeout: Optional[Number] = None
     ) -> None:
-        """Yield control to actor manager to await events and invoke callbacks.
+        """Yield control to event manager to await events and invoke callbacks.
 
         Calling this method will wait for up to ``timeout`` seconds for up to
         ``max_num_events`` new events
@@ -99,8 +99,18 @@ class RayEventManager:
         raise RuntimeError
 
     @property
+    def all_actors(self) -> List[TrackedActor]:
+        """Return all ``TrackedActor`` objects managed by this manager instance."""
+        raise NotImplementedError
+
+    @property
     def live_actors(self) -> List[TrackedActor]:
-        """Return ``TrackedActor`` that are currently alive."""
+        """Return all ``TrackedActor`` objects that are currently alive."""
+        raise NotImplementedError
+
+    @property
+    def pending_actors(self) -> List[TrackedActor]:
+        """Return all ``TrackedActor`` objects that are currently pending."""
         raise NotImplementedError
 
     @property
