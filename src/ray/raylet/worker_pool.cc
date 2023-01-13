@@ -1316,7 +1316,6 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 }
 
 void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
-  RAY_LOG(INFO) << "Prestarting " << num_needed << " workers!";
   static const WorkerCacheKey kDefaultCpuWorkerCacheKey{/*serialized_runtime_env*/ "",
                                                         {{"CPU", 1}},
                                                         /*is_actor*/ false,
