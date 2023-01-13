@@ -31,6 +31,7 @@ class Counter {
   int Plus1();
   int Add(int x);
   int Exit();
+  int GetCount() { return count; }
   uint64_t GetPid();
   void ExceptionFunc() { throw std::invalid_argument("error"); }
   static bool IsProcessAlive(uint64_t pid);
@@ -38,11 +39,23 @@ class Counter {
   bool CheckRestartInActorCreationTask();
   bool CheckRestartInActorTask();
   ray::ActorHandle<Counter> CreateChildActor(std::string actor_name);
+  std::string CreateNestedChildActor(std::string actor_name);
   int Plus1ForActor(ray::ActorHandle<Counter> actor);
 
   std::string GetNamespaceInActor();
 
   std::string GetVal(ray::ObjectRef<std::string> obj) { return *obj.Get(); }
+
+  std::vector<std::byte> GetBytes(std::string s) {
+    std::vector<std::byte> bytes;
+    bytes.reserve(s.size());
+
+    std::transform(std::begin(s), std::end(s), std::back_inserter(bytes), [](char c) {
+      return std::byte(c);
+    });
+
+    return bytes;
+  }
 
   int GetIntVal(ray::ObjectRef<ray::ObjectRef<int>> obj) {
     auto val = *obj.Get();
@@ -59,6 +72,7 @@ class Counter {
  private:
   int count;
   bool is_restared = false;
+  ray::ActorHandle<Counter> child_actor;
 };
 
 std::string GetEnvVar(std::string key);
