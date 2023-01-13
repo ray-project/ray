@@ -1,4 +1,4 @@
-"""
+r"""
 Test that focuses on wide fanout of deployment graph
        -> Node_1
       /          \
@@ -56,7 +56,7 @@ def combine(value_refs):
 def test_wide_fanout_deployment_graph(
     fanout_degree, init_delay_secs=0, compute_delay_secs=0
 ):
-    """
+    r"""
     Test that focuses on wide fanout of deployment graph
         -> Node_1
         /          \
