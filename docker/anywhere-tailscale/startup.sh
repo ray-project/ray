@@ -76,9 +76,12 @@ fi
 # If NODETYPE is "head", used to free up the nexus name
 if [ "$NODETYPE" = "head" ]; then
 
-sudo tailscale --authkey=${TSKEY} set --hostname=nexus-old
+$deviceid = curl -u ${TSAPIKEY}: https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname=="nexus")' | jq .id
 
+else
+
+$deviceid = curl -u ${TSAPIKEY}: https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname==${HOSTNAME})' | jq .id
 
 fi
 
-sudo tailscale down
+curl -X DELETE https://api.tailscale.com/api/v2/device/${deviceid} -u ${TSAPIKEY}:

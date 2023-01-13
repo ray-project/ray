@@ -6,6 +6,7 @@ ENV MODIN_RAY_CLUSTER=True
 ENV TZ=America/Los_Angeles
 ENV NODETYPE=head
 ENV TSKEY=""
+ENV TSAPIKEY=""
 ENV CFLAGS="-O3"
 ENV AWS_ACCESS_KEY_ID=""
 ENV AWS_SECRET_ACCESS_KEY=""
@@ -19,7 +20,7 @@ ENV N2N_INTERFACE=tailscale0
 #ENV N2N_KEY=$RANDOMSTRING
 
 RUN sudo apt-get update \
-        && sudo apt-get install -y --no-install-recommends ca-certificates curl wget lsb-release \ 
+        && sudo apt-get install -y --no-install-recommends ca-certificates curl jq wget lsb-release \ 
         && sudo apt-get clean \
         && sudo rm -rf /var/lib/apt/lists/*
 
