@@ -450,7 +450,11 @@ class DatasetPipelineStats:
         self.count += 1
 
     def add_pipeline_stats(self, other_stats: "DatasetPipelineStats"):
-        """Add the provided pipeline stats to the current stats."""
+        """Add the provided pipeline stats to the current stats.
+
+        `other_stats` should cover a disjoint set of windows than
+        the current stats.
+        """
         for _, dataset_stats in other_stats.history_buffer:
             self.add(dataset_stats)
 
