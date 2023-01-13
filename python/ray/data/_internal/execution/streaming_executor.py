@@ -49,15 +49,8 @@ class StreamingExecutor(Executor):
 
         # Setup the streaming DAG topology.
         topology, self._stats = build_streaming_topology(dag)
+        self._validate_topology(topology)
         output_node: OpState = topology[dag]
-
-        base_usage = ExecutionResources()
-        for op in topology:
-            base_usage = base_usage.add(op.base_resource_usage())
-        if not base_usage.satisifes_limits(self._options.resource_limits):
-            raise ValueError(
-                "The base resource usage of this topology exceeds the given limits!"
-            )
 
         # Run scheduling loop until complete.
         while self._scheduling_loop_step(topology):
@@ -101,3 +94,30 @@ class StreamingExecutor(Executor):
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
+
+    def _validate_topology(self, topology: Topology):
+        """Raises an exception on invalid topologies.
+
+        For example, a topology is invalid if its configuration would require more
+        resources than the cluster has to execute.
+        """
+
+        base_usage = ExecutionResources()
+        for op in topology:
+            base_usage = base_usage.add(op.base_resource_usage())
+            inc_usage = op.get_incremental_resource_usage()
+            if inc_usage.cpu or inc_usage.gpu:
+                if inc_usage.cpu == 1 and inc_usage.gpu is None:
+                    pass
+                elif inc_usage.cpu is None and inc_usage.gpu == 1:
+                    pass
+                else:
+                    raise NotImplementedError(
+                        "Operator incremental resource usage must be a single unit "
+                        "of either CPU or GPU. Other values may cause deadlock."
+                    )
+
+        if not base_usage.satisifes_limits(self._options.resource_limits):
+            raise ValueError(
+                "The base resource usage of this topology exceeds the given limits!"
+            )
