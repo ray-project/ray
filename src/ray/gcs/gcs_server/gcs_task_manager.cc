@@ -91,25 +91,37 @@ absl::optional<TaskAttempt> GcsTaskManager::GcsTaskManagerStorage::GetLatestTask
   return latest_task_attempt;
 }
 
-absl::optional<int64_t> GcsTaskManager::GcsTaskManagerStorage::GetTaskFailedTime(
-    const TaskID &task_id) const {
+rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
+    const TaskAttempt &task_attempt) {
+  auto idx_itr = task_attempt_index_.find(task_attempt);
+  RAY_CHECK(idx_itr != task_attempt_index_.end())
+      << "Task attempt of task: " << task_attempt.first
+      << ", attempt_number: " << task_attempt.second
+      << " should have task events in the buffer but missing.";
+  return task_events_.at(idx_itr->second);
+}
+
+const rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
+    const TaskAttempt &task_attempt) const {
+  auto idx_itr = task_attempt_index_.find(task_attempt);
+  RAY_CHECK(idx_itr != task_attempt_index_.end())
+      << "Task attempt of task: " << task_attempt.first
+      << ", attempt_number: " << task_attempt.second
+      << " should have task events in the buffer but missing.";
+  return task_events_.at(idx_itr->second);
+}
+
+absl::optional<int64_t> GcsTaskManager::GcsTaskManagerStorage::GetTaskStatusTime(
+    const TaskID &task_id, const rpc::TaskStatus &task_status) const {
   auto latest_task_attempt = GetLatestTaskAttempt(task_id);
   if (!latest_task_attempt.has_value()) {
     return absl::nullopt;
   }
 
-  auto idx_itr = task_attempt_index_.find(*latest_task_attempt);
-  RAY_CHECK(idx_itr != task_attempt_index_.end())
-      << "Task attempt of " << task_id
-      << "should have task events in the buffer but missing.";
-  const auto &task_event = task_events_.at(idx_itr->second);
-
-  if (!task_event.has_state_updates() || !task_event.state_updates().has_failed_ts()) {
-    // No failed timestamp.
-    return absl::nullopt;
-  }
-
-  return task_event.state_updates().failed_ts();
+  const auto &task_event = GetTaskEvent(*latest_task_attempt);
+  return task_event.has_state_updates()
+             ? GetTaskStatusTimeFromStateUpdates(task_status, task_event.state_updates())
+             : absl::nullopt;
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskFailed(const TaskID &task_id,
@@ -118,12 +130,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskFailed(const TaskID &task_id
   if (!latest_task_attempt.has_value()) {
     return;
   }
-
-  auto idx_itr = task_attempt_index_.find(*latest_task_attempt);
-  RAY_CHECK(idx_itr != task_attempt_index_.end())
-      << "Task attempt of " << task_id
-      << "should have task events in the buffer but missing.";
-  auto &task_event = task_events_.at(idx_itr->second);
+  auto &task_event = GetTaskEvent(*latest_task_attempt);
   task_event.mutable_state_updates()->set_failed_ts(failed_ts);
   task_event.mutable_state_updates()->clear_finished_ts();
 }
@@ -132,16 +139,16 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(
     const TaskID &task_id, const TaskID &parent_task_id) {
   if (!parent_task_id.IsNil()) {
     // If parent has failed, mark itself as failed
-    auto parent_failed_ts = GetTaskFailedTime(parent_task_id);
+    auto parent_failed_ts = GetTaskStatusTime(parent_task_id, rpc::TaskStatus::FAILED);
     if (parent_failed_ts.has_value()) {
       // Mark current task as failed.
       MarkTaskFailed(task_id, *parent_failed_ts);
     }
   }
 
-  // BFS traverse the task tree to mark all children as failure
+  // BFS traverse the task tree to mark all non terminal children as failure
   std::vector<TaskID> failed_tasks;
-  auto task_failed_ts = GetTaskFailedTime(task_id);
+  auto task_failed_ts = GetTaskStatusTime(task_id, rpc::TaskStatus::FAILED);
   if (task_failed_ts.has_value()) {
     failed_tasks.push_back(task_id);
   }
@@ -153,8 +160,10 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(
       continue;
     }
     for (const auto &child_task_id : children_tasks_itr->second) {
-      // Mark child as failed with parent's (or ancestor's) failure timestamp.
-      if (!GetTaskFailedTime(child_task_id).has_value()) {
+      // Mark any non-terminated child as failed with parent's (or ancestor's) failure
+      // timestamp.
+      if (!(GetTaskStatusTime(child_task_id, rpc::TaskStatus::FAILED).has_value() ||
+            GetTaskStatusTime(child_task_id, rpc::TaskStatus::FINISHED).has_value())) {
         MarkTaskFailed(child_task_id, task_failed_ts.value());
         failed_tasks.push_back(child_task_id);
       }

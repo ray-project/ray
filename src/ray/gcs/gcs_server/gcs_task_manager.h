@@ -167,25 +167,36 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     ///     worker later than the failure status reported from the parent worker.
     ///     2. The task itself fails.
     ///
-    /// This is necessary since workers/drivers/raylet could crash unexpectedly, and
-    /// terminal task status are not reported when that happens. Here we leverages on
-    /// Ray's fault tolerance where a parent task failure will lead to all child task fail
-    /// to mark the task tree with failure status recursively.
+    /// NOTE: Since there is delay in task events reporting, a task's state might not be
+    /// reported before a worker is killed, therefore, some tasks might have actually
+    /// run/been submitted but it's states not being reported to GCS. This is hard to
+    /// resolve unless we add synchronized reporting before submitting a task.
     ///
     /// \param task_id ID of the task event that's the root of the task tree.
     /// \param parent_task_id ID of the task's parent.
     void MarkTaskTreeFailedIfNeeded(const TaskID &task_id, const TaskID &parent_task_id);
 
-    /// Get the task failed timestamp of a task.
+    /// Get a reference to the TaskEvent stored in the buffer.
     ///
-    /// This finds the task event from the latest task attempt for the task, and returns
-    /// the failure timestamp if the task fails.
+    /// \param task_attempt The task attempt.
+    /// \return Reference to the task events stored in the buffer.
+    rpc::TaskEvents &GetTaskEvent(const TaskAttempt &task_attempt);
+
+    /// Get a const reference to the TaskEvent stored in the buffer.
+    ///
+    /// \param task_attempt The task attempt.
+    /// \return Reference to the task events stored in the buffer.
+    const rpc::TaskEvents &GetTaskEvent(const TaskAttempt &task_attempt) const;
+
+    /// Get the timestamp of a task status update.
     ///
     /// \param task_id The task id of the task.
+    /// \param task_status The status update.
     /// \return The failed timestamp of the task attempt if it fails. absl::nullopt if the
     /// latest task attempt could not be found due to data loss or the task attempt
     /// doesn't fail.
-    absl::optional<int64_t> GetTaskFailedTime(const TaskID &task_id) const;
+    absl::optional<int64_t> GetTaskStatusTime(const TaskID &task_id,
+                                              const rpc::TaskStatus &task_status) const;
 
     /// Mark the task as failure with the failed timestamp.
     ///
