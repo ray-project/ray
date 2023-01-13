@@ -78,10 +78,10 @@ class ExecutionResources:
     """
 
     # CPU usage in cores (Ray logical CPU slots).
-    cpu: Optional[int] = None
+    cpu: Optional[float] = None
 
     # GPU usage in devices (Ray logical GPU slots).
-    gpu: Optional[int] = None
+    gpu: Optional[float] = None
 
     # Object store memory usage in bytes.
     object_store_memory: Optional[int] = None
