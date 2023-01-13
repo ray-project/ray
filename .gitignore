@@ -1,8 +1,8 @@
 # The build output should clearly not be checked in
 *test-output.xml
 /bazel-*
-/python/ray/core
-/python/ray/core/generated
+/python/ray/core/src
+!/python/ray/core/generated/
 /python/ray/pickle5_files/
 /python/ray/thirdparty_files/
 /python/ray/pyarrow_files/
