@@ -78,20 +78,20 @@ class RayEventManager:
         raise NotImplementedError
 
     def wait(
-        self, max_num_events: Optional[int] = None, timeout: Optional[Number] = None
+        self, num_events: Optional[int] = None, timeout: Optional[Number] = None
     ) -> None:
         """Yield control to event manager to await events and invoke callbacks.
 
         Calling this method will wait for up to ``timeout`` seconds for up to
-        ``max_num_events`` new events
-        to arrive. When events arrive, callbacks relating to the events will be
+        ``num_events`` new events to arrive.
+        When events arrive, callbacks relating to the events will be
         invoked. A timeout of ``None`` will block until the next event arrives.
 
-        If ``max_num_events`` is set, it will only wait for that many events to arrive
+        If ``num_events`` is set, it will only wait for that many events to arrive
         before returning control to the caller.
 
         Args:
-            max_num_events: Maximum number of events to await before returning control
+            num_events: Number of events to await before returning control
                 to the caller.
             timeout: Timeout in seconds to wait for events.
 
