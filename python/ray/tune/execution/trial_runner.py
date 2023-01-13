@@ -388,8 +388,8 @@ class TrialRunner:
         search_alg: Optional[SearchAlgorithm] = None,
         scheduler: Optional[TrialScheduler] = None,
         local_checkpoint_dir: Optional[str] = None,
-        remote_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
+        experiment_dir_name: Optional[str] = None,
         stopper: Optional[Stopper] = None,
         resume: Union[str, bool] = False,
         server_port: Optional[int] = None,
@@ -436,7 +436,7 @@ class TrialRunner:
             # Manual override
             self._max_pending_trials = int(max_pending_trials)
 
-        sync_config = sync_config or SyncConfig()
+        self._sync_config = sync_config or SyncConfig()
 
         self.trial_executor.setup(
             max_pending_trials=self._max_pending_trials,
@@ -485,7 +485,7 @@ class TrialRunner:
         if self._local_checkpoint_dir:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
 
-        self._remote_checkpoint_dir = remote_checkpoint_dir
+        self._experiment_dir_name = experiment_dir_name
 
         self._syncer = get_node_to_storage_syncer(sync_config)
         self._stopper = stopper or NoopStopper()
@@ -583,6 +583,12 @@ class TrialRunner:
     @property
     def scheduler_alg(self):
         return self._scheduler_alg
+
+    @property
+    def _remote_checkpoint_dir(self):
+        if self._sync_config.upload_dir and self._experiment_dir_name:
+            return os.path.join(self._sync_config.upload_dir, self._experiment_dir_name)
+        return None
 
     def _validate_resume(
         self, resume_type: Union[str, bool], driver_sync_trial_checkpoints=True
@@ -1622,6 +1628,9 @@ class TrialRunner:
             "_syncer",
             "_callbacks",
             "_checkpoint_manager",
+            "_local_checkpoint_dir",
+            "_sync_config",
+            "_experiment_dir_name",
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)
