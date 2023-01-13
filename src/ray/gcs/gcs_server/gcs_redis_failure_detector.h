@@ -45,6 +45,9 @@ class GcsRedisFailureDetector {
   /// Start detecting redis.
   void Start();
 
+  /// Stop detecting redis.
+  void Stop();
+
  protected:
   /// Check that if redis is inactive.
   void DetectRedis();
