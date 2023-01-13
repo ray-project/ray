@@ -125,7 +125,7 @@ class ReportCheckpointCallback(_Callback):
     Args:
         metrics: Metrics to report. If this is a list, each item describes
             the metric key reported to Keras, and it's reported under the
-            same name. If this is a dict, each key is  the name reported
+            same name. If this is a dict, each key is the name reported
             and the respective value is the metric key reported to Keras.
             If this is None, all Keras logs are reported.
         report_metrics_on: When to report metrics. Must be one of
