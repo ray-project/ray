@@ -45,12 +45,12 @@ class RayEventManager:
     object is returned.
     The :meth:`TrackedActorTask.on_result()
     <ray.air.execution.tracked_actor_task.TrackedActorTask.on_result>`
-    method can then be used to specify a callback that is invoked once the task
-    successfully resolved. The other callbacks relating to tracked actor tasks are
-    :meth:`TrackedActorTask.on_error()
-    <ray.air.execution.tracked_actor_task.TrackedActorTask.on_error>` and
-    :meth:`TrackedActorTask.on_timeout()
-    <ray.air.execution.tracked_actor_task.TrackedActorTask.on_timeout>`.
+    method can then be used to specify a callback that is invoked when the task
+    successfully resolved.
+    The :meth:`TrackedActorTask.on_error()
+    <ray.air.execution.tracked_actor_task.TrackedActorTask.on_error>`
+    method can then be used to specify a callback that is invoked when the task
+    fails.
 
     Lastly, regular tasks (not on actors) can be tracked. When scheduling a task
     using
@@ -61,11 +61,11 @@ class RayEventManager:
     The :meth:`TrackedTask.on_result()
     <ray.air.execution.tracked_task.TrackedTask.on_result>`
     method can then be used to specify a callback that is invoked once the task
-    successfully resolved. The other callbacks relating to tracked actor tasks are
-    :meth:`TrackedTask.on_error()
-    <ray.air.execution.tracked_task.TrackedTask.on_error>` and
-    :meth:`TrackedTask.on_timeout()
-    <ray.air.execution.tracked_task.TrackedTask.on_timeout>`.
+    successfully resolved.
+    The :meth:`TrackedTask.on_error()
+    <ray.air.execution.tracked_task.TrackedTask.on_error>`
+    method can then be used to specify a callback that is invoked when the actor task
+    fails.
 
     Args:
         resource_manager: Resource manager used to request resources for the actors.
@@ -207,7 +207,6 @@ class RayEventManager:
         remote_fn: Callable,
         args: Optional[Tuple] = None,
         kwargs: Optional[Dict] = None,
-        timeout: Optional[Number] = None,
     ) -> TrackedTask:
         """Schedule and track a Ray task.
 
@@ -222,10 +221,6 @@ class RayEventManager:
                 Ray function, e.g. decorated using ``ray.remote()``.
             args: Arguments to pass to the task.
             kwargs: Keyword arguments to pass to the task.
-            timeout: Timeout in seconds after which the task is cancelled and the
-                :meth:`TrackedTask.on_timeout
-                <ray.air.execution.tracked_task.TrackedTask.on_timeout>`
-                callback is invoked.
 
         """
         raise NotImplementedError
@@ -236,7 +231,6 @@ class RayEventManager:
         method_name: str,
         args: Optional[Tuple] = None,
         kwargs: Optional[Dict] = None,
-        timeout: Optional[Number] = None,
     ) -> TrackedActorTask:
         """Schedule and track a task on an actor.
 
@@ -255,10 +249,6 @@ class RayEventManager:
                 scheduled.
             args: Arguments to pass to the task.
             kwargs: Keyword arguments to pass to the task.
-            timeout: Timeout in seconds after which the task is cancelled and the
-                :meth:`TrackedActorTask.on_timeout
-                <ray.air.execution.tracked_actor_task.TrackedActorTask.on_timeout>`
-                callback is invoked.
 
         """
         raise NotImplementedError
@@ -269,7 +259,6 @@ class RayEventManager:
         method_name: str,
         args: Optional[Union[Tuple, List[Tuple]]] = None,
         kwargs: Optional[Union[Dict, List[Dict]]] = None,
-        timeout: Optional[Number] = None,
     ) -> TrackedActorTaskCollection:
         """Schedule and track tasks on a list of actors.
 
@@ -294,10 +283,6 @@ class RayEventManager:
                 scheduled on all actors.
             args: Arguments to pass to the task.
             kwargs: Keyword arguments to pass to the task.
-            timeout: Timeout in seconds after which the task is cancelled and the
-                :meth:`TrackedActorTaskCollection.on_timeout
-                <ray.air.execution.tracked_actor_task.TrackedActorTaskCollection.on_timeout>`
-                callback is invoked.
 
         """
         raise NotImplementedError

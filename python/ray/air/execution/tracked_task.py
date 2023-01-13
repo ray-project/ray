@@ -41,14 +41,3 @@ class TrackedTask:
 
         """
         raise NotImplementedError
-
-    def on_timeout(self, callback: Callable[[], None]):
-        """Specify callback to handle task time out.
-
-        The callback should not expect any arguments.
-
-        Args:
-            callback: Callback to invoke when the task times out.
-
-        """
-        raise NotImplementedError

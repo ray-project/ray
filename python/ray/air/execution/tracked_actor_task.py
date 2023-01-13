@@ -42,17 +42,6 @@ class TrackedActorTask:
         """
         raise NotImplementedError
 
-    def on_timeout(self, callback: Callable[[TrackedActor], None]):
-        """Specify callback to handle task timeout.
-
-        The callback should accept one argument: The actor for which the
-        task resolution timed out.
-
-        Args:
-            callback: Callback to invoke when the task times out.
-        """
-        raise NotImplementedError
-
 
 class TrackedActorTaskCollection:
     """Collection of actor tasks tracked by a Ray event manager.
@@ -92,16 +81,5 @@ class TrackedActorTaskCollection:
 
         Args:
             callback: Callback to invoke when a task errors.
-        """
-        raise NotImplementedError
-
-    def on_timeout(self, callback: Callable[[TrackedActor], None]):
-        """Specify callback to handle task timeouts.
-
-        The callback should accept one argument: The actor for which the
-        task resolution timed out.
-
-        Args:
-            callback: Callback to invoke when a task timed out.
         """
         raise NotImplementedError
