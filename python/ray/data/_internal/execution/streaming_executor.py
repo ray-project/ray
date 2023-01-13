@@ -102,10 +102,10 @@ class StreamingExecutor(Executor):
         resources than the cluster has to execute.
         """
 
-        base_usage = ExecutionResources()
+        base_usage = ExecutionResources(cpu=1)
         for op in topology:
             base_usage = base_usage.add(op.base_resource_usage())
-            inc_usage = op.get_incremental_resource_usage()
+            inc_usage = op.incremental_resource_usage()
             if inc_usage.cpu or inc_usage.gpu:
                 if inc_usage.cpu == 1 and not inc_usage.gpu:
                     pass
@@ -117,7 +117,7 @@ class StreamingExecutor(Executor):
                         "of either CPU or GPU. Other values may cause deadlock."
                     )
 
-        if not base_usage.satisifes_limits(self._options.resource_limits):
+        if not base_usage.satisfies_limits(self._options.resource_limits):
             raise ValueError(
                 "The base resource usage of this topology exceeds the given limits!"
             )
