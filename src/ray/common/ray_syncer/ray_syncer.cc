@@ -73,7 +73,7 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
   return true;
 }
 
-NodeSyncConnection::NodeSyncConnection(
+RaySyncerBidiReactorBase::RaySyncerBidiReactorBase(
     instrumented_io_context &io_context,
     const std::string &remote_node_id,
     std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
@@ -83,7 +83,7 @@ NodeSyncConnection::NodeSyncConnection(
       cleanup_cb_(std::move(cleanup_cb)),
       remote_node_id_(remote_node_id) {}
 
-void NodeSyncConnection::ReceiveUpdate(std::shared_ptr<const RaySyncMessage> message) {
+void RaySyncerBidiReactorBase::ReceiveUpdate(std::shared_ptr<const RaySyncMessage> message) {
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   RAY_LOG(DEBUG) << "Receive update: "
                  << " message_type=" << message->message_type()
@@ -95,7 +95,7 @@ void NodeSyncConnection::ReceiveUpdate(std::shared_ptr<const RaySyncMessage> mes
   }
 }
 
-bool NodeSyncConnection::PushToSendingQueue(
+bool RaySyncerBidiReactorBase::PushToSendingQueue(
     std::shared_ptr<const RaySyncMessage> message) {
   // Try to filter out the messages the target node already has.
   // Usually it'll be the case when the message is generated from the
@@ -116,7 +116,7 @@ bool NodeSyncConnection::PushToSendingQueue(
   return false;
 }
 
-void NodeSyncConnection::StartSend() {
+void RaySyncerBidiReactorBase::StartSend() {
   if (sending_) {
     return;
   }
@@ -130,12 +130,12 @@ void NodeSyncConnection::StartSend() {
   }
 }
 
-void NodeSyncConnection::SendNext() {
+void RaySyncerBidiReactorBase::SendNext() {
   sending_ = false;
   StartSend();
 }
 
-std::array<int64_t, kComponentArraySize> &NodeSyncConnection::GetNodeComponentVersions(
+std::array<int64_t, kComponentArraySize> &RaySyncerBidiReactorBase::GetNodeComponentVersions(
     const std::string &node_id) {
   auto iter = node_versions_.find(node_id);
   if (iter == node_versions_.end()) {
@@ -230,9 +230,9 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
 RaySyncer::~RaySyncer() {
   *stopped_ = true;
   io_context_.dispatch(
-      [conns = sync_connections_]() {
-        for (auto [_, conn] : conns) {
-          conn->Disconnect();
+      [reactors = sync_reactors_]() {
+        for (auto [_, reactor] : reactors) {
+          reactor->Disconnect();
         }
       },
       "");
@@ -243,7 +243,7 @@ std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
   io_context_.dispatch(
       [&]() {
         std::vector<std::string> nodes;
-        for (auto [node_id, _] : sync_connections_) {
+        for (auto [node_id, _] : sync_reactors_) {
           nodes.push_back(node_id);
         }
         promise.set_value(std::move(nodes));
@@ -263,7 +263,7 @@ void RaySyncer::Connect(const std::string &node_id,
             io_context_,
             [this](auto msg) { BroadcastRaySyncMessage(msg); },
             [this, channel](const std::string &node_id, bool restart) {
-              sync_connections_.erase(node_id);
+              sync_reactors_.erase(node_id);
               if (restart) {
                 RAY_LOG(INFO) << "Connection is broken. Reconnect to node: "
                               << NodeID::FromBinary(node_id);
@@ -276,12 +276,12 @@ void RaySyncer::Connect(const std::string &node_id,
       "");
 }
 
-void RaySyncer::Connect(NodeSyncConnection *connection) {
+void RaySyncer::Connect(RaySyncerBidiReactorBase *reactor) {
   io_context_.dispatch(
-      [this, connection]() {
-        RAY_CHECK(sync_connections_.find(connection->GetRemoteNodeID()) ==
-                  sync_connections_.end());
-        sync_connections_[connection->GetRemoteNodeID()] = connection;
+      [this, reactor]() {
+        RAY_CHECK(sync_reactors_.find(reactor->GetRemoteNodeID()) ==
+                  sync_reactors_.end());
+        sync_reactors_[reactor->GetRemoteNodeID()] = reactor;
         // Send the view for new connections.
         for (const auto &[_, messages] : node_state_->GetClusterView()) {
           for (const auto &message : messages) {
@@ -290,9 +290,9 @@ void RaySyncer::Connect(NodeSyncConnection *connection) {
             }
             RAY_LOG(DEBUG) << "Push init view from: "
                            << NodeID::FromBinary(GetLocalNodeID()) << " to "
-                           << NodeID::FromBinary(connection->GetRemoteNodeID())
+                           << NodeID::FromBinary(reactor->GetRemoteNodeID())
                            << " about " << NodeID::FromBinary(message->node_id());
-            connection->PushToSendingQueue(message);
+            reactor->PushToSendingQueue(message);
           }
         }
       },
@@ -300,25 +300,25 @@ void RaySyncer::Connect(NodeSyncConnection *connection) {
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
-  std::promise<NodeSyncConnection *> promise;
+  std::promise<RaySyncerBidiReactorBase *> promise;
   io_context_.dispatch(
       [&]() {
-        auto iter = sync_connections_.find(node_id);
-        if (iter == sync_connections_.end()) {
+        auto iter = sync_reactors_.find(node_id);
+        if (iter == sync_reactors_.end()) {
           promise.set_value(nullptr);
           return;
         }
 
-        auto conn = iter->second;
-        if (iter != sync_connections_.end()) {
-          sync_connections_.erase(iter);
+        auto reactor = iter->second;
+        if (iter != sync_reactors_.end()) {
+          sync_reactors_.erase(iter);
         }
-        promise.set_value(conn);
+        promise.set_value(reactor);
       },
       "RaySyncerDisconnect");
-  auto conn = promise.get_future().get();
-  if (conn != nullptr) {
-    conn->Disconnect();
+  auto reactor = promise.get_future().get();
+  if (reactor != nullptr) {
+    reactor->Disconnect();
   }
 }
 
@@ -376,8 +376,8 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
         if (!node_state_->ConsumeSyncMessage(message)) {
           return;
         }
-        for (auto &connection : sync_connections_) {
-          connection.second->PushToSendingQueue(message);
+        for (auto &reactor : sync_reactors_) {
+          reactor.second->PushToSendingQueue(message);
         }
       },
       "RaySyncer.BroadcastMessage");

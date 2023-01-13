@@ -148,10 +148,10 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
   ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
 }
 
-TEST_F(RaySyncerTest, NodeSyncConnection) {
+TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   auto node_id = NodeID::FromRandom();
 
-  MockNodeSyncConnection sync_connection(
+  MockRaySyncerBidiReactorBase sync_reactor(
       io_context_,
       node_id.Binary(),
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
@@ -166,30 +166,30 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
   auto msg_ptr3 = std::make_shared<RaySyncMessage>(msg);
 
   // First push will succeed and the second one will be deduplicated.
-  EXPECT_CALL(sync_connection, Send(Eq(msg_ptr1), Eq(true)));
-  ASSERT_TRUE(sync_connection.PushToSendingQueue(msg_ptr1));
-  ASSERT_FALSE(sync_connection.PushToSendingQueue(msg_ptr1));
-  ASSERT_EQ(0, sync_connection.sending_buffer_.size());
+  EXPECT_CALL(sync_reactor, Send(Eq(msg_ptr1), Eq(true)));
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr1));
+  ASSERT_FALSE(sync_reactor.PushToSendingQueue(msg_ptr1));
+  ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
 
-  ASSERT_TRUE(sync_connection.PushToSendingQueue(msg_ptr2));
-  ASSERT_EQ(1, sync_connection.sending_buffer_.size());
-  ASSERT_EQ(1, sync_connection.node_versions_.size());
-  ASSERT_EQ(2, sync_connection.sending_buffer_.begin()->second->version());
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr2));
+  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
+  ASSERT_EQ(1, sync_reactor.node_versions_.size());
+  ASSERT_EQ(2, sync_reactor.sending_buffer_.begin()->second->version());
   ASSERT_EQ(
       2,
-      sync_connection.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+      sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 
-  ASSERT_TRUE(sync_connection.PushToSendingQueue(msg_ptr3));
-  ASSERT_EQ(1, sync_connection.sending_buffer_.size());
-  ASSERT_EQ(1, sync_connection.node_versions_.size());
-  ASSERT_EQ(3, sync_connection.sending_buffer_.begin()->second->version());
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr3));
+  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
+  ASSERT_EQ(1, sync_reactor.node_versions_.size());
+  ASSERT_EQ(3, sync_reactor.sending_buffer_.begin()->second->version());
   ASSERT_EQ(
       3,
-      sync_connection.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+      sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 
   // First message got sent
-  EXPECT_CALL(sync_connection, Send(Eq(msg_ptr3), Eq(true)));
-  sync_connection.SendNext();
+  EXPECT_CALL(sync_reactor, Send(Eq(msg_ptr3), Eq(true)));
+  sync_reactor.SendNext();
 }
 
 struct SyncerServerTest {
@@ -262,7 +262,7 @@ struct SyncerServerTest {
       auto f = p.get_future();
       io_context.post(
           [&p, this]() mutable {
-            for (const auto &[node_id, conn] : syncer->sync_connections_) {
+            for (const auto &[node_id, conn] : syncer->sync_reactors_) {
               if (!conn->sending_buffer_.empty()) {
                 p.set_value(false);
                 RAY_LOG(INFO) << NodeID::FromBinary(syncer->GetLocalNodeID()) << ": "
@@ -434,14 +434,14 @@ TEST_F(SyncerTest, Test1To1) {
   // Make sure s2 adds s1
   ASSERT_TRUE(s2.WaitUntil(
       [&s2]() {
-        return s2.syncer->sync_connections_.size() == 1 && s2.snapshot_taken == 1;
+        return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1;
       },
       5));
 
   // Make sure s1 adds s2
   ASSERT_TRUE(s1.WaitUntil(
       [&s1]() {
-        return s1.syncer->sync_connections_.size() == 1 && s1.snapshot_taken == 1;
+        return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1;
       },
       5));
 
@@ -546,20 +546,20 @@ TEST_F(SyncerTest, Reconnect) {
   // Make sure the setup is correct
   ASSERT_TRUE(s1.WaitUntil(
       [&s1]() {
-        return s1.syncer->sync_connections_.size() == 1 && s1.snapshot_taken == 1;
+        return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1;
       },
       5));
 
   ASSERT_TRUE(s1.WaitUntil(
       [&s3]() {
-        return s3.syncer->sync_connections_.size() == 1 && s3.snapshot_taken == 1;
+        return s3.syncer->sync_reactors_.size() == 1 && s3.snapshot_taken == 1;
       },
       5));
   s2.syncer->Connect(s3.syncer->GetLocalNodeID(), MakeChannel("19992"));
 
   ASSERT_TRUE(s1.WaitUntil(
       [&s2]() {
-        return s2.syncer->sync_connections_.size() == 1 && s2.snapshot_taken == 1;
+        return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1;
       },
       5));
 }
@@ -585,19 +585,19 @@ TEST_F(SyncerTest, Broadcast) {
   // Make sure the setup is correct
   ASSERT_TRUE(s1.WaitUntil(
       [&s1]() {
-        return s1.syncer->sync_connections_.size() == 2 && s1.snapshot_taken == 1;
+        return s1.syncer->sync_reactors_.size() == 2 && s1.snapshot_taken == 1;
       },
       5));
 
   ASSERT_TRUE(s1.WaitUntil(
       [&s2]() {
-        return s2.syncer->sync_connections_.size() == 1 && s2.snapshot_taken == 1;
+        return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1;
       },
       5));
 
   ASSERT_TRUE(s1.WaitUntil(
       [&s3]() {
-        return s3.syncer->sync_connections_.size() == 1 && s3.snapshot_taken == 1;
+        return s3.syncer->sync_reactors_.size() == 1 && s3.snapshot_taken == 1;
       },
       5));
 

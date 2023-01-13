@@ -79,16 +79,16 @@ class NodeState {
       cluster_view_;
 };
 
-class NodeSyncConnection {
+class RaySyncerBidiReactorBase {
  public:
-  /// Constructor of NodeSyncConnection.
+  /// Constructor of RaySyncerBidiReactorBase.
   ///
   /// \param io_context The io context for the callback.
   /// \param remote_node_id The node id connects to.
   /// \param message_processor The callback for the message received.
   /// \param cleanup_cb When the connection terminates, it'll be called to cleanup
   ///     the environment.
-  NodeSyncConnection(
+  RaySyncerBidiReactorBase(
       instrumented_io_context &io_context,
       const std::string &remote_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
@@ -104,7 +104,7 @@ class NodeSyncConnection {
   /// \return true if push to queue successfully.
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message);
 
-  virtual ~NodeSyncConnection() {}
+  virtual ~RaySyncerBidiReactorBase() {}
 
   /// Return the remote node id of this connection.
   const std::string &GetRemoteNodeID() const { return remote_node_id_; }
@@ -131,7 +131,7 @@ class NodeSyncConnection {
   virtual void Send(std::shared_ptr<const RaySyncMessage> message, bool flush) = 0;
 
   // For testing
-  FRIEND_TEST(RaySyncerTest, NodeSyncConnection);
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
   friend struct SyncerServerTest;
 
   std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
@@ -155,14 +155,14 @@ class NodeSyncConnection {
 };
 
 template <typename T>
-class BidiReactor : public T, public NodeSyncConnection {
+class BidiReactor : public T, public RaySyncerBidiReactorBase {
  public:
   BidiReactor(
       instrumented_io_context &io_context,
       const std::string &remote_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
       std::function<void(const std::string &, bool)> cleanup_cb)
-      : NodeSyncConnection(io_context,
+      : RaySyncerBidiReactorBase(io_context,
                            remote_node_id,
                            std::move(message_processor),
                            std::move(cleanup_cb)) {}
@@ -218,7 +218,7 @@ class BidiReactor : public T, public NodeSyncConnection {
   std::shared_ptr<RaySyncMessage> receiving_message_;
 };
 
-/// SyncConnection for gRPC server side. It has customized logic for sending.
+/// Reactor for gRPC server side. It has customized logic for sending.
 class RayServerBidiReactor : public BidiReactor<ServerBidiReactor> {
  public:
   RayServerBidiReactor(
@@ -240,7 +240,7 @@ class RayServerBidiReactor : public BidiReactor<ServerBidiReactor> {
   grpc::CallbackServerContext *server_context_;
 };
 
-/// SyncConnection for gRPC client side. It has customized logic for sending.
+/// Reactor for gRPC client side. It has customized logic for sending.
 class RayClientBidiReactor : public BidiReactor<ClientBidiReactor> {
  public:
   RayClientBidiReactor(

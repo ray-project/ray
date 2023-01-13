@@ -71,7 +71,7 @@ struct ReceiverInterface {
 
 // Forward declaration of internal structures
 class NodeState;
-class NodeSyncConnection;
+class RaySyncerBidiReactorBase;
 
 /// RaySyncer is an embedding service for component synchronization.
 /// All operations in this class needs to be finished GetIOContext()
@@ -79,9 +79,9 @@ class NodeSyncConnection;
 /// RaySyncer is the control plane to make sure all connections eventually
 /// have the latest view of the cluster components registered.
 /// RaySyncer has two components:
-///    1. NodeSyncConnection: keeps track of the sending and receiving information
+///    1. RaySyncerBidiReactorBase: keeps track of the sending and receiving information
 ///       and make sure not sending the information the remote node knows.
-///    2. NodeState: keeps track of the local status, similar to NodeSyncConnection,
+///    2. NodeState: keeps track of the local status, similar to RaySyncerBidiReactorBase,
 //        but it's for local node.
 class RaySyncer {
  public:
@@ -98,7 +98,7 @@ class RaySyncer {
   ///
   /// \param connection The connection to the remote node.
   void Connect(const std::string &node_id, std::shared_ptr<grpc::Channel> channel);
-  void Connect(NodeSyncConnection *connection);
+  void Connect(RaySyncerBidiReactorBase *connection);
 
   void Disconnect(const std::string &node_id);
 
@@ -157,7 +157,7 @@ class RaySyncer {
   const std::string local_node_id_;
 
   /// Manage connections. Here the key is the NodeID in binary form.
-  absl::flat_hash_map<std::string, NodeSyncConnection *> sync_connections_;
+  absl::flat_hash_map<std::string, RaySyncerBidiReactorBase *> sync_reactors_;
 
   /// The local node state
   std::unique_ptr<NodeState> node_state_;
