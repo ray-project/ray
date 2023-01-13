@@ -20,7 +20,9 @@ class DiscreteBCTFModule(TfRLModule):
         hidden_dim: int,
         output_dim: int,
     ) -> None:
-        super().__init__()
+        super().__init__(
+            input_dim=input_dim, output_dim=output_dim, hidden_dim=hidden_dim
+        )
         layers = []
 
         layers.append(tf.keras.Input(shape=(input_dim,)))
@@ -31,7 +33,6 @@ class DiscreteBCTFModule(TfRLModule):
 
         self.policy = tf.keras.Sequential(layers)
         self._input_dim = input_dim
-        self._output_dim = output_dim
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
@@ -83,10 +84,6 @@ class DiscreteBCTFModule(TfRLModule):
     @override(RLModule)
     def set_state(self, state: Mapping[str, Any]) -> None:
         self.policy.set_weights(state["policy"])
-
-    @override(TfRLModule)
-    def trainable_variables(self) -> NestedDict[tf.Tensor]:
-        return NestedDict({"policy": self.policy.trainable_variables})
 
     @classmethod
     @override(RLModule)

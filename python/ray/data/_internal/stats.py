@@ -1,7 +1,8 @@
 import collections
+from dataclasses import dataclass
 import time
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union, Any
 
 import numpy as np
 
@@ -9,6 +10,7 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
+from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
@@ -200,7 +202,9 @@ class DatasetStats:
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
         self.base_name = base_name
-        self.dataset_uuid: str = None
+        # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
+        # fully to streaming execution.
+        self.dataset_uuid: str = "unknown_uuid"
         self.time_total_s: float = 0
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
@@ -231,19 +235,9 @@ class DatasetStats:
         """Placeholder for ops not yet instrumented."""
         return DatasetStats(stages={"TODO": []}, parent=None)
 
-    def summary_string(
-        self, already_printed: Set[str] = None, include_parent: bool = True
-    ) -> str:
-        """Return a human-readable summary of this Dataset's stats.
-
-        Args:
-        already_printed: Set of stage IDs that have already had its stats printed out.
-        include_parent: If true, also include parent stats summary; otherwise, only
-        log stats of the latest stage.
-        """
-        if already_printed is None:
-            already_printed = set()
-
+    def to_summary(self) -> "DatasetStatsSummary":
+        """Generate a `DatasetStatsSummary` object from the given `DatasetStats`
+        object, which can be used to generate a summary string."""
         if self.needs_stats_actor:
             ac = self.stats_actor
             # TODO(chengsu): this is a super hack, clean it up.
@@ -258,25 +252,88 @@ class DatasetStats:
             else:
                 for i, metadata in stats_map.items():
                     self.stages["read"][i] = metadata[0]
+
+        stages_stats = []
+        is_substage = len(self.stages) > 1
+        for stage_name, metadata in self.stages.items():
+            stages_stats.append(
+                StageStatsSummary.from_block_metadata(
+                    metadata,
+                    self.time_total_s,
+                    stage_name,
+                    is_substage=is_substage,
+                )
+            )
+
+        iter_stats = IterStatsSummary(
+            self.iter_wait_s,
+            self.iter_get_s,
+            self.iter_next_batch_s,
+            self.iter_format_batch_s,
+            self.iter_user_s,
+            self.iter_total_s,
+        )
+        stats_summary_parents = []
+        if self.parents is not None:
+            stats_summary_parents = [p.to_summary() for p in self.parents]
+        return DatasetStatsSummary(
+            stages_stats,
+            iter_stats,
+            stats_summary_parents,
+            self.number,
+            self.dataset_uuid,
+            self.time_total_s,
+            self.base_name,
+            self.extra_metrics,
+        )
+
+
+@DeveloperAPI
+@dataclass
+class DatasetStatsSummary:
+    stages_stats: List["StageStatsSummary"]
+    iter_stats: "IterStatsSummary"
+    parents: List["DatasetStatsSummary"]
+    number: int
+    dataset_uuid: str
+    time_total_s: float
+    base_name: str
+    extra_metrics: Dict[str, Any]
+
+    def to_string(
+        self, already_printed: Optional[Set[str]] = None, include_parent: bool = True
+    ) -> str:
+        """Return a human-readable summary of this Dataset's stats.
+
+        Args:
+            already_printed: Set of stage IDs that have already had its stats printed
+            out.
+            include_parent: If true, also include parent stats summary; otherwise, only
+            log stats of the latest stage.
+        Returns:
+            String with summary statistics for executing the Dataset.
+        """
+        if already_printed is None:
+            already_printed = set()
+
         out = ""
         if self.parents and include_parent:
             for p in self.parents:
-                parent_sum = p.summary_string(already_printed)
+                parent_sum = p.to_string(already_printed)
                 if parent_sum:
                     out += parent_sum
                     out += "\n"
-        if len(self.stages) == 1:
-            stage_name, metadata = next(iter(self.stages.items()))
-            # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
-            # fully to streaming execution.
-            stage_uuid = (self.dataset_uuid or "unknown_uuid") + stage_name
+        if len(self.stages_stats) == 1:
+            stage_stats_summary = self.stages_stats[0]
+            stage_name = stage_stats_summary.stage_name
+            stage_uuid = self.dataset_uuid + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
             else:
                 already_printed.add(stage_uuid)
-                out += self._summarize_blocks(metadata, is_substage=False)
-        elif len(self.stages) > 1:
+                out += str(stage_stats_summary)
+        elif len(self.stages_stats) > 1:
             rounded_total = round(self.time_total_s, 2)
             if rounded_total <= 0:
                 # Handle -0.0 case.
@@ -284,7 +341,8 @@ class DatasetStats:
             out += "Stage {} {}: executed in {}s\n".format(
                 self.number, self.base_name, rounded_total
             )
-            for n, (stage_name, metadata) in enumerate(self.stages.items()):
+            for n, stage_stats_summary in enumerate(self.stages_stats):
+                stage_name = stage_stats_summary.stage_name
                 stage_uuid = self.dataset_uuid + stage_name
                 out += "\n"
                 out += "\tSubstage {} {}: ".format(n, stage_name)
@@ -292,120 +350,282 @@ class DatasetStats:
                     out += "\t[execution cached]\n"
                 else:
                     already_printed.add(stage_uuid)
-                    out += self._summarize_blocks(metadata, is_substage=True)
-        out += self._summarize_iter()
+                    out += str(stage_stats_summary)
+        out += str(self.iter_stats)
+        if self.extra_metrics:
+            indent = "\t" if stage_stats_summary.is_substage else ""
+            out += indent
+            out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         return out
 
-    def _summarize_iter(self) -> str:
-        out = ""
-        if (
-            self.iter_total_s.get()
-            or self.iter_wait_s.get()
-            or self.iter_next_batch_s.get()
-            or self.iter_format_batch_s.get()
-            or self.iter_get_s.get()
-        ):
-            out += "\nDataset iterator time breakdown:\n"
-            out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
-            out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))
-            out += "* In next_batch(): {}\n".format(fmt(self.iter_next_batch_s.get()))
-            out += "* In format_batch(): {}\n".format(
-                fmt(self.iter_format_batch_s.get())
-            )
-            out += "* In user code: {}\n".format(fmt(self.iter_user_s.get()))
-            out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
-        return out
+    def get_total_wall_time(self) -> float:
+        parent_wall_times = [p.get_total_wall_time() for p in self.parents]
+        parent_max_wall_time = max(parent_wall_times) if parent_wall_times else 0
+        return parent_max_wall_time + sum(
+            ss.wall_time.get("max", 0) for ss in self.stages_stats
+        )
 
-    def _summarize_blocks(self, blocks: List[BlockMetadata], is_substage: bool) -> str:
-        exec_stats = [m.exec_stats for m in blocks if m.exec_stats is not None]
-        indent = "\t" if is_substage else ""
+    def get_total_cpu_time(self) -> float:
+        parent_sum = sum(p.get_total_cpu_time() for p in self.parents)
+        return parent_sum + sum(ss.cpu_time.get("sum", 0) for ss in self.stages_stats)
+
+    def get_max_heap_memory(self) -> float:
+        parent_memory = [p.get_max_heap_memory() for p in self.parents]
+        parent_max = max(parent_memory) if parent_memory else 0
+        return max(
+            parent_max,
+            *[ss.memory.get("max", 0) for ss in self.stages_stats],
+        )
+
+
+@dataclass
+class StageStatsSummary:
+    stage_name: str
+    # Whether the stage associated with this StageStatsSummary object is a substage
+    is_substage: bool
+    # This is the total walltime of the entire stage, typically obtained from
+    # `DatasetStats.time_total_s`. An important distinction is that this is the
+    # overall runtime of the stage, pulled from the stats actor, whereas the
+    # computed walltimes in `self.wall_time` are calculated on a substage level.
+    time_total_s: float
+    # String summarizing high-level statistics from executing the stage
+    block_execution_summary_str: str
+    # The fields below are dicts with stats aggregated across blocks
+    # processed in this stage. For example:
+    # {"min": ..., "max": ..., "mean": ..., "sum": ...}
+    wall_time: Optional[Dict[str, float]] = None
+    cpu_time: Optional[Dict[str, float]] = None
+    # memory: no "sum" stat
+    memory: Optional[Dict[str, float]] = None
+    output_num_rows: Optional[Dict[str, float]] = None
+    output_size_bytes: Optional[Dict[str, float]] = None
+    # node_count: "count" stat instead of "sum"
+    node_count: Optional[Dict[str, float]] = None
+
+    @classmethod
+    def from_block_metadata(
+        cls,
+        block_metas: List[BlockMetadata],
+        time_total_s: float,
+        stage_name: str,
+        is_substage: bool,
+    ) -> "StageStatsSummary":
+        """Calculate the stats for a stage from a given list of blocks,
+        and generates a `StageStatsSummary` object with the results.
+
+        Args:
+            block_metas: List of `BlockMetadata` to calculate stats of
+            time_total_s: Total execution time of stage
+            stage_name: Name of stage associated with `blocks`
+            is_substage: Whether this set of blocks belongs to a substage.
+        Returns:
+            A `StageStatsSummary` object initialized with the calculated statistics
+        """
+        exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
+
         if is_substage:
-            out = "{}/{} blocks executed\n".format(len(exec_stats), len(blocks))
+            exec_summary_str = "{}/{} blocks executed\n".format(
+                len(exec_stats), len(block_metas)
+            )
         else:
-            rounded_total = round(self.time_total_s, 2)
+            rounded_total = round(time_total_s, 2)
             if rounded_total <= 0:
                 # Handle -0.0 case.
                 rounded_total = 0
             if exec_stats:
-                out = "{}/{} blocks executed in {}s".format(
-                    len(exec_stats), len(blocks), rounded_total
+                exec_summary_str = "{}/{} blocks executed in {}s".format(
+                    len(exec_stats), len(block_metas), rounded_total
                 )
             else:
-                out = ""
-            if len(exec_stats) < len(blocks):
+                exec_summary_str = ""
+            if len(exec_stats) < len(block_metas):
                 if exec_stats:
-                    out += ", "
-                num_inherited = len(blocks) - len(exec_stats)
-                out += "{}/{} blocks split from parent".format(
-                    num_inherited, len(blocks)
+                    exec_summary_str += ", "
+                num_inherited = len(block_metas) - len(exec_stats)
+                exec_summary_str += "{}/{} blocks split from parent".format(
+                    num_inherited, len(block_metas)
                 )
                 if not exec_stats:
-                    out += " in {}s".format(rounded_total)
-            out += "\n"
+                    exec_summary_str += " in {}s".format(rounded_total)
+            exec_summary_str += "\n"
 
+        wall_time_stats = None
         if exec_stats:
-            out += indent
-            out += "* Remote wall time: {} min, {} max, {} mean, {} total\n".format(
-                fmt(min([e.wall_time_s for e in exec_stats])),
-                fmt(max([e.wall_time_s for e in exec_stats])),
-                fmt(np.mean([e.wall_time_s for e in exec_stats])),
-                fmt(sum([e.wall_time_s for e in exec_stats])),
-            )
+            wall_time_stats = {
+                "min": min([e.wall_time_s for e in exec_stats]),
+                "max": max([e.wall_time_s for e in exec_stats]),
+                "mean": np.mean([e.wall_time_s for e in exec_stats]),
+                "sum": sum([e.wall_time_s for e in exec_stats]),
+            }
 
-            out += indent
-            out += "* Remote cpu time: {} min, {} max, {} mean, {} total\n".format(
-                fmt(min([e.cpu_time_s for e in exec_stats])),
-                fmt(max([e.cpu_time_s for e in exec_stats])),
-                fmt(np.mean([e.cpu_time_s for e in exec_stats])),
-                fmt(sum([e.cpu_time_s for e in exec_stats])),
-            )
+        cpu_stats, memory_stats = None, None
+        if exec_stats:
+            cpu_stats = {
+                "min": min([e.cpu_time_s for e in exec_stats]),
+                "max": max([e.cpu_time_s for e in exec_stats]),
+                "mean": np.mean([e.cpu_time_s for e in exec_stats]),
+                "sum": sum([e.cpu_time_s for e in exec_stats]),
+            }
 
-            out += indent
-            memory_stats = [
+            memory_stats_mb = [
                 round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
             ]
-            out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
-                min(memory_stats),
-                max(memory_stats),
-                int(np.mean(memory_stats)),
-            )
+            memory_stats = {
+                "min": min(memory_stats_mb),
+                "max": max(memory_stats_mb),
+                "mean": int(np.mean(memory_stats_mb)),
+            }
 
-        output_num_rows = [m.num_rows for m in blocks if m.num_rows is not None]
+        output_num_rows_stats = None
+        output_num_rows = [m.num_rows for m in block_metas if m.num_rows is not None]
         if output_num_rows:
-            out += indent
-            out += "* Output num rows: {} min, {} max, {} mean, {} total\n".format(
-                min(output_num_rows),
-                max(output_num_rows),
-                int(np.mean(output_num_rows)),
-                sum(output_num_rows),
-            )
+            output_num_rows_stats = {
+                "min": min(output_num_rows),
+                "max": max(output_num_rows),
+                "mean": int(np.mean(output_num_rows)),
+                "sum": sum(output_num_rows),
+            }
 
-        output_size_bytes = [m.size_bytes for m in blocks if m.size_bytes is not None]
+        output_size_bytes_stats = None
+        output_size_bytes = [
+            m.size_bytes for m in block_metas if m.size_bytes is not None
+        ]
         if output_size_bytes:
-            out += indent
-            out += "* Output size bytes: {} min, {} max, {} mean, {} total\n".format(
-                min(output_size_bytes),
-                max(output_size_bytes),
-                int(np.mean(output_size_bytes)),
-                sum(output_size_bytes),
-            )
+            output_size_bytes_stats = {
+                "min": min(output_size_bytes),
+                "max": max(output_size_bytes),
+                "mean": int(np.mean(output_size_bytes)),
+                "sum": sum(output_size_bytes),
+            }
 
+        node_counts_stats = None
         if exec_stats:
             node_counts = collections.defaultdict(int)
             for s in exec_stats:
                 node_counts[s.node_id] += 1
+            node_counts_stats = {
+                "min": min(node_counts.values()),
+                "max": max(node_counts.values()),
+                "mean": int(np.mean(list(node_counts.values()))),
+                "count": len(node_counts),
+            }
+
+        return StageStatsSummary(
+            stage_name=stage_name,
+            is_substage=is_substage,
+            time_total_s=time_total_s,
+            block_execution_summary_str=exec_summary_str,
+            wall_time=wall_time_stats,
+            cpu_time=cpu_stats,
+            memory=memory_stats,
+            output_num_rows=output_num_rows_stats,
+            output_size_bytes=output_size_bytes_stats,
+            node_count=node_counts_stats,
+        )
+
+    def __str__(self) -> str:
+        """For a given (pre-calculated) `StageStatsSummary` object (e.g. generated from
+        `StageStatsSummary.from_block_metadata()`), returns a human-friendly string
+        that summarizes stage execution statistics.
+
+        Returns:
+            String with summary statistics for executing the given stage.
+        """
+        indent = "\t" if self.is_substage else ""
+        out = self.block_execution_summary_str
+
+        wall_time_stats = self.wall_time
+        if wall_time_stats:
             out += indent
-            out += "* Tasks per node: {} min, {} max, {} mean; {} nodes used\n".format(
-                min(node_counts.values()),
-                max(node_counts.values()),
-                int(np.mean(list(node_counts.values()))),
-                len(node_counts),
+            out += "* Remote wall time: {} min, {} max, {} mean, {} total\n".format(
+                fmt(wall_time_stats["min"]),
+                fmt(wall_time_stats["max"]),
+                fmt(wall_time_stats["mean"]),
+                fmt(wall_time_stats["sum"]),
             )
 
-        if self.extra_metrics:
+        cpu_stats = self.cpu_time
+        if cpu_stats:
             out += indent
-            out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
+            out += "* Remote cpu time: {} min, {} max, {} mean, {} total\n".format(
+                fmt(cpu_stats["min"]),
+                fmt(cpu_stats["max"]),
+                fmt(cpu_stats["mean"]),
+                fmt(cpu_stats["sum"]),
+            )
 
+        memory_stats = self.memory
+        if memory_stats:
+            out += indent
+            out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
+                memory_stats["min"],
+                memory_stats["max"],
+                memory_stats["mean"],
+            )
+
+        output_num_rows_stats = self.output_num_rows
+        if output_num_rows_stats:
+            out += indent
+            out += "* Output num rows: {} min, {} max, {} mean, {} total\n".format(
+                output_num_rows_stats["min"],
+                output_num_rows_stats["max"],
+                output_num_rows_stats["mean"],
+                output_num_rows_stats["sum"],
+            )
+
+        output_size_bytes_stats = self.output_size_bytes
+        if output_size_bytes_stats:
+            out += indent
+            out += "* Output size bytes: {} min, {} max, {} mean, {} total\n".format(
+                output_size_bytes_stats["min"],
+                output_size_bytes_stats["max"],
+                output_size_bytes_stats["mean"],
+                output_size_bytes_stats["sum"],
+            )
+
+        node_count_stats = self.node_count
+        if node_count_stats:
+            out += indent
+            out += "* Tasks per node: {} min, {} max, {} mean; {} nodes used\n".format(
+                node_count_stats["min"],
+                node_count_stats["max"],
+                node_count_stats["mean"],
+                node_count_stats["count"],
+            )
+        return out
+
+
+@dataclass
+class IterStatsSummary:
+    # Time spent in `ray.wait()`, in seconds
+    wait_time: Timer
+    # Time spent in `ray.get()`, in seconds
+    get_time: Timer
+    # Time spent in `batcher.next_batch()`, in seconds
+    next_time: Timer
+    # Time spent in `_format_batch_()`, in seconds
+    format_time: Timer
+    # Time spent in user code, in seconds
+    user_time: Timer
+    # Total time taken by Dataset iterator, in seconds
+    total_time: Timer
+
+    def __str__(self) -> str:
+        out = ""
+        if (
+            self.total_time.get()
+            or self.wait_time.get()
+            or self.next_time.get()
+            or self.format_time.get()
+            or self.get_time.get()
+        ):
+            out += "\nDataset iterator time breakdown:\n"
+            out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
+            out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
+            out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
+            out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
+            out += "* In user code: {}\n".format(fmt(self.user_time.get()))
+            out += "* Total time: {}\n".format(fmt(self.total_time.get()))
         return out
 
 
@@ -495,7 +715,7 @@ class DatasetPipelineStats:
             return "No stats available: This pipeline hasn't been run yet."
         for i, stats in self.history_buffer:
             out += "== Pipeline Window {} ==\n".format(i)
-            out += stats.summary_string(already_printed)
+            out += stats.to_summary().to_string(already_printed)
             out += "\n"
         out += "##### Overall Pipeline Time Breakdown #####\n"
         # Drop the first sample since there's no pipelining there.
