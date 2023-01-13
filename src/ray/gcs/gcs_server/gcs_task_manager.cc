@@ -181,7 +181,9 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   int32_t attempt_number = events_by_task.attempt_number();
   TaskAttempt task_attempt = std::make_pair<>(task_id, attempt_number);
 
-  // Update the parent <-> children index if parent info available.
+  // Update the parent <-> children index if parent info available, and the parent info is
+  // only available when task_info presents for the first task status change event for a
+  // task.
   // This could be done first before merging/adding to the storage because this is
   // independent of the current events or the to-be-added index position.
   // NOTE: it's possible the parent_task_id is not in the storage/index (due to eviction

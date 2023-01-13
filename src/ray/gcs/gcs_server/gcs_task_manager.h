@@ -154,9 +154,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// All non-terminated (not finished nor failed) tasks in the task tree with the task
     /// event as the root should be marked as failed with the root's failed timestamp if
     /// any of:
-    ///     1. Its parent has failed: this happens when a task event is reported from a
-    ///     worker later than the failure status reported from the parent worker.
-    ///     2. The task itself fails.
+    ///     1. The task itself fails.
+    ///     2. Its parent failed, and neither itself nor its parent is detached actor
+    ///     task.
+    ///     3. Its parent failed, and both itself and its parent are detached actor task.
+    /// TODO(rickyx): Detached actors tasks are now currently marked as failed if parent
+    /// dies.
     ///
     /// NOTE: Since there is delay in task events reporting, a task's state might not be
     /// reported before a worker is killed, therefore, some tasks might have actually
