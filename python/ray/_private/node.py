@@ -88,6 +88,8 @@ class Node:
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
 
+        logger.info("starting ...")
+
         # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
         redis_address_env = os.environ.get("RAY_REDIS_ADDRESS")
         if ray_params.external_addresses is None and redis_address_env is not None:
@@ -199,7 +201,10 @@ class Node:
             # setup gcs client
             self.get_gcs_client()
 
+
         # Initialize webui url
+        logger.info("Initialize webui url...")
+
         if head:
             self._webui_url = None
         else:
@@ -213,6 +218,7 @@ class Node:
 
         self._init_temp()
 
+        logger.info("Initialize head...")
         # Validate and initialize the persistent storage API.
         if head:
             storage._init_storage(ray_params.storage, is_head=True)
@@ -269,6 +275,7 @@ class Node:
             metrics_export_port=self._metrics_export_port,
         )
 
+        logger.info("Pick gcs server port...")
         # Pick a GCS server port.
         if head:
             gcs_server_port = os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
@@ -281,6 +288,8 @@ class Node:
             self.start_reaper_process()
         if not connect_only:
             self._ray_params.update_pre_selected_port()
+
+        logger.info("Start head processes...")
 
         # Start processes.
         if head:
