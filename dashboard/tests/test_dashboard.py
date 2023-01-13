@@ -19,6 +19,8 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
+from click.testing import CliRunner
+from requests.exceptions import ConnectionError
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -34,6 +36,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
+import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
 from ray.experimental.state.api import StateApiClient
@@ -1043,6 +1046,45 @@ def test_dashboard_module_no_warnings(enable_test_module):
             dashboard_utils.get_all_modules(dashboard_utils.DashboardAgentModule)
     finally:
         debug._disabled = old_val
+
+
+def test_dashboard_not_included_ray_init(shutdown_only):
+    addr = ray.init(include_dashboard=False)
+    dashboard_url = addr["webui_url"]
+
+    # Warm up.
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with pytest.raises(ConnectionError):
+        # Since the dashboard doesn't start, it should raise ConnectionError
+        # becasue we cannot estabilish a connection.
+        requests.get(f"http://{dashboard_url}")
+
+
+def test_dashboard_not_included_ray_start(shutdown_only):
+    runner = CliRunner()
+    try:
+        runner.invoke(scripts.start, ["--head", "--include-dashboard=False"])
+        addr = ray.init("auto")
+        dashboard_url = addr["webui_url"]
+
+        # Warm up.
+        @ray.remote
+        def f():
+            pass
+
+        ray.get(f.remote())
+
+        with pytest.raises(ConnectionError):
+            # Since the dashboard doesn't start, it should raise ConnectionError
+            # becasue we cannot estabilish a connection.
+            requests.get(f"http://{dashboard_url}")
+    finally:
+        runner.invoke(scripts.stop, ["--force"])
 
 
 if __name__ == "__main__":
