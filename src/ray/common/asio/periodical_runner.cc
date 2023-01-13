@@ -24,6 +24,7 @@ PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
 
 PeriodicalRunner::~PeriodicalRunner() {
   RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
+  Clear();
 }
 
 void PeriodicalRunner::Clear() {
