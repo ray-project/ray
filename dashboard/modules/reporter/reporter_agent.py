@@ -964,7 +964,6 @@ class ReporterAgent(
                 )
             )
         workers_stats = stats["workers"]
-        logger.info(workers_stats)
         if workers_stats:
             records_reported.extend(self.generate_worker_stats_record(workers_stats))
         agent_stats = stats["agent"]
