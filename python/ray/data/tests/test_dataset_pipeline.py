@@ -487,6 +487,38 @@ def test_split(ray_start_regular_shared):
     ray.get(refs)
 
 
+def test_split_with_window(ray_start_regular_shared):
+    pipe = (
+        ray.data.range(8, parallelism=2)
+        .map(lambda x: x + 1)
+        .window(blocks_per_window=1)
+        .repeat(2)
+    )
+
+    @ray.remote(num_cpus=0)
+    def consume(shard, i):
+        total = 0
+        out = []
+        for row in shard.iter_rows():
+            total += 1
+            out.append(row)
+        assert total == 8, total
+        return out
+
+    # There is one block per window (4 rows in the window), so equal spliting
+    # will have to split the original block and create two new blocks. The
+    # original block should still be there for the second repeat/epoch of
+    # pipeline.
+    shards = pipe.split(2, equal=True)
+    refs = [consume.remote(s, i) for i, s in enumerate(shards)]
+    ray.get(refs)
+    outs = ray.get(refs)
+    np.testing.assert_equal(
+        np.array(outs, dtype=object),
+        np.array([[1, 2, 5, 6, 1, 2, 5, 6], [3, 4, 7, 8, 3, 4, 7, 8]], dtype=object),
+    )
+
+
 def test_split_at_indices(ray_start_regular_shared):
     indices = [2, 5]
     n = 8
