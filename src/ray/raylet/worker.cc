@@ -130,9 +130,6 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
 }
 
 void Worker::AssignTaskId(const TaskID &task_id) {
-  if (!task_id.IsNil() && !task_id.ActorId().IsNil()) {
-    SetJobId(task_id.JobId());
-  }
   assigned_task_id_ = task_id;
 }
 
@@ -161,9 +158,6 @@ void Worker::AssignActorId(const ActorID &actor_id) {
       << "A worker that is already an actor cannot be assigned an actor ID again.";
   RAY_CHECK(!actor_id.IsNil());
   actor_id_ = actor_id;
-  if (!actor_id.IsNil()) {
-    SetJobId(actor_id.JobId());
-  }
 }
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }

@@ -111,6 +111,8 @@ class WorkerInterface {
   /// Time when the last task was assigned to this worker.
   virtual const std::chrono::steady_clock::time_point GetAssignedTaskTime() const = 0;
 
+  virtual void SetJobId(const JobID &job_id) = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -213,7 +215,6 @@ class Worker : public WorkerInterface {
 
   void SetAssignedTask(const RayTask &assigned_task) {
     assigned_task_ = assigned_task;
-    SetJobId(assigned_task_.GetTaskSpecification().JobId());
     task_assign_time_ = std::chrono::steady_clock::now();
   };
 
@@ -235,7 +236,6 @@ class Worker : public WorkerInterface {
     return rpc_client_.get();
   }
 
- private:
   void SetJobId(const JobID &job_id);
 
  protected:
