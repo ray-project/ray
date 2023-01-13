@@ -5,8 +5,6 @@ from typing import Union, Callable, Iterator, List, Tuple, Any, Optional, TYPE_C
 
 import numpy as np
 
-from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-
 if TYPE_CHECKING:
     import pandas
     import pyarrow
@@ -105,7 +103,7 @@ class SimpleBlockAccessor(BlockAccessor):
             if not isinstance(columns, list):
                 columns = [columns]
             return BlockAccessor.for_block(self.select(columns)).to_numpy()
-        return _create_possibly_ragged_ndarray(self._items)
+        return np.array(self._items)
 
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
