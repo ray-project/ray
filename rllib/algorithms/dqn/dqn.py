@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 
 class DQNConfig(SimpleQConfig):
-    """Defines a configuration class from which a DQN Algorithm can be built.
+    r"""Defines a configuration class from which a DQN Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig

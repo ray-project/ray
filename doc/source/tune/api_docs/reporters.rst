@@ -1,8 +1,8 @@
 .. _tune-reporter-doc:
 
 
-Console Output (Reporters)
-==========================
+Tune Console Output (Reporters)
+===============================
 
 By default, Tune reports experiment progress periodically to the command-line as follows.
 
