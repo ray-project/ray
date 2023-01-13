@@ -4,6 +4,7 @@ import os
 import random
 import signal
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorType
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
@@ -63,7 +65,9 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
         original = ctx.block_splitting_enabled
 
         ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
-        ctx.block_splitting_enabled = block_split
+        if not block_split:
+            # Setting infinite block size effectively disables block splitting.
+            ctx.target_max_block_size = float("inf")
         ds = ray.data.read_datasource(
             SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
         )
@@ -1496,6 +1500,49 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     assert ds._plan.execute()._num_computed() == 16
     assert ds.take(100) == list(range(100))
     assert ds._plan.execute()._num_computed() == 20
+
+
+def test_dataset_repr(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=10)
+    assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    ds = ds.map_batches(lambda x: x)
+    assert repr(ds) == (
+        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    )
+    ds = ds.filter(lambda x: x > 0)
+    assert repr(ds) == (
+        "Filter\n"
+        "+- MapBatches\n"
+        "   +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    )
+    ds = ds.random_shuffle()
+    assert repr(ds) == (
+        "RandomShuffle\n"
+        "+- Filter\n"
+        "   +- MapBatches\n"
+        "      +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    )
+    ds.fully_executed()
+    assert repr(ds) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    ds = ds.map_batches(lambda x: x)
+    assert repr(ds) == (
+        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    )
+    ds1, ds2 = ds.split(2)
+    assert (
+        repr(ds1)
+        == f"Dataset(num_blocks=5, num_rows={ds1.count()}, schema=<class 'int'>)"
+    )
+    assert (
+        repr(ds2)
+        == f"Dataset(num_blocks=5, num_rows={ds2.count()}, schema=<class 'int'>)"
+    )
+    ds3 = ds1.union(ds2)
+    assert repr(ds3) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    ds = ds.zip(ds3)
+    assert repr(ds) == (
+        "Zip\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    )
 
 
 @pytest.mark.parametrize("lazy", [False, True])
@@ -5409,6 +5456,55 @@ def test_ragged_tensors(ray_start_regular_shared):
     assert ds.schema().types == [
         ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
     ]
+
+
+class LoggerWarningCalled(Exception):
+    """Custom exception used in test_warning_execute_with_no_cpu() and
+    test_nowarning_execute_with_cpu(). Raised when the `logger.warning` method
+    is called, so that we can kick out of `plan.execute()` by catching this Exception
+    and check logging was done properly."""
+
+    pass
+
+
+def test_warning_execute_with_no_cpu(ray_start_cluster):
+    """Tests ExecutionPlan.execute() to ensure a warning is logged
+    when no CPU resources are available."""
+    # Create one node with no CPUs to trigger the Dataset warning
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+
+    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    with patch.object(
+        logger,
+        "warning",
+        side_effect=LoggerWarningCalled,
+    ) as mock_logger:
+        try:
+            ds = ray.data.range(10)
+            ds = ds.map_batches(lambda x: x)
+            ds.take()
+        except LoggerWarningCalled:
+            logger_args, logger_kwargs = mock_logger.call_args
+            assert "Warning: The Ray cluster currently does not have " in logger_args[0]
+
+
+def test_nowarning_execute_with_cpu(ray_start_cluster_init):
+    """Tests ExecutionPlan.execute() to ensure no warning is logged
+    when there are available CPU resources."""
+    # Create one node with CPUs to avoid triggering the Dataset warning
+    ray.init(ray_start_cluster_init.address)
+
+    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    with patch.object(
+        logger,
+        "warning",
+        side_effect=LoggerWarningCalled,
+    ) as mock_logger:
+        ds = ray.data.range(10)
+        ds = ds.map_batches(lambda x: x)
+        ds.take()
+        mock_logger.assert_not_called()
 
 
 if __name__ == "__main__":

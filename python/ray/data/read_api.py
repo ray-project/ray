@@ -209,7 +209,8 @@ def range_tensor(
                 [2, 2]])]
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
+    type. The dataset elements take the form
+    {"__value__": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
