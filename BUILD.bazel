@@ -2893,6 +2893,8 @@ genrule(
         # shellcheck disable=SC2006
         files=(`ls python/ray/core/generated/*_pb2*.py` `ls python/ray/serve/generated/*_pb2*.py`)
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
+        # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
+        # https://github.com/ray-project/ray/issues/31358
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
         echo "$${PWD}" > $@
