@@ -7,6 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
+import urllib.parse
 
 import ray
 import ray.cloudpickle as pickle
@@ -334,6 +335,14 @@ class TunerInternal:
             self._run_config.local_dir = str(experiment_path.parent)
             self._run_config.name = experiment_path.name
         else:
+            # Set the experiment `name` and `upload_dir` according to the URI
+            parsed_uri = urllib.parse.urlparse(path_or_uri)
+            remote_path = Path(parsed_uri.netloc + parsed_uri.path)
+            self._run_config.name = remote_path.name
+            self._run_config.sync_config.upload_dir = (
+                parsed_uri.scheme + "://" + str(remote_path.parent)
+            )
+
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
             # our data there.
