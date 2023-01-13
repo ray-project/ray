@@ -107,9 +107,9 @@ class StreamingExecutor(Executor):
             base_usage = base_usage.add(op.base_resource_usage())
             inc_usage = op.get_incremental_resource_usage()
             if inc_usage.cpu or inc_usage.gpu:
-                if inc_usage.cpu == 1 and inc_usage.gpu is None:
+                if inc_usage.cpu == 1 and not inc_usage.gpu:
                     pass
-                elif inc_usage.cpu is None and inc_usage.gpu == 1:
+                elif inc_usage.gpu == 1 and not inc_usage.cpu:
                     pass
                 else:
                     raise NotImplementedError(

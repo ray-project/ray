@@ -10,6 +10,7 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.execution.interfaces import (
     RefBundle,
+    ExecutionResources,
     PhysicalOperator,
 )
 from ray.data._internal.execution.operators.map_operator_tasks_impl import (
@@ -51,14 +52,29 @@ class MapOperator(PhysicalOperator):
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
+        if "num_gpus" in ray_remote_args:
+            self._incremental_gpu = 1
+            self._incremental_cpu = 0
+            assert ray_remote_args.get("num_cpus", 1) == 0, ray_remote_args
+        elif "num_cpus" in ray_remote_args:
+            self._incremental_gpu = 0
+            self._incremental_cpu = 1
+            assert ray_remote_args.get("num_gpus", 0) == 0, ray_remote_args
+        else:
+            assert False, ray_remote_args
         compute_strategy = compute_strategy or TaskPoolStrategy()
         if isinstance(compute_strategy, TaskPoolStrategy):
             self._execution_state = MapOperatorTasksImpl(
                 transform_fn, ray_remote_args, min_rows_per_bundle
             )
+            self._base_resource_usage = ExecutionResources()
         elif isinstance(compute_strategy, ActorPoolStrategy):
             self._execution_state = MapOperatorActorsImpl(
                 transform_fn, ray_remote_args, min_rows_per_bundle
+            )
+            self._base_resource_usage = ExecutionResources(
+                cpu=self._incremental_cpu * compute_strategy.min_size,
+                gpu=self._incremental_gpu * compute_strategy.min_size,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -100,3 +116,20 @@ class MapOperator(PhysicalOperator):
 
     def shutdown(self) -> None:
         self._execution_state.shutdown()
+
+    def current_resource_usage(self) -> ExecutionResources:
+        num_active_tasks = len(self.get_work_refs())
+        return ExecutionResources(
+            cpu=self._incremental_cpu * num_active_tasks,
+            gpu=self._incremental_gpu * num_active_tasks,
+            object_store_memory=self._execution_state._obj_store_mem_cur,
+        )
+
+    def base_resource_usage(self) -> ExecutionResources:
+        return self._base_resource_usage
+
+    def incremental_resource_usage(self) -> ExecutionResources:
+        return ExecutionResources(
+            cpu=self._incremental_cpu,
+            gpu=self._incremental_gpu,
+        )
