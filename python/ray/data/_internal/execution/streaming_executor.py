@@ -4,6 +4,7 @@ from typing import Iterator, Optional
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
+    ExecutionResources,
     RefBundle,
     PhysicalOperator,
 )
@@ -49,6 +50,14 @@ class StreamingExecutor(Executor):
         # Setup the streaming DAG topology.
         topology, self._stats = build_streaming_topology(dag)
         output_node: OpState = topology[dag]
+
+        base_usage = ExecutionResources()
+        for op in topology:
+            base_usage = base_usage.add(op.base_resource_usage())
+        if not base_usage.satisifes_limits(self._options.resource_limits):
+            raise ValueError(
+                "The base resource usage of this topology exceeds the given limits!"
+            )
 
         # Run scheduling loop until complete.
         while self._scheduling_loop_step(topology):
