@@ -65,7 +65,7 @@ Tune Feature Guides
 
     .. link-button:: tune-syncing
         :type: ref
-        :text: Synchronizing Tune Experiment Data in a Distributed Ray Cluster
+        :text: How to Configure Storage Options for a Distributed Tune Experiment
         :classes: btn-link btn-block stretched-link
 
     ---
