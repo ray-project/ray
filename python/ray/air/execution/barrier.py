@@ -1,4 +1,3 @@
-from numbers import Number
 from typing import Any, Callable, List, Optional
 
 
@@ -69,23 +68,6 @@ class Barrier:
             callback: Callback to invoke when ``max_results`` results and errors
             arrived at the barrier.
 
-        """
-        raise NotImplementedError
-
-    def wait(self, timeout: Optional[Number] = None) -> None:
-        """Wait until the barrier is complete.
-
-        This method will block until ``max_results`` results and errors arrived at
-        the barrier.
-
-        If a ``timeout`` is set, this will only block for that many seconds.
-
-        If ``max_results=None``, an infinite number of events are collected. In this
-        case, ``timeout`` must be set, and calling this method without it
-        will raise a RuntimeError.
-
-        Args:
-            timeout: Timeout in seconds before this method returns.
         """
         raise NotImplementedError
 
