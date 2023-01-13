@@ -19,7 +19,6 @@ window.addEventListener('load', () => {
                   // which is the "div" element that we can later toggle.
                   // Sphinx Panels is too inflexible to allow us to attach data tags
                   // directly to the container.
-                  console.log(element);
                   for (let i = 0; i < 4; i++) {
                       if (element.parentNode) {
                           element = element.parentElement;
