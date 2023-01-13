@@ -1,5 +1,4 @@
 import logging
-import numpy as np
 from typing import (
     Any,
     Mapping,
@@ -27,8 +26,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
-import tree  # pip install dm-tree
 
 tf1, tf, tfv = try_import_tf()
 tf1.enable_eager_execution()
@@ -173,33 +170,6 @@ class TfRLTrainer(RLTrainer):
         with self.strategy.scope():
             module = self._make_module()
         return module
-
-    @override(RLTrainer)
-    def compile_results(
-        self,
-        batch: NestedDict,
-        fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
-        post_processed_gradients: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        loss_numpy = convert_to_numpy(postprocessed_loss)
-        batch = convert_to_numpy(batch)
-        post_processed_gradients = convert_to_numpy(post_processed_gradients)
-        mean_grads = [grad.mean() for grad in tree.flatten(post_processed_gradients)]
-        ret = {
-            "loss": loss_numpy,
-            "mean_gradient": np.mean(mean_grads),
-        }
-
-        if self.in_test:
-            # this is to check if in the multi-gpu case, the weights across workers are
-            # the same. It is really only needed during testing.
-            mean_ws = {}
-            for module_id in self._module.keys():
-                m = self._module[module_id]
-                mean_ws[module_id] = np.mean([w.mean() for w in m.get_weights()])
-            ret["mean_weight"] = mean_ws
-        return ret
 
     @override(RLTrainer)
     def add_module(

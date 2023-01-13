@@ -242,6 +242,22 @@ class MultiAgentRLModule(RLModule):
         self._check_module_exists(module_id)
         return self._rl_modules[module_id]
 
+    def __setitem__(self, module_id: ModuleID, module: RLModule) -> None:
+        """Modifies an existing module and assign it to the new module object.
+
+        Args:
+            module_id: The module ID to add.
+            module: The module to add.
+        """
+        try:
+            self._check_module_exists(module_id)
+        except ValueError:
+            raise ValueError(
+                f"Module ID {module_id} does not exist. Use add_module() to add a "
+                "new module."
+            )
+        self._rl_modules[module_id] = module
+
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:
         return self._get_specs_for_modules("output_specs_train")

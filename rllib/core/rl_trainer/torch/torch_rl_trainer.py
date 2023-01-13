@@ -24,6 +24,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.nested_dict import NestedDict
 
 
 logger = logging.getLogger(__name__)
@@ -49,8 +50,9 @@ class TorchRLTrainer(RLTrainer):
         )
 
         gpu_ids = ray.get_gpu_ids()
-        self._world_size = scaling_config.get("num_workers", 1)
+        self._world_size = scaling_config.get("num_workers", 2)
         self._gpu_id = gpu_ids[0] if gpu_ids else None
+        self._device = torch.device(self._gpu_id if gpu_ids else "cpu")
 
     @property
     @override(RLTrainer)
@@ -99,12 +101,41 @@ class TorchRLTrainer(RLTrainer):
     def _make_distributed(self) -> MultiAgentRLModule:
         module = self._make_module()
         pg = torch.distributed.new_group(list(range(self._world_size)))
+
+        class DDPRLModuleWrapper(DDP):
+            def forward_train(self, *args, **kwargs):
+                return self.module.forward_train(*args, **kwargs)
+        
         if self._gpu_id is not None:
-            module.to(self._gpu_id)
-            module = DDP(module, device_ids=[self._gpu_id], process_group=pg)
+
+            # if the module is a MultiAgentRLModule and nn.Module we can simply assume 
+            # all the submodules are registered. Otherwise, we need to loop through 
+            # each submodule and move it to the correct device. 
+            # TODO (Kourosh): This can result in missing modules if the user does not 
+            # register them in the MultiAgentRLModule. We should find a better way to 
+            # handle this.
+            if isinstance(module, torch.nn.Module):
+                module.to(self._device)
+                module = DDPRLModuleWrapper(module, device_ids=[self._gpu_id], process_group=pg)
+            else:
+                for key in module.keys():
+                    module[key].to(self._device)
+                    module[key] = DDPRLModuleWrapper(module[key], device_ids=[self._gpu_id], process_group=pg)
         else:
-            module = DDP(module, process_group=pg)
+            if isinstance(module, torch.nn.Module):
+                module = DDPRLModuleWrapper(module, process_group=pg)
+            else:
+                for key in module.keys():
+                    module[key] = DDPRLModuleWrapper(module[key], process_group=pg)
         return module
+
+    @override(RLTrainer)
+    def _convert_batch_type(self, batch: MultiAgentBatch):
+        batch = NestedDict(batch.policy_batches)
+        batch = NestedDict(
+            {k: torch.as_tensor(v, dtype=torch.float32, device=self._device) for k, v in batch.items()}
+        )
+        return batch
 
     @override(RLTrainer)
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:

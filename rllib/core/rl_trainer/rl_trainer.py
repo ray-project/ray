@@ -1,6 +1,8 @@
 import abc
 
 import logging
+import numpy as np
+import tree  # pip install dm-tree
 from typing import (
     Any,
     Callable,
@@ -216,9 +218,26 @@ class RLTrainer:
         Returns:
             A dictionary of results.
         """
-        # TODO (Kourosh): figure out a universal compilation of results in the baseclass
+
         loss_numpy = convert_to_numpy(postprocessed_loss)
-        return {"loss": loss_numpy}
+        batch = convert_to_numpy(batch)
+        breakpoint()
+        post_processed_gradients = convert_to_numpy(post_processed_gradients)
+        mean_grads = [np.mean(grad) for grad in tree.flatten(post_processed_gradients)]
+        ret = {
+            "loss": loss_numpy,
+            "mean_gradient": np.mean(mean_grads),
+        }
+
+        if self.in_test:
+            # this is to check if in the multi-gpu case, the weights across workers are
+            # the same. It is really only needed during testing.
+            mean_ws = {}
+            for module_id in self._module.keys():
+                m = self._module[module_id]
+                mean_ws[module_id] = np.mean([w.mean() for w in m.get_weights()])
+            ret["mean_weight"] = mean_ws
+        return ret
 
     def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform an update on this Trainer.
@@ -236,7 +255,7 @@ class RLTrainer:
 
     def _update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
-        # NestedDict from  the base class.
+        # NestedDict from the base class.
         batch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(batch)
         loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
@@ -245,12 +264,18 @@ class RLTrainer:
         self.apply_gradients(post_processed_gradients)
         return self.compile_results(batch, fwd_out, loss, post_processed_gradients)
 
-    def _convert_batch_type(self, batch):
-        batch = NestedDict(batch.policy_batches)
-        batch = NestedDict(
-            {k: torch.as_tensor(v, dtype=torch.float32) for k, v in batch.items()}
-        )
-        return batch
+    @abc.abstractmethod
+    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
+        """Converts a MultiAgentBatch to a NestedDict of Tensors.
+        
+        This should convert the input batch from a MultiAgentBatch format to framework specific tensor format located on the correct device.
+
+        Args:
+            batch: A MultiAgentBatch.
+
+        Returns:
+            A NestedDict.
+        """
 
     def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
         """Apply additional non-gradient based updates to this Trainer.
