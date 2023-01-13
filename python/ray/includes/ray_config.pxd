@@ -84,3 +84,11 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int64_t health_check_failure_threshold() const
 
         uint64_t memory_monitor_refresh_ms() const
+
+        int64_t grpc_keepalive_time_ms() const
+
+        int64_t grpc_keepalive_timeout_ms() const
+
+        int64_t grpc_client_keepalive_time_ms() const
+
+        int64_t grpc_client_keepalive_timeout_ms() const
