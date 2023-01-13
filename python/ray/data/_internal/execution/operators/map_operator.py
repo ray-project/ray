@@ -52,6 +52,9 @@ class MapOperator(PhysicalOperator):
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
+        ray_remote_args = ray_remote_args or {}
+        if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
+            ray_remote_args["num_cpus"] = 1
         if "num_gpus" in ray_remote_args:
             self._incremental_gpu = 1
             self._incremental_cpu = 0
