@@ -226,7 +226,7 @@ void GcsServer::Stop() {
     kv_manager_.reset();
 
     is_stopped_ = true;
-    gcs_redis_failure_detector_.reset();
+    gcs_redis_failure_detector_->Stop();
     RAY_LOG(INFO) << "GCS server stopped.";
   }
 }

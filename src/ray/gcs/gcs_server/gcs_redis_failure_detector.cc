@@ -35,6 +35,11 @@ void GcsRedisFailureDetector::Start() {
       "GcsRedisFailureDetector.deadline_timer.detect_redis_failure");
 }
 
+void GcsRedisFailureDetector::Stop() {
+  RAY_LOG(INFO) << "Stopping redis failure detector.";
+  periodical_runner_.Clear();
+}
+
 void GcsRedisFailureDetector::DetectRedis() {
   auto redis_callback = [this](const std::shared_ptr<CallbackReply> &reply) {
     if (reply->IsNil()) {
