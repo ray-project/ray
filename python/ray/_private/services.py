@@ -583,6 +583,9 @@ def resolve_ip_for_localhost(address: str):
         my_pod_ip = os.environ.get("BYTED_RAY_POD_IP")
         if my_pod_ip is not None and my_pod_ip != "":
             if len(address_parts) > 1:
+                is_underlay_network = os.environ.get("BYTED_RAY_UNDERLAY_NETWORK")
+                if is_underlay_network is not None:
+                    return ip_address + ":6379"
                 return ip_address + ":" + os.environ.get("PORT0")
             else:
                 return ip_address

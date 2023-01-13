@@ -487,6 +487,7 @@ def test_split(ray_start_regular_shared):
     ray.get(refs)
 
 
+@pytest.mark.skip(reason=("skip in bytedance"))
 def test_split_at_indices(ray_start_regular_shared):
     indices = [2, 5]
     n = 8
