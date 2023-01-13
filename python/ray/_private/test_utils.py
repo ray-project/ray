@@ -50,7 +50,6 @@ from ray.core.generated import (
 )
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
-from ray.experimental.state.state_manager import StateDataSourceClient
 
 
 logger = logging.getLogger(__name__)
@@ -1691,26 +1690,6 @@ def kill_raylet(raylet, graceful=False):
         stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
     except _InactiveRpcError:
         assert not graceful
-
-
-# Creates a state api client assuming the head node (gcs) is local.
-def get_local_state_client():
-    hostname = ray.worker._global_node.gcs_address
-
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
-    )
-
-    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
-        client.register_agent_client(node_id, ip, port)
-
-    return client
 
 
 # Global counter to test different return values
