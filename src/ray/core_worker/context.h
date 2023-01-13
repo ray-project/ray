@@ -57,8 +57,7 @@ class WorkerContext {
       LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number)
-      LOCKS_EXCLUDED(mutex_);
+  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
 
   const TaskID &GetCurrentInternalTaskId() const;
 

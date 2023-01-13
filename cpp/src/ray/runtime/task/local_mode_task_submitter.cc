@@ -48,8 +48,6 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
   std::string task_name =
       invocation.name.empty() ? functionDescriptor->DefaultTaskName() : invocation.name;
 
-  static rpc::JobConfig kDefaultJobConfig;
-
   // TODO (Alex): Properly set the depth here?
   builder.SetCommonTaskSpec(task_id,
                             task_name,

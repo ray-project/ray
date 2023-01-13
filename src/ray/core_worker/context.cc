@@ -15,7 +15,6 @@
 #include "ray/core_worker/context.h"
 
 #include <google/protobuf/util/json_util.h>
-#include <google/protobuf/util/message_differencer.h>
 
 #include "ray/common/runtime_env_common.h"
 
@@ -178,7 +177,6 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
-
 void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
                                            const rpc::JobConfig &job_config) {
   absl::WriterMutexLock lock(&mutex_);
@@ -195,7 +193,6 @@ int64_t WorkerContext::GetTaskDepth() const {
   absl::ReaderMutexLock lock(&mutex_);
   return task_depth_;
 }
-
 
 JobID WorkerContext::GetCurrentJobID() const {
   absl::ReaderMutexLock lock(&mutex_);

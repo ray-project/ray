@@ -209,8 +209,8 @@ void Worker::SetJobId(const JobID &job_id) {
     assigned_job_id_ = job_id;
   }
 
-  // RAY_CHECK(assigned_job_id_ == job_id) << "Assign job_id failed: " <<
-  // assigned_job_id_.Hex() << ":" << job_id.Hex();
+  RAY_CHECK(assigned_job_id_ == job_id)
+      << "SetJobId failed: " << assigned_job_id_.Hex() << ":" << job_id.Hex();
 }
 
 }  // namespace raylet
