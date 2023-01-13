@@ -122,6 +122,7 @@ class MapOperator(PhysicalOperator):
 
     def current_resource_usage(self) -> ExecutionResources:
         num_active_tasks = len(self.get_work_refs())
+        # TODO: for actor pools, this should be instead the pool size.
         return ExecutionResources(
             cpu=self._incremental_cpu * num_active_tasks,
             gpu=self._incremental_gpu * num_active_tasks,
@@ -132,6 +133,7 @@ class MapOperator(PhysicalOperator):
         return self._base_resource_usage
 
     def incremental_resource_usage(self) -> ExecutionResources:
+        # TODO: for actor pools, this should be zero until the pool is saturated.
         return ExecutionResources(
             cpu=self._incremental_cpu,
             gpu=self._incremental_gpu,
