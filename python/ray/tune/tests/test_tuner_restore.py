@@ -18,7 +18,12 @@ from ray.air import (
     ScalingConfig,
     session,
 )
-from ray.air._internal.remote_storage import delete_at_uri, download_from_uri
+from ray.air._internal.remote_storage import (
+    delete_at_uri,
+    download_from_uri,
+    upload_to_uri,
+    list_at_uri,
+)
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune import Callback, Trainable
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
@@ -746,6 +751,63 @@ def test_tuner_restore_from_moved_experiment_path(
     assert not old_local_dir.exists()
 
 
+def test_tuner_restore_from_moved_cloud_uri(ray_start_2_cpus, tmp_path):
+    """Test that moving a"""
+
+    def failing_fn(config):
+        data = {"score": 1}
+        session.report(data, checkpoint=Checkpoint.from_dict(data))
+        raise RuntimeError("Failing!")
+
+    tuner = Tuner(
+        failing_fn,
+        run_config=RunConfig(
+            name="exp_dir",
+            local_dir=str(tmp_path / "ray_results"),
+            sync_config=tune.SyncConfig(upload_dir="memory:///original"),
+        ),
+        tune_config=TuneConfig(trial_dirname_creator=lambda _: "test"),
+    )
+    tuner.fit()
+
+    # mv memory:///original/exp_dir memory:///moved/new_exp_dir
+    download_from_uri(
+        "memory:///original/exp_dir", str(tmp_path / "moved" / "new_exp_dir")
+    )
+    delete_at_uri("memory:///original")
+    upload_to_uri(str(tmp_path / "moved"), "memory:///moved")
+
+    tuner = Tuner.restore("memory:///moved/new_exp_dir", resume_errored=True)
+    # This is needed because the mock memory:/// filesystem doesn't
+    # sync checkpoints properly, so this just copies the original checkpoint
+    # to the new local directory.
+    # NOTE: A new local directory is used since the experiment name got modified.
+    shutil.move(
+        tmp_path / "ray_results/exp_dir/test/checkpoint_000000",
+        tmp_path / "ray_results/new_exp_dir/test/checkpoint_000000",
+    )
+    results = tuner.fit()
+
+    assert list_at_uri("memory:///") == ["moved"]
+    num_experiment_checkpoints = len(
+        [
+            path
+            for path in list_at_uri("memory:///moved/new_exp_dir")
+            if path.startswith("experiment_state")
+        ]
+    )
+    assert num_experiment_checkpoints == 2
+
+    num_trial_checkpoints = len(
+        [
+            path
+            for path in os.listdir(results[0].log_dir)
+            if path.startswith("checkpoint_")
+        ]
+    )
+    assert num_trial_checkpoints == 2
+
+
 def test_restore_from_relative_path(ray_start_4_cpus, chdir_tmpdir):
     tuner = Tuner(
         lambda config: session.report({"score": 1}),
@@ -812,7 +874,7 @@ def test_custom_searcher_and_scheduler_restore(ray_start_2_cpus, tmpdir):
 
 
 @pytest.mark.parametrize("use_air_trainer", [True, False])
-def test_checkpoints_saved_after_resume(tmp_path, use_air_trainer):
+def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, use_air_trainer):
     """Checkpoints saved after experiment restore should pick up at the correct
     iteration and should not overwrite the checkpoints from the original run.
     Old checkpoints should still be deleted if the total number of checkpoints
