@@ -684,11 +684,10 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     nodes = cli.cluster("nodes")
     leader_cli = None
     follower_cli = []
-    for n in nodes:
-        addr, _ = n.split("@")
+    for addr in nodes:
         ip, port = addr.split(":")
         cli = redis.Redis(ip, port)
-        meta = nodes[n]
+        meta = nodes[addr]
         flags = meta["flags"].split(",")
         if "master" in flags:
             leader_cli = cli

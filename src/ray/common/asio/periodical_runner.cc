@@ -22,16 +22,12 @@ namespace ray {
 PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
     : io_service_(io_service), mutex_() {}
 
-void PeriodicalRunner::Clear() {
+PeriodicalRunner::~PeriodicalRunner() {
   absl::MutexLock lock(&mutex_);
   for (const auto &timer : timers_) {
     timer->cancel();
   }
   timers_.clear();
-}
-
-PeriodicalRunner::~PeriodicalRunner() {
-  Clear();
   RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
 }
 
