@@ -29,7 +29,7 @@ def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
 
 
 def _create_possibly_ragged_ndarray(
-    values: Union[np.ndarray, ABCSeries, Sequence[Any]]
+    values: Union[np.ndarray, "ABCSeries", Sequence[Any]]
 ) -> np.ndarray:
     """
     Create a possibly ragged ndarray.
