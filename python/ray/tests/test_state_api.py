@@ -93,7 +93,6 @@ from ray.experimental.state.common import (
     RuntimeEnvState,
     SupportedFilterType,
     TaskState,
-    TaskSummaryPerFuncOrClassName,
     WorkerState,
     ClusterEventState,
     StateSchema,
@@ -879,11 +878,27 @@ async def test_api_manager_summarize_tasks(state_api_manager):
     data_source_client.get_all_task_info.side_effect = [
         generate_task_data(
             [
-                generate_task_event(id, first_task_name, func_or_class=first_task_name, node_id=node_id),
-                generate_task_event(b"2345", first_task_name, func_or_class=first_task_name, node_id=node_id),
-                generate_task_event(b"3456", second_task_name, func_or_class=second_task_name, node_id=None),
                 generate_task_event(
-                    b"4567", first_task_name, func_or_class=first_task_name, node_id=node_id, job_id=b"0002"
+                    id, first_task_name, func_or_class=first_task_name, node_id=node_id
+                ),
+                generate_task_event(
+                    b"2345",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                ),
+                generate_task_event(
+                    b"3456",
+                    second_task_name,
+                    func_or_class=second_task_name,
+                    node_id=None,
+                ),
+                generate_task_event(
+                    b"4567",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                    job_id=b"0002",
                 ),
             ]
         )
@@ -903,11 +918,27 @@ async def test_api_manager_summarize_tasks(state_api_manager):
     data_source_client.get_all_task_info.side_effect = [
         generate_task_data(
             [
-                generate_task_event(id, first_task_name, func_or_class=first_task_name, node_id=node_id),
-                generate_task_event(b"2345", first_task_name, func_or_class=first_task_name, node_id=node_id),
-                generate_task_event(b"3456", second_task_name, func_or_class=second_task_name, node_id=None),
                 generate_task_event(
-                    b"4567", first_task_name, func_or_class=first_task_name, node_id=node_id, job_id=b"0002"
+                    id, first_task_name, func_or_class=first_task_name, node_id=node_id
+                ),
+                generate_task_event(
+                    b"2345",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                ),
+                generate_task_event(
+                    b"3456",
+                    second_task_name,
+                    func_or_class=second_task_name,
+                    node_id=None,
+                ),
+                generate_task_event(
+                    b"4567",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                    job_id=b"0002",
                 ),
             ]
         )
