@@ -1,5 +1,8 @@
 .. _train-arch:
 
+.. TODO: the diagram and some of the components (in the given context) are outdated.
+         Make sure to fix this.
+
 Ray Train Architecture
 ======================
 
@@ -11,7 +14,7 @@ The actual training load is distributed among workers on a cluster that belong
 to a ``WorkerGroup``.
 Each framework has its specific communication protocols and exchange formats,
 which is why Ray Train provides ``Backend`` implementations (e.g. ``TorchBackend``)
-that can be used to run the training process using a `BackendExecutor`.
+that can be used to run the training process using a ``BackendExecutor``.
 
 Here's a visual overview of the architecture components of Ray Train:
 
@@ -25,10 +28,10 @@ Trainer
 -------
 
 Trainers are your main entry point to the Ray Train API.
-Train provides a :ref:` ``BaseTrainer``<train-base-trainer>`, and
+Train provides a :ref:`BaseTrainer<train-base-trainer>`, and
 many framework-specific Trainers inherit from the derived ``DataParallelTrainer``
 (like TensorFlow or Torch) and ``GBDTTrainer`` (like XGBoost or LightGBM).
-Defining an actual Trainer, such as `TorchTrainer` works as follows:
+Defining an actual Trainer, such as ``TorchTrainer`` works as follows:
 
 * You pass in a *function* to the Trainer which defines the training logic.
 * The Trainer will create an :ref:`Executor <train-arch-executor>` to run the distributed training.
@@ -41,7 +44,7 @@ Backend
 
 Backends are used to initialize and manage framework-specific communication protocols.
 Each training library (Torch, Horovod, TensorFlow, etc.) has a separate backend
-and takes specific configuration values defined in a :ref:` ``BackendConfig``<train-backend-config>`.
+and takes specific configuration values defined in a :ref:`BackendConfig<train-backend-config>`.
 Each backend comes with a ``BackendExecutor`` that is used to run the training process.
 
 .. _train-arch-executor:

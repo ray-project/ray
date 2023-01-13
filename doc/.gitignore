@@ -5,3 +5,6 @@ source/_static/thumbs
 
 # Ignore generated gallery txt files
 eco-gallery.txt
+
+# Ignore generated Ray Datasets API docs
+source/data/api/doc/

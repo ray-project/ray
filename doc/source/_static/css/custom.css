@@ -464,7 +464,7 @@ footer {
   color: var(--pst-color-text-secondary);
 }
 
-/* override default colors used in the Sphnix theme */
+/* override default colors used in the Sphinx theme */
 :root {
   --tabs-color-label-active: #0475DE;
   --tabs-color-label-hover: #0475DE;
@@ -485,4 +485,9 @@ footer {
 
 :root {
   --blue: #0475DE;
+}
+
+/* Make the hover color of tag/gallery buttons differ from "active" */
+.btn-primary:active:focus .btn.tag:hover {
+    background-color: #B2CEF59E;
 }
