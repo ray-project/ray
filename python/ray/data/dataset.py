@@ -107,6 +107,7 @@ from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.metrics import Histogram
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import ensure_notebook_deps
@@ -226,6 +227,12 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
+        self.histogram = Histogram(
+                        name="map_batches_exec",
+                        description="Execution time of map_batches in ms.",
+                        boundaries=[0.1, 100],
+                        tag_keys=("dataset_uuid",),
+                    )
 
         if not lazy:
             self._plan.execute(allow_clear_input_blocks=False)
@@ -598,10 +605,22 @@ class Dataset(Generic[T]):
                                 f"the {type(value)} to a `numpy.ndarray`."
                             )
 
+            
             def process_next_batch(batch: DataBatch) -> Iterator[Block]:
                 # Apply UDF.
                 try:
+                    print("===> process batch")
+                    # stage_uuid = self._plan._dataset_uuid + stage_name
+                    
+                    start_time = time.perf_counter()
                     batch = batch_fn(batch, *fn_args, **fn_kwargs)
+                    exec_time_ms = (time.perf_counter() - start_time) * 1000
+                    print("===> exec_time_ms:", exec_time_ms)
+                    self.histogram.observe(
+                        value=exec_time_ms,
+                        tags={"dataset_uuid": self._plan._dataset_uuid},
+                    )
+                    print("===> histogram:", self.histogram)
                 except ValueError as e:
                     read_only_msgs = [
                         "assignment destination is read-only",
