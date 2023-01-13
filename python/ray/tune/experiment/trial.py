@@ -40,7 +40,7 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
-from ray.tune.utils.serialization import TuneFunctionEncoder
+from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
@@ -972,3 +972,20 @@ class Trial:
         # TODO(ekl) this is kind of a hack.
         if not ray.util.client.ray.is_connected():
             self.init_logdir()  # Create logdir if it does not exist
+    @classmethod
+    def from_json_state(cls, json_state, stub: bool = False) -> "Trial":
+        trial_state = (
+            json.loads(json_state, cls=TuneFunctionDecoder)
+            if isinstance(json_state, str)
+            else json_state
+        )
+
+        new_trial = Trial(
+            trial_state["trainable_name"],
+            stub=stub,
+            _setup_default_resource=False,
+        )
+
+        new_trial.__setstate__(trial_state)
+
+        return new_trial
