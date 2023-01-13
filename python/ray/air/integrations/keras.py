@@ -114,13 +114,13 @@ class ReportCheckpointCallback(_Callback):
         .. code-block: python
 
             ############# Using it in TrainSession ###############
-            from ray.air.integrations.keras import Callback
+            from ray.air.integrations.keras import ReportCheckpointCallback
             def train_loop_per_worker():
                 strategy = tf.distribute.MultiWorkerMirroredStrategy()
                 with strategy.scope():
                     model = build_model()
-                    #model.compile(...)
-                model.fit(dataset_shard, callbacks=[Callback()])
+
+                model.fit(dataset_shard, callbacks=[ReportCheckpointCallback()])
 
     Args:
         metrics: Metrics to report. If this is a list, each item describes
