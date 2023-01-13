@@ -19,36 +19,39 @@ class Barrier:
         max_results: Maximum number of results to collect before a call to
             :meth:`wait` resolves or the :meth:`on_completion` callback is invoked.
             If ``None``, will collect an infinite number of results.
-        complete_on_error: If True, will trigger completion once a single error
+        complete_on_first_error: If True, will trigger completion once a single error
             is received.
 
     """
 
     def __init__(
-        self, max_results: Optional[int] = None, complete_on_error: bool = False
+        self, max_results: Optional[int] = None, complete_on_first_error: bool = False
     ):
         raise NotImplementedError
 
-    def arrive(self, *args):
+    def arrive(self, *data):
         """Notify barrier that a result successfully arrived.
 
         This will count against the ``max_results`` limit. The received result
         will be included in a call to :meth:`get_results`.
 
         Args:
-            *args: Result data to be cached. Can be obtained via :meth:`get_results`.
+            *data: Result data to be cached. Can be obtained via :meth:`get_results`.
 
         """
         raise NotImplementedError
 
-    def error(self, *args):
+    def error(self, *data):
         """Notify barrier that an error arrived.
 
         This will count against the ``max_results`` limit. The received arguments
         will be included in a call to :meth:`get_errors`.
 
+        If ``Barrier.complete_on_first_error`` is set, this will immediately trigger
+        the completion callback.
+
         Args:
-            *args: Error data to be cached. Can be obtained via :meth:`get_errors`.
+            *data: Error data to be cached. Can be obtained via :meth:`get_errors`.
         """
         raise NotImplementedError
 
@@ -109,6 +112,6 @@ class Barrier:
 
         This method can be used for a persistent barrier that can receive more
         results than ``max_results``. In that case, the received results can be
-        flushed after processing so that results only get processed once.
+        flushed after processing so that new results can be received.
         """
         raise NotImplementedError
