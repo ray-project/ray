@@ -77,7 +77,6 @@ class RayClusterOnSpark:
         num_workers_node,
         temp_dir,
         cluster_unique_id,
-        ray_init_options,
     ):
         self.address = address
         self.head_proc = head_proc
@@ -85,9 +84,7 @@ class RayClusterOnSpark:
         self.num_worker_nodes = num_workers_node
         self.temp_dir = temp_dir
         self.cluster_unique_id = cluster_unique_id
-        self.ray_init_options = ray_init_options
 
-        self.ray_context = None
         self.is_shutdown = False
         self.spark_job_is_canceled = False
         self.background_job_exception = None
@@ -96,7 +93,7 @@ class RayClusterOnSpark:
         self.spark_job_is_canceled = True
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
 
-    def connect(self):
+    def poll_setup_progress(self):
         import ray
 
         if self.background_job_exception is not None:
@@ -108,19 +105,14 @@ class RayClusterOnSpark:
             raise RuntimeError(
                 "The ray cluster has been shut down or it failed to start."
             )
-        if self.ray_context is None:
-            try:
-                # connect to the ray cluster.
-                self.ray_context = ray.init(
-                    address=self.address, **self.ray_init_options
-                )
-                # Set RAY_ADDRESS so that if user reinit ray context
-                # it still uses this cluster by default.
-                os.environ["RAY_ADDRESS"] = self.address
-            except Exception:
-                self.shutdown()
-                raise
+        try:
+            # connect to the ray cluster.
+            ray.init(address=self.address)
+        except Exception:
+            self.shutdown()
+            raise
 
+        try:
             last_alive_worker_count = 0
             last_progress_move_time = time.time()
             while True:
@@ -152,22 +144,16 @@ class RayClusterOnSpark:
                             "failed to start."
                         )
                         return
-        else:
-            _logger.warning("Already connected to this ray cluster.")
+        finally:
+            ray.shutdown()
+
+    def connect(self):
+        if ray.is_initialized():
+            raise RuntimeError("Already connected to Ray cluster.")
+        ray.init(address=self.address)
 
     def disconnect(self):
-        if self.ray_context is not None:
-            try:
-                self.ray_context.disconnect()
-            except Exception as e:
-                # swallow exception.
-                _logger.warning(
-                    f"An error occurred while disconnecting from the ray cluster: "
-                    f"{repr(e)}"
-                )
-            self.ray_context = None
-        else:
-            _logger.warning("Already disconnected from this ray cluster.")
+        ray.shutdown()
 
     def shutdown(self, cancel_background_job=True):
         """
@@ -177,8 +163,7 @@ class RayClusterOnSpark:
         the case, it will set cancel_background_job=False to avoid recursive call.
         """
         if not self.is_shutdown:
-            if self.ray_context is not None:
-                self.disconnect()
+            self.disconnect()
             os.environ.pop("RAY_ADDRESS", None)
             if cancel_background_job:
                 try:
@@ -359,7 +344,7 @@ def _prepare_for_ray_worker_node_startup():
     return worker_port_range_begin, worker_port_range_end
 
 
-def _init_ray_cluster(
+def _setup_ray_cluster(
     *,
     num_worker_nodes,
     num_cpus_per_node,
@@ -369,12 +354,11 @@ def _init_ray_cluster(
     object_store_memory_per_node,
     head_node_options,
     worker_node_options,
-    ray_init_options,
     ray_temp_root_dir,
     collect_log_to_path,
 ):
     """
-    The public API `ray.util.spark.init_ray_cluster` does some argument
+    The public API `ray.util.spark.setup_ray_cluster` does some argument
     validation and then pass validated arguments to this interface.
     and it returns a `RayClusterOnSpark` instance.
 
@@ -398,7 +382,6 @@ def _init_ray_cluster(
 
     head_node_options = head_node_options or {}
     worker_node_options = worker_node_options or {}
-    ray_init_options = ray_init_options or {}
 
     spark = get_spark_session()
 
@@ -590,14 +573,17 @@ def _init_ray_cluster(
 
     spark_job_group_id = f"ray-cluster-{ray_head_port}-{cluster_unique_id}"
 
+    cluster_address = f"{ray_head_ip}:{ray_head_port}"
+    # Set RAY_ADDRESS environment variable to the cluster address.
+    os.environ["RAY_ADDRESS"] = cluster_address
+
     ray_cluster_handler = RayClusterOnSpark(
-        address=f"{ray_head_ip}:{ray_head_port}",
+        address=cluster_address,
         head_proc=ray_head_proc,
         spark_job_group_id=spark_job_group_id,
         num_workers_node=num_worker_nodes,
         temp_dir=ray_temp_dir,
         cluster_unique_id=cluster_unique_id,
-        ray_init_options=ray_init_options,
     )
 
     def background_job_thread_fn():
@@ -700,27 +686,27 @@ def _create_resource_profile(num_cpus_per_node, num_gpus_per_node):
 
 
 @PublicAPI(stability="alpha")
-def init_ray_cluster(
+def setup_ray_cluster(
     num_worker_nodes: int,
     num_cpus_per_node: Optional[int] = None,
     num_gpus_per_node: Optional[int] = None,
     object_store_memory_per_node: Optional[int] = None,
     head_node_options: Optional[Dict] = None,
     worker_node_options: Optional[Dict] = None,
-    ray_init_options: Optional[Dict] = None,
     ray_temp_root_dir: Optional[str] = None,
     safe_mode: Optional[bool] = False,
     collect_log_to_path: Optional[str] = None,
 ) -> str:
     """
-    Initialize a ray cluster on the spark cluster by starting a ray head node in the
+    Set up a ray cluster on the spark cluster by starting a ray head node in the
     spark application's driver side node.
     After creating the head node, a background spark job is created that
     generates an instance of `RayClusterOnSpark` that contains configuration for the
     ray cluster that will run on the Spark cluster's worker nodes.
-    After a ray cluster initialized, your python process automatically connect to the
-    ray cluster, you can call `ray.util.spark.shutdown_ray_cluster` to shut down the
-    ray cluster.
+    After a ray cluster is set up, "RAY_ADDRESS" environment variable is set to
+    the cluster address, so you can call `ray.init()` without specifying ray cluster
+    address to connect to the cluster. To shut down the cluster you can call
+    `ray.util.spark.shutdown_ray_cluster()`.
     Note: If the active ray cluster haven't shut down, you cannot create a new ray
     cluster.
 
@@ -752,8 +738,6 @@ def init_ray_cluster(
             "0.3 * spark_worker_physical_memory * 0.8 / num_tasks_per_spark_worker".
         head_node_options: A dict representing Ray head node extra options.
         worker_node_options: A dict representing Ray worker node extra options.
-        ray_init_options: A dict representing extra options for calling `ray.init`
-                          after Ray cluster started.
         ray_temp_root_dir: A local disk path to store the ray temporary data. The
             created cluster will create a subdirectory
             "ray-{head_port}-{random_suffix}" beneath this path.
@@ -921,7 +905,7 @@ def init_ray_cluster(
         else:
             _logger.warning("\n".join(insufficient_resources))
 
-    cluster = _init_ray_cluster(
+    cluster = _setup_ray_cluster(
         num_worker_nodes=num_worker_nodes,
         num_cpus_per_node=num_cpus_per_node,
         num_gpus_per_node=num_gpus_per_node,
@@ -929,12 +913,11 @@ def init_ray_cluster(
         heap_memory_per_node=ray_worker_node_heap_mem_bytes,
         object_store_memory_per_node=ray_worker_node_object_store_mem_bytes,
         head_node_options=head_node_options,
-        ray_init_options=ray_init_options,
         worker_node_options=worker_node_options,
         ray_temp_root_dir=ray_temp_root_dir,
         collect_log_to_path=collect_log_to_path,
     )
-    cluster.connect()  # NB: this line might raise error.
+    cluster.poll_setup_progress()  # NB: this line might raise error.
 
     # If connect cluster successfully, set global _active_ray_cluster to be the started
     # cluster.
