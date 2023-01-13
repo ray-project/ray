@@ -23,6 +23,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
@@ -228,9 +229,32 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
   @Test
   public void testCallingCppActor() {
-    CppActorHandle actor = Ray.actor(CppActorClass.of("CreateCounter", "Counter")).remote();
+    String actorName = "actor_name";
+    CppActorHandle actor =
+        Ray.actor(CppActorClass.of("CreateCounter", "Counter")).setName(actorName).remote();
     ObjectRef<Integer> res = actor.task(CppActorMethod.of("Plus1", Integer.class)).remote();
     Assert.assertEquals(res.get(), Integer.valueOf(1));
+    ObjectRef<byte[]> b =
+        actor.task(CppActorMethod.of("GetBytes", byte[].class), "C++ Worker").remote();
+    Assert.assertEquals(b.get(), "C++ Worker".getBytes());
+
+    // Test get cpp actor by actor name.
+    Optional<CppActorHandle> optional = Ray.getActor(actorName);
+    Assert.assertTrue(optional.isPresent());
+    CppActorHandle actor2 = optional.get();
+    ObjectRef<Integer> res2 = actor2.task(CppActorMethod.of("Plus1", Integer.class)).remote();
+    Assert.assertEquals(res2.get(), Integer.valueOf(2));
+
+    // Test get other cpp actor by actor name.
+    String childName = "child_name";
+    ObjectRef<String> res3 =
+        actor.task(CppActorMethod.of("CreateNestedChildActor", String.class), childName).remote();
+    Assert.assertEquals(res3.get(), "OK");
+    Optional<CppActorHandle> optional3 = Ray.getActor(childName);
+    Assert.assertTrue(optional3.isPresent());
+    CppActorHandle actor3 = optional3.get();
+    ObjectRef<Integer> res4 = actor3.task(CppActorMethod.of("Plus1", Integer.class)).remote();
+    Assert.assertEquals(res4.get(), Integer.valueOf(1));
   }
 
   @Test
