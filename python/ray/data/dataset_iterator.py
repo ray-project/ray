@@ -1,6 +1,6 @@
 import abc
+import sys
 from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
-from typing_extensions import Literal
 
 from ray.data.block import DataBatch
 from ray.util.annotations import PublicAPI
@@ -9,6 +9,12 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
+
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 
 @PublicAPI(stability="beta")
