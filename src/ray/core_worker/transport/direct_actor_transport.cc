@@ -133,7 +133,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     bool objects_valid = return_objects.size() == num_returns;
     for (const auto &return_object : return_objects) {
-      if (return_object.second == NULL) {
+      if (return_object.second == NULL && !task_spec.IsActorCreationTask()) {
         objects_valid = false;
       }
     }
