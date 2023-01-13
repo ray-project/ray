@@ -38,7 +38,7 @@ void GcsRedisFailureDetector::Start() {
 
 void GcsRedisFailureDetector::Stop() {
   RAY_LOG(INFO) << "Stopping redis failure detector.";
-  periodical_runner_->Clear()();
+  periodical_runner_->Clear();
 }
 
 void GcsRedisFailureDetector::DetectRedis() {

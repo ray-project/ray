@@ -47,8 +47,13 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
       timers_.push_back(timer);
     }
     io_service_.post(
-        [this, stopped = stopped_, fn = std::move(fn), period_ms, name, timer = std::move(timer)]() {
-          if(*stopped) {
+        [this,
+         stopped = stopped_,
+         fn = std::move(fn),
+         period_ms,
+         name,
+         timer = std::move(timer)]() {
+          if (*stopped) {
             return;
           }
           if (RayConfig::instance().event_stats()) {
@@ -101,8 +106,14 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
                      stats_handle = std::move(stats_handle),
                      name](const boost::system::error_code &error) {
     io_service_.stats().RecordExecution(
-        [this, stopped = stopped_, fn = std::move(fn), error, period, timer = std::move(timer), name]() {
-          if(*stopped) {
+        [this,
+         stopped = stopped_,
+         fn = std::move(fn),
+         error,
+         period,
+         timer = std::move(timer),
+         name]() {
+          if (*stopped) {
             return;
           }
           if (error == boost::asio::error::operation_aborted) {
