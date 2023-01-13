@@ -1,4 +1,5 @@
-# Adapted from https://github.com/pyg-team/pytorch_geometric/blob/2.1.0/examples/multi_gpu/distributed_sampling.py
+# Adapted from https://github.com/pyg-team/pytorch_geometric/blob/2.1.0
+# /examples/multi_gpu/distributed_sampling.py
 
 import os
 import argparse
