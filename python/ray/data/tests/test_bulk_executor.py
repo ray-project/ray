@@ -4,6 +4,7 @@ from typing import List, Any
 
 import ray
 from ray.data.context import DatasetContext
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.bulk_executor import BulkExecutor
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
@@ -76,6 +77,24 @@ def test_e2e_bulk_sanity():
 
     # Checks new executor was enabled.
     assert "obj_store_mem_alloc" in result.stats(), result.stats()
+
+
+def test_actor_strategy():
+    executor = BulkExecutor(ExecutionOptions())
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator(
+        make_transform(lambda block: [b * 2 for b in block]),
+        o2,
+        compute_strategy=ActorPoolStrategy(1, 2),
+        ray_remote_args={"num_cpus": 1},
+        name="ActorMap",
+    )
+    it = executor.execute(o3)
+    output = ref_bundles_to_list(it)
+    expected = [[x * -2] for x in range(20)]
+    assert sorted(output) == sorted(expected), (output, expected)
 
 
 if __name__ == "__main__":

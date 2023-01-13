@@ -6,17 +6,13 @@ from ray.data._internal.stats import StatsDict
 from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
-    ActorPoolStrategy,
 )
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
 )
-from ray.data._internal.execution.operators.map_operator_tasks_impl import (
-    MapOperatorTasksImpl,
-)
-from ray.data._internal.execution.operators.map_operator_actors_impl import (
-    MapOperatorActorsImpl,
+from ray.data._internal.execution.operators.map_operator_state import (
+    MapOperatorState,
 )
 
 
@@ -52,24 +48,17 @@ class MapOperator(PhysicalOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         compute_strategy = compute_strategy or TaskPoolStrategy()
-        if isinstance(compute_strategy, TaskPoolStrategy):
-            self._execution_state = MapOperatorTasksImpl(
-                transform_fn, ray_remote_args, min_rows_per_bundle
-            )
-        elif isinstance(compute_strategy, ActorPoolStrategy):
-            self._execution_state = MapOperatorActorsImpl(
-                transform_fn, ray_remote_args, min_rows_per_bundle
-            )
-        else:
-            raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        self._execution_state = MapOperatorState(
+            transform_fn, compute_strategy, ray_remote_args, min_rows_per_bundle
+        )
         self._output_metadata: List[BlockMetadata] = []
         super().__init__(name, [input_op])
 
     def get_metrics(self) -> Dict[str, int]:
         return {
-            "obj_store_mem_alloc": self._execution_state._obj_store_mem_alloc,
-            "obj_store_mem_freed": self._execution_state._obj_store_mem_freed,
-            "obj_store_mem_peak": self._execution_state._obj_store_mem_peak,
+            "obj_store_mem_alloc": self._execution_state.obj_store_mem_alloc,
+            "obj_store_mem_freed": self._execution_state.obj_store_mem_freed,
+            "obj_store_mem_peak": self._execution_state.obj_store_mem_peak,
         }
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
