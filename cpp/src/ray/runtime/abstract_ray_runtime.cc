@@ -220,7 +220,7 @@ const TaskID &AbstractRayRuntime::GetCurrentTaskId() {
   return GetWorkerContext().GetCurrentTaskID();
 }
 
-const JobID &AbstractRayRuntime::GetCurrentJobID() {
+JobID AbstractRayRuntime::GetCurrentJobID() {
   return GetWorkerContext().GetCurrentJobID();
 }
 

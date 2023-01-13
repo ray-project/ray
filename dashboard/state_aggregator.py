@@ -373,9 +373,6 @@ class StateAPIManager:
             task_info = task_attempt.get("task_info", {})
             state_updates = task_attempt.get("state_updates", None)
 
-            if state_updates is None:
-                return {}
-
             # Convert those settable fields
             mappings = [
                 (
@@ -389,6 +386,7 @@ class StateAPIManager:
                         "language",
                         "required_resources",
                         "runtime_env_info",
+                        "parent_task_id",
                     ],
                 ),
                 (task_attempt, ["task_id", "attempt_number", "job_id"]),
@@ -445,7 +443,6 @@ class StateAPIManager:
             )
             for message in reply.events_by_task
         ]
-        result = [e for e in result if len(e) > 0]
 
         num_after_truncation = len(result)
         num_total = num_after_truncation + reply.num_status_task_events_dropped

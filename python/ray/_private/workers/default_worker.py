@@ -1,8 +1,6 @@
 import argparse
 import base64
 import json
-import os
-import sys
 import time
 
 import ray
@@ -217,18 +215,6 @@ if __name__ == "__main__":
         startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external,
     )
-
-    # Add code search path to sys.path, set load_code_from_local.
-    core_worker = ray._private.worker.global_worker.core_worker
-    code_search_path = core_worker.get_job_config().code_search_path
-    load_code_from_local = False
-    if code_search_path:
-        load_code_from_local = True
-        for p in code_search_path:
-            if os.path.isfile(p):
-                p = os.path.dirname(p)
-            sys.path.insert(0, p)
-    ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(

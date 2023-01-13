@@ -99,7 +99,7 @@ class BatchPredictor:
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
-    ) -> ray.data.Dataset:
+    ) -> Union[ray.data.Dataset, ray.data.DatasetPipeline]:
         """Run batch scoring on a Dataset.
 
         Args:
@@ -309,6 +309,10 @@ class BatchPredictor:
             **ray_remote_args,
         )
 
+        if isinstance(prediction_results, ray.data.Dataset):
+            # Force execution because Dataset uses lazy execution by default.
+            prediction_results.fully_executed()
+
         return prediction_results
 
     def predict_pipelined(
@@ -444,11 +448,7 @@ class BatchPredictor:
         if preprocessor is None:
             # No preprocessor, just use the predictor format.
             return self._predictor_cls._batch_format_to_use()
-        elif hasattr(preprocessor, "preprocessors"):
-            # For Chain preprocessor, we picked the first one as entry point.
-            # TODO (jiaodong): We should revisit if our Chain preprocessor is
-            # still optimal with context of lazy execution.
-            preprocessor = preprocessor.preprocessors[0]
+        # Code dealing with Chain preprocessor is in Chain._determine_transform_to_use
 
         # Use same batch format as first preprocessor to minimize data copies.
         return preprocessor._determine_transform_to_use(dataset_block_format)

@@ -1,9 +1,11 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterator, Tuple
+from typing import Dict, List, Optional, Iterable, Tuple
 
 import ray
+from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 
 
@@ -13,7 +15,7 @@ class RefBundle:
 
     Operators take in and produce streams of RefBundles.
 
-    Most commonly an RefBundle consists of a single block object reference.
+    Most commonly a RefBundle consists of a single block object reference.
     In some cases, e.g., due to block splitting, or for a reduce task, there may
     be more than one block.
 
@@ -62,7 +64,10 @@ class RefBundle:
         Returns:
             The number of bytes freed.
         """
-        raise NotImplementedError
+        should_free = self.owns_blocks and DatasetContext.get_current().eager_free
+        for b in self.blocks:
+            trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
+        return self.size_bytes() if should_free else 0
 
 
 @dataclass
@@ -105,7 +110,7 @@ class PhysicalOperator:
             def __init__(self):
                 self.active_tasks = []
 
-            def add_input(self, refs):
+            def add_input(self, refs, _):
                 self.active_tasks.append(map_task.remote(refs))
 
             def has_next(self):
@@ -156,7 +161,7 @@ class PhysicalOperator:
     def __reduce__(self):
         raise ValueError("PhysicalOperator is not serializable.")
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.input_dependencies:
             out_str = ", ".join([str(x) for x in self.input_dependencies])
             out_str += " -> "
@@ -206,6 +211,9 @@ class PhysicalOperator:
         """Returns when a downstream output is available.
 
         When this returns true, it is safe to call `get_next()`.
+
+        When both this and `get_work_refs` return empty, the operator execution is
+        guaranteed to be completed.
         """
         raise NotImplementedError
 
@@ -221,6 +229,9 @@ class PhysicalOperator:
 
         When a reference becomes ready, the executor must call
         `notify_work_completed(ref)` to tell this operator of the state change.
+
+        When both this and `get_next` return empty, the operator execution is
+        guaranteed to be completed.
         """
         return []
 
@@ -255,7 +266,7 @@ class Executor:
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
-    ) -> Iterator[RefBundle]:
+    ) -> Iterable[RefBundle]:
         """Start execution.
 
         Args:

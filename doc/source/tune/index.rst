@@ -214,8 +214,8 @@ Feel free to submit a pull-request adding (or requesting a removal!) of a listed
 
 
 
-Learn More
-----------
+Learn More About Ray Tune
+-------------------------
 
 Below you can find blog posts and talks about Ray Tune:
 
