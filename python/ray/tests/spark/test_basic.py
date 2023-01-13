@@ -10,7 +10,7 @@ from abc import ABC
 import ray
 
 import ray.util.spark.cluster_init
-from ray.util.spark import init_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
+from ray.util.spark import setup_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
 from ray.util.spark.utils import check_port_open
 from pyspark.sql import SparkSession
 import time
@@ -19,9 +19,9 @@ from contextlib import contextmanager
 
 
 @contextmanager
-def _init_ray_cluster(*args, **kwds):
+def _setup_ray_cluster(*args, **kwds):
     # Code to acquire resource, e.g.:
-    init_ray_cluster(*args, **kwds)
+    setup_ray_cluster(*args, **kwds)
     try:
         yield ray.util.spark.cluster_init._active_ray_cluster
     finally:
@@ -63,11 +63,12 @@ class RayOnSparkCPUClusterTestBase(ABC):
             (self.max_spark_tasks, self.num_cpus_per_spark_task, MAX_NUM_WORKER_NODES),
             (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2, MAX_NUM_WORKER_NODES),
         ]:
-            with _init_ray_cluster(
+            with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes_arg,
                 num_cpus_per_node=num_cpus_per_node,
                 safe_mode=False
             ):
+                ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_worker_nodes
                 for worker_res in worker_res_list:
@@ -77,12 +78,13 @@ class RayOnSparkCPUClusterTestBase(ABC):
         try:
             ray_temp_root_dir = tempfile.mkdtemp()
             collect_log_to_path = tempfile.mkdtemp()
-            init_ray_cluster(
+            setup_ray_cluster(
                 num_worker_nodes=MAX_NUM_WORKER_NODES,
                 safe_mode=False,
                 collect_log_to_path=collect_log_to_path,
                 ray_temp_root_dir=ray_temp_root_dir,
             )
+            ray.init()
 
             @ray.remote
             def f(x):
@@ -117,9 +119,10 @@ class RayOnSparkCPUClusterTestBase(ABC):
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
 
     def test_ray_cluster_shutdown(self):
-        with _init_ray_cluster(
+        with _setup_ray_cluster(
             num_worker_nodes=self.max_spark_tasks, safe_mode=False
         ) as cluster:
+            ray.init()
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
             # Test: cancel background spark job will cause all ray worker nodes exit.
@@ -134,9 +137,10 @@ class RayOnSparkCPUClusterTestBase(ABC):
         assert not check_port_open(hostname, int(port))
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
-        with _init_ray_cluster(
+        with _setup_ray_cluster(
             num_worker_nodes=self.max_spark_tasks, safe_mode=False
         ) as cluster:
+            ray.init()
             # Mimic the case the job failed unexpectedly.
             cluster._cancel_background_spark_job()
             cluster.spark_job_is_canceled = False

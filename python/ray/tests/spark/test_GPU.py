@@ -5,7 +5,7 @@ import time
 import functools
 from abc import ABC
 from pyspark.sql import SparkSession
-from ray.tests.spark.test_basic import RayOnSparkCPUClusterTestBase, _init_ray_cluster
+from ray.tests.spark.test_basic import RayOnSparkCPUClusterTestBase, _setup_ray_cluster
 
 import ray
 
@@ -27,12 +27,13 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
             (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2, self.num_gpus_per_spark_task * 2),
             (self.max_spark_tasks // 2, self.num_cpus_per_spark_task, self.num_gpus_per_spark_task * 2),
         ]:
-            with _init_ray_cluster(
+            with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes,
                 num_cpus_per_node=num_cpus_per_node,
                 num_gpus_per_node=num_gpus_per_node,
                 safe_mode=False,
             ):
+                ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_worker_nodes
                 for worker_res in worker_res_list:

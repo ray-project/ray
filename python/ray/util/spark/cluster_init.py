@@ -56,7 +56,7 @@ def _check_system_environment():
 
 class RayClusterOnSpark:
     """
-    This class is the type of instance returned by the `init_ray_cluster` API.
+    This class is the type of instance returned by the `setup_ray_cluster` API.
     Its main functionality is to:
     Connect to, disconnect from, and shutdown the Ray cluster running on Apache Spark.
     Serve as a Python context manager for the `RayClusterOnSpark` instance.
@@ -157,7 +157,7 @@ class RayClusterOnSpark:
 
     def shutdown(self, cancel_background_job=True):
         """
-        Shutdown the ray cluster created by the `init_ray_cluster` API.
+        Shutdown the ray cluster created by the `setup_ray_cluster` API.
         NB: In the background thread that runs the background spark job, if spark job
         raise unexpected error, its exception handler will also call this method, in
         the case, it will set cancel_background_job=False to avoid recursive call.
@@ -364,7 +364,7 @@ def _setup_ray_cluster(
 
     The returned instance can be used to connect to, disconnect from and shutdown the
     ray cluster. This instance can also be used as a context manager (used by
-    encapsulating operations within `with init_ray_cluster(...):`). Upon entering the
+    encapsulating operations within `with setup_ray_cluster(...):`). Upon entering the
     managed scope, the ray cluster is initiated and connected to. When exiting the
     scope, the ray cluster is disconnected and shut down.
 
@@ -898,7 +898,7 @@ def setup_ray_cluster(
             raise ValueError(
                 "You are creating ray cluster on spark with safe mode (it can be "
                 "disabled by setting argument 'safe_mode=False' when calling API "
-                "'init_ray_cluster'), safe mode requires the spark cluster config "
+                "'setup_ray_cluster'), safe mode requires the spark cluster config "
                 "satisfying following criterion: "
                 "\n".join(insufficient_resources)
             )
