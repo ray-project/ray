@@ -2594,7 +2594,7 @@ class AlgorithmConfig:
         raise NotImplementedError
 
     def get_trainer_runner_config(
-        self, policy: Policy, validate: bool = False
+        self, observation_space: Space, action_space: Space, validate: bool = False
     ) -> TrainerRunnerConfig:
 
         if not self._is_frozen:
@@ -2607,8 +2607,8 @@ class AlgorithmConfig:
             TrainerRunnerConfig()
             .module(
                 module_class=self.rl_module_class,
-                observation_space=policy.observation_space,
-                action_space=policy.action_space,
+                observation_space=observation_space,
+                action_space=action_space,
                 model_config=self.model,
             )
             .trainer(

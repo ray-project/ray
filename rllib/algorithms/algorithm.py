@@ -674,7 +674,11 @@ class Algorithm(Trainable):
         self.trainer_runner = None
         if self.config._enable_rl_trainer_api:
             policy = self.get_policy()
-            trainer_runner_config = self.config.get_trainer_runner_config(policy)
+            observation_space = policy.observation_space
+            action_space = policy.action_space
+            trainer_runner_config = self.config.get_trainer_runner_config(
+                observation_space, action_space
+            )
             self.trainer_runner = trainer_runner_config.build()
 
         # Run `on_algorithm_init` callback after initialization is done.

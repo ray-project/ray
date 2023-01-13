@@ -1,4 +1,3 @@
-import dataclasses
 import gym
 import unittest
 
@@ -43,13 +42,6 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
 
-        @dataclasses.dataclass
-        class DummyPolicy:
-            observation_space = env.observation_space
-            action_space = env.action_space
-
-        policy = DummyPolicy()
-
         config = (
             AlgorithmConfig()
             .rl_module(rl_module_class=DiscreteBCTFModule)
@@ -57,7 +49,9 @@ class TestAlgorithmConfig(unittest.TestCase):
             .training(model={"hidden_dim": 32})
         )
         config.freeze()
-        runner_config = config.get_trainer_runner_config(policy)
+        runner_config = config.get_trainer_runner_config(
+            env.observation_space, env.action_space
+        )
         runner_config.build()
 
 
