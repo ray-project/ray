@@ -143,13 +143,10 @@ class ExperimentAnalysis:
 
             if "checkpoints" not in experiment_state:
                 raise TuneError("Experiment state invalid; no checkpoints found.")
+
             self._checkpoints_and_paths += [
-                (_decode_checkpoint_from_experiment_state(cp), Path(path).parent)
-                for cp in experiment_state["checkpoints"]
+                (cp, Path(path).parent) for cp in experiment_state["checkpoints"]
             ]
-            self._checkpoints_and_paths = sorted(
-                self._checkpoints_and_paths, key=lambda tup: tup[0]["trial_id"]
-            )
 
     def _get_latest_checkpoint(self, experiment_checkpoint_path: Path) -> List[str]:
         # Case 1: Dir specified, find latest checkpoint.
@@ -799,11 +796,10 @@ class ExperimentAnalysis:
             )
             self.trials = []
             _trial_paths = []
-            for checkpoint, path in self._checkpoints_and_paths:
+            for trial_json_state, path in self._checkpoints_and_paths:
                 try:
-                    trial = _load_trial_from_checkpoint(
-                        checkpoint, stub=True, new_local_dir=str(path)
-                    )
+                    trial = Trial.from_json_state(trial_json_state, stub=True)
+                    trial.local_dir = str(path)
                 except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "
