@@ -62,7 +62,13 @@ Specifying Node Resources
 -------------------------
 
 By default, Ray nodes start with pre-defiend CPU, GPU, and memory resources. The quantities of these resources on each node are set to the physical quantities auto detected by Ray.
-For example, if you start a head node with ``ray start --head`` then the quantity of logical CPU resources will be equal to the number of physical CPUs on the machine.
+By default, logical resources are configured by the following rule.
+
+- **Number of logical CPUs (``num_cpus``)**: Set to the number of CPUs of the machine/container.
+- **Number of logical GPUs (``num_gpus)**: Set to the number of GPUs of the machine/container.
+- **Memory (``memory``)**: Set to 70% of "available memory" when ray runtime starts.
+- **Object Store Memory (``object_store_memory``)**: Set to 30% of "available memory" when ray runtime starts. Note that the object store memory is not logical resource, and users cannot use it for scheduling.
+
 However, you can always override that by manually specifying the quantities of pre-defined resources and adding custom resources.
 There are several ways to do that depending on how you start the Ray cluster:
 
@@ -176,3 +182,7 @@ The precision of the fractional resource requirement is 0.0001 so you should avo
 
   Besides resource requirements, you can also specify an environment for a task or actor to run in,
   which can include Python packages, local files, environment variables, and more---see :ref:`Runtime Environments <runtime-environments>` for details.
+
+Dynamic Resource Update
+-----------------------
+Ray **does not allow to dynamically update cluster resources after a node starts**.
