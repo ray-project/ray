@@ -850,19 +850,34 @@ class TrialRunner:
             )
         )
 
-        trial_runner_data = runner_state["runner_data"]
-        # Don't overwrite the current `_local_checkpoint_dir`
-        # The current directory could be different from the checkpointed
-        # directory, if the experiment directory has changed.
-        trial_runner_data.pop("_local_checkpoint_dir", None)
+        # 1. Restore trial runner state
+        self.__setstate__(runner_state["runner_data"])
 
-        self.__setstate__(trial_runner_data)
+        # 2. Restore search algorithm state
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
-        trials = _load_trials_from_experiment_checkpoint(
-            runner_state, new_local_dir=self._local_checkpoint_dir
-        )
+        # 3. Load trial table from experiment checkpoint
+        trials = []
+        for trial_json_state in runner_state["checkpoints"]:
+            trial = Trial.from_json_state(trial_json_state)
+
+            # The following properties may be updated on restoration
+            # Ex: moved local/cloud experiment directory
+            trial.local_dir = self._local_checkpoint_dir
+            trial.sync_config = self._sync_config
+            trial.experiment_dir_name = self._experiment_dir_name
+
+            # Avoid creating logdir in client mode for returned trial results,
+            # since the dir might not be creatable locally.
+            # TODO(ekl) this is kind of a hack.
+            if not ray.util.client.ray.is_connected():
+                trial.init_logdir()  # Create logdir if it does not exist
+
+            trial.refresh_default_resource_request()
+            trials.append(trial)
+
+        # 4. Set trial statuses according to the resume configuration
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             trial_to_add = trial
             if trial.status == Trial.ERROR:

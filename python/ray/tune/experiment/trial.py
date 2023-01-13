@@ -971,11 +971,6 @@ class Trial:
 
         assert self.placement_group_factory
 
-        # Avoid creating logdir in client mode for returned trial results,
-        # since the dir might not be creatable locally.
-        # TODO(ekl) this is kind of a hack.
-        if not ray.util.client.ray.is_connected():
-            self.init_logdir()  # Create logdir if it does not exist
     @classmethod
     def from_json_state(cls, json_state, stub: bool = False) -> "Trial":
         trial_state = (
