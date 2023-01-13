@@ -10,7 +10,6 @@ from typing import (
     Dict,
     Sequence,
     Hashable,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.core.rl_trainer.rl_trainer import (
@@ -30,9 +29,6 @@ from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 import tree  # pip install dm-tree
-
-if TYPE_CHECKING:
-    import tensorflow as tf
 
 tf1, tf, tfv = try_import_tf()
 
