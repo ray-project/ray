@@ -31,7 +31,6 @@ from ray.rllib.utils.numpy import convert_to_numpy
 import tree  # pip install dm-tree
 
 tf1, tf, tfv = try_import_tf()
-tf1.enable_eager_execution()
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +104,14 @@ class TfRLTrainer(RLTrainer):
             distributed=distributed,
             in_test=in_test,
         )
+
+        # TODO (Kourosh): This is required to make sure tf computes the values in the
+        # end. Two question remains:
+        # 1. Why is it not eager by default. Do we do anything in try_import_tf() that
+        # changes this default?
+        # 2. What is the implication of this on the performance? The tf documentation
+        # does not mention this as a requirement?
+        tf1.enable_eager_execution()
 
         self._enable_tf_function = enable_tf_function
         if self._enable_tf_function:
