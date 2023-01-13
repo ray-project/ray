@@ -14,10 +14,7 @@
 
 #pragma once
 
-#include <unordered_map>
-
 #include "absl/base/thread_annotations.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
@@ -29,12 +26,6 @@ namespace gcs {
 
 /// Type alias for a single task attempt, i.e. <task id and attempt number>.
 using TaskAttempt = std::pair<TaskID, int32_t>;
-
-/// Type alias for updating task event callback stored in the
-/// GcsTaskManager::GcsTaskManagerStorage.
-/// It takes a pointer to rpc::TaskEvents as argument, and returns if the update is
-/// successful.
-using UpdateTaskEventCallback = std::function<bool(rpc::TaskEvents *)>;
 
 /// GcsTaskManger is responsible for capturing task states change reported by
 /// TaskEventBuffer from other components.
@@ -195,7 +186,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \return The failed timestamp of the task attempt if it fails. absl::nullopt if the
     /// latest task attempt could not be found due to data loss or the task attempt
     /// doesn't fail.
-    absl::optional<int64_t> GetTaskStatusTime(const TaskID &task_id,
+    absl::optional<int64_t> GetTaskStatusUpdateTimeconst TaskID &task_id,
                                               const rpc::TaskStatus &task_status) const;
 
     /// Mark the task as failure with the failed timestamp.
