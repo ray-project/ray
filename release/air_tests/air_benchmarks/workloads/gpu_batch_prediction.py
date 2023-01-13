@@ -60,6 +60,8 @@ def main(data_size_gb: int, smoke_test: bool = False):
     predictor.predict(
         dataset,
         num_gpus_per_worker=int(not smoke_test),
+        min_scoring_workers=1,
+        max_scoring_workers=ray.cluster_resources()["GPU"],
         batch_size=512,
     )
     total_time_s = round(time.time() - start, 2)
