@@ -409,11 +409,11 @@ class Policy(metaclass=ABCMeta):
         """Get throughputs from connectors."""
         return {
             "agent_connectors": {
-                name + "_throughput": timer.mean_throughput
+                name + "_ms": 1000 * timer.mean
                 for name, timer in self.agent_connectors.timers.items()
             },
             "action_connectors": {
-                name + "_throughput": timer.mean_throughput
+                name + "_ms": 1000 * timer.mean
                 for name, timer in self.agent_connectors.timers.items()
             },
         }
