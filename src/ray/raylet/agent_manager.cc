@@ -141,7 +141,8 @@ void AgentManager::StartAgent() {
            "- The agent is failed to start because of unexpected error or port conflict. "
            "Read the log `cat /tmp/ray/session_latest/dashboard_agent.log`. "
            "You can find the log file structure here "
-           "https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure.\n"
+           "https://docs.ray.io/en/master/ray-observability/"
+           "ray-logging.html#logging-directory-structure.\n"
            "- The agent is killed by the OS (e.g., out of memory).";
     // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
     RAY_CHECK(std::raise(SIGTERM) == 0) << "There was a failure while sending a "
