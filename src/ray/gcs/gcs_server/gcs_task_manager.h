@@ -186,8 +186,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \return The failed timestamp of the task attempt if it fails. absl::nullopt if the
     /// latest task attempt could not be found due to data loss or the task attempt
     /// doesn't fail.
-    absl::optional<int64_t> GetTaskStatusUpdateTimeconst TaskID &task_id,
-                                              const rpc::TaskStatus &task_status) const;
+    absl::optional<int64_t> GetTaskStatusUpdateTime(
+        const TaskID &task_id, const rpc::TaskStatus &task_status) const;
 
     /// Mark the task as failure with the failed timestamp.
     ///

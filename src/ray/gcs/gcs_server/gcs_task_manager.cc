@@ -111,7 +111,7 @@ const rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
   return task_events_.at(idx_itr->second);
 }
 
-absl::optional<int64_t> GcsTaskManager::GcsTaskManagerStorage::GetTaskStatusUpdateTime
+absl::optional<int64_t> GcsTaskManager::GcsTaskManagerStorage::GetTaskStatusUpdateTime(
     const TaskID &task_id, const rpc::TaskStatus &task_status) const {
   auto latest_task_attempt = GetLatestTaskAttempt(task_id);
   if (!latest_task_attempt.has_value()) {
@@ -139,7 +139,8 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(
     const TaskID &task_id, const TaskID &parent_task_id) {
   if (!parent_task_id.IsNil()) {
     // If parent has failed, mark itself as failed
-    auto parent_failed_ts = GetTaskStatusUpdateTimeparent_task_id, rpc::TaskStatus::FAILED);
+    auto parent_failed_ts =
+        GetTaskStatusUpdateTime(parent_task_id, rpc::TaskStatus::FAILED);
     if (parent_failed_ts.has_value()) {
       // Mark current task as failed.
       MarkTaskFailed(task_id, *parent_failed_ts);
@@ -148,7 +149,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(
 
   // BFS traverse the task tree to mark all non terminal children as failure
   std::vector<TaskID> failed_tasks;
-  auto task_failed_ts = GetTaskStatusUpdateTimetask_id, rpc::TaskStatus::FAILED);
+  auto task_failed_ts = GetTaskStatusUpdateTime(task_id, rpc::TaskStatus::FAILED);
   if (task_failed_ts.has_value()) {
     failed_tasks.push_back(task_id);
   }
@@ -162,12 +163,12 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(
     for (const auto &child_task_id : children_tasks_itr->second) {
       // Mark any non-terminated child as failed with parent's (or ancestor's) failure
       // timestamp.
-      if (!(GetTaskStatusUpdateTimechild_task_id, rpc::TaskStatus::FAILED).has_value() ||
-              GetTaskStatusUpdateTimechild_task_id,
-          rpc::TaskStatus::FINISHED).has_value())) {
-          MarkTaskFailed(child_task_id, task_failed_ts.value());
-          failed_tasks.push_back(child_task_id);
-        }
+      if (!(GetTaskStatusUpdateTime(child_task_id, rpc::TaskStatus::FAILED).has_value() ||
+            GetTaskStatusUpdateTime(child_task_id, rpc::TaskStatus::FINISHED)
+                .has_value())) {
+        MarkTaskFailed(child_task_id, task_failed_ts.value());
+        failed_tasks.push_back(child_task_id);
+      }
     }
   }
 }
