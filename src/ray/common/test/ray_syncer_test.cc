@@ -176,16 +176,14 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   ASSERT_EQ(1, sync_reactor.node_versions_.size());
   ASSERT_EQ(2, sync_reactor.sending_buffer_.begin()->second->version());
   ASSERT_EQ(
-      2,
-      sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+      2, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr3));
   ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
   ASSERT_EQ(1, sync_reactor.node_versions_.size());
   ASSERT_EQ(3, sync_reactor.sending_buffer_.begin()->second->version());
   ASSERT_EQ(
-      3,
-      sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+      3, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 
   // First message got sent
   EXPECT_CALL(sync_reactor, Send(Eq(msg_ptr3), Eq(true)));
@@ -433,16 +431,12 @@ TEST_F(SyncerTest, Test1To1) {
 
   // Make sure s2 adds s1
   ASSERT_TRUE(s2.WaitUntil(
-      [&s2]() {
-        return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1;
-      },
+      [&s2]() { return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1; },
       5));
 
   // Make sure s1 adds s2
   ASSERT_TRUE(s1.WaitUntil(
-      [&s1]() {
-        return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1;
-      },
+      [&s1]() { return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1; },
       5));
 
   // s1 will only send 1 message to s2 because it only has one reporter
@@ -545,22 +539,16 @@ TEST_F(SyncerTest, Reconnect) {
 
   // Make sure the setup is correct
   ASSERT_TRUE(s1.WaitUntil(
-      [&s1]() {
-        return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1;
-      },
+      [&s1]() { return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1; },
       5));
 
   ASSERT_TRUE(s1.WaitUntil(
-      [&s3]() {
-        return s3.syncer->sync_reactors_.size() == 1 && s3.snapshot_taken == 1;
-      },
+      [&s3]() { return s3.syncer->sync_reactors_.size() == 1 && s3.snapshot_taken == 1; },
       5));
   s2.syncer->Connect(s3.syncer->GetLocalNodeID(), MakeChannel("19992"));
 
   ASSERT_TRUE(s1.WaitUntil(
-      [&s2]() {
-        return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1;
-      },
+      [&s2]() { return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1; },
       5));
 }
 
@@ -584,21 +572,15 @@ TEST_F(SyncerTest, Broadcast) {
 
   // Make sure the setup is correct
   ASSERT_TRUE(s1.WaitUntil(
-      [&s1]() {
-        return s1.syncer->sync_reactors_.size() == 2 && s1.snapshot_taken == 1;
-      },
+      [&s1]() { return s1.syncer->sync_reactors_.size() == 2 && s1.snapshot_taken == 1; },
       5));
 
   ASSERT_TRUE(s1.WaitUntil(
-      [&s2]() {
-        return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1;
-      },
+      [&s2]() { return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1; },
       5));
 
   ASSERT_TRUE(s1.WaitUntil(
-      [&s3]() {
-        return s3.syncer->sync_reactors_.size() == 1 && s3.snapshot_taken == 1;
-      },
+      [&s3]() { return s3.syncer->sync_reactors_.size() == 1 && s3.snapshot_taken == 1; },
       5));
 
   // Change the resource in s2 and make sure s1 && s3 are correct

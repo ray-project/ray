@@ -83,7 +83,8 @@ RaySyncerBidiReactorBase::RaySyncerBidiReactorBase(
       cleanup_cb_(std::move(cleanup_cb)),
       remote_node_id_(remote_node_id) {}
 
-void RaySyncerBidiReactorBase::ReceiveUpdate(std::shared_ptr<const RaySyncMessage> message) {
+void RaySyncerBidiReactorBase::ReceiveUpdate(
+    std::shared_ptr<const RaySyncMessage> message) {
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   RAY_LOG(DEBUG) << "Receive update: "
                  << " message_type=" << message->message_type()
@@ -135,8 +136,8 @@ void RaySyncerBidiReactorBase::SendNext() {
   StartSend();
 }
 
-std::array<int64_t, kComponentArraySize> &RaySyncerBidiReactorBase::GetNodeComponentVersions(
-    const std::string &node_id) {
+std::array<int64_t, kComponentArraySize>
+    &RaySyncerBidiReactorBase::GetNodeComponentVersions(const std::string &node_id) {
   auto iter = node_versions_.find(node_id);
   if (iter == node_versions_.end()) {
     iter =
@@ -290,8 +291,8 @@ void RaySyncer::Connect(RaySyncerBidiReactorBase *reactor) {
             }
             RAY_LOG(DEBUG) << "Push init view from: "
                            << NodeID::FromBinary(GetLocalNodeID()) << " to "
-                           << NodeID::FromBinary(reactor->GetRemoteNodeID())
-                           << " about " << NodeID::FromBinary(message->node_id());
+                           << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " about "
+                           << NodeID::FromBinary(message->node_id());
             reactor->PushToSendingQueue(message);
           }
         }

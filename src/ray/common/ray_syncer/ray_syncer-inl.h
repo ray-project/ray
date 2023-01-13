@@ -163,9 +163,9 @@ class BidiReactor : public T, public RaySyncerBidiReactorBase {
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
       std::function<void(const std::string &, bool)> cleanup_cb)
       : RaySyncerBidiReactorBase(io_context,
-                           remote_node_id,
-                           std::move(message_processor),
-                           std::move(cleanup_cb)) {}
+                                 remote_node_id,
+                                 std::move(message_processor),
+                                 std::move(cleanup_cb)) {}
 
   using T::StartRead;
   using T::StartWrite;
