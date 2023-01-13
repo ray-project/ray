@@ -673,7 +673,7 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
 /// and this configuration break that assumption. We should apply to every other component
 /// after we change this failure assumption from code.
 /// grpc keepalive timeout for client.
-RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 60000)
+RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 160000)
 
 /// grpc keepalive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
