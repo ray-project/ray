@@ -127,8 +127,7 @@ def framework_iterator(
             assert tf1.executing_eagerly()
         # Make sure, eager mode is off.
         elif fw == "tf":
-            if not tf1.executing_eagerly():
-                tf1.disable_v2_behavior()
+            assert not tf1.executing_eagerly()
 
         # Additionally loop through eager_tracing=True + False, if necessary.
         if fw == "tf2" and with_eager_tracing:
