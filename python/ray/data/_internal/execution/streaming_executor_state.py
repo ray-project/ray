@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 import ray
 from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
     RefBundle,
     PhysicalOperator,
 )
@@ -153,7 +154,7 @@ def process_completed_tasks(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
 
-def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
+def select_operator_to_run(topology: Topology, options: ExecutionOptions) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
     The objective of this function is to maximize the throughput of the overall

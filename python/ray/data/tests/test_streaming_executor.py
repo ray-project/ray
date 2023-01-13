@@ -88,6 +88,7 @@ def test_process_completed_tasks():
 
 
 def test_select_operator_to_run():
+    opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
@@ -95,21 +96,21 @@ def test_select_operator_to_run():
     topo, _ = build_streaming_topology(o3)
 
     # Test empty.
-    assert select_operator_to_run(topo) is None
+    assert select_operator_to_run(topo, opt) is None
 
     # Test backpressure based on queue length between operators.
     topo[o1].outqueue.append("dummy1")
-    assert select_operator_to_run(topo) == o2
+    assert select_operator_to_run(topo, opt) == o2
     topo[o1].outqueue.append("dummy2")
-    assert select_operator_to_run(topo) == o2
+    assert select_operator_to_run(topo, opt) == o2
     topo[o2].outqueue.append("dummy3")
-    assert select_operator_to_run(topo) == o3
+    assert select_operator_to_run(topo, opt) == o3
 
     # Test backpressure includes num active tasks as well.
     topo[o3].num_active_tasks = MagicMock(return_value=2)
-    assert select_operator_to_run(topo) == o2
+    assert select_operator_to_run(topo, opt) == o2
     topo[o2].num_active_tasks = MagicMock(return_value=2)
-    assert select_operator_to_run(topo) == o3
+    assert select_operator_to_run(topo, opt) == o3
 
 
 def test_dispatch_next_task():

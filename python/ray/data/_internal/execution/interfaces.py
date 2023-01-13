@@ -74,17 +74,20 @@ class RefBundle:
 class ExecutionOptions:
     """Common options for execution.
 
-    Some options may not be supported on all executors (e.g., parallelism limit).
+    Some options may not be supported on all executors (e.g., CPU limits).
     """
 
-    # Max number of in flight tasks. This is a soft limit, and is not supported in
-    # bulk execution mode.
-    parallelism_limit: Optional[int] = None
+    # Max number of CPU tasks to run. This is a soft limit, and is not supported in
+    # bulk execution mode. The default of 0 means no limit.
+    cpu_task_count_limit: int = 0
 
-    # Example: set to 1GB and executor will try to limit object store
-    # memory usage to 1GB. This is a soft limit, and is not supported in
-    # bulk execution mode.
-    memory_limit_bytes: Optional[int] = None
+    # Max number of GPU tasks to run. This is a soft limit, and is not supported in
+    # bulk execution mode. The default of 0 means no limit.
+    gpu_task_count_limit: int = 0
+
+    # Max amount of object store memory to use for execution. This is a soft limit,
+    # and is not supported in bulk execution mode. The default of 0 means no limit.
+    memory_limit_bytes: int = 0
 
     # Set this to prefer running tasks on the same node as the output
     # node (node driving the execution).
