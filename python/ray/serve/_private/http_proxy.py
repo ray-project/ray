@@ -90,8 +90,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # https://github.com/ray-project/ray/pull/29534 for more info.
 
             _, request_timed_out = await asyncio.wait(
-                [asyncio.wrap_future(object_ref.future())],
-                timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S,
+                [object_ref], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
             )
             if request_timed_out:
                 logger.info(
