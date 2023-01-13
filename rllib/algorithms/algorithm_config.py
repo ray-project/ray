@@ -2614,7 +2614,7 @@ class AlgorithmConfig:
             .trainer(
                 trainer_class=self.rl_trainer_class,
                 eager_tracing=self.eager_tracing,
-                # TODO (Kourosh): optimizer config can not be more complicated.
+                # TODO (Kourosh): optimizer config can now be more complicated.
                 optimizer_config={"lr": self.lr},
             )
             .resources(num_gpus=self.num_gpus, fake_gpus=self._fake_gpus)

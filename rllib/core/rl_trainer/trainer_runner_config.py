@@ -79,8 +79,7 @@ class TrainerRunnerConfig:
 
     def build(self) -> TrainerRunner:
         self.validate()
-        # TODO: change the constructor of TrainerRunner to also accept passing in a
-        # TODO: What should be for example scaling_config? it's not clear what
+        # TODO (Kourosh): What should be scaling_config? it's not clear what
         # should be passed in as trainer_config and what will be inferred
         return self.trainer_runner_class(
             trainer_class=self.trainer_class,
@@ -91,16 +90,16 @@ class TrainerRunnerConfig:
                     "action_space": self.action_space,
                     "model_config": self.model_config,
                 },
-                # TODO: should this be inferred inside the constructor?
+                # TODO (Kourosh): should this be inferred inside the constructor?
                 "distributed": self.num_gpus > 1,
-                # TODO: add this
+                # TODO (Avnish): add this
                 # "enable_tf_function": self.eager_tracing,
                 "optimizer_config": self.optimizer_config,
                 "in_test": self._in_test,
             },
             compute_config={
                 "num_gpus": self.num_gpus,
-                # TODO: add this
+                # TODO (Avnish): add this
                 # "fake_gpus": self.fake_gpus,
             },
         )

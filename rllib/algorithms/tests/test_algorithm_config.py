@@ -10,7 +10,7 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 class TestAlgorithmConfig(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(num_cpus=6)
 
     @classmethod
     def tearDownClass(cls):
