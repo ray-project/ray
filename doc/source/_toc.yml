@@ -85,7 +85,7 @@ parts:
               - file: train/dl_guide
                 title: "Deep Learning Guide"
               - file: train/gbdt
-                title: "Boosted Tree Guide"
+                title: "XGBoost/LightGBM guide"
               - file: train/architecture
                 title: "Ray Train Architecture"
           - file: train/examples
