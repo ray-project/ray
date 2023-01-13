@@ -3580,7 +3580,7 @@ class Dataset(Generic[T]):
             blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
             read_stage = stages[0]
         else:
-            blocks = self._plan.execute()
+            blocks = self._plan.execute(cache_output_blocks=True)
             outer_stats = self._plan.stats()
             read_stage = None
         uuid = self._get_uuid()
