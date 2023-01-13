@@ -81,6 +81,13 @@ class NodeState {
 
 class NodeSyncConnection {
  public:
+  /// Constructor of NodeSyncConnection.
+  ///
+  /// \param io_context The io context for the callback.
+  /// \param remote_node_id The node id connects to.
+  /// \param message_processor The callback for the message received.
+  /// \param cleanup_cb When the connection terminates, it'll be called to cleanup
+  ///     the environment.
   NodeSyncConnection(
       instrumented_io_context &io_context,
       const std::string &remote_node_id,
@@ -177,12 +184,6 @@ class BidiReactor : public T, public NodeSyncConnection {
     StartWrite(sending_message_.get(), opts);
   }
 
-  void StartPull() {
-    receiving_message_ = std::make_shared<RaySyncMessage>();
-    RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
-    StartRead(receiving_message_.get());
-  }
-
   void OnWriteDone(bool ok) override {
     if (ok) {
       io_context_.dispatch([this]() { SendNext(); }, "");
@@ -206,6 +207,12 @@ class BidiReactor : public T, public NodeSyncConnection {
   }
 
  protected:
+  void StartPull() {
+    receiving_message_ = std::make_shared<RaySyncMessage>();
+    RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
+    StartRead(receiving_message_.get());
+  }
+
   /// grpc requests for sending and receiving
   std::shared_ptr<const RaySyncMessage> sending_message_;
   std::shared_ptr<RaySyncMessage> receiving_message_;
