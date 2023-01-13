@@ -32,8 +32,6 @@ public class RuntimeContextTest extends BaseTest {
     System.setProperty("ray.job.id", JOB_ID.toString());
   }
 
-  // TODO(MisterLin1995 ): Fix JobConfig related Java test.
-  @Test(enabled = false)
   public void testRuntimeContextInDriver() {
     Assert.assertEquals(JOB_ID, Ray.getRuntimeContext().getCurrentJobId());
     Assert.assertNotEquals(Ray.getRuntimeContext().getCurrentTaskId(), TaskId.NIL);
@@ -60,8 +58,6 @@ public class RuntimeContextTest extends BaseTest {
     }
   }
 
-  // TODO(MisterLin1995 ): Fix JobConfig related Java test.
-  @Test(enabled = false)
   public void testRuntimeContextInActor() {
     ActorHandle<RuntimeContextTester> actor = Ray.actor(RuntimeContextTester::new).remote();
     Assert.assertEquals(
