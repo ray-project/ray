@@ -106,7 +106,7 @@ parts:
               - file: train/examples/pytorch/tune_cifar_torch_pbt_example
                 title: "Tune & PyTorch Example"
               - file: train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example
-                title: "Ray Train Benchmark"
+                title: "Torch Data Prefetching Benchmark"
           - file: train/faq
           - file: train/api
 

@@ -46,7 +46,7 @@ Distributed Training Examples using Ray Train
         :classes: btn-link btn-block stretched-link trainTorchFashionMnist
 
     ---
-    :img-top: /images/pytorch_logo.png
+    :img-top: /images/hugging.png
 
     +++
     .. link-button:: train_transformers_example
