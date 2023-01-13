@@ -740,7 +740,8 @@ std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
 
     // Init redis failure detector.
     gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-        main_service_, redis_client_->GetPrimaryContext(), [this]() { Stop(); });
+        main_service_, redis_client_->GetPrimaryContext(), [this]() {
+          RAY_LOG(FATAL) << "Redis failed. Shutdown GCS."; });
     gcs_redis_failure_detector_->Start();
   }
   return redis_client_;
