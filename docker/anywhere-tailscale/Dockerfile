@@ -12,7 +12,9 @@ ENV AWS_ACCESS_KEY_ID=""
 ENV AWS_SECRET_ACCESS_KEY=""
 ENV AWS_DEFAULT_REGION="us-west-2"
 ENV AWS_S3_BUCKET=""
-
+ENV CRATE_GC_LOG_DIR="/data/log"
+ENV CRATE_HEAP_DUMP_PATH="/data/data"
+ENV CRATE_JAVA_OPTS="-XX:+IgnoreUnrecognizedVMOptions -XX:+UseContainerSupport -XX:+IdleTuningCompactOnIdle -XX:+IdleTuningGcOnIdle -Xtune:virtualized -Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
 ENV N2N_INTERFACE=tailscale0
 
 
