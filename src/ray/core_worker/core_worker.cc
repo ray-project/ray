@@ -2434,6 +2434,8 @@ Status CoreWorker::ExecuteTask(
   Status status;
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
+    RAY_CHECK(return_objects->size() > 0);
+    return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
     task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());

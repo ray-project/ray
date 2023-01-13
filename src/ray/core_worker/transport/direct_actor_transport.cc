@@ -115,6 +115,11 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
 
     auto num_returns = task_spec.NumReturns();
+    if (task_spec.IsActorCreationTask()) {
+      // Decrease to account for the dummy object id returned by the actor
+      // creation task.
+      num_returns--;
+    }
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
@@ -133,7 +138,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     bool objects_valid = return_objects.size() == num_returns;
     for (const auto &return_object : return_objects) {
-      if (return_object.second == NULL && !task_spec.IsActorCreationTask()) {
+      if (return_object.second == NULL) {
         objects_valid = false;
       }
     }
