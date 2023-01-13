@@ -11,8 +11,8 @@ class Barrier:
     invoked once :meth:`arrive` has been called ``N`` times.
 
     ``max_results`` can be ``None``, in which case an infinite amount of results
-    will be collected. In this case, :meth:`wait` can be used with a timeout
-    to get all results after a certain amount of time passed.
+    will be collected. In this case, the :meth:`on_completion` callback
+    will not be invoked on successful task resolution.
 
     Args:
         max_results: Maximum number of results to collect before a call to
