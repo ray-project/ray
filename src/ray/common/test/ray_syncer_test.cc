@@ -757,6 +757,45 @@ TEST_F(SyncerTest, TestMToN) {
   ASSERT_TRUE(TestCorrectness(get_cluster_view, servers, g));
 }
 
+struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
+  MockRaySyncerService(instrumented_io_context &_io_context,
+                       std::function<void(std::shared_ptr<const RaySyncMessage>)> _message_processor,
+                       std::function<void(const std::string &, bool)> _cleanup_cb):
+      message_processor(_message_processor),
+      cleanup_cb(_cleanup_cb),
+      node_id(NodeID::FromRandom()),
+      io_context(_io_context) {}
+  grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
+      grpc::CallbackServerContext *context) override {
+    return new RayServerBidiReactor(context, io_context, node_id.Binary(), message_processor, cleanup_cb);
+  }
+
+  std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor;
+  std::function<void(const std::string &, bool)> cleanup_cb;
+  NodeID node_id;
+  instrumented_io_context &io_context;
+  RayServerBidiReactor* reactor = nullptr;
+
+};
+
+
+class SyncerReactorTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+
+  }
+
+  instrumented_io_context io_context_;
+  std::unique_ptr<work_guard_type> work_guard_;
+  std::unique_ptr<std::thread> thread_;
+  std::unique_ptr<MockRaySyncerService> rpc_service_;
+
+};
+
+TEST_F(SyncerReactorTest, TestReactor) {
+
+}
+
 }  // namespace syncer
 }  // namespace ray
 
