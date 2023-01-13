@@ -22,7 +22,7 @@
 namespace ray {
 namespace core {
 namespace {
-const rpc::JobConfig kDefaultJobConfig;
+const rpc::JobConfig kDefaultJobConfig{};
 }
 
 /// per-thread context for core worker.
@@ -148,7 +148,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
     : worker_type_(worker_type),
       worker_id_(worker_id),
       current_job_id_(job_id),
-      job_config_(kDefaultJobConfig),
+      job_config_(),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
@@ -178,16 +178,17 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
-void WorkerContext::MayInitializeJobInfo(const JobID &job_id,
-                                         const rpc::JobConfig &job_config) {
+
+void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
+                                           const rpc::JobConfig &job_config) {
   absl::WriterMutexLock lock(&mutex_);
   if (current_job_id_.IsNil()) {
     current_job_id_ = job_id;
   }
-  if (google::protobuf::util::MessageDifferencer::Equals(job_config_,
-                                                         kDefaultJobConfig)) {
+  if (!job_config_.has_value()) {
     job_config_ = job_config;
   }
+  RAY_CHECK(current_job_id_ == job_id);
 }
 
 int64_t WorkerContext::GetTaskDepth() const {
@@ -195,14 +196,15 @@ int64_t WorkerContext::GetTaskDepth() const {
   return task_depth_;
 }
 
-const JobID &WorkerContext::GetCurrentJobID() const {
+
+JobID WorkerContext::GetCurrentJobID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_job_id_;
 }
 
-const rpc::JobConfig &WorkerContext::GetCurrentJobConfig() const {
+rpc::JobConfig WorkerContext::GetCurrentJobConfig() const {
   absl::ReaderMutexLock lock(&mutex_);
-  return job_config_;
+  return job_config_.has_value() ? job_config_.value() : kDefaultJobConfig;
 }
 
 const TaskID &WorkerContext::GetCurrentTaskID() const {

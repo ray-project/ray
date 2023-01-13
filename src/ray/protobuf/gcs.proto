@@ -295,11 +295,6 @@ message GcsNodeInfo {
   string node_name = 12;
 }
 
-message HeartbeatTableData {
-  // Node id.
-  bytes node_id = 1;
-}
-
 message JobTableData {
   // The job ID.
   bytes job_id = 1;

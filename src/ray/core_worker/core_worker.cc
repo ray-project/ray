@@ -162,10 +162,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   if (options_.worker_type == WorkerType::DRIVER &&
       !options_.serialized_job_config.empty()) {
-    // Driver populates job_config through worker startup options.
+    // Driver populates the job config via initialization.
+    // Workers populates it when the first task is received.
     rpc::JobConfig job_config;
     job_config.ParseFromString(options_.serialized_job_config);
-    worker_context_.MayInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
+    worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
   }
 
   local_raylet_client_ =
@@ -873,6 +874,10 @@ CoreWorker::GetAllReferenceCounts() const {
 
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
+bool CoreWorker::HasOwner(const ObjectID &object_id) const {
+  return reference_counter_->HasOwner(object_id);
+}
+
 rpc::Address CoreWorker::GetOwnerAddressOrDie(const ObjectID &object_id) const {
   rpc::Address owner_address;
   auto status = GetOwnerAddress(object_id, &owner_address);
@@ -1206,9 +1211,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   std::ostringstream ids_stream;
 
   for (size_t i = 0; i < ids.size(); i++) {
-    rpc::Address unused_owner_address;
-    auto status = GetOwnerAddress(ids[i], &unused_owner_address);
-    if (status.IsObjectUnknownOwner()) {
+    if (!HasOwner(ids[i])) {
       ids_stream << ids[i] << " ";
       got_exception = true;
     }
@@ -1334,11 +1337,20 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
   for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
     auto current = iter++;
     const auto &mem_id = *current;
-    auto found = memory_store->GetIfExists(mem_id);
-    if (found != nullptr && found->IsInPlasmaError()) {
-      plasma_object_ids.insert(mem_id);
-      ready.erase(mem_id);
-      memory_object_ids.erase(current);
+    auto ready_iter = ready.find(mem_id);
+    if (ready_iter != ready.end()) {
+      std::vector<std::shared_ptr<RayObject>> found;
+      RAY_CHECK_OK(memory_store->Get({mem_id},
+                                     /*num_objects=*/1,
+                                     /*timeout=*/0,
+                                     worker_context,
+                                     /*remote_after_get=*/false,
+                                     &found));
+      if (found.size() == 1 && found[0]->IsInPlasmaError()) {
+        plasma_object_ids.insert(mem_id);
+        ready.erase(ready_iter);
+        memory_object_ids.erase(current);
+      }
     }
   }
 }
@@ -1369,9 +1381,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   std::ostringstream ids_stream;
 
   for (size_t i = 0; i < ids.size(); i++) {
-    rpc::Address unused_owner_address;
-    auto status = GetOwnerAddress(ids[i], &unused_owner_address);
-    if (status.IsObjectUnknownOwner()) {
+    if (!HasOwner(ids[i])) {
       ids_stream << ids[i] << " ";
       missing_owners += 1;
     }
@@ -1704,7 +1714,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &debugger_breakpoint,
     int64_t depth,
     const std::string &serialized_runtime_env_info,
-    const std::string &concurrency_group_name) {
+    const std::string &concurrency_group_name,
+    bool include_job_config) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1716,24 +1727,27 @@ void CoreWorker::BuildCommonTaskSpec(
     num_returns = 1;
   }
   RAY_CHECK(num_returns >= 0);
-  builder.SetCommonTaskSpec(task_id,
-                            name,
-                            function.GetLanguage(),
-                            function.GetFunctionDescriptor(),
-                            job_id,
-                            worker_context_.GetCurrentJobConfig(),
-                            current_task_id,
-                            task_index,
-                            caller_id,
-                            address,
-                            num_returns,
-                            returns_dynamic,
-                            required_resources,
-                            required_placement_resources,
-                            debugger_breakpoint,
-                            depth,
-                            override_runtime_env_info,
-                            concurrency_group_name);
+  builder.SetCommonTaskSpec(
+      task_id,
+      name,
+      function.GetLanguage(),
+      function.GetFunctionDescriptor(),
+      job_id,
+      include_job_config
+          ? std::optional<rpc::JobConfig>(worker_context_.GetCurrentJobConfig())
+          : std::optional<rpc::JobConfig>(),
+      current_task_id,
+      task_index,
+      caller_id,
+      address,
+      num_returns,
+      returns_dynamic,
+      required_resources,
+      required_placement_resources,
+      debugger_breakpoint,
+      depth,
+      override_runtime_env_info,
+      concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1781,7 +1795,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       required_resources,
                       debugger_breakpoint,
                       depth,
-                      task_options.serialized_runtime_env_info);
+                      task_options.serialized_runtime_env_info,
+                      /*concurrency_group_name*/ "",
+                      /*include_job_config*/ true);
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
@@ -1862,12 +1878,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       new_placement_resources,
                       "" /* debugger_breakpoint */,
                       depth,
-                      actor_creation_options.serialized_runtime_env_info);
+                      actor_creation_options.serialized_runtime_env_info,
+                      /*concurrency_group_name*/ "",
+                      /*include_job_config*/ true);
 
   // If the namespace is not specified, get it from the job.
-  const auto &ray_namespace = (actor_creation_options.ray_namespace.empty()
-                                   ? worker_context_.GetCurrentJobConfig().ray_namespace()
-                                   : actor_creation_options.ray_namespace);
+  const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
+                                  ? worker_context_.GetCurrentJobConfig().ray_namespace()
+                                  : actor_creation_options.ray_namespace);
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id,
       GetCallerId(),
@@ -2088,7 +2106,8 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       "",    /* debugger_breakpoint */
                       depth, /*depth*/
                       "{}",  /* serialized_runtime_env_info */
-                      task_options.concurrency_group_name);
+                      task_options.concurrency_group_name,
+                      /*include_job_config*/ false);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2152,7 +2171,8 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   if (recursive_success) {
     return Status::OK();
   } else {
-    return Status::UnknownError("Recursive task cancelation failed--check warning logs.");
+    return Status::UnknownError(
+        "Recursive task cancellation failed--check warning logs.");
   }
 }
 
@@ -2251,7 +2271,7 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
 
   // This call needs to be blocking because we can't return until we get the
   // response from the RPC.
-  const auto &ray_namespace = worker_context_.GetCurrentJobConfig().ray_namespace();
+  const auto ray_namespace = worker_context_.GetCurrentJobConfig().ray_namespace();
   const auto status =
       gcs_client_->Actors().SyncListNamedActors(all_namespaces, ray_namespace, actors);
   if (status.IsTimedOut()) {
@@ -2768,8 +2788,12 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                            send_reply_callback)) {
     return;
   }
-  worker_context_.MayInitializeJobInfo(JobID::FromBinary(request.task_spec().job_id()),
-                                       request.task_spec().job_config());
+  if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
+      request.task_spec().type() == TaskType::NORMAL_TASK) {
+    worker_context_.MaybeInitializeJobInfo(
+        JobID::FromBinary(request.task_spec().job_id()),
+        request.task_spec().job_config());
+  }
   // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
   std::string func_name =
@@ -3628,7 +3652,7 @@ void CoreWorker::SetActorTitle(const std::string &title) {
   actor_title_ = title;
 }
 
-const rpc::JobConfig &CoreWorker::GetJobConfig() const {
+rpc::JobConfig CoreWorker::GetJobConfig() const {
   return worker_context_.GetCurrentJobConfig();
 }
 

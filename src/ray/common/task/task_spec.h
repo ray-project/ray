@@ -218,7 +218,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   JobID JobId() const;
 
-  rpc::JobConfig JobConfig() const;
+  const rpc::JobConfig &JobConfig() const;
 
   TaskID ParentTaskId() const;
 

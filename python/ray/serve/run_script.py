@@ -2,6 +2,7 @@ import argparse
 import pathlib
 import sys
 import time
+import traceback
 import yaml
 
 from ray import serve
@@ -106,6 +107,15 @@ def main():
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
+        serve.shutdown()
+        sys.exit()
+
+    except Exception:
+        traceback.print_exc()
+        cli_logger.error(
+            "Received unexpected error, see console logs for more details. Shutting "
+            "down..."
+        )
         serve.shutdown()
         sys.exit()
 

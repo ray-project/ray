@@ -56,7 +56,10 @@ def attempt_count_timesteps(tensor_dict: dict):
         and not (tf and tf.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]))
         and len(tensor_dict[SampleBatch.SEQ_LENS]) > 0
     ):
-        return sum(tensor_dict[SampleBatch.SEQ_LENS])
+        if torch and torch.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]):
+            return tensor_dict[SampleBatch.SEQ_LENS].sum().item()
+        else:
+            return sum(tensor_dict[SampleBatch.SEQ_LENS])
 
     for k, v in copy_.items():
         assert isinstance(k, str), tensor_dict
@@ -269,7 +272,10 @@ class SampleBatch(dict):
             and not (tf and tf.is_tensor(seq_lens_))
             and len(seq_lens_) > 0
         ):
-            self.max_seq_len = max(seq_lens_)
+            if torch and torch.is_tensor(seq_lens_):
+                self.max_seq_len = seq_lens_.max().item()
+            else:
+                self.max_seq_len = max(seq_lens_)
 
         if self._is_training is None:
             self._is_training = self.pop("is_training", False)
@@ -348,7 +354,7 @@ class SampleBatch(dict):
             >>> print(b1.concat(b2)) # doctest: +SKIP
             {"a": np.array([1, 2, 3, 4, 5])}
         """
-        return self.concat_samples([self, other])
+        return concat_samples([self, other])
 
     @PublicAPI
     def copy(self, shallow: bool = False) -> "SampleBatch":
@@ -1376,7 +1382,7 @@ class MultiAgentBatch:
 
     @staticmethod
     @PublicAPI
-    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
+    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=True)
     def concat_samples(samples: List["MultiAgentBatch"]) -> "MultiAgentBatch":
         return concat_samples_into_ma_batch(samples)
 

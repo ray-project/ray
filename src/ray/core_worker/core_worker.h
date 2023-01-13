@@ -326,7 +326,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
-  const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
+  JobID GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
   const int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
 
@@ -1086,7 +1086,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 void *python_future);
 
   // Get serialized job configuration.
-  const rpc::JobConfig &GetJobConfig() const;
+  rpc::JobConfig GetJobConfig() const;
 
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
@@ -1129,7 +1129,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
-      const std::string &concurrency_group_name = "");
+      const std::string &concurrency_group_name = "",
+      bool include_job_config = false);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1168,6 +1169,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Record metric for executed and owned tasks. Will be run periodically.
   void RecordMetrics();
+
+  /// Check if there is an owner of the object from the ReferenceCounter.
+  bool HasOwner(const ObjectID &object_id) const;
 
   /// Helper method to fill in object status reply given an object.
   void PopulateObjectStatus(const ObjectID &object_id,
