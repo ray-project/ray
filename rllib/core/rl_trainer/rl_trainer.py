@@ -1,6 +1,21 @@
 import abc
-from typing import Any, List, Mapping, Sequence, Tuple, Type, TYPE_CHECKING, Union
 
+import logging
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Hashable,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
+
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -8,23 +23,24 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
 
-if TYPE_CHECKING:
-    import torch
-    import tensorflow as tf
+torch, _ = try_import_torch()
+tf1, tf, tfv = try_import_tf()
+
+logger = logging.getLogger(__name__)
 
 Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
-ParamType = Sequence[Union["torch.Tensor", "tf.Variable"]]
-ParamOptimizerPairs = List[Tuple[ParamType, Optimizer]]
+ParamType = Union["torch.Tensor", "tf.Variable"]
+ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
+ParamRef = Hashable
+ParamDictType = Dict[ParamRef, ParamType]
 
 
 class RLTrainer:
-    """Base class for rllib algorithm trainers.
+    """Base class for RLlib algorithm trainers.
 
     Args:
         module_class: The (MA)RLModule class to use.
         module_kwargs: The kwargs for the (MA)RLModule.
-        optimizer_class: The optimizer class to use.
-        optimizer_kwargs: The kwargs for the optimizer.
         scaling_config: A mapping that holds the world size and rank of this
             trainer. Note this is only used for distributed training.
         distributed: Whether this trainer is distributed or not.
@@ -32,20 +48,35 @@ class RLTrainer:
     Abstract Methods:
         compute_gradients: Compute gradients for the module being optimized.
         apply_gradients: Apply gradients to the module being optimized with respect to
-            a loss that is computed by the optimizer.
+            a loss that is computed by the optimizer. Both compute_gradients and
+            apply_gradients are meant for framework-specific specializations.
+        compute_loss: Compute the loss for the module being optimized. Override this
+            method to customize the loss function of the multi-agent RLModule that is
+            being optimized.
+        configure_optimizers: Configure the optimizers for the module being optimized.
+            Override this to cutomize the optimizers and the parameters that they are
+            optimizing.
+
 
     Example:
         .. code-block:: python
 
-        trainer = MyRLTrainer(module_class, module_kwargs, optimizer_class,
-                optimizer_kwargs, scaling_config)
-        trainer.init_trainer()
+        trainer = MyRLTrainer(
+            module_class,
+            module_kwargs,
+            scaling_config,
+            optimizer_config
+        )
+        trainer.build()
         batch = ...
         results = trainer.update(batch)
 
         # add a new module, perhaps for league based training or lru caching
-        trainer.add_module("new_player", NewPlayerCls, new_player_kwargs,
-            NewPlayerOptimCls, new_player_optim_kwargs)
+        trainer.add_module(
+            module_id="new_player",
+            module_cls=NewPlayerCls,
+            module_kwargs=new_player_kwargs,
+        )
 
         batch = ...
         results = trainer.update(batch)  # will train previous and new modules.
@@ -84,8 +115,15 @@ class RLTrainer:
         self.in_test = in_test
 
         # These are the attributes that are set during build
-        self._params: List[ParamType] = None
-        self._optimizers: List[Optimizer] = None
+        self._module: MultiAgentRLModule = None
+        # These are set for properly applying optimizers and adding or removing modules.
+        self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
+        self._param_to_optim: Dict[ParamRef, Optimizer] = {}
+        self._params: ParamDictType = {}
+
+    @property
+    def module(self) -> MultiAgentRLModule:
+        return self._module
 
     @abc.abstractmethod
     def configure_optimizers(self) -> ParamOptimizerPairs:
@@ -205,10 +243,29 @@ class RLTrainer:
             self.do_distributed_update(batch)
         return self.compile_results(batch, fwd_out, loss, post_processed_gradients)
 
+    def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
+        """Apply additional non-gradient based updates to this Trainer.
+
+        For example, this could be used to do a polyak averaging update
+        of a target network in off policy algorithms like SAC or DQN.
+
+        This can be called on its own, or via a call to a `TrainerRunner`
+        that is managing multiple RLTrainer instances via a call to
+        `TrainerRunner.additional_update`.
+
+        Args:
+            *args: Arguments to use for the update.
+            **kwargs: Keyword arguments to use for the additional update.
+
+        Returns:
+            A dictionary of results from the update
+        """
+        raise NotImplementedError
+
     @abc.abstractmethod
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]]
-    ) -> Mapping[str, Any]:
+    ) -> ParamDictType:
         """Perform an update on self._module.
 
         For example compute and apply gradients to self._module if
@@ -222,7 +279,7 @@ class RLTrainer:
         """
 
     @abc.abstractmethod
-    def apply_gradients(self, gradients: Mapping[str, Any]) -> None:
+    def apply_gradients(self, gradients: Dict[ParamRef, TensorType]) -> None:
         """Perform an update on self._module
 
         Args:
@@ -252,9 +309,12 @@ class RLTrainer:
 
     def add_module(
         self,
+        *,
         module_id: ModuleID,
         module_cls: Type[RLModule],
         module_kwargs: Mapping[str, Any],
+        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         """Add a module to the trainer.
 
@@ -262,15 +322,37 @@ class RLTrainer:
             module_id: The id of the module to add.
             module_cls: The module class to add.
             module_kwargs: The config for the module.
+            set_optimizer_fn: A function that takes in the module and returns a list of
+                (param, optimizer) pairs. Each element in the tuple describes a
+                parameter group that share the same optimizer object, if None, the
+                default optimizer_cls will be used with all the parameters from the
+                module.
+            optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
+                should be provided.
         """
         module = module_cls.from_model_config(**module_kwargs)
-        self._module.add_module(module_id, module)
 
-        # TODO: Everytime we add a module, the optimizer gets re-initialized. This is
-        # bad. Fix it.
-        # rerun make_optimizers to update the params and optimizer list with the new
-        # module
-        self._make_optimizers()
+        # construct a default set_optimizer_fn if not provided
+        if set_optimizer_fn is None:
+            if optimizer_cls is None:
+                raise ValueError(
+                    "Either set_optimizer_fn or optimizer_cls must be provided."
+                )
+
+            def set_optimizer_fn(module):
+                optimizer = self.get_optimizer_obj(module, optimizer_cls)
+                parameters = self.get_parameters(module)
+                return [(parameters, optimizer)]
+
+        for param_seq, optimizer in set_optimizer_fn(module):
+            self._optim_to_param[optimizer] = []
+            for param in param_seq:
+                param_ref = self.get_param_ref(param)
+                self._optim_to_param[optimizer].append(param_ref)
+                self._params[param_ref] = param
+                self._param_to_optim[param_ref] = optimizer
+
+        self._module.add_module(module_id, module)
 
     def remove_module(self, module_id: ModuleID) -> None:
         """Remove a module from the trainer.
@@ -279,10 +361,20 @@ class RLTrainer:
             module_id: The id of the module to remove.
 
         """
-        self._module.remove_module(module_id)
+        module = self._module[module_id]
 
-        # rerun make_optimizers to update the params and optimizer
-        self._make_optimizers()
+        parameters = self.get_parameters(module)
+        for param in parameters:
+            param_ref = self.get_param_ref(param)
+            if param_ref in self._params:
+                del self._params[param_ref]
+            if param_ref in self._param_to_optim:
+                optimizer = self._param_to_optim[param_ref]
+                if optimizer in self._optim_to_param:
+                    del self._optim_to_param[optimizer]
+                del self._param_to_optim[param_ref]
+
+        self._module.remove_module(module_id)
 
     def _make_module(self) -> MultiAgentRLModule:
         """Construct the multi-agent RL module for the trainer.
@@ -309,18 +401,6 @@ class RLTrainer:
 
         return module
 
-    def _make_optimizers(self) -> None:
-        """Initialize the optimizers for the module.
-
-        This method runs the configure_optimizers() and separates the parameters and
-        optimizers in two distinct lists so that they can be iterated over separately.
-        """
-        self._params = []
-        self._optimizers = []
-        for param, optimizer in self.configure_optimizers():
-            self._params.append(param)
-            self._optimizers.append(optimizer)
-
     def build(self) -> None:
         """Initialize the model."""
         if self.distributed:
@@ -328,7 +408,13 @@ class RLTrainer:
         else:
             self._module = self._make_module()
 
-        self._make_optimizers()
+        for param_seq, optimizer in self.configure_optimizers():
+            self._optim_to_param[optimizer] = []
+            for param in param_seq:
+                param_ref = self.get_param_ref(param)
+                self._optim_to_param[optimizer].append(param_ref)
+                self._params[param_ref] = param
+                self._param_to_optim[param_ref] = optimizer
 
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.
@@ -353,3 +439,49 @@ class RLTrainer:
             The distributed module.
         """
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def get_param_ref(self, param: ParamType) -> Hashable:
+        """Returns a reference to a parameter.
+
+        This should be overriden in framework specific trainer. For example in torch it
+        will return the parameter itself, while in tf it returns the .ref() of the
+        variable. The purpose is to retrieve a unique reference to the parameters.
+
+        Args:
+            param: The parameter to get the reference to.
+
+        Returns:
+            A reference to the parameter.
+        """
+
+    @abc.abstractmethod
+    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+        """Returns the parameters of a module.
+
+        This should be overriden in framework specific trainer. For example in torch it
+        will return .parameters(), while in tf it returns .trainable_variables.
+
+        Args:
+            module: The module to get the parameters from.
+
+        Returns:
+            The parameters of the module.
+        """
+
+    @abc.abstractmethod
+    def get_optimizer_obj(
+        self, module: RLModule, optimizer_cls: Type[Optimizer]
+    ) -> Optimizer:
+        """Returns the optimizer instance of type optimizer_cls from the module
+
+        In torch this is the optimizer object initialize with module parameters. In tf
+        this is initialized without module parameters.
+
+        Args:
+            module: The module of type RLModule to get the optimizer from.
+            optimizer_cls: The optimizer class to use.
+
+        Returns:
+            The optimizer object.
+        """
