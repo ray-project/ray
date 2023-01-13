@@ -65,7 +65,9 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
         original = ctx.block_splitting_enabled
 
         ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
-        ctx.block_splitting_enabled = block_split
+        if not block_split:
+            # Setting infinite block size effectively disables block splitting.
+            ctx.target_max_block_size = float("inf")
         ds = ray.data.read_datasource(
             SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
         )
@@ -1498,6 +1500,49 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     assert ds._plan.execute()._num_computed() == 16
     assert ds.take(100) == list(range(100))
     assert ds._plan.execute()._num_computed() == 20
+
+
+def test_dataset_repr(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=10)
+    assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    ds = ds.map_batches(lambda x: x)
+    assert repr(ds) == (
+        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    )
+    ds = ds.filter(lambda x: x > 0)
+    assert repr(ds) == (
+        "Filter\n"
+        "+- MapBatches\n"
+        "   +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    )
+    ds = ds.random_shuffle()
+    assert repr(ds) == (
+        "RandomShuffle\n"
+        "+- Filter\n"
+        "   +- MapBatches\n"
+        "      +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    )
+    ds.fully_executed()
+    assert repr(ds) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    ds = ds.map_batches(lambda x: x)
+    assert repr(ds) == (
+        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    )
+    ds1, ds2 = ds.split(2)
+    assert (
+        repr(ds1)
+        == f"Dataset(num_blocks=5, num_rows={ds1.count()}, schema=<class 'int'>)"
+    )
+    assert (
+        repr(ds2)
+        == f"Dataset(num_blocks=5, num_rows={ds2.count()}, schema=<class 'int'>)"
+    )
+    ds3 = ds1.union(ds2)
+    assert repr(ds3) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    ds = ds.zip(ds3)
+    assert repr(ds) == (
+        "Zip\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    )
 
 
 @pytest.mark.parametrize("lazy", [False, True])
