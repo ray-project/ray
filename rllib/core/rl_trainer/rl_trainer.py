@@ -2,7 +2,6 @@ import abc
 
 import logging
 import numpy as np
-import tree  # pip install dm-tree
 from typing import (
     Any,
     Callable,
@@ -218,12 +217,16 @@ class RLTrainer:
         Returns:
             A dictionary of results.
         """
-
+        # TODO (Kourosh): This method assumes that all the modules with in the
+        # marl_module are accessible via looping through it rl_modules. This may not be
+        # true for centralized critic for example. Therefore we need a better
+        # generalization of this base-class implementation.
         loss_numpy = convert_to_numpy(postprocessed_loss)
         batch = convert_to_numpy(batch)
-        breakpoint()
-        post_processed_gradients = convert_to_numpy(post_processed_gradients)
-        mean_grads = [np.mean(grad) for grad in tree.flatten(post_processed_gradients)]
+        mean_grads = [
+            np.mean(grad)
+            for grad in convert_to_numpy(post_processed_gradients.values())
+        ]
         ret = {
             "loss": loss_numpy,
             "mean_gradient": np.mean(mean_grads),
@@ -235,7 +238,8 @@ class RLTrainer:
             mean_ws = {}
             for module_id in self._module.keys():
                 m = self._module[module_id]
-                mean_ws[module_id] = np.mean([w.mean() for w in m.get_weights()])
+                parameters = convert_to_numpy(self.get_parameters(m))
+                mean_ws[module_id] = np.mean([w.mean() for w in parameters])
             ret["mean_weight"] = mean_ws
         return ret
 
@@ -267,8 +271,9 @@ class RLTrainer:
     @abc.abstractmethod
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
         """Converts a MultiAgentBatch to a NestedDict of Tensors.
-        
-        This should convert the input batch from a MultiAgentBatch format to framework specific tensor format located on the correct device.
+
+        This should convert the input batch from a MultiAgentBatch format to framework 
+        specific tensor format located on the correct device.
 
         Args:
             batch: A MultiAgentBatch.

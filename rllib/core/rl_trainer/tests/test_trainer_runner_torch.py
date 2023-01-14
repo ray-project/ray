@@ -35,7 +35,7 @@ class TestTrainerRunner(unittest.TestCase):
                 "action_space": env.action_space,
                 "model_config": {"hidden_dim": 32},
             },
-            optimizer_config={"lr": 1e-3},
+            optimizer_config={"lr": 1e-1},
             in_test=True,
         )
         runner = TrainerRunner(

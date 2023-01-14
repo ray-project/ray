@@ -105,22 +105,32 @@ class TorchRLTrainer(RLTrainer):
         class DDPRLModuleWrapper(DDP):
             def forward_train(self, *args, **kwargs):
                 return self.module.forward_train(*args, **kwargs)
-        
+
+            def get_weights(self, *args, **kwargs):
+                return self.module.get_weights(*args, **kwargs)
+
+            def set_weights(self, *args, **kwargs):
+                self.module.set_weights(*args, **kwargs)
+
         if self._gpu_id is not None:
 
-            # if the module is a MultiAgentRLModule and nn.Module we can simply assume 
-            # all the submodules are registered. Otherwise, we need to loop through 
-            # each submodule and move it to the correct device. 
-            # TODO (Kourosh): This can result in missing modules if the user does not 
-            # register them in the MultiAgentRLModule. We should find a better way to 
+            # if the module is a MultiAgentRLModule and nn.Module we can simply assume
+            # all the submodules are registered. Otherwise, we need to loop through
+            # each submodule and move it to the correct device.
+            # TODO (Kourosh): This can result in missing modules if the user does not
+            # register them in the MultiAgentRLModule. We should find a better way to
             # handle this.
             if isinstance(module, torch.nn.Module):
                 module.to(self._device)
-                module = DDPRLModuleWrapper(module, device_ids=[self._gpu_id], process_group=pg)
+                module = DDPRLModuleWrapper(
+                    module, device_ids=[self._gpu_id], process_group=pg
+                )
             else:
                 for key in module.keys():
                     module[key].to(self._device)
-                    module[key] = DDPRLModuleWrapper(module[key], device_ids=[self._gpu_id], process_group=pg)
+                    module[key] = DDPRLModuleWrapper(
+                        module[key], device_ids=[self._gpu_id], process_group=pg
+                    )
         else:
             if isinstance(module, torch.nn.Module):
                 module = DDPRLModuleWrapper(module, process_group=pg)
@@ -133,7 +143,10 @@ class TorchRLTrainer(RLTrainer):
     def _convert_batch_type(self, batch: MultiAgentBatch):
         batch = NestedDict(batch.policy_batches)
         batch = NestedDict(
-            {k: torch.as_tensor(v, dtype=torch.float32, device=self._device) for k, v in batch.items()}
+            {
+                k: torch.as_tensor(v, dtype=torch.float32, device=self._device)
+                for k, v in batch.items()
+            }
         )
         return batch
 
