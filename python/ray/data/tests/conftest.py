@@ -8,7 +8,7 @@ import numpy as np
 
 import ray
 
-from ray.data.block import BlockAccessor
+from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.tests.mock_server import *  # noqa
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 from ray.air.constants import TENSOR_COLUMN_NAME
@@ -385,3 +385,33 @@ def disable_pyarrow_version_check():
     os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"] = "1"
     yield
     del os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"]
+
+
+# ===== Observability & Logging Fixtures =====
+@pytest.fixture
+def stage_two_block():
+    block_params = {
+        "num_rows": [10000, 5000],
+        "size_bytes": [100, 50],
+        "max_rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
+        "wall_time": [5, 10],
+        "cpu_time": [1.2, 3.4],
+        "node_id": ["a1", "b2"],
+    }
+    block_meta_list = []
+    for i in range(len(block_params["num_rows"])):
+        block_exec_stats = BlockExecStats()
+        block_exec_stats.wall_time_s = block_params["wall_time"][i]
+        block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
+        block_exec_stats.node_id = block_params["node_id"][i]
+        block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
+        block_meta_list.append(
+            BlockMetadata(
+                num_rows=block_params["num_rows"][i],
+                size_bytes=block_params["size_bytes"][i],
+                schema=None,
+                input_files=None,
+                exec_stats=block_exec_stats,
+            )
+        )
+    return block_params, block_meta_list
