@@ -868,7 +868,7 @@ async def test_api_manager_list_tasks(state_api_manager):
 )
 @pytest.mark.asyncio
 async def test_api_manager_summarize_tasks(state_api_manager):
-    data_source_client = state_api_manager._client
+    data_source_client = state_api_manager.data_source_client
 
     node_id = NodeID.from_random()
     first_task_name = "1"
