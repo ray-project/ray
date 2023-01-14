@@ -102,7 +102,7 @@ parts:
                 title: "Using Search Spaces"
               - file: tune/tutorials/tune-stopping
                 title: "How to Stop and Resume"
-              - file: tune/tutorials/tune-syncing
+              - file: tune/tutorials/tune-storage
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
               - file: tune/tutorials/tune_get_data_in_and_out
