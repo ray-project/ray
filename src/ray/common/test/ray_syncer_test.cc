@@ -785,9 +785,9 @@ class SyncerReactorTest : public ::testing::Test {
   void SetUp() override {
     rpc_service_ = std::make_unique<MockRaySyncerService>(
         io_context_,
-        [this](auto msg) { server_received_messages.push_back(msg); },
+        [this](auto msg) { server_received_message.set_value(msg); },
         [this](auto &node, bool restart) {
-          server_cleanup_cb.push_back(std::make_pair(node, restart));
+          server_cleanup.set_value(std::make_pair(node, restart));
         });
     grpc::ServerBuilder builder;
     builder.AddListeningPort("0.0.0.0:18990", grpc::InsecureServerCredentials());
@@ -798,14 +798,15 @@ class SyncerReactorTest : public ::testing::Test {
     cli_channel = MakeChannel("18990");
     auto cli_stub = ray::rpc::syncer::RaySyncer::NewStub(cli_channel);
     cli_reactor = std::make_unique<RayClientBidiReactor>(
-        rpc_service_->node_id.Binary(),
-        client_node_id.Binary(),
-        io_context_,
-        [this](auto msg) { client_received_messages.emplace_back(msg); },
-        [this](const std::string &n, bool r) {
-          client_cleanup_cb.push_back(std::make_pair(n, r));
-        },
-        std::move(cli_stub));
+                      rpc_service_->node_id.Binary(),
+                      client_node_id.Binary(),
+                      io_context_,
+                      [this](auto msg) { client_received_message.set_value(msg); },
+                      [this](const std::string &n, bool r) {
+                        client_cleanup.set_value(std::make_pair(n, r));
+                      },
+                      std::move(cli_stub))
+                      .release();
 
     work_guard_ = std::make_unique<work_guard_type>(io_context_.get_executor());
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
@@ -825,8 +826,20 @@ class SyncerReactorTest : public ::testing::Test {
     io_context_.stop();
     thread_->join();
   }
+
   std::pair<RaySyncerBidiReactorBase *, RaySyncerBidiReactorBase *> GetReactors() {
-    return std::make_pair(rpc_service_->reactor, cli_reactor.get());
+    return std::make_pair(rpc_service_->reactor, cli_reactor);
+  }
+
+  std::pair<std::string, std::string> GetNodeID() {
+    return std::make_pair(rpc_service_->node_id.Binary(), client_node_id.Binary());
+  }
+
+  void ResetPromise() {
+    server_received_message = std::promise<std::shared_ptr<const RaySyncMessage>>();
+    client_received_message = std::promise<std::shared_ptr<const RaySyncMessage>>();
+    server_cleanup = std::promise<std::pair<std::string, bool>>();
+    client_cleanup = std::promise<std::pair<std::string, bool>>();
   }
 
   instrumented_io_context io_context_;
@@ -834,23 +847,58 @@ class SyncerReactorTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_;
   std::unique_ptr<MockRaySyncerService> rpc_service_;
   std::unique_ptr<grpc::Server> server;
-  std::vector<std::shared_ptr<const RaySyncMessage>> server_received_messages;
-  std::vector<std::shared_ptr<const RaySyncMessage>> client_received_messages;
-  std::vector<std::pair<const std::string &, bool>> server_cleanup_cb;
-  std::vector<std::pair<const std::string &, bool>> client_cleanup_cb;
+  std::promise<std::shared_ptr<const RaySyncMessage>> server_received_message;
+  std::promise<std::shared_ptr<const RaySyncMessage>> client_received_message;
+  std::promise<std::pair<std::string, bool>> server_cleanup;
+  std::promise<std::pair<std::string, bool>> client_cleanup;
 
   grpc::ClientContext cli_context;
-  std::unique_ptr<RayClientBidiReactor> cli_reactor;
+  RayClientBidiReactor *cli_reactor;
   std::shared_ptr<grpc::Channel> cli_channel;
   NodeID client_node_id;
 };
 
 TEST_F(SyncerReactorTest, TestReactor) {
-  auto [n1, n2] = GetReactors();
-  ASSERT_TRUE(n1 != nullptr);
-  ASSERT_TRUE(n2 != nullptr);
-  n2->Disconnect();
-  n1->Disconnect();
+  auto [s, c] = GetReactors();
+  auto [node_s, node_c] = GetNodeID();
+  ASSERT_TRUE(s != nullptr);
+  ASSERT_TRUE(c != nullptr);
+
+  auto msg_s = std::make_shared<RaySyncMessage>();
+  msg_s->set_version(1);
+  msg_s->set_node_id(node_s);
+
+  s->PushToSendingQueue(msg_s);
+
+  auto msg_c = std::make_shared<RaySyncMessage>();
+  msg_c->set_version(2);
+  msg_c->set_node_id(node_c);
+
+  c->PushToSendingQueue(msg_c);
+  // Make sure sending is working
+  auto server_received = server_received_message.get_future().get();
+  auto client_received = client_received_message.get_future().get();
+  ResetPromise();
+  ASSERT_EQ(server_received->version(), 2);
+  ASSERT_EQ(server_received->node_id(), node_c);
+  ASSERT_EQ(client_received->version(), 1);
+  ASSERT_EQ(client_received->node_id(), node_s);
+
+  s->Disconnect();
+  auto c_cleanup = client_cleanup.get_future().get();
+  ASSERT_EQ(node_s, c_cleanup.first);
+  ASSERT_EQ(false, c_cleanup.second);
+}
+
+TEST_F(SyncerReactorTest, TestReactorFailure) {
+  auto [s, c] = GetReactors();
+  auto [node_s, node_c] = GetNodeID();
+  ASSERT_TRUE(s != nullptr);
+  ASSERT_TRUE(c != nullptr);
+  server->Shutdown();
+  auto c_cleanup = client_cleanup.get_future().get();
+  ASSERT_EQ(node_s, c_cleanup.first);
+  ASSERT_EQ(true, c_cleanup.second);
 }
 
 }  // namespace syncer
