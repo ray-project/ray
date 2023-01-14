@@ -55,7 +55,7 @@ RUN sudo groupadd crate \
         && sudo mv crate.yml /crate/config/crate.yml \
         && sudo chown 1000 log4j2.properties \
         && sudo mv log4j2.properties /crate/config/log4j2.properties \
-        && rm LICENSE crate-5.1.2.tar.gz README.md README_CN.md crash_standalone_0.28.0.asc crate-5.1.2.tar.gz.asc
+        && rm crate-5.1.2.tar.gz
 
 RUN curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0 \
         && curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0.asc \
