@@ -434,6 +434,7 @@ def test_operation_stats(monkeypatch, shutdown_only):
         wait_for_condition(verify, timeout=60)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 def test_per_func_name_stats(shutdown_only):
     # Test operation stats are available when flag is on.
     comp_metrics = [
