@@ -60,6 +60,20 @@ class TestPPO(unittest.TestCase):
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether PPO can be built with all frameworks."""
 
+        model_config = {
+            "torch": dict(
+                # Settings in case we use an LSTM.
+                lstm_cell_size=10,
+                max_seq_len=20,
+            ),
+            "tf2": dict(
+                custom_model_config=dict(
+                    policy_hiddens=[32, 32],
+                    vf_hiddens=[32, 32],
+                )
+            ),
+        }
+
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
@@ -79,7 +93,7 @@ class TestPPO(unittest.TestCase):
                 ),
             )
             .rollouts(
-                num_rollout_workers=1,
+                num_rollout_workers=0,
                 # Test with compression.
                 compress_observations=True,
                 enable_connectors=True,
@@ -92,7 +106,7 @@ class TestPPO(unittest.TestCase):
 
         # TODO (Kourosh): for now just do torch
         for fw in framework_iterator(
-            config, frameworks=("torch"), with_eager_tracing=True
+            config, frameworks=("torch", "tf2"), with_eager_tracing=False
         ):
             # TODO (Kourosh) Bring back "FrozenLake-v1" and "MsPacmanNoFrameskip-v4"
             for env in ["CartPole-v1", "Pendulum-v1"]:
@@ -100,23 +114,12 @@ class TestPPO(unittest.TestCase):
                 # TODO (Kourosh): for now just do lstm=False
                 for lstm in [False]:
                     print("LSTM={}".format(lstm))
-                    config.training(
-                        model=dict(
-                            use_lstm=lstm,
-                            lstm_use_prev_action=lstm,
-                            lstm_use_prev_reward=lstm,
-                            vf_share_layers=lstm,
-                        )
-                    )
+                    config.training(model=model_config[fw])
 
                     algo = config.build(env=env)
                     policy = algo.get_policy()
                     entropy_coeff = algo.get_policy().entropy_coeff
                     lr = policy.cur_lr
-                    if fw == "tf":
-                        entropy_coeff, lr = policy.get_session().run(
-                            [entropy_coeff, lr]
-                        )
                     check(entropy_coeff, 0.1)
                     check(lr, config.lr)
 
@@ -148,7 +151,7 @@ class TestPPO(unittest.TestCase):
         obs = np.array(0)
 
         # TODO (Kourosh) Test against all frameworks.
-        for fw in framework_iterator(config, frameworks=("torch")):
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             # Default Agent should be setup with StochasticSampling.
             trainer = config.build()
             # explore=False, always expect the same (deterministic) action.

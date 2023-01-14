@@ -10,7 +10,7 @@ from ray.rllib.evaluation.postprocessing import (
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_mixins import (
+from ray.rllib.policy.tf_mixins import (
     EntropyCoeffSchedule,
     KLCoeffMixin,
     LearningRateSchedule,
@@ -18,10 +18,8 @@ from ray.rllib.policy.torch_mixins import (
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.numpy import convert_to_numpy
 
 from ray.rllib.utils.tf_utils import (
-    minimize_and_clip,
     explained_variance,
     warn_if_infinite_kl_divergence,
 )
@@ -76,7 +74,6 @@ class PPOTfPolicyWithRLModule(
         KLCoeffMixin.__init__(self, config)
 
         self.maybe_initialize_optimizer_and_loss()
-        self.stats = {}
 
     @override(EagerTFPolicyV2)
     def loss(
@@ -85,7 +82,7 @@ class PPOTfPolicyWithRLModule(
         dist_class: Type[ActionDistribution],
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        fwd_out_module = model.forward_train(dict(train_batch))
+        fwd_out_module = model.forward_train(train_batch)
 
         curr_probs = fwd_out_module[SampleBatch.ACTION_LOGP]
         old_probs = train_batch[SampleBatch.ACTION_LOGP]
@@ -101,21 +98,34 @@ class PPOTfPolicyWithRLModule(
             likelihood_ratio * advantages, clipped_likelihood * advantages
         )
 
-        entropy_objective = self.entropy_coeff * fwd_out_module["entropy"]
+        entropy_objective = tf.math.reduce_mean(
+            self.entropy_coeff * fwd_out_module["entropy"]
+        )
 
         vf_loss = tf.math.square(
-            fwd_out_module["vf"] - train_batch[Postprocessing.VALUE_TARGETS]
+            fwd_out_module[SampleBatch.VF_PREDS]
+            - train_batch[Postprocessing.VALUE_TARGETS]
         )
+
+        prev_action_dist_cls = fwd_out_module[SampleBatch.ACTION_DIST].__class__
+        prev_action_dist_inputs = fwd_out_module[SampleBatch.ACTION_DIST_INPUTS]
+        prev_action_dist = prev_action_dist_cls(prev_action_dist_inputs, model=None)
+        current_prob_dist = fwd_out_module[SampleBatch.ACTION_DIST]
+        kl = prev_action_dist.kl(current_prob_dist)
+        mean_kl = tf.math.reduce_mean(kl)
+        warn_if_infinite_kl_divergence(self, mean_kl)
 
         loss = -(ppo_clipped_objective + entropy_objective - vf_loss)
-
+        loss = tf.math.reduce_mean(loss)
         self.stats["total_loss"] = loss
-        self.stats["mean_policy_loss"] = ppo_clipped_objective
+        self.stats["mean_policy_loss"] = tf.math.reduce_mean(ppo_clipped_objective)
         self.stats["mean_vf_loss"] = tf.math.reduce_mean(vf_loss)
         self.stats["vf_explained_var"] = explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS], fwd_out_module["vf"]
+            train_batch[Postprocessing.VALUE_TARGETS],
+            fwd_out_module[SampleBatch.VF_PREDS],
         )
-        self.stats["mean_entropy"] = fwd_out_module["entropy"]
+        self.stats["mean_entropy"] = tf.math.reduce_mean(fwd_out_module["entropy"])
+        self.stats["kl"] = mean_kl
 
         return loss
 
@@ -131,15 +141,12 @@ class PPOTfPolicyWithRLModule(
     @override(EagerTFPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         return {
-            "cur_kl_coeff": tf.cast(self.kl_coeff, tf.float64),
+            "mean_entropy": self.stats["mean_entropy"],
+            "vf_explained_var": self.stats["vf_explained_var"],
             "cur_lr": tf.cast(self.cur_lr, tf.float64),
-            "total_loss": self._total_loss,
-            "policy_loss": self._mean_policy_loss,
-            "vf_loss": self._mean_vf_loss,
-            "vf_explained_var": explained_variance(
-                train_batch[Postprocessing.VALUE_TARGETS], self._value_fn_out
-            ),
-            "kl": self._mean_kl_loss,
-            "entropy": self._mean_entropy,
             "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
+            "total_loss": self.stats["total_loss"],
+            "vf_loss": self.stats["mean_vf_loss"],
+            "policy_loss": self.stats["mean_policy_loss"],
+            "kl": self.stats["kl"],
         }
