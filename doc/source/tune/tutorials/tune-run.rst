@@ -1,10 +1,10 @@
-Running Basic Experiments
-=========================
+Running Basic Tune Experiments
+==============================
 
 The most common way to use Tune is also the simplest: as a parallel experiment runner. If you can define experiment trials in a Python function, you can use Tune to run hundreds to thousands of independent trial instances in a cluster. Tune manages trial execution, status reporting, and fault tolerance.
 
-Running ``N`` Independent Trials in Parallel
---------------------------------------------
+Running Independent Tune Trials in Parallel
+-------------------------------------------
 
 As a general example, let's consider executing ``N`` independent model training trials using Tune as a simple grid sweep. Each trial can execute different code depending on a passed-in config dictionary.
 
@@ -69,8 +69,8 @@ The final result objects contain finished trial metadata:
     Result(metrics={'score': 'model_1', 'other_data': Ellipsis, 'done': True, 'trial_id': '8d627_00001', 'experiment_tag': '1_model_id=model_1'}, error=None, log_dir=PosixPath('/home/ubuntu/ray_results/train_model_2022-09-21_10-19-26/train_model_8d627_00001_1_model_id=model_1_2022-09-21_10-19-31'))
     Result(metrics={'score': 'model_2', 'other_data': Ellipsis, 'done': True, 'trial_id': '8d627_00002', 'experiment_tag': '2_model_id=model_2'}, error=None, log_dir=PosixPath('/home/ubuntu/ray_results/train_model_2022-09-21_10-19-26/train_model_8d627_00002_2_model_id=model_2_2022-09-21_10-19-31'))
 
-Comparison to ``ray.remote``
-----------------------------
+How does Tune compare  to using Ray Core (``ray.remote``)?
+----------------------------------------------------------
 
 You might be wondering how Tune differs from simply using :ref:`ray-remote-functions` for parallel trial execution. Indeed, the above example could be re-written similarly as:
 

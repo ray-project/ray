@@ -221,3 +221,6 @@ workflow_data/
 # Directory where clangd puts its indexing work
 /.cache/
 cluster-anywhere.code-workspace
+
+# Auto-generated tag mapping
+tag-mapping.json
