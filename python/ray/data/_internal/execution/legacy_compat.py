@@ -138,8 +138,6 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
     if isinstance(stage, OneToOneStage):
         if stage.fn_constructor_args or stage.fn_constructor_kwargs:
             raise NotImplementedError
-        if stage.compute != "tasks":
-            raise NotImplementedError
 
         block_fn = stage.block_fn
         # TODO: implement arg packing and passing for test_map_batches_extra_args

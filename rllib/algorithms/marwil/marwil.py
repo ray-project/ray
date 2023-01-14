@@ -178,7 +178,7 @@ class MARWILConfig(AlgorithmConfig):
     ) -> "Algorithm":
         if not self._set_off_policy_estimation_methods:
             deprecation_warning(
-                old="MARWIL used to have off_policy_estimation_methods "
+                old=r"MARWIL used to have off_policy_estimation_methods "
                 "is and wis by default. This has"
                 "changed to off_policy_estimation_methods: \{\}."
                 "If you want to use an off-policy estimator, specify it in"

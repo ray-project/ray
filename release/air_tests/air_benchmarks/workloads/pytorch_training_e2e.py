@@ -20,7 +20,8 @@ from ray.air.config import ScalingConfig
 
 
 def add_fake_labels(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    batch["labels"] = np.ones((len(batch["images"]),))
+    batch_size = len(batch["image"])
+    batch["label"] = np.zeros([batch_size], dtype=int)
     return batch
 
 
