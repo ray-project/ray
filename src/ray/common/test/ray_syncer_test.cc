@@ -758,16 +758,18 @@ TEST_F(SyncerTest, TestMToN) {
 }
 
 struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
-  MockRaySyncerService(instrumented_io_context &_io_context,
-                       std::function<void(std::shared_ptr<const RaySyncMessage>)> _message_processor,
-                       std::function<void(const std::string &, bool)> _cleanup_cb):
-      message_processor(_message_processor),
-      cleanup_cb(_cleanup_cb),
-      node_id(NodeID::FromRandom()),
-      io_context(_io_context) {}
+  MockRaySyncerService(
+      instrumented_io_context &_io_context,
+      std::function<void(std::shared_ptr<const RaySyncMessage>)> _message_processor,
+      std::function<void(const std::string &, bool)> _cleanup_cb)
+      : message_processor(_message_processor),
+        cleanup_cb(_cleanup_cb),
+        node_id(NodeID::FromRandom()),
+        io_context(_io_context) {}
   grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
       grpc::CallbackServerContext *context) override {
-    reactor = new RayServerBidiReactor(context, io_context, node_id.Binary(), message_processor, cleanup_cb);
+    reactor = new RayServerBidiReactor(
+        context, io_context, node_id.Binary(), message_processor, cleanup_cb);
     return reactor;
   }
 
@@ -775,18 +777,16 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
   std::function<void(const std::string &, bool)> cleanup_cb;
   NodeID node_id;
   instrumented_io_context &io_context;
-  RayServerBidiReactor* reactor = nullptr;
+  RayServerBidiReactor *reactor = nullptr;
 };
-
 
 class SyncerReactorTest : public ::testing::Test {
  protected:
   void SetUp() override {
     rpc_service_ = std::make_unique<MockRaySyncerService>(
-        io_context_, [this](auto msg) {
-          server_received_messages.push_back(msg);
-        },
-        [this](auto& node, bool restart) {
+        io_context_,
+        [this](auto msg) { server_received_messages.push_back(msg); },
+        [this](auto &node, bool restart) {
           server_cleanup_cb.push_back(std::make_pair(node, restart));
         });
     grpc::ServerBuilder builder;
@@ -801,10 +801,8 @@ class SyncerReactorTest : public ::testing::Test {
         rpc_service_->node_id.Binary(),
         client_node_id.Binary(),
         io_context_,
-        [this](auto msg) {
-          client_received_messages.emplace_back(msg);
-        },
-        [this](const std::string & n, bool r){
+        [this](auto msg) { client_received_messages.emplace_back(msg); },
+        [this](const std::string &n, bool r) {
           client_cleanup_cb.push_back(std::make_pair(n, r));
         },
         std::move(cli_stub));
@@ -814,15 +812,20 @@ class SyncerReactorTest : public ::testing::Test {
 
     auto start = steady_clock::now();
     while (duration_cast<seconds>(steady_clock::now() - start).count() <= 5) {
-      RAY_LOG(INFO) << "Waiting: " << duration_cast<seconds>(steady_clock::now() - start).count();
-      if(rpc_service_->reactor != nullptr) {
+      RAY_LOG(INFO) << "Waiting: "
+                    << duration_cast<seconds>(steady_clock::now() - start).count();
+      if (rpc_service_->reactor != nullptr) {
         break;
       };
       std::this_thread::sleep_for(1s);
     }
   }
 
-  std::pair<RaySyncerBidiReactorBase*, RaySyncerBidiReactorBase*> GetReactors() {
+  void TearDown() override {
+    io_context_.stop();
+    thread_->join();
+  }
+  std::pair<RaySyncerBidiReactorBase *, RaySyncerBidiReactorBase *> GetReactors() {
     return std::make_pair(rpc_service_->reactor, cli_reactor.get());
   }
 
@@ -846,6 +849,8 @@ TEST_F(SyncerReactorTest, TestReactor) {
   auto [n1, n2] = GetReactors();
   ASSERT_TRUE(n1 != nullptr);
   ASSERT_TRUE(n2 != nullptr);
+  n2->Disconnect();
+  n1->Disconnect();
 }
 
 }  // namespace syncer
