@@ -61,7 +61,7 @@ class TrainerRunner:
         if issubclass(trainer_class, TorchRLTrainer):
             from ray.train.torch import TorchConfig
 
-            backend_config = TorchConfig()
+            backend_config = TorchConfig(backend="gloo")
         elif issubclass(trainer_class, TfRLTrainer):
             from ray.train.tensorflow import TensorflowConfig
 
@@ -78,10 +78,11 @@ class TrainerRunner:
             # with default 0
         )
 
-        # TODO: let's not pass this into the config which will cause
+        # TODO (Kourosh): let's not pass this into the config which will cause
         # information leakage into the SARLTrainer about other workers.
-        scaling_config = {"world_size": resources["num_workers"]}
-        trainer_config["scaling_config"] = scaling_config
+        # TODO (Kourosh): Scaling config right now goes through a weird path to get
+        # computed.
+        trainer_config["scaling_config"] = resources
         trainer_config["distributed"] = bool(self._compute_config["num_gpus"] > 1)
         self.backend_executor.start(
             train_cls=trainer_class, train_cls_kwargs=trainer_config
@@ -105,7 +106,7 @@ class TrainerRunner:
         elif not num_gpus and not num_workers:
             num_workers = 1
 
-        return {"num_workers": num_workers, "use_gpu": bool(num_gpus)}
+        return {"num_workers": num_workers, "use_gpu": num_gpus > 0}
 
     def update(self, batch: MultiAgentBatch = None, **kwargs):
         """

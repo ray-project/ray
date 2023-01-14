@@ -10,8 +10,6 @@ from typing import (
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-import ray
-
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
@@ -25,7 +23,6 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
-
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +46,12 @@ class TorchRLTrainer(RLTrainer):
             in_test=in_test,
         )
 
-        gpu_ids = ray.get_gpu_ids()
-        self._world_size = scaling_config.get("num_workers", 2)
-        self._gpu_id = gpu_ids[0] if gpu_ids else None
-        self._device = torch.device(self._gpu_id if gpu_ids else "cpu")
+        self._world_size = scaling_config.get("num_workers", 1)
+        self._use_gpu = scaling_config.get("use_gpu", False)
+        # TODO (Kourosh): This RLTrainer assumes that each actor is a single GPU actor
+        # at most. If GPU is not enabled it is a CPU actor. ray.gpu_ids() will return
+        # the accessible devices. So we can ideally do model parallelism as well
+        self._device = torch.device("cuda" if self._use_gpu else "cpu")
 
     @property
     @override(RLTrainer)
@@ -100,7 +99,7 @@ class TorchRLTrainer(RLTrainer):
     @override(RLTrainer)
     def _make_distributed(self) -> MultiAgentRLModule:
         module = self._make_module()
-        pg = torch.distributed.new_group(list(range(self._world_size)))
+        # pg = torch.distributed.new_group(list(range(self._world_size)))
 
         class DDPRLModuleWrapper(DDP):
             def forward_train(self, *args, **kwargs):
@@ -112,31 +111,26 @@ class TorchRLTrainer(RLTrainer):
             def set_weights(self, *args, **kwargs):
                 self.module.set_weights(*args, **kwargs)
 
-        if self._gpu_id is not None:
-
-            # if the module is a MultiAgentRLModule and nn.Module we can simply assume
-            # all the submodules are registered. Otherwise, we need to loop through
-            # each submodule and move it to the correct device.
-            # TODO (Kourosh): This can result in missing modules if the user does not
-            # register them in the MultiAgentRLModule. We should find a better way to
-            # handle this.
-            if isinstance(module, torch.nn.Module):
-                module.to(self._device)
-                module = DDPRLModuleWrapper(
-                    module, device_ids=[self._gpu_id], process_group=pg
-                )
-            else:
-                for key in module.keys():
-                    module[key].to(self._device)
-                    module[key] = DDPRLModuleWrapper(
-                        module[key], device_ids=[self._gpu_id], process_group=pg
-                    )
+        # if self._use_gpu:
+        # if the module is a MultiAgentRLModule and nn.Module we can simply assume
+        # all the submodules are registered. Otherwise, we need to loop through
+        # each submodule and move it to the correct device.
+        # TODO (Kourosh): This can result in missing modules if the user does not
+        # register them in the MultiAgentRLModule. We should find a better way to
+        # handle this.
+        print(f"device = {self._device}")
+        if isinstance(module, torch.nn.Module):
+            module.to(self._device)
+            module = DDPRLModuleWrapper(
+                module  # , device_ids=[self._device]# , process_group=pg
+            )
         else:
-            if isinstance(module, torch.nn.Module):
-                module = DDPRLModuleWrapper(module, process_group=pg)
-            else:
-                for key in module.keys():
-                    module[key] = DDPRLModuleWrapper(module[key], process_group=pg)
+            for key in module.keys():
+                module[key].to(self._device)
+                module[key] = DDPRLModuleWrapper(
+                    module[key]  # , device_ids=[self._device]# , process_group=pg
+                )
+
         return module
 
     @override(RLTrainer)

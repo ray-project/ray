@@ -272,7 +272,7 @@ class RLTrainer:
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
         """Converts a MultiAgentBatch to a NestedDict of Tensors.
 
-        This should convert the input batch from a MultiAgentBatch format to framework 
+        This should convert the input batch from a MultiAgentBatch format to framework
         specific tensor format located on the correct device.
 
         Args:
