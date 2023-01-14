@@ -173,6 +173,8 @@ class MockWorker : public WorkerInterface {
     return true;
   }
 
+  void SetJobId(const JobID &job_id) override { job_id_ = job_id; }
+
  protected:
   void SetStartupToken(StartupToken startup_token) override {
     RAY_CHECK(false) << "Method unused";
@@ -191,6 +193,7 @@ class MockWorker : public WorkerInterface {
   RayTask task_;
   std::chrono::steady_clock::time_point task_assign_time_;
   int runtime_env_hash_;
+  JobID job_id_;
 };
 
 }  // namespace raylet

@@ -129,9 +129,7 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
   }
 }
 
-void Worker::AssignTaskId(const TaskID &task_id) {
-  assigned_task_id_ = task_id;
-}
+void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
