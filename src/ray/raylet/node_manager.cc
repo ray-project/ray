@@ -1294,20 +1294,14 @@ void NodeManager::ProcessRegisterClientRequestMessage(
                                client_call_manager_,
                                worker_startup_token));
 
-  auto send_reply_callback = [this, client, job_id](Status status, int assigned_port) {
+  auto send_reply_callback = [this, client](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
-    std::string serialized_job_config;
-    auto job_config = worker_pool_.GetJobConfig(job_id);
-    if (job_config != boost::none) {
-      serialized_job_config = (*job_config).SerializeAsString();
-    }
     auto reply =
         ray::protocol::CreateRegisterClientReply(fbb,
                                                  status.ok(),
                                                  fbb.CreateString(status.ToString()),
                                                  to_flatbuf(fbb, self_node_id_),
-                                                 assigned_port,
-                                                 fbb.CreateString(serialized_job_config));
+                                                 assigned_port);
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply),

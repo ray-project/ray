@@ -15,6 +15,7 @@ import collections
 import heapq
 import numpy as np
 
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -29,7 +30,6 @@ from ray.data.row import TableRow
 from ray.data._internal.table_block import (
     TableBlockAccessor,
     TableBlockBuilder,
-    VALUE_COL_NAME,
 )
 from ray.data.aggregate import AggregateFn
 
@@ -87,7 +87,9 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         for key, value in columns.items():
-            if key == VALUE_COL_NAME or isinstance(next(iter(value), None), np.ndarray):
+            if key == TENSOR_COLUMN_NAME or isinstance(
+                next(iter(value), None), np.ndarray
+            ):
                 from ray.data.extensions.tensor_extension import TensorArray
 
                 if len(value) == 1:
@@ -136,7 +138,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
         from ray.data.extensions import TensorArrayElement
 
-        tensor = row[VALUE_COL_NAME].iloc[0]
+        tensor = row[TENSOR_COLUMN_NAME].iloc[0]
         if isinstance(tensor, TensorArrayElement):
             # Getting an item in a Pandas tensor column may return a TensorArrayElement,
             # which we have to convert to an ndarray.
