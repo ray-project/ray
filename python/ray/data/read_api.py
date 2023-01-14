@@ -209,7 +209,8 @@ def range_tensor(
                 [2, 2]])]
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
+    type. The dataset elements take the form
+    {"__value__": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -335,8 +336,6 @@ def read_datasource(
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
     )
-    block_list.compute_first_block()
-    block_list.ensure_metadata_for_first_block()
 
     return Dataset(
         plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
