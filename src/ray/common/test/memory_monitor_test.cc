@@ -37,9 +37,9 @@ class MemoryMonitorTest : public ::testing::Test {
     });
   }
   void TearDown() override {
-    instance.reset();
     io_context_.stop();
     thread_->join();
+    instance.reset();
   }
   std::unique_ptr<std::thread> thread_;
   instrumented_io_context io_context_;
