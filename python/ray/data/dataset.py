@@ -227,12 +227,6 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
-        self.histogram = Histogram(
-                        name="map_batches_exec",
-                        description="Execution time of map_batches in ms.",
-                        boundaries=[0.1, 100],
-                        tag_keys=("dataset_uuid",),
-                    )
 
         if not lazy:
             self._plan.execute(allow_clear_input_blocks=False)
@@ -609,6 +603,14 @@ class Dataset(Generic[T]):
             def process_next_batch(batch: DataBatch) -> Iterator[Block]:
                 # Apply UDF.
                 try:
+                    if not hasattr(self, "histogram"):
+                        print("===> initialized histogram")
+                        self.histogram = Histogram(
+                            "scott-metric",
+                            description="Execution time of map_batches in ms.",
+                            boundaries=[0.1, 1],
+                            # tag_keys=("dataset_uuid",),
+                        )
                     print("===> process batch")
                     # stage_uuid = self._plan._dataset_uuid + stage_name
                     
@@ -618,7 +620,7 @@ class Dataset(Generic[T]):
                     print("===> exec_time_ms:", exec_time_ms)
                     self.histogram.observe(
                         value=exec_time_ms,
-                        tags={"dataset_uuid": self._plan._dataset_uuid},
+                        # tags={"dataset_uuid": self._plan._dataset_uuid},
                     )
                     print("===> histogram:", self.histogram)
                 except ValueError as e:
