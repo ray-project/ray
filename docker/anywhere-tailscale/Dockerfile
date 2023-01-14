@@ -1,5 +1,5 @@
 ARG IMAGETYPE=cpu
-FROM rayproject/ray:2.1.0-py38-$IMAGETYPE
+FROM rayproject/ray-ml:2.1.0-py38-$IMAGETYPE
 ENV __MODIN_AUTOIMPORT_PANDAS__=1
 ENV MODIN_ENGINE=ray
 ENV MODIN_RAY_CLUSTER=True
@@ -28,8 +28,7 @@ RUN sudo apt-get update \
 
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     pandas \
-    modin \
-    dask[dataframe]==2022.2.0
+    modin
 
 #installing tailscale
 RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null \
