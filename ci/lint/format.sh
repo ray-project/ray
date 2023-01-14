@@ -135,7 +135,6 @@ SHELLCHECK_FLAGS=(
 MYPY_FLAGS=(
     '--follow-imports=skip'
     '--ignore-missing-imports'
-    '--install-types'
 )
 
 MYPY_FILES=(

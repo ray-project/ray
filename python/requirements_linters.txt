@@ -3,5 +3,6 @@ flake8-comprehensions
 flake8-quotes==2.0.0
 flake8-bugbear==21.9.2
 mypy==0.982
+types-PyYAML==6.0.12.2
 black==22.10.0
 isort==5.10.1
