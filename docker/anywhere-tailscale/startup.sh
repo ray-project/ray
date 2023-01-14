@@ -33,6 +33,8 @@ done
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
 
+ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address nexus.chimp-beta.ts.net
+
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.name=nexus \
             -Cnode.master=true \
@@ -45,6 +47,8 @@ if [ "$NODETYPE" = "head" ]; then
             
 
 else
+
+ray start --address='nexus.chimp-beta.ts.net:6379' --node-ip-address ${HOSTNAME}.chimp-beta.ts.net
 
 /crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
             -Cnode.data=true \
