@@ -40,7 +40,12 @@ class TestReportCheckpointCallback:
             ({"spam": "loss"}, {"spam"}),
         ],
     )
-    def test_metrics_keys(self, mock_report, metrics, expected_metrics_keys, model):
+    def test_reported_metrics_contain_expected_keys(
+        self, mock_report, metrics, expected_metrics_keys, model
+    ):
+        # Reported metrics contain different keys depending on the value passed to the
+        # `metrics` parameter. This test varies the value of `metrics` and asserts that
+        # the reported keys are correct.
         model.fit(
             x=np.zeros((1, 1)),
             y=np.zeros((1, 1)),
@@ -52,7 +57,10 @@ class TestReportCheckpointCallback:
             assert metrics.keys() == expected_metrics_keys
 
     @patch("ray.air.session.report")
-    def test_basic(self, mock_report, model):
+    def test_report_with_default_arguments(self, mock_report, model):
+        # This tests `ReportCheckpointCallback` with default arguments. The test
+        # simulates the end of an epoch, and asserts that a metric and checkpoint are
+        # reported.
         callback = ReportCheckpointCallback()
         callback.model = model
 
@@ -64,7 +72,10 @@ class TestReportCheckpointCallback:
         assert checkpoint is not None
 
     @patch("ray.air.session.report")
-    def test_checkpoint_on_multiple_events(self, mock_report, model):
+    def test_checkpoint_on_list(self, mock_report, model):
+        # This tests `ReportCheckpointCallback` when `checkpoint_on` is a `list`. The
+        # test simulates each event in `checkpoint_on`, and asserts that a checkpoint
+        # is reported for each event.
         callback = ReportCheckpointCallback(
             checkpoint_on=["epoch_end", "train_batch_end"]
         )
@@ -80,7 +91,10 @@ class TestReportCheckpointCallback:
         assert second_checkpoint is not None
 
     @patch("ray.air.session.report")
-    def test_report_metrics_on_multiple_events(self, mock_report, model):
+    def test_report_metrics_on_list(self, mock_report, model):
+        # This tests `ReportCheckpointCallback` when `report_metrics_on` is a `list`.
+        # The test simulates each event in `report_metrics_on`, and asserts that metrics
+        # are reported for each event.
         callback = ReportCheckpointCallback(
             report_metrics_on=["epoch_end", "train_batch_end"]
         )
@@ -97,6 +111,11 @@ class TestReportCheckpointCallback:
 
     @patch("ray.air.session.report")
     def test_report_and_checkpoint_on_different_events(self, mock_report, model):
+        # This tests `ReportCheckpointCallback` when `report_metrics_on` and
+        # `checkpoint_on` are different. The test asserts that:
+        # 1. Checkpoints are reported on `checkpoint_on`
+        # 2. Metrics are reported on `report_metrics_on`
+        # 3. Metrics are reported with checkpoints
         callback = ReportCheckpointCallback(
             report_metrics_on="train_batch_end", checkpoint_on="epoch_end"
         )
