@@ -138,6 +138,8 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted)
                           has_checked_once->count_down();
                         });
   has_checked_once->wait();
+  // Stop io context here to avoid race conditions.
+  io_context_.stop();
 }
 
 TEST_F(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted) {
