@@ -138,7 +138,7 @@ MYPY_FLAGS=(
 )
 
 MYPY_FILES=(
-    # Relative to python
+    # Relative to ray/python
     'ray/autoscaler/node_provider.py'
     'ray/autoscaler/sdk/__init__.py'
     'ray/autoscaler/sdk/sdk.py'
