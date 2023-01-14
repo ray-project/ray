@@ -146,6 +146,73 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     std::vector<rpc::TaskEvents> GetTaskEvents(
         const absl::flat_hash_set<TaskAttempt> &task_attempts) const;
 
+   private:
+    /// Mark the task tree containing this task attempt as failure if necessary.
+    ///
+    /// A task tree is represented by the `parent_task_id` field for each task.
+    ///
+    /// All non-terminated (not finished nor failed) tasks in the task tree with the task
+    /// event as the root should be marked as failed with the root's failed timestamp if
+    /// any of:
+    ///     1. The task itself fails.
+    ///     2. Its parent failed, and neither itself nor its parent is detached actor
+    ///     task.
+    ///     3. Its parent failed, and both itself and its parent are detached actor task.
+    /// TODO(rickyx): Detached actors tasks are now currently marked as failed if parent
+    /// dies.
+    ///
+    /// NOTE: Since there is delay in task events reporting, a task's state might not be
+    /// reported before a worker is killed, therefore, some tasks might have actually
+    /// run/been submitted but it's states not being reported to GCS. This is hard to
+    /// resolve unless we add synchronized reporting before submitting a task.
+    ///
+    /// \param task_id ID of the task event that's the root of the task tree.
+    /// \param parent_task_id ID of the task's parent.
+    void MarkTaskTreeFailedIfNeeded(const TaskID &task_id, const TaskID &parent_task_id);
+
+    /// Get a reference to the TaskEvent stored in the buffer.
+    ///
+    /// \param task_attempt The task attempt.
+    /// \return Reference to the task events stored in the buffer.
+    rpc::TaskEvents &GetTaskEvent(const TaskAttempt &task_attempt);
+
+    /// Get a const reference to the TaskEvent stored in the buffer.
+    ///
+    /// \param task_attempt The task attempt.
+    /// \return Reference to the task events stored in the buffer.
+    const rpc::TaskEvents &GetTaskEvent(const TaskAttempt &task_attempt) const;
+
+    /// Get the timestamp of a task status update.
+    ///
+    /// \param task_id The task id of the task.
+    /// \param task_status The status update.
+    /// \return The failed timestamp of the task attempt if it fails. absl::nullopt if the
+    /// latest task attempt could not be found due to data loss or the task attempt
+    /// doesn't fail.
+    absl::optional<int64_t> GetTaskStatusUpdateTime(
+        const TaskID &task_id, const rpc::TaskStatus &task_status) const;
+
+    /// Mark the task as failure with the failed timestamp.
+    ///
+    /// This also overwrites the finished state of the task if the task has finished by
+    /// clearing the finished timestamp.
+    ///
+    /// \param task_id The task to mark as failed.
+    /// \param failed_ts The failure timestamp that's the same from parent's failure
+    /// timestamp.
+    void MarkTaskFailed(const TaskID &task_id, int64_t failed_ts);
+
+    /// Get the latest task attempt for the task.
+    ///
+    /// If there is no such task or data loss due to task events dropped at the worker,
+    /// i.e. missing task attempts for a task with retries, absl::nullopt will be
+    /// returned.
+    ///
+    /// \param task_id The task's task id.
+    /// \return The latest task attempt of the task, abls::nullopt if no task attempt
+    /// could be found or there's data loss.
+    absl::optional<TaskAttempt> GetLatestTaskAttempt(const TaskID &task_id) const;
+
     /// Get the number of task events stored.
     size_t GetTaskEventsCount() const { return task_events_.size(); }
 
@@ -170,13 +237,24 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// Secondary index from task id to task attempts.
     absl::flat_hash_map<TaskID, absl::flat_hash_set<TaskAttempt>>
         task_to_task_attempt_index_;
+
     /// Secondary index from job id to task attempts of the job.
     absl::flat_hash_map<JobID, absl::flat_hash_set<TaskAttempt>>
         job_to_task_attempt_index_;
 
+    /// Secondary index from parent task id to a set of children task ids.
+    absl::flat_hash_map<TaskID, absl::flat_hash_set<TaskID>>
+        parent_to_children_task_index_;
+
     /// Counter for tracking the size of task event. This assumes tasks events are never
     /// removed actively.
     uint64_t num_bytes_task_events_ = 0;
+
+    friend class GcsTaskManager;
+    FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
+    FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
+    FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
+    FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
   };
 
  private:
@@ -204,6 +282,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
+  FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
 };
 
 }  // namespace gcs
