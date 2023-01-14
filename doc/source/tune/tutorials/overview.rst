@@ -65,7 +65,7 @@ Tune Feature Guides
 
     .. link-button:: tune-storage
         :type: ref
-        :text: How to Configure Storage Options for a Distributed Tune Experiment
+        :text: How to Configure Storage Options for a Distributed Tune Experiment?
         :classes: btn-link btn-block stretched-link
 
     ---

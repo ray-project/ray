@@ -1,7 +1,7 @@
 .. _tune-storage-options:
 
-How to Configure Storage Options for a Distributed Tune Experiment
-==================================================================
+How to Configure Storage Options for a Distributed Tune Experiment?
+===================================================================
 
 When running Tune in a distributed setting, trials run on many different machines,
 which means that experiment outputs such as model checkpoints will be spread all across the cluster.
