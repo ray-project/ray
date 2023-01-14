@@ -381,7 +381,7 @@ class TrialRunner:
 
         self.trial_executor.setup(
             max_pending_trials=self._max_pending_trials,
-            trainable_kwargs={"sync_timeout": sync_config.sync_timeout},
+            trainable_kwargs={"sync_timeout": self._sync_config.sync_timeout},
         )
 
         self._metric = metric
@@ -428,7 +428,7 @@ class TrialRunner:
 
         self._experiment_dir_name = experiment_dir_name
 
-        self._syncer = get_node_to_storage_syncer(sync_config)
+        self._syncer = get_node_to_storage_syncer(self._sync_config)
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
