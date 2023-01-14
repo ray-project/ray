@@ -34,7 +34,6 @@ void PeriodicalRunner::Clear() {
     timer->cancel();
   }
   timers_.clear();
-  *stopped_ = true;
 }
 
 void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
@@ -75,17 +74,21 @@ void PeriodicalRunner::DoRunFnPeriodically(
   fn();
   absl::MutexLock lock(&mutex_);
   timer->expires_from_now(period);
-  timer->async_wait([this, fn = std::move(fn), period, timer = std::move(timer)](
-                        const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      // `operation_aborted` is set when `timer` is canceled or destroyed.
-      // The Monitor lifetime may be short than the object who use it. (e.g.
-      // gcs_server)
-      return;
-    }
-    RAY_CHECK(!error) << error.message();
-    DoRunFnPeriodically(fn, period, timer);
-  });
+  timer->async_wait(
+      [this, stopped = stopped_, fn = std::move(fn), period, timer = std::move(timer)](
+          const boost::system::error_code &error) {
+        if (*stopped) {
+          return;
+        }
+        if (error == boost::asio::error::operation_aborted) {
+          // `operation_aborted` is set when `timer` is canceled or destroyed.
+          // The Monitor lifetime may be short than the object who use it. (e.g.
+          // gcs_server)
+          return;
+        }
+        RAY_CHECK(!error) << error.message();
+        DoRunFnPeriodically(fn, period, timer);
+      });
 }
 
 void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
@@ -102,10 +105,14 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
   auto stats_handle = io_service_.stats().RecordStart(name, period.total_nanoseconds());
   timer->async_wait([this,
                      fn = std::move(fn),
+                     stopped = stopped_,
                      period,
                      timer = std::move(timer),
                      stats_handle = std::move(stats_handle),
                      name](const boost::system::error_code &error) {
+    if (*stopped) {
+      return;
+    }
     io_service_.stats().RecordExecution(
         [this,
          stopped = stopped_,
