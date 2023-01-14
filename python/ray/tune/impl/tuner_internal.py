@@ -337,11 +337,13 @@ class TunerInternal:
         else:
             # Set the experiment `name` and `upload_dir` according to the URI
             parsed_uri = urllib.parse.urlparse(path_or_uri)
-            remote_path = Path(parsed_uri.netloc + parsed_uri.path)
+            remote_path = Path(os.path.normpath(parsed_uri.netloc + parsed_uri.path))
+            upload_dir = parsed_uri._replace(
+                netloc="", path=str(remote_path.parent)
+            ).geturl()
+
             self._run_config.name = remote_path.name
-            self._run_config.sync_config.upload_dir = (
-                parsed_uri.scheme + "://" + str(remote_path.parent)
-            )
+            self._run_config.sync_config.upload_dir = upload_dir
 
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
