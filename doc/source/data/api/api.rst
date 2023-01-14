@@ -8,6 +8,7 @@ Ray Datasets API
 
     input_output.rst
     dataset.rst
+    dataset_iterator.rst
     dataset_pipeline.rst
     grouped_dataset.rst
     dataset_context.rst
