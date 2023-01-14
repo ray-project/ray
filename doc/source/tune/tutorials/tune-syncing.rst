@@ -1,5 +1,3 @@
-.. _tune-checkpoint-syncing:
-
 .. _tune-storage-options:
 
 How to Configure Storage Options for a Distributed Tune Experiment

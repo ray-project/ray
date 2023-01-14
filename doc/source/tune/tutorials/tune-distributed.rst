@@ -96,29 +96,33 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
     2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
 
 
-Syncing
--------
+Storage Options
+---------------
 
 In a distributed experiment, you should try to use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to
 reduce synchronization overhead. For this, you just have to specify an ``upload_dir`` in the
-:class:`tune.SyncConfig <ray.tune.SyncConfig>`:
+:class:`tune.SyncConfig <ray.tune.SyncConfig>`.
+
+`my_trainable` is a user-defined :ref:`Tune Trainable <tune_60_seconds_trainables>` in the following example:
 
 .. code-block:: python
 
     from ray import air, tune
+    from my_module import my_trainable
 
     tuner = tune.Tuner(
-        trainable,
-        run_config=air.RunConfig(name="experiment_name"
+        my_trainable,
+        run_config=air.RunConfig(
+            name="experiment_name"
             sync_config=tune.SyncConfig(
-            upload_dir="s3://bucket-name/sub-path/"
-        ))
+                upload_dir="s3://bucket-name/sub-path/"
+            )
+        )
     )
     tuner.fit()
 
-
 For more details or customization, see our
-:ref:`guide on checkpointing <tune-checkpoint-syncing>`.
+:ref:`guide on configuring storage in a distributed Tune experiment <tune-storage-options>`.
 
 
 
@@ -217,7 +221,7 @@ Fault Tolerance
 Tune will automatically restart trials in case of trial failures/error (if ``max_failures != 0``), both in the single node and distributed setting.
 
 Tune will restore trials from the latest checkpoint, where available. In the distributed setting, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
-See :ref:`our checkpointing guide <tune-checkpoint-syncing>`.
+See :ref:`here for information on checkpointing <tune-function-checkpointing>`.
 
 
 If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
