@@ -9,6 +9,8 @@ from ray._private.test_utils import (
 )
 
 
+# Use default filterwarnings behavior for this test
+@pytest.mark.filterwarnings("default")
 @pytest.mark.parametrize("warning", [True, False])
 def test_deprecated(warning):
     class_deprecated_message = "class is deprecated"
@@ -62,6 +64,8 @@ def test_deprecated(warning):
             assert not w
 
 
+# Use default filterwarnings behavior for this test
+@pytest.mark.filterwarnings("default")
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows failed reading stdout")
 def test_only_warn_once():
     log = run_string_as_driver(
@@ -79,6 +83,8 @@ for _ in range(3):
     assert log.count("functionisdeprecated") == 1
 
 
+# Use default filterwarnings behavior for this test
+@pytest.mark.filterwarnings("default")
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows failed reading stdout")
 def test_warn_suppressed():
     log = run_string_as_driver(

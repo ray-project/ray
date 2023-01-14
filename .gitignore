@@ -153,6 +153,7 @@ python-driver-*
 
 # Vscode
 .vscode/
+*-workspace
 
 *.iml
 
@@ -220,4 +221,6 @@ workflow_data/
 /compile_commands.json
 # Directory where clangd puts its indexing work
 /.cache/
-cluster-anywhere.code-workspace
+
+# Auto-generated tag mapping
+tag-mapping.json
