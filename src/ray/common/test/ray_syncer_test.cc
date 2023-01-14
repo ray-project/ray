@@ -767,7 +767,8 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
       io_context(_io_context) {}
   grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
       grpc::CallbackServerContext *context) override {
-    return new RayServerBidiReactor(context, io_context, node_id.Binary(), message_processor, cleanup_cb);
+    reactor = new RayServerBidiReactor(context, io_context, node_id.Binary(), message_processor, cleanup_cb);
+    return reactor;
   }
 
   std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor;
@@ -775,25 +776,76 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
   NodeID node_id;
   instrumented_io_context &io_context;
   RayServerBidiReactor* reactor = nullptr;
-
 };
 
 
 class SyncerReactorTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    rpc_service_ = std::make_unique<MockRaySyncerService>(
+        io_context_, [this](auto msg) {
+          server_received_messages.push_back(msg);
+        },
+        [this](auto& node, bool restart) {
+          server_cleanup_cb.push_back(std::make_pair(node, restart));
+        });
+    grpc::ServerBuilder builder;
+    builder.AddListeningPort("0.0.0.0:18990", grpc::InsecureServerCredentials());
+    builder.RegisterService(rpc_service_.get());
+    server = builder.BuildAndStart();
 
+    client_node_id = NodeID::FromRandom();
+    cli_channel = MakeChannel("18990");
+    auto cli_stub = ray::rpc::syncer::RaySyncer::NewStub(cli_channel);
+    cli_reactor = std::make_unique<RayClientBidiReactor>(
+        rpc_service_->node_id.Binary(),
+        client_node_id.Binary(),
+        io_context_,
+        [this](auto msg) {
+          client_received_messages.emplace_back(msg);
+        },
+        [this](const std::string & n, bool r){
+          client_cleanup_cb.push_back(std::make_pair(n, r));
+        },
+        std::move(cli_stub));
+
+    work_guard_ = std::make_unique<work_guard_type>(io_context_.get_executor());
+    thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
+
+    auto start = steady_clock::now();
+    while (duration_cast<seconds>(steady_clock::now() - start).count() <= 5) {
+      RAY_LOG(INFO) << "Waiting: " << duration_cast<seconds>(steady_clock::now() - start).count();
+      if(rpc_service_->reactor != nullptr) {
+        break;
+      };
+      std::this_thread::sleep_for(1s);
+    }
+  }
+
+  std::pair<RaySyncerBidiReactorBase*, RaySyncerBidiReactorBase*> GetReactors() {
+    return std::make_pair(rpc_service_->reactor, cli_reactor.get());
   }
 
   instrumented_io_context io_context_;
   std::unique_ptr<work_guard_type> work_guard_;
   std::unique_ptr<std::thread> thread_;
   std::unique_ptr<MockRaySyncerService> rpc_service_;
+  std::unique_ptr<grpc::Server> server;
+  std::vector<std::shared_ptr<const RaySyncMessage>> server_received_messages;
+  std::vector<std::shared_ptr<const RaySyncMessage>> client_received_messages;
+  std::vector<std::pair<const std::string &, bool>> server_cleanup_cb;
+  std::vector<std::pair<const std::string &, bool>> client_cleanup_cb;
 
+  grpc::ClientContext cli_context;
+  std::unique_ptr<RayClientBidiReactor> cli_reactor;
+  std::shared_ptr<grpc::Channel> cli_channel;
+  NodeID client_node_id;
 };
 
 TEST_F(SyncerReactorTest, TestReactor) {
-
+  auto [n1, n2] = GetReactors();
+  ASSERT_TRUE(n1 != nullptr);
+  ASSERT_TRUE(n2 != nullptr);
 }
 
 }  // namespace syncer
