@@ -23,7 +23,7 @@ mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH /data/tailscale/
 
 
 sudo tailscaled --state=/data/tailscale/tailscaled.state --socket=/data/tailscale/tailscaled.sock &
-sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns --state=/data/tailscale/tailscaled.state --socket=/data/tailscale/tailscaled.sock
+sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns --socket=/data/tailscale/tailscaled.sock
 
 while [ not $status = "Running" ]
     do 
