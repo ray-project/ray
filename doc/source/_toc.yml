@@ -143,6 +143,8 @@ parts:
                     title: "Huggingface Example"
               - file: tune/examples/experiment-tracking
                 sections:
+                  - file: tune/examples/tune-aim
+                    title: "Aim Example"
                   - file: tune/examples/tune-comet
                     title: "Comet Example"
                   - file: tune/examples/tune-wandb

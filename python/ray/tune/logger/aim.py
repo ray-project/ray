@@ -24,25 +24,26 @@ VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
 @PublicAPI
 class AimCallback(LoggerCallback):
-    """Aim Logger.
-    Logs metrics in aim format.
+    """Aim Logger, logs metrics in Aim format.
+
     Aim is an open-source, self-hosted ML experiment tracking tool.
     It's good at tracking lots (1000s) of training runs, and it allows you to compare them with a
     performant and beautiful UI.
+
     Source: https://github.com/aimhubio/aim
 
-    Args:
-    repo (:obj:`str`, optional): Aim repository path or Repo object to which Run object is bound.
-        If skipped, default Repo is used.
-    experiment (:obj:`str`, optional): Sets Run's `experiment` property. 'default' if not specified.
-        Can be used later to query runs/sequences.
-    system_tracking_interval (:obj:`int`, optional): Sets the tracking interval in seconds for system usage
-        metrics (CPU, Memory, etc.). Set to `None` to disable system metrics tracking.
-    log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
-        git info, environment variables, etc.
-    metrics (:obj:`List[str]`, optional): Specific metrics to track,
-        if no metric is specified log everything that is reported.
-    as_multirun (:obj:`bool`, optional): Enable/Disable creating new runs for each trial.
+    Arguments:
+        repo (:obj:`str`, optional): Aim repository path or Repo object to which Run object is bound.
+            If skipped, default Repo is used.
+        experiment (:obj:`str`, optional): Sets Run's `experiment` property. 'default' if not specified.
+            Can be used later to query runs/sequences.
+        system_tracking_interval (:obj:`int`, optional): Sets the tracking interval in seconds for system usage
+            metrics (CPU, Memory, etc.). Set to `None` to disable system metrics tracking.
+        log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
+            git info, environment variables, etc.
+        metrics (:obj:`List[str]`, optional): Specific metrics to track,
+            if no metric is specified log everything that is reported.
+        as_multirun (:obj:`bool`, optional): Enable/Disable creating new runs for each trial.
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
@@ -193,7 +194,6 @@ class AimCallback(LoggerCallback):
             )
 
         self._trial_run[trial]["hparams"] = scrubbed_params
-
 
     def _get_trial_run(self, trial):
         if not self._as_multirun:
