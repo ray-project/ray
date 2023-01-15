@@ -9,12 +9,14 @@ gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
 shm_memory=($gb_memory / 3)
 
+GPU=$(lspci | grep -i nvidia) || $(nvidia-smi -L)
+
 if ! [ -x "$(command -v docker)" ] && ! [ -n "$WSL_DISTRO_NAME" ]; then
 sudo curl https://get.docker.com | sh
 fi
 
 # Check if the GPU is NVIDIA
-if $(lspci | grep -i nvidia) || $(nvidia-smi -L); then
+if [ -x "$(lspci | grep -i nvidia)" ] || [ -x "$(nvidia-smi -L)" ]; then
 
   sudo apt install --no-install-recommends -y lspci jq wget && sudo apt -y autoremove
   if [ -x "$(command -v nvidia-smi)" ] && [ -d /usr/local/cuda ]; then
@@ -27,8 +29,8 @@ if $(lspci | grep -i nvidia) || $(nvidia-smi -L); then
     sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/7fa2af80.pub
     sudo add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/ /"
     sudo apt-get update
-    sudo apt-get -y install cuda \
-    && CUDA=$true
+    sudo apt-get -y install cuda
+    CUDA=$true
   elif [ lspci | grep -i nvidia ]; then
     sudo apt install --no-install-recommends -y gcc
     wget https://developer.download.nvidia.com/compute/cuda/11.2.2/local_installers/cuda_11.2.2_460.32.03_linux.run
