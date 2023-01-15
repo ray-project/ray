@@ -13,10 +13,12 @@ if ! [ -x "$(command -v docker)" ] && ! [ -n "$WSL_DISTRO_NAME" ]; then
 sudo curl https://get.docker.com | sh
 fi
 
+sudo apt install --no-install-recommends -y lspci jq wget && sudo apt -y autoremove
+
 # Check if the GPU is NVIDIA
 if [ lspci | grep -i nvidia ] || [ nvidia-smi -L ]; then
   echo "hello"
-  sudo apt install --no-install-recommends -y lspci jq wget && sudo apt -y autoremove
+
   if [ -x "$(command -v nvidia-smi)" ] && [ -d /usr/local/cuda ]; then
     CUDA=$true
     # Get the driver version
