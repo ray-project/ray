@@ -1,5 +1,5 @@
 #!/bin/bash
-
+apt-get install -y --no-install-recommends bc 
 # Get the total amount of memory in kB
 memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 
