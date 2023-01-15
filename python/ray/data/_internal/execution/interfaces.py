@@ -203,10 +203,10 @@ class PhysicalOperator:
         raise NotImplementedError
 
     def inputs_done(self) -> None:
-        """Called when all upstream operator have completed().
+        """Called when all upstream operators have completed().
 
-        After this is called, the executor guarantees more inputs will be added via
-        `add_input` for any input index.
+        After this is called, the executor guarantees that no more inputs will be added
+        via `add_input` for any input index.
         """
         self._inputs_complete = True
 
@@ -231,6 +231,13 @@ class PhysicalOperator:
         `notify_work_completed(ref)` to tell this operator of the state change.
         """
         return []
+
+    def num_active_work_refs(self) -> int:
+        """Return the number of active work refs.
+
+        Subclasses can override this as a performance optimization.
+        """
+        return len(self.get_work_refs())
 
     def notify_work_completed(self, work_ref: ray.ObjectRef) -> None:
         """Executor calls this when the given work is completed and local.

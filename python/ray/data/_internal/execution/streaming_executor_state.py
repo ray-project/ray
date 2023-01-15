@@ -21,13 +21,16 @@ Topology = Dict[PhysicalOperator, "OpState"]
 
 
 class OpState:
-    """The execution state tracked for each PhysicalOperator."""
+    """The execution state tracked for each PhysicalOperator.
 
-    def __init__(self, op: PhysicalOperator):
+    This tracks state to manage input and output buffering for StreamingExecutor and
+    progress bars, which is separate from execution state internal to the operators.
+    """
+
+    def __init__(self, op: PhysicalOperator, inqueues: List[List[RefBundle]]):
         # Each inqueue is connected to another operator's outqueue.
-        self.inqueues: List[List[RefBundle]] = [
-            [] for _ in range(len(op.input_dependencies))
-        ]
+        assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
+        self.inqueues: List[List[RefBundle]] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
         self.outqueue: List[RefBundle] = []
@@ -37,24 +40,28 @@ class OpState:
         self.inputs_done_called = False
 
     def initialize_progress_bar(self, index: int) -> None:
+        """Create a progress bar at the given index (line offset in console)."""
         self.progress_bar = ProgressBar(
             self.op.name, self.op.num_outputs_total() or 1, index
         )
 
     def num_queued(self) -> int:
+        """Return the number of queued bundles across all inqueues."""
         return sum(len(q) for q in self.inqueues)
 
     def num_active_tasks(self):
-        # TODO: optimize this?
-        return len(self.op.get_work_refs())
+        """Return the number of Ray futures pending for this operator."""
+        return self.op.num_active_work_refs()
 
     def add_output(self, ref: RefBundle) -> None:
+        """Move a bundle produced by the operator to its outqueue."""
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
             self.progress_bar.update(1)
 
     def refresh_progress_bar(self) -> None:
+        """Update the console with the latest operator progress."""
         if self.progress_bar:
             queued = self.num_queued()
             self.progress_bar.set_description(
@@ -62,6 +69,7 @@ class OpState:
             )
 
     def dispatch_next_task(self) -> None:
+        """Move a bundle from the operator inqueue to the operator itself."""
         for i, inqueue in enumerate(self.inqueues):
             if inqueue:
                 self.op.add_input(inqueue.pop(0), input_index=i)
@@ -85,22 +93,23 @@ def build_streaming_topology(dag: PhysicalOperator) -> Topology:
     # DFS walk to wire up operator states.
     def setup_state(op: PhysicalOperator) -> OpState:
         if op in topology:
-            return topology[op]
-
-        # Create state if it doesn't exist.
-        op_state = OpState(op)
-        topology[op] = op_state
+            raise ValueError("An operator can only be present in a topology once.")
 
         # Wire up the input outqueues to this op's inqueues.
+        inqueues = []
         for i, parent in enumerate(op.input_dependencies):
             parent_state = setup_state(parent)
-            op_state.inqueues[i] = parent_state.outqueue
+            inqueues.append(parent_state.outqueue)
 
+        # Create state.
+        op_state = OpState(op, inqueues)
+        topology[op] = op_state
         return op_state
 
     setup_state(dag)
 
     # Create the progress bars starting from the first operator to run.
+    # Note that the topology dict in in topological sort order.
     i = 0
     for op_state in list(topology.values())[::-1]:
         if not isinstance(op_state.op, InputDataBuffer):
@@ -119,7 +128,7 @@ def process_completed_tasks(topology: Topology) -> None:
     # Update active tasks.
     active_tasks: Dict[ray.ObjectRef, PhysicalOperator] = {}
 
-    for op in topology:
+    for op in topology.keys():
         for ref in op.get_work_refs():
             active_tasks[ref] = op
 
@@ -173,14 +182,12 @@ def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
     if num_active_tasks >= PARALLELISM_LIMIT:
         return None
 
+    # Filter to ops that have queued inputs.
+    ops = [op for op, state in topology.items() if state.num_queued() > 0]
+    if not ops:
+        return None
+
     # Equally penalize outqueue length and active tasks for backpressure.
-    pairs = list(topology.items())
-    pairs.sort(key=lambda p: len(p[1].outqueue) + p[1].num_active_tasks())
-
-    selected = None
-    for op, state in pairs:
-        if state.num_queued() > 0:
-            selected = op
-            break
-
-    return selected
+    return min(
+        ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_active_tasks()
+    )
