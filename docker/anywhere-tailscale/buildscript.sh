@@ -39,7 +39,7 @@ if lspci | grep -i nvidia || $(nvidia-smi -L); then
 
     # Strip out the decimal point
     cuda_version=${cuda_version//\./}
-  else ! [ -f /usr/local/cuda/version.json ] && [ -n "$CUDA" ]
+  elif ! [ -f /usr/local/cuda/version.json ] && [ -n "$CUDA" ]; then
     #we will default to 11.2
     cuda_version=gpu
   fi
