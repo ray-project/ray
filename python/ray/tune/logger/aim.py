@@ -1,6 +1,9 @@
 import logging
 import numpy as np
+
 from typing import TYPE_CHECKING, Dict, Optional, List
+from aim.ext.resource import DEFAULT_SYSTEM_TRACKING_INT
+from aim.sdk import Run
 
 from ray.tune.logger.logger import LoggerCallback
 from ray.tune.result import (
@@ -13,12 +16,6 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
-try:
-    from aim.ext.resource import DEFAULT_SYSTEM_TRACKING_INT
-    from aim.sdk import Run
-except ImportError:
-    DEFAULT_SYSTEM_TRACKING_INT = None
-    Run = None
 
 logger = logging.getLogger(__name__)
 
@@ -35,20 +32,18 @@ class AimCallback(LoggerCallback):
 
     Source: https://github.com/aimhubio/aim
 
-    Args:
-    repo (:obj:`str`, optional): Aim repository path or Repo object to which Run object is bound.
-        If skipped, default Repo is used.
-    experiment (:obj:`str`, optional): Sets Run's `experiment` property. 'default' if not specified.
-        Can be used later to query runs/sequences.
-    metrics (:obj:`List[str]`, optional): Specific metrics to track,
-        if no metric is specified log everything that is reported.
-    as_multirun (:obj:`bool`, optional): Enable/Disable creating new runs for each trial.
-    system_tracking_interval (:obj:`int`, optional): Sets the tracking interval in seconds for system usage
-        metrics (CPU, Memory, etc.). Set to `None` to disable system metrics tracking.
-    log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
-        git info, environment variables, etc.
-    
-    For more arguments please check the aim documentation: https://aimstack.readthedocs.io/en/latest/refs/sdk.html
+    Arguments:
+        repo (:obj:`str`, optional): Aim repository path or Repo object to which Run object is bound.
+            If skipped, default Repo is used.
+        experiment (:obj:`str`, optional): Sets Run's `experiment` property. 'default' if not specified.
+            Can be used later to query runs/sequences.
+        system_tracking_interval (:obj:`int`, optional): Sets the tracking interval in seconds for system usage
+            metrics (CPU, Memory, etc.). Set to `None` to disable system metrics tracking.
+        log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
+            git info, environment variables, etc.
+        metrics (:obj:`List[str]`, optional): Specific metrics to track,
+            if no metric is specified log everything that is reported.
+        as_multirun (:obj:`bool`, optional): Enable/Disable creating new runs for each trial.
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
@@ -58,38 +53,38 @@ class AimCallback(LoggerCallback):
         self,
         repo: Optional[str] = None,
         experiment: Optional[str] = None,
+        system_tracking_interval: Optional[int] = DEFAULT_SYSTEM_TRACKING_INT,
+        log_system_params: bool = True,
         metrics: Optional[List[str]] = None,
-        as_multirun: Optional[bool] = False,
-        **aim_run_kwargs
+        as_multirun: bool = False,
     ):
-        assert Run is not None, (
-            "aim must be installed!. You can install aim with"
-            " the command: `pip install aim`."
-        )
+
         self._repo_path = repo
         self._experiment_name = experiment
-        assert bool(metrics) is True or metrics is None
+        self._system_tracking_interval = system_tracking_interval
+        self._log_system_params = log_system_params
         self._metrics = metrics
         self._as_multirun = as_multirun
         self._run_cls = Run
-        self._aim_run_kwargs = aim_run_kwargs
         self._trial_run: Dict["Trial", Run] = {}
 
-    def _create_run(self, trial: "Trial") -> Run:
+    def _create_run(self, trial: "Trial"):
         """
-        Returns:
-            run (:obj:`aim.sdk.Run`): The created aim run for a specific trial.
+        Returns: Run
         """
         run = self._run_cls(
             repo=self._repo_path,
             experiment=self._experiment_name,
-            **self._aim_run_kwargs
+            system_tracking_interval=self._system_tracking_interval,
+            log_system_params=self._log_system_params,
         )
         if self._as_multirun:
             run["trial_id"] = trial.trial_id
         return run
 
     def log_trial_start(self, trial: "Trial"):
+        logger.info(f"trial {trial} logger is started")
+
         if self._as_multirun:
             if trial in self._trial_run:
                 self._trial_run[trial].close()
@@ -107,7 +102,7 @@ class AimCallback(LoggerCallback):
                 for k, value in flat_result.items()
                 if isinstance(value, tuple(VALID_SUMMARY_TYPES))
             }
-            self._log_hparams(trial, scrubbed_result)
+            self._try_log_hparams(trial, scrubbed_result)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         # create local copy to avoid problems
@@ -173,9 +168,8 @@ class AimCallback(LoggerCallback):
 
         logger.info(f"trial {trial} aim logger closed")
 
-    def _log_hparams(self, trial: "Trial", params: Dict):
+    def _try_log_hparams(self, trial: "Trial", params):
         flat_params = flatten_dict(params)
-
         scrubbed_params = {
             k: v for k, v in flat_params.items() if isinstance(v, self.VALID_HPARAMS)
         }
