@@ -21,8 +21,7 @@ ENV N2N_INTERFACE=tailscale0
 #the $RANDOMSTRING variable is defined in the startup script
 #ENV N2N_KEY=$RANDOMSTRING
 
-RUN curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add \
-        && sudo apt-get update \
+RUN sudo apt-get update \
         && sudo apt-get install -y --no-install-recommends ca-certificates curl wget lsb-release \ 
         && sudo apt-get clean \
         && sudo rm -rf /var/lib/apt/lists/*
@@ -36,6 +35,7 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
 #installing tailscale
 RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null \
         && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list \
+        && curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add \
         && sudo apt-get update \
         && sudo apt-get install -y --no-install-recommends tailscale iptables dnsutils jq \
         && sudo apt-get clean \
