@@ -7,7 +7,7 @@ memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 # Convert kB to GB
 gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
-shm_memory=($gb_memory / 3)
+shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
 
 if ! [ -x "$(command -v docker)" ] && ! [ -z "$WSL_DISTRO_NAME" ]; then
 sudo curl https://get.docker.com | sh
