@@ -53,5 +53,5 @@ if [ -n "$cuda_version" ] && ! [ $cuda_version = gpu]; then
 elif [ -n "$cuda_version" ] && [ $cuda_version = gpu]; then
   sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu /home/tripps/build -t jcoffi/cluster-anywhere:gpu -t jcoffi/cluster-anywhere:latest-gpu --build-arg IMAGETYPE=gpu
 else
-  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-cpu /home/tripps/build -t jcoffi/cluster-anywhere:cpu -t jcoffi/cluster-anywhere:latest -t jcoffi/cluster:cpu-latest --build-arg IMAGETYPE=gpu
+  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-cpu /home/tripps/build -t jcoffi/cluster-anywhere:cpu -t jcoffi/cluster-anywhere:latest -t jcoffi/cluster:cpu-latest --build-arg IMAGETYPE=cpu
 fi 
