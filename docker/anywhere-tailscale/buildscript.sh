@@ -9,18 +9,18 @@ gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
 shm_memory=($gb_memory / 3)
 
-if ! [ -x "$(command -v docker)" ] && ! [ -n "$WSL_DISTRO_NAME" ]; then
+if ! [ -x "$(command -v docker)" ] && ! [ -z "$WSL_DISTRO_NAME" ]; then
 sudo curl https://get.docker.com | sh
 fi
 
-sudo apt install --no-install-recommends -y lspci jq wget && sudo apt -y autoremove
+sudo apt install --no-install-recommends -y jq wget && sudo apt -y autoremove
 
 # Check if the GPU is NVIDIA
-if [ lspci | grep -i nvidia ] || [ nvidia-smi -L ]; then
-  echo "hello"
+if [ -n "$(lspci | grep -i nvidia)" ] || [ -n "$(nvidia-smi -L)" ]; then
+
 
   if [ -x "$(command -v nvidia-smi)" ] && [ -d /usr/local/cuda ]; then
-    CUDA=$true
+    CUDA="Already done"
     # Get the driver version
     nvidia_driver_ver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader)
   elif [ -n "$WSL_DISTRO_NAME" ]; then
@@ -30,11 +30,12 @@ if [ lspci | grep -i nvidia ] || [ nvidia-smi -L ]; then
     sudo add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/ /"
     sudo apt-get update
     sudo apt-get -y install cuda
-    CUDA=$true
-  elif [ lspci | grep -i nvidia ]; then
+    CUDA="WSL"
+  elif [ -n "$(lspci | grep -i nvidia)" ]; then
     sudo apt install --no-install-recommends -y gcc
     wget https://developer.download.nvidia.com/compute/cuda/11.2.2/local_installers/cuda_11.2.2_460.32.03_linux.run
-    sudo sh cuda_11.2.2_460.32.03_linux.run --silent && CUDA=$true
+    sudo sh cuda_11.2.2_460.32.03_linux.run --silent
+    CUDA="lspci"
   fi
 
   if [ -n "$CUDA" ] && [ -f /usr/local/cuda/version.json ]; then
@@ -52,7 +53,7 @@ fi
 
 wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/Dockerfile -O /home/tripps/build/Dockerfile && wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh -O /home/tripps/build/startup.sh && sudo chmod 777 /home/tripps/build/Dockerfile && sudo chmod 777 /home/tripps/build/startup.sh
 
-if [ -n "$cuda_version" ] && ! [ $cuda_version = gpu]; then
+if [ -n "$cuda_version" ] && [ $cuda_version != gpu]; then
   sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-cu$cuda_version /home/tripps/build -t jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
 elif [ -n "$cuda_version" ] && [ $cuda_version = gpu]; then
   sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu /home/tripps/build -t jcoffi/cluster-anywhere:gpu -t jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
