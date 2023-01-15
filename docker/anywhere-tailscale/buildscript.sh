@@ -46,7 +46,7 @@ if [ -n "$(lspci | grep -i nvidia)" ] || [ -n "$(nvidia-smi -L)" ]; then
     cuda_version=${cuda_version//\./}
   elif [ -n "$CUDA" ] && ! [ -f /usr/local/cuda/version.json ]; then
     #we will default to 11.2
-    cuda_version=gpu
+    cuda_version="gpu"
   fi
 
 fi
