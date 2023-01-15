@@ -79,10 +79,6 @@ RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/rele
   rm juicefs "juicefs-${JFS_LATEST_TAG}-linux-amd64.tar.gz"
 
 
-#crate
-#EXPOSE 4200/tcp
-#EXPOSE 4300/tcp
-#EXPOSE 5432/tcp
 
 COPY startup.sh /home/ray/startup.sh
 RUN sudo chmod +x /home/ray/startup.sh
