@@ -21,7 +21,7 @@ ENV N2N_INTERFACE=tailscale0
 #the $RANDOMSTRING variable is defined in the startup script
 #ENV N2N_KEY=$RANDOMSTRING
 
-RUN sudo curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null \
+RUN sudo curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - \
         && sudo apt-get update \
         && sudo apt-get install -y --no-install-recommends ca-certificates curl jq wget lsb-release \ 
         && sudo apt-get clean \
