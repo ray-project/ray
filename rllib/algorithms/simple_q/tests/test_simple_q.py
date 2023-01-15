@@ -78,7 +78,7 @@ class TestSimpleQ(unittest.TestCase):
                     SampleBatch.CUR_OBS: np.random.random(size=(2, 4)),
                     SampleBatch.ACTIONS: np.array([0, 1]),
                     SampleBatch.REWARDS: np.array([0.4, -1.23]),
-                    SampleBatch.DONES: np.array([False, False]),
+                    SampleBatch.TERMINATEDS: np.array([False, False]),
                     SampleBatch.NEXT_OBS: np.random.random(size=(2, 4)),
                     SampleBatch.EPS_ID: np.array([1234, 1234]),
                     SampleBatch.AGENT_INDEX: np.array([0, 0]),

@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "src/ray/protobuf/usage.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -29,14 +30,16 @@ class UsageStatsClient {
   ///
   /// \param key The tag key which MUST be a registered TagKey in usage_lib.py.
   /// \param value The tag value.
-  void RecordExtraUsageTag(const std::string &key, const std::string &value);
+  void RecordExtraUsageTag(usage::TagKey key, const std::string &value);
+
+  // Report a monotonically increasing counter.
+  void RecordExtraUsageCounter(usage::TagKey key, int64_t counter);
 
  private:
   /// Kee in-sync with the same constants defined in usage_constants.py
   static constexpr char kExtraUsageTagPrefix[] = "extra_usage_tag_";
   static constexpr char kUsageStatsNamespace[] = "usage_stats";
 
-  instrumented_io_context &io_service_;
   std::unique_ptr<GcsClient> gcs_client_;
 };
 }  // namespace gcs

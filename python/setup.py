@@ -20,7 +20,7 @@ from itertools import chain
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -101,7 +101,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages(exclude=["tests"])
+            return setuptools.find_packages()
         else:
             return []
 
@@ -218,7 +218,7 @@ if setup_spec.type == SetupType.RAY:
         # NumPy dropped python 3.6 support in 1.20.
         numpy_dep = "numpy >= 1.19"
     if sys.version_info >= (3, 7) and sys.platform != "win32":
-        pyarrow_dep = "pyarrow >= 6.0.1, < 8.0.0"
+        pyarrow_dep = "pyarrow >= 6.0.1"
     else:
         # pyarrow dropped python 3.6 support in 7.0.0.
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
@@ -241,7 +241,7 @@ if setup_spec.type == SetupType.RAY:
             "gpustat >= 1.0.0",  # for windows
             "opencensus",
             "pydantic",
-            "prometheus_client >= 0.7.1, < 0.14.0",
+            "prometheus_client >= 0.7.1",
             "smart_open",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
@@ -264,11 +264,8 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gym>=0.21.0,<0.24.0",
+        "gymnasium==0.26.3",
         "lz4",
-        # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
-        # Todo: Remove this when safe?
-        "matplotlib!=3.4.3",
         "scikit-image",
         "pyyaml",
         "scipy",
@@ -305,8 +302,11 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.32.0; python_version < '3.10'",
-        "grpcio >= 1.42.0; python_version >= '3.10'",
+        # Tracking issue: https://github.com/ray-project/ray/issues/30984
+        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa
+        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa
+        "grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'",
+        "grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
@@ -775,7 +775,7 @@ setuptools.setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 0.29.26", "wheel"],
+    setup_requires=["cython >= 0.29.32", "wheel"],
     extras_require=setup_spec.extras,
     entry_points={
         "console_scripts": [

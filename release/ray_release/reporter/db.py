@@ -26,13 +26,16 @@ class DBReporter(Reporter):
             "team": test.get("team", ""),
             "frequency": test.get("frequency", ""),
             "cluster_url": result.cluster_url or "",
+            "cluster_id": result.cluster_id or "",
             "wheel_url": result.wheels_url or "",
             "buildkite_url": result.buildkite_url or "",
+            "buildkite_job_id": result.buildkite_job_id or "",
             "runtime": result.runtime or -1.0,
             "stable": result.stable,
             "return_code": result.return_code,
             "smoke_test": result.smoke_test,
             "prometheus_metrics": result.prometheus_metrics or {},
+            "extra_tags": result.extra_tags or {},
         }
 
         logger.debug(f"Result json: {json.dumps(result_json)}")
@@ -43,6 +46,20 @@ class DBReporter(Reporter):
                 Record={"Data": json.dumps(result_json)},
             )
         except Exception:
-            logger.exception("Failed to persist result to the databricks delta lake")
+            try:
+                # This may happen if metrics are too big.
+                # TODO persist big metrics in an alternative fashion
+                logger.warning(
+                    "Couldn't persist with prometheus_metrics, trying without them"
+                )
+                result_json.pop("prometheus_metrics", None)
+                self.firehose.put_record(
+                    DeliveryStreamName="ray-ci-results",
+                    Record={"Data": json.dumps(result_json)},
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to persist result to the databricks delta lake"
+                )
         else:
             logger.info("Result has been persisted to the databricks delta lake")

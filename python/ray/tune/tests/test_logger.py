@@ -278,6 +278,9 @@ class LoggerSuite(unittest.TestCase):
             "float64": np.float64(4),
             "bad": np.float128(4),
         }
+        # Test that aim repo is saved to the experiment directory
+        # (one up from the trial directory) as the default
+        trial_logdir = os.path.join(self.test_dir, "trial_logdir")
         t = Trial(evaluated_params=config, trial_id="aim", logdir=self.test_dir)
         logger = AimCallback()
         logger.on_trial_result(0, [], t, result(0, 4))

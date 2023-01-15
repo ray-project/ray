@@ -118,11 +118,11 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
   node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
   node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);
-  stats_accessor_ = std::make_unique<StatsInfoAccessor>(this);
   error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
   worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);
   placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
+  task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
 
   RAY_LOG(DEBUG) << "GcsClient connected.";
   return Status::OK();
@@ -131,11 +131,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
 void GcsClient::Disconnect() {
   if (gcs_rpc_client_) {
     gcs_rpc_client_->Shutdown();
-    gcs_rpc_client_.reset();
   }
 }
-
-bool GcsClient::IsConnected() { return gcs_rpc_client_.get() != nullptr; }
 
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();

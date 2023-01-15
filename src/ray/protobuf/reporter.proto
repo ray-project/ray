@@ -40,6 +40,8 @@ message GetProfilingStatsReply {
 message GetTracebackRequest {
   // PID of the worker process.
   uint32 pid = 1;
+  // If using native flag for py-spy
+  optional bool native = 2;
 }
 
 message GetTracebackReply {
@@ -51,6 +53,8 @@ message CpuProfilingRequest {
   uint32 pid = 1;
   optional string format = 2;
   optional uint32 duration = 3;
+  // If using native flag for py-spy
+  optional bool native = 4;
 }
 
 message CpuProfilingReply {
@@ -71,8 +75,7 @@ message ReportOCMetricsRequest {
   bytes worker_id = 2;
 }
 
-message ReportOCMetricsReply {
-}
+message ReportOCMetricsReply {}
 
 // Resource usage reported by the node reporter.
 message NodeResourceUsage {

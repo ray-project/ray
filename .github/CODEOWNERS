@@ -27,6 +27,9 @@
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
 /src/ray/stats/metric_defs.cc @ericl @scv119 @rkooo567
 
+# Telemetry
+/src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
+
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
 
@@ -67,6 +70,7 @@
 # Ray data.
 /python/ray/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @c21
 /python/ray/data/preprocessors/ @clarkzinzow @jiaodong @Yard1 @bveeramani @matthewdeng @amogkam
+/python/ray/data/tests/preprocessors/ @clarkzinzow @jiaodong @Yard1 @bveeramani @matthewdeng @amogkam
 /doc/source/data/ @ericl @scv119 @clarkzinzow @jjyao @jianoaix @maxpumperla @c21 @ray-project/ray-docs
 
 # Ray workflows.
@@ -90,7 +94,7 @@
 /doc/source/serve/ @edoakes @simon-mo @jiaodong @shrekris-anyscale @sihanwang41 @architkulkarni @ray-project/ray-docs
 
 # AIR (docs)
-/doc/source/air/ @richardliaw @gjoliver @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs
+/doc/source/ray-air/ @richardliaw @gjoliver @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng

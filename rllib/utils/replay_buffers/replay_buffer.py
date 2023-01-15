@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 import ray  # noqa F401
 import psutil
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
@@ -91,7 +91,7 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
         ...                         storage_unit=StorageUnit.EPISODES) # doctest: +SKIP
         >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4], # doctest: +SKIP
         ...                        SampleBatch.T: [0, 1, 0, 1],
-        ...                        SampleBatch.DONES: [False, True, False, True],
+        ...                        SampleBatch.TERMINATEDS: [False, True, False, True],
         ...                        SampleBatch.EPS_ID: [0, 0, 1, 1]})) # doctest: +SKIP
         >>> eps_n = buffer.sample(1) # doctest: +SKIP
         >>> print(eps_n[SampleBatch.EPS_ID]) # doctest: +SKIP
@@ -220,9 +220,9 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
 
         elif self.storage_unit == StorageUnit.EPISODES:
             for eps in batch.split_by_episode():
-                if (
-                    eps.get(SampleBatch.T, [0])[0] == 0
-                    and eps.get(SampleBatch.DONES, [True])[-1] == True  # noqa E712
+                if eps.get(SampleBatch.T, [0])[0] == 0 and (
+                    eps.get(SampleBatch.TERMINATEDS, [True])[-1]
+                    or eps.get(SampleBatch.TRUNCATEDS, [False])[-1]
                 ):
                     # Only add full episodes to the buffer
                     # Check only if info is available
@@ -232,8 +232,9 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
                         logger.info(
                             "This buffer uses episodes as a storage "
                             "unit and thus allows only full episodes "
-                            "to be added to it. Some samples may be "
-                            "dropped."
+                            "to be added to it (starting from T=0 and ending in "
+                            "`terminateds=True` or `truncateds=True`. "
+                            "Some samples may be dropped."
                         )
 
         elif self.storage_unit == StorageUnit.FRAGMENTS:
@@ -375,8 +376,7 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
 
         if samples:
             # We assume all samples are of same type
-            sample_type = type(samples[0])
-            out = sample_type.concat_samples(samples)
+            out = concat_samples(samples)
         else:
             out = SampleBatch()
         out.decompress_if_needed()

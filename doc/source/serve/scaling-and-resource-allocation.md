@@ -36,7 +36,7 @@ To configure it, you can set the `autoscaling_config` field in deployment option
 ```
 
 The `min_replicas` and `max_replicas` fields configure the range of replicas which the
-Serve autoscaler chooses from.  Deployments will start with `min_replicas` initially.
+Serve autoscaler chooses from.  Deployments will start with `initial_replicas`. `initial_replicas` is optional; it's set to `min_replicas` by default.
 
 The `target_num_ongoing_requests_per_replica` configuration specifies how aggressively the
 autoscaler should react to traffic. Serve will try to make sure that each replica has roughly that number
