@@ -16,7 +16,7 @@ fi
 # Check if the GPU is NVIDIA
 if $(lspci | grep -i nvidia) || $(nvidia-smi -L); then
 
-  sudo apt install --no-install-recommends -y lspci jq wget
+  sudo apt install --no-install-recommends -y lspci jq wget && sudo apt -y autoremove
   if [ -x "$(command -v nvidia-smi)" ] && [ -d /usr/local/cuda ]; then
     CUDA=$true
     # Get the driver version
