@@ -9,14 +9,12 @@ gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
 shm_memory=($gb_memory / 3)
 
-GPU=$(lspci | grep -i nvidia) || $(nvidia-smi -L)
-
 if ! [ -x "$(command -v docker)" ] && ! [ -n "$WSL_DISTRO_NAME" ]; then
 sudo curl https://get.docker.com | sh
 fi
 
 # Check if the GPU is NVIDIA
-if [ -x "$(lspci | grep -i nvidia)" ] || [ -x "$(nvidia-smi -L)" ]; then
+if [ lspci | grep -i nvidia ] || [ nvidia-smi -L ]; then
   echo "hello"
   sudo apt install --no-install-recommends -y lspci jq wget && sudo apt -y autoremove
   if [ -x "$(command -v nvidia-smi)" ] && [ -d /usr/local/cuda ]; then
