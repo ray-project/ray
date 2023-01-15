@@ -14,12 +14,13 @@ shm_memory=($gb_memory / 3)
 # Check if the GPU is NVIDIA
 if lspci | grep -i nvidia || [ -n "$WSL_DISTRO_NAME"]; then
 
-  sudo apt install --no-install-recommends -y lspci jq wget gcc
+  sudo apt install --no-install-recommends -y lspci jq wget
   if [ -x "$(command -v nvidia-smi)" ] && [ -d /usr/local/cuda ]; then
     CUDA=$true
     # Get the driver version
     nvidia_driver_ver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader)
   else
+    sudo apt install --no-install-recommends -y gcc
     wget https://developer.download.nvidia.com/compute/cuda/11.2.0/local_installers/cuda_11.2.0_460.27.04_linux.run -O /home/tripps/build/cuda_11.2.0_460.27.04_linux.run && sudo bash ./cuda_11.2.0_460.27.04_linux.run --silent
     CUDA=$true
     # Get the driver version
