@@ -109,9 +109,9 @@ def build_streaming_topology(dag: PhysicalOperator) -> Topology:
     setup_state(dag)
 
     # Create the progress bars starting from the first operator to run.
-    # Note that the topology dict in in topological sort order.
+    # Note that the topology dict is in topological sort order.
     i = 0
-    for op_state in list(topology.values())[::-1]:
+    for op_state in list(topology.values()):
         if not isinstance(op_state.op, InputDataBuffer):
             op_state.initialize_progress_bar(i)
             i += 1
