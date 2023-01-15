@@ -16,14 +16,13 @@ set -ae
 
 # Make sure directories exist as they are not automatically created
 # This needs to happen at runtime, as the directory could be mounted.
-mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH /data/tailscale/
-
+mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
 # Special VM options for Java in Docker
 
 
+sudo tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
+sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
 
-sudo tailscaled --state=/data/tailscale/tailscaled.state --socket=/data/tailscale/tailscaled.sock &
-sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns --socket=/data/tailscale/tailscaled.sock
 
 while [ not $status = "Running" ]
     do 
