@@ -37,19 +37,20 @@ class AimCallback(LoggerCallback):
 
     Source: https://github.com/aimhubio/aim
 
-    Args:
-    repo (:obj:`str`, optional): Aim repository path or Repo object to which Run object is bound.
-        If skipped, default Repo is used.
-    experiment (:obj:`str`, optional): Sets Run's `experiment` property. 'default' if not specified.
-        Can be used later to query runs/sequences.
-    metrics (:obj:`List[str]`, optional): Specific metrics to track,
-        if no metric is specified log everything that is reported.
-    as_multirun (:obj:`bool`, optional): Enable/Disable creating new runs for each trial.
-    system_tracking_interval (:obj:`int`, optional): Sets the tracking interval in seconds for system usage
-        metrics (CPU, Memory, etc.). Set to `None` to disable system metrics tracking.
-    log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
-        git info, environment variables, etc.
-    
+
+    Arguments:
+        repo (:obj:`str`, optional): Aim repository path or Repo object to which Run object is bound.
+            If skipped, default Repo is used.
+        experiment (:obj:`str`, optional): Sets Run's `experiment` property. 'default' if not specified.
+            Can be used later to query runs/sequences.
+        metrics (:obj:`List[str]`, optional): Specific metrics to track,
+            if no metric is specified log everything that is reported.
+        as_multirun (:obj:`bool`, optional): Enable/Disable creating new runs for each trial.
+        system_tracking_interval (:obj:`int`, optional): Sets the tracking interval in seconds for system usage
+            metrics (CPU, Memory, etc.). Set to `None` to disable system metrics tracking.
+        log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
+            git info, environment variables, etc.
+
     For more arguments please check the aim documentation: https://aimstack.readthedocs.io/en/latest/refs/sdk.html
     """
 
