@@ -9,7 +9,9 @@ gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
 shm_memory=($gb_memory / 3)
 
-
+if ! [ -x "$(command -v docker)" ] && ! [ -n "$WSL_DISTRO_NAME" ]; then
+sudo curl https://get.docker.com | sh
+fi
 
 # Check if the GPU is NVIDIA
 if $(lspci | grep -i nvidia) || $(nvidia-smi -L); then
