@@ -1,3 +1,13 @@
 #!/bin/bash
-docker build --ulimit memlock=-1 --memory-swap=-1 --cache-from=rayproject/ray:py38-cpu --build-arg IMAGETYPE=cpu -f $DOCKERFILE_PATH -t DOCKER_REPO:cpu -t DOCKER_REPO:latest -t DOCKER_REPO:cpu-latest .
-docker build --ulimit memlock=-1 --memory-swap=-1 --cache-from=rayproject/ray-ml:py38-gpu --build-arg IMAGETYPE=gpu -f $DOCKERFILE_PATH -t DOCKER_REPO:gpu -t DOCKER_REPO:gpu-latest .
+
+# Get the total amount of memory in kB
+memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+
+# Convert kB to GB
+gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
+
+shm_memory=($gb_memory / 3)
+
+
+docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray:py38-cpu --build-arg IMAGETYPE=cpu -f $DOCKERFILE_PATH -t $DOCKER_REPO:cpu -t $DOCKER_REPO:latest -t $DOCKER_REPO:cpu-latest .
+docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:py38-gpu --build-arg IMAGETYPE=gpu -f $DOCKERFILE_PATH -t $DOCKER_REPO:gpu -t $DOCKER_REPO:gpu-latest .

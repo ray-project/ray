@@ -35,7 +35,7 @@ if [ "$NODETYPE" = "head" ]; then
 
 ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address nexus.chimp-beta.ts.net
 
-/crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
+/crate/bin/crate -Cnetwork.host=_tailscale0_ \
             -Cnode.name=nexus \
             -Cnode.master=true \
             -Cnode.data=true \
@@ -50,7 +50,7 @@ else
 
 ray start --address='nexus.chimp-beta.ts.net:6379' --node-ip-address ${HOSTNAME}.chimp-beta.ts.net
 
-/crate/bin/crate -Cnetwork.host=_${N2N_INTERFACE}_ \
+/crate/bin/crate -Cnetwork.host=_tailscale0_ \
             -Cnode.data=true \
             -Cnode.store.allow_mmap=false \
             -Cdiscovery.seed_hosts=nexus:4300 \
