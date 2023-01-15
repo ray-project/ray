@@ -21,7 +21,7 @@ ENV N2N_INTERFACE=tailscale0
 #the $RANDOMSTRING variable is defined in the startup script
 #ENV N2N_KEY=$RANDOMSTRING
 
-RUN sudo rm -rf /var/lib/apt/lists/*
+RUN sudo rm -rf /var/lib/apt/lists/* \
         && sudo apt-get update \
         && sudo apt-get install -y --no-install-recommends ca-certificates curl wget jq lsb-release \ 
         && curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add \
