@@ -50,7 +50,7 @@ class AimCallback(LoggerCallback):
             metrics (CPU, Memory, etc.). Set to `None` to disable system metrics tracking.
         log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
             git info, environment variables, etc.
-    
+
     For more arguments please check the aim documentation: https://aimstack.readthedocs.io/en/latest/refs/sdk.html
     """
 
