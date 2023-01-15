@@ -20,7 +20,6 @@ if lspci | grep -i nvidia || $(nvidia-smi -L); then
     # Get the driver version
     nvidia_driver_ver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader)
   elif [ -n "$WSL_DISTRO_NAME" ]; then
-    sudo apt install --no-install-recommends -y gcc
     wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-wsl-ubuntu.pin
     sudo mv cuda-wsl-ubuntu.pin /etc/apt/preferences.d/cuda-repository-pin-600
     sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/7fa2af80.pub
@@ -28,6 +27,10 @@ if lspci | grep -i nvidia || $(nvidia-smi -L); then
     sudo apt-get update
     sudo apt-get -y install cuda \
     && CUDA=$true
+  elif [ lspci | grep -i nvidia ]; then
+    sudo apt install --no-install-recommends -y gcc
+    wget https://developer.download.nvidia.com/compute/cuda/11.2.2/local_installers/cuda_11.2.2_460.32.03_linux.run
+    sudo sh cuda_11.2.2_460.32.03_linux.run --silent && CUDA=$true
   fi
 
   if [ -n "$CUDA" ] && [ -f /usr/local/cuda/version.json ]; then
