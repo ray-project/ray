@@ -12,7 +12,7 @@ shm_memory=($gb_memory / 3)
 
 
 # Check if the GPU is NVIDIA
-if lspci | grep -i nvidia || $(nvidia-smi -L); then
+if $(lspci | grep -i nvidia) || $(nvidia-smi -L); then
 
   sudo apt install --no-install-recommends -y lspci jq wget
   if [ -x "$(command -v nvidia-smi)" ] && [ -d /usr/local/cuda ]; then
