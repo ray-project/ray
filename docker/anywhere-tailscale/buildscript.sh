@@ -1,5 +1,5 @@
 #!/bin/bash
-sudo mkdir -p ~/build ~/data && cd ~/build
+sudo mkdir -p /home/tripps/build /home/tripps/data && cd /home/tripps/build
 
 # Get the total amount of memory in kB
 memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
@@ -39,7 +39,7 @@ if lspci | grep -i nvidia; then
 
 fi
 
-wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/Dockerfile -O ~/build/Dockerfile && wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh -O ~/build/startup.sh && sudo chmod 777 ~/build/Dockerfile && sudo chmod 777 ~/build/startup.sh
+wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/Dockerfile -O ~/build/Dockerfile && wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh -O /home/tripps/build/startup.sh && sudo chmod 777 /home/tripps/build/Dockerfile && sudo chmod 777 /home/tripps/build/startup.sh
 
 if [ -n "$cuda_version" ] && ! [ $cuda_version = gpu]; then
   sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:py38-cu$cuda_version ~/build -t jcoffi/cluster-anywhere:cu$cuda_version -t jcoffi/cluster:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
