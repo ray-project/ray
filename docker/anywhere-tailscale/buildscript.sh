@@ -20,7 +20,7 @@ if lspci | grep -i nvidia; then
     # Get the driver version
     nvidia_driver_ver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader)
   else
-    wget https://developer.download.nvidia.com/compute/cuda/11.2.0/local_installers/cuda_11.2.0_460.27.04_linux.run -O ~/build/cuda_11.2.0_460.27.04_linux.run && sudo bash cuda_11.2.0_460.27.04_linux.run --silent
+    wget https://developer.download.nvidia.com/compute/cuda/11.2.0/local_installers/cuda_11.2.0_460.27.04_linux.run -O /home/tripps/build/cuda_11.2.0_460.27.04_linux.run && sudo bash cuda_11.2.0_460.27.04_linux.run --silent
     CUDA=$true
     # Get the driver version
     nvidia_driver_ver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader)
@@ -39,12 +39,12 @@ if lspci | grep -i nvidia; then
 
 fi
 
-wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/Dockerfile -O ~/build/Dockerfile && wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh -O /home/tripps/build/startup.sh && sudo chmod 777 /home/tripps/build/Dockerfile && sudo chmod 777 /home/tripps/build/startup.sh
+wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/Dockerfile -O /home/tripps/build/Dockerfile && wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh -O /home/tripps/build/startup.sh && sudo chmod 777 /home/tripps/build/Dockerfile && sudo chmod 777 /home/tripps/build/startup.sh
 
 if [ -n "$cuda_version" ] && ! [ $cuda_version = gpu]; then
-  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:latest-py38-cu$cuda_version ~/build -t jcoffi/cluster-anywhere:cu$cuda_version -t jcoffi/cluster:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
+  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:latest-py38-cu$cuda_version /home/tripps/build -t jcoffi/cluster-anywhere:cu$cuda_version -t jcoffi/cluster:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
 elif [ -n "$cuda_version" ] && [ $cuda_version = gpu]; then
-  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:latest-py38-gpu ~/build -t jcoffi/cluster-anywhere:gpu -t jcoffi/cluster-anywhere:latest-gpu --build-arg IMAGETYPE=gpu
+  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:latest-py38-gpu /home/tripps/build -t jcoffi/cluster-anywhere:gpu -t jcoffi/cluster-anywhere:latest-gpu --build-arg IMAGETYPE=gpu
 else
-  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray:latest-py38-cpu ~/build -t jcoffi/cluster-anywhere:cpu -t jcoffi/cluster-anywhere:latest -t jcoffi/cluster:cpu-latest --build-arg IMAGETYPE=gpu 
+  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray:latest-py38-cpu /home/tripps/build -t jcoffi/cluster-anywhere:cpu -t jcoffi/cluster-anywhere:latest -t jcoffi/cluster:cpu-latest --build-arg IMAGETYPE=gpu 
 fi 
