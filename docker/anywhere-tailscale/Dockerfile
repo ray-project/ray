@@ -1,5 +1,5 @@
 ARG IMAGETYPE=cpu
-FROM rayproject/ray:latest-py38-$IMAGETYPE
+FROM rayproject/ray:2.1.0-py38-$IMAGETYPE
 ENV __MODIN_AUTOIMPORT_PANDAS__=1
 ENV MODIN_ENGINE=ray
 ENV MODIN_RAY_CLUSTER=True
@@ -21,10 +21,8 @@ ENV N2N_INTERFACE=tailscale0
 #the $RANDOMSTRING variable is defined in the startup script
 #ENV N2N_KEY=$RANDOMSTRING
 
-RUN sudo rm -rf /var/lib/apt/lists/* \
-        && sudo apt-get update \
+RUN sudo apt-get update \
         && sudo apt-get install -y --no-install-recommends ca-certificates curl wget jq lsb-release \ 
-        && curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add \
         && sudo apt-get clean \
         && sudo rm -rf /var/lib/apt/lists/*
 

@@ -9,5 +9,5 @@ gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 shm_memory=($gb_memory / 3)
 
 
-docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray:latest-py38-cpu --build-arg IMAGETYPE=cpu -f $DOCKERFILE_PATH -t $DOCKER_REPO:cpu -t $DOCKER_REPO:latest -t $DOCKER_REPO:cpu-latest .
-docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:latest-py38-gpu --build-arg IMAGETYPE=gpu -f $DOCKERFILE_PATH -t $DOCKER_REPO:gpu -t $DOCKER_REPO:gpu-latest .
+docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-cpu --build-arg IMAGETYPE=cpu -f $DOCKERFILE_PATH -t $DOCKER_REPO:cpu -t $DOCKER_REPO:latest -t $DOCKER_REPO:cpu-latest .
+docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu --build-arg IMAGETYPE=gpu -f $DOCKERFILE_PATH -t $DOCKER_REPO:gpu -t $DOCKER_REPO:gpu-latest .
