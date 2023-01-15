@@ -14,6 +14,14 @@ see :ref:`Trainable Logging <trainable-logging>`.
     to use our new interface with the ``LoggerCallback`` class instead.
 
 
+Aim
+---------
+
+.. autoclass:: ray.tune.logger.AimCallback
+
+You can install Aim via ``pip install aim``.
+You can see the :doc:`tutorial here </tune/examples/tune-aim>`
+
 Viskit
 ------
 

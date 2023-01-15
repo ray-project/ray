@@ -1,14 +1,13 @@
 import logging
-import pathlib
-
 import numpy as np
 
-from typing import TYPE_CHECKING, Dict, Optional
-
+from typing import TYPE_CHECKING, Dict, Optional, List
 from aim.ext.resource import DEFAULT_SYSTEM_TRACKING_INT
-from ray.tune.logger.logger import Logger, LoggerCallback
-from ray.util.debug import log_once
-from ray.tune.result import ( TRAINING_ITERATION,
+from aim.sdk import Run
+
+from ray.tune.logger.logger import LoggerCallback
+from ray.tune.result import (
+    TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
 )
@@ -25,44 +24,51 @@ VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
 @PublicAPI
 class AimCallback(LoggerCallback):
-    """Aim Logger.
-    Logs metrics in aim format.
+    """Aim Logger, logs metrics in Aim format.
+
+    Aim is an open-source, self-hosted ML experiment tracking tool.
+    It's good at tracking lots (1000s) of training runs, and it allows you to compare them with a
+    performant and beautiful UI.
+
+    Source: https://github.com/aimhubio/aim
+
+    Arguments:
+        repo (:obj:`str`, optional): Aim repository path or Repo object to which Run object is bound.
+            If skipped, default Repo is used.
+        experiment (:obj:`str`, optional): Sets Run's `experiment` property. 'default' if not specified.
+            Can be used later to query runs/sequences.
+        system_tracking_interval (:obj:`int`, optional): Sets the tracking interval in seconds for system usage
+            metrics (CPU, Memory, etc.). Set to `None` to disable system metrics tracking.
+        log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
+            git info, environment variables, etc.
+        metrics (:obj:`List[str]`, optional): Specific metrics to track,
+            if no metric is specified log everything that is reported.
+        as_multirun (:obj:`bool`, optional): Enable/Disable creating new runs for each trial.
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
     VALID_NP_HPARAMS = (np.bool8, np.float32, np.float64, np.int32, np.int64)
 
-    def __init__(self,
-                 repo: Optional[str] = None,
-                 experiment: Optional[str] = None,
-                 system_tracking_interval: Optional[int]
-                 = DEFAULT_SYSTEM_TRACKING_INT,
-                 log_system_params: bool = True,
-                 metrics: Optional[str] = None
-                 ):
+    def __init__(
+        self,
+        repo: Optional[str] = None,
+        experiment: Optional[str] = None,
+        system_tracking_interval: Optional[int] = DEFAULT_SYSTEM_TRACKING_INT,
+        log_system_params: bool = True,
+        metrics: Optional[List[str]] = None,
+        as_multirun: bool = False,
+    ):
 
         self._repo_path = repo
         self._experiment_name = experiment
         self._system_tracking_interval = system_tracking_interval
         self._log_system_params = log_system_params
         self._metrics = metrics
-        self._log_value_warned = False
-
-        try:
-            from aim.sdk import Run
-            self._run_cls = Run
-            from aim import Image
-            from aim import Distribution
-            from aim.ext.resource.configs import DEFAULT_SYSTEM_TRACKING_INT
-
-        except ImportError:
-            if log_once("aim-install"):
-                logger.info('"pip install aim" to be able to use the aim logger.')
-            raise
-
+        self._as_multirun = as_multirun
+        self._run_cls = Run
         self._trial_run: Dict["Trial", Run] = {}
 
-    def _create_run(self, trial):
+    def _create_run(self, trial: "Trial"):
         """
         Returns: Run
         """
@@ -72,15 +78,19 @@ class AimCallback(LoggerCallback):
             system_tracking_interval=self._system_tracking_interval,
             log_system_params=self._log_system_params,
         )
-        run["trial_id"] = trial.trial_id
+        if self._as_multirun:
+            run["trial_id"] = trial.trial_id
         return run
 
     def log_trial_start(self, trial: "Trial"):
         logger.info(f"trial {trial} logger is started")
 
-        # do nothing when the trial is alrady initiliated
-        if trial in self._trial_run:
-            self._trial_run[trial].close()
+        if self._as_multirun:
+            if trial in self._trial_run:
+                self._trial_run[trial].close()
+        elif self._trial_run:
+            return
+
         trial.init_logdir()
         self._trial_run[trial] = self._create_run(trial)
 
@@ -97,8 +107,6 @@ class AimCallback(LoggerCallback):
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         # create local copy to avoid problems
         tmp_result = result.copy()
-        if trial not in self._trial_run:
-            self.log_trial_start(trial)
 
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
 
@@ -106,9 +114,9 @@ class AimCallback(LoggerCallback):
             if k in tmp_result:
                 del tmp_result[k]  # not useful to log these
 
-        context = None
+        context = {}
         if "context" in tmp_result:
-            context = tmp_result["context"]
+            context.update(tmp_result["context"])
             del tmp_result["context"]
 
         epoch = None
@@ -116,55 +124,47 @@ class AimCallback(LoggerCallback):
             epoch = tmp_result["epoch"]
             del tmp_result["epoch"]
 
+        trial_run = self._get_trial_run(trial)
+        if not self._as_multirun:
+            context["trial"] = trial.trial_id
+
         if self._metrics:
             for metric in self._metrics:
                 try:
-                    self._trial_run[trial].track(value=tmp_result[metric], epoch=epoch, name=metric, step=step,
-                                                 context=context)
+                    trial_run.track(
+                        value=tmp_result[metric],
+                        epoch=epoch,
+                        name=metric,
+                        step=step,
+                        context=context,
+                    )
                 except KeyError:
-                    logger.warning(f"The metric {metric} is specified but not reported.")
+                    logger.warning(
+                        f"The metric {metric} is specified but not reported."
+                    )
         else:
             # if no metric is specified log everything that is reported
             flat_result = flatten_dict(tmp_result, delimiter="/")
             valid_result = {}
 
             for attr, value in flat_result.items():
-                if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(value):
+                if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(
+                    value
+                ):
                     valid_result[attr] = value
-                    self._trial_run[trial].track(value=value, name=attr, epoch=epoch, step=step, context=context)
+                    trial_run.track(
+                        value=value, name=attr, epoch=epoch, step=step, context=context
+                    )
                 elif (isinstance(value, list) and len(value) > 0) or (
-                        isinstance(value, np.ndarray) and value.size > 0
+                    isinstance(value, np.ndarray) and value.size > 0
                 ):
                     valid_result[attr] = value
 
-                    """
-                    # ToDO: implement usage of audio, images etc. here..
-                    # Must be video
-                    if isinstance(value, np.ndarray) and value.ndim == 5:
-                        self._trial_writer[trial].add_video(
-                            attr, value, global_step=step, fps=20
-                        )
-                        continue
-
-                    try:
-                        self._trial_writer[trial].add_histogram(
-                            attr, value, global_step=step
-                        )
-                    # In case TensorboardX still doesn't think it's a valid value
-                    # (e.g. `[[]]`), warn and move on.
-                    except (ValueError, TypeError):
-                        if log_once("invalid_tbx_value"):
-                            logger.warning(
-                                "You are trying to log an invalid value ({}={}) "
-                                "via {}!".format(attr, value, type(self).__name__)
-                            )
-                    """
-
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         # cleanup in the end
-        self._trial_run[trial].finalize()
-        self._trial_run[trial].close()
-        del self._trial_run[trial]
+        trial_run = self._get_trial_run(trial)
+        trial_run.close()
+        del trial_run
 
         logger.info(f"trial {trial} aim logger closed")
 
@@ -193,4 +193,9 @@ class AimCallback(LoggerCallback):
                 str(removed),
             )
 
-        self._trial_run[trial]['hparams'] = scrubbed_params
+        self._trial_run[trial]["hparams"] = scrubbed_params
+
+    def _get_trial_run(self, trial):
+        if not self._as_multirun:
+            return list(self._trial_run.values())[0]
+        return self._trial_run[trial]
