@@ -827,7 +827,7 @@ class SyncerReactorTest : public ::testing::Test {
     thread_->join();
   }
 
-  std::pair<RaySyncerBidiReactorBase *, RaySyncerBidiReactorBase *> GetReactors() {
+  std::pair<RayServerBidiReactor *, RayClientBidiReactor *> GetReactors() {
     return std::make_pair(rpc_service_->reactor, cli_reactor);
   }
 
@@ -895,7 +895,7 @@ TEST_F(SyncerReactorTest, TestReactorFailure) {
   auto [node_s, node_c] = GetNodeID();
   ASSERT_TRUE(s != nullptr);
   ASSERT_TRUE(c != nullptr);
-  server->Shutdown();
+  s->Finish(grpc::Status::CANCELLED);
   auto c_cleanup = client_cleanup.get_future().get();
   ASSERT_EQ(node_s, c_cleanup.first);
   ASSERT_EQ(true, c_cleanup.second);
