@@ -108,6 +108,9 @@ class TorchTrainer(DataParallelTrainer):
             from ray.air.config import RunConfig
             from ray.air.config import CheckpointConfig
 
+            # If using GPUs, set this to True.
+            use_gpu = False
+
             # Define NN layers archicture, epochs, and number of workers
             input_size = 1
             layer_size = 32
@@ -145,7 +148,7 @@ class TorchTrainer(DataParallelTrainer):
                 # Iterate over epochs and batches
                 for epoch in range(num_epochs):
                     for batches in dataset_shard.iter_torch_batches(batch_size=32,
-                                dtypes=torch.float):
+                                dtypes=torch.float, device=train.torch.get_device()):
 
                         # Add batch or unsqueeze as an additional dimension [32, x]
                         inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
@@ -176,9 +179,7 @@ class TorchTrainer(DataParallelTrainer):
             )
 
             # Define scaling and run configs
-            # If using GPUs, use the below scaling config instead.
-            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
-            scaling_config = ScalingConfig(num_workers=num_workers)
+            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
             run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
 
             trainer = TorchTrainer(

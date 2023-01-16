@@ -92,6 +92,9 @@ class HorovodTrainer(DataParallelTrainer):
         from ray.train.torch import TorchCheckpoint
         from ray.air.config import ScalingConfig
 
+        # If using GPUs, set this to True.
+        use_gpu = False
+
         input_size = 1
         layer_size = 15
         output_size = 1
@@ -142,9 +145,7 @@ class HorovodTrainer(DataParallelTrainer):
                     ),
                 )
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        scaling_config = ScalingConfig(num_workers=3)
-        # If using GPUs, use the below scaling config instead.
-        # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
+        scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
         trainer = HorovodTrainer(
             train_loop_per_worker=train_loop_per_worker,
             scaling_config=scaling_config,
