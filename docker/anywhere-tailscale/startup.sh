@@ -24,12 +24,13 @@ if [ -c /dev/net/tun ]; then
     sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
 else
     echo "tun doesn't exist"
-    sudo tailscaled --tun=userspace-networking --state=mem: --socks5-server=localhost:1055 --outbound-http-proxy-listen=localhost:1055 &
+    sudo tailscaled --tun=userspace-networking --state=mem: &
     sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
 fi
 
 while [ not $status = "Running" ]
     do 
+        echo "Waiting for tailscale to start..."
         status="$(tailscale status -json | jq -r .BackendState)"
 done
 
