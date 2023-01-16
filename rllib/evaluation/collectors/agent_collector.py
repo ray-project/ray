@@ -458,20 +458,28 @@ class AgentCollector:
                     # handle the case where the inds are out of bounds from the end.
                     # if during the indexing any of the indices are out of bounds, we
                     # need to use padding on the end to fill in the missing indices.
-                    element_at_t = []
-                    for index in inds:
-                        if index < len(d):
-                            element_at_t.append(d[index])
-                        else:
-                            # zero pad similar to the last element.
-                            element_at_t.append(
-                                tree.map_structure(np.zeros_like, d[-1])
-                            )
-                    element_at_t = np.stack(element_at_t)
+                    # Create padding first time we encounter data
+                    if max(inds) < len(d):
+                        # Simple case where we can simply pick slices from buffer
+                        element_at_t = d[inds]
+                    else:
+                        # Case in which we have to pad because buffer has insufficient
+                        # length. This branch takes more time than simply picking
+                        # slices we try to avoid it.
+                        element_at_t = []
+                        for index in inds:
+                            if index < len(d):
+                                element_at_t.append(d[index])
+                            else:
+                                # zero pad similar to the last element.
+                                element_at_t.append(
+                                    tree.map_structure(np.zeros_like, d[-1])
+                                )
+                        element_at_t = np.stack(element_at_t)
 
-                    if element_at_t.shape[0] == 1:
-                        # squeeze to remove the T dimension if it is 1.
-                        element_at_t = element_at_t.squeeze(0)
+                        if element_at_t.shape[0] == 1:
+                            # squeeze to remove the T dimension if it is 1.
+                            element_at_t = element_at_t.squeeze(0)
                     shifted_data.append(element_at_t)
 
                 # in some multi-agent cases shifted_data may be an empty list.
