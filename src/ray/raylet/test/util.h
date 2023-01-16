@@ -24,7 +24,8 @@ class MockWorker : public WorkerInterface {
       : worker_id_(worker_id),
         port_(port),
         is_detached_actor_(false),
-        runtime_env_hash_(runtime_env_hash) {}
+        runtime_env_hash_(runtime_env_hash),
+        job_id_(JobID::FromInt(859)) {}
 
   WorkerID WorkerId() const override { return worker_id_; }
 
@@ -107,10 +108,7 @@ class MockWorker : public WorkerInterface {
     auto *t = new std::unordered_set<TaskID>();
     return *t;
   }
-  const JobID &GetAssignedJobId() const override {
-    RAY_CHECK(false) << "Method unused";
-    return JobID::Nil();
-  }
+  const JobID &GetAssignedJobId() const override { return job_id_; }
   int GetRuntimeEnvHash() const override { return runtime_env_hash_; }
   void AssignActorId(const ActorID &actor_id) override {
     RAY_CHECK(false) << "Method unused";
@@ -187,6 +185,7 @@ class MockWorker : public WorkerInterface {
   absl::Time task_assign_time_;
   int runtime_env_hash_;
   TaskID task_id_;
+  JobID job_id_;
 };
 
 }  // namespace raylet

@@ -42,19 +42,23 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
     return std::make_pair(nullptr, /*should retry*/ false);
   }
 
-  std::unordered_map<std::string, Group> group_map;
+  TaskID non_retriable_owner_id = TaskID::Nil();
+  std::unordered_map<TaskID, Group> group_map;
   for (auto worker : workers) {
     bool retriable = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
+    if (non_retriable_owner_id == TaskID::Nil()) {
+      non_retriable_owner_id = TaskID::FromRandom(worker->GetAssignedJobId());
+    }
     TaskID owner_id =
         retriable ? worker->GetAssignedTask().GetTaskSpecification().ParentTaskId()
-                  : worker->GetAssignedTaskId();
+                  : non_retriable_owner_id;
 
-    auto it = group_map.find(owner_id.Binary());
+    auto it = group_map.find(owner_id);
 
     if (it == group_map.end()) {
       Group group(owner_id, retriable);
       group.AddToGroup(worker);
-      group_map.emplace(owner_id.Binary(), std::move(group));
+      group_map.emplace(owner_id, std::move(group));
     } else {
       auto &group = it->second;
       group.AddToGroup(worker);
@@ -66,28 +70,28 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
     sorted.push_back(it->second);
   }
 
+  /// Prioritizes killing groups that are retriable, else it picks the largest group,
+  /// else it picks the newest group.
   std::sort(
       sorted.begin(), sorted.end(), [](Group const &left, Group const &right) -> bool {
         int left_retriable = left.IsRetriable() ? 0 : 1;
         int right_retriable = right.IsRetriable() ? 0 : 1;
+
         if (left_retriable == right_retriable) {
-          return left.GetAssignedTaskTime() > right.GetAssignedTaskTime();
+          if (left.GetAllWorkers().size() == right.GetAllWorkers().size()) {
+            return left.GetAssignedTaskTime() > right.GetAssignedTaskTime();
+          }
+          return left.GetAllWorkers().size() > right.GetAllWorkers().size();
         }
         return left_retriable < right_retriable;
       });
 
-  bool should_retry = false;
   Group selected_group = sorted.front();
-  for (Group group : sorted) {
-    if (group.GetAllWorkers().size() > 1) {
-      selected_group = group;
-      should_retry = true;
-      break;
-    }
-  }
+  bool should_retry =
+      selected_group.GetAllWorkers().size() > 1 && selected_group.IsRetriable();
   auto worker_to_kill = selected_group.SelectWorkerToKill();
 
-  RAY_LOG(INFO) << "Groups sorted based on the policy:\n"
+  RAY_LOG(INFO) << "Sorted list of tasks based on the policy:\n"
                 << PolicyDebugString(sorted, system_memory);
 
   return std::make_pair(worker_to_kill, should_retry);
@@ -98,8 +102,8 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
   std::stringstream result;
   int32_t group_index = 0;
   for (auto &group : groups) {
-    result << "Group (retriable: " << group.IsRetriable()
-           << ") (owner id: " << group.OwnerId() << ") (time counter: "
+    result << "Tasks (retriable: " << group.IsRetriable()
+           << ") (parent task id: " << group.OwnerId() << ") (Earliest assigned time: "
            << absl::FormatTime(group.GetAssignedTaskTime(), absl::UTCTimeZone())
            << "):\n";
 
@@ -114,7 +118,7 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
         RAY_LOG_EVERY_MS(INFO, 60000)
             << "Can't find memory usage for PID, reporting zero. PID: " << pid;
       }
-      result << "Worker time counter "
+      result << "Task assigned time "
              << absl::FormatTime(worker->GetAssignedTaskTime(), absl::UTCTimeZone())
              << " worker id " << worker->WorkerId() << " memory used " << used_memory
              << " task spec "
@@ -135,7 +139,7 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
   return result.str();
 }
 
-TaskID Group::OwnerId() const { return owner_id_; }
+const TaskID &Group::OwnerId() const { return owner_id_; }
 
 bool Group::IsRetriable() const { return retriable_; }
 

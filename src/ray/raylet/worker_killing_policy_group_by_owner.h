@@ -34,13 +34,13 @@ struct GroupKey {
   const TaskID &owner_id;
 };
 
-class Group {
+struct Group {
  public:
   Group(const TaskID &owner_id, bool retriable)
       : owner_id_(owner_id), retriable_(retriable) {}
 
   /// The parent task id of the tasks belonging to this group
-  TaskID OwnerId() const;
+  const TaskID &OwnerId() const;
 
   /// Whether tasks in this group are retriable.
   bool IsRetriable() const;
@@ -73,12 +73,13 @@ class Group {
 };
 
 /// Groups task by its owner id. Non-retriable task (whether it be task or actor) forms
-/// its own group. Prioritizes killing groups that are retriable first, then in LIFO
-/// order, where each group's order is based on the time of its earliest submitted member.
-/// Within the group it prioritizes killing task in LIFO order of the submission time.
+/// its own group. Prioritizes killing groups that are retriable first, else it picks the
+/// largest group, else it picks the newest group. The "age" of a group is based on the
+/// time of its earliest submitted task. When a group is selected for killing it selects
+/// the last submitted task.
 ///
 /// When selecting a worker / task to be killed, it will set the task to-be-killed to be
-/// non-retriable if it is the last member of the group, and retriable otherwise.
+/// non-retriable if it is the last member of the group, and is retriable otherwise.
 class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
   GroupByOwnerIdWorkerKillingPolicy();

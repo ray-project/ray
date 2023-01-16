@@ -77,7 +77,7 @@ std::string WorkerKillingPolicy::WorkersDebugString(
       RAY_LOG_EVERY_MS(INFO, 60000)
           << "Can't find memory usage for PID, reporting zero. PID: " << pid;
     }
-    result << "Worker " << index << ": task assigned time counter "
+    result << "Worker " << index << ": task assigned time "
            << absl::FormatTime(worker->GetAssignedTaskTime(), absl::UTCTimeZone())
            << " worker id " << worker->WorkerId() << " memory used " << used_memory
            << " task spec "
