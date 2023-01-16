@@ -56,7 +56,8 @@ class RayTask {
   /// \return The object dependencies.
   const std::vector<rpc::ObjectReference> &GetDependencies() const;
 
-  /// Get the task's preferred node id for scheduling.
+  /// Get the task's preferred node id for scheduling. If the returned value
+  /// is empty, then it means the task has no preferred node.
   ///
   /// \return The preferred node id.
   const std::string &GetPreferredNodeID() const;

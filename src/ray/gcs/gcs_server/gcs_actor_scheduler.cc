@@ -94,7 +94,7 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   };
 
   // Queue and schedule the actor locally (gcs).
-  auto owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
+  const auto &owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
   RayTask task(actor->GetCreationTaskSpecification(),
                owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
   cluster_task_manager_->QueueAndScheduleTask(task,

@@ -38,7 +38,7 @@ scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
   round.reserve(nodes_.size());
   auto preferred_node_id =
       preferred_node.empty() ? local_node_id_ : scheduling::NodeID(preferred_node);
-  const auto preferred_it = nodes_.find(preferred_node_id);
+  auto preferred_it = nodes_.find(preferred_node_id);
   RAY_CHECK(preferred_it != nodes_.end());
   auto predicate = [this, node_filter](scheduling::NodeID node_id,
                                        const NodeResources &node_resources) {
