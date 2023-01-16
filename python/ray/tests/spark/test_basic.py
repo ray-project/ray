@@ -66,7 +66,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes_arg,
                 num_cpus_per_node=num_cpus_per_node,
-                safe_mode=False
+                safe_mode=False,
+                head_node_options={"include_dashboard": False}
             ):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
@@ -83,6 +84,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 safe_mode=False,
                 collect_log_to_path=collect_log_to_path,
                 ray_temp_root_dir=ray_temp_root_dir,
+                head_node_options={"include_dashboard": True}
             )
             ray.init()
 

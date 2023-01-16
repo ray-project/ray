@@ -191,8 +191,12 @@ class RayClusterOnSpark:
         self.shutdown()
 
 
+def _convert_ray_node_option_key(key):
+    return f"--{key.replace('_', '-')}"
+
+
 def _convert_ray_node_options(options):
-    return [f"--{k.replace('_', '-')}={str(v)}" for k, v in options.items()]
+    return [f"{_convert_ray_node_option_key(k)}={str(v)}" for k, v in options.items()]
 
 
 _RAY_HEAD_STARTUP_TIMEOUT = 5
@@ -380,23 +384,33 @@ def _setup_ray_cluster(
     else:
         start_hook = RayOnSparkStartHook()
 
-    head_node_options = head_node_options or {}
-    worker_node_options = worker_node_options or {}
-
     spark = get_spark_session()
 
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
-
     ray_head_port = get_random_unused_port(ray_head_ip, min_port=9000, max_port=10000)
-    ray_dashboard_port = get_random_unused_port(
-        ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
-    )
-    ray_dashboard_agent_port = get_random_unused_port(
-        ray_head_ip,
-        min_port=9000,
-        max_port=10000,
-        exclude_list=[ray_head_port, ray_dashboard_port],
-    )
+
+    include_dashboard = head_node_options.pop("include_dashboard", True)
+
+    if include_dashboard:
+        ray_dashboard_port = get_random_unused_port(
+            ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
+        )
+        ray_dashboard_agent_port = get_random_unused_port(
+            ray_head_ip,
+            min_port=9000,
+            max_port=10000,
+            exclude_list=[ray_head_port, ray_dashboard_port],
+        )
+        dashboard_options = {
+            "--include-dashboard=true",
+            "--dashboard-host=0.0.0.0",
+            f"--dashboard-port={ray_dashboard_port}",
+            f"--dashboard-agent-listen-port={ray_dashboard_agent_port}",
+        }
+    else:
+        dashboard_options = {
+            "--include-dashboard=false",
+        }
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
 
@@ -418,19 +432,17 @@ def _setup_ray_cluster(
         "--head",
         f"--node-ip-address={ray_head_ip}",
         f"--port={ray_head_port}",
-        "--include-dashboard=true",
-        "--dashboard-host=0.0.0.0",
-        f"--dashboard-port={ray_dashboard_port}",
-        f"--dashboard-agent-listen-port={ray_dashboard_agent_port}",
-        # disallow ray tasks with cpu requirements from being scheduled on the head
+        # disallow ray tasks with cpu/gpu requirements from being scheduled on the head
         # node.
         "--num-cpus=0",
+        "--num-gpus=0",
         # limit the memory allocation to the head node (actual usage may increase
         # beyond this for processing of tasks and actors).
         f"--memory={128 * 1024 * 1024}",
         # limit the object store memory allocation to the head node (actual usage
         # may increase beyond this for processing of tasks and actors).
         f"--object-store-memory={128 * 1024 * 1024}",
+        *dashboard_options,
         *_convert_ray_node_options(head_node_options),
     ]
 
@@ -462,7 +474,8 @@ def _setup_ray_cluster(
 
     _logger.info("Ray head node started.")
 
-    start_hook.on_ray_dashboard_created(ray_dashboard_port)
+    if include_dashboard:
+        start_hook.on_ray_dashboard_created(ray_dashboard_port)
 
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -685,6 +698,53 @@ def _create_resource_profile(num_cpus_per_node, num_gpus_per_node):
     return ResourceProfileBuilder().require(task_res_req).build
 
 
+# A dict storing blocked key to replacement argument you should use.
+_head_node_option_block_keys = {
+    "temp_dir": "ray_temp_root_dir",
+    "block": None,
+    "head": None,
+    "node_ip_address": None,
+    "port": None,
+    "num_cpus": None,
+    "num_gpus": None,
+    "memory": None,
+    "object_store_memory": None,
+    "dashboard_host": None,
+    "dashboard_port": None,
+    "dashboard_agent_listen_port": None,
+}
+
+_worker_node_option_block_keys = {
+    "temp_dir": "ray_temp_root_dir",
+    "block": None,
+    "head": None,
+    "address": None,
+    "num_cpus": "num_cpus_per_node",
+    "num_gpus": "num_gpus_per_node",
+    "memory": None,
+    "object_store_memory": "object_store_memory_per_node",
+    "dashboard_agent_listen_port": None,
+}
+
+
+def _verify_node_options(node_options, block_keys, node_type):
+    for key in node_options:
+        if key.startswith("--") or '-' in key:
+            raise ValueError(
+                "For a ray node option like '--foo-bar', you should convert it to following "
+                "format 'foo_bar' in 'head_node_options' / 'worker_node_options' arguments."
+            )
+
+    if key in block_keys:
+        common_err_msg = \
+            f"Setting option {_convert_ray_node_options(key)} for {node_type} is not allowed."
+        replacement_arg = block_keys[key]
+        if replacement_arg:
+            raise ValueError(f"{common_err_msg} You should set '{replacement_arg}' argument instead.")
+        else:
+            raise ValueError(f"{common_err_msg} The option is controlled by Ray on Spark routine.")
+
+
 @PublicAPI(stability="alpha")
 def setup_ray_cluster(
     num_worker_nodes: int,
@@ -760,6 +820,20 @@ def setup_ray_cluster(
     global _active_ray_cluster
 
     _check_system_environment()
+
+    head_node_options = head_node_options or {}
+    worker_node_options = worker_node_options or {}
+
+    _verify_node_options(
+        head_node_options,
+        _head_node_option_block_keys,
+        "Ray head node on spark",
+    )
+    _verify_node_options(
+        worker_node_options,
+        _worker_node_option_block_keys,
+        "Ray worker node on spark",
+    )
 
     if _active_ray_cluster is not None:
         raise RuntimeError(
