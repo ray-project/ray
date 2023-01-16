@@ -13,13 +13,13 @@
 // limitations under the License.
 
 #include "ray/raylet/worker_killing_policy.h"
-#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
 #include <gtest/gtest_prod.h>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker.h"
+#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {
@@ -77,10 +77,12 @@ std::string WorkerKillingPolicy::WorkersDebugString(
       RAY_LOG_EVERY_MS(INFO, 60000)
           << "Can't find memory usage for PID, reporting zero. PID: " << pid;
     }
-    result << "Worker " << index << ": task assigned time counter "
-           << worker->GetAssignedTaskTime().time_since_epoch().count() << " worker id "
-           << worker->WorkerId() << " memory used " << used_memory << " task spec "
+    result << "Worker " << index << ": task assigned time "
+           << absl::FormatTime(worker->GetAssignedTaskTime(), absl::UTCTimeZone())
+           << " worker id " << worker->WorkerId() << " memory used " << used_memory
+           << " task spec "
            << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
+
     index += 1;
     if (index > num_workers) {
       break;

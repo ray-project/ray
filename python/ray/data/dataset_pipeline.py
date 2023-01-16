@@ -20,18 +20,21 @@ import warnings
 import ray
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal import progress_bar
-from ray.data._internal.block_batching import BatchType, batch_blocks
+from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
+from ray.data._internal.pipelined_dataset_iterator import PipelinedDatasetIterator
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.data.block import BatchUDF, Block, KeyFn, RowUDF
+from ray.data._internal.util import _is_tensor_schema
+from ray.data.block import BatchUDF, Block, DataBatch, KeyFn, RowUDF
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T, U, TensorflowFeatureTypeSpec
+from ray.data.dataset_iterator import DatasetIterator
 from ray.data.datasource import Datasource
 from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
@@ -103,6 +106,26 @@ class DatasetPipeline(Generic[T]):
         self._schema = None
         self._stats = DatasetPipelineStats()
 
+    def iterator(self) -> DatasetIterator:
+        """Return a :class:`~ray.data.DatasetIterator` that
+        can be used to repeatedly iterate over the dataset.
+
+        Note that each pass iterates over the entire original Dataset, even if
+        the dataset was windowed with ``.window()``.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(5).window(bytes_per_window=1).repeat()
+            >>> ds
+            DatasetPipeline(num_windows=inf, num_stages=2)
+            >>> for batch in ds.iterator().iter_batches(batch_size=2):
+            ...     print(batch) # doctest: +SKIP
+
+        It is recommended to use ``DatasetIterator`` methods over directly
+        calling methods such as ``iter_batches()``.
+        """
+        return PipelinedDatasetIterator(self)
+
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the data in the pipeline.
 
@@ -149,7 +172,7 @@ class DatasetPipeline(Generic[T]):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-    ) -> Iterator[BatchType]:
+    ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the data in the pipeline.
 
         Examples:
@@ -201,9 +224,9 @@ class DatasetPipeline(Generic[T]):
             )
         else:
             blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
-        yield from batch_blocks(
+        yield from batch_block_refs(
             self._iter_blocks(),
-            self._stats,
+            stats=self._stats,
             prefetch_blocks=prefetch_blocks,
             clear_block_after_read=blocks_owned_by_consumer,
             batch_size=batch_size,
@@ -1071,6 +1094,13 @@ class DatasetPipeline(Generic[T]):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
         )
+
+    def _is_tensor_dataset(self) -> bool:
+        """Return ``True`` if this dataset is a tensor dataset."""
+        schema = self.schema()
+        if schema is None or isinstance(schema, type):
+            return False
+        return _is_tensor_schema(schema.names)
 
     def to_tf(
         self,

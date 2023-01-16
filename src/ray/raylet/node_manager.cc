@@ -283,7 +283,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
       ray_syncer_service_(ray_syncer_),
-      worker_killing_policy_(CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
+      worker_killing_policy_(
+          CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold(),
@@ -1297,20 +1298,14 @@ void NodeManager::ProcessRegisterClientRequestMessage(
                                client_call_manager_,
                                worker_startup_token));
 
-  auto send_reply_callback = [this, client, job_id](Status status, int assigned_port) {
+  auto send_reply_callback = [this, client](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
-    std::string serialized_job_config;
-    auto job_config = worker_pool_.GetJobConfig(job_id);
-    if (job_config != boost::none) {
-      serialized_job_config = (*job_config).SerializeAsString();
-    }
     auto reply =
         ray::protocol::CreateRegisterClientReply(fbb,
                                                  status.ok(),
                                                  fbb.CreateString(status.ToString()),
                                                  to_flatbuf(fbb, self_node_id_),
-                                                 assigned_port,
-                                                 fbb.CreateString(serialized_job_config));
+                                                 assigned_port);
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply),

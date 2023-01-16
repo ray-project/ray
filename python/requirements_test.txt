@@ -40,6 +40,7 @@ openpyxl==3.0.10
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
 opentelemetry-exporter-otlp==1.1.0
+opentelemetry-exporter-opencensus
 pexpect==4.8.0
 Pillow==9.2.0; platform_system != "Windows"
 proxy.py==2.4.3
@@ -60,7 +61,7 @@ pytest-sugar==0.9.5
 pytest-lazy-fixture==0.6.3
 pytest-timeout==2.1.0
 pytest-virtualenv==1.7.0
-redis==3.5.3
+redis==4.4.2
 scikit-learn==1.0.2; python_version < '3.11'
 smart_open[s3]==6.2.0
 tqdm==4.64.1
