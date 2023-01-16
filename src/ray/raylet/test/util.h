@@ -38,12 +38,10 @@ class MockWorker : public WorkerInterface {
 
   void SetAssignedTask(const RayTask &assigned_task) override {
     task_ = assigned_task;
-    task_assign_time_ = std::chrono::steady_clock::now();
+    task_assign_time_ = absl::Now();
   };
 
-  const std::chrono::steady_clock::time_point GetAssignedTaskTime() const override {
-    return task_assign_time_;
-  };
+  absl::Time GetAssignedTaskTime() const override { return task_assign_time_; };
 
   const std::string IpAddress() const override { return address_.ip_address(); }
 
@@ -186,7 +184,7 @@ class MockWorker : public WorkerInterface {
   BundleID bundle_id_;
   bool blocked_ = false;
   RayTask task_;
-  std::chrono::steady_clock::time_point task_assign_time_;
+  absl::Time task_assign_time_;
   int runtime_env_hash_;
   TaskID task_id_;
 };

@@ -20,6 +20,7 @@
 #include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/raylet/worker.h"
@@ -99,7 +100,8 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
   for (auto &group : groups) {
     result << "Group (retriable: " << group.IsRetriable()
            << ") (owner id: " << group.OwnerId() << ") (time counter: "
-           << group.GetAssignedTaskTime().time_since_epoch().count() << "):\n";
+           << absl::FormatTime(group.GetAssignedTaskTime(), absl::UTCTimeZone())
+           << "):\n";
 
     int64_t worker_index = 0;
     for (auto &worker : group.GetAllWorkers()) {
@@ -113,8 +115,9 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
             << "Can't find memory usage for PID, reporting zero. PID: " << pid;
       }
       result << "Worker time counter "
-             << worker->GetAssignedTaskTime().time_since_epoch().count() << " worker id "
-             << worker->WorkerId() << " memory used " << used_memory << " task spec "
+             << absl::FormatTime(worker->GetAssignedTaskTime(), absl::UTCTimeZone())
+             << " worker id " << worker->WorkerId() << " memory used " << used_memory
+             << " task spec "
              << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
 
       worker_index += 1;
@@ -136,9 +139,7 @@ TaskID Group::OwnerId() const { return owner_id_; }
 
 bool Group::IsRetriable() const { return retriable_; }
 
-const std::chrono::steady_clock::time_point Group::GetAssignedTaskTime() const {
-  return time_;
-}
+const absl::Time Group::GetAssignedTaskTime() const { return time_; }
 
 void Group::AddToGroup(std::shared_ptr<WorkerInterface> worker) {
   if (worker->GetAssignedTaskTime() < time_) {

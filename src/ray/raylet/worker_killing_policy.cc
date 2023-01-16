@@ -78,9 +78,11 @@ std::string WorkerKillingPolicy::WorkersDebugString(
           << "Can't find memory usage for PID, reporting zero. PID: " << pid;
     }
     result << "Worker " << index << ": task assigned time counter "
-           << worker->GetAssignedTaskTime().time_since_epoch().count() << " worker id "
-           << worker->WorkerId() << " memory used " << used_memory << " task spec "
+           << absl::FormatTime(worker->GetAssignedTaskTime(), absl::UTCTimeZone())
+           << " worker id " << worker->WorkerId() << " memory used " << used_memory
+           << " task spec "
            << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
+
     index += 1;
     if (index > num_workers) {
       break;

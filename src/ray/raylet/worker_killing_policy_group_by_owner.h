@@ -17,6 +17,8 @@
 #include <gtest/gtest_prod.h>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_killing_policy.h"
@@ -45,7 +47,7 @@ class Group {
 
   /// Gets the task time of the earliest task of this group, to be
   /// used for group priority.
-  const std::chrono::steady_clock::time_point GetAssignedTaskTime() const;
+  const absl::Time GetAssignedTaskTime() const;
 
   /// Returns the worker to be killed in this group, in LIFO order.
   const std::shared_ptr<WorkerInterface> SelectWorkerToKill() const;
@@ -61,7 +63,7 @@ class Group {
   std::vector<std::shared_ptr<WorkerInterface>> workers_;
 
   /// The earliest creation time of the tasks.
-  std::chrono::steady_clock::time_point time_ = std::chrono::steady_clock::now();
+  absl::Time time_ = absl::Now();
 
   /// The owner id shared by tasks of this group.
   TaskID owner_id_;
