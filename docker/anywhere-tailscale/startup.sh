@@ -19,18 +19,12 @@ set -ae
 mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
 # Special VM options for Java in Docker
 
-if [ ! -d /dev/net ]; then
-    sudo mkdir -p /dev/net
-fi
-if [ ! -c /dev/net/tun ]; then
-    sudo mknod /dev/net/tun c 10 200
-fi
-
-if [ -d /dev/net/tun ]; then
+if [ -c /dev/net/tun ]; then
     sudo tailscaled &
     sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
 else
-    sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 --outbound-http-proxy-listen=localhost:1055 &
+    echo "tun doesn't exist"
+    sudo tailscaled --tun=userspace-networking --state=mem: --socks5-server=localhost:1055 --outbound-http-proxy-listen=localhost:1055 &
     sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
 fi
 
