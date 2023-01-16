@@ -245,8 +245,13 @@ th.tune-colab {
 
 /* Adjustment to Sphinx Book Theme */
 .table td {
-  /* Remove row spacing */
-  padding: 0;
+  /* Remove row spacing on the left */
+  padding-left: 0;
+}
+
+.table thead th {
+  /* Remove row spacing on the left */
+  padding-left: 0;
 }
 
 img.inline-figure {

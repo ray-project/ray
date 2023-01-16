@@ -685,13 +685,32 @@ class AlgorithmConfig:
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:
-        """Validates all values in this config.
+        """Validates all values in this config."""
 
-        Note: This should NOT include immediate checks on single value
-        correctness, e.g. "batch_mode" = [complete_episodes|truncate_episodes].
-        Those simgular, independent checks should instead go directly into their
-        respective methods.
-        """
+        # Validate rollout settings.
+        if not (
+            (
+                isinstance(self.rollout_fragment_length, int)
+                and self.rollout_fragment_length > 0
+            )
+            or self.rollout_fragment_length == "auto"
+        ):
+            raise ValueError("`rollout_fragment_length` must be int >0 or 'auto'!")
+        if self.batch_mode not in ["truncate_episodes", "complete_episodes"]:
+            raise ValueError(
+                "`config.batch_mode` must be one of [truncate_episodes|"
+                "complete_episodes]! Got {}".format(self.batch_mode)
+            )
+        if self.preprocessor_pref not in ["rllib", "deepmind", None]:
+            raise ValueError(
+                "`config.preprocessor_pref` must be either 'rllib', 'deepmind' or None!"
+            )
+        if self.num_envs_per_worker <= 0:
+            raise ValueError(
+                f"`num_envs_per_worker` ({self.num_envs_per_worker}) must be "
+                f"larger than 0!"
+            )
+
         # Check correct framework settings, and whether configured framework is
         # installed.
         _tf1, _tf, _tfv = None, None, None
@@ -1302,11 +1321,6 @@ class AlgorithmConfig:
         if num_rollout_workers is not NotProvided:
             self.num_rollout_workers = num_rollout_workers
         if num_envs_per_worker is not NotProvided:
-            if num_envs_per_worker <= 0:
-                raise ValueError(
-                    f"`num_envs_per_worker` ({num_envs_per_worker}) must be "
-                    f"larger than 0!"
-                )
             self.num_envs_per_worker = num_envs_per_worker
         if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
@@ -1317,25 +1331,9 @@ class AlgorithmConfig:
         if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
         if rollout_fragment_length is not NotProvided:
-            if not (
-                (
-                    isinstance(rollout_fragment_length, int)
-                    and rollout_fragment_length > 0
-                )
-                or rollout_fragment_length == "auto"
-            ):
-                raise ValueError("`rollout_fragment_length` must be int >0 or 'auto'!")
             self.rollout_fragment_length = rollout_fragment_length
-
-        # Check batching/sample collection settings.
         if batch_mode is not NotProvided:
-            if batch_mode not in ["truncate_episodes", "complete_episodes"]:
-                raise ValueError(
-                    "`config.batch_mode` must be one of [truncate_episodes|"
-                    "complete_episodes]! Got {}".format(batch_mode)
-                )
             self.batch_mode = batch_mode
-
         if remote_worker_envs is not NotProvided:
             self.remote_worker_envs = remote_worker_envs
         if remote_env_batch_wait_ms is not NotProvided:
@@ -1355,7 +1353,6 @@ class AlgorithmConfig:
                 num_consecutive_worker_failures_tolerance
             )
         if preprocessor_pref is not NotProvided:
-            assert preprocessor_pref in ("rllib", "deepmind", None)
             self.preprocessor_pref = preprocessor_pref
         if observation_filter is not NotProvided:
             self.observation_filter = observation_filter
@@ -2304,7 +2301,7 @@ class AlgorithmConfig:
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
     ) -> Tuple[MultiAgentPolicyConfigDict, Callable[[PolicyID, SampleBatchType], bool]]:
-        """Compiles complete multi-agent config (dict) from the information in `self`.
+        r"""Compiles complete multi-agent config (dict) from the information in `self`.
 
         Infers the observation- and action spaces, the policy classes, and the policy's
         configs. The returned `MultiAgentPolicyConfigDict` is fully unified and strictly

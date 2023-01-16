@@ -1,7 +1,7 @@
 .. _loggers-docstring:
 
-Loggers (tune.logger)
-=====================
+Tune Loggers (tune.logger)
+==========================
 
 Tune automatically uses loggers for TensorBoard, CSV, and JSON formats.
 By default, Tune only logs the returned result dictionaries from the training function.
