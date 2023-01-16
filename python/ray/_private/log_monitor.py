@@ -5,7 +5,6 @@ import logging
 import logging.handlers
 import os
 import platform
-import psutil
 import re
 import shutil
 import time
@@ -446,6 +445,9 @@ class LogMonitor:
 
 
 def _is_proc_alive(pid):
+    # Import locally to make sure the bundled version is used if needed
+    import psutil
+
     try:
         return psutil.Process(pid).is_running()
     except psutil.NoSuchProcess:
@@ -460,6 +462,7 @@ def is_proc_alive(pid):
     except OSError:
         # If OSError is raised, the process is not alive.
         return False
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
