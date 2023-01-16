@@ -477,9 +477,9 @@ class AgentCollector:
                                 )
                         element_at_t = np.stack(element_at_t)
 
-                        if element_at_t.shape[0] == 1:
-                            # squeeze to remove the T dimension if it is 1.
-                            element_at_t = element_at_t.squeeze(0)
+                    if element_at_t.shape[0] == 1:
+                        # squeeze to remove the T dimension if it is 1.
+                        element_at_t = element_at_t.squeeze(0)
                     shifted_data.append(element_at_t)
 
                 # in some multi-agent cases shifted_data may be an empty list.
