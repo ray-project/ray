@@ -803,12 +803,8 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     first_job_ = job_id;
     // If the number of Python workers we need to wait is positive.
     if (num_initial_python_workers_for_first_job_ > 0) {
-      delay_callback = true;
-      // Start initial Python workers for the first job.
-      for (int i = 0; i < num_initial_python_workers_for_first_job_; i++) {
-        PopWorkerStatus status;
-        StartWorkerProcess(Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
-      }
+      PrestartDefaultCpuWorkers(Language::PYTHON,
+                                num_initial_python_workers_for_first_job_);
     }
   }
 
