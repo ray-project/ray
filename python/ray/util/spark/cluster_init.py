@@ -735,14 +735,14 @@ def _verify_node_options(node_options, block_keys, node_type):
                 "format 'foo_bar' in 'head_node_options' / 'worker_node_options' arguments."
             )
 
-    if key in block_keys:
-        common_err_msg = \
-            f"Setting option {_convert_ray_node_options(key)} for {node_type} is not allowed."
-        replacement_arg = block_keys[key]
-        if replacement_arg:
-            raise ValueError(f"{common_err_msg} You should set '{replacement_arg}' argument instead.")
-        else:
-            raise ValueError(f"{common_err_msg} The option is controlled by Ray on Spark routine.")
+        if key in block_keys:
+            common_err_msg = \
+                f"Setting option {_convert_ray_node_options(key)} for {node_type} is not allowed."
+            replacement_arg = block_keys[key]
+            if replacement_arg:
+                raise ValueError(f"{common_err_msg} You should set '{replacement_arg}' argument instead.")
+            else:
+                raise ValueError(f"{common_err_msg} The option is controlled by Ray on Spark routine.")
 
 
 @PublicAPI(stability="alpha")
