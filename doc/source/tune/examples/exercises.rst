@@ -1,5 +1,5 @@
-Exercises
----------
+Tune Exercises
+--------------
 
 Learn how to use Tune in your browser with the following Colab-based exercises.
 
