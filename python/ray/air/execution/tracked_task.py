@@ -1,7 +1,5 @@
 from typing import Callable, Any
 
-from ray.air.execution.tracked_actor import TrackedActor
-
 
 class TrackedTask:
     """Task tracked by a Ray event manager.
@@ -30,9 +28,7 @@ class TrackedTask:
         """
         raise NotImplementedError
 
-    def on_error(
-        self, callback: Callable[[TrackedActor, Exception], None]
-    ) -> "TrackedTask":
+    def on_error(self, callback: Callable[[Exception], None]) -> "TrackedTask":
         """Specify callback to handle any errors on task resolution.
 
         The callback should accept one argument:
