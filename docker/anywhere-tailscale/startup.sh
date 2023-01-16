@@ -20,7 +20,7 @@ mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
 # Special VM options for Java in Docker
 
 if [ ! -d /dev/net ]; then
-    mkdir -p /dev/net
+    sudo mkdir -p /dev/net
 fi
 if [ ! -c /dev/net/tun ]; then
     sudo mknod /dev/net/tun c 10 200
