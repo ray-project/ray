@@ -89,7 +89,9 @@ parts:
         title: Ray Tune
         sections:
           - file: tune/getting-started
+            title: "Getting Started"
           - file: tune/key-concepts
+            title: "Key Concepts"
           - file: tune/tutorials/overview
             sections:
               - file: tune/tutorials/tune-run

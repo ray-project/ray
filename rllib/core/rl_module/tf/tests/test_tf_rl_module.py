@@ -1,15 +1,14 @@
-import unittest
-from typing import Mapping
-
 import gymnasium as gym
+import tensorflow as tf
+import tensorflow_probability as tfp
+import threading
+from typing import Mapping
+import unittest
 
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.utils.framework import try_import_tfp, try_import_tf
+from ray.rllib.utils.error import NotSerializable
 from ray.rllib.utils.test_utils import check
-
-_, tf, _ = try_import_tf(error=True)
-tfp = try_import_tfp(error=True)
 
 
 class TestRLModule(unittest.TestCase):
@@ -50,10 +49,10 @@ class TestRLModule(unittest.TestCase):
         self.assertIn("action_dist", output)
         self.assertIsInstance(output["action_dist"], tfp.distributions.Categorical)
 
-        grads = tape.gradient(loss, module.trainable_variables())
+        grads = tape.gradient(loss, module.trainable_variables)
 
         # check that all neural net parameters have gradients
-        for grad in grads["policy"]:
+        for grad in grads:
             self.assertIsNotNone(grad)
 
     def test_forward(self):
@@ -96,6 +95,42 @@ class TestRLModule(unittest.TestCase):
         module2.set_state(state)
         state2_after = module2.get_state()
         check(state, state2_after)
+
+    def test_serialize_deserialize(self):
+        env = gym.make("CartPole-v1")
+        module = DiscreteBCTFModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
+
+        # create a new module from the old module
+        new_module = module.deserialize(module.serialize())
+
+        # check that the new module is the same type
+        self.assertIsInstance(new_module, type(module))
+
+        # check that a parameter of their's is the same
+        self.assertEqual(new_module._input_dim, module._input_dim)
+
+        # check that their states are the same
+        check(module.get_state(), new_module.get_state())
+
+        # check that these 2 objects are not the same object
+        self.assertNotEqual(id(module), id(new_module))
+
+        # check that unpickleable parameters are not allowed by the RL Module
+        # constructor
+        unpickleable_param = threading.Thread()
+
+        def bad_constructor():
+            return DiscreteBCTFModule(
+                input_dim=unpickleable_param,
+                hidden_dim=unpickleable_param,
+                output_dim=unpickleable_param,
+            )
+
+        self.assertRaises(NotSerializable, bad_constructor)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,6 @@
 import gymnasium as gym
+import tensorflow as tf
+import tensorflow_probability as tfp
 from typing import Any, Mapping, Union
 
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -7,12 +9,8 @@ from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
-
-_, tf, _ = try_import_tf()
-tfp = try_import_tfp()
 
 
 class DiscreteBCTFModule(TfRLModule):
@@ -22,7 +20,9 @@ class DiscreteBCTFModule(TfRLModule):
         hidden_dim: int,
         output_dim: int,
     ) -> None:
-        super().__init__()
+        super().__init__(
+            input_dim=input_dim, output_dim=output_dim, hidden_dim=hidden_dim
+        )
         layers = []
 
         layers.append(tf.keras.Input(shape=(input_dim,)))
@@ -33,7 +33,6 @@ class DiscreteBCTFModule(TfRLModule):
 
         self.policy = tf.keras.Sequential(layers)
         self._input_dim = input_dim
-        self._output_dim = output_dim
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
@@ -85,10 +84,6 @@ class DiscreteBCTFModule(TfRLModule):
     @override(RLModule)
     def set_state(self, state: Mapping[str, Any]) -> None:
         self.policy.set_weights(state["policy"])
-
-    @override(TfRLModule)
-    def trainable_variables(self) -> NestedDict[tf.Tensor]:
-        return NestedDict({"policy": self.policy.trainable_variables})
 
     @classmethod
     @override(RLModule)
