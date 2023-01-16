@@ -986,7 +986,16 @@ class RayTrialExecutor:
             else:
                 value = trial.runner.save.remote()
                 checkpoint = _TrackedCheckpoint(
-                    dir_or_data=value, storage_mode=storage, metrics=result
+                    dir_or_data=value,
+                    storage_mode=storage,
+                    metrics=result,
+                    local_to_remote_path_fn=partial(
+                        TrainableUtil.get_remote_storage_path,
+                        logdir=trial.logdir,
+                        remote_checkpoint_dir=trial.remote_checkpoint_dir,
+                    )
+                    if trial.uses_cloud_checkpointing
+                    else None,
                 )
                 trial.saving_to = checkpoint
                 self._futures[value] = (_ExecutorEventType.SAVING_RESULT, trial)

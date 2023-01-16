@@ -195,8 +195,9 @@ class Trainable:
     def _storage_path(self, local_path):
         """Converts a `local_path` to be based off of
         `self.remote_checkpoint_dir`."""
-        rel_local_path = os.path.relpath(local_path, self.logdir)
-        return os.path.join(self.remote_checkpoint_dir, rel_local_path)
+        return TrainableUtil.get_remote_storage_path(
+            local_path, self.logdir, self.remote_checkpoint_dir
+        )
 
     @classmethod
     def default_resource_request(
