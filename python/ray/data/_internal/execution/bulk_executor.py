@@ -70,7 +70,8 @@ class BulkExecutor(Executor):
             if op_stats:
                 self._stats = builder.build_multistage(op_stats)
                 self._stats.extra_metrics = op_metrics
-            stats_summary_string = self._stats.summary_string(include_parent=False)
+            stats_summary = self._stats.to_summary()
+            stats_summary_string = stats_summary.to_string(include_parent=False)
             context = DatasetContext.get_current()
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
