@@ -220,9 +220,9 @@ def configure_log_file(out_file, err_file):
     # pytest captures stdout by duping and recovering the current stdout.
     # The pytest recovery will fail if the fds are closed due to
     # reconfigure_worker_logs call. Disable it for pytest.
-    if "PYTEST_CURRENT_TEST" not in os.environ:
-        os.dup2(out_file.fileno(), stdout_fileno)
-        os.dup2(err_file.fileno(), stderr_fileno)
+    # if "PYTEST_CURRENT_TEST" not in os.environ:
+    os.dup2(out_file.fileno(), stdout_fileno)
+    os.dup2(err_file.fileno(), stderr_fileno)
     # We also manually set sys.stdout and sys.stderr because that seems to
     # have an effect on the output buffering. Without doing this, stdout
     # and stderr are heavily buffered resulting in seemingly lost logging
