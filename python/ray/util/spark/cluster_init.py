@@ -757,8 +757,6 @@ def setup_ray_cluster(
     Returns:
         The address of the initiated Ray cluster on spark.
     """
-    import pyspark
-
     global _active_ray_cluster
 
     _check_system_environment()
@@ -791,10 +789,12 @@ def setup_ray_cluster(
         Version(os.environ["DATABRICKS_RUNTIME_VERSION"]).major >= 12
     ):
         support_stage_scheduling = True
-    elif Version(pyspark.__version__).release >= (3, 4, 0):
-        support_stage_scheduling = True
     else:
-        support_stage_scheduling = False
+        import pyspark
+        if Version(pyspark.__version__).release >= (3, 4, 0):
+            support_stage_scheduling = True
+        else:
+            support_stage_scheduling = False
 
     # Environment configurations within the Spark Session that dictate how many cpus
     # and gpus to use for each submitted spark task.
