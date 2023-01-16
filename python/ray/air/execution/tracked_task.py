@@ -18,7 +18,7 @@ class TrackedTask:
 
     """
 
-    def on_result(self, callback: Callable[[Any], None]):
+    def on_result(self, callback: Callable[[Any], None]) -> "TrackedTask":
         """Specify callback to handle successful task resolution.
 
         The callback should accept one argument:
@@ -30,7 +30,9 @@ class TrackedTask:
         """
         raise NotImplementedError
 
-    def on_error(self, callback: Callable[[TrackedActor, Exception], None]):
+    def on_error(
+        self, callback: Callable[[TrackedActor, Exception], None]
+    ) -> "TrackedTask":
         """Specify callback to handle any errors on task resolution.
 
         The callback should accept one argument:

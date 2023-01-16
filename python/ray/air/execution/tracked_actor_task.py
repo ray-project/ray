@@ -20,7 +20,9 @@ class TrackedActorTask:
 
     """
 
-    def on_result(self, callback: Callable[[TrackedActor, Any], None]):
+    def on_result(
+        self, callback: Callable[[TrackedActor, Any], None]
+    ) -> "TrackedActorTask":
         """Specify callback to handle successful task resolution.
 
         The callback should accept two arguments: The actor for which the
@@ -31,7 +33,9 @@ class TrackedActorTask:
         """
         raise NotImplementedError
 
-    def on_error(self, callback: Callable[[TrackedActor, Exception], None]):
+    def on_error(
+        self, callback: Callable[[TrackedActor, Exception], None]
+    ) -> "TrackedActorTask":
         """Specify callback to handle any errors on task resolution.
 
         The callback should accept two arguments: The actor for which the
@@ -62,7 +66,9 @@ class TrackedActorTaskCollection:
 
     """
 
-    def on_result(self, callback: Callable[[TrackedActor, Any], None]):
+    def on_result(
+        self, callback: Callable[[TrackedActor, Any], None]
+    ) -> "TrackedActorTaskCollection":
         """Specify callback to handle successful task resolution.
 
         The callback should accept two arguments: The actor for which the
@@ -73,7 +79,9 @@ class TrackedActorTaskCollection:
         """
         raise NotImplementedError
 
-    def on_error(self, callback: Callable[[TrackedActor, Exception], None]):
+    def on_error(
+        self, callback: Callable[[TrackedActor, Exception], None]
+    ) -> "TrackedActorTaskCollection":
         """Specify callback to handle any errors on future resolution.
 
         The callback should accept two arguments: The actor for which the

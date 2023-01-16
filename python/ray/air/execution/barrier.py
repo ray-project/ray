@@ -7,7 +7,7 @@ class Barrier:
     A barrier can be used to collect multiple results and process them in bulk once
     a certain count or a timeout is reached.
 
-    For instance, if ``max_results=N``, the :meth:`on_complete` callback will be
+    For instance, if ``max_results=N``, the :meth:`on_completion` callback will be
     invoked once :meth:`arrive` has been called ``N`` times.
 
     ``max_results`` can be ``None``, in which case an infinite amount of results
@@ -60,15 +60,27 @@ class Barrier:
         Whenever ``max_results`` results and errors arrived at the barrier,
         the completion callback is invoked.
 
+        The completion callback should expect one argument, which is the barrier
+        object that completed.
+
+        The completion callback will only be invoked once, even if more results
+        arrive after completion. The collected results and errors can be flushed
+        with :meth:`flush`, after which the callback may be invoked again.
+
         If ``max_results=None``, an infinite number of events are collected. In this
-        case, ``on_completion`` cannot be used (as the barrier will never be
-        "complete") and calling this method will raise a RuntimeError.
+        case, the ``on_completion`` callback will only be invoked if
+        ``complete_on_first_error`` is set and an error arrives.
 
         Args:
             callback: Callback to invoke when ``max_results`` results and errors
             arrived at the barrier.
 
         """
+        raise NotImplementedError
+
+    @property
+    def completed(self) -> bool:
+        """Returns True if the barrier is completed."""
         raise NotImplementedError
 
     @property
@@ -95,5 +107,9 @@ class Barrier:
         This method can be used for a persistent barrier that can receive more
         results than ``max_results``. In that case, the received results can be
         flushed after processing so that new results can be received.
+
+        Flushing the barrier will reset the completion status. When ``max_results``
+        is set and enough new events arrive after flushing, the
+        :meth:`on_completion` callback will be invoked again.
         """
         raise NotImplementedError
