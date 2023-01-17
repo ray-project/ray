@@ -14,9 +14,13 @@ except ModuleNotFoundError:
 
 @PublicAPI(stability="alpha")
 class GradioIngress:
-    """User-facing class that wraps a Gradio App in a Serve Deployment"""
+    """User-facing class that wraps a Gradio App in a Serve Deployment."""
 
     def __init__(self, builder: Callable[[], Blocks]):
+        """
+        Takes a builder function which should take no arguments and return the Gradio
+        App (of type Interface or Blocks) to deploy as a Serve Deployment.
+        """
         io: Blocks = builder()
         self.app = routes.App.create_app(io)
 

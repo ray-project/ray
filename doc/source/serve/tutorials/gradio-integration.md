@@ -23,7 +23,7 @@ This section shows you an easy way to deploy your app onto Ray Serve. First, cre
 :end-before: __doc_import_end__
 ```
 
-Then, we construct the (optional) Gradio app `io`. This application takes in text and uses the [T5 Small](https://huggingface.co/t5-small) text summarization model loaded using [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to summarize that text.
+Then, we write a builder function that constructs the Gradio app `io`. This application takes in text and uses the [T5 Small](https://huggingface.co/t5-small) text summarization model loaded using [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to summarize that text.
 :::{note} 
 Remember you can substitute this with your own Gradio app if you want to try scaling up your own Gradio app!
 :::
@@ -41,7 +41,7 @@ Replicas in a deployment are copies of your program running on Ray Serve, where 
 `GradioServer` is simply `GradioIngress` but wrapped in a Serve deployment. You can use `GradioServer` for the simple wrap-and-deploy use case, but as you will see in the next section, you can use `GradioIngress` to define your own Gradio Server for more customized use cases.
 :::
 
-Using either the example app `io` we created above or an existing Gradio app (of type `Interface`, `Block`, `Parallel`, etc.), wrap it in your Gradio Server.
+Using either the example app `io` we created above or an existing Gradio app (of type `Interface`, `Block`, `Parallel`, etc.), wrap it in your Gradio Server. Pass the builder function as input to your Gradio Server. It will be used to construct your Gradio app on the Ray cluster.
 
 ```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration.py
 :start-after: __doc_app_begin__
