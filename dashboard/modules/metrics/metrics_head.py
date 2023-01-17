@@ -205,6 +205,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 success=False, message="prometheus healthcheck failed.", reason=str(e)
             )
 
+    # TODO(aguo): DEPRECATED: Delete this endpoint
     @routes.get("/api/progress")
     async def get_progress(self, req):
         """
@@ -237,6 +238,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 message=str(e),
             )
 
+    # TODO(aguo): DEPRECATED: Delete this endpoint
     @routes.get("/api/progress_by_task_name")
     async def get_progress_by_task_name(self, req):
         """

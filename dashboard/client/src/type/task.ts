@@ -23,7 +23,7 @@ export enum TypeTaskType {
 
 export type Task = {
   task_id: string;
-  name: str;
+  name: string;
   scheduling_state: TypeTaskStatus;
   job_id: string;
   node_id: string;

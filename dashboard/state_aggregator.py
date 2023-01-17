@@ -645,7 +645,9 @@ class StateAPIManager:
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
             option=ListApiOptions(
-                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout,
+                limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                filters=option.filters,
             )
         )
         summary = StateSummary(
@@ -659,16 +661,16 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
-            # Currently, there's no filtering support for summary,
-            # so we don't calculate this separately.
-            num_filtered=len(result.result),
+            num_filtered=result.num_filtered,
         )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_actors(
             option=ListApiOptions(
-                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout,
+                limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                filters=option.filters,
             )
         )
         summary = StateSummary(
@@ -682,16 +684,16 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
-            # Currently, there's no filtering support for summary,
-            # so we don't calculate this separately.
-            num_filtered=len(result.result),
+            num_filtered=result.num_filtered,
         )
 
     async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
         # For summary, try getting as many entries as possible to minimize data loss.
         result = await self.list_objects(
             option=ListApiOptions(
-                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout,
+                limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                filters=option.filters,
             )
         )
         summary = StateSummary(
@@ -705,9 +707,7 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
-            # Currently, there's no filtering support for summary,
-            # so we don't calculate this separately.
-            num_filtered=len(result.result),
+            num_filtered=result.num_filtered,
         )
 
     def _message_to_dict(

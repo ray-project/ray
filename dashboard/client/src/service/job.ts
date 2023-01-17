@@ -2,6 +2,7 @@ import {
   JobListRsp,
   JobProgressByTaskNameRsp,
   JobProgressRsp,
+  StateApiJobProgressByTaskNameRsp,
   UnifiedJob,
 } from "../type/job";
 import { get } from "./requestHandlers";
@@ -22,5 +23,11 @@ export const getJobProgress = (jobId?: string) => {
 export const getJobProgressByTaskName = (jobId: string) => {
   return get<JobProgressByTaskNameRsp>(
     `api/progress_by_task_name?job_id=${jobId}`,
+  );
+};
+
+export const getStateApiJobProgressByTaskName = (jobId: string) => {
+  return get<StateApiJobProgressByTaskNameRsp>(
+    `api/v0/tasks/summarize?filter_keys=job_id&filter_predicates=%3D&filter_values=${jobId}`,
   );
 };
