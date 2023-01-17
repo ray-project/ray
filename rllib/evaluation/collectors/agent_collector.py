@@ -1,6 +1,5 @@
 import logging
 
-from copy import deepcopy
 from gymnasium.spaces import Space
 import math
 import numpy as np
@@ -230,8 +229,7 @@ class AgentCollector:
             AgentCollector._next_unroll_id += 1
 
         # Next obs -> obs.
-        # TODO @kourosh: remove the in-place operations and get rid of this deepcopy.
-        values = deepcopy(input_values)
+        values = {k: v for k, v in input_values.items()}
         assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
@@ -356,8 +354,10 @@ class AgentCollector:
                 # before the last one (len(d) - 2) and so on.
                 element_at_t = d[view_req.shift_arr + len(d) - 1]
                 if element_at_t.shape[0] == 1:
-                    # squeeze to remove the T dimension if it is 1.
-                    element_at_t = element_at_t.squeeze(0)
+                    # We'd normally squeeze here to remove the time dim, but we'll
+                    # simply use the time dim as the batch dim.
+                    data.append(element_at_t)
+                    continue
                 # add the batch dimension with [None]
                 data.append(element_at_t[None])
 
@@ -478,8 +478,8 @@ class AgentCollector:
                         element_at_t = np.stack(element_at_t)
 
                     if element_at_t.shape[0] == 1:
-                        # squeeze to remove the T dimension if it is 1.
-                        element_at_t = element_at_t.squeeze(0)
+                        # Remove the T dimension if it is 1.
+                        element_at_t = element_at_t[0]
                     shifted_data.append(element_at_t)
 
                 # in some multi-agent cases shifted_data may be an empty list.
