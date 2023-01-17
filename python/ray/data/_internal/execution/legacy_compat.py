@@ -4,7 +4,7 @@ It should be deleted once we fully move to the new executor backend.
 """
 
 import ray.cloudpickle as cloudpickle
-from typing import Iterator, Tuple, Union, Callable, Any
+from typing import Iterator, Tuple, Any
 
 import ray
 from ray.data.block import Block, BlockMetadata, List
@@ -16,7 +16,6 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import (
     get_compute,
     CallableClass,
-    ComputeStrategy,
     TaskPoolStrategy,
     ActorPoolStrategy,
 )
@@ -130,38 +129,6 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         return InputDataBuffer(output)
 
 
-def _cache_wrapper(
-    fn: Union[CallableClass, Callable[[Any], Any]],
-    compute: ComputeStrategy,
-) -> Callable[[Any], Any]:
-    """Implements caching of stateful callables.
-    Args:
-        fn: Either a plain function or class of a stateful callable.
-    Returns:
-        A plain function with per-process initialization cached as needed.
-    """
-    if isinstance(fn, CallableClass):
-
-        if isinstance(compute, TaskPoolStrategy):
-            raise ValueError(
-                "``compute`` must be specified when using a callable class, and must "
-                "specify the actor compute strategy. "
-                'For example, use ``compute="actors"`` or '
-                "``compute=ActorPoolStrategy(min, max)``."
-            )
-        assert isinstance(compute, ActorPoolStrategy)
-
-        def _fn(item: Any) -> Any:
-            if ray.data._cached_fn is None or ray.data._cached_cls != fn:
-                ray.data._cached_cls = fn
-                ray.data._cached_fn = fn()
-            return ray.data._cached_fn(item)
-
-        return _fn
-    else:
-        return fn
-
-
 def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOperator:
     """Translate a stage into a PhysicalOperator.
 
@@ -174,13 +141,36 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
     """
 
     if isinstance(stage, OneToOneStage):
-        if stage.fn_constructor_args or stage.fn_constructor_kwargs:
-            raise NotImplementedError
+        compute = get_compute(stage.compute)
 
         block_fn = stage.block_fn
-        compute_strategy = get_compute(stage.compute)
         if stage.fn:
-            fn = _cache_wrapper(stage.fn, compute_strategy)
+            if isinstance(stage.fn, CallableClass):
+                if isinstance(compute, TaskPoolStrategy):
+                    raise ValueError(
+                        "``compute`` must be specified when using a callable class, "
+                        "and must specify the actor compute strategy. "
+                        'For example, use ``compute="actors"`` or '
+                        "``compute=ActorPoolStrategy(min, max)``."
+                    )
+                assert isinstance(compute, ActorPoolStrategy)
+
+                fn_constructor_args = stage.fn_constructor_args or ()
+                fn_constructor_kwargs = stage.fn_constructor_kwargs or {}
+                fn_ = stage.fn
+
+                def fn(item: Any) -> Any:
+                    # Wrapper providing cached instantiation of stateful callable class
+                    # UDFs.
+                    if ray.data._cached_fn is None or ray.data._cached_cls != fn_:
+                        ray.data._cached_cls = fn_
+                        ray.data._cached_fn = fn_(
+                            *fn_constructor_args, **fn_constructor_kwargs
+                        )
+                    return ray.data._cached_fn(item)
+
+            else:
+                fn = stage.fn
             fn_args = (fn,)
         else:
             fn_args = ()
@@ -195,7 +185,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             do_map,
             input_op,
             name=stage.name,
-            compute_strategy=compute_strategy,
+            compute_strategy=compute,
             min_rows_per_bundle=stage.target_block_size,
             ray_remote_args=stage.ray_remote_args,
         )
