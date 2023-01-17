@@ -298,7 +298,6 @@ class Worker : public WorkerInterface {
   /// RayTask being assigned to this worker.
   RayTask assigned_task_;
   /// Time when the last task was assigned to this worker.
-  // std::chrono::steady_clock::time_point task_assign_time_;
   absl::Time task_assign_time_;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
