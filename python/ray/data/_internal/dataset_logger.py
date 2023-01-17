@@ -1,8 +1,6 @@
 import logging
 import os
 
-# import sys
-
 import ray
 from ray._private.ray_constants import LOGGER_FORMAT, LOGGER_LEVEL
 
