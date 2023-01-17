@@ -1,2 +1,0 @@
-data_loader,train_sleep_time_ms,num_cpu_nodes,num_epochs,num_images_per_epoch,num_images_per_input_file,num_files,batch_size,shuffle_buffer_size,ray_mem_monitor_enabled,ray_spilled_mb,ray_restored_mb,min_available_mb,time_total_s,tput_images_per_s
-ray.data,0,0,1,32,32,1,64,0,True,0,0,24864.15234375,11.917208909988403,2.6851925011719158
