@@ -1,4 +1,9 @@
 #!/bin/bash
+
+if [ -d /home/tripps/build/ ]; then
+    sudo rm -rf /home/tripps/build/*
+fi
+
 sudo mkdir -p /home/tripps/build /home/tripps/data && cd /home/tripps/build
 
 if [ -d /sys/class/power_supply/BAT0 ]; then
