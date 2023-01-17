@@ -333,7 +333,7 @@ def read_datasource(
         )
 
     block_list = LazyBlockList(
-        read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
+        read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=True
     )
 
     return Dataset(

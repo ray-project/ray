@@ -226,7 +226,7 @@ def test_transform_failure(shutdown_only):
         return x
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        ds.map(mapper)
+        ds.map(mapper).fully_executed()
 
 
 def test_dataset_lineage_serialization(shutdown_only):
@@ -2779,7 +2779,7 @@ def test_map_batches_block_bundling_skewed_manual(
     )
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size).fully_executed()
 
     # Blocks should be bundled up to the batch size.
     assert ds.num_blocks() == expected_num_blocks
@@ -2805,7 +2805,7 @@ def test_map_batches_block_bundling_skewed_auto(
     )
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size).fully_executed()
     curr = 0
     num_out_blocks = 0
     for block_size in block_sizes:
@@ -3961,38 +3961,38 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs, "C": [2 * x for x in xs]})
     # Wrong type.
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).groupby("A").mean(5)
+        ray.data.from_pandas(df).groupby("A").mean(5).show()
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).groupby("A").mean([5])
+        ray.data.from_pandas(df).groupby("A").mean([5]).show()
     # Empty list.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean([])
+        ray.data.from_pandas(df).groupby("A").mean([]).show()
     # Nonexistent column.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean("D")
+        ray.data.from_pandas(df).groupby("A").mean("D").show()
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).groupby("A").mean(["B", "D"])
+        ray.data.from_pandas(df).groupby("A").mean(["B", "D"]).show()
     # Columns for simple Dataset.
     with pytest.raises(ValueError):
-        ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A")
+        ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A").show()
 
     # Test bad on for global aggregation
     # Wrong type.
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).mean(5)
+        ray.data.from_pandas(df).mean(5).show()
     with pytest.raises(TypeError):
-        ray.data.from_pandas(df).mean([5])
+        ray.data.from_pandas(df).mean([5]).show()
     # Empty list.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean([])
+        ray.data.from_pandas(df).mean([]).show()
     # Nonexistent column.
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean("D")
+        ray.data.from_pandas(df).mean("D").show()
     with pytest.raises(ValueError):
-        ray.data.from_pandas(df).mean(["B", "D"])
+        ray.data.from_pandas(df).mean(["B", "D"]).show()
     # Columns for simple Dataset.
     with pytest.raises(ValueError):
-        ray.data.from_items(xs).mean("A")
+        ray.data.from_items(xs).mean("A").show()
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -4241,7 +4241,7 @@ def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
 
     # The UDF returns None, which is invalid.
     with pytest.raises(TypeError):
-        grouped.map_groups(lambda x: None if x == [1] else x)
+        grouped.map_groups(lambda x: None if x == [1] else x).show()
 
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
@@ -5294,7 +5294,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
 
 
 def test_split_is_not_disruptive(ray_start_regular):
-    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x).lazy()
+    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x)
 
     def verify_integrity(splits):
         for dss in splits:

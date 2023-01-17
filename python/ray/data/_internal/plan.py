@@ -438,6 +438,19 @@ class ExecutionPlan:
                 "for more details: "
                 "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
             )
+
+        # If the snapshot blocklist exists but is owned by consumer, we should
+        # reset the plan to execute it from scratch. The reason is that the blocks
+        # owned by consumer are created for each invocation of the consumption
+        # API call (which will call this execute() method underneath) and are not safe
+        # to share across calls.
+        if self._snapshot_blocks and self._snapshot_blocks._owned_by_consumer:
+            # If the snapshot is lazy, the plan is still in the middle of execution,
+            # so we don't reset it.
+            if not _is_lazy(self._snapshot_blocks):
+            # if not _is_lazy(self._in_blocks) or self._in_blocks._num_computed() == len(self._in_blocks._tasks):
+                self._reset_plan()
+
         # Dataset is lazy-only, so it always allows clearing input blocks.
         allow_clear_input_blocks = True
         if not self.has_computed_output():
@@ -512,11 +525,27 @@ class ExecutionPlan:
             self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
         return self._snapshot_blocks
 
+    def _reset_plan(self) -> None:
+        """Reset the plan to a state that's ready to re-execute from the beginning.
+
+        This will clear all cached block references of this plan, including the lazy
+        block list. If the input block is not lazy, it'll be kept in order to keep
+        the plan executable."""
+        # Only clear the lazy bocklist. If we clear the eager blocklist, the plan
+        # will not be executable.
+        if _is_lazy(self._in_blocks):
+            self._in_blocks.clear()
+        self._clear_snapshot()
+
     def clear_block_refs(self) -> None:
         """Clear all cached block references of this plan, including input blocks.
 
         This will render the plan un-executable unless the root is a LazyBlockList."""
         self._in_blocks.clear()
+        self._clear_snapshot()
+
+    def _clear_snapshot(self) -> None:
+        """Clear the snapshot kept in the plan to the beginning state."""
         self._snapshot_blocks = None
         self._snapshot_stats = None
         # We're erasing the snapshot, so put all stages into the "after snapshot"
