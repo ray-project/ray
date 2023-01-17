@@ -205,7 +205,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         }
       }
     }
-    if (taskSpec.getType() == TaskType.ACTOR_TASK && isConcurrentActor(taskSpec)) {
+    if (taskSpec.getType() == TaskType.ACTOR_TASK) {
       // Code path of concurrent actors.
       // For concurrent actors, we should make sure the actor created
       // before we submit the following actor tasks.
@@ -303,7 +303,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             .setActorCreationTaskSpec(actorCreationTaskSpecBuilder.build())
             .build();
     submitTaskSpec(taskSpec);
-    final LocalModeActorHandle actorHandle = new LocalModeActorHandle(actorId);
+    final LocalModeActorHandle actorHandle =
+        new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
     actorHandles.put(actorId, actorHandle.copy());
     if (StringUtils.isNotBlank(options.name)) {
       Preconditions.checkArgument(
