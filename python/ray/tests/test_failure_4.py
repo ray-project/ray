@@ -666,12 +666,13 @@ def test_task_crash_after_raylet_dead_throws_node_died_error():
     def sleeper():
         import os
 
-        time.sleep(3)
+        time.sleep(5)
         os.kill(os.getpid(), 9)
 
     with ray.init():
         ref = sleeper.remote()
 
+        time.sleep(2)
         raylet = ray.nodes()[0]
         kill_raylet(raylet)
 
