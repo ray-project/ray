@@ -40,6 +40,10 @@ if ! [ -x "$(command -v docker)" ] && ! [ -z "$WSL_DISTRO_NAME" ] && ! [ -x /usr
 sudo curl https://get.docker.com | sh
 fi
 
+if [ -x /usr/bin/podman ]; then
+  sudo podman registry remove quay.io
+fi
+
 sudo apt install --no-install-recommends -y jq wget && sudo apt -y autoremove
 
 # Check if the GPU is NVIDIA
