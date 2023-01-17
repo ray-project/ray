@@ -23,8 +23,8 @@ ENV N2N_INTERFACE=tailscale0
 
 RUN sudo apt-get update \
         && sudo apt-get install -y --no-install-recommends ca-certificates curl wget jq lsb-release \ 
-        && sudo apt-get clean \
-        && sudo rm -rf /var/lib/apt/lists/*
+        && sudo apt-get clean
+        #&& sudo rm -rf /var/lib/apt/lists/*
 
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     alpaca_py \
