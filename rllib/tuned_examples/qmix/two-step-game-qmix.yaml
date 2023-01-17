@@ -19,5 +19,5 @@ two-step-game-qmix-with-qmix-mixer:
 
         rollout_fragment_length: 4
         train_batch_size: 32
-        num_workers: 0
+        num_workers: 2
         mixer: qmix
