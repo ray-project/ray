@@ -11,6 +11,9 @@ fi
 if [ -x /usr/bin/podman ]; then
     DOCKER_HOST=`echo "unix://${XDG_RUNTIME_DIR}/podman/podman.sock"`
     export DOCKER_HOST
+    exec=/usr/bin/podman
+else
+    exec=/usr/bin/docker
 fi
 
 if [ -d /sys/class/power_supply/BAT0 ]; then
@@ -75,12 +78,12 @@ fi
 wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/Dockerfile -O Dockerfile && wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh -O $builddir/startup.sh && sudo chmod 777 $builddir/Dockerfile && sudo chmod 777 $builddir/startup.sh
 
 if [[ -n $cuda_version ]] && [ $cuda_version != "gpu" ]; then
-  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-cu$cuda_version , -t jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
-  sudo docker push jcoffi/cluster-anywhere:cu$cuda_version
+  sudo $exec build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-cu$cuda_version , -t jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
+  sudo $exec push jcoffi/cluster-anywhere:cu$cuda_version
 elif [ $cuda_version == "gpu" ]; then
-  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu $builddir -t jcoffi/cluster-anywhere:gpu -t jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
-  sudo docker push jcoffi/cluster-anywhere:gpu
+  sudo $exec build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu $builddir -t jcoffi/cluster-anywhere:gpu -t jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
+  sudo $exec push jcoffi/cluster-anywhere:gpu
 else
-  sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-cpu $builddir -t jcoffi/cluster-anywhere:cpu -t jcoffi/cluster-anywhere:latest -t jcoffi/cluster-anywhere:cpu-latest --build-arg IMAGETYPE=cpu
-  sudo docker push jcoffi/cluster-anywhere:latest
+  sudo $exec build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-cpu $builddir -t jcoffi/cluster-anywhere:cpu -t jcoffi/cluster-anywhere:latest -t jcoffi/cluster-anywhere:cpu-latest --build-arg IMAGETYPE=cpu
+  sudo $exec push jcoffi/cluster-anywhere:latest
 fi 
