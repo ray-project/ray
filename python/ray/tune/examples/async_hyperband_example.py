@@ -30,23 +30,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--ray-address",
-        help="Address of Ray cluster for seamless distributed execution.",
-        required=False,
-    )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
-    if args.server_address is not None:
-        ray.init(f"ray://{args.server_address}")
-    else:
-        ray.init(address=args.ray_address)
 
     # AsyncHyperBand enables aggressive early stopping of bad trials.
     scheduler = AsyncHyperBandScheduler(grace_period=5, max_t=100)

@@ -153,30 +153,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--ray-address",
-        type=str,
-        default=None,
-        help="Address to use for Ray. "
-        'Use "auto" for cluster. '
-        "Defaults to None for local.",
-    )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
-
     args, _ = parser.parse_known_args()
-
-    if args.smoke_test:
-        ray.init()
-    elif args.server_address:
-        ray.init(f"ray://{args.server_address}")
-    else:
-        ray.init(args.ray_address)
 
     if args.smoke_test:
         tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True)
