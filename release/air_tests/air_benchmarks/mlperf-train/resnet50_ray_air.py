@@ -574,7 +574,7 @@ if __name__ == "__main__":
                 }
             },
             tune_config=tune.TuneConfig(
-                metric="time_total_s", mode="min", num_samples=1
+                metric="time_total_s", mode="max", num_samples=1
             ),
         )
 
