@@ -109,25 +109,52 @@ def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
     )
 
 
+@pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_generator_errors(ray_start_regular, store_in_plasma):
-    @ray.remote(max_retries=0)
-    def generator(num_returns, store_in_plasma):
-        for i in range(num_returns - 2):
-            if store_in_plasma:
-                yield np.ones(1_000_000, dtype=np.int8) * i
-            else:
-                yield [i]
-        raise Exception("error")
+def test_generator_errors(ray_start_regular, use_actors, store_in_plasma):
+    remote_generator_fn = None
+    if use_actors:
 
-    ref1, ref2, ref3 = generator.options(num_returns=3).remote(3, store_in_plasma)
+        @ray.remote
+        class Generator:
+            def __init__(self):
+                pass
+
+            def generator(self, num_returns, store_in_plasma):
+                for i in range(num_returns - 2):
+                    if store_in_plasma:
+                        yield np.ones(1_000_000, dtype=np.int8) * i
+                    else:
+                        yield [i]
+                raise Exception("error")
+
+        g = Generator.remote()
+        remote_generator_fn = g.generator
+    else:
+
+        @ray.remote(max_retries=0)
+        def generator(num_returns, store_in_plasma):
+            for i in range(num_returns - 2):
+                if store_in_plasma:
+                    yield np.ones(1_000_000, dtype=np.int8) * i
+                else:
+                    yield [i]
+            raise Exception("error")
+
+        remote_generator_fn = generator
+
+    ref1, ref2, ref3 = remote_generator_fn.options(num_returns=3).remote(
+        3, store_in_plasma
+    )
     ray.get(ref1)
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref2)
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref3)
 
-    dynamic_ref = generator.options(num_returns="dynamic").remote(3, store_in_plasma)
+    dynamic_ref = remote_generator_fn.options(num_returns="dynamic").remote(
+        3, store_in_plasma
+    )
     ref1, ref2 = ray.get(dynamic_ref)
     ray.get(ref1)
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -183,15 +210,36 @@ def test_dynamic_generator_retry_exception(ray_start_regular, store_in_plasma):
         assert ray.get(ref)[0] == i
 
 
+@pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_dynamic_generator(ray_start_regular, store_in_plasma):
-    @ray.remote(num_returns="dynamic")
-    def dynamic_generator(num_returns, store_in_plasma):
-        for i in range(num_returns):
-            if store_in_plasma:
-                yield np.ones(1_000_000, dtype=np.int8) * i
-            else:
-                yield [i]
+def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
+    if use_actors:
+
+        @ray.remote(num_returns="dynamic")
+        def dynamic_generator(num_returns, store_in_plasma):
+            for i in range(num_returns):
+                if store_in_plasma:
+                    yield np.ones(1_000_000, dtype=np.int8) * i
+                else:
+                    yield [i]
+
+        remote_generator_fn = dynamic_generator
+    else:
+
+        @ray.remote
+        class Generator:
+            def __init__(self):
+                pass
+
+            def generator(self, num_returns, store_in_plasma):
+                for i in range(num_returns):
+                    if store_in_plasma:
+                        yield np.ones(1_000_000, dtype=np.int8) * i
+                    else:
+                        yield [i]
+
+        g = Generator.remote()
+        remote_generator_fn = g.generator
 
     @ray.remote
     def read(gen):
@@ -200,23 +248,27 @@ def test_dynamic_generator(ray_start_regular, store_in_plasma):
                 return False
         return True
 
-    gen = ray.get(dynamic_generator.remote(10, store_in_plasma))
+    gen = ray.get(
+        remote_generator_fn.options(num_returns="dynamic").remote(10, store_in_plasma)
+    )
     for i, ref in enumerate(gen):
         assert ray.get(ref)[0] == i
 
     # Test empty generator.
-    gen = ray.get(dynamic_generator.remote(0, store_in_plasma))
+    gen = ray.get(
+        remote_generator_fn.options(num_returns="dynamic").remote(0, store_in_plasma)
+    )
     assert len(gen) == 0
 
     # Check that passing as task arg.
-    gen = dynamic_generator.remote(10, store_in_plasma)
+    gen = remote_generator_fn.options(num_returns="dynamic").remote(10, store_in_plasma)
     assert ray.get(read.remote(gen))
     assert ray.get(read.remote(ray.get(gen)))
 
     # Also works if we override num_returns with a static value.
     ray.get(
         read.remote(
-            dynamic_generator.options(num_returns=10).remote(10, store_in_plasma)
+            remote_generator_fn.options(num_returns=10).remote(10, store_in_plasma)
         )
     )
 
