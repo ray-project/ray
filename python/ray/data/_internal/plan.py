@@ -448,7 +448,6 @@ class ExecutionPlan:
             # If the snapshot is lazy, the plan is still in the middle of execution,
             # so we don't reset it.
             if not _is_lazy(self._snapshot_blocks):
-            # if not _is_lazy(self._in_blocks) or self._in_blocks._num_computed() == len(self._in_blocks._tasks):
                 self._reset_plan()
 
         # Dataset is lazy-only, so it always allows clearing input blocks.
