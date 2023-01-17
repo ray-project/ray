@@ -526,7 +526,7 @@ ray::Status NodeManager::RegisterGcs() {
         /* pull_from_reporter_interval_ms */ 0);
 
     auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
-    ray_syncer_.Connect(std::string(kUniqueIDSize, 0), gcs_channel);
+    ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
     periodical_runner_.RunFnPeriodically(
         [this] {
           auto triggered_by_global_gc = TryLocalGC();

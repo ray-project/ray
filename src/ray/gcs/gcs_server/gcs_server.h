@@ -188,9 +188,6 @@ class GcsServer {
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The gcs resource manager.
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
-  /// The gcs server's node id, for the creation of `cluster_resource_scheduler_` and
-  /// `cluster_task_manager_`.
-  NodeID local_node_id_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// The cluster task manager.

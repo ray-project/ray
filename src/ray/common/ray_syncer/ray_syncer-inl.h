@@ -188,8 +188,8 @@ class BidiReactor : public T, public RaySyncerBidiReactorBase {
     if (ok) {
       io_context_.dispatch([this]() { SendNext(); }, "");
     } else {
-      RAY_LOG(ERROR) << "Failed to send the message to: "
-                     << NodeID::FromBinary(GetRemoteNodeID());
+      RAY_LOG_EVERY_N(ERROR, 100)
+          << "Failed to send the message to: " << NodeID::FromBinary(GetRemoteNodeID());
     }
   }
 
@@ -261,10 +261,6 @@ class RayClientBidiReactor : public BidiReactor<ClientBidiReactor> {
 
   /// grpc callback context
   grpc::ClientContext client_context_;
-
-  /// grpc requests for sending and receiving
-  std::shared_ptr<const RaySyncMessage> sending_message_;
-  std::shared_ptr<RaySyncMessage> receiving_message_;
 
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
 };

@@ -98,7 +98,6 @@ class RaySyncer {
   ///
   /// \param connection The connection to the remote node.
   void Connect(const std::string &node_id, std::shared_ptr<grpc::Channel> channel);
-  void Connect(RaySyncerBidiReactorBase *connection);
 
   void Disconnect(const std::string &node_id);
 
@@ -138,6 +137,8 @@ class RaySyncer {
   std::vector<std::string> GetAllConnectedNodeIDs() const;
 
  private:
+  void Connect(RaySyncerBidiReactorBase *connection);
+
   std::shared_ptr<bool> stopped_;
 
   /// Get the io_context used by RaySyncer.

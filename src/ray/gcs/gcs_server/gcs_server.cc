@@ -50,7 +50,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
-      local_node_id_(NodeID::FromBinary(std::string(kUniqueIDSize, 0))),
       pubsub_periodical_runner_(pubsub_io_service_),
       periodical_runner_(main_service),
       is_started_(false),
@@ -269,7 +268,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
       main_service_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
-      local_node_id_,
+      kGCSNodeID,
       cluster_task_manager_);
 
   // Initialize by gcs tables data.
@@ -316,7 +315,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID(local_node_id_.Binary()),
+      scheduling::NodeID(kGCSNodeID.Binary()),
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
@@ -326,7 +325,7 @@ void GcsServer::InitClusterResourceScheduler() {
 void GcsServer::InitClusterTaskManager() {
   RAY_CHECK(cluster_resource_scheduler_);
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
-      local_node_id_,
+      kGCSNodeID,
       cluster_resource_scheduler_,
       /*get_node_info=*/
       [this](const NodeID &node_id) {
@@ -468,8 +467,8 @@ std::string GcsServer::StorageType() const {
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   if (RayConfig::instance().use_ray_syncer()) {
-    ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_,
-                                                      local_node_id_.Binary());
+    ray_syncer_ =
+        std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_, kGCSNodeID.Binary());
     ray_syncer_->Register(
         syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
     ray_syncer_->Register(
@@ -752,14 +751,14 @@ void GcsServer::TryGlobalGC() {
     if (RayConfig::instance().use_ray_syncer()) {
       auto msg = std::make_shared<syncer::RaySyncMessage>();
       msg->set_version(absl::GetCurrentTimeNanos());
-      msg->set_node_id(local_node_id_.Binary());
+      msg->set_node_id(kGCSNodeID.Binary());
       msg->set_message_type(syncer::MessageType::COMMANDS);
       std::string serialized_msg;
       RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
       msg->set_sync_message(std::move(serialized_msg));
       ray_syncer_->BroadcastRaySyncMessage(std::move(msg));
     } else {
-      resources_data.set_node_id(local_node_id_.Binary());
+      resources_data.set_node_id(kGCSNodeID.Binary());
       gcs_ray_syncer_->Update(resources_data);
     }
 
