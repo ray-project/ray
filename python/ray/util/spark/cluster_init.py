@@ -481,7 +481,10 @@ def _setup_ray_cluster(
 
     _logger.info("Ray head node started.")
 
-    if include_dashboard:
+    if include_dashboard is None or include_dashboard is True:
+        # If include_dashboard is None, we don't set `--include-dashboard` option,
+        # in this case Ray will decide whether dashboard can be started
+        # (e.g. checking any missing dependencies).
         start_hook.on_ray_dashboard_created(ray_dashboard_port)
 
     # NB:
@@ -737,7 +740,7 @@ _worker_node_option_block_keys = {
 
 def _verify_node_options(node_options, block_keys, node_type):
     for key in node_options:
-        if key.startswith("--") or '-' in key:
+        if key.startswith("--") or "-" in key:
             raise ValueError(
                 "For a ray node option like '--foo-bar', you should convert it to "
                 "following format 'foo_bar' in 'head_node_options' / "
@@ -745,9 +748,10 @@ def _verify_node_options(node_options, block_keys, node_type):
             )
 
         if key in block_keys:
-            common_err_msg = \
-                f"Setting option {_convert_ray_node_options(key)} for {node_type} " \
+            common_err_msg = (
+                f"Setting option {_convert_ray_node_options(key)} for {node_type} "
                 "is not allowed."
+            )
             replacement_arg = block_keys[key]
             if replacement_arg:
                 raise ValueError(
@@ -786,7 +790,7 @@ def setup_ray_cluster(
     Note: If the active ray cluster haven't shut down, you cannot create a new ray
     cluster.
 
-    Args
+    Args:
         num_worker_nodes: This argument represents how many ray worker nodes to start
             for the ray cluster.
             Specifying the `num_worker_nodes` as `ray.util.spark.MAX_NUM_WORKER_NODES`
@@ -868,8 +872,7 @@ def setup_ray_cluster(
 
     spark_master = spark.sparkContext.master
     if not (
-        spark_master.startswith("spark://") or
-        spark_master.startswith("local-cluster[")
+        spark_master.startswith("spark://") or spark_master.startswith("local-cluster[")
     ):
         raise RuntimeError(
             "Ray on Spark only supports spark cluster in standalone mode or "
@@ -877,12 +880,13 @@ def setup_ray_cluster(
         )
 
     if (
-        is_in_databricks_runtime() and
-        Version(os.environ["DATABRICKS_RUNTIME_VERSION"]).major >= 12
+        is_in_databricks_runtime()
+        and Version(os.environ["DATABRICKS_RUNTIME_VERSION"]).major >= 12
     ):
         support_stage_scheduling = True
     else:
         import pyspark
+
         if Version(pyspark.__version__).release >= (3, 4, 0):
             support_stage_scheduling = True
         else:
@@ -914,9 +918,7 @@ def setup_ray_cluster(
             num_gpus_per_node = num_gpus_per_node or num_spark_task_gpus
 
             using_stage_scheduling = True
-            res_profile = _create_resource_profile(
-                num_cpus_per_node, num_gpus_per_node
-            )
+            res_profile = _create_resource_profile(num_cpus_per_node, num_gpus_per_node)
         else:
             raise ValueError(
                 "Current spark version does not support stage scheduling, so that "
@@ -949,9 +951,7 @@ def setup_ray_cluster(
     if num_worker_nodes == MAX_NUM_WORKER_NODES:
         # num_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
         # spark task slots
-        num_worker_nodes = get_max_num_concurrent_tasks(
-            spark.sparkContext, res_profile
-        )
+        num_worker_nodes = get_max_num_concurrent_tasks(spark.sparkContext, res_profile)
     elif num_worker_nodes <= 0:
         raise ValueError(
             "The value of 'num_worker_nodes' argument must be either a positive "

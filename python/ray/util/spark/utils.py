@@ -132,6 +132,7 @@ def get_max_num_concurrent_tasks(spark_context, resource_profile):
     # pylint: disable=protected-access=
     ssc = spark_context._jsc.sc()
     if resource_profile is not None:
+
         def dummpy_mapper(_):
             pass
 
@@ -140,9 +141,7 @@ def get_max_num_concurrent_tasks(spark_context, resource_profile):
             dummpy_mapper
         ).collect()
 
-        return ssc.maxNumConcurrentTasks(
-            resource_profile._java_resource_profile
-        )
+        return ssc.maxNumConcurrentTasks(resource_profile._java_resource_profile)
     else:
         return ssc.maxNumConcurrentTasks(
             ssc.resourceProfileManager().defaultResourceProfile()
@@ -180,6 +179,7 @@ def _calc_mem_per_ray_worker_node(
         DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
         OBJECT_STORE_MINIMUM_MEMORY_BYTES,
     )
+
     warning_msg = None
 
     available_physical_mem_per_node = int(
@@ -196,21 +196,27 @@ def _calc_mem_per_ray_worker_node(
     if object_store_bytes > available_shared_mem_per_node:
         object_store_bytes = available_shared_mem_per_node
 
-    object_store_bytes_upper_bound = \
-        available_physical_mem_per_node * _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION
+    object_store_bytes_upper_bound = (
+        available_physical_mem_per_node
+        * _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION
+    )
 
     if object_store_bytes > object_store_bytes_upper_bound:
         object_store_bytes = object_store_bytes_upper_bound
-        warning_msg = "Your configured `object_store_memory_per_node` value " \
-                      "is too high and it is capped by 80% of per-Ray node " \
-                      "allocated memory."
+        warning_msg = (
+            "Your configured `object_store_memory_per_node` value "
+            "is too high and it is capped by 80% of per-Ray node "
+            "allocated memory."
+        )
 
     if object_store_bytes < OBJECT_STORE_MINIMUM_MEMORY_BYTES:
         object_store_bytes = OBJECT_STORE_MINIMUM_MEMORY_BYTES
-        warning_msg = "Your operating system is configured with too small /dev/shm " \
-                      "size, so `object_store_memory_per_node` value is configured " \
-                      f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes)," \
-                      f"Please increase system /dev/shm size."
+        warning_msg = (
+            "Your operating system is configured with too small /dev/shm "
+            "size, so `object_store_memory_per_node` value is configured "
+            f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
+            f"Please increase system /dev/shm size."
+        )
 
     object_store_bytes = int(object_store_bytes)
 
@@ -225,8 +231,8 @@ def _calc_mem_per_ray_worker_node(
 # `spark.executorEnv.[EnvironmentVariableName]`
 RAY_ON_SPARK_WORKER_CPU_CORES = "RAY_ON_SPARK_WORKER_CPU_CORES"
 RAY_ON_SPARK_WORKER_GPU_NUM = "RAY_ON_SPARK_WORKER_GPU_NUM"
-RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES = 'RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES'
-RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES = 'RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES'
+RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES"
+RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"
 
 
 def _get_cpu_cores():

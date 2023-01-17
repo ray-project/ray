@@ -22,17 +22,33 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
 
     def test_gpu_allocation(self):
         for num_worker_nodes, num_cpus_per_node, num_gpus_per_node in [
-            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task, self.num_gpus_per_spark_task),
-            (self.max_spark_tasks, self.num_cpus_per_spark_task, self.num_gpus_per_spark_task),
-            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2, self.num_gpus_per_spark_task * 2),
-            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task, self.num_gpus_per_spark_task * 2),
+            (
+                self.max_spark_tasks // 2,
+                self.num_cpus_per_spark_task,
+                self.num_gpus_per_spark_task,
+            ),
+            (
+                self.max_spark_tasks,
+                self.num_cpus_per_spark_task,
+                self.num_gpus_per_spark_task,
+            ),
+            (
+                self.max_spark_tasks // 2,
+                self.num_cpus_per_spark_task * 2,
+                self.num_gpus_per_spark_task * 2,
+            ),
+            (
+                self.max_spark_tasks // 2,
+                self.num_cpus_per_spark_task,
+                self.num_gpus_per_spark_task * 2,
+            ),
         ]:
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes,
                 num_cpus_per_node=num_cpus_per_node,
                 num_gpus_per_node=num_gpus_per_node,
                 safe_mode=False,
-                head_node_options={"include_dashboard": False}
+                head_node_options={"include_dashboard": False},
             ):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
@@ -56,7 +72,9 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 results = ray.get(futures)
                 merged_results = functools.reduce(lambda x, y: x + y, results)
                 # Test all ray tasks are assigned with different GPUs.
-                assert sorted(merged_results) == list(range(num_gpus_per_node * num_worker_nodes))
+                assert sorted(merged_results) == list(
+                    range(num_gpus_per_node * num_worker_nodes)
+                )
 
 
 class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):
