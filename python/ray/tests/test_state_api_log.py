@@ -867,7 +867,9 @@ def test_log_cli(shutdown_only):
     pid = ray.get(worker_func.remote())
 
     def verify():
-        result = runner.invoke(logs_state_cli_group, ["worker", "--pid", pid])
+        result = runner.invoke(
+            logs_state_cli_group, ["worker", "--pid", pid, "--tail", "-1"]
+        )
         assert result.exit_code == 0
         print(result.output)
         assert WORKER_LOG_LINE in result.output
