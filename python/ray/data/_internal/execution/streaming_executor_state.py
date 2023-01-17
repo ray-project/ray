@@ -3,6 +3,7 @@
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
+import math
 from typing import Dict, List, Optional
 
 import ray
@@ -180,7 +181,7 @@ def select_operator_to_run(
     for op in topology:
         cur_usage = cur_usage.add(op.current_resource_usage())
 
-    # Filter to ops that are eligiblef or execution.
+    # Filter to ops that are eligible for execution.
     ops = [
         op
         for op, state in topology.items()
@@ -204,4 +205,18 @@ def _execution_allowed(
     if cur_usage.empty():
         return True
 
-    return cur_usage.add(op.incremental_resource_usage()).satisfies_limits(limits)
+    # To avoid starvation problems when dealing with fractional resource types,
+    # convert all quantities to integer (0 or 1) for deciding admissibility. This
+    # allows operators with non-integral requests to slightly overshoot the limit.
+    cur_floored = ExecutionResources(
+        cpu=math.floor(cur_usage.cpu),
+        gpu=math.floor(cur_usage.gpu),
+        object_store_memory=cur_usage.object_store_memory,
+    )
+    inc = op.incremental_resource_usage()
+    inc_indicator = ExecutionResources(
+        cpu=1 if inc.cpu else 0,
+        gpu=1 if inc.gpu else 0,
+        object_store_memory=1 if inc.object_store_memory else 0,
+    )
+    return cur_floored.add(inc_indicator).satisfies_limits(limits)

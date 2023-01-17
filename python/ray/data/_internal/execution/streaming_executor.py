@@ -106,18 +106,18 @@ class StreamingExecutor(Executor):
         for op in topology:
             base_usage = base_usage.add(op.base_resource_usage())
             inc_usage = op.incremental_resource_usage()
-            if inc_usage.cpu or inc_usage.gpu:
-                if inc_usage.cpu == 1 and not inc_usage.gpu:
-                    pass
-                elif inc_usage.gpu == 1 and not inc_usage.cpu:
-                    pass
-                else:
-                    raise NotImplementedError(
-                        "Operator incremental resource usage must be a single unit "
-                        "of either CPU or GPU. Other values may cause deadlock."
-                    )
+            if inc_usage.cpu and inc_usage.gpu:
+                raise NotImplementedError(
+                    "Operator incremental resource usage cannot specify both CPU "
+                    "and GPU at the same time, since it may cause deadlock."
+                )
+            elif inc_usage.object_store_memory:
+                raise NotImplementedError(
+                    "Operator incremental resource usage must not include memory."
+                )
 
         if not base_usage.satisfies_limits(self._options.resource_limits):
             raise ValueError(
-                "The base resource usage of this topology exceeds the given limits!"
+                f"The base resource usage of this topology {base_usage} "
+                f"exceeds the execution limits {self._options.resource_limits}!"
             )
