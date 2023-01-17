@@ -91,12 +91,12 @@ fi
 wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/Dockerfile -O Dockerfile && wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh -O $builddir/startup.sh && sudo chmod 777 $builddir/Dockerfile && sudo chmod 777 $builddir/startup.sh
 
 if [[ -n $cuda_version ]] && [ $cuda_version != "gpu" ]; then
-  sudo $exec build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-cu$cuda_version $builddir -t docker.io/jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
+  sudo $exec build --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-cu$cuda_version $builddir -t docker.io/jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
   sudo $exec push  docker.io/jcoffi/cluster-anywhere:cu$cuda_version
 elif [ $cuda_version == "gpu" ]; then
-  sudo $exec build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu $builddir -t docker.io/jcoffi/cluster-anywhere:gpu -t docker.io/jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
+  sudo $exec build --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu $builddir -t docker.io/jcoffi/cluster-anywhere:gpu -t docker.io/jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
   sudo $exec push docker.io/jcoffi/cluster-anywhere:gpu
 else
-  sudo $exec build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-cpu $builddir -t docker.io/jcoffi/cluster-anywhere:cpu -t docker.io/jcoffi/cluster-anywhere:latest -t docker.io/jcoffi/cluster-anywhere:cpu-latest --build-arg IMAGETYPE=cpu
+  sudo $exec build --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-cpu $builddir -t docker.io/jcoffi/cluster-anywhere:cpu -t docker.io/jcoffi/cluster-anywhere:latest -t docker.io/jcoffi/cluster-anywhere:cpu-latest --build-arg IMAGETYPE=cpu
   sudo $exec push docker.io/jcoffi/cluster-anywhere:latest
 fi 
