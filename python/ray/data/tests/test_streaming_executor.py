@@ -7,7 +7,11 @@ from typing import List, Any
 
 import ray
 from ray.data.context import DatasetContext
-from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    RefBundle,
+    PhysicalOperator,
+)
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.streaming_executor_state import (
     OpState,
@@ -53,6 +57,18 @@ def test_build_streaming_topology():
     assert not topo[o1].inqueues, topo
     assert topo[o1].outqueue == topo[o2].inqueues[0], topo
     assert topo[o2].outqueue == topo[o3].inqueues[0], topo
+    assert list(topo) == [o1, o2, o3]
+
+
+def test_disallow_non_unique_operators():
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    # An operator [o1] cannot used in the same DAG twice.
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o4 = PhysicalOperator("test_combine", [o2, o3])
+    with pytest.raises(ValueError):
+        build_streaming_topology(o4)
 
 
 def test_process_completed_tasks():
@@ -116,8 +132,9 @@ def test_select_operator_to_run():
 def test_dispatch_next_task():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
+    o1_state = OpState(o1, [])
     o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    op_state = OpState(o2)
+    op_state = OpState(o2, [o1_state.outqueue])
 
     # TODO: test multiple inqueues with the union operator.
     op_state.inqueues[0].append("dummy1")

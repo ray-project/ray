@@ -6,6 +6,7 @@ from ray.data._internal.stats import StatsDict
 from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
+    ActorPoolStrategy,
 )
 from ray.data._internal.execution.interfaces import (
     RefBundle,
@@ -103,6 +104,9 @@ class MapOperator(PhysicalOperator):
 
     def get_work_refs(self) -> List[ray.ObjectRef]:
         return self._execution_state.get_work_refs()
+
+    def num_active_work_refs(self) -> int:
+        return self._execution_state.num_active_work_refs()
 
     def notify_work_completed(self, task: ray.ObjectRef) -> None:
         self._execution_state.work_completed(task)

@@ -157,6 +157,9 @@ class MapOperatorState:
     def get_work_refs(self) -> List[ray.ObjectRef]:
         return list(self._tasks.keys())
 
+    def num_active_work_refs(self) -> int:
+        return len(self._tasks)
+
     def shutdown(self) -> None:
         self._task_submitter.shutdown(self.get_work_refs())
 
