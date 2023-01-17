@@ -12,7 +12,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import (
     flatten_to_single_ndarray,
-    flatten_space,
     get_dummy_batch_for_space,
 )
 from ray.rllib.utils.typing import (
@@ -22,7 +21,6 @@ from ray.rllib.utils.typing import (
     ViewRequirementsDict,
 )
 
-from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -139,48 +137,6 @@ class AgentCollector:
         """Returns True if this collector has no data."""
         return not self.buffers or all(len(item) == 0 for item in self.buffers.values())
 
-    def _check_view_requirement(self, view_requirement_name: str, data: TensorType):
-        """Warns if data does not fit the view requirement.
-
-        Should raise an AssertionError if data does not fit the view requirement in the
-        future.
-        """
-
-        if view_requirement_name in self.view_requirements:
-            vr = self.view_requirements[view_requirement_name]
-            # We only check for the shape here, because conflicting dtypes are often
-            # because of float conversion
-            # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
-            #  space that is not a gym.Space
-            if (
-                hasattr(vr.space, "shape")
-                and log_once(
-                    f"view_requirement"
-                    f"_{view_requirement_name}_checked_in_agent_collector"
-                )
-                and not (
-                    np.sum(
-                        (
-                            tree.map_structure(
-                                lambda x: np.product(getattr(x, "shape")),
-                                flatten_space(vr.space),
-                            )
-                        )
-                    ),
-                )
-                == np.shape(data)
-            ):
-
-                # TODO (Artur): Enforce VR shape
-                # TODO (Artur): Enforce dtype as well
-                logger.warning(
-                    f"Provided tensor\n{data}\n does not match space of view "
-                    f"requirements {view_requirement_name}.\n"
-                    f"Provided tensor has shape {np.shape(data)} and view requirement "
-                    f"has shape shape {vr.space.shape}."
-                    f"Make sure dimensions match to resolve this warning."
-                )
-
     def add_init_obs(
         self,
         episode_id: EpisodeID,
@@ -213,10 +169,6 @@ class AgentCollector:
         # convert init_obs to np.array (in case it is a list)
         if isinstance(init_obs, list):
             init_obs = np.array(init_obs)
-
-        # Check if view requirement dict has the SampleBatch.OBS key and warn once if
-        # view requirement does not match init_obs
-        self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
             single_row = {
@@ -303,10 +255,6 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
-            # Check if view requirement dict has k and warn once if
-            # view requirement does not match v
-            self._check_view_requirement(k, v)
-
             if k not in self.buffers:
                 if self.training and k.startswith("state_out_"):
                     vr = self.view_requirements[k]
