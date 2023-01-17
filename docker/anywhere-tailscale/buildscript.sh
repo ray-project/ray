@@ -77,6 +77,7 @@ if [ -n "$(lspci | grep -i nvidia)" ] || [ -n "$(nvidia-smi -L)" ]; then
     # Strip out the decimal point
     cuda_version=${cuda_version//\./}
     #i dont have time to figure this out right now
+    echo $cuda_version
     if [ $cuda_version == "1200" ]; then
       cuda_version="117"
     fi
