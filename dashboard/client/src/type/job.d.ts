@@ -109,3 +109,28 @@ export type JobProgressByTaskNameRsp = {
   msg: string;
   result: boolean;
 };
+
+export type StateApiJobProgressByTaskName = {
+  node_id_to_summary: {
+    cluster: {
+      summary: {
+        [taskName: string]: {
+          func_or_class_name: string;
+          state_counts: {
+            [stateName: string]: number;
+          };
+        };
+      };
+    };
+  };
+};
+
+export type StateApiJobProgressByTaskNameRsp = {
+  data: {
+    result: {
+      result: StateApiJobProgressByTaskName;
+    };
+  };
+  msg: string;
+  result: boolean;
+};
