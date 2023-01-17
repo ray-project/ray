@@ -36,7 +36,7 @@ def attempt_count_timesteps(tensor_dict: dict):
     number of timesteps we count in cases where we are unable to count is zero.
 
     Args:
-        tensor_dict (dict): A SampleBatch or another dict.
+        tensor_dict: A SampleBatch or another dict.
 
     Returns:
         count: The inferred number of timesteps >= 0.
