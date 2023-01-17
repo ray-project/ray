@@ -77,8 +77,8 @@ if [ -n "$(lspci | grep -i nvidia)" ] || [ -n "$(nvidia-smi -L)" ]; then
     # Strip out the decimal point
     cuda_version=${cuda_version//\./}
     #i dont have time to figure this out right now
-    if [ $CUDA == '1200']; then
-      CUDA="117"
+    if [ $cuda_version == '1200']; then
+      cuda_version="117"
     fi
   elif [[ -n $CUDA ]] && ! [ -f /usr/local/cuda/version.json ]; then
     #we will default to 11.2
