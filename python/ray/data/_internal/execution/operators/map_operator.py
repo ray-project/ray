@@ -65,8 +65,9 @@ class MapOperator(PhysicalOperator):
         assert input_index == 0, input_index
         self._execution_state.add_input(refs)
 
-    def inputs_done(self, input_index: int) -> None:
-        self._execution_state.inputs_done(input_index)
+    def inputs_done(self) -> None:
+        self._execution_state.inputs_done()
+        super().inputs_done()
 
     def has_next(self) -> bool:
         return self._execution_state.has_next()
@@ -79,6 +80,9 @@ class MapOperator(PhysicalOperator):
 
     def get_work_refs(self) -> List[ray.ObjectRef]:
         return self._execution_state.get_work_refs()
+
+    def num_active_work_refs(self) -> int:
+        return self._execution_state.num_active_work_refs()
 
     def notify_work_completed(self, task: ray.ObjectRef) -> None:
         self._execution_state.work_completed(task)
