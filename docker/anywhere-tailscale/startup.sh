@@ -72,6 +72,5 @@ fi
 
 
 
-
 $deviceid = curl -u ${TSAPIKEY}: https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname==${HOSTNAME})' | jq .id
 curl -X DELETE https://api.tailscale.com/api/v2/device/${deviceid} -u ${TSAPIKEY}:
