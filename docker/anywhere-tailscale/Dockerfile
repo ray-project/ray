@@ -87,3 +87,5 @@ RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/rele
 COPY startup.sh /home/ray/startup.sh
 RUN sudo chmod +x /home/ray/startup.sh
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
+HEALTHCHECK --interval=60s --timeout=5s --start-period=60s \
+  CMD tailscale status -json | jq -r .BackendState | grep -q "Running" || exit 1
