@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING, Dict, List, Optional, Union, Iterator
-import warnings
 
 from ray.data.block import DataBatch
 from ray.data.dataset_iterator import DatasetIterator
@@ -9,6 +8,7 @@ if TYPE_CHECKING:
     import torch
     from ray.data import Dataset
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
+    from ray.train._internal.dataset_iterator import Train
 
 
 class BulkDatasetIterator(DatasetIterator):
@@ -87,31 +87,7 @@ class BulkDatasetIterator(DatasetIterator):
     def stats(self) -> str:
         return self._base_dataset.stats()
 
-    def _with_backward_compat(self) -> DatasetIterator:
-        return BulkDatasetIteratorWithBackwardCompat(self)
-
-
-class BulkDatasetIteratorWithBackwardCompat(BulkDatasetIterator):
-    def __init__(
-        self,
-        dataset_iterator: BulkDatasetIterator,
-    ):
-        self._dataset_iterator = dataset_iterator
-
-    def __getattr__(self, name):
-        if name == "_dataset_iterator":
-            raise AttributeError
-
-        if hasattr(self._dataset_iterator, name):
-            return getattr(self._dataset_iterator, name)
-
-        warnings.warn(
-            "session.get_dataset_shard returns a ray.data.DatasetIterator "
-            "instead of a Dataset as of Ray v2.3. "
-            "Use iter_torch_batches(), to_tf(), or iter_batches() to "
-            "iterate over one epoch. See "
-            "https://docs.ray.io/en/latest/data/api/dataset_iterator.html "
-            "for full DatasetIterator docs."
-        )
-
-        return getattr(self._dataset_iterator._base_dataset, name)
+    def _to_train_iterator(self) -> "TrainDatasetIterator":
+        from ray.train._internal.dataset_iterator import TrainDatasetIterator
+        
+        return TrainIterator(self)

@@ -248,8 +248,13 @@ class DatasetIterator(abc.ABC):
         )
 
     @abc.abstractmethod
-    def _with_backward_compat(self) -> "DatasetIterator":
+    def _to_train_iterator(self) -> "DatasetIterator":
         """
-        Provide backwards compatibility for AIR users.
+        Convert this DatasetIterator to one that is specific
+        to Ray Train Trainers.
+
+        The Train-specific iterator has training specific logic, 
+        for example, automatically moving batches to GPU when GPU training
+        is enabled.
         """
         raise NotImplementedError
