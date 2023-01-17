@@ -6,13 +6,15 @@ from typing import (
     Type,
     Sequence,
     Hashable,
+    Optional,
+    Callable,
 )
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from ray.train.torch.train_loop_utils import _TorchAccelerator
 
-from ray.rllib.core.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
     MultiAgentRLModule,
@@ -27,6 +29,41 @@ from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 
 logger = logging.getLogger(__name__)
+
+
+
+class DDPRLModuleWrapper(DDP, RLModule):
+
+    @override(RLModule)
+    def _forward_train(self, *args, **kwargs):
+        return self(*args, **kwargs)
+
+    @override(RLModule)
+    def _forward_inference(self, *args, **kwargs) -> Mapping[str, Any]:
+        return self.module._forward_inference(*args, **kwargs)
+    
+    @override(RLModule)
+    def _forward_exploration(self, *args, **kwargs) -> Mapping[str, Any]:
+        return self.module._forward_exploration(*args, **kwargs)
+
+    @override(RLModule)
+    def get_state(self, *args, **kwargs):
+        return self.module.get_state(*args, **kwargs)
+
+    @override(RLModule)
+    def set_state(self, *args, **kwargs):
+        self.module.set_state(*args, **kwargs)
+    
+    @override(RLModule)
+    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
+        # TODO (Kourosh): Not to sure about this make_distributed api belonging to 
+        # RLModule or not? we should see if we use this api end-point for both tf and 
+        # torch instead of doing it in the trainer.
+        pass
+
+    @override(RLModule)
+    def is_distributed(self) -> bool:
+        return True
 
 
 class TorchRLTrainer(RLTrainer):
@@ -54,8 +91,6 @@ class TorchRLTrainer(RLTrainer):
     @property
     @override(RLTrainer)
     def module(self) -> MultiAgentRLModule:
-        if self.distributed:
-            return self._module.module
         return self._module
 
     @override(RLTrainer)
@@ -106,16 +141,6 @@ class TorchRLTrainer(RLTrainer):
         # api in ray.train but allow for session to be None without any errors raised. 
         self._device = _TorchAccelerator().get_device()
 
-        class DDPRLModuleWrapper(DDP):
-            def forward_train(self, *args, **kwargs):
-                return self(*args, **kwargs)
-
-            def get_weights(self, *args, **kwargs):
-                return self.module.get_weights(*args, **kwargs)
-
-            def set_weights(self, *args, **kwargs):
-                self.module.set_weights(*args, **kwargs)
-
         # if the module is a MultiAgentRLModule and nn.Module we can simply assume
         # all the submodules are registered. Otherwise, we need to loop through
         # each submodule and move it to the correct device.
@@ -124,15 +149,11 @@ class TorchRLTrainer(RLTrainer):
         # handle this.
         if isinstance(module, torch.nn.Module):
             module.to(self._device)
-            module = DDPRLModuleWrapper(
-                module  # , device_ids=[self._device]# , process_group=pg
-            )
+            module = DDPRLModuleWrapper(module)
         else:
             for key in module.keys():
                 module[key].to(self._device)
-                module[key] = DDPRLModuleWrapper(
-                    module[key], #device_ids=[self._device]# , process_group=pg
-                )
+                module[key] = DDPRLModuleWrapper(module[key])
 
         return module
 
@@ -167,4 +188,27 @@ class TorchRLTrainer(RLTrainer):
         # TODO (Kourosh): the abstraction should take in optimizer_config as a
         # parameter as well.
         lr = self.optimizer_config.get("lr", 1e-3)
-        return optimizer_cls(module.parameters, lr=lr)
+        return optimizer_cls(module.parameters(), lr=lr)
+
+
+    @override(RLTrainer)
+    def add_module(
+        self,
+        *,
+        module_id: ModuleID,
+        module_cls: Type[RLModule],
+        module_kwargs: Mapping[str, Any],
+        set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
+        optimizer_cls: Optional[Type[Optimizer]] = None,
+    ) -> None:
+        super().add_module(
+            module_id=module_id,
+            module_cls=module_cls,
+            module_kwargs=module_kwargs,
+            set_optimizer_fn=set_optimizer_fn,
+            optimizer_cls=optimizer_cls,
+        )
+
+        # we need to ddpify the module that was just added to the pool
+        self._module[module_id].to(self._device)
+        self._module[module_id] = DDPRLModuleWrapper(self._module[module_id])
