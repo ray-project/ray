@@ -15,6 +15,7 @@
 #include "process_helper.h"
 
 #include <boost/algorithm/string.hpp>
+#include <string>
 
 #include "ray/common/ray_config.h"
 #include "ray/util/process.h"
@@ -27,7 +28,8 @@ namespace internal {
 using ray::core::CoreWorkerProcess;
 using ray::core::WorkerType;
 
-void ProcessHelper::StartRayNode(const int port,
+void ProcessHelper::StartRayNode(const std::string node_id_address,
+                                 const int port,
                                  const std::string redis_password,
                                  const std::vector<std::string> &head_args) {
   std::vector<std::string> cmdargs({"ray",
@@ -38,7 +40,7 @@ void ProcessHelper::StartRayNode(const int port,
                                     "--redis-password",
                                     redis_password,
                                     "--node-ip-address",
-                                    GetNodeIpAddress()});
+                                    node_id_address});
   if (!head_args.empty()) {
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
@@ -73,13 +75,11 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
 
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
       bootstrap_ip.empty()) {
-    bootstrap_ip = "127.0.0.1";
-    StartRayNode(bootstrap_port,
+    bootstrap_ip = GetNodeIpAddress();
+    StartRayNode(bootstrap_ip,
+                 bootstrap_port,
                  ConfigInternal::Instance().redis_password,
                  ConfigInternal::Instance().head_args);
-  }
-  if (bootstrap_ip == "127.0.0.1") {
-    bootstrap_ip = GetNodeIpAddress();
   }
 
   std::string bootstrap_address = bootstrap_ip + ":" + std::to_string(bootstrap_port);
