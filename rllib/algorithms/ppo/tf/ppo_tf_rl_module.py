@@ -196,8 +196,8 @@ if __name__ == "__main__":
         action_space=env.action_space,
         model_config=dict(
             custom_model_config=dict(
-                policy_hiddens=[32, 32],
-                vf_hiddens=[32, 32],
+                policy_hiddens=[256, 256, 256],
+                vf_hiddens=[256, 256, 256],
             )
         ),
     )

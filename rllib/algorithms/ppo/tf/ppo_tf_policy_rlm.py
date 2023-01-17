@@ -115,7 +115,12 @@ class PPOTfPolicyWithRLModule(
         mean_kl = tf.math.reduce_mean(kl)
         warn_if_infinite_kl_divergence(self, mean_kl)
 
-        loss = -(ppo_clipped_objective + entropy_objective - vf_loss)
+        loss = ppo_clipped_objective + entropy_objective - vf_loss
+        if self.config["kl_coeff"] > 0.0:
+            kl_loss = self.kl_coeff * mean_kl
+            self.stats["mean_kl"] = mean_kl
+            loss += kl_loss
+        loss = - loss
         loss = tf.math.reduce_mean(loss)
         self.stats["total_loss"] = loss
         self.stats["mean_policy_loss"] = tf.math.reduce_mean(ppo_clipped_objective)

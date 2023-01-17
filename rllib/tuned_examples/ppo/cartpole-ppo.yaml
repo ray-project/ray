@@ -1,4 +1,4 @@
-cartpole-ppo:
+cartpole-ppo-kl-tuning:
     env: CartPole-v1
     run: PPO
     stop:
@@ -6,15 +6,21 @@ cartpole-ppo:
         timesteps_total: 100000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework:
+            grid_search: 
+                - tf2
+                - torch
         gamma: 0.99
-        lr: 0.0003
+        lr: 
+            grid_search:
+                - 0.001
         num_workers: 1
         observation_filter: MeanStdFilter
         num_sgd_iter: 6
         vf_loss_coeff: 0.01
-        model:
-            fcnet_hiddens: [32]
-            fcnet_activation: linear
-            vf_share_layers: true
+        # model:
+            # fcnet_hiddens: [32]
+            # fcnet_activation: linear
+            # vf_share_layers: true
         enable_connectors: true
+        _enable_rl_module_api: true
