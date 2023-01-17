@@ -4,10 +4,8 @@
 # Exit if any of the test commands fail.
 set -x -e pipeline
 
-# NUM_IMAGES_PER_FILE="2048"
-# NUM_FILES="16"
-NUM_IMAGES_PER_FILE="32"
-NUM_FILES="1"
+NUM_IMAGES_PER_FILE="2048"
+NUM_FILES="16"
 NUM_EPOCHS=1
 BATCH_SIZE=64
 SHUFFLE_BUFFER_SIZE=0

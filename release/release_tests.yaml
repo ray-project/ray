@@ -3852,14 +3852,11 @@
   group: core-daily-test
   working_dir: nightly_tests/stress_tests
 
-  stable: true
-  env: staging
-
   frequency: nightly
   team: core
   cluster:
-    cluster_env: app_config_oom.yaml
-    cluster_compute: compute_cpu_16.yaml
+    cluster_env: stress_tests_tune_air_oom_app_config.yaml
+    cluster_compute: stress_tests_tune_air_oom_compute.yaml
 
   run:
     timeout: 3600
