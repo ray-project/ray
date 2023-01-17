@@ -368,7 +368,7 @@ def _setup_ray_cluster(
 
     The returned instance can be used to connect to, disconnect from and shutdown the
     ray cluster. This instance can also be used as a context manager (used by
-    encapsulating operations within `with setup_ray_cluster(...):`). Upon entering the
+    encapsulating operations within `with _setup_ray_cluster(...):`). Upon entering the
     managed scope, the ray cluster is initiated and connected to. When exiting the
     scope, the ray cluster is disconnected and shut down.
 
@@ -739,18 +739,26 @@ def _verify_node_options(node_options, block_keys, node_type):
     for key in node_options:
         if key.startswith("--") or '-' in key:
             raise ValueError(
-                "For a ray node option like '--foo-bar', you should convert it to following "
-                "format 'foo_bar' in 'head_node_options' / 'worker_node_options' arguments."
+                "For a ray node option like '--foo-bar', you should convert it to "
+                "following format 'foo_bar' in 'head_node_options' / "
+                "'worker_node_options' arguments."
             )
 
         if key in block_keys:
             common_err_msg = \
-                f"Setting option {_convert_ray_node_options(key)} for {node_type} is not allowed."
+                f"Setting option {_convert_ray_node_options(key)} for {node_type} " \
+                "is not allowed."
             replacement_arg = block_keys[key]
             if replacement_arg:
-                raise ValueError(f"{common_err_msg} You should set '{replacement_arg}' argument instead.")
+                raise ValueError(
+                    f"{common_err_msg} You should set '{replacement_arg}' argument "
+                    "instead."
+                )
             else:
-                raise ValueError(f"{common_err_msg} The option is controlled by Ray on Spark routine.")
+                raise ValueError(
+                    f"{common_err_msg} The option is controlled by Ray on Spark "
+                    "routine."
+                )
 
 
 @PublicAPI(stability="alpha")
@@ -790,15 +798,15 @@ def setup_ray_cluster(
             `ray.util.spark.MAX_NUM_WORKER_NODES`.
         num_cpus_per_node: Number of cpus available to per-ray worker node, if not
             provided, use spark application configuration 'spark.task.cpus' instead.
-            Limitation: Only spark version >= 3.4 or Databricks Runtime 12.x supports
-            setting this argument.
+            **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
+            supports setting this argument.
         num_gpus_per_node: Number of gpus available to per-ray worker node, if not
             provided, use spark application configuration
             'spark.task.resource.gpu.amount' instead.
             This argument is only available on spark cluster that is configured with
             'gpu' resources.
-            Limitation: Only spark version >= 3.4 or Databricks Runtime 12.x supports
-            setting this argument.
+            **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
+            supports setting this argument.
         object_store_memory_per_node: Object store memory available to per-ray worker
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
@@ -860,10 +868,12 @@ def setup_ray_cluster(
 
     spark_master = spark.sparkContext.master
     if not (
-        spark_master.startswith("spark://") or spark_master.startswith("local-cluster[")
+        spark_master.startswith("spark://") or
+        spark_master.startswith("local-cluster[")
     ):
         raise RuntimeError(
-            "Ray on Spark only supports spark cluster in standalone mode or local-cluster mode"
+            "Ray on Spark only supports spark cluster in standalone mode or "
+            "local-cluster mode"
         )
 
     if (
@@ -939,7 +949,9 @@ def setup_ray_cluster(
     if num_worker_nodes == MAX_NUM_WORKER_NODES:
         # num_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
         # spark task slots
-        num_worker_nodes = get_max_num_concurrent_tasks(spark.sparkContext, res_profile)
+        num_worker_nodes = get_max_num_concurrent_tasks(
+            spark.sparkContext, res_profile
+        )
     elif num_worker_nodes <= 0:
         raise ValueError(
             "The value of 'num_worker_nodes' argument must be either a positive "
