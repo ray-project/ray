@@ -36,7 +36,8 @@ done
 
 
 
-$deviceid = curl -u ${TSAPIKEY}: https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname==${HOSTNAME})' | jq .id
+$deviceid = curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname=="'"$HOSTNAME"'")' | jq .id
+
 ##begin shutdown script injection
 #shutting down crate gracefully
 echo -e "#! /bin/bash\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null && sudo chmod +x /etc/rc6.d/K00shutdownscript
