@@ -27,10 +27,6 @@ RUN sudo apt-get update \
         #&& sudo rm -rf /var/lib/apt/lists/*
 
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
-    alpaca_py \
-    scikit-learn-intelex \
-    gplearn \
-    yfinance \
     pandas \
     modin[dask] \
     modin[ray]
