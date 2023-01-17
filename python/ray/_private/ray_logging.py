@@ -216,11 +216,6 @@ def configure_log_file(out_file, err_file):
     # C++ logging requires redirecting the stdout file descriptor. Note that
     # dup2 will automatically close the old file descriptor before overriding
     # it.
-    #
-    # pytest captures stdout by duping and recovering the current stdout.
-    # The pytest recovery will fail if the fds are closed due to
-    # reconfigure_worker_logs call. Disable it for pytest.
-    # if "PYTEST_CURRENT_TEST" not in os.environ:
     os.dup2(out_file.fileno(), stdout_fileno)
     os.dup2(err_file.fileno(), stderr_fileno)
     # We also manually set sys.stdout and sys.stderr because that seems to
@@ -237,7 +232,9 @@ def configure_log_file(out_file, err_file):
 
 
 def init_worker_logs(worker_type: str):
-    assert ray._private.worker._global_node is not None
+    assert (
+        ray._private.worker._global_node is not None
+    ), "Failed to setup logs for uninitialized worker."
     out_file, err_file = ray._private.worker._global_node.get_log_file_handles(
         get_worker_log_file_name(worker_type)
     )
@@ -249,7 +246,9 @@ def reconfigure_worker_logs(worker_type: str, job_id: str):
     new_log_file_name = get_worker_log_file_name(worker_type, job_id)
     if new_log_file_name == original_log_file_name:
         return
-    assert ray._private.worker._global_node is not None
+    assert (
+        ray._private.worker._global_node is not None
+    ), "Failed to setup logs for uninitialized worker."
     out_file, err_file = ray._private.worker._global_node.get_log_file_handles(
         new_log_file_name
     )
