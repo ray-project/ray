@@ -72,6 +72,7 @@ if [ -n "$(lspci | grep -i nvidia)" ] || [ -n "$(nvidia-smi -L)" ]; then
 
     # Strip out the decimal point
     cuda_version=${cuda_version//\./}
+    cuda_version=${cuda_version//00/}
   elif [[ -n $CUDA ]] && ! [ -f /usr/local/cuda/version.json ]; then
     #we will default to 11.2
     cuda_version="gpu"
@@ -82,7 +83,7 @@ fi
 wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/Dockerfile -O Dockerfile && wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh -O $builddir/startup.sh && sudo chmod 777 $builddir/Dockerfile && sudo chmod 777 $builddir/startup.sh
 
 if [[ -n $cuda_version ]] && [ $cuda_version != "gpu" ]; then
-  sudo $exec build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-cu$cuda_version , -t jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
+  sudo $exec build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-cu$cuda_version $builddir -t jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
   sudo $exec push jcoffi/cluster-anywhere:cu$cuda_version
 elif [ $cuda_version == "gpu" ]; then
   sudo $exec build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu $builddir -t jcoffi/cluster-anywhere:gpu -t jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
