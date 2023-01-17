@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import json
 
 from dataclasses import asdict, fields
 from itertools import islice
@@ -371,7 +372,18 @@ class StateAPIManager:
             """
             task_state = {}
             task_info = task_attempt.get("task_info", {})
-            state_updates = task_attempt.get("state_updates", None)
+            state_updates = task_attempt.get("state_updates", [])
+            profile_events = task_attempt.get("profile_events", {})
+            if profile_events:
+                for event in profile_events["events"]:
+                    # End/start times are recorded in ns. Convert it to ms.
+                    # TODO(sang): Record time in ms from the source
+                    # and change the protobuf name.
+                    event["end_time"] = int(event["end_time"]) // 1e6
+                    event["start_time"] = int(event["start_time"]) // 1e6
+                    logger.info(event["extra_data"])
+                    event["extra_data"] = json.loads(event["extra_data"])
+            task_state["profile_events"] = profile_events
 
             # Convert those settable fields
             mappings = [
@@ -409,9 +421,7 @@ class StateAPIManager:
                     events.append(
                         {
                             "state": state,
-                            "created": str(
-                                datetime.fromtimestamp(ts_ms // 1e3)
-                            ),
+                            "created_ms": ts_ms,
                         }
                     )
                     if state == "RUNNING":
@@ -438,6 +448,7 @@ class StateAPIManager:
                         "node_id",
                         "actor_id",
                         "parent_task_id",
+                        "component_id"
                     ],
                 )
             )

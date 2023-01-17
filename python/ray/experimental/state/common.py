@@ -513,11 +513,13 @@ class TaskState(StateSchema):
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
     #: The parent task id.
-    parent_task_id: str = state_column(filterable=True)
+    parent_task_id: str = state_column(detail=True, filterable=True)
     #: The list of events of the given task.
     #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
     #: breakdowns and typical state transition flow.
     events: List[dict] = state_column(detail=True, filterable=False)
+    #: The list of profile events of the given task.
+    profile_events: List[dict] = state_column(detail=True, filterable=False)
     #: The time when the task was started. A Unix timestamp in ms.
     start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
     #: The time when the task is finished. A Unix timestamp in ms.
@@ -739,7 +741,7 @@ class TaskSummaries:
                 )
             task_summary = summary[key]
 
-            state = task["scheduling_state"]
+            state = task["state"]
             if state not in task_summary.state_counts:
                 task_summary.state_counts[state] = 0
             task_summary.state_counts[state] += 1
