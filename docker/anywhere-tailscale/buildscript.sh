@@ -1,5 +1,9 @@
 #!/bin/bash
 builddir="/home/tripps/build"
+#PLATFORM="$( case $(uname --m) in x86_64) echo x64_linux ;; aarch64) echo aarch64_linux ;; esac)"
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+distro=${distribution//\./}
+
 
 if [ -d $builddir/ ]; then
     cd $builddir/
@@ -47,18 +51,16 @@ if [ -n "$(lspci | grep -i nvidia)" ] || [ -n "$(nvidia-smi -L)" ]; then
     # Get the driver version
     nvidia_driver_ver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader)
   elif [ -n "$WSL_DISTRO_NAME" ]; then
-    sudo apt-key del 7fa2af80
-    wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-wsl-ubuntu.pin
-    sudo mv cuda-wsl-ubuntu.pin /etc/apt/preferences.d/cuda-repository-pin-600
-    sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/7fa2af80.pub
-    sudo add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/ /"
+    wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/$(uname --m)/cuda-keyring_1.0-1_all.deb
+    sudo dpkg -i cuda-keyring_1.0-1_all.deb
     sudo apt-get update
     sudo apt-get -y install cuda
     CUDA="WSL"
   elif [ -n "$(lspci | grep -i nvidia)" ]; then
-    sudo apt install --no-install-recommends -y gcc
-    wget https://developer.download.nvidia.com/compute/cuda/11.2.2/local_installers/cuda_11.2.2_460.32.03_linux.run
-    sudo sh cuda_11.2.2_460.32.03_linux.run --silent
+    wget https://developer.download.nvidia.com/compute/cuda/repos/$distro/$(uname --m)/cuda-keyring_1.0-1_all.deb
+    sudo dpkg -i cuda-keyring_1.0-1_all.deb
+    sudo apt-get update
+    sudo apt-get -y install cuda
     CUDA="lspci"
   fi
 
