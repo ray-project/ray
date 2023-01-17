@@ -10,6 +10,8 @@ from typing import (
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+from ray.train.torch.train_loop_utils import _TorchAccelerator
+
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
@@ -48,11 +50,7 @@ class TorchRLTrainer(RLTrainer):
 
         self._world_size = scaling_config.get("num_workers", 1)
         self._use_gpu = scaling_config.get("use_gpu", False)
-        # TODO (Kourosh): This RLTrainer assumes that each actor is a single GPU actor
-        # at most. If GPU is not enabled it is a CPU actor. ray.gpu_ids() will return
-        # the accessible devices. So we can ideally do model parallelism as well
-        self._device = torch.device("cuda" if self._use_gpu else "cpu")
-
+        
     @property
     @override(RLTrainer)
     def module(self) -> MultiAgentRLModule:
@@ -79,6 +77,7 @@ class TorchRLTrainer(RLTrainer):
             optim.zero_grad(set_to_none=True)
         loss[self.TOTAL_LOSS_KEY].backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
+
         return grads
 
     @override(RLTrainer)
@@ -96,14 +95,20 @@ class TorchRLTrainer(RLTrainer):
         for optim in self._optim_to_param:
             optim.step()
 
+
+
     @override(RLTrainer)
     def _make_distributed(self) -> MultiAgentRLModule:
         module = self._make_module()
-        # pg = torch.distributed.new_group(list(range(self._world_size)))
+
+        # TODO (Kourosh): How do we handle model parallism?
+        # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public 
+        # api in ray.train but allow for session to be None without any errors raised. 
+        self._device = _TorchAccelerator().get_device()
 
         class DDPRLModuleWrapper(DDP):
             def forward_train(self, *args, **kwargs):
-                return self.module.forward_train(*args, **kwargs)
+                return self(*args, **kwargs)
 
             def get_weights(self, *args, **kwargs):
                 return self.module.get_weights(*args, **kwargs)
@@ -111,14 +116,12 @@ class TorchRLTrainer(RLTrainer):
             def set_weights(self, *args, **kwargs):
                 self.module.set_weights(*args, **kwargs)
 
-        # if self._use_gpu:
         # if the module is a MultiAgentRLModule and nn.Module we can simply assume
         # all the submodules are registered. Otherwise, we need to loop through
         # each submodule and move it to the correct device.
         # TODO (Kourosh): This can result in missing modules if the user does not
         # register them in the MultiAgentRLModule. We should find a better way to
         # handle this.
-        print(f"device = {self._device}")
         if isinstance(module, torch.nn.Module):
             module.to(self._device)
             module = DDPRLModuleWrapper(
@@ -128,7 +131,7 @@ class TorchRLTrainer(RLTrainer):
             for key in module.keys():
                 module[key].to(self._device)
                 module[key] = DDPRLModuleWrapper(
-                    module[key]  # , device_ids=[self._device]# , process_group=pg
+                    module[key], #device_ids=[self._device]# , process_group=pg
                 )
 
         return module
