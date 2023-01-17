@@ -5,7 +5,10 @@ if [ -d $builddir/ ]; then
     sudo rm -rf $builddir/*
 fi
 
-
+if [ -x /usr/bin/podman ]; then
+    DOCKER_HOST=`echo "unix://${XDG_RUNTIME_DIR}/podman/podman.sock"`
+    export DOCKER_HOST
+fi
 
 sudo mkdir -p $builddir /home/tripps/data && cd $builddir 
 
@@ -25,7 +28,7 @@ gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
 shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
 
-if ! [ -x "$(command -v docker)" ] && ! [ -z "$WSL_DISTRO_NAME" ]; then
+if ! [ -x "$(command -v docker)" ] && ! [ -z "$WSL_DISTRO_NAME" ] && ! [ -x /usr/bin/podman ]; then
 sudo curl https://get.docker.com | sh
 fi
 
