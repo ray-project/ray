@@ -898,6 +898,13 @@ py_test(
     srcs = ["algorithms/appo/tests/test_appo.py"]
 )
 
+py_test(
+    name = "test_appo_off_policyness",
+    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["algorithms/appo/tests/test_appo_off_policyness.py"]
+)
+
 # ARS
 py_test(
     name = "test_ars",
