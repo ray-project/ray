@@ -730,6 +730,8 @@ _worker_node_option_block_keys = {
     "memory": None,
     "object_store_memory": "object_store_memory_per_node",
     "dashboard_agent_listen_port": None,
+    "min_worker_port": None,
+    "max_worker_port": None,
 }
 
 
