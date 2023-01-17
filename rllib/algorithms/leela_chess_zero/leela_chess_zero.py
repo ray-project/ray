@@ -68,7 +68,8 @@ class LeelaChessZeroConfig(AlgorithmConfig):
     """Defines a configuration class from which a LeelaChessZero Algorithm can be built.
 
     Example:
-        >>> from ray.rllib.algorithms.leela_chess_zero import LeelaChessZeroConfig
+        >>> from ray.rllib.algorithms.leela_chess_zero as lc0 # doctest: +SKIP
+        >>> from lc0 import LeelaChessZeroConfig # doctest: +SKIP
         >>> config = LeelaChessZeroConfig()   # doctest: +SKIP
         >>> config = config.training(sgd_minibatch_size=256)   # doctest: +SKIP
         >>> config = config..resources(num_gpus=0)   # doctest: +SKIP
@@ -79,10 +80,11 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         >>> algo.train() # doctest: +SKIP
 
     Example:
-        >>> from ray.rllib.algorithms.leela_chess_zero import LeelaChessZeroConfig
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = LeelaChessZeroConfig()
+        >>> from ray.rllib.algorithms.leela_chess_zero as lc0 # doctest: +SKIP
+        >>> from lc0 import LeelaChessZeroConfig # doctest: +SKIP
+        >>> from ray import air # doctest: +SKIP
+        >>> from ray import tune # doctest: +SKIP
+        >>> config = LeelaChessZeroConfig() # doctest: +SKIP
         >>> # Print out some default values.
         >>> print(config.shuffle_sequences) # doctest: +SKIP
         >>> # Update the config object.
@@ -92,10 +94,11 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.Tuner( # doctest: +SKIP
-        ...     "LeelaChessZero",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        ...     "LeelaChessZero", # doctest: +SKIP
+        ...     run_config=air.RunConfig(stop={ # doctest: +SKIP
+                    "episode_reward_mean": 200}), # doctest: +SKIP
+        ...     param_space=config.to_dict(), # doctest: +SKIP
+        ... ).fit() # doctest: +SKIP
     """
 
     def __init__(self, algo_class=None):
