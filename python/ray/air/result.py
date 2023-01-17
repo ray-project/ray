@@ -53,6 +53,15 @@ class Result:
             return None
         return self.metrics.get("config", None)
 
+    @property
+    def uri(self) -> Optional[str]:
+        """Return checkpoint URI, if available.
+
+        Same as ``self.checkpoint.uri``."""
+        if not self.checkpoint:
+            return None
+        return self.checkpoint.uri
+
     def __repr__(self):
         from ray.tune.result import AUTO_RESULT_KEYS
 
