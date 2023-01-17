@@ -101,4 +101,4 @@ Limitations
 
 Although a generator function creates ``ObjectRefs`` one at a time, currently Ray will not schedule dependent tasks until the entire task is complete and all values have been created. This is similar to the semantics used by tasks that return multiple values as a list.
 
-``num_returns="dynamic"`` is not yet supported for actor tasks and :ref:`Ray Client <ray-client-ref>`.
+``num_returns="dynamic"`` is not yet supported for :ref:`Ray Client <ray-client-ref>`.
