@@ -20,11 +20,11 @@ sudo mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
 # Special VM options for Java in Docker
 
 if [ -c /dev/net/tun ]; then
-    sudo tailscaled &;
+    sudo tailscaled &
     sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
 else
     echo "tun doesn't exist"
-    sudo tailscaled --tun=userspace-networking --state=mem: &;
+    sudo tailscaled --tun=userspace-networking --state=mem: &
     sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
 fi
 
