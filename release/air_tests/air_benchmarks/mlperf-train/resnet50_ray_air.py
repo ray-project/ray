@@ -474,12 +474,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(
-        _system_config={
-            "worker_killing_policy": "group_by_owner",
-            "task_oom_retries": -1,
-            "memory_usage_threshold": 0.7,
-        },
-        num_cpus=8,
         runtime_env={
             "working_dir": os.path.dirname(__file__),
         },
