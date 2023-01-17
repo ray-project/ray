@@ -51,13 +51,15 @@ if [ -n "$(lspci | grep -i nvidia)" ] || [ -n "$(nvidia-smi -L)" ]; then
     # Get the driver version
     nvidia_driver_ver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader)
   elif [ -n "$WSL_DISTRO_NAME" ]; then
-    wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/$(uname --m)/cuda-keyring_1.0-1_all.deb
-    sudo dpkg -i cuda-keyring_1.0-1_all.deb
-    sudo apt-get update
-    sudo apt-get -y install cuda
+    sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys A4B469963BF863CC
+    wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/$(uname --m)/cuda-keyring_1.0-1_all.deb -O cuda-keyring_1.0-1_all.deb && sudo chmod +x cuda-keyring_1.0-1_all.deb
+    sudo apt install cuda-keyring_1.0-1_all.deb
+    sudo apt update
+    sudo apt -y install cuda
     CUDA="WSL"
   elif [ -n "$(lspci | grep -i nvidia)" ]; then
-    wget https://developer.download.nvidia.com/compute/cuda/repos/$distro/$(uname --m)/cuda-keyring_1.0-1_all.deb
+    sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys A4B469963BF863CC
+    wget https://developer.download.nvidia.com/compute/cuda/repos/$distro/$(uname --m)/cuda-keyring_1.0-1_all.deb -O cuda-keyring_1.0-1_all.deb && sudo chmod +x cuda-keyring_1.0-1_all.deb
     sudo dpkg -i cuda-keyring_1.0-1_all.deb
     sudo apt-get update
     sudo apt-get -y install cuda
