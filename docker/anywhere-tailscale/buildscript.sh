@@ -17,7 +17,8 @@ if [ -x /usr/bin/podman ]; then
     exec=/usr/bin/podman
     sudo podman registry remove quay.io
     alias docker=podman
-    docker login -u jcoffi -p $DOCKER_PASSWORD
+    sudo docker login -u jcoffi -p $DOCKER_PASSWORD > /dev/null
+    docker login -u jcoffi -p $DOCKER_PASSWORD > /dev/null
 else
     exec=/usr/bin/docker
 fi
