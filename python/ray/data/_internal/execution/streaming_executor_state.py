@@ -197,21 +197,21 @@ def select_operator_to_run(
 
 
 def _execution_allowed(
-    op: PhysicalOperator, cur_usage: ExecutionResources, limits: ExecutionResources
+    op: PhysicalOperator,
+    global_usage: ExecutionResources,
+    global_limits: ExecutionResources,
 ) -> bool:
-    cur_usage = op.current_resource_usage()
-
     # If no resources are currently used, execution is always allowed.
-    if cur_usage.empty():
+    if op.current_resource_usage().empty():
         return True
 
     # To avoid starvation problems when dealing with fractional resource types,
     # convert all quantities to integer (0 or 1) for deciding admissibility. This
     # allows operators with non-integral requests to slightly overshoot the limit.
-    cur_floored = ExecutionResources(
-        cpu=math.floor(cur_usage.cpu),
-        gpu=math.floor(cur_usage.gpu),
-        object_store_memory=cur_usage.object_store_memory,
+    global_floored = ExecutionResources(
+        cpu=math.floor(global_usage.cpu),
+        gpu=math.floor(global_usage.gpu),
+        object_store_memory=global_usage.object_store_memory,
     )
     inc = op.incremental_resource_usage()
     inc_indicator = ExecutionResources(
@@ -219,4 +219,4 @@ def _execution_allowed(
         gpu=1 if inc.gpu else 0,
         object_store_memory=1 if inc.object_store_memory else 0,
     )
-    return cur_floored.add(inc_indicator).satisfies_limits(limits)
+    return global_floored.add(inc_indicator).satisfies_limits(global_limits)

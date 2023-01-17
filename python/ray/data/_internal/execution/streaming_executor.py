@@ -1,6 +1,7 @@
 import logging
 from typing import Iterator, Optional
 
+import ray
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
@@ -87,10 +88,11 @@ class StreamingExecutor(Executor):
         process_completed_tasks(topology)
 
         # Dispatch as many operators as we can for completed tasks.
-        op = select_operator_to_run(topology, self._options.resource_limits)
+        updated_limits = self._get_or_refresh_resource_limits()
+        op = select_operator_to_run(topology, updated_limits)
         while op is not None:
             topology[op].dispatch_next_task()
-            op = select_operator_to_run(topology, self._options.resource_limits)
+            op = select_operator_to_run(topology, updated_limits)
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
@@ -121,3 +123,20 @@ class StreamingExecutor(Executor):
                 f"The base resource usage of this topology {base_usage} "
                 f"exceeds the execution limits {self._options.resource_limits}!"
             )
+
+    def _get_or_refresh_resource_limits(self) -> ExecutionResources:
+        """Return concrete limits for use at the current time.
+
+        This method autodetects any unspecified execution resource limits based on the
+        current cluster size, refreshing these values periodically to support cluster
+        autoscaling.
+        """
+        base = self._options.resource_limits
+        # TODO: throttle refresh interval
+        cluster = ray.cluster_resources()
+        return ExecutionResources(
+            cpu=base.cpu or cluster.get("CPU", 0.0),
+            gpu=base.gpu or cluster.get("GPU", 0.0),
+            object_store_memory=base.object_store_memory
+            or (cluster.get("object_store_memory", 0.0) // 2),
+        )
