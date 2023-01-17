@@ -232,7 +232,7 @@ class TestSampleBatch(unittest.TestCase):
                 "a": np.array([1, 2, 3, 2, 3, 4]),
                 "b": {"c": np.array([4, 5, 6, 5, 6, 7])},
                 SampleBatch.SEQ_LENS: [2, 3, 1],
-                "state_in_0": np.array([1.0, 3.0, 4.0]),
+                "state_in_0": [1.0, 3.0, 4.0],
             }
         )
         # We would expect a=[1, 2, 3] now, but due to the sequence
@@ -319,7 +319,7 @@ class TestSampleBatch(unittest.TestCase):
                 "a": np.array([1, 2, 3, 2, 3, 4]),
                 "b": {"c": np.array([4, 5, 6, 5, 6, 7])},
                 SampleBatch.SEQ_LENS: [2, 3, 1],
-                "state_in_0": np.array([1.0, 3.0, 4.0]),
+                "state_in_0": [1.0, 3.0, 4.0],
             }
         )
         s_copy = s.copy(shallow=False)
