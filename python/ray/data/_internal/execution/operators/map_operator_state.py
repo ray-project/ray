@@ -103,8 +103,7 @@ class MapOperatorState:
             # TODO(ekl) add a warning if we merge 10+ blocks per bundle.
             self._block_bundle = merge_ref_bundles(self._block_bundle, bundle)
 
-    def inputs_done(self, input_index: int) -> None:
-        assert input_index == 0, "Map operator only supports one input."
+    def inputs_done(self) -> None:
         if self._block_bundle:
             self._create_task(self._block_bundle)
             self._block_bundle = None
@@ -157,6 +156,9 @@ class MapOperatorState:
 
     def get_work_refs(self) -> List[ray.ObjectRef]:
         return list(self._tasks.keys())
+
+    def num_active_work_refs(self) -> int:
+        return len(self._tasks)
 
     def shutdown(self) -> None:
         self._task_submitter.shutdown(self.get_work_refs())
