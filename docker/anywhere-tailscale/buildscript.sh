@@ -4,7 +4,6 @@ builddir="/home/tripps/build"
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
 distro=${distribution//\./}
 
-
 if [ -d $builddir/ ]; then
     cd $builddir/
     sudo rm -rf *
@@ -16,6 +15,9 @@ if [ -x /usr/bin/podman ]; then
     DOCKER_HOST=`echo "unix://${XDG_RUNTIME_DIR}/podman/podman.sock"`
     export DOCKER_HOST
     exec=/usr/bin/podman
+    sudo podman registry remove quay.io
+    alias docker=podman
+    docker login -u jcoffi -p $DOCKER_PASSWORD
 else
     exec=/usr/bin/docker
 fi
