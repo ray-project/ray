@@ -7,6 +7,7 @@ import ray.cloudpickle as cloudpickle
 from typing import Iterator, Tuple
 
 import ray
+from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
 from ray.data.datasource import ReadTask
 from ray.data._internal.stats import StatsDict, DatasetStats
@@ -24,6 +25,31 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+
+
+def execute_to_legacy_block_iterator(
+    executor: Executor,
+    plan: ExecutionPlan,
+    allow_clear_input_blocks: bool,
+    dataset_uuid: str,
+) -> Iterator[ObjectRef[Block]]:
+    """Execute a plan with the new executor and return a block iterator.
+
+    Args:
+        executor: The executor to use.
+        plan: The legacy plan to execute.
+        allow_clear_input_blocks: Whether the executor may consider clearing blocks.
+        dataset_uuid: UUID of the dataset for this execution.
+
+    Returns:
+        The output as a block iterator.
+    """
+    dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    bundle_iter = executor.execute(dag, initial_stats=stats)
+
+    for bundle in bundle_iter:
+        for block, _ in bundle.blocks:
+            yield block
 
 
 def execute_to_legacy_block_list(
@@ -137,8 +163,6 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
     if isinstance(stage, OneToOneStage):
         if stage.fn_constructor_args or stage.fn_constructor_kwargs:
-            raise NotImplementedError
-        if stage.compute != "tasks":
             raise NotImplementedError
 
         block_fn = stage.block_fn
