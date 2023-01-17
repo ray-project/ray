@@ -18,14 +18,14 @@ MAX_FILES=$( \
         | python -c "import sys; print(max([int(line) for line in sys.stdin]))")
 rm -rf $DATA_DIR
 mkdir -p $DATA_DIR
-time python ../air_benchmarks/mlperf-train/make_fake_dataset.py \
+time python air_benchmarks/mlperf-train/make_fake_dataset.py \
     --num-shards "$MAX_FILES" \
     --shard-url "$SHARD_URL_PREFIX/single-image-repeated-$NUM_IMAGES_PER_FILE-times" \
     --output-directory $DATA_DIR
 
 for num_files in $NUM_FILES; do
     num_images_per_epoch=$((num_files * NUM_IMAGES_PER_FILE))
-    time python ../air_benchmarks/mlperf-train/resnet50_ray_air.py \
+    time python air_benchmarks/mlperf-train/resnet50_ray_air.py \
         --num-images-per-input-file "$NUM_IMAGES_PER_FILE" \
         --num-epochs $NUM_EPOCHS \
         --batch-size $BATCH_SIZE \
