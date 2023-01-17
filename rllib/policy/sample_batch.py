@@ -41,6 +41,8 @@ def attempt_count_timesteps(tensor_dict: dict):
     Returns:
         count: The inferred number of timesteps >= 0.
     """
+    # Try to infer the "length" of the SampleBatch by finding the first
+    # value that is actually a ndarray/tensor.
     # Skip manual counting routine if we can directly infer count from sequence lengths
     if (
         tensor_dict.get(SampleBatch.SEQ_LENS) is not None
@@ -55,12 +57,6 @@ def attempt_count_timesteps(tensor_dict: dict):
     for k, v in tensor_dict.items():
         if k == SampleBatch.SEQ_LENS:
             continue
-
-        if isinstance(v, (Number, list)):
-            # TODO: Drop support for lists and Numbers as values.
-            # Convert lists of int|float into numpy arrays make sure all data
-            # has same length.
-            v = np.array(v)
 
         assert isinstance(k, str), tensor_dict
 
@@ -251,6 +247,13 @@ class SampleBatch(dict):
 
         if self._is_training is None:
             self._is_training = self.pop("is_training", False)
+
+        for k, v in self.items():
+            # TODO: Drop support for lists and Numbers as values.
+            # Convert lists of int|float into numpy arrays make sure all data
+            # has same length.
+            if isinstance(v, (Number, list)):
+                self[k] = np.array(v)
 
         self.count = attempt_count_timesteps(self)
 
