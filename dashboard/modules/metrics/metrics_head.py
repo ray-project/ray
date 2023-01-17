@@ -4,11 +4,10 @@ import logging
 import os
 import shutil
 
-from typing import Optional, List
+from typing import Optional
 
 import psutil
 
-from pydantic import BaseModel
 from urllib.parse import quote
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_grafana_dashboard,
