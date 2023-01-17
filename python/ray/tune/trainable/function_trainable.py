@@ -1,5 +1,4 @@
 import inspect
-import logging
 import os
 import shutil
 import sys
@@ -17,6 +16,7 @@ import queue
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import _ERROR_FETCH_TIMEOUT, _RESULT_FETCH_TIMEOUT
+from ray.air.util import logging as air_logging
 from ray.tune import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
@@ -35,7 +35,7 @@ from ray.tune.utils import (
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
-logger = logging.getLogger(__name__)
+logger = air_logging.getLogger(__name__)
 
 # Time between FunctionTrainable checks when fetching
 # new results after signaling the reporter to continue

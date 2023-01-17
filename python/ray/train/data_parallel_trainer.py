@@ -1,5 +1,4 @@
 import inspect
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 from tabulate import tabulate
@@ -12,6 +11,7 @@ from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.air.util import logging as air_logging
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
@@ -26,7 +26,7 @@ from ray.widgets.util import ensure_notebook_deps
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
-logger = logging.getLogger(__name__)
+logger = air_logging.getLogger(__name__)
 
 
 # TODO(team-ml): Refactor checkpoint management along with Tune.

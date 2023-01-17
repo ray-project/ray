@@ -2,7 +2,6 @@ import abc
 import functools
 import inspect
 import os
-import logging
 from pathlib import Path
 
 from typing import (
@@ -18,6 +17,7 @@ from typing import (
 
 import ray
 from ray.air._internal.util import find_free_port, StartTraceback
+from ray.air.util import logging as air_logging
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
@@ -25,7 +25,7 @@ from ray.types import ObjectRef
 
 T = TypeVar("T")
 
-logger = logging.getLogger(__name__)
+logger = air_logging.getLogger(__name__)
 
 
 def check_for_failure(

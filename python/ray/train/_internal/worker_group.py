@@ -1,4 +1,3 @@
-import logging
 import socket
 from dataclasses import dataclass
 from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple, Union
@@ -6,12 +5,13 @@ from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple, Union
 import ray
 from ray.actor import ActorHandle
 from ray.air._internal.util import skip_exceptions, exception_cause
+from ray.air.util import logging as air_logging
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
 
 T = TypeVar("T")
 
-logger = logging.getLogger(__name__)
+logger = air_logging.getLogger(__name__)
 
 
 class RayTrainWorker:

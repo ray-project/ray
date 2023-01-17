@@ -19,6 +19,7 @@ from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
 )
+from ray.air.util import logging as air_logging
 from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -57,7 +58,7 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.tune.logger import Logger
 
-logger = logging.getLogger(__name__)
+logger = air_logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
 

@@ -1,6 +1,5 @@
 import abc
 import inspect
-import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
@@ -22,9 +21,6 @@ if TYPE_CHECKING:
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
 GenDataset = Union["Dataset", Callable[[], "Dataset"]]
-
-
-logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
