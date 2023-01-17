@@ -93,7 +93,7 @@ Then, let's wrap our `gpt2` and `EleutherAI/gpt-neo-125M` models in Serve deploy
 :end-before: __doc_models_end__
 ```
 
-Next, instead of simply wrapping our Gradio app in a `GradioServer` deployment, we can build our own `MyGradioServer` that reroutes the Gradio app so that it runs the `TextGenerationModel` deployments:
+Next, instead of simply wrapping our Gradio app in a `GradioServer` deployment, we can build our own `MyGradioServer` that reroutes the Gradio app so that it runs the `TextGenerationModel` deployments. Note that calling `remote()` on the downstream models submits an asynchronous request to the Serve handle, so it returns an `asyncio.Task`. Thus, we need to await it to get the reference to the result, and finally use `ray.get()` to resolve the object reference.
 
 ```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration-parallel.py
 :start-after: __doc_gradio_server_begin__
