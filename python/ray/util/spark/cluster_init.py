@@ -93,7 +93,7 @@ class RayClusterOnSpark:
         self.spark_job_is_canceled = True
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
 
-    def poll_setup_progress(self):
+    def wait_until_ready(self):
         import ray
 
         if self.background_job_exception is not None:
@@ -350,16 +350,16 @@ def _prepare_for_ray_worker_node_startup():
 
 def _setup_ray_cluster(
     *,
-    num_worker_nodes,
-    num_cpus_per_node,
-    num_gpus_per_node,
-    using_stage_scheduling,
-    heap_memory_per_node,
-    object_store_memory_per_node,
-    head_node_options,
-    worker_node_options,
-    ray_temp_root_dir,
-    collect_log_to_path,
+    num_worker_nodes: int,
+    num_cpus_per_node: int,
+    num_gpus_per_node: int,
+    using_stage_scheduling: bool,
+    heap_memory_per_node: int,
+    object_store_memory_per_node: int,
+    head_node_options: Dict,
+    worker_node_options: Dict,
+    ray_temp_root_dir: str,
+    collect_log_to_path: str,
 ):
     """
     The public API `ray.util.spark.setup_ray_cluster` does some argument
@@ -389,28 +389,35 @@ def _setup_ray_cluster(
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
     ray_head_port = get_random_unused_port(ray_head_ip, min_port=9000, max_port=10000)
 
-    include_dashboard = head_node_options.pop("include_dashboard", True)
+    include_dashboard = head_node_options.pop("include_dashboard", None)
+    ray_dashboard_port = head_node_options.pop("dashboard_port", None)
 
-    if include_dashboard:
-        ray_dashboard_port = get_random_unused_port(
-            ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
-        )
+    if include_dashboard is None or include_dashboard is True:
+        if ray_dashboard_port is None:
+            ray_dashboard_port = get_random_unused_port(
+                ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
+            )
         ray_dashboard_agent_port = get_random_unused_port(
             ray_head_ip,
             min_port=9000,
             max_port=10000,
             exclude_list=[ray_head_port, ray_dashboard_port],
         )
-        dashboard_options = {
-            "--include-dashboard=true",
+
+        dashboard_options = [
             "--dashboard-host=0.0.0.0",
             f"--dashboard-port={ray_dashboard_port}",
             f"--dashboard-agent-listen-port={ray_dashboard_agent_port}",
-        }
+        ]
+        # If include_dashboard is None, we don't set `--include-dashboard` option,
+        # in this case Ray will decide whether dashboard can be started
+        # (e.g. checking any missing dependencies).
+        if include_dashboard is True:
+            dashboard_options += ["--include-dashboard=true"]
     else:
-        dashboard_options = {
+        dashboard_options = [
             "--include-dashboard=false",
-        }
+        ]
 
     _logger.info(f"Ray head hostname {ray_head_ip}, port {ray_head_port}")
 
@@ -710,7 +717,6 @@ _head_node_option_block_keys = {
     "memory": None,
     "object_store_memory": None,
     "dashboard_host": None,
-    "dashboard_port": None,
     "dashboard_agent_listen_port": None,
 }
 
@@ -991,7 +997,7 @@ def setup_ray_cluster(
         ray_temp_root_dir=ray_temp_root_dir,
         collect_log_to_path=collect_log_to_path,
     )
-    cluster.poll_setup_progress()  # NB: this line might raise error.
+    cluster.wait_until_ready()  # NB: this line might raise error.
 
     # If connect cluster successfully, set global _active_ray_cluster to be the started
     # cluster.
