@@ -909,6 +909,11 @@ class TrialRunner:
             elif event.type == _ExecutorEventType.YIELD:
                 pass
             else:
+                assert event.type in (
+                    _ExecutorEventType.TRAINING_RESULT,
+                    _ExecutorEventType.SAVING_RESULT,
+                    _ExecutorEventType.RESTORING_RESULT,
+                )
                 trial = event.trial
                 result = event.result
                 if _ExecutorEvent.KEY_EXCEPTION in result:
