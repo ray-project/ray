@@ -37,6 +37,7 @@ py_test_run_all_notebooks(
         "upload_to_comet_ml.ipynb",  # Needs credentials
         "upload_to_wandb.ipynb",  # Needs credentials
     ],
+    args = ["--smoke-test"],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
 )
@@ -45,6 +46,7 @@ py_test_run_all_notebooks(
     size = "large",
     include = ["upload_to_*.ipynb"],
     exclude = [],
+    args = ["--smoke-test"],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air", "needs_credentials"],
 )
@@ -56,6 +58,7 @@ py_test_run_all_notebooks(
         "batch_forecasting.ipynb",
     ],
     exclude = [],
+    args = ["--smoke-test"],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air", "timeseries_libs"],
 )
@@ -66,6 +69,7 @@ py_test_run_all_notebooks(
     size = "large",
     include = ["huggingface_text_classification.ipynb"],
     exclude = [],
+    args = ["--smoke-test"],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
 )
