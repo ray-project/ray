@@ -1,9 +1,11 @@
 import asyncio
 import logging
+import json
 from dataclasses import asdict
 from typing import Callable, Optional
 
 import aiohttp.web
+from aiohttp.web import Response
 from abc import ABC, abstractmethod
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -445,6 +447,15 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def summarize_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_OBJECTS, "1")
         return await self._handle_summary_api(self._state_api.summarize_objects, req)
+
+    @routes.get("/api/v0/tasks/timeline")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def tasks_timeline(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        job_id = req.query.get("job_id")
+        result = await self._state_api.generate_task_timeline(job_id)
+        return Response(
+            text=json.dumps(result), content_type="application/json"
+        )
 
     @routes.get("/api/v0/delay/{delay_s}")
     async def delayed_response(self, req: aiohttp.web.Request):

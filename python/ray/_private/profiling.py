@@ -170,4 +170,4 @@ def get_perfetto_output(
                 )
 
     # Handle task event disabled.
-    return json.dumps(all_events)
+    return all_events

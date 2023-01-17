@@ -4,10 +4,11 @@ import json
 
 from dataclasses import asdict, fields
 from itertools import islice
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from datetime import datetime
 
 from ray._private.ray_constants import env_integer
+from ray._private.profiling import get_perfetto_output
 
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
@@ -381,7 +382,6 @@ class StateAPIManager:
                     # and change the protobuf name.
                     event["end_time"] = int(event["end_time"]) // 1e6
                     event["start_time"] = int(event["start_time"]) // 1e6
-                    logger.info(event["extra_data"])
                     event["extra_data"] = json.loads(event["extra_data"])
             task_state["profile_events"] = profile_events
 
@@ -739,6 +739,13 @@ class StateAPIManager:
             # so we don't calculate this separately.
             num_filtered=len(result.result),
         )
+
+    async def generate_task_timeline(self, job_id: Optional[str]) -> List[dict]:
+        filters = [("job_id", "=", job_id)] if job_id else None
+        result = await self.list_tasks(
+            option=ListApiOptions(detail=True, filters=filters, limit=10000)
+        )
+        return get_perfetto_output(result.result)
 
     def _message_to_dict(
         self,
