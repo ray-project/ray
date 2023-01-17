@@ -10,7 +10,6 @@ from typing import (
     Callable,
 )
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 from ray.train.torch.train_loop_utils import _TorchAccelerator
 
@@ -23,47 +22,13 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamType,
     ParamDictType,
 )
+from ray.rllib.core.rl_module.torch.torch_rl_module import DDPRLModuleWrapper
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 
 logger = logging.getLogger(__name__)
-
-
-
-class DDPRLModuleWrapper(DDP, RLModule):
-
-    @override(RLModule)
-    def _forward_train(self, *args, **kwargs):
-        return self(*args, **kwargs)
-
-    @override(RLModule)
-    def _forward_inference(self, *args, **kwargs) -> Mapping[str, Any]:
-        return self.module._forward_inference(*args, **kwargs)
-    
-    @override(RLModule)
-    def _forward_exploration(self, *args, **kwargs) -> Mapping[str, Any]:
-        return self.module._forward_exploration(*args, **kwargs)
-
-    @override(RLModule)
-    def get_state(self, *args, **kwargs):
-        return self.module.get_state(*args, **kwargs)
-
-    @override(RLModule)
-    def set_state(self, *args, **kwargs):
-        self.module.set_state(*args, **kwargs)
-    
-    @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        # TODO (Kourosh): Not to sure about this make_distributed api belonging to 
-        # RLModule or not? we should see if we use this api end-point for both tf and 
-        # torch instead of doing it in the trainer.
-        pass
-
-    @override(RLModule)
-    def is_distributed(self) -> bool:
-        return True
 
 
 class TorchRLTrainer(RLTrainer):
@@ -87,7 +52,7 @@ class TorchRLTrainer(RLTrainer):
 
         self._world_size = scaling_config.get("num_workers", 1)
         self._use_gpu = scaling_config.get("use_gpu", False)
-        
+
     @property
     @override(RLTrainer)
     def module(self) -> MultiAgentRLModule:
@@ -130,15 +95,13 @@ class TorchRLTrainer(RLTrainer):
         for optim in self._optim_to_param:
             optim.step()
 
-
-
     @override(RLTrainer)
     def _make_distributed(self) -> MultiAgentRLModule:
         module = self._make_module()
 
         # TODO (Kourosh): How do we handle model parallism?
-        # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public 
-        # api in ray.train but allow for session to be None without any errors raised. 
+        # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
+        # api in ray.train but allow for session to be None without any errors raised.
         self._device = _TorchAccelerator().get_device()
 
         # if the module is a MultiAgentRLModule and nn.Module we can simply assume
@@ -189,7 +152,6 @@ class TorchRLTrainer(RLTrainer):
         # parameter as well.
         lr = self.optimizer_config.get("lr", 1e-3)
         return optimizer_cls(module.parameters(), lr=lr)
-
 
     @override(RLTrainer)
     def add_module(

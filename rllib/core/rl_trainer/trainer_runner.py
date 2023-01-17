@@ -60,7 +60,7 @@ class TrainerRunner:
         # the only part of this class that is framework agnostic:
         if issubclass(trainer_class, TorchRLTrainer):
             from ray.train.torch import TorchConfig
-        
+
             backend_config = TorchConfig()
         elif issubclass(trainer_class, TfRLTrainer):
             from ray.train.tensorflow import TensorflowConfig

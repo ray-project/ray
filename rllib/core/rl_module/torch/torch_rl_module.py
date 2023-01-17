@@ -4,6 +4,12 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.core.rl_module import RLModule
 
 torch, nn = try_import_torch()
+if torch:
+    from torch.nn.parallel import DistributedDataParallel as DDP
+else:
+    raise RuntimeError(
+        "Torch is not installed. Please install torch or do pip install ray[rllib]."
+    )
 
 
 class TorchRLModule(nn.Module, RLModule):
@@ -39,3 +45,36 @@ class TorchRLModule(nn.Module, RLModule):
         """Returns True if the module is distributed."""
         # TODO (Avnish): Implement this.
         return False
+
+
+class DDPRLModuleWrapper(DDP, RLModule):
+    @override(RLModule)
+    def _forward_train(self, *args, **kwargs):
+        return self(*args, **kwargs)
+
+    @override(RLModule)
+    def _forward_inference(self, *args, **kwargs) -> Mapping[str, Any]:
+        return self.module._forward_inference(*args, **kwargs)
+
+    @override(RLModule)
+    def _forward_exploration(self, *args, **kwargs) -> Mapping[str, Any]:
+        return self.module._forward_exploration(*args, **kwargs)
+
+    @override(RLModule)
+    def get_state(self, *args, **kwargs):
+        return self.module.get_state(*args, **kwargs)
+
+    @override(RLModule)
+    def set_state(self, *args, **kwargs):
+        self.module.set_state(*args, **kwargs)
+
+    @override(RLModule)
+    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
+        # TODO (Kourosh): Not to sure about this make_distributed api belonging to
+        # RLModule or not? we should see if we use this api end-point for both tf and
+        # torch instead of doing it in the trainer.
+        pass
+
+    @override(RLModule)
+    def is_distributed(self) -> bool:
+        return True
