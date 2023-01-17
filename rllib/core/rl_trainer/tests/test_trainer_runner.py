@@ -38,7 +38,9 @@ class TestTrainerRunner(unittest.TestCase):
             optimizer_config={"lr": 1e-3},
             in_test=True,
         )
-        runner = TrainerRunner(trainer_class, trainer_cfg, num_gpus=2)
+        runner = TrainerRunner(
+            trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
+        )
 
         reader = get_cartpole_dataset_reader(batch_size=500)
 
@@ -76,7 +78,9 @@ class TestTrainerRunner(unittest.TestCase):
             optimizer_config={"lr": 1e-3},
             in_test=True,
         )
-        runner = TrainerRunner(trainer_class, trainer_cfg, num_gpus=2)
+        runner = TrainerRunner(
+            trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
+        )
 
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
@@ -145,7 +149,9 @@ class TestTrainerRunner(unittest.TestCase):
             optimizer_config={"lr": 1e-3},
             in_test=True,
         )
-        runner = TrainerRunner(trainer_class, trainer_cfg, num_gpus=0)
+        runner = TrainerRunner(
+            trainer_class, trainer_cfg, compute_config=dict(num_gpus=0)
+        )
 
         local_trainer = trainer_class(**trainer_cfg)
         local_trainer.build()

@@ -282,6 +282,8 @@ class MultiAgentRLModule(RLModule):
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         """Runs the forward_train pass.
 
+        TODO(avnishn, kourosh): Review type hints for forward methods.
+
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
                 SampleBaches).
@@ -297,6 +299,8 @@ class MultiAgentRLModule(RLModule):
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         """Runs the forward_inference pass.
 
+        TODO(avnishn, kourosh): Review type hints for forward methods.
+
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
                 SampleBaches).
@@ -311,6 +315,8 @@ class MultiAgentRLModule(RLModule):
         self, batch: MultiAgentBatch, **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         """Runs the forward_exploration pass.
+
+        TODO(avnishn, kourosh): Review type hints for forward methods.
 
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to

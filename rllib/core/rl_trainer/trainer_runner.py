@@ -25,8 +25,12 @@ class TrainerRunner:
         .additional_update() -> any additional non-gradient based updates will get
                                 called from this entry point.
         .get_state() -> returns the state of the RLModule and RLOptimizer from
-                        all of the RLTrainers
-        .set_state() -> sets the state of all the RLTrainers
+                        all of the RLTrainers.
+        .set_state() -> sets the state of all the RLTrainers.
+        .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
+                         this TrainerRunner.
+        .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
+                            by this TrainerRunner.
 
     TODO(avnishn):
         1. Add trainer runner with async operations
@@ -42,10 +46,10 @@ class TrainerRunner:
         self,
         trainer_class: Type[RLTrainer],
         trainer_config: Mapping[str, Any],
-        num_gpus: int,
-        use_fake_gpus: bool = False,
+        compute_config: Mapping[str, Any],
     ):
-        """ """
+        num_gpus = compute_config.get("num_gpus", 0)
+        use_fake_gpus = compute_config.get("_use_fake_gpus", False)
         self._trainer_config = trainer_config
 
         if num_gpus > 0:
@@ -73,8 +77,8 @@ class TrainerRunner:
                 max_retries=0,
             )
 
-            # TODO: let's not pass this into the config which will cause
-            # information leakage into the SARLTrainer about other workers.
+            # TODO(avnishn, kourosh): let's not pass this into the config which will
+            # cause information leakage into the RLTrainer about other workers.
             trainer_config["distributed"] = self._distributed = True
             self.backend_executor.start(
                 train_cls=trainer_class, train_cls_kwargs=trainer_config
@@ -108,7 +112,9 @@ class TrainerRunner:
         """Do a gradient based update to the RLTrainers using DDP training.
 
         Note: this function is used if the num_gpus this TrainerRunner is configured
-            with is > 0 and fake_gpus == False.
+            with is > 0. If _fake_gpus is True then this function will still be used
+            for distributed training, but the workers will be configured to use a
+            different backend than the cuda backend.
 
         Args:
             batch: The data to use for the update.
