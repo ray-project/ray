@@ -57,7 +57,7 @@ RUN sudo groupadd crate \
         && sudo chown 1000 log4j2.properties \
         && sudo mv log4j2.properties /crate/config/log4j2.properties \
         && rm crate-5.1.2.tar.gz \
-        && echo -e "#! /bin/bash\n/crate/bin/crate-node detach-cluster --silent" | sudo tee /etc/rc6.d/K01shutdownscript >/dev/null
+        && echo -e "#! /bin/bash\n/crate/bin/crate-node detach-cluster --silent\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null && sudo chmod +x /etc/rc6.d/K00shutdownscript
 
 RUN curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0 \
         && curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0.asc \

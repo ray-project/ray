@@ -34,6 +34,11 @@ while [ not $status = "Running" ]
         status="$(tailscale status -json | jq -r .BackendState)"
 done
 
+#making sure we delete our machine from tailscale on shutdown
+$deviceid = curl -u ${TSAPIKEY}: https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname==${HOSTNAME})' | jq .id
+echo -e "curl -X DELETE https://api.tailscale.com/api/v2/device/${deviceid} -u ${TSAPIKEY}:\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null
+
+
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
 
@@ -72,5 +77,4 @@ fi
 
 
 
-$deviceid = curl -u ${TSAPIKEY}: https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname==${HOSTNAME})' | jq .id
-curl -X DELETE https://api.tailscale.com/api/v2/device/${deviceid} -u ${TSAPIKEY}:
+
