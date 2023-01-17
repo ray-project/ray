@@ -79,7 +79,7 @@ if [ -n "$(lspci | grep -i nvidia)" ] || [ -n "$(nvidia-smi -L)" ]; then
     #i dont have time to figure this out right now
     echo $cuda_version
     if [ $cuda_version == "1200" ]; then
-      cuda_version="117"
+      cuda_version="116"
     fi
   elif [[ -n $CUDA ]] && ! [ -f /usr/local/cuda/version.json ]; then
     #we will default to 11.2
