@@ -74,18 +74,35 @@ py_test(
     deps = [":ml_lib"]
 )
 
+
+py_test(
+    name = "test_integration_comet",
+    size = "small",
+    srcs = ["tests/test_integration_comet.py"],
+    deps = [":ml_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_integration_wandb",
+    size = "small",
+    srcs = ["tests/test_integration_wandb.py"],
+    deps = [":ml_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_integration_mlflow",
+    size = "small",
+    srcs = ["tests/test_integration_mlflow.py"],
+    deps = [":ml_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
 py_test(
     name = "test_keras_callback",
     size = "small",
     srcs = ["tests/test_keras_callback.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_mlflow",
-    size = "small",
-    srcs = ["tests/test_mlflow.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

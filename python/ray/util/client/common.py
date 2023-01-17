@@ -473,8 +473,17 @@ class ClientActorHandle(ClientStub):
         return self.actor_ref
 
     def __getattr__(self, key):
+        if key == "_method_num_returns":
+            # We need to explicitly handle this value since it is used below,
+            # otherwise we may end up infinitely recursing when deserializing.
+            # This can happen after unpickling an object but before
+            # _method_num_returns is correctly populated.
+            raise AttributeError(f"ClientActorRef has no attribute '{key}'")
+
         if self._method_num_returns is None:
             self._init_class_info()
+        if key not in self._method_signatures:
+            raise AttributeError(f"ClientActorRef has no attribute '{key}'")
         return ClientRemoteMethod(
             self,
             key,
