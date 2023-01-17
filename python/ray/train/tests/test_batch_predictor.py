@@ -384,7 +384,7 @@ def test_batch_prediction_keep_cols():
     assert set(output_df.columns) == {"a", "b"}
 
     assert output_df["a"].tolist() == [4.0, 8.0, 12.0]
-    assert output_df["b"].tolist() == [4, 5, 6]
+    assert output_df["b"].tolist() == [8, 10, 12]
 
     # Numpy path
     batch_predictor = BatchPredictor.from_checkpoint(
@@ -405,7 +405,7 @@ def test_batch_prediction_keep_cols():
     assert set(output_df.columns) == {"a", "b"}
 
     assert output_df["a"].tolist() == [4.0, 8.0, 12.0]
-    assert output_df["b"].tolist() == [4, 5, 6]
+    assert output_df["b"].tolist() == [8, 10, 12]
 
 
 def test_batch_prediction_from_pandas_udf():
