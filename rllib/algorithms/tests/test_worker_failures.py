@@ -89,11 +89,12 @@ class FaultInjectEnv(gym.Env):
             self.counter = None
 
         if (
-            config.get("init_delay", 0) > 0.0 and
-            (
-                not config.get("init_delay_indices", []) or
-                self.config.worker_index in config.get("init_delay_indices", [])
-            ) and
+            config.get("init_delay", 0) > 0.0
+            and (
+                not config.get("init_delay_indices", [])
+                or self.config.worker_index in config.get("init_delay_indices", [])
+            )
+            and
             # constructor delay can only happen for recreated actors.
             self._get_count() > 0
         ):
@@ -147,12 +148,9 @@ class FaultInjectEnv(gym.Env):
         self._increment_count()
         self._maybe_raise_error()
 
-        if (
-            self.config.get("step_delay", 0) > 0.0 and
-            (
-                not self.config.get("init_delay_indices", []) or
-                self.config.worker_index in self.config.get("step_delay_indices", [])
-            )
+        if self.config.get("step_delay", 0) > 0.0 and (
+            not self.config.get("init_delay_indices", [])
+            or self.config.worker_index in self.config.get("step_delay_indices", [])
         ):
             # Simulate a step delay.
             time.sleep(self.config.get("step_delay"))
@@ -176,11 +174,11 @@ class ForwardHealthCheckToEnvWorker(RolloutWorker):
         return super().ping()
 
 
-def wait_for_restore(num_restarting_allowd=0):
+def wait_for_restore(num_restarting_allowed=0):
     """Wait for Ray actor fault tolerence to restore all failed workers.
 
     Args:
-        num_restarting_allowd: Number of actors that are allowed to be
+        num_restarting_allowed: Number of actors that are allowed to be
             in "RESTARTING" state. This is because some actors may
             hang in __init__().
     """
@@ -193,7 +191,7 @@ def wait_for_restore(num_restarting_allowd=0):
         ]
         finished = True
         for s in states:
-            # Wait till all actors are either "ALIVE" (retored),
+            # Wait till all actors are either "ALIVE" (restored),
             # or "DEAD" (cancelled. these actors are from other
             # finished test cases) or "RESTARTING" (being restored).
             if s not in ["ALIVE", "DEAD", "RESTARTING"]:
@@ -201,7 +199,7 @@ def wait_for_restore(num_restarting_allowd=0):
                 break
 
         restarting = [s for s in states if s == "RESTARTING"]
-        if len(restarting) > num_restarting_allowd:
+        if len(restarting) > num_restarting_allowed:
             finished = False
 
         print("waiting ... ", states)
@@ -718,7 +716,7 @@ class TestWorkerFailures(unittest.TestCase):
             self.assertEqual(a.workers.num_remote_worker_restarts(), 0)
 
             a.train()
-            wait_for_restore(num_restarting_allowd=1)
+            wait_for_restore(num_restarting_allowed=1)
             # Most importantly, training progressed fine.
             a.train()
 
