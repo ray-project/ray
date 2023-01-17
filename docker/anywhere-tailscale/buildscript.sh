@@ -77,7 +77,7 @@ wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/any
 if [[ -n $cuda_version ]] && [ $cuda_version != "gpu" ]; then
   sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-cu$cuda_version , -t jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
   sudo docker push jcoffi/cluster-anywhere:cu$cuda_version
-elif [ $cuda_version = "gpu" ]; then
+elif [ $cuda_version == "gpu" ]; then
   sudo docker build --shm-size=$shm_memory --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu $builddir -t jcoffi/cluster-anywhere:gpu -t jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
   sudo docker push jcoffi/cluster-anywhere:gpu
 else
