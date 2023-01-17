@@ -476,7 +476,7 @@ if __name__ == "__main__":
     ray.init(
         runtime_env={
             "working_dir": os.path.dirname(__file__),
-        },
+        }
     )
 
     if args.use_tf_data or args.use_ray_data:
