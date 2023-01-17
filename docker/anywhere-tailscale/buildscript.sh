@@ -1,4 +1,9 @@
 #!/bin/bash
+if [ -z $DOCKER_PASSWORD ]; then
+  echo "environmental variable for $DOCKER_PASSWORD not set"
+  exit 1
+fi
+
 builddir="/home/tripps/build"
 #PLATFORM="$( case $(uname --m) in x86_64) echo x64_linux ;; aarch64) echo aarch64_linux ;; esac)"
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
