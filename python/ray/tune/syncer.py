@@ -55,11 +55,14 @@ _EXCLUDE_FROM_SYNC = [
 @PublicAPI
 @dataclass
 class SyncConfig:
-    """Configuration object for syncing.
+    """Configuration object for Tune syncing.
+
+    See :ref:`tune-persisted-experiment-data` for an overview of what data is
+    synchronized.
 
     If an ``upload_dir`` is specified, both experiment and trial checkpoints
     will be stored on remote (cloud) storage. Synchronization then only
-    happens via uploading/downloading from this remote storage - no syncing will
+    happens via uploading/downloading from this remote storage -- no syncing will
     happen between nodes.
 
     There are a few scenarios where syncing takes place:
@@ -71,7 +74,7 @@ class SyncConfig:
     (3) Workers syncing their trial directories to the head node
         (this is the default option when no cloud storage is used)
 
-    See :ref:`tune-checkpoint-syncing` for more details.
+    See :ref:`tune-storage-options` for more details and examples.
 
     Args:
         upload_dir: Optional URI to sync training results and checkpoints
@@ -97,7 +100,7 @@ class SyncConfig:
             Defaults to 30 minutes.
             **Note**: Currently, this timeout only affects cloud syncing: (1) and (2).
         sync_on_checkpoint: If *True*, a sync from a worker's remote trial directory
-            to the head node will be forced on every trial checkpoint, irrespective
+            to the head node will be forced on every trial checkpoint, regardless
             of the ``sync_period``.
             Defaults to True.
             **Note**: This is ignored if ``upload_dir`` is specified, since this
