@@ -1,5 +1,5 @@
 import functools
-import gym
+import gymnasium as gym
 import logging
 import importlib.util
 import os
@@ -933,11 +933,6 @@ class WorkerSet:
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,
     ) -> Union[RolloutWorker, ActorHandle]:
-        def session_creator():
-            # Default session creator function, if `tf_session_args` are provided.
-            logger.debug("Creating TF session {}".format(config["tf_session_args"]))
-            return tf1.Session(config=tf1.ConfigProto(**config["tf_session_args"]))
-
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,

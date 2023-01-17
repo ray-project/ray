@@ -369,6 +369,8 @@ class PlacementGroupState(StateSchema):
     placement_group_id: str = state_column(filterable=True)
     #: The name of the placement group if it is given by the name argument.
     name: str = state_column(filterable=True)
+    #: The job id of the placement group.
+    creator_job_id: str = state_column(filterable=True)
     #: The state of the placement group.
     #:
     #: - PENDING: The placement group creation is pending scheduling.
@@ -474,6 +476,8 @@ class TaskState(StateSchema):
 
     #: The id of the task.
     task_id: str = state_column(filterable=True)
+    #: The attempt (retry) number of the task.
+    attempt_number: int = state_column(filterable=True)
     #: The name of the task if it is given by the name argument.
     name: str = state_column(filterable=True)
     #: The state of the task.
@@ -508,6 +512,8 @@ class TaskState(StateSchema):
     required_resources: dict = state_column(detail=True, filterable=False)
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
+    #: The parent task id.
+    parent_task_id: str = state_column(filterable=True)
 
 
 @dataclass(init=True)

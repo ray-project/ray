@@ -165,6 +165,8 @@ logger = logging.getLogger(__name__)
 current_task_id = None
 current_task_id_lock = threading.Lock()
 
+job_config_initialized = False
+
 
 class ObjectRefGenerator:
     def __init__(self, refs):
@@ -197,6 +199,10 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsTimedOut():
         raise GetTimeoutError(message)
     elif status.IsNotFound():
+        raise ValueError(message)
+    elif status.IsObjectNotFound():
+        raise ValueError(message)
+    elif status.IsObjectUnknownOwner():
         raise ValueError(message)
     else:
         raise RaySystemError(message)
@@ -257,9 +263,19 @@ cdef increase_recursion_limit():
     """Double the recusion limit if current depth is close to the limit"""
     cdef:
         CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
-        int current_depth = s.recursion_depth
         int current_limit = Py_GetRecursionLimit()
         int new_limit = current_limit * 2
+        cdef extern from *:
+            """
+#if PY_VERSION_HEX >= 0x30B00A4
+    #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
+#else
+    #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
+#endif
+            """
+            int CURRENT_DEPTH(CPyThreadState *x)
+
+        int current_depth = CURRENT_DEPTH(s)
 
     if current_limit - current_depth < 500:
         Py_SetRecursionLimit(new_limit)
@@ -421,6 +437,8 @@ cdef prepare_args_internal(
         c_vector[CObjectID] inlined_ids
         c_string put_arg_call_site
         c_vector[CObjectReference] inlined_refs
+        CAddress c_owner_address
+        CRayStatus op_status
 
     worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -429,11 +447,13 @@ cdef prepare_args_internal(
     for arg in args:
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
+            op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                    c_arg, &c_owner_address)
+            check_status(op_status)
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
-                    CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                        c_arg),
+                    c_owner_address,
                     arg.call_site())))
 
         else:
@@ -565,8 +585,8 @@ cdef store_task_errors(
         CoreWorker core_worker = worker.core_worker
 
     # If the debugger is enabled, drop into the remote pdb here.
-    if "RAY_PDB" in os.environ:
-        ray.util.pdb.post_mortem()
+    if ray.util.pdb._is_ray_debugger_enabled():
+        ray.util.pdb._post_mortem()
 
     backtrace = ray._private.utils.format_error_message(
         "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
@@ -1138,6 +1158,10 @@ cdef CRayStatus task_execution_handler(
         c_bool is_reattempt) nogil:
 
     with gil, disable_client_hook():
+        # Initialize job_config if it hasn't already.
+        # Setup system paths configured in job_config.
+        maybe_initialize_job_config()
+
         try:
             try:
                 # Exceptions, including task cancellation, should be handled
@@ -1364,6 +1388,30 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
         worker.raise_errors([(data, metadata)], object_ids)
 
 
+def maybe_initialize_job_config():
+    global job_config_initialized
+    if job_config_initialized:
+        return
+    # Add code search path to sys.path, set load_code_from_local.
+    core_worker = ray._private.worker.global_worker.core_worker
+    code_search_path = core_worker.get_job_config().code_search_path
+    load_code_from_local = False
+    if code_search_path:
+        load_code_from_local = True
+        for p in code_search_path:
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.insert(0, p)
+    ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
+    # Add driver's system path to sys.path
+    py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+    if py_driver_sys_path:
+        for p in py_driver_sys_path:
+            sys.path.insert(0, p)
+    job_config_initialized = True
+
+
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
 # up to hundreds of thousands of times per second).
 cdef void get_py_stack(c_string* stack_out) nogil:
@@ -1521,6 +1569,9 @@ cdef class CoreWorker:
         return TaskID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
 
+    def get_task_depth(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetTaskDepth()
+
     def get_current_job_id(self):
         return JobID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentJobId().Binary())
@@ -1562,8 +1613,9 @@ cdef class CoreWorker:
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Get(
+                c_object_ids, timeout_ms, &results)
+        check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1767,8 +1819,9 @@ cdef class CoreWorker:
 
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Wait(
-                wait_ids, num_returns, timeout_ms, &results, fetch_local))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
+                wait_ids, num_returns, timeout_ms, &results, fetch_local)
+        check_status(op_status)
 
         assert len(results) == len(object_refs)
 
@@ -2319,16 +2372,20 @@ cdef class CoreWorker:
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
-        return CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                c_object_id).SerializeAsString()
+            CAddress c_owner_address
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                c_object_id, &c_owner_address)
+        check_status(op_status)
+        return c_owner_address.SerializeAsString()
 
     def serialize_object_ref(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
             c_string serialized_object_status
-        CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
+        check_status(op_status)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 serialized_object_status)

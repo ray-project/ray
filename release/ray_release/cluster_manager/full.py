@@ -45,7 +45,7 @@ class FullClusterManager(MinimalClusterManager):
         # Trigger session start
         logger.info(f"Starting cluster {self.cluster_name} ({self.cluster_id})")
         cluster_url = anyscale_cluster_url(
-            project_id=self.project_id, session_id=self.cluster_id
+            project_id=self.project_id, cluster_id=self.cluster_id
         )
         logger.info(f"Link to cluster: {format_link(cluster_url)}")
 

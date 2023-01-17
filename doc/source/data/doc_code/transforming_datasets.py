@@ -570,6 +570,35 @@ ds.show(2)
 # fmt: on
 
 # fmt: off
+# __configuring_batch_size_begin__
+import ray
+import pandas as pd
+
+# Load dataset.
+ds = ray.data.read_csv("example://iris.csv")
+
+# UDF as a function on Pandas DataFrame batches.
+def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
+    # Filter rows.
+    df = df[df["variety"] == "Versicolor"]
+    # Add derived column.
+    df.loc[:, "normalized.sepal.length"] = df["sepal.length"] / df["sepal.length"].max()
+    # Drop column.
+    df = df.drop(columns=["sepal.length"])
+    return df
+
+# Have each batch that pandas_transform receives contain 10 rows.
+ds = ds.map_batches(pandas_transform, batch_size=10)
+
+ds.show(2)
+# -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
+#     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
+# -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
+#     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
+# __configuring_batch_size_end__
+# fmt: on
+
+# fmt: off
 # __dataset_compute_strategy_begin__
 import ray
 import pandas

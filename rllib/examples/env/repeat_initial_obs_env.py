@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Discrete
+import gymnasium as gym
+from gymnasium.spaces import Discrete
 import random
 
 
@@ -17,10 +17,10 @@ class RepeatInitialObsEnv(gym.Env):
         self.episode_len = episode_len
         self.num_steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.token = random.choice([0, 1])
         self.num_steps = 0
-        return self.token
+        return self.token, {}
 
     def step(self, action):
         if action == self.token:
@@ -28,5 +28,5 @@ class RepeatInitialObsEnv(gym.Env):
         else:
             reward = -1
         self.num_steps += 1
-        done = self.num_steps >= self.episode_len
-        return 0, reward, done, {}
+        done = truncated = self.num_steps >= self.episode_len
+        return 0, reward, done, truncated, {}

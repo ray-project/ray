@@ -10,6 +10,7 @@ import json
 import logging
 import multiprocessing
 import os
+import platform
 import re
 import signal
 import subprocess
@@ -23,7 +24,7 @@ import warnings
 from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union, Coroutine
 
 import grpc
 import numpy as np
@@ -204,6 +205,7 @@ def publish_error_to_driver(
     message: str,
     gcs_publisher,
     job_id=None,
+    num_retries=None,
 ):
     """Push an error message to the driver to be printed in the background.
 
@@ -225,7 +227,7 @@ def publish_error_to_driver(
     assert isinstance(job_id, ray.JobID)
     error_data = construct_error_message(job_id, error_type, message, time.time())
     try:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+        gcs_publisher.publish_error(job_id.hex().encode(), error_data, num_retries)
     except Exception:
         logger.exception(f"Failed to publish error {error_data}")
 
@@ -1247,7 +1249,8 @@ def import_attr(full_path: str):
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = (sys.version_info.major, sys.version_info.minor),
+    architecture: Optional[str] = None,
 ) -> str:
     """Returns the filename used for the nightly Ray wheel.
 
@@ -1256,28 +1259,43 @@ def get_wheel_filename(
             "darwin", "linux", "win32"
         ray_version: The Ray version as returned by ray.__version__ or
             `ray --version`.  Examples: "3.0.0.dev0"
-        py_version (str):
-            The major and minor Python versions concatenated.  Examples: "36",
-            "37", "38", "39"
+        py_version: The Python version as returned by sys.version_info. A
+            tuple of (major, minor). Examples: (3, 8)
+        architecture: Architecture, e.g. ``x86_64`` or ``aarch64``. If None, will
+            be determined by calling ``platform.processor()``.
+
     Returns:
         The wheel file name.  Examples:
             ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
-    assert py_version in ["36", "37", "38", "39"], py_version
+    assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
+
+    py_version_str = "".join(map(str, py_version))
+    if py_version_str in ["36", "37"]:
+        darwin_os_string = "macosx_10_15_intel"
+    elif py_version_str in ["38", "39"]:
+        darwin_os_string = "macosx_10_15_x86_64"
+    else:
+        darwin_os_string = "macosx_10_15_universal2"
+
+    architecture = architecture or platform.processor()
+
+    if architecture == "aarch64":
+        linux_os_string = "manylinux2014_aarch64"
+    else:
+        linux_os_string = "manylinux2014_x86_64"
 
     os_strings = {
-        "darwin": "macosx_10_15_x86_64"
-        if py_version in ["38", "39"]
-        else "macosx_10_15_intel",
-        "linux": "manylinux2014_x86_64",
+        "darwin": darwin_os_string,
+        "linux": linux_os_string,
         "win32": "win_amd64",
     }
 
     assert sys_platform in os_strings, sys_platform
 
     wheel_filename = (
-        f"ray-{ray_version}-cp{py_version}-"
-        f"cp{py_version}{'m' if py_version in ['36', '37'] else ''}"
+        f"ray-{ray_version}-cp{py_version_str}-"
+        f"cp{py_version_str}{'m' if py_version_str in ['36', '37'] else ''}"
         f"-{os_strings[sys_platform]}.whl"
     )
 
@@ -1288,7 +1306,7 @@ def get_master_wheel_url(
     ray_commit: str = ray.__commit__,
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Return the URL for the wheel from a specific commit."""
     filename = get_wheel_filename(
@@ -1304,7 +1322,7 @@ def get_release_wheel_url(
     ray_commit: str = ray.__commit__,
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Return the URL for the wheel for a specific release."""
     filename = get_wheel_filename(
@@ -1334,6 +1352,17 @@ def init_grpc_channel(
     asynchronous: bool = False,
 ):
     grpc_module = aiogrpc if asynchronous else grpc
+
+    options = options or []
+    options_dict = dict(options)
+    options_dict["grpc.keepalive_time_ms"] = options_dict.get(
+        "grpc.keepalive_time_ms", ray._config.grpc_client_keepalive_time_ms()
+    )
+    options_dict["grpc.keepalive_timeout_ms"] = options_dict.get(
+        "grpc.keepalive_timeout_ms", ray._config.grpc_client_keepalive_timeout_ms()
+    )
+    options = options_dict.items()
+
     if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
@@ -1851,3 +1880,35 @@ class DeferSigint(contextlib.AbstractContextManager):
             # If exception was raised in context, returning False will cause it to be
             # reraised.
             return False
+
+
+background_tasks = set()
+
+
+def run_background_task(coroutine: Coroutine) -> asyncio.Task:
+    """Schedule a task reliably to the event loop.
+
+    This API is used when you don't want to cache the reference of `asyncio.Task`.
+    For example,
+
+    ```
+    get_event_loop().create_task(coroutine(*args))
+    ```
+
+    The above code doesn't guarantee to schedule the coroutine to the event loops
+
+    When using create_task in a  "fire and forget" way, we should keep the references
+    alive for the reliable execution. This API is used to fire and forget
+    asynchronous execution.
+
+    https://docs.python.org/3/library/asyncio-task.html#creating-tasks
+    """
+    task = get_or_create_event_loop().create_task(coroutine)
+    # Add task to the set. This creates a strong reference.
+    background_tasks.add(task)
+
+    # To prevent keeping references to finished tasks forever,
+    # make each task remove its own reference from the set after
+    # completion:
+    task.add_done_callback(background_tasks.discard)
+    return task

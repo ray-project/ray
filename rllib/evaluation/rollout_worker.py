@@ -1,11 +1,12 @@
 from collections import defaultdict
 import copy
-from gym.spaces import Discrete, MultiDiscrete, Space
+from gymnasium.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
 import numpy as np
 import os
 import platform
+import threading
 import tree  # pip install dm_tree
 from types import FunctionType
 from typing import (
@@ -143,13 +144,21 @@ def _update_env_seed_if_necessary(
     ), "Too many envs per worker. Random seeds may collide."
     computed_seed: int = worker_idx * max_num_envs_per_workers + vector_idx + seed
 
-    # Gym.env.
+    # Gymnasium.env.
     # This will silently fail for most OpenAI gyms
     # (they do nothing and return None per default)
-    if not hasattr(env, "seed"):
-        logger.info("Env doesn't support env.seed(): {}".format(env))
+    if not hasattr(env, "reset"):
+        if log_once("env_has_no_reset_method"):
+            logger.info(f"Env {env} doesn't have a `reset()` method. Cannot seed.")
     else:
-        env.seed(computed_seed)
+        try:
+            env.reset(seed=computed_seed)
+        except Exception:
+            logger.info(
+                f"Env {env} doesn't support setting a seed via its `reset()` "
+                "method! Implement this method as `reset(self, *, seed=None, "
+                "options=None)` for it to abide to the correct API. Cannot seed."
+            )
 
 
 @DeveloperAPI
@@ -165,7 +174,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
     Examples:
         >>> # Create a rollout worker and using it to collect experiences.
-        >>> import gym
+        >>> import gymnasium as gym
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
         >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
         >>> worker = RolloutWorker( # doctest: +SKIP
@@ -174,9 +183,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
-            "dones": [[...]], "new_obs": [[...]]})
+            "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]})
         >>> # Creating a multi-agent rollout worker
-        >>> from gym.spaces import Discrete, Box
+        >>> from gymnasium.spaces import Discrete, Box
         >>> import random
         >>> MultiAgentTrafficGrid = ... # doctest: +SKIP
         >>> worker = RolloutWorker( # doctest: +SKIP
@@ -185,9 +194,11 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         ...     policies={ # doctest: +SKIP
         ...       # Use an ensemble of two policies for car agents
         ...       "car_policy1": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}),
+        ...         (PGTFPolicy, Box(...), Discrete(...),
+        ...          AlgorithmConfig.overrides(gamma=0.99)),
         ...       "car_policy2": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.95}),
+        ...         (PGTFPolicy, Box(...), Discrete(...),
+        ...          AlgorithmConfig.overrides(gamma=0.95)),
         ...       # Use a single shared policy for all traffic lights
         ...       "traffic_light_policy":
         ...         (PGTFPolicy, Box(...), Discrete(...), {}),
@@ -403,9 +414,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if soft_horizon != DEPRECATED_VALUE:
             deprecation_warning("soft_horizon", error=True)
         if no_done_at_end != DEPRECATED_VALUE:
-            deprecation_warning(
-                "no_done_at_end", "config.rollouts(no_done_at_end=..)", error=True
-            )
+            deprecation_warning("no_done_at_end", error=True)
         if fake_sampler != DEPRECATED_VALUE:
             deprecation_warning(
                 "fake_sampler", "config.rollouts(fake_sampler=..)", error=True
@@ -493,6 +502,16 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self._ds_shards = dataset_shards
         self.worker_index: int = worker_index
 
+        # Lock to be able to lock this entire worker
+        # (via `self.lock()` and `self.unlock()`).
+        # This might be crucial to prevent a race condition in case
+        # `config.policy_states_are_swappable=True` and you are using an Algorithm
+        # with a learner thread. In this case, the thread might update a policy
+        # that is being swapped (during the update) by the Algorithm's
+        # training_step's `RolloutWorker.get_weights()` call (to sync back the
+        # new weights to all remote workers).
+        self._lock = threading.Lock()
+
         if (
             tf1
             and (config.framework_str == "tf2" or config.enable_tf1_exec_eagerly)
@@ -501,9 +520,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             and not tf1.executing_eagerly()
         ):
             tf1.enable_eager_execution()
-
-        if self.config.log_level:
-            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
 
         if self.worker_index > 1:
             disable_log_once_globally()  # only need 1 worker to log
@@ -562,7 +578,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         )
 
         # Update the global seed for numpy/random/tf-eager/torch if we are not
-        # the local worker, otherwise, this was already done in the Trainer
+        # the local worker, otherwise, this was already done in the Algorithm
         # object itself.
         if self.worker_index > 0:
             update_global_seed_if_necessary(self.config.framework_str, self.seed)
@@ -623,7 +639,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
                 def wrap(env):
                     env = wrap_deepmind(
-                        env, dim=self.config.model.get("dim"), framestack=use_framestack
+                        env,
+                        dim=self.config.model.get("dim"),
+                        framestack=use_framestack,
+                        noframeskip=self.config.env_config.get("frameskip", 0) == 1,
                     )
                     return env
 
@@ -712,11 +731,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
-        self._build_policy_map(
-            policy_dict=self.policy_dict,
-            config=self.config,
-            seed=self.seed,
-        )
+        self._build_policy_map(policy_dict=self.policy_dict)
 
         # Update Policy's view requirements from Model, only if Policy directly
         # inherited from base `Policy` class. At this point here, the Policy
@@ -801,7 +816,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
                 render=render,
@@ -819,7 +833,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=self.config.normalize_actions,
                 clip_actions=self.config.clip_actions,
-                no_done_at_end=self.config.no_done_at_end,
                 observation_fn=self.config.observation_fn,
                 sample_collector_class=self.config.sample_collector,
                 render=render,
@@ -868,7 +881,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             A columnar batch of experiences (e.g., tensors).
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -949,7 +962,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 size of the collected batch.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -975,7 +988,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             Dictionary of extra metadata from compute_gradients().
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -1002,6 +1015,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
+
                 policy = self.policy_map[pid]
                 tf_session = policy.get_session()
                 if tf_session and hasattr(policy, "_build_learn_on_batch"):
@@ -1009,6 +1023,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     to_fetch[pid] = policy._build_learn_on_batch(builders[pid], batch)
                 else:
                     info_out[pid] = policy.learn_on_batch(batch)
+
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
             if self.is_policy_to_train is None or self.is_policy_to_train(
@@ -1096,7 +1111,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             compatible worker using the worker's `apply_gradients()` method.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -1166,7 +1181,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 structs.
 
         Examples:
-            >>> import gym
+            >>> import gymnasium as gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
@@ -1363,9 +1378,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self.policy_dict.update(policy_dict_to_add)
         self._build_policy_map(
             policy_dict=policy_dict_to_add,
-            config=self.config,
             policy=policy,
-            seed=self.seed,
             policy_states={policy_id: policy_state},
         )
 
@@ -1592,8 +1605,16 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         """
         filters = self.get_filters(flush_after=True)
         policy_states = {}
-        for pid in self.policy_map:
-            policy_states[pid] = self.policy_map[pid].get_state()
+        for pid in self.policy_map.keys():
+            # If required by the user, only capture policies that are actually
+            # trainable. Otherwise, capture all policies (for saving to disk).
+            if (
+                not self.config.checkpoint_trainable_policies_only
+                or self.is_policy_to_train is None
+                or self.is_policy_to_train(pid)
+            ):
+                policy_states[pid] = self.policy_map[pid].get_state()
+
         return {
             # List all known policy IDs here for convenience. When an Algorithm gets
             # restored from a checkpoint, it will not have access to the list of
@@ -1836,6 +1857,14 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if sess is not None:
                 sess.close()
 
+    def lock(self) -> None:
+        """Locks this RolloutWorker via its own threading.Lock."""
+        self._lock.acquire()
+
+    def unlock(self) -> None:
+        """Unlocks this RolloutWorker via its own threading.Lock."""
+        self._lock.release()
+
     def setup_torch_data_parallel(
         self, url: str, world_rank: int, world_size: int, backend: str
     ) -> None:
@@ -1889,9 +1918,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         self,
         *,
         policy_dict: MultiAgentPolicyConfigDict,
-        config: "AlgorithmConfig",
         policy: Optional[Policy] = None,
-        seed: Optional[int] = None,
         policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
     ) -> None:
         """Adds the given policy_dict to `self.policy_map`.
@@ -1899,12 +1926,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         Args:
             policy_dict: The MultiAgentPolicyConfigDict to be added to this
                 worker's PolicyMap.
-            config: The general AlgorithmConfig to use. May be updated
-                by individual policy config overrides in the given
-                multi-agent `policy_dict`.
             policy: If the policy to add already exists, user can provide it here.
-            seed: An optional random seed to pass to PolicyMap's
-                constructor.
             policy_states: Optional dict from PolicyIDs to PolicyStates to
                 restore the states of the policies being built.
         """
@@ -1912,8 +1934,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
-            capacity=config.policy_map_capacity,
-            policy_states_are_swappable=config.policy_states_are_swappable,
+            capacity=self.config.policy_map_capacity,
+            policy_states_are_swappable=self.config.policy_states_are_swappable,
         )
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}
@@ -1928,7 +1950,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             else:
                 # Update the general config with the specific config
                 # for this particular policy.
-                merged_conf: "AlgorithmConfig" = config.copy(copy_frozen=False)
+                merged_conf: "AlgorithmConfig" = self.config.copy(copy_frozen=False)
                 merged_conf.update_from_dict(policy_spec.config or {})
 
             # Update num_workers and worker_index.
@@ -1965,7 +1987,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                     observation_space=obs_space,
                     action_space=policy_spec.action_space,
                     worker_index=self.worker_index,
-                    seed=seed,
+                    seed=self.seed,
                 )
             else:
                 new_policy = policy
@@ -1986,7 +2008,12 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # Also note that we cannot just check the existence of connectors
                 # to decide whether we should create connectors because we may be
                 # restoring a policy that has 0 connectors configured.
-                if not policy and not restore_states:
+                if (
+                    new_policy.agent_connectors is None
+                    or new_policy.action_connectors is None
+                ):
+                    # TODO(jungong) : revisit this. It will be nicer to create
+                    # connectors as the last step of Policy.__init__().
                     create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)
             else:

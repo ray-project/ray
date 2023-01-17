@@ -286,6 +286,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             data = ray.timeline()
         elif request.type == ray_client_pb2.ClusterInfoType.PING:
             data = {}
+        elif request.type == ray_client_pb2.ClusterInfoType.DASHBOARD_URL:
+            data = {"dashboard_url": ray._private.worker.get_dashboard_url()}
         else:
             raise TypeError("Unsupported cluster info type")
         return json.dumps(data)

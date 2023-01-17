@@ -1,5 +1,6 @@
 import contextlib
 import os
+import time
 import signal
 import sys
 
@@ -28,10 +29,14 @@ def stop_gcs_server():
     os.kill(pid, signal.SIGCONT)
 
 
-def test_kv_basic(ray_start_regular):
+def test_kv_basic(ray_start_regular, monkeypatch):
+    monkeypatch.setenv("TEST_RAY_COLLECT_KV_FREQUENCY", "1")
     gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
-
+    # Wait until all other calls finished
+    time.sleep(2)
+    # reset the counter
+    gcs_utils._called_freq = {}
     assert gcs_client.internal_kv_get(b"A", b"NS") is None
     assert gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
     assert gcs_client.internal_kv_get(b"A", b"NS") == b"B"
@@ -48,6 +53,8 @@ def test_kv_basic(ray_start_regular):
     assert gcs_client.internal_kv_del(b"A", True, b"NS") == 2
     assert gcs_client.internal_kv_keys(b"A", b"NS") == []
     assert gcs_client.internal_kv_del(b"A", False, b"NSS") == 0
+    assert gcs_utils._called_freq["internal_kv_get"] == 4
+    assert gcs_utils._called_freq["internal_kv_put"] == 5
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
@@ -154,35 +161,20 @@ def test_external_storage_namespace_isolation(shutdown_only):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pull_based,ray_start_cluster",
+    "ray_start_cluster",
     [
-        (
-            False,
-            generate_system_config_map(
-                RAY_num_heartbeats_timeout=2, pull_based_healthcheck=False
-            ),
-        ),
-        (
-            True,
-            generate_system_config_map(
-                health_check_initial_delay_ms=0,
-                health_check_period_ms=1000,
-                health_check_failure_threshold=2,
-                pull_based_healthcheck=True,
-            ),
+        generate_system_config_map(
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=2,
         ),
     ],
     indirect=["ray_start_cluster"],
 )
-async def test_check_liveness(pull_based, monkeypatch, ray_start_cluster):
-    if pull_based:
-        monkeypatch.setenv("RAY_pull_based_healthcheck", "true")
-        monkeypatch.setenv("RAY_health_check_initial_delay_ms", "0")
-        monkeypatch.setenv("RAY_health_check_period_ms", "1000")
-        monkeypatch.setenv("RAY_health_check_failure_threshold", "2")
-    else:
-        monkeypatch.setenv("RAY_pull_based_healthcheck", "false")
-        monkeypatch.setenv("RAY_num_heartbeats_timeout", "2")
+async def test_check_liveness(monkeypatch, ray_start_cluster):
+    monkeypatch.setenv("RAY_health_check_initial_delay_ms", "0")
+    monkeypatch.setenv("RAY_health_check_period_ms", "1000")
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "2")
 
     cluster = ray_start_cluster
     h = cluster.add_node(node_manager_port=find_free_port())

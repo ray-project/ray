@@ -90,6 +90,7 @@ class GlueTest(unittest.TestCase):
         self.sdk.returns["get_project"] = APIDict(
             result=APIDict(name="unit_test_project")
         )
+        self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
         self.writeClusterEnv("{'env': true}")
         self.writeClusterCompute("{'compute': true}")

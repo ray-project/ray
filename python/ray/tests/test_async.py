@@ -9,7 +9,11 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray._private.utils import get_or_create_event_loop
+from ray._private.utils import (
+    get_or_create_event_loop,
+    run_background_task,
+    background_tasks,
+)
 
 
 @pytest.fixture
@@ -158,6 +162,33 @@ def test_concurrent_future_many(ray_start_regular_shared):
         assert fut.done()
         result.add(fut.result())
     assert result == set(range(100))
+
+
+@pytest.mark.asyncio
+async def test_run_backgroun_job():
+    """Test `run_backgroun_job` works as expected."""
+    result = {}
+
+    async def co():
+        result["start"] = 1
+        await asyncio.sleep(0)
+        result["end"] = 1
+
+    run_background_task(co())
+
+    # Backgroun job is registered.
+    assert len(background_tasks) == 1
+    # co executed.
+    await asyncio.sleep(0)
+    # await asyncio.sleep(0) from co is reached.
+    await asyncio.sleep(0)
+    # co finished and callback called.
+    await asyncio.sleep(0)
+    # The callback should be cleaned.
+    assert len(background_tasks) == 0
+
+    assert result.get("start") == 1
+    assert result.get("end") == 1
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
 
@@ -105,6 +106,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
+  RecordTaskStatusEvent(spec.AttemptNumber(), spec, rpc::TaskStatus::PENDING_ARGS_AVAIL);
 
   return returned_refs;
 }
@@ -124,7 +126,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     if (!it->second.IsPending()) {
       resubmit = true;
-      it->second.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      MarkTaskRetryOnResubmit(it->second);
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -180,7 +182,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     }
 
     RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
-                  << spec.AttemptNumber() + 1 << ": " << spec.DebugString();
+                  << spec.AttemptNumber() << ": " << spec.DebugString();
     retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
   }
 
@@ -379,9 +381,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     it->second.num_successful_executions++;
 
     if (is_application_error) {
-      it->second.SetStatus(rpc::TaskStatus::FAILED);
+      SetTaskStatus(it->second, rpc::TaskStatus::FAILED);
     } else {
-      it->second.SetStatus(rpc::TaskStatus::FINISHED);
+      SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
     }
     num_pending_tasks_--;
 
@@ -437,6 +439,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       if (num_oom_retries_left > 0) {
         will_retry = true;
         it->second.num_oom_retries_left--;
+      } else if (num_oom_retries_left == -1) {
+        will_retry = true;
+      } else {
+        RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
       if (num_retries_left > 0) {
@@ -449,7 +455,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       }
     }
     if (will_retry) {
-      it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+      MarkTaskRetryOnFailed(it->second);
     }
   }
 
@@ -462,7 +468,8 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                 << ", oom retries left: " << num_oom_retries_left
                 << ", task failed due to oom: " << task_failed_due_to_oom;
   if (will_retry) {
-    RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId();
+    RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
+                  << " for attempt number: " << spec.AttemptNumber();
     // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
     // on by some tests.
     int32_t delay_ms = task_failed_due_to_oom
@@ -499,7 +506,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
-    it->second.SetStatus(rpc::TaskStatus::FAILED);
+    SetTaskStatus(it->second, rpc::TaskStatus::FAILED);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -518,6 +525,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       } else {
         RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
       }
+      RAY_LOG(DEBUG) << "Runtime env for task " << spec.TaskId() << " is "
+                     << spec.RuntimeEnvDebugString();
     }
   }
 
@@ -537,13 +546,18 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          rpc::ErrorType error_type,
                                          const Status *status,
                                          const rpc::RayErrorInfo *ray_error_info,
-                                         bool mark_task_object_failed) {
+                                         bool mark_task_object_failed,
+                                         bool fail_immediately) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
-  const bool will_retry = RetryTaskIfPossible(
-      task_id, /*task_failed_due_to_oom*/ error_type == rpc::ErrorType::OUT_OF_MEMORY);
+  bool will_retry = false;
+  if (!fail_immediately) {
+    will_retry = RetryTaskIfPossible(
+        task_id, /*task_failed_due_to_oom*/ error_type == rpc::ErrorType::OUT_OF_MEMORY);
+  }
+
   if (!will_retry && mark_task_object_failed) {
     FailPendingTask(task_id, error_type, status, ray_error_info);
   }
@@ -770,7 +784,7 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
     return;
   }
   if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+    SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   }
 }
 
@@ -782,8 +796,80 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
     return;
   }
   RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
   it->second.SetNodeId(node_id);
+  it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  RecordTaskStatusEvent(it->second.spec.AttemptNumber(),
+                        it->second.spec,
+                        rpc::TaskStatus::SUBMITTED_TO_WORKER,
+                        /* include_task_info */ false,
+                        node_id);
+}
+
+void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
+  // Record the old attempt status as FINISHED.
+  RecordTaskStatusEvent(
+      task_entry.spec.AttemptNumber(), task_entry.spec, rpc::TaskStatus::FINISHED);
+  task_entry.MarkRetryOnResubmit();
+
+  // Mark the new status and also include task spec info for the new attempt.
+  task_entry.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+  // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
+  // `retry_task_callback_` is invoked. In order to record the correct status change for
+  // the new task attempt, we pass the the attempt number explicitly.
+  RecordTaskStatusEvent(task_entry.spec.AttemptNumber() + 1,
+                        task_entry.spec,
+                        rpc::TaskStatus::PENDING_ARGS_AVAIL);
+}
+
+void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry) {
+  // Record the old attempt status as FAILED.
+  RecordTaskStatusEvent(
+      task_entry.spec.AttemptNumber(), task_entry.spec, rpc::TaskStatus::FAILED);
+  task_entry.MarkRetryOnFailed();
+
+  // Mark the new status and also include task spec info for the new attempt.
+  task_entry.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  RecordTaskStatusEvent(task_entry.spec.AttemptNumber() + 1,
+                        task_entry.spec,
+                        rpc::TaskStatus::PENDING_NODE_ASSIGNMENT,
+                        /* include_task_info */ true);
+}
+
+void TaskManager::SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status) {
+  task_entry.SetStatus(status);
+  RecordTaskStatusEvent(task_entry.spec.AttemptNumber(), task_entry.spec, status);
+}
+
+rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
+    const TaskSpecification &task_spec) const {
+  rpc::TaskInfoEntry task_info;
+  rpc::TaskType type;
+  if (task_spec.IsNormalTask()) {
+    type = rpc::TaskType::NORMAL_TASK;
+  } else if (task_spec.IsActorCreationTask()) {
+    type = rpc::TaskType::ACTOR_CREATION_TASK;
+    task_info.set_actor_id(task_spec.ActorCreationId().Binary());
+  } else {
+    RAY_CHECK(task_spec.IsActorTask());
+    type = rpc::TaskType::ACTOR_TASK;
+    task_info.set_actor_id(task_spec.ActorId().Binary());
+  }
+  task_info.set_type(type);
+  task_info.set_name(task_spec.GetName());
+  task_info.set_language(task_spec.GetLanguage());
+  task_info.set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+  // NOTE(rickyx): we will have scheduling states recorded in the events list.
+  task_info.set_scheduling_state(rpc::TaskStatus::NIL);
+  task_info.set_job_id(task_spec.JobId().Binary());
+
+  task_info.set_task_id(task_spec.TaskId().Binary());
+  task_info.set_parent_task_id(task_spec.ParentTaskId().Binary());
+  const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
+  task_info.mutable_required_resources()->insert(resources_map.begin(),
+                                                 resources_map.end());
+  task_info.mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+
+  return task_info;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -835,6 +921,35 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
   task_counter_.FlushOnChangeCallbacks();
+}
+
+void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
+                                        const TaskSpecification &spec,
+                                        rpc::TaskStatus status,
+                                        bool include_task_info,
+                                        absl::optional<NodeID> node_id) {
+  if (!task_event_buffer_.Enabled()) {
+    return;
+  }
+  // Make task event
+  rpc::TaskEvents task_event;
+  task_event.set_task_id(spec.TaskId().Binary());
+  task_event.set_job_id(spec.JobId().Binary());
+  task_event.set_attempt_number(attempt_number);
+  auto state_updates = task_event.mutable_state_updates();
+  if (include_task_info || status == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
+    // Initialize a new TaskInfoEntry
+    auto task_info = MakeTaskInfoEntry(spec);
+    task_event.mutable_task_info()->Swap(&task_info);
+  }
+
+  if (node_id.has_value()) {
+    RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+        << "Node ID should be included when task status changes to SUBMITTED_TO_WORKER.";
+    state_updates->set_node_id(node_id->Binary());
+  }
+  gcs::FillTaskStatusUpdateTime(status, absl::GetCurrentTimeNanos(), state_updates);
+  task_event_buffer_.AddTaskEvent(std::move(task_event));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
