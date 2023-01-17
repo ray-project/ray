@@ -12,7 +12,7 @@ if [ -d /sys/class/power_supply/BAT0 ]; then
     sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 fi
 
-
+sudo sysctl -w vm.max_map_count=262144
 
 # Get the total amount of memory in kB
 memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
