@@ -3,9 +3,10 @@
 import os
 from typing import Dict, Optional, Union
 
-import mxnet as mx
+# import mxnet as mx
+# from mxnet import gluon
+
 import numpy as np
-from mxnet import gluon
 
 import ray
 from ray.air import Checkpoint
@@ -39,10 +40,11 @@ class MXNetPredictor(Predictor):
         net: gluon.Block,
         preprocessor: Optional[Preprocessor] = None,
     ) -> Predictor:
-        with checkpoint.as_directory() as directory:
-            path = os.path.join(directory, "net.params")
-            net.load_parameters(path)
-        return cls(net, preprocessor=preprocessor)
+        # with checkpoint.as_directory() as directory:
+        #     path = os.path.join(directory, "net.params")
+        #     net.load_parameters(path)
+        # return cls(net, preprocessor=preprocessor)
+        return cls(None, preprocessor=preprocessor)
     # __mxnetpredictor_from_checkpoint_end__
 
     # __mxnetpredictor_predict_numpy_start__
@@ -64,12 +66,13 @@ class MXNetPredictor(Predictor):
 
 
 # __mxnetpredictor_model_start__
-net = gluon.model_zoo.vision.resnet50_v1(pretrained=True)
+#net = gluon.model_zoo.vision.resnet50_v1(pretrained=True)
+net = None
 # __mxnetpredictor_model_end__
 
 # __mxnetpredictor_checkpoint_start__
 os.makedirs("checkpoint", exist_ok=True)
-net.save_parameters("checkpoint/net.params")
+#net.save_parameters("checkpoint/net.params")
 checkpoint = Checkpoint.from_directory("checkpoint")
 # __mxnetpredictor_checkpoint_end__
 
