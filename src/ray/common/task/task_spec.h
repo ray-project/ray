@@ -473,6 +473,8 @@ class WorkerCacheKey {
   int IntHash() const;
 
  private:
+  std::size_t CalculateHash() const;
+
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
   /// The required resources for this worker.
@@ -481,9 +483,9 @@ class WorkerCacheKey {
   const bool is_actor;
   /// Whether the worker is to use a GPU.
   const bool is_gpu;
-  /// The cached hash of the worker's environment.  This is set to 0
+  /// The hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
-  mutable std::size_t hash_ = 0;
+  const std::size_t hash_ = 0;
 };
 
 }  // namespace ray
