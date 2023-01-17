@@ -61,12 +61,11 @@ RUN sudo groupadd crate \
         && sudo chown 1000 log4j2.properties \
         && sudo mv log4j2.properties /crate/config/log4j2.properties \
         && rm crate-5.1.2.tar.gz \
-        && echo -e "#! /bin/bash\n/crate/bin/crate-node detach-cluster --silent\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null && sudo chmod +x /etc/rc6.d/K00shutdownscript
-
-RUN curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0 \
+        && curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0 \
         && curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0.asc \
         && sudo mv crash_standalone_0.28.0 /usr/local/bin/crash \
         && sudo chmod +x /usr/local/bin/crash
+
 
 ENV PATH /crate/bin/:$PATH
 ENV CRATE_HEAP_SIZE=512M
@@ -74,7 +73,7 @@ ENV CRATE_HOME=/crate/bin/
 ENV CRATE_USE_IPV4=true
 
 VOLUME /data
-RUN sudo mkdir -p /data/data /data/log
+RUN sudo mkdir -p $CRATE_HEAP_DUMP_PATH $CRATE_GC_LOG_DIR
 
 ##building juicefs
 RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/releases/latest | grep 'tag_name' | cut -d '"' -f 4 | tr -d 'v') && \

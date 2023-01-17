@@ -34,8 +34,16 @@ while [ not $status = "Running" ]
         status="$(tailscale status -json | jq -r .BackendState)"
 done
 
-#making sure we delete our machine from tailscale on shutdown
+
+
 $deviceid = curl -u ${TSAPIKEY}: https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname==${HOSTNAME})' | jq .id
+##begin shutdown script injection
+#shutting down crate gracefully
+echo -e "#! /bin/bash\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null && sudo chmod +x /etc/rc6.d/K00shutdownscript
+echo -e "/usr/local/bin/crash -c \"SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';\"\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null
+echo -e "/usr/local/bin/crash -c \"ALTER CLUSTER DECOMMISSION '$HOSTNAME';\"\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null
+
+#making sure we delete our machine from tailscale on shutdown
 echo -e "curl -X DELETE https://api.tailscale.com/api/v2/device/${deviceid} -u ${TSAPIKEY}:\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null
 
 
