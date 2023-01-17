@@ -1,6 +1,14 @@
 #!/bin/bash
 sudo mkdir -p /home/tripps/build /home/tripps/data && cd /home/tripps/build
 
+if [ -d /sys/class/power_supply/BAT0 ]; then
+    echo "Script is running on a laptop"
+    #disable sleep on laptops
+    sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+fi
+
+
+
 # Get the total amount of memory in kB
 memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 
@@ -24,6 +32,7 @@ if [ -n "$(lspci | grep -i nvidia)" ] || [ -n "$(nvidia-smi -L)" ]; then
     # Get the driver version
     nvidia_driver_ver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader)
   elif [ -n "$WSL_DISTRO_NAME" ]; then
+    sudo apt-key del 7fa2af80
     wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-wsl-ubuntu.pin
     sudo mv cuda-wsl-ubuntu.pin /etc/apt/preferences.d/cuda-repository-pin-600
     sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/7fa2af80.pub
