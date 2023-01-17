@@ -209,7 +209,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the first trial error
         self.executor.next_future_result = _ExecutorEvent(
-            event_type=_ExecutorEventType.ERROR,
+            event_type=_ExecutorEventType.TRAINING_RESULT,
             trial=trials[0],
             result={_ExecutorEvent.KEY_EXCEPTION: Exception()},
         )
