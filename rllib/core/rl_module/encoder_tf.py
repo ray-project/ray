@@ -3,7 +3,7 @@ from typing import List
 
 from ray.rllib.core.rl_module.encoder import EncoderConfig
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.models.tf.primitives import FCNet
+from ray.rllib.models.tf.primitives import FCNet, IdentityNetwork
 
 tf1, tf, tfv = try_import_tf()
 
@@ -27,3 +27,11 @@ class FCTfConfig(EncoderConfig):
         return FCNet(
             self.input_dim, self.hidden_layers, self.output_dim, self.activation
         )
+
+
+@dataclass
+class IdentityTfConfig(EncoderConfig):
+    """A network that returns the input as the output."""
+
+    def build(self):
+        return IdentityNetwork()

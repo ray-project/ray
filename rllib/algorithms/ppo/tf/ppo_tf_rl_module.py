@@ -4,18 +4,21 @@ from typing import Mapping, Any, List
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.core.rl_module.encoder_tf import FCTfConfig
+from ray.rllib.core.rl_module.encoder_tf import FCTfConfig, IdentityTfConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
+from ray.rllib.models.tf.primitives import FCNet
 
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 
 tf1.enable_eager_execution()
+
+ENCODER_OUT = "encoder_out"
 
 
 @dataclass
@@ -27,27 +30,43 @@ class PPOTfModuleConfig(RLModuleConfig):
         vf_config: The configuration for the value network.
     """
 
-    pi_config: FCTfConfig = None
-    vf_config: FCTfConfig = None
     observation_space: gym.Space = None
     action_space: gym.Space = None
+    pi_config: FCTfConfig = None
+    vf_config: FCTfConfig = None
+    shared_encoder_config: FCTfConfig = None
+    free_log_std: bool = False
+    shared_encoder: bool = True
 
 
 class PPOTfModule(TfRLModule):
     def __init__(self, config: PPOTfModuleConfig):
         super().__init__()
-        self.policy = config.pi_config.build()
-        self.value_function = config.vf_config.build()
-        self._obs_space = config.observation_space
-        self._action_space = config.action_space
-        self._is_discrete = isinstance(
-            convert_old_gym_space_to_gymnasium_space(self._action_space),
-            gym.spaces.Discrete,
+        self.config = config
+        self.setup()
+
+    def setup(self) -> None:
+        assert self.config.pi_config, "pi_config must be provided."
+        assert self.config.vf_config, "vf_config must be provided."
+        self.shared_encoder = self.config.shared_encoder_config.build()
+
+        self.pi = FCNet(
+            input_dim=self.config.shared_encoder_config.output_dim,
+            output_dim=self.config.pi_config.output_dim,
+            hidden_layers=self.config.pi_config.hidden_layers,
+            activation=self.config.pi_config.activation,
         )
-        self._action_dim = (
-            self._action_space.shape[0]
-            if not self._is_discrete
-            else self._action_space.n
+
+        self.vf = FCNet(
+            input_dim=self.config.shared_encoder_config.output_dim,
+            output_dim=1,
+            hidden_layers=self.config.vf_config.hidden_layers,
+            activation=self.config.vf_config.activation,
+        )
+
+        self._is_discrete = isinstance(
+            convert_old_gym_space_to_gymnasium_space(self.config.action_space),
+            gym.spaces.Discrete,
         )
 
     @override(TfRLModule)
@@ -58,32 +77,30 @@ class PPOTfModule(TfRLModule):
     def output_specs_train(self) -> List[str]:
         return [
             SampleBatch.ACTION_DIST,
-            SampleBatch.ACTION_LOGP,
+            # SampleBatch.ACTION_LOGP,
             SampleBatch.VF_PREDS,
-            "entropy",
-            SampleBatch.ACTION_DIST_INPUTS,
+            # "entropy",
         ]
 
     @override(TfRLModule)
     def _forward_train(self, batch: NestedDict):
         obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
-        vf_out = tf.squeeze(self.value_function(obs), axis=1)
+        encoder_out = self.shared_encoder(obs)
+        action_logits = self.pi(encoder_out)
+        vf = self.vf(encoder_out)
+
         if self._is_discrete:
             action_dist = Categorical(action_logits)
         else:
             action_dist = DiagGaussian(
-                action_logits, None, action_space=self._action_space
+                action_logits, None, action_space=self.config.action_space
             )
-        logp = action_dist.logp(batch[SampleBatch.ACTIONS])
-        entropy = -logp
-        return {
+
+        output = {
             SampleBatch.ACTION_DIST: action_dist,
-            SampleBatch.ACTION_LOGP: logp,
-            SampleBatch.VF_PREDS: vf_out,
-            "entropy": entropy,
-            SampleBatch.ACTION_DIST_INPUTS: action_logits,
+            SampleBatch.VF_PREDS: tf.squeeze(vf, axis=-1),
         }
+        return output
 
     @override(TfRLModule)
     def input_specs_inference(self) -> List[str]:
@@ -91,11 +108,14 @@ class PPOTfModule(TfRLModule):
 
     @override(TfRLModule)
     def output_specs_inference(self) -> List[str]:
-        return [SampleBatch.ACTION_DIST, SampleBatch.ACTION_DIST_INPUTS]
+        return [SampleBatch.ACTION_DIST]
 
     @override(TfRLModule)
     def _forward_inference(self, batch) -> Mapping[str, Any]:
-        action_logits = self.policy(batch[SampleBatch.OBS])
+        obs = batch[SampleBatch.OBS]
+        encoder_out = self.shared_encoder(obs)
+
+        action_logits = self.pi(encoder_out)
 
         if self._is_discrete:
             action = tf.math.argmax(action_logits, axis=-1)
@@ -105,7 +125,6 @@ class PPOTfModule(TfRLModule):
         action_dist = Deterministic(action, model=None)
         output = {
             SampleBatch.ACTION_DIST: action_dist,
-            SampleBatch.ACTION_DIST_INPUTS: action_logits,
         }
         return output
 
@@ -124,19 +143,21 @@ class PPOTfModule(TfRLModule):
     @override(TfRLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
         obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
+        encoder_out = self.shared_encoder(obs)
+
+        action_logits = self.pi(encoder_out)
+        vf = self.vf(encoder_out)
 
         if self._is_discrete:
             action_dist = Categorical(action_logits)
         else:
             action_dist = DiagGaussian(
-                action_logits, None, action_space=self._action_space
+                action_logits, None, action_space=self.config.action_space
             )
-        vf_preds = tf.squeeze(self.value_function(obs), axis=1)
         output = {
             SampleBatch.ACTION_DIST: action_dist,
-            SampleBatch.VF_PREDS: vf_preds,
             SampleBatch.ACTION_DIST_INPUTS: action_logits,
+            SampleBatch.VF_PREDS: tf.squeeze(vf, axis=-1),
         }
         return output
 
@@ -146,46 +167,69 @@ class PPOTfModule(TfRLModule):
         cls,
         observation_space: gym.Space,
         action_space: gym.Space,
-        model_config: Mapping[str, Any] = None,
+        *,
+        model_config: Mapping[str, Any],
     ) -> "PPOTfModule":
         """Create a PPOTfModule"""
-        if model_config is None:
-            model_config = {}
-        model_config = model_config["custom_model_config"]
-        policy_hiddens: List[int] = model_config.get("policy_hiddens", [32, 32])
-        vf_hiddens: List[int] = model_config.get("vf_hiddens", [32, 32])
-        policy_activation: str = model_config.get("policy_activation", "ReLU")
-        vf_activation: str = model_config.get("vf_activation", "ReLU")
-        observation_dim = observation_space.shape[0]
-        if isinstance(action_space, gym.spaces.Discrete):
-            # the dimension should be the number of possible actions since we'll
-            # be using a categorical distribution as the output
-            action_dist_dim = action_space.n
-        elif isinstance(action_space, gym.spaces.Box):
-            # the dimension should be 2 x since half the outputs will be used
-            # for the mean of the output distribution, and the other half for
-            # the covariance matrix
-            action_dist_dim = action_space.shape[0] * 2
+        activation = model_config["fcnet_activation"]
+        if activation == "tanh":
+            activation = "Tanh"
+        elif activation == "relu":
+            activation = "ReLU"
+        elif activation == "linear":
+            activation = "linear"
+        else:
+            raise ValueError(f"Unsupported activation: {activation}")
+        obs_dim = observation_space.shape[0]
+        fcnet_hiddens = model_config["fcnet_hiddens"]
+        vf_share_layers = model_config["vf_share_layers"]
+        free_log_std = model_config["free_log_std"]
+        use_lstm = model_config["use_lstm"]
+        if use_lstm:
+            raise ValueError("LSTM not supported by PPOTfRLModule yet.")
+        if vf_share_layers:
+            shared_encoder_config = FCTfConfig(
+                input_dim=obs_dim,
+                hidden_layers=fcnet_hiddens,
+                activation=activation,
+                output_dim=model_config["fcnet_hiddens"][-1],
+            )
+        else:
+            shared_encoder_config = IdentityTfConfig(output_dim=obs_dim)
+        assert isinstance(
+            observation_space, gym.spaces.Box
+        ), "This simple PPOModule only supports Box observation space."
 
-        pi_config = FCTfConfig(
-            input_dim=observation_dim,
-            output_dim=action_dist_dim,
-            hidden_layers=policy_hiddens,
-            activation=policy_activation,
+        assert (
+            len(observation_space.shape) == 1
+        ), "This simple PPOModule only supports 1D observation space."
+
+        assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
+            "This simple PPOModule only supports Discrete and Box action space.",
         )
-        vf_config = FCTfConfig(
-            input_dim=observation_dim,
-            output_dim=1,
-            hidden_layers=vf_hiddens,
-            activation=vf_activation,
-        )
-        config = PPOTfModuleConfig(
+        pi_config = FCTfConfig()
+        vf_config = FCTfConfig()
+        shared_encoder_config.input_dim = observation_space.shape[0]
+        pi_config.input_dim = shared_encoder_config.output_dim
+        pi_config.hidden_layers = fcnet_hiddens
+        if isinstance(action_space, gym.spaces.Discrete):
+            pi_config.output_dim = action_space.n
+        else:
+            pi_config.output_dim = action_space.shape[0] * 2
+        # build vf network
+        vf_config.input_dim = shared_encoder_config.output_dim
+        vf_config.hidden_layers = fcnet_hiddens
+        vf_config.output_dim = 1
+        config_ = PPOTfModuleConfig(
             pi_config=pi_config,
             vf_config=vf_config,
+            shared_encoder_config=shared_encoder_config,
             observation_space=observation_space,
             action_space=action_space,
+            free_log_std=free_log_std,
         )
-        return cls(config)
+        module = cls(config_)
+        return module
 
 
 if __name__ == "__main__":
@@ -195,10 +239,11 @@ if __name__ == "__main__":
         observation_space=env.observation_space,
         action_space=env.action_space,
         model_config=dict(
-            custom_model_config=dict(
-                policy_hiddens=[256, 256, 256],
-                vf_hiddens=[256, 256, 256],
-            )
+            fcnet_activation="linear",
+            fcnet_hiddens=[64, 64],
+            vf_share_layers=True,
+            free_log_std=True,
+            use_lstm=False,
         ),
     )
 

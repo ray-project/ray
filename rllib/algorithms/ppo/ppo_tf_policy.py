@@ -6,6 +6,7 @@ import logging
 from typing import Dict, List, Type, Union
 
 import ray
+from ray.util.timer import _Timer
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
     compute_gae_for_sample_batch,
@@ -99,6 +100,7 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
+            self._learn_timer = _Timer()
             self.maybe_initialize_optimizer_and_loss()
 
         @override(base)
@@ -108,12 +110,21 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             dist_class: Type[TFActionDistribution],
             train_batch: SampleBatch,
         ) -> Union[TensorType, List[TensorType]]:
-            if isinstance(model, tf.keras.Model):
-                logits, state, extra_outs = model(train_batch)
-                value_fn_out = extra_outs[SampleBatch.VF_PREDS]
-            else:
-                logits, state = model(train_batch)
-                value_fn_out = model.value_function()
+            with self._learn_timer:
+                if isinstance(model, tf.keras.Model):
+                    logits, state, extra_outs = model(train_batch)
+                    value_fn_out = extra_outs[SampleBatch.VF_PREDS]
+                else:
+                    logits, state = model(train_batch)
+                    value_fn_out = model.value_function()
+                    # self._num_params = model.base_model.count_params()
+                    weight_shapes = [w.shape for w in model.base_model.get_weights()]
+                    self._num_weights = 0
+                    for w in weight_shapes:
+                        tot = 1
+                        for s in w:
+                            tot *= s
+                        self._num_weights += tot
 
             curr_action_dist = dist_class(logits, model)
 
@@ -177,6 +188,7 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                     self.config["vf_clip_param"],
                 )
                 mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
+                unclipplped_mean_vf_loss = reduce_mean_valid(vf_loss)
             # Ignore the value function.
             else:
                 vf_loss_clipped = mean_vf_loss = tf.constant(0.0)
@@ -195,10 +207,14 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             self._total_loss = total_loss
             self._mean_policy_loss = reduce_mean_valid(-surrogate_loss)
             self._mean_vf_loss = mean_vf_loss
+            self._unclipped_mean_vf_loss = unclipplped_mean_vf_loss
             self._mean_entropy = mean_entropy
             # Backward compatibility: Deprecate self._mean_kl.
             self._mean_kl_loss = self._mean_kl = mean_kl_loss
             self._value_fn_out = value_fn_out
+
+            value_mean = reduce_mean_valid(value_fn_out)
+            self._mean_value = value_mean
 
             return total_loss
 
@@ -210,12 +226,16 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 "total_loss": self._total_loss,
                 "policy_loss": self._mean_policy_loss,
                 "vf_loss": self._mean_vf_loss,
+                "unclipped_vf_loss": self._unclipped_mean_vf_loss,
                 "vf_explained_var": explained_variance(
                     train_batch[Postprocessing.VALUE_TARGETS], self._value_fn_out
                 ),
                 "kl": self._mean_kl_loss,
                 "entropy": self._mean_entropy,
                 "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
+                "value_mean": tf.cast(self._mean_value, tf.float64),
+                "fwd_out_time": self._learn_timer.mean,
+                "num_params": self._num_weights,
             }
 
         @override(base)

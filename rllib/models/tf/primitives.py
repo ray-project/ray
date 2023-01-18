@@ -27,26 +27,29 @@ class FCNet(tf.keras.Model):
     ):
         super().__init__()
 
-        if activation == "linear":
-            activation_class = None
-        elif activation == "ReLU":
-            activation_class = tf.keras.layers.ReLU
-        else:
+        if activation not in ("linear", "ReLU", "Tanh"):
             raise ValueError("Activation function not supported")
-
+        assert input_dim is not None, "Input dimension must not be None"
+        assert output_dim is not None, "Output dimension must not be None"
         layers = []
+        activation = activation.lower()
+        # input = tf.keras.layers.Dense(input_dim, activation=activation)
         layers.append(tf.keras.Input(shape=(input_dim,)))
-
-        for i in range(len(hidden_layers) - 1):
-            if activation_class:
-                layers.append(activation_class())
-            layers.append(tf.keras.layers.Dense(hidden_layers[i]))
-
-        if activation_class:
-            layers.append(activation_class())
+        for i in range(len(hidden_layers)):
+            layers.append(
+                tf.keras.layers.Dense(hidden_layers[i], activation=activation)
+            )
         layers.append(tf.keras.layers.Dense(output_dim))
         self.network = tf.keras.Sequential(layers)
 
     @override(tf.keras.Model)
     def call(self, inputs, training=None, mask=None):
         return self.network(inputs)
+
+
+class IdentityNetwork(tf.keras.Model):
+    """A network that returns the input as the output."""
+
+    @override(tf.keras.Model)
+    def call(self, inputs, training=None, mask=None):
+        return inputs

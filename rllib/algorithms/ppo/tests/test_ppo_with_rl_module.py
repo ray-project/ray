@@ -104,14 +104,13 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        # TODO (Kourosh): for now just do torch
         for fw in framework_iterator(
             config, frameworks=("torch", "tf2"), with_eager_tracing=False
         ):
             # TODO (Kourosh) Bring back "FrozenLake-v1" and "MsPacmanNoFrameskip-v4"
             for env in ["CartPole-v1", "Pendulum-v1"]:
                 print("Env={}".format(env))
-                # TODO (Kourosh): for now just do lstm=False
+                # TODO (Kourosh, Avnishn): for now just do lstm=False
                 for lstm in [False]:
                     print("LSTM={}".format(lstm))
                     config.training(model=model_config[fw])

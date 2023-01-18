@@ -2,12 +2,12 @@ import logging
 from typing import Dict, List, Type, Union
 
 import ray
+from ray.util.timer import _Timer
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
     compute_gae_for_sample_batch,
 )
-from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
@@ -27,7 +27,6 @@ from ray.rllib.utils.tf_utils import (
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
-tf1.enable_eager_execution()
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +64,7 @@ class PPOTfPolicyWithRLModule(
         # TODO: Move into Policy API, if needed at all here. Why not move this into
         #  `PPOConfig`?.
         validate_config(config)
+        EagerTFPolicyV2.enable_eager_execution_if_necessary()
         EagerTFPolicyV2.__init__(self, observation_space, action_space, config)
         # Initialize MixIns.
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
@@ -73,66 +73,122 @@ class PPOTfPolicyWithRLModule(
         )
         KLCoeffMixin.__init__(self, config)
 
+        self._learn_timer = _Timer()
         self.maybe_initialize_optimizer_and_loss()
 
     @override(EagerTFPolicyV2)
     def loss(
         self,
-        model: ModelV2,
-        dist_class: Type[ActionDistribution],
+        model: Union[ModelV2, "tf.keras.Model"],
+        dist_class,
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        fwd_out_module = model.forward_train(train_batch)
+        del dist_class
+        with self._learn_timer:
+            fwd_out = model.forward_train(train_batch)
 
-        curr_probs = fwd_out_module[SampleBatch.ACTION_LOGP]
-        old_probs = train_batch[SampleBatch.ACTION_LOGP]
-        likelihood_ratio = tf.math.exp(curr_probs - old_probs)
-        clipped_likelihood = tf.clip_by_value(
-            likelihood_ratio,
-            1 - self.config["clip_param"],
-            1 + self.config["clip_param"],
+        weight_shapes = [w.shape for w in model.get_weights()]
+        self._num_weights = 0
+        for w in weight_shapes:
+            tot = 1
+            for s in w:
+                tot *= s
+            self._num_weights += tot
+
+        curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
+        dist_class = curr_action_dist.__class__
+        value_fn_out = fwd_out[SampleBatch.VF_PREDS]
+
+        reduce_mean_valid = tf.reduce_mean
+
+        prev_action_dist = dist_class(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS], model
         )
 
-        advantages = train_batch[Postprocessing.ADVANTAGES]
-        ppo_clipped_objective = tf.math.minimum(
-            likelihood_ratio * advantages, clipped_likelihood * advantages
+        logp_ratio = tf.exp(
+            curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
+            - train_batch[SampleBatch.ACTION_LOGP]
         )
 
-        entropy_objective = tf.math.reduce_mean(
-            self.entropy_coeff * fwd_out_module["entropy"]
-        )
-
-        vf_loss = tf.math.square(
-            fwd_out_module[SampleBatch.VF_PREDS]
-            - train_batch[Postprocessing.VALUE_TARGETS]
-        )
-
-        prev_action_dist_cls = fwd_out_module[SampleBatch.ACTION_DIST].__class__
-        prev_action_dist_inputs = fwd_out_module[SampleBatch.ACTION_DIST_INPUTS]
-        prev_action_dist = prev_action_dist_cls(prev_action_dist_inputs, model=None)
-        current_prob_dist = fwd_out_module[SampleBatch.ACTION_DIST]
-        kl = prev_action_dist.kl(current_prob_dist)
-        mean_kl = tf.math.reduce_mean(kl)
-        warn_if_infinite_kl_divergence(self, mean_kl)
-
-        loss = ppo_clipped_objective + entropy_objective - vf_loss
+        # Only calculate kl loss if necessary (kl-coeff > 0.0).
         if self.config["kl_coeff"] > 0.0:
-            kl_loss = self.kl_coeff * mean_kl
-            self.stats["mean_kl"] = mean_kl
-            loss += kl_loss
-        loss = - loss
-        loss = tf.math.reduce_mean(loss)
-        self.stats["total_loss"] = loss
-        self.stats["mean_policy_loss"] = tf.math.reduce_mean(ppo_clipped_objective)
-        self.stats["mean_vf_loss"] = tf.math.reduce_mean(vf_loss)
-        self.stats["vf_explained_var"] = explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS],
-            fwd_out_module[SampleBatch.VF_PREDS],
-        )
-        self.stats["mean_entropy"] = tf.math.reduce_mean(fwd_out_module["entropy"])
-        self.stats["kl"] = mean_kl
+            action_kl = prev_action_dist.kl(curr_action_dist)
+            mean_kl_loss = reduce_mean_valid(action_kl)
+            warn_if_infinite_kl_divergence(self, mean_kl_loss)
+        else:
+            mean_kl_loss = tf.constant(0.0)
 
-        return loss
+        curr_entropy = curr_action_dist.entropy()
+        mean_entropy = reduce_mean_valid(curr_entropy)
+
+        surrogate_loss = tf.minimum(
+            train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
+            train_batch[Postprocessing.ADVANTAGES]
+            * tf.clip_by_value(
+                logp_ratio,
+                1 - self.config["clip_param"],
+                1 + self.config["clip_param"],
+            ),
+        )
+
+        # Compute a value function loss.
+        if self.config["use_critic"]:
+            vf_loss = tf.math.square(
+                value_fn_out - train_batch[Postprocessing.VALUE_TARGETS]
+            )
+            vf_loss_clipped = tf.clip_by_value(
+                vf_loss,
+                0,
+                self.config["vf_clip_param"],
+            )
+            mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
+            mean_vf_unclipped_loss = reduce_mean_valid(vf_loss)
+        # Ignore the value function.
+        else:
+            vf_loss_clipped = mean_vf_loss = tf.constant(0.0)
+
+        total_loss = reduce_mean_valid(
+            -surrogate_loss
+            + self.config["vf_loss_coeff"] * vf_loss_clipped
+            - self.entropy_coeff * curr_entropy
+        )
+        # Add mean_kl_loss (already processed through `reduce_mean_valid`),
+        # if necessary.
+        if self.config["kl_coeff"] > 0.0:
+            total_loss += self.kl_coeff * mean_kl_loss
+
+        # Store stats in policy for stats_fn.
+        self._total_loss = total_loss
+        self._mean_policy_loss = reduce_mean_valid(-surrogate_loss)
+        self._mean_vf_loss = mean_vf_loss
+        self._unclipped_mean_vf_loss = mean_vf_unclipped_loss
+        self._mean_entropy = mean_entropy
+        # Backward compatibility: Deprecate self._mean_kl.
+        self._mean_kl_loss = self._mean_kl = mean_kl_loss
+        self._value_fn_out = value_fn_out
+        self._value_mean = reduce_mean_valid(value_fn_out)
+
+        return total_loss
+
+    @override(EagerTFPolicyV2)
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+        return {
+            "cur_kl_coeff": tf.cast(self.kl_coeff, tf.float64),
+            "cur_lr": tf.cast(self.cur_lr, tf.float64),
+            "total_loss": self._total_loss,
+            "policy_loss": self._mean_policy_loss,
+            "vf_loss": self._mean_vf_loss,
+            "unclipped_vf_loss": self._unclipped_mean_vf_loss,
+            "vf_explained_var": explained_variance(
+                train_batch[Postprocessing.VALUE_TARGETS], self._value_fn_out
+            ),
+            "kl": self._mean_kl_loss,
+            "entropy": self._mean_entropy,
+            "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
+            "value_mean": tf.cast(self._value_mean, tf.float64),
+            "fwd_out_time": self._learn_timer.mean,
+            "num_params": self._num_weights,
+        }
 
     @override(EagerTFPolicyV2)
     def postprocess_trajectory(
@@ -142,16 +198,3 @@ class PPOTfPolicyWithRLModule(
         return compute_gae_for_sample_batch(
             self, sample_batch, other_agent_batches, episode
         )
-
-    @override(EagerTFPolicyV2)
-    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        return {
-            "mean_entropy": self.stats["mean_entropy"],
-            "vf_explained_var": self.stats["vf_explained_var"],
-            "cur_lr": tf.cast(self.cur_lr, tf.float64),
-            "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
-            "total_loss": self.stats["total_loss"],
-            "vf_loss": self.stats["mean_vf_loss"],
-            "policy_loss": self.stats["mean_policy_loss"],
-            "kl": self.stats["kl"],
-        }
