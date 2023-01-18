@@ -154,6 +154,7 @@ python-driver-*
 # Vscode
 .vscode/
 *-workspace
+WORKSPACE
 
 *.iml
 
