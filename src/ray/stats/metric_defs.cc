@@ -62,7 +62,7 @@ DEFINE_stats(actors,
              // but can also be RUNNING_TASK, RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
              // Name: the name of actor class.
              // Source: component reporting, e.g., "gcs" or "executor".
-             ("State", "Name", "Source"),
+             ("State", "Name", "Source", "JobId"),
              (),
              ray::stats::GAUGE);
 
