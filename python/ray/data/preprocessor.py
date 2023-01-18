@@ -170,10 +170,9 @@ class Preprocessor(abc.ABC):
             )
         return self._transform_batch(data)
 
-
     def _transform_pipeline(self, pipeline: DatasetPipeline) -> DatasetPipeline:
         """Transform the given DatasetPipeline.
-        
+
         Args:
             pipeline: The pipeline to transform.
 
@@ -184,8 +183,10 @@ class Preprocessor(abc.ABC):
 
         fit_status = self.fit_status()
         if fit_status != Preprocessor.FitStatus.NOT_FITTABLE:
-            raise RuntimeError("Streaming/pipelined ingest only works with Preprocessors that are not fittable. It is not possible to fit on Datasets in a streaming fashion.")
-        
+            raise RuntimeError(
+                "Streaming/pipelined ingest only works with Preprocessors that are not fittable. It is not possible to fit on Datasets in a streaming fashion."
+            )
+
         return self._transform(pipeline)
 
     def _check_is_fitted(self) -> bool:
@@ -251,7 +252,9 @@ class Preprocessor(abc.ABC):
 
         return transform_type
 
-    def _transform(self, dataset: Union[Dataset, DatasetPipeline]) -> Union[Dataset, DatasetPipeline]:
+    def _transform(
+        self, dataset: Union[Dataset, DatasetPipeline]
+    ) -> Union[Dataset, DatasetPipeline]:
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
 

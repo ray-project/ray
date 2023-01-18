@@ -128,7 +128,46 @@ def test_fit_twice(mocked_warn):
     mocked_warn.assert_called_once_with(msg)
 
 
-def test_numpy_pandas_support_simple_dataset(create_dummy_preprocessors):
+def _apply_transform(preprocessor, ds):
+    if isinstance(ds, ray.data.DatasetPipeline):
+        return preprocessor._transform_pipeline(ds)
+    else:
+        return preprocessor.transform(ds)
+
+
+@pytest.mark.parametrize("pipeline", [True, False])
+def test_transform_config(pipeline):
+    """Tests that the transform_config of the Preprocessor is respected during transform."""
+
+    batch_size = 2
+
+    class DummyPreprocessor(Preprocessor):
+        _is_fittable = False
+
+        def _transform_numpy(self, data):
+            assert len(data["value"]) == batch_size
+            return data
+
+        def _transform_pandas(self, data):
+            raise RuntimeError(
+                "Pandas transform should not be called with numpy batch format."
+            )
+
+        def _get_transform_config(self):
+            return {"batch_size": 2}
+
+        def _determine_transform_to_use(self, data_format):
+            return "numpy"
+
+    prep = DummyPreprocessor()
+    ds = ray.data.from_pandas(pd.DataFrame({"value": list(range(4))}))
+    if pipeline:
+        ds = ds.window(blocks_per_window=1).repeat()
+    _apply_transform(prep, ds)
+
+
+@pytest.mark.parametrize("pipeline", [True, False])
+def test_numpy_pandas_support_simple_dataset(create_dummy_preprocessors, pipeline):
     # Case 1: simple dataset. No support
     (
         with_nothing,
@@ -138,20 +177,24 @@ def test_numpy_pandas_support_simple_dataset(create_dummy_preprocessors):
     ) = create_dummy_preprocessors
 
     ds = ray.data.range(10)
-    with pytest.raises(ValueError):
-        with_nothing.transform(ds)
+    if pipeline:
+        ds = ds.window(blocks_per_window=1).repeat(1)
 
     with pytest.raises(ValueError):
-        with_pandas.transform(ds)
+        _apply_transform(with_nothing, ds)
 
     with pytest.raises(ValueError):
-        with_numpy.transform(ds)
+        _apply_transform(with_pandas, ds)
 
     with pytest.raises(ValueError):
-        with_pandas_and_numpy.transform(ds)
+        _apply_transform(with_numpy, ds)
+
+    with pytest.raises(ValueError):
+        _apply_transform(with_pandas_and_numpy, ds)
 
 
-def test_numpy_pandas_support_pandas_dataset(create_dummy_preprocessors):
+@pytest.mark.parametrize("pipeline", [True, False])
+def test_numpy_pandas_support_pandas_dataset(create_dummy_preprocessors, pipeline):
     # Case 2: pandas dataset
     (
         with_nothing,
@@ -162,15 +205,19 @@ def test_numpy_pandas_support_pandas_dataset(create_dummy_preprocessors):
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
 
     ds = ray.data.from_pandas(df)
+    if pipeline:
+        ds = ds.window(blocks_per_window=1).repeat(1)
+
     with pytest.raises(NotImplementedError):
-        with_nothing.transform(ds)
+        _apply_transform(with_nothing, ds)
 
-    assert with_pandas.transform(ds).dataset_format() == "pandas"
+    assert _apply_transform(with_pandas, ds).dataset_format() == "pandas"
 
-    assert with_pandas_and_numpy.transform(ds).dataset_format() == "pandas"
+    assert _apply_transform(with_pandas_and_numpy, ds).dataset_format() == "pandas"
 
 
-def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors):
+@pytest.mark.parametrize("pipeline", [True, False])
+def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors, pipeline):
     # Case 3: arrow dataset
     (
         with_nothing,
@@ -181,15 +228,18 @@ def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors):
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
 
     ds = ray.data.from_arrow(pyarrow.Table.from_pandas(df))
+    if pipeline:
+        ds = ds.window(blocks_per_window=1).repeat(1)
+
     with pytest.raises(NotImplementedError):
-        with_nothing.transform(ds)
+        _apply_transform(with_nothing, ds)
 
-    assert with_pandas.transform(ds).dataset_format() == "pandas"
+    assert _apply_transform(with_pandas, ds).dataset_format() == "pandas"
 
-    assert with_numpy.transform(ds).dataset_format() == "arrow"
+    assert _apply_transform(with_numpy, ds).dataset_format() == "arrow"
 
     # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
-    assert with_pandas_and_numpy.transform(ds).dataset_format() == "arrow"
+    assert _apply_transform(with_pandas_and_numpy, ds).dataset_format() == "arrow"
 
 
 def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
