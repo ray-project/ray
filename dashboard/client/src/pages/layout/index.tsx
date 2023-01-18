@@ -18,7 +18,6 @@ import React, { useContext } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { UsageStatsAlert } from "../../common/UsageStatsAlert";
-import { ClusterMetadata } from "../../common/ClusterMetadata";
 
 import Logo from "../../logo.svg";
 
@@ -193,7 +192,6 @@ const BasicLayout = ({
             </IconButton>
           </ListItem>
         </List>
-        <SpeedTools />
       </Drawer>
       <div className={classes.child}>
         <Outlet />
