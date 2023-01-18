@@ -38,14 +38,12 @@ class MXNetPredictor(Predictor):
     def from_checkpoint(
         cls,
         checkpoint: Checkpoint,
-        net,
-        preprocessor: Optional[Preprocessor] = None,
+        net: gluon.Block,
     ) -> Predictor:
-        # with checkpoint.as_directory() as directory:
-        #     path = os.path.join(directory, "net.params")
-        #     net.load_parameters(path)
-        # return cls(net, preprocessor=preprocessor)
-        return cls(None, preprocessor=preprocessor)
+        with checkpoint.as_directory() as directory:
+            path = os.path.join(directory, "net.params")
+            net.load_parameters(path)
+        return cls(net, preprocessor=checkpoint.get_preprocessor())
     # __mxnetpredictor_from_checkpoint_end__
 
     # __mxnetpredictor_predict_numpy_start__
@@ -93,9 +91,14 @@ def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     return batch
 
 
+# Create the preprocessor and set it in the checkpoint.
+# This preprocessor will be used to transform the data prior to prediction.
 preprocessor = BatchMapper(preprocess, batch_format="numpy")
+checkpoint.set_preprocessor(preprocessor=preprocessor)
+
+
 predictor = BatchPredictor.from_checkpoint(
-    checkpoint, MXNetPredictor, net=net, preprocessor=preprocessor
+    checkpoint, MXNetPredictor, net=net
 )
 predictor.predict(dataset)
 # __mxnetpredictor_predict_end__
