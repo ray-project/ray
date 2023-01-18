@@ -400,7 +400,7 @@ class EnvRunnerV2:
         for agent in active_agents:
             policy_id = episode.policy_for(agent)
             policy = episode.policy_map[policy_id]
-            connector_metrics[policy_id] = policy.get_connector_throughput_metrics()
+            connector_metrics[policy_id] = policy.get_connector_metrics()
         # Otherwise, return RolloutMetrics for the episode.
         return [
             RolloutMetrics(
