@@ -41,7 +41,7 @@ Replicas in a deployment are copies of your program running on Ray Serve, where 
 `GradioServer` is simply `GradioIngress` but wrapped in a Serve deployment. You can use `GradioServer` for the simple wrap-and-deploy use case, but as you will see in the next section, you can use `GradioIngress` to define your own Gradio Server for more customized use cases.
 :::
 
-Using either the example app `io` we created above or an existing Gradio app (of type `Interface`, `Block`, `Parallel`, etc.), wrap it in your Gradio Server. Pass the builder function as input to your Gradio Server. It will be used to construct your Gradio app on the Ray cluster.
+Using either Gradio app `io` constructed by the builder function above or providing your own application (of type `Interface`, `Block`, `Parallel`, etc.), wrap it in your Gradio Server. Pass the builder function as input to your Gradio Server. It will be used to construct your Gradio app on the Ray cluster.
 
 ```{literalinclude} ../doc_code/gradio-integration.py
 :start-after: __doc_app_begin__
