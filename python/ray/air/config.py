@@ -15,6 +15,7 @@ from typing import (
 from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
 from ray.widgets import Template, make_table_html_repr
+from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -326,6 +327,11 @@ class DatasetConfig:
             The main purpose of this is to prevent data fetching hotspots in the
             cluster when running many parallel workers / trials on the same data.
             We recommend enabling it always. True by default.
+        per_epoch_preprocessor [Experimental]: A preprocessor to re-apply on
+            each pass of the dataset. The main use case for this is to apply a
+            random transform on a training dataset on each epoch. The
+            per-epoch preprocessor will be applied *after* all other
+            preprocessors and in parallel with the dataset consumer.
         use_stream_api: Deprecated. Use max_object_store_memory_fraction instead.
         stream_window_size: Deprecated. Use max_object_store_memory_fraction instead.
     """
@@ -340,6 +346,7 @@ class DatasetConfig:
     max_object_store_memory_fraction: Optional[float] = None
     global_shuffle: Optional[bool] = None
     randomize_block_order: Optional[bool] = None
+    per_epoch_preprocessor: Optional["Preprocessor"] = None
     # Deprecated.
     use_stream_api: Optional[int] = None
     stream_window_size: Optional[int] = None
@@ -377,6 +384,7 @@ class DatasetConfig:
             randomize_block_order=self.randomize_block_order
             if self.randomize_block_order is not None
             else True,
+            per_epoch_preprocessor=self.per_epoch_preprocessor,
         )
 
     @staticmethod
@@ -444,6 +452,13 @@ class DatasetConfig:
                     "must be None or a float with value -1 or >=0, but got "
                     f"{v.max_object_store_memory_fraction}."
                 )
+            if v.per_epoch_preprocessor is not None and not isinstance(
+                v.per_epoch_preprocessor, Preprocessor
+            ):
+                raise ValueError(
+                    "`per_epoch_preprocessor` must be a ray.data.Preprocessor "
+                    f"but got {v.per_epoch_preprocessor}."
+                )
 
         if len(fittable) > 1:
             raise ValueError(
@@ -474,6 +489,9 @@ class DatasetConfig:
             randomize_block_order=self.randomize_block_order
             if other.randomize_block_order is None
             else other.randomize_block_order,
+            per_epoch_preprocessor=self.per_epoch_preprocessor
+            if other.per_epoch_preprocessor is None
+            else other.per_epoch_preprocessor,
         )
         return new_config
 

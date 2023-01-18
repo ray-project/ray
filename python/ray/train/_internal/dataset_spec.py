@@ -5,6 +5,7 @@ from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
 
 from ray.data import Dataset, DatasetPipeline
+from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
@@ -188,10 +189,20 @@ class DataParallelIngestSpec:
                 )
                 dataset = dataset.window(bytes_per_window=stream_window_size).repeat()
                 # In windowed mode, we re-apply the preprocessor on each iteration.
-                if self.preprocessor:
+                if self.preprocessor or config.per_epoch_preprocessor:
+                    if self.preprocessor is not None:
+                        preprocessor = self.preprocessor
+                        if config.per_epoch_preprocessor is not None:
+                            preprocessor = Chain(
+                                preprocessor, config.per_epoch_preprocessor
+                            )
+                    else:
+                        preprocessor = config.per_epoch_preprocessor
+
                     # TODO: Replace with self.preprocessor.transform when possible.
-                    prep = self.preprocessor.transform_batch
+                    prep = preprocessor.transform_batch
                     dataset = dataset.map_batches(prep, batch_format="pandas")
+
                 # Always re-randomize each window; this doesn't help with reducing
                 # cluster hot-spots since we already randomized the based blocks, but
                 # can help with improving randomness in combination with local shuffle.
@@ -199,6 +210,13 @@ class DataParallelIngestSpec:
                     # TODO(swang): Should randomize block order across the
                     # original dataset, not the window.
                     dataset = dataset.randomize_block_order_each_window()
+            if config.per_epoch_preprocessor is not None:
+                # Reapply the per epoch preprocessor on each epoch.
+                if isinstance(dataset, Dataset):
+                    dataset = dataset.repeat()
+                # TODO: Replace with preprocessor.transform when possible.
+                per_epoch_prep = config.per_epoch_preprocessor.transform_batch
+                dataset = dataset.map_batches(per_epoch_prep)
 
             if config.global_shuffle:
                 # If global shuffle is requested, then we should try to overlap
