@@ -26,7 +26,6 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
     def reset(self, env_id: str):
         for c in self.connectors:
             c.reset(env_id)
-        self.timers.clear()
 
     def on_policy_output(self, output: ActionConnectorDataType):
         for c in self.connectors:
