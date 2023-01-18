@@ -73,6 +73,9 @@ class MapOperatorState:
         self._obj_store_mem_cur: int = 0
         self._obj_store_mem_peak: int = 0
 
+    def progress_str(self) -> str:
+        return self._task_submitter.progress_str()
+
     def add_input(self, bundle: RefBundle) -> None:
         if not self._have_started_submitter:
             # Start the task submitter on the first input.

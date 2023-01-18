@@ -228,6 +228,9 @@ class PhysicalOperator:
         out_str += f"{self.__class__.__name__}[{self._name}]"
         return out_str
 
+    def progress_str(self) -> str:
+        return ""
+
     def num_outputs_total(self) -> Optional[int]:
         """Returns the total number of output bundles of this operator, if known.
 

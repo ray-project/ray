@@ -32,6 +32,9 @@ class ActorPoolSubmitter(MapTaskSubmitter):
         # The actor pool on which we are running map tasks.
         self._actor_pool = ActorPool()
 
+    def progress_str(self) -> str:
+        return f"{self._actor_pool.size()} actors"
+
     def start(self):
         # Create the actor workers and add them to the pool.
         ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
@@ -116,6 +119,9 @@ class ActorPool:
         # Whether actors that become idle should be eagerly killed. This is False until
         # the first call to kill_idle_actors().
         self._should_kill_idle_actors = False
+
+    def size(self) -> int:
+        return len(self._num_tasks_in_flight)
 
     def add_actor(self, actor: ray.actor.ActorHandle):
         """Adds an actor to the pool."""

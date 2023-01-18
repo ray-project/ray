@@ -36,7 +36,9 @@ class StreamingExecutor(Executor):
         # object as data is streamed through (similar to how iterating over the output
         # data updates the stats object in legacy code).
         self._stats: Optional[DatasetStats] = None
-        self._global_info = ProgressBar("Resource usage vs limits", 100, 0)
+        self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
+        if options.locality_with_output:
+            raise NotImplementedError("locality with output")
         super().__init__(options)
 
     def execute(
@@ -52,17 +54,23 @@ class StreamingExecutor(Executor):
 
         # Setup the streaming DAG topology.
         topology, self._stats = build_streaming_topology(dag)
-        self._validate_topology(topology)
-        output_node: OpState = topology[dag]
 
-        # Run scheduling loop until complete.
-        while self._scheduling_loop_step(topology):
+        try:
+            self._validate_topology(topology)
+            output_node: OpState = topology[dag]
+
+            # Run scheduling loop until complete.
+            while self._scheduling_loop_step(topology):
+                while output_node.outqueue:
+                    yield output_node.outqueue.pop(0)
+
+            # Handle any leftover outputs.
             while output_node.outqueue:
                 yield output_node.outqueue.pop(0)
-
-        # Handle any leftover outputs.
-        while output_node.outqueue:
-            yield output_node.outqueue.pop(0)
+        finally:
+            for op in topology:
+                op.shutdown()
+            self._global_info.close()
 
     def get_stats(self):
         """Return the stats object for the streaming execution.

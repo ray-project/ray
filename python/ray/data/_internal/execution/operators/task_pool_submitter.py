@@ -49,6 +49,9 @@ class TaskPoolSubmitter(MapTaskSubmitter):
                 # swallow the exception.
                 pass
 
+    def progress_str(self) -> str:
+        return ""
+
 
 def _map_task(
     fn: Callable[[Iterator[Block]], Iterator[Block]],

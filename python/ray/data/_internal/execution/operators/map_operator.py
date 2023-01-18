@@ -85,6 +85,9 @@ class MapOperator(PhysicalOperator):
             "obj_store_mem_peak": self._execution_state.obj_store_mem_peak,
         }
 
+    def progress_str(self) -> str:
+        return self._execution_state.progress_str()
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0, input_index
         self._execution_state.add_input(refs)
