@@ -1,10 +1,13 @@
-from typing import Dict, Any, Iterator, Callable, List, Tuple
+from typing import Dict, Any, Iterator, Callable, List, Union
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.operators.map_task_submitter import MapTaskSubmitter
+from ray.data._internal.execution.operators.map_task_submitter import (
+    MapTaskSubmitter,
+    _map_task,
+)
 from ray.types import ObjectRef
+from ray._raylet import ObjectRefGenerator
 
 
 class ActorPoolSubmitter(MapTaskSubmitter):
@@ -41,17 +44,17 @@ class ActorPoolSubmitter(MapTaskSubmitter):
 
     def submit(
         self, input_blocks: List[ObjectRef[Block]]
-    ) -> Tuple[ObjectRef[Block], ObjectRef[BlockMetadata]]:
+    ) -> ObjectRef[ObjectRefGenerator]:
         # Pick an actor from the pool.
         actor = self._actor_pool.pick_actor()
         # Submit the map task.
-        block, block_metadata = actor.submit.options(num_returns=2).remote(
+        ref = actor.submit.options(num_returns="dynamic").remote(
             self._transform_fn_ref, *input_blocks
         )
-        self._active_actors[block] = actor
-        return block, block_metadata
+        self._active_actors[ref] = actor
+        return ref
 
-    def task_done(self, ref: ObjectRef[Block]):
+    def task_done(self, ref: ObjectRef[ObjectRefGenerator]):
         # Return the actor that was running the task to the pool.
         actor = self._active_actors.pop(ref)
         self._actor_pool.return_actor(actor)
@@ -87,19 +90,8 @@ class MapWorker:
 
     def submit(
         self, fn: Callable[[Iterator[Block]], Iterator[Block]], *blocks: Block
-    ) -> Tuple[Block, BlockMetadata]:
-        # Coalesce all fn output blocks.
-        # TODO(Clark): Remove this coalescing once dynamic block splitting is supported
-        # for actors.
-        # yield from _map_task(fn, *blocks)
-        stats = BlockExecStats.builder()
-        builder = DelegatingBlockBuilder()
-        for block in fn(iter(blocks)):
-            builder.add_block(block)
-        block = builder.build()
-        block_metadata = BlockAccessor.for_block(block).get_metadata([], None)
-        block_metadata.exec_stats = stats.build()
-        return block, block_metadata
+    ) -> Iterator[Union[Block, List[BlockMetadata]]]:
+        yield from _map_task(fn, *blocks)
 
 
 class ActorPool:

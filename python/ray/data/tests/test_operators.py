@@ -166,11 +166,7 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
         op.notify_work_completed(work)
 
     # Check we return transformed bundles in order.
-    if use_actors:
-        # TODO(Clark): Remove this once dynamic block splitting is supported for actors.
-        assert _take_outputs(op) == [list(range(5)), list(range(5, 10))]
-    else:
-        assert _take_outputs(op) == [[i] for i in range(10)]
+    assert _take_outputs(op) == [[i] for i in range(10)]
     assert op.completed()
 
 
