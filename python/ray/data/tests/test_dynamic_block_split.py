@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
+from ray.data.context import DatasetContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask, Reader
 
@@ -62,7 +63,24 @@ def test_disable_in_ray_client(ray_start_cluster_enabled):
     assert not DatasetContext.get_current().block_splitting_enabled
 
 
-@pytest.mark.parametrize("compute", ["actors", "tasks"])
+@pytest.mark.parametrize(
+    "compute",
+    [
+        "tasks",
+        # TODO(Clark): Remove skip for old execution backend once the old execution
+        # backend is removed.
+        pytest.param(
+            "actors",
+            marks=pytest.mark.skipif(
+                not DatasetContext.get_current().new_execution_backend,
+                reason=(
+                    "Dynamic block splitting for the actor compute strategy is only "
+                    "enabled for the new execution backend."
+                ),
+            ),
+        ),
+    ],
+)
 def test_dataset(
     ray_start_regular_shared,
     enable_dynamic_block_splitting,
