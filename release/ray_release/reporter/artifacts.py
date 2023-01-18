@@ -43,4 +43,4 @@ class ArtifactsReporter(Reporter):
             with gzip.open(metrics_file, "wt", encoding="UTF-8") as fp:
                 json.dump(metrics_dict, fp, sort_keys=True, indent=4)
 
-            logger.info(f"Wrote metrics to artifacts directory: {self.artifacts_dir}")
+            logger.info(f"Wrote prometheus metrics to artifacts directory: {self.artifacts_dir}")
