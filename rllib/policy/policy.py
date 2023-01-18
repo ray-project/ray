@@ -423,24 +423,6 @@ class Policy(metaclass=ABCMeta):
         self.agent_connectors.reset(env_id=env_id)
         self.action_connectors.reset(env_id=env_id)
 
-    def get_connector_metrics(self) -> Dict:
-        """Get metrics on timing from connectors."""
-        return {
-            "agent_connectors": {
-                name + "_ms": 1000 * timer.mean
-                for name, timer in self.agent_connectors.timers.items()
-            },
-            "action_connectors": {
-                name + "_ms": 1000 * timer.mean
-                for name, timer in self.agent_connectors.timers.items()
-            },
-        }
-
-    def reset_connectors(self, env_id) -> None:
-        """Reset action- and agent-connectors for this policy."""
-        self.agent_connectors.reset(env_id=env_id)
-        self.action_connectors.reset(env_id=env_id)
-
     @DeveloperAPI
     def compute_single_action(
         self,
