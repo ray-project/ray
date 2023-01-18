@@ -136,7 +136,8 @@ def convert_ndarray_to_torch_tensor(
     """
     if device is None:
         # If we are in a TorchTrainer worker function, automatically
-        # use the correct device.
+        # use the correct device. This is tested in Train tests.
+
         # Lazy import to avoid circular imports.
         from ray.train.torch.train_loop_utils import get_device
 
