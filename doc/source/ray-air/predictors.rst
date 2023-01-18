@@ -376,11 +376,12 @@ Perform inference
 
         To perform inference with the completed ``MXNetPredictor``:
 
-        1. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
+        1. Create a :class:`~ray.data.preprocessor.Preprocessor` and set it in the 
+           :class:`~ray.air.checkpoint.Checkpoint`. 
+           You can also use any of the out-of-the-box preprocessors instead of implementing your own: :ref:`air-preprocessor-ref`.
+        2. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
            checkpoint.
-        2. Read sample images into a :class:`~ray.data.Dataset`.
-        3. Create your :class:`~ray.data.preprocessor.Preprocessor` and set it in your 
-           :class:`~ray.air.checkpoint.Checkpoint`. You can also use any of the out of the box preprocessors instead of implementing your own: :ref:`air-preprocessor-ref`.
+        3. Read sample images into a :class:`~ray.data.Dataset`.
         4. Call :class:`~ray.train.batch_predictor.BatchPredictor.predict` to classify
            the images in the dataset.
 
