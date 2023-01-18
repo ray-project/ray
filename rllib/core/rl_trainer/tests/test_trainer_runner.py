@@ -11,6 +11,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 
 tf1, tf, tfv = try_import_tf()
+tf1.executing_eagerly()
 
 
 class TestTrainerRunner(unittest.TestCase):
@@ -20,7 +21,6 @@ class TestTrainerRunner(unittest.TestCase):
     # So that the user can run it locally as well.
     @classmethod
     def setUp(cls) -> None:
-        tf1.executing_eagerly()
         ray.init()
 
     @classmethod
@@ -140,6 +140,9 @@ class TestTrainerRunner(unittest.TestCase):
             )
 
     def test_trainer_runner_no_gpus(self):
+        import os
+
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
         env = gym.make("CartPole-v1")
         trainer_class = BCTfRLTrainer
         trainer_cfg = dict(
