@@ -1,0 +1,3 @@
+#!/bin/bash
+docker build . -t jcoffi/cluster-anywhere:gpu --build-arg IMAGETYPE=gpu
+docker build . -t jcoffi/cluster-anywhere:cpu --build-arg IMAGETYPE=cpu 
