@@ -35,7 +35,6 @@ class PPOTfModuleConfig(RLModuleConfig):
     pi_config: FCTfConfig = None
     vf_config: FCTfConfig = None
     shared_encoder_config: FCTfConfig = None
-    free_log_std: bool = False
     shared_encoder: bool = True
 
 
@@ -77,9 +76,7 @@ class PPOTfModule(TfRLModule):
     def output_specs_train(self) -> List[str]:
         return [
             SampleBatch.ACTION_DIST,
-            # SampleBatch.ACTION_LOGP,
             SampleBatch.VF_PREDS,
-            # "entropy",
         ]
 
     @override(TfRLModule)
@@ -183,7 +180,6 @@ class PPOTfModule(TfRLModule):
         obs_dim = observation_space.shape[0]
         fcnet_hiddens = model_config["fcnet_hiddens"]
         vf_share_layers = model_config["vf_share_layers"]
-        free_log_std = model_config["free_log_std"]
         use_lstm = model_config["use_lstm"]
         if use_lstm:
             raise ValueError("LSTM not supported by PPOTfRLModule yet.")
@@ -226,36 +222,6 @@ class PPOTfModule(TfRLModule):
             shared_encoder_config=shared_encoder_config,
             observation_space=observation_space,
             action_space=action_space,
-            free_log_std=free_log_std,
         )
         module = cls(config_)
         return module
-
-
-if __name__ == "__main__":
-    env = gym.make("Pendulum-v1")
-
-    module = PPOTfModule.from_model_config(
-        observation_space=env.observation_space,
-        action_space=env.action_space,
-        model_config=dict(
-            fcnet_activation="linear",
-            fcnet_hiddens=[64, 64],
-            vf_share_layers=True,
-            free_log_std=True,
-            use_lstm=False,
-        ),
-    )
-
-    obs = [env.observation_space.sample()]
-    action = [env.action_space.sample()]
-
-    batch = SampleBatch(
-        {
-            SampleBatch.OBS: tf.convert_to_tensor(obs),
-            SampleBatch.ACTIONS: tf.convert_to_tensor(action),
-        }
-    )
-    print(module.forward_train(batch))
-    print(module.forward_inference(batch))
-    print(module.forward_exploration(batch))

@@ -1,8 +1,7 @@
 import logging
-from typing import Dict, List, Type, Union
+from typing import Dict, List, Union
 
 import ray
-from ray.util.timer import _Timer
 from ray.rllib.algorithms.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
@@ -73,7 +72,6 @@ class PPOTfPolicyWithRLModule(
         )
         KLCoeffMixin.__init__(self, config)
 
-        self._learn_timer = _Timer()
         self.maybe_initialize_optimizer_and_loss()
 
     @override(EagerTFPolicyV2)
@@ -84,16 +82,7 @@ class PPOTfPolicyWithRLModule(
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
         del dist_class
-        with self._learn_timer:
-            fwd_out = model.forward_train(train_batch)
-
-        weight_shapes = [w.shape for w in model.get_weights()]
-        self._num_weights = 0
-        for w in weight_shapes:
-            tot = 1
-            for s in w:
-                tot *= s
-            self._num_weights += tot
+        fwd_out = model.forward_train(train_batch)
 
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         dist_class = curr_action_dist.__class__
@@ -186,8 +175,6 @@ class PPOTfPolicyWithRLModule(
             "entropy": self._mean_entropy,
             "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
             "value_mean": tf.cast(self._value_mean, tf.float64),
-            "fwd_out_time": self._learn_timer.mean,
-            "num_params": self._num_weights,
         }
 
     @override(EagerTFPolicyV2)

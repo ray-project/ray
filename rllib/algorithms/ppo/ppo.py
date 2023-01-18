@@ -344,16 +344,15 @@ class PPO(Algorithm):
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
-        with self._timers["Sampler_time_s"]:
-            if self.config.count_steps_by == "agent_steps":
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers,
-                    max_agent_steps=self.config.train_batch_size,
-                )
-            else:
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers, max_env_steps=self.config.train_batch_size
-                )
+        if self.config.count_steps_by == "agent_steps":
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers,
+                max_agent_steps=self.config.train_batch_size,
+            )
+        else:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_env_steps=self.config.train_batch_size
+            )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
