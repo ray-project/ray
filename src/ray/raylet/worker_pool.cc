@@ -1287,7 +1287,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                                  int64_t num_available_cpus) {
   // Code path of task that needs a dedicated worker.
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.HasRuntimeEnv()) {
+      task_spec.HasRuntimeEnv() || task_spec.GetLanguage() != ray::Language::PYTHON) {
     return;  // Not handled.
     // TODO(architkulkarni): We'd eventually like to prestart workers with the same
     // runtime env to improve initial startup performance.
