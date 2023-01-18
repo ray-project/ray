@@ -22,8 +22,8 @@ if [ -x /usr/bin/podman ]; then
     exec=/usr/bin/podman
     sudo podman registry remove quay.io
     alias docker=podman
-    sudo docker login -u jcoffi -p $DOCKER_PASSWORD > /dev/null
-    docker login -u jcoffi -p $DOCKER_PASSWORD > /dev/null
+    sudo docker login -u jcoffi -p $DOCKER_PASSWORD
+    docker login -u jcoffi -p $DOCKER_PASSWORD
 else
     exec=/usr/bin/docker
 fi
@@ -100,7 +100,7 @@ wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/any
 
 if [[ -n $cuda_version ]] && [ $cuda_version != "gpu" ]; then
   sudo $exec build --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-cu$cuda_version $builddir -t docker.io/jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
-  sudo $exec push  docker.io/jcoffi/cluster-anywhere:cu$cuda_version
+  sudo $exec push  docker.io/jcoffi/cluster-anywhere:cu$cuda_version 
 elif [ $cuda_version == "gpu" ]; then
   sudo $exec build --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu $builddir -t docker.io/jcoffi/cluster-anywhere:gpu -t docker.io/jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
   sudo $exec push docker.io/jcoffi/cluster-anywhere:gpu
