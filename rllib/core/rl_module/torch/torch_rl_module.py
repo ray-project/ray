@@ -47,7 +47,12 @@ class TorchRLModule(nn.Module, RLModule):
         return False
 
 
-class DDPRLModuleWrapper(DDP, RLModule):
+class TorchDDPRLModule(DDP, RLModule):
+    def __init__(self, *args, **kwargs) -> None:
+        DDP.__init__(self, *args, **kwargs)
+        # we do not want to call RLModule.__init__ here because it will all we need is
+        # the interface of that base-class not the actual implementation.
+
     @override(RLModule)
     def _forward_train(self, *args, **kwargs):
         return self(*args, **kwargs)

@@ -22,7 +22,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamType,
     ParamDictType,
 )
-from ray.rllib.core.rl_module.torch.torch_rl_module import DDPRLModuleWrapper
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
@@ -120,11 +120,11 @@ class TorchRLTrainer(RLTrainer):
         # handle this.
         if isinstance(module, torch.nn.Module):
             module.to(self._device)
-            module = DDPRLModuleWrapper(module)
+            module = TorchDDPRLModule(module)
         else:
             for key in module.keys():
                 module[key].to(self._device)
-                module[key] = DDPRLModuleWrapper(module[key])
+                module[key] = TorchDDPRLModule(module[key])
 
         return module
 
@@ -182,4 +182,4 @@ class TorchRLTrainer(RLTrainer):
         # we need to ddpify the module that was just added to the pool
         self._module[module_id].to(self._device)
         if self.distributed:
-            self._module[module_id] = DDPRLModuleWrapper(self._module[module_id])
+            self._module[module_id] = TorchDDPRLModule(self._module[module_id])

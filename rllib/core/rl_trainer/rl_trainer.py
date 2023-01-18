@@ -222,7 +222,6 @@ class RLTrainer:
         # true for centralized critic for example. Therefore we need a better
         # generalization of this base-class implementation.
         loss_numpy = convert_to_numpy(postprocessed_loss)
-        batch = convert_to_numpy(batch)
         mean_grads = [
             np.mean(grad)
             for grad in convert_to_numpy(post_processed_gradients.values())
