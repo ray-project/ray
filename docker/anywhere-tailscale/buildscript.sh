@@ -24,7 +24,7 @@ if [ -x /usr/bin/podman ]; then
     $exec login --username jcoffi --password $DOCKER_PASSWORD
     alias docker=podman
 else
-    sudo $exec login --username jcoffi --password $DOCKER_PASSWORD
+    echo $DOCKER_PASSWORD | sudo $exec login --username jcoffi --password-stdin
     exec=/usr/bin/docker
 fi
 
@@ -111,3 +111,7 @@ else
   sudo $exec build --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-cpu $builddir -t docker.io/jcoffi/cluster-anywhere:cpu -t docker.io/jcoffi/cluster-anywhere:latest -t docker.io/jcoffi/cluster-anywhere:cpu-latest --build-arg IMAGETYPE=cpu
   sudo $exec push docker.io/jcoffi/cluster-anywhere:latest
 fi 
+
+if [-x /usr/bin/docker ]; then
+    sudo rm /root/.docker/config.json
+if
