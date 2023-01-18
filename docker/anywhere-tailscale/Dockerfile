@@ -14,7 +14,11 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         AWS_S3_BUCKET="" \
         CRATE_GC_LOG_DIR="/data/log" \
         CRATE_HEAP_DUMP_PATH="/data/data" \
-        CRATE_JAVA_OPTS="-XX:+IgnoreUnrecognizedVMOptions -XX:+UseContainerSupport -XX:+IdleTuningCompactOnIdle -XX:+IdleTuningGcOnIdle -Xtune:virtualized -Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
+        CRATE_JAVA_OPTS="-XX:+IgnoreUnrecognizedVMOptions -XX:+UseContainerSupport -XX:+IdleTuningCompactOnIdle -XX:+IdleTuningGcOnIdle -Xtune:virtualized -Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS" \
+        PATH /crate/bin/:$PATH \
+        CRATE_HEAP_SIZE=512M \
+        CRATE_HOME=/crate/bin/ \
+        CRATE_USE_IPV4=true
 
 
 #the $RANDOMSTRING variable is defined in the startup script
@@ -62,10 +66,7 @@ RUN sudo groupadd crate \
         && sudo chmod +x /usr/local/bin/crash
 
 
-ENV PATH /crate/bin/:$PATH
-ENV CRATE_HEAP_SIZE=512M
-ENV CRATE_HOME=/crate/bin/
-ENV CRATE_USE_IPV4=true
+
 
 VOLUME /data
 RUN sudo mkdir -p $CRATE_HEAP_DUMP_PATH $CRATE_GC_LOG_DIR
