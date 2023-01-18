@@ -2432,10 +2432,9 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
 
 
 def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
-    # TODO(ekl) decide if we want to support arg deref in the new backend.
     def put(x):
-        context = DatasetContext.get_current()
-        if context.new_execution_backend:
+        # We only support automatic deref in the legacy backend.
+        if DatasetContext.get_current().new_execution_backend:
             return x
         else:
             return ray.put(x)
