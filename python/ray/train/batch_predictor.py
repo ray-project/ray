@@ -75,7 +75,6 @@ class BatchPredictor:
 
     def get_preprocessor(self) -> Preprocessor:
         """Get the preprocessor to use prior to executing predictions."""
-        import pdb; pdb.set_trace()
         if self._override_preprocessor:
             return self._override_preprocessor
 
