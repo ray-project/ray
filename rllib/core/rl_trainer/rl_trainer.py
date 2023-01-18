@@ -495,7 +495,8 @@ class RLTrainer:
         Returns:
             The parameters of the module.
         """
-        # TODO (Kourosh): Make this method a classmethod
+        # TODO (Kourosh): Make this method a classmethod. This function's purpose is to 
+        # get the parameters of a module based on what the underlying framework is. 
 
     @abc.abstractmethod
     def get_optimizer_obj(
