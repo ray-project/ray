@@ -1,3 +1,3 @@
-from .torch_rl_module import TorchDDPRLModule
+from .torch_rl_module import TorchRLModule
 
-__all__ = ["TorchDDPRLModule"]
+__all__ = ["TorchRLModule"]
