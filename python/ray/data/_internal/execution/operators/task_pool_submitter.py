@@ -25,6 +25,7 @@ class TaskPoolSubmitter(MapTaskSubmitter):
         """
         self._transform_fn_ref = transform_fn_ref
         self._ray_remote_args = ray_remote_args
+        assert "scheduling_strategy" in ray_remote_args, ray_remote_args
 
     def submit(
         self, input_blocks: List[ObjectRef[Block]]

@@ -2,6 +2,7 @@ from typing import List, Iterator, Any, Dict, Callable, Optional
 
 import ray
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.compute import (
     ComputeStrategy,
@@ -52,6 +53,12 @@ class MapOperator(PhysicalOperator):
         ray_remote_args = ray_remote_args or {}
         if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
             ray_remote_args["num_cpus"] = 1
+        if "scheduling_strategy" not in ray_remote_args:
+            ctx = DatasetContext.get_current()
+            if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
+                ray_remote_args["scheduling_strategy"] = "SPREAD"
+            else:
+                ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
         if "num_gpus" in ray_remote_args:
             self._incremental_gpu = 1
             self._incremental_cpu = 0

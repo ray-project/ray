@@ -1,7 +1,6 @@
 from typing import Dict, Any, Iterator, Callable, List, Tuple
 import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.operators.map_task_submitter import MapTaskSubmitter
 from ray.types import ObjectRef
@@ -31,14 +30,14 @@ class ActorPoolSubmitter(MapTaskSubmitter):
         self._active_actors: Dict[ObjectRef[Block], ray.actor.ActorHandle] = {}
         # The actor pool on which we are running map tasks.
         self._actor_pool = ActorPool()
+        assert "scheduling_strategy" in ray_remote_args, ray_remote_args
 
     def progress_str(self) -> str:
         return f"{self._actor_pool.size()} actors"
 
     def start(self):
         # Create the actor workers and add them to the pool.
-        ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
-        cls_ = ray.remote(**ray_remote_args)(MapWorker)
+        cls_ = ray.remote(**self._ray_remote_args)(MapWorker)
         for _ in range(self._pool_size):
             self._actor_pool.add_actor(cls_.remote())
 
@@ -66,20 +65,6 @@ class ActorPoolSubmitter(MapTaskSubmitter):
 
     def shutdown(self, _):
         self._actor_pool.kill_all_actors()
-
-    @staticmethod
-    def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
-        """Apply defaults to the actor creation remote args."""
-        ray_remote_args = ray_remote_args.copy()
-        if "num_cpus" not in ray_remote_args:
-            ray_remote_args["num_cpus"] = 1
-        if "scheduling_strategy" not in ray_remote_args:
-            ctx = DatasetContext.get_current()
-            if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
-                ray_remote_args["scheduling_strategy"] = "SPREAD"
-            else:
-                ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
-        return ray_remote_args
 
 
 class MapWorker:
