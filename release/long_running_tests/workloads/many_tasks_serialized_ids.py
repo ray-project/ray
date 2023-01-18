@@ -16,8 +16,12 @@ def update_progress(result):
     test_output_json = os.environ.get(
         "TEST_OUTPUT_JSON", "/tmp/release_test_output.json"
     )
-    with open(test_output_json, "wt") as f:
+    # Safe write to file to guard against malforming the json
+    # when the job gets interrupted in the middle of writing
+    test_output_json_tmp = test_output_json + ".tmp"
+    with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)
+    os.replace(test_output_json_tmp, test_output_json)
 
 
 num_redis_shards = 5
