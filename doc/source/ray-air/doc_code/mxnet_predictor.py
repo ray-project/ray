@@ -3,10 +3,9 @@
 import os
 from typing import Dict, Optional, Union
 
-# import mxnet as mx
-# from mxnet import gluon
-
+import mxnet as mx
 import numpy as np
+from mxnet import gluon
 
 import ray
 from ray.air import Checkpoint
@@ -25,8 +24,7 @@ class MXNetPredictor(Predictor):
     # __mxnetpredictor_init_start__
     def __init__(
         self,
-        #net: gluon.Block,
-        net,
+        net: gluon.Block,
         preprocessor: Optional[Preprocessor] = None,
     ):
         self.net = net
@@ -57,23 +55,20 @@ class MXNetPredictor(Predictor):
         if isinstance(data, dict) and len(data) == 1:
             data = next(iter(data.values()))
 
-        print(data.shape)
-        # inputs = mx.nd.array(data, dtype=dtype)
-        # outputs = self.net(inputs).asnumpy()
+        inputs = mx.nd.array(data, dtype=dtype)
+        outputs = self.net(inputs).asnumpy()
 
-        # return {"predictions": outputs}
-        return data
+        return {"predictions": outputs}
 # __mxnetpredictor_predict_numpy_end__
 
 
 # __mxnetpredictor_model_start__
-#net = gluon.model_zoo.vision.resnet50_v1(pretrained=True)
-net = None
+net = gluon.model_zoo.vision.resnet50_v1(pretrained=True)
 # __mxnetpredictor_model_end__
 
 # __mxnetpredictor_checkpoint_start__
 os.makedirs("checkpoint", exist_ok=True)
-#net.save_parameters("checkpoint/net.params")
+net.save_parameters("checkpoint/net.params")
 checkpoint = Checkpoint.from_directory("checkpoint")
 # __mxnetpredictor_checkpoint_end__
 
@@ -86,7 +81,6 @@ dataset = ray.data.read_images(
 
 def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     # (B, H, W, C) -> (B, C, H, W)
-    print(batch["image"]).shape
     batch["image"] = batch["image"].transpose(0, 3, 1, 2)
     return batch
 
