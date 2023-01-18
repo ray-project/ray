@@ -1,9 +1,10 @@
-import os
 from typing import Optional, Callable
+
+from ray_release.buildkite.utils import is_in_buildkite
 
 
 def buildkite_echo(message: str, print_fn: Callable[[str], None] = print):
-    if "BUILDKITE" in os.environ:
+    if is_in_buildkite():
         print_fn(message)
 
 

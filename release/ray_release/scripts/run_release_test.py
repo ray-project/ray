@@ -4,6 +4,7 @@ from typing import Optional
 
 import click
 from ray_release.aws import maybe_fetch_api_token
+from ray_release.buildkite.utils import is_in_buildkite
 from ray_release.config import (
     DEFAULT_PYTHON_VERSION,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
@@ -134,7 +135,7 @@ def main(
 
     reporters = [LogReporter()]
 
-    if "BUILDKITE" in os.environ:
+    if is_in_buildkite():
         reporters.append(ArtifactsReporter())
 
     if report:

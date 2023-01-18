@@ -3,6 +3,8 @@ import json
 import boto3
 from botocore.config import Config
 
+from ray_release.buildkite.utils import get_buildkite_artifact_urls, is_in_buildkite
+from ray_release.reporter.artifacts import METRICS_RESULT_FILE
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
 from ray_release.config import Test
@@ -34,9 +36,15 @@ class DBReporter(Reporter):
             "stable": result.stable,
             "return_code": result.return_code,
             "smoke_test": result.smoke_test,
-            "prometheus_metrics": result.prometheus_metrics or {},
             "extra_tags": result.extra_tags or {},
         }
+
+        if is_in_buildkite():
+            metrics_artifact_urls = get_buildkite_artifact_urls(
+                f"*{METRICS_RESULT_FILE}"
+            )
+            if metrics_artifact_urls:
+                result_json["prometheus_metrics_url"] = metrics_artifact_urls[0]
 
         logger.debug(f"Result json: {json.dumps(result_json)}")
 
@@ -46,20 +54,6 @@ class DBReporter(Reporter):
                 Record={"Data": json.dumps(result_json)},
             )
         except Exception:
-            try:
-                # This may happen if metrics are too big.
-                # TODO persist big metrics in an alternative fashion
-                logger.warning(
-                    "Couldn't persist with prometheus_metrics, trying without them"
-                )
-                result_json.pop("prometheus_metrics", None)
-                self.firehose.put_record(
-                    DeliveryStreamName="ray-ci-results",
-                    Record={"Data": json.dumps(result_json)},
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to persist result to the databricks delta lake"
-                )
+            logger.exception("Failed to persist result to the databricks delta lake")
         else:
             logger.info("Result has been persisted to the databricks delta lake")

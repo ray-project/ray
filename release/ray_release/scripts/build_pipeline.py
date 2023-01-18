@@ -11,6 +11,7 @@ import click
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step
+from ray_release.buildkite.utils import is_in_buildkite
 from ray_release.config import (
     read_and_validate_release_test_collection,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
@@ -165,7 +166,7 @@ def main(test_collection_file: Optional[str] = None):
         group_step = {"group": group, "steps": group_steps}
         steps.append(group_step)
 
-    if "BUILDKITE" in os.environ:
+    if is_in_buildkite():
         if os.path.exists(PIPELINE_ARTIFACT_PATH):
             shutil.rmtree(PIPELINE_ARTIFACT_PATH)
 
