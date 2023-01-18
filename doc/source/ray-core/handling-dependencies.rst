@@ -62,8 +62,7 @@ It is installed dynamically on the cluster at runtime and cached for future use 
 
 Runtime environments can be used on top of the prepared environment from :ref:`the Ray Cluster launcher <using-the-cluster-launcher>` if it was used.
 For example, you can use the Cluster launcher to install a base set of packages, and then use runtime environments to install additional packages.
-In contrast with the base cluster environment, a runtime environment will only be active for Ray processes.  (For example, if you use SSH to connect to a Ray node and try to import
-a ``pip`` package from a runtime environment, it will not be available.)
+In contrast with the base cluster environment, a runtime environment will only be active for Ray processes.  (For example, if using a runtime environment specifying a `pip` package `my_pkg`, if you call `import my_pkg` outside of a Ray task, actor, or job, it will fail.)
 
 Runtime environments also allow you to set dependencies per-task, per-actor, and per-job on a long-running Ray cluster.
 
