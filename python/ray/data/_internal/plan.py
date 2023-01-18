@@ -124,6 +124,7 @@ class ExecutionPlan:
             stats.dataset_uuid = self._dataset_uuid
 
         self._run_by_consumer = True
+        self._cache_execution_results = False
 
     def __repr__(self) -> str:
         return (
@@ -408,6 +409,13 @@ class ExecutionPlan:
         else:
             return None
 
+    def consume(self) -> (BlockList, DatasetStats):
+        bl = self.execute(force_read=True)
+        stats = self._snapshot_stats
+        if not self._cache_execution_results:
+            self._reset_plan()
+        return bl, stats
+
     def execute(
         self,
         allow_clear_input_blocks: bool = True,
@@ -439,16 +447,8 @@ class ExecutionPlan:
                 "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
             )
 
-        # If the snapshot blocklist exists but is owned by consumer, we should
-        # reset the plan to execute it from scratch. The reason is that the blocks
-        # owned by consumer are created for each invocation of the consumption
-        # API call (which will call this execute() method underneath) and are not safe
-        # to share across calls.
-        if self._snapshot_blocks and self._snapshot_blocks._owned_by_consumer:
-            # If the snapshot is lazy, the plan is still in the middle of execution,
-            # so we don't reset it.
-            if not _is_lazy(self._snapshot_blocks):
-                self._reset_plan()
+        if cache_output_blocks:
+            self._cache_execution_results = True
 
         # Dataset is lazy-only, so it always allows clearing input blocks.
         allow_clear_input_blocks = True
@@ -482,7 +482,6 @@ class ExecutionPlan:
 
             else:
                 blocks, stats, stages = self._optimize()
-
                 for stage_idx, stage in enumerate(stages):
                     if allow_clear_input_blocks:
                         clear_input_blocks = self._should_clear_input_blocks(
@@ -507,11 +506,11 @@ class ExecutionPlan:
                     )
 
             # When we need to cache output blocks, the consumer cannot own the output
-            # blocks -- this prevents the consumer from eagerly releasing the blocks
-            # after the consumption.
+            # blocks -- this is to prevent the consumer from eagerly releasing the
+            # blocks after the consumption.
             # The reason we need to do this is since the user may iterate/consume over
             # a Dataset multiple times after fully executing it once.
-            if cache_output_blocks:
+            if self._cache_execution_results:
                 blocks._owned_by_consumer = False
 
             # Set the snapshot to the output of the final stage.
@@ -574,7 +573,9 @@ class ExecutionPlan:
             blocks: The blocks that we may want to clear.
             stage_idx: The position of the stage in the optimized after-snapshot chain.
         """
-        if stage_idx != 0 or self._stages_before_snapshot:
+        if stage_idx != 0 or (
+            self._stages_before_snapshot and blocks._owned_by_consumer
+        ):
             # Not the first stage, always clear stage input blocks.
             return True
         elif isinstance(blocks, LazyBlockList):

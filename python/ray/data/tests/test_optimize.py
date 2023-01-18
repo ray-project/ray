@@ -603,8 +603,16 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
     df1.to_csv(path1, index=False, storage_options={})
     counter = Counter.remote()
     source = MySource(counter)
+
     ds1 = ray.data.read_datasource(source, parallelism=1, paths=path1)
     pipe = ds1.repeat(N)
+    pipe.take()
+    num_reads = ray.get(counter.get.remote())
+    assert num_reads == N, num_reads
+
+    ray.get(counter.reset.remote())
+    ds1 = ray.data.read_datasource(source, parallelism=1, paths=path1)
+    pipe = ds1.window(blocks_per_window=1).repeat(N)
     pipe.take()
     num_reads = ray.get(counter.get.remote())
     assert num_reads == N, num_reads
@@ -614,6 +622,13 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
     ray.get(counter.reset.remote())
     ds1 = ray.data.read_datasource(source, parallelism=1, paths=path1)
     pipe = ds1.repeat(N)
+    pipe.take()
+    num_reads = ray.get(counter.get.remote())
+    assert num_reads == 1, num_reads
+
+    ray.get(counter.reset.remote())
+    ds1 = ray.data.read_datasource(source, parallelism=1, paths=path1)
+    pipe = ds1.window(blocks_per_window=1).repeat(N)
     pipe.take()
     num_reads = ray.get(counter.get.remote())
     assert num_reads == 1, num_reads

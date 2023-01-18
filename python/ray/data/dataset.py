@@ -1312,10 +1312,9 @@ class Dataset(Generic[T]):
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        block_list = self._plan.execute()
+        block_list, parent_stats = self._plan.consume()
         blocks, metadata = _split_at_indices(block_list, indices)
         split_duration = time.perf_counter() - start_time
-        parent_stats = self._plan.stats()
         splits = []
         for bs, ms in zip(blocks, metadata):
             stats = DatasetStats(stages={"split": ms}, parent=parent_stats)
@@ -2750,8 +2749,7 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        blocks = self._plan.execute()
-        stats = self._plan.stats()
+        blocks, stats = self._plan.consume()
 
         time_start = time.perf_counter()
 
@@ -2759,6 +2757,7 @@ class Dataset(Generic[T]):
             blocks.iter_blocks(),
             stats=stats,
             prefetch_blocks=prefetch_blocks,
+            clear_block_after_read=blocks._owned_by_consumer,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
@@ -3606,7 +3605,7 @@ class Dataset(Generic[T]):
             blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
             read_stage = stages[0]
         else:
-            blocks = self._plan.execute(cache_output_blocks=True)
+            blocks = self._plan.execute(force_read=True, cache_output_blocks=True)
             outer_stats = self._plan.stats()
             read_stage = None
         uuid = self._get_uuid()
@@ -3728,7 +3727,7 @@ class Dataset(Generic[T]):
             blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
             read_stage = stages[0]
         else:
-            blocks = self._plan.execute(cache_output_blocks=True)
+            blocks = self._plan.execute(force_read=True, cache_output_blocks=True)
             outer_stats = self._plan.stats()
             read_stage = None
 
