@@ -368,11 +368,11 @@ class PPO(Algorithm):
         # workers.
         if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                src_weights = None
+                from_worker = None
                 if self.config._enable_rl_trainer_api:
-                    src_weights = self.trainer_runner
+                    from_worker = self.trainer_runner
                 self.workers.sync_weights(
-                    from_worker=src_weights,
+                    from_worker=from_worker,
                     policies=list(train_results.keys()),
                     global_vars=global_vars,
                 )
@@ -384,9 +384,6 @@ class PPO(Algorithm):
             }
             # triggers a special update method on RLOptimizer to update the KL values.
             self.trainer_runner.additional_update(kl_values=kl_dict)
-
-            # Update global vars on local worker as well.
-            self.workers.local_worker().set_global_vars(global_vars)
 
             return train_results
 

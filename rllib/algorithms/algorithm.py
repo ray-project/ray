@@ -1342,11 +1342,11 @@ class Algorithm(Trainable):
             # TODO (Avnish): Implement this on trainer_runner.get_weights().
             # TODO (Kourosh): figure out how we are going to sync MARLModule
             # weights to MARLModule weights under the policy_map objects?
-            src_weights = None
+            from_worker = None
             if self.config._enable_rl_trainer_api:
-                src_weights = self.trainer_runner
+                from_worker = self.trainer_runner
             self.workers.sync_weights(
-                from_worker=src_weights,
+                from_worker=from_worker,
                 policies=list(train_results.keys()),
                 global_vars=global_vars,
             )
