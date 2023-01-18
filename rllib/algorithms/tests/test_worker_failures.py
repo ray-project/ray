@@ -668,12 +668,12 @@ class TestWorkerFailures(unittest.TestCase):
                 rollout_fragment_length=16,
                 ignore_worker_failures=False,  # Not ignore failure.
                 recreate_failed_workers=True,  # And recover
+                worker_health_probe_timeout_s=0.01,
+                worker_restore_timeout_s=5,
             )
             .training(
                 train_batch_size=32,
                 model={"fcnet_hiddens": [4]},
-                worker_health_probe_timeout_s=0.01,
-                worker_restore_timeout_s=5,
             )
             .reporting(
                 # Make sure each iteration doesn't take too long.
