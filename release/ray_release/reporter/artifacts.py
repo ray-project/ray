@@ -40,9 +40,7 @@ class ArtifactsReporter(Reporter):
 
         if metrics_dict:
             metrics_file = os.path.join(self.artifacts_dir, METRICS_RESULT_FILE)
-            with gzip.open(metrics_file, "w") as f:
-                f.write(
-                    json.dumps(metrics_dict, sort_keys=True, indent=4).encode("utf-8")
-                )
+            with gzip.open(metrics_file, "wt", encoding="UTF-8") as fp:
+                json.dump(metrics_dict, fp, sort_keys=True, indent=4)
 
             logger.info(f"Wrote metrics to artifacts directory: {self.artifacts_dir}")
