@@ -128,9 +128,24 @@ def convert_ndarray_to_torch_tensor(
         ndarray: A NumPy ndarray that we wish to convert to a Torch Tensor.
         dtype: A Torch dtype for the created tensor; if None, the dtype will be
             inferred from the NumPy ndarray data.
+        device: The device on which the tensor should be placed; if None, the Torch
+            tensor will be constructed on the default device (automatic if running
+            inside a Ray Train worker, CPU otherwise).
 
     Returns: A Torch Tensor.
     """
+    if device is None:
+        # If we are in a TorchTrainer worker function, automatically
+        # use the correct device.
+        # Lazy import to avoid circular imports.
+        from ray.train.torch.train_loop_utils import get_device
+
+        try:
+            device = get_device()
+        except Exception:
+            # We are not running in a TorchTrainer.
+            pass
+
     ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
 
     # The numpy array is not always writeable as it can come from the Ray object store.
@@ -155,7 +170,8 @@ def convert_ndarray_batch_to_torch_tensor_batch(
         dtype: A (dict of) Torch dtype(s) for the created tensor; if None, the dtype
             will be inferred from the NumPy ndarray data.
         device: The device on which the tensor(s) should be placed; if None, the Torch
-            tensor(s) will be constructed on the CPU.
+            tensor(s) will be constructed on the default device (automatic if running
+            inside a Ray Train worker, CPU otherwise).
 
     Returns: A (dict of) Torch Tensor(s).
     """

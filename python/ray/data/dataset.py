@@ -2811,7 +2811,8 @@ class Dataset(Generic[T]):
             dtypes: The Torch dtype(s) for the created tensor(s); if None, the dtype
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
-                tensor will be constructed on the CPU.
+                tensor will be constructed on the default device (automatic if running
+                inside a Ray Train worker, CPU otherwise).
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
