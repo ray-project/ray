@@ -151,6 +151,8 @@ class StreamingExecutor(Executor):
         cur_usage = ExecutionResources()
         for op, state in topology.items():
             cur_usage = cur_usage.add(op.current_resource_usage())
+            if isinstance(op, InputDataBuffer):
+                continue  # Don't count input refs towards dynamic memory usage.
             for bundle in state.outqueue:
                 cur_usage.object_store_memory += bundle.size_bytes()
         self._global_info.set_description(

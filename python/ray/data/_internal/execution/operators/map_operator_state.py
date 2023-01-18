@@ -203,9 +203,6 @@ class MapOperatorState:
         self._tasks[ref] = task
         self._tasks_by_output_order[self._next_task_index] = task
         self._next_task_index += 1
-        # TODO(ekl) we should also consider including the estimated output block size
-        # here, to enable smoother object store memory backpressure. Estimate output
-        # sizes are readily available for Read() operations.
         self._obj_store_mem_cur += bundle.size_bytes()
         if self._obj_store_mem_cur > self._obj_store_mem_peak:
             self._obj_store_mem_peak = self._obj_store_mem_cur
