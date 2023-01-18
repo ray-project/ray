@@ -75,6 +75,7 @@ class TorchRLTrainer(RLTrainer):
         self, loss: Union[TensorType, Mapping[str, Any]]
     ) -> ParamDictType:
         for optim in self._optim_to_param:
+            # set_to_none is a faster way to zero out the gradients
             optim.zero_grad(set_to_none=True)
         loss[self.TOTAL_LOSS_KEY].backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
@@ -108,7 +109,7 @@ class TorchRLTrainer(RLTrainer):
         super().build()
 
     @override(RLTrainer)
-    def _make_distributed(self) -> MultiAgentRLModule:
+    def _make_distributed_module(self) -> MultiAgentRLModule:
         module = self._make_module()
 
         # if the module is a MultiAgentRLModule and nn.Module we can simply assume

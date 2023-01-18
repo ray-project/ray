@@ -158,7 +158,7 @@ class TfRLTrainer(RLTrainer):
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(RLTrainer)
-    def _make_distributed(self) -> MultiAgentRLModule:
+    def _make_distributed_module(self) -> MultiAgentRLModule:
         # TODO (Kourosh): Does strategy has to be an attribute here? if so it's very
         # hidden to the user of this class that there is such an attribute.
 

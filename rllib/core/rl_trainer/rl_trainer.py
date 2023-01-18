@@ -430,7 +430,7 @@ class RLTrainer:
     def build(self) -> None:
         """Initialize the model."""
         if self.distributed:
-            self._module = self._make_distributed()
+            self._module = self._make_distributed_module()
         else:
             self._module = self._make_module()
 
@@ -453,7 +453,7 @@ class RLTrainer:
         """
         raise NotImplementedError
 
-    def _make_distributed(self) -> MultiAgentRLModule:
+    def _make_distributed_module(self) -> MultiAgentRLModule:
         """Initialize this trainer in a distributed training setting.
 
         This method should be overriden in the framework specific trainer. It is
