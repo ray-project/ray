@@ -147,7 +147,10 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - The amount of physical memory available per node, in bytes.
    * - `ray_component_uss_mb`
      - `Component`, `InstanceId`
-     - The measured unique set size in megabytes, broken down by logical Ray component (e.g., raylet, gcs, workers).
+     - The measured unique set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_cpu_percentage`
+     - `Component`, `InstanceId`
+     - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_node_gram_used`
      - `InstanceId`
      - The amount of GPU memory used per node, in bytes.
