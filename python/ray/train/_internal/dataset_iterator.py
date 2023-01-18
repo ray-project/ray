@@ -1,4 +1,7 @@
 import warnings
+from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
+
+from ray.train.error import SessionMisuseError
 
 
 class TrainDatasetIterator(BulkDatasetIterator):
@@ -7,13 +10,24 @@ class TrainDatasetIterator(BulkDatasetIterator):
     Args:
         dataset_iterator: The base dataset iterator.
     """
+
     def __init__(
         self,
         dataset_iterator: BulkDatasetIterator,
     ):
         self._dataset_iterator = dataset_iterator
 
-    def iter_torch_batches(self, *, device: Optional[str] = None, **kwargs) -> Iterator["TorchTensorBatchType"]:
+    def iter_torch_batches(
+        self, *, device: Optional[str] = None, **kwargs
+    ) -> Iterator["TorchTensorBatchType"]:
+
+        if device is None:
+            from ray.train.torch import get_device
+
+            try:
+                device = get_device()
+            except SessionMisuseError:
+                pass
 
         return self._dataset_iterator.iter_torch_batches(device=device, **kwargs)
 

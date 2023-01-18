@@ -218,7 +218,7 @@ class DataParallelIngestSpec:
                 dataset_splits = [dataset] * len(training_worker_handles)
 
             for i, dataset_split in enumerate(dataset_splits):
-                datasets_splits[i] = dataset_split.iterator()._to_train_iterator()
+                dataset_splits[i] = dataset_split.iterator()._to_train_iterator()
 
             for i in range(len(dataset_splits)):
                 dataset_dict_splits[i][key] = dataset_splits[i]

@@ -89,5 +89,5 @@ class BulkDatasetIterator(DatasetIterator):
 
     def _to_train_iterator(self) -> "TrainDatasetIterator":
         from ray.train._internal.dataset_iterator import TrainDatasetIterator
-        
-        return TrainIterator(self)
+
+        return TrainDatasetIterator(self)
