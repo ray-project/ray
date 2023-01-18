@@ -12,6 +12,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.execution.util import merge_ref_bundles
 from ray.data._internal.execution.interfaces import (
     RefBundle,
+    ExecutionResources,
 )
 from ray.data._internal.execution.operators.map_task_submitter import MapTaskSubmitter
 from ray.data._internal.execution.operators.actor_pool_submitter import (
@@ -30,6 +31,8 @@ class MapOperatorState:
         compute_strategy: ComputeStrategy,
         ray_remote_args: Optional[Dict[str, Any]],
         min_rows_per_bundle: Optional[int],
+        incremental_cpu: int,
+        incremental_gpu: int,
     ):
         # Execution arguments.
         self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
@@ -72,6 +75,8 @@ class MapOperatorState:
         self._obj_store_mem_freed: int = 0
         self._obj_store_mem_cur: int = 0
         self._obj_store_mem_peak: int = 0
+        self._incremental_cpu: int = incremental_cpu
+        self._incremental_gpu: int = incremental_gpu
 
     def progress_str(self) -> str:
         return self._task_submitter.progress_str()
@@ -209,6 +214,26 @@ class MapOperatorState:
         self._obj_store_mem_cur += bundle.size_bytes()
         if self._obj_store_mem_cur > self._obj_store_mem_peak:
             self._obj_store_mem_peak = self._obj_store_mem_cur
+
+    def current_resource_usage(self) -> ExecutionResources:
+        if isinstance(self._task_submitter, ActorPoolSubmitter):
+            num_active_workers = self._task_submitter._actor_pool.size()
+        else:
+            num_active_workers = self.num_active_work_refs()
+        return ExecutionResources(
+            cpu=self._incremental_cpu * num_active_workers,
+            gpu=self._incremental_gpu * num_active_workers,
+            object_store_memory=self._obj_store_mem_cur,
+        )
+
+    def incremental_resource_usage(self) -> ExecutionResources:
+        if isinstance(self._task_submitter, ActorPoolSubmitter):
+            # TODO(ekl) this should be non-zero for autoscaling actor pools.
+            return ExecutionResources(cpu=0, gpu=0)
+        return ExecutionResources(
+            cpu=self._incremental_cpu,
+            gpu=self._incremental_gpu,
+        )
 
 
 @dataclass

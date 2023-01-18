@@ -36,7 +36,7 @@ class StreamingExecutor(Executor):
         # object as data is streamed through (similar to how iterating over the output
         # data updates the stats object in legacy code).
         self._stats: Optional[DatasetStats] = None
-        self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
+        self._global_info: Optional[ProgressBar] = None
         if options.locality_with_output:
             raise NotImplementedError("locality with output")
         super().__init__(options)
@@ -51,6 +51,7 @@ class StreamingExecutor(Executor):
         """
         if not isinstance(dag, InputDataBuffer):
             logger.info("Executing DAG %s", dag)
+            self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
 
         # Setup the streaming DAG topology.
         topology, self._stats = build_streaming_topology(dag)
@@ -70,7 +71,8 @@ class StreamingExecutor(Executor):
         finally:
             for op in topology:
                 op.shutdown()
-            self._global_info.close()
+            if self._global_info:
+                self._global_info.close()
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -163,11 +165,12 @@ class StreamingExecutor(Executor):
                 continue  # Don't count input refs towards dynamic memory usage.
             for bundle in state.outqueue:
                 cur_usage.object_store_memory += bundle.size_bytes()
-        self._global_info.set_description(
-            "Resource usage vs limits: "
-            f"{cur_usage.cpu}/{limits.cpu} CPU, "
-            f"{cur_usage.gpu}/{limits.gpu} GPU, "
-            f"{cur_usage.object_store_memory_str()}/"
-            f"{limits.object_store_memory_str()} object_store_memory"
-        )
+        if self._global_info:
+            self._global_info.set_description(
+                "Resource usage vs limits: "
+                f"{cur_usage.cpu}/{limits.cpu} CPU, "
+                f"{cur_usage.gpu}/{limits.gpu} GPU, "
+                f"{cur_usage.object_store_memory_str()}/"
+                f"{limits.object_store_memory_str()} object_store_memory"
+            )
         return cur_usage

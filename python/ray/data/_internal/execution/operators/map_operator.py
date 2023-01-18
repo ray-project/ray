@@ -73,7 +73,12 @@ class MapOperator(PhysicalOperator):
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
         self._execution_state = MapOperatorState(
-            transform_fn, compute_strategy, ray_remote_args, min_rows_per_bundle
+            transform_fn,
+            compute_strategy,
+            ray_remote_args,
+            min_rows_per_bundle,
+            self._incremental_cpu,
+            self._incremental_gpu,
         )
         self._output_metadata: List[BlockMetadata] = []
         super().__init__(name, [input_op])
@@ -120,21 +125,11 @@ class MapOperator(PhysicalOperator):
     def shutdown(self) -> None:
         self._execution_state.shutdown()
 
-    def current_resource_usage(self) -> ExecutionResources:
-        num_active_tasks = len(self.get_work_refs())
-        # TODO: for actor pools, this should be instead the pool size.
-        return ExecutionResources(
-            cpu=self._incremental_cpu * num_active_tasks,
-            gpu=self._incremental_gpu * num_active_tasks,
-            object_store_memory=self._execution_state._obj_store_mem_cur,
-        )
-
     def base_resource_usage(self) -> ExecutionResources:
         return self._base_resource_usage
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        # TODO: for actor pools, this should be zero until the pool is saturated.
-        return ExecutionResources(
-            cpu=self._incremental_cpu,
-            gpu=self._incremental_gpu,
-        )
+        return self._execution_state.incremental_resource_usage()
+
+    def current_resource_usage(self) -> ExecutionResources:
+        return self._execution_state.current_resource_usage()

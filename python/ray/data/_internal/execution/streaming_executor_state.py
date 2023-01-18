@@ -186,7 +186,8 @@ def select_operator_to_run(
         if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
     ]
     if not ops:
-        if not cur_usage.has_cpu_or_gpu():
+        # Should ensure at least 1 active op for liveness.
+        if not any(op.num_active_work_refs() for op in topology):
             ops = [
                 op
                 for op, state in topology.items()
@@ -209,7 +210,7 @@ def _execution_allowed(
     soft_limit: bool = False,
 ) -> bool:
     # If no resources are currently used, execution is always allowed.
-    if soft_limit and not op.current_resource_usage().has_cpu_or_gpu():
+    if soft_limit and op.num_active_work_refs() == 0:
         return True
 
     # To avoid starvation problems when dealing with fractional resource types,
