@@ -5,10 +5,18 @@ from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 
-class BaseTestingTrainer(RLTrainer):
 
-    def compile_results(self, batch: NestedDict, fwd_out: Mapping[str, Any], postprocessed_loss: Mapping[str, Any], post_processed_gradients: Mapping[str, Any]) -> Mapping[str, Any]:
-        results = super().compile_results(batch, fwd_out, postprocessed_loss, post_processed_gradients)
+class BaseTestingTrainer(RLTrainer):
+    def compile_results(
+        self,
+        batch: NestedDict,
+        fwd_out: Mapping[str, Any],
+        postprocessed_loss: Mapping[str, Any],
+        postprocessed_gradients: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        results = super().compile_results(
+            batch, fwd_out, postprocessed_loss, postprocessed_gradients
+        )
         # this is to check if in the multi-gpu case, the weights across workers are
         # the same. It is really only needed during testing.
         mean_ws = {}

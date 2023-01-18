@@ -60,7 +60,8 @@ class TorchRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def configure_optimizers(self) -> ParamOptimizerPairs:
-        lr = self.optimizer_config.get("lr", 1e-3)
+        # TODO (Kourosh): convert optimizer_config to dataclass later.
+        lr = self.optimizer_config["lr"]
         return [
             (
                 self.get_parameters(self._module[key]),

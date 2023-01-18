@@ -114,13 +114,14 @@ class TfRLTrainer(RLTrainer):
             if isinstance(loss, tf.Tensor):
                 loss = {"total_loss": loss}
         gradients = self.compute_gradients(loss, tape)
-        gradients = self.on_after_compute_gradients(gradients)
+        gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(gradients)
-        return {"loss": loss, "fwd_out": fwd_out, "post_processed_gradients": gradients}
+        return {"loss": loss, "fwd_out": fwd_out, "postprocessed_gradients": gradients}
 
     @override(RLTrainer)
     def configure_optimizers(self) -> ParamOptimizerPairs:
-        lr = self.optimizer_config.get("lr", 1e-3)
+        # TODO (Kourosh): convert optimizer_config to dataclass later.
+        lr = self.optimizer_config["lr"]
         return [
             (
                 self._module[key].trainable_variables,
@@ -138,8 +139,8 @@ class TfRLTrainer(RLTrainer):
             update_outs = self._update_fn(batch)
         loss = update_outs["loss"]
         fwd_out = update_outs["fwd_out"]
-        post_processed_gradients = update_outs["post_processed_gradients"]
-        results = self.compile_results(batch, fwd_out, loss, post_processed_gradients)
+        postprocessed_gradients = update_outs["postprocessed_gradients"]
+        results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
         return results
 
     @override(RLTrainer)

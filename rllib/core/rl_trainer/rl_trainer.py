@@ -177,7 +177,7 @@ class RLTrainer:
         # should find a way to allow them to specify single-agent losses as well,
         # without having to think about one extra layer of hierarchy for module ids.
 
-    def on_after_compute_gradients(
+    def postprocess_gradients(
         self, gradients_dict: Mapping[str, Any]
     ) -> Mapping[str, Any]:
         """Called after gradients have been computed.
@@ -189,8 +189,8 @@ class RLTrainer:
             fwd_out = forward_train(batch)
             loss = compute_loss(batch, fwd_out)
             gradients = compute_gradients(loss)
-            ---> post_processed_gradients = on_after_compute_gradients(gradients)
-            apply_gradients(post_processed_gradients)
+            ---> postprocessed_gradients = postprocess_gradients(gradients)
+            apply_gradients(postprocessed_gradients)
 
         Returns:
             Mapping[str, Any]: A dictionary of gradients.
@@ -202,7 +202,7 @@ class RLTrainer:
         batch: NestedDict,
         fwd_out: Mapping[str, Any],
         postprocessed_loss: Mapping[str, Any],
-        post_processed_gradients: Mapping[str, Any],
+        postprocessed_gradients: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Compile results from the update.
 
@@ -210,7 +210,7 @@ class RLTrainer:
             batch: The batch that was used for the update.
             fwd_out: The output of the forward train pass.
             postprocessed_loss: The loss after postprocessing.
-            post_processed_gradients: The gradients after postprocessing.
+            postprocessed_gradients: The gradients after postprocessing.
 
         Returns:
             A dictionary of results.
@@ -221,14 +221,13 @@ class RLTrainer:
         # generalization of this base-class implementation.
         loss_numpy = convert_to_numpy(postprocessed_loss)
         mean_grads = [
-            np.mean(grad)
-            for grad in convert_to_numpy(post_processed_gradients.values())
+            np.mean(grad) for grad in convert_to_numpy(postprocessed_gradients.values())
         ]
         ret = {
             "loss": loss_numpy,
             "mean_gradient": np.mean(mean_grads),
         }
-        
+
         return ret
 
     def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
@@ -252,9 +251,9 @@ class RLTrainer:
         fwd_out = self._module.forward_train(batch)
         loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
         gradients = self.compute_gradients(loss)
-        post_processed_gradients = self.on_after_compute_gradients(gradients)
-        self.apply_gradients(post_processed_gradients)
-        return self.compile_results(batch, fwd_out, loss, post_processed_gradients)
+        postprocessed_gradients = self.postprocess_gradients(gradients)
+        self.apply_gradients(postprocessed_gradients)
+        return self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
 
     @abc.abstractmethod
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
@@ -495,8 +494,8 @@ class RLTrainer:
         Returns:
             The parameters of the module.
         """
-        # TODO (Kourosh): Make this method a classmethod. This function's purpose is to 
-        # get the parameters of a module based on what the underlying framework is. 
+        # TODO (Kourosh): Make this method a classmethod. This function's purpose is to
+        # get the parameters of a module based on what the underlying framework is.
 
     @abc.abstractmethod
     def get_optimizer_obj(
