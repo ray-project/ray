@@ -792,7 +792,6 @@ class ExperimentAnalysis:
                 "out of sync, as checkpointing is periodic."
             )
             self.trials = []
-            _trial_paths = []
             for trial_json_state, path in self._checkpoints_and_paths:
                 try:
                     trial = Trial.from_json_state(trial_json_state, stub=True)
@@ -807,7 +806,9 @@ class ExperimentAnalysis:
                     )
                     continue
                 self.trials.append(trial)
-                _trial_paths.append(str(trial.logdir))
+
+            self.trials.sort(key=lambda trial: trial.trial_id)
+            _trial_paths = [str(trial.logdir) for trial in self.trials]
 
         if not _trial_paths:
             raise TuneError("No trials found.")
