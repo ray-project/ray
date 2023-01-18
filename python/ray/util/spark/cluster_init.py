@@ -6,7 +6,7 @@ import threading
 import logging
 import uuid
 from packaging.version import Version
-from typing import Optional, Dict
+from typing import Optional, Dict, Type
 
 import ray
 from ray.util.annotations import PublicAPI
@@ -77,6 +77,8 @@ class RayClusterOnSpark:
         num_workers_node,
         temp_dir,
         cluster_unique_id,
+        start_hook,
+        ray_dashboard_port,
     ):
         self.address = address
         self.head_proc = head_proc
@@ -84,6 +86,8 @@ class RayClusterOnSpark:
         self.num_worker_nodes = num_workers_node
         self.temp_dir = temp_dir
         self.cluster_unique_id = cluster_unique_id
+        self.start_hook = start_hook
+        self.ray_dashboard_port = ray_dashboard_port
 
         self.is_shutdown = False
         self.spark_job_is_canceled = False
@@ -107,7 +111,11 @@ class RayClusterOnSpark:
             )
         try:
             # connect to the ray cluster.
-            ray.init(address=self.address)
+            ray_ctx = ray.init(address=self.address)
+            webui_url = ray_ctx.address_info.get("webui_url", None)
+            if webui_url:
+                self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
+
         except Exception:
             self.shutdown()
             raise
@@ -360,7 +368,7 @@ def _setup_ray_cluster(
     worker_node_options: Dict,
     ray_temp_root_dir: str,
     collect_log_to_path: str,
-):
+) -> Type[RayClusterOnSpark]:
     """
     The public API `ray.util.spark.setup_ray_cluster` does some argument
     validation and then pass validated arguments to this interface.
@@ -480,12 +488,6 @@ def _setup_ray_cluster(
         raise RuntimeError("Start Ray head node failed!\n" + cmd_exec_failure_msg)
 
     _logger.info("Ray head node started.")
-
-    if include_dashboard is None or include_dashboard is True:
-        # If include_dashboard is None, we don't set `--include-dashboard` option,
-        # in this case Ray will decide whether dashboard can be started
-        # (e.g. checking any missing dependencies).
-        start_hook.on_ray_dashboard_created(ray_dashboard_port)
 
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -607,6 +609,8 @@ def _setup_ray_cluster(
         num_workers_node=num_worker_nodes,
         temp_dir=ray_temp_dir,
         cluster_unique_id=cluster_unique_id,
+        start_hook=start_hook,
+        ray_dashboard_port=ray_dashboard_port,
     )
 
     def background_job_thread_fn():
@@ -774,7 +778,7 @@ def setup_ray_cluster(
     head_node_options: Optional[Dict] = None,
     worker_node_options: Optional[Dict] = None,
     ray_temp_root_dir: Optional[str] = None,
-    safe_mode: Optional[bool] = False,
+    safe_mode: bool = False,
     collect_log_to_path: Optional[str] = None,
 ) -> str:
     """
