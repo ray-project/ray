@@ -2,6 +2,7 @@ import gzip
 import json
 import os
 
+from ray_release.buildkite.utils import upload_buildkite_artifacts
 from ray_release.config import Test
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
@@ -46,3 +47,6 @@ class ArtifactsReporter(Reporter):
             logger.info(
                 f"Wrote prometheus metrics to artifacts directory: {self.artifacts_dir}"
             )
+
+            upload_buildkite_artifacts(metrics_file)
+            os.remove(metrics_file)
