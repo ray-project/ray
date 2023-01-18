@@ -73,80 +73,6 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
   return true;
 }
 
-RaySyncerBidiReactorBase::RaySyncerBidiReactorBase(
-    instrumented_io_context &io_context,
-    const std::string &remote_node_id,
-    std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-    std::function<void(const std::string &, bool)> cleanup_cb)
-    : io_context_(io_context),
-      message_processor_(std::move(message_processor)),
-      cleanup_cb_(std::move(cleanup_cb)),
-      remote_node_id_(remote_node_id) {}
-
-void RaySyncerBidiReactorBase::ReceiveUpdate(
-    std::shared_ptr<const RaySyncMessage> message) {
-  auto &node_versions = GetNodeComponentVersions(message->node_id());
-  RAY_LOG(DEBUG) << "Receive update: "
-                 << " message_type=" << message->message_type()
-                 << ", message_version=" << message->version()
-                 << ", local_message_version=" << node_versions[message->message_type()];
-  if (node_versions[message->message_type()] < message->version()) {
-    node_versions[message->message_type()] = message->version();
-    message_processor_(message);
-  }
-}
-
-bool RaySyncerBidiReactorBase::PushToSendingQueue(
-    std::shared_ptr<const RaySyncMessage> message) {
-  // Try to filter out the messages the target node already has.
-  // Usually it'll be the case when the message is generated from the
-  // target node or it's sent from the target node.
-  if (message->node_id() == GetRemoteNodeID()) {
-    // Skip the message when it's about the node of this connection.
-    return false;
-  }
-
-  auto &node_versions = GetNodeComponentVersions(message->node_id());
-  if (node_versions[message->message_type()] < message->version()) {
-    node_versions[message->message_type()] = message->version();
-    sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
-        std::move(message);
-    StartSend();
-    return true;
-  }
-  return false;
-}
-
-void RaySyncerBidiReactorBase::StartSend() {
-  if (sending_) {
-    return;
-  }
-
-  if (sending_buffer_.size() != 0) {
-    auto iter = sending_buffer_.begin();
-    auto msg = std::move(iter->second);
-    sending_buffer_.erase(iter);
-    Send(std::move(msg), sending_buffer_.empty());
-    sending_ = true;
-  }
-}
-
-void RaySyncerBidiReactorBase::SendNext() {
-  sending_ = false;
-  StartSend();
-}
-
-std::array<int64_t, kComponentArraySize>
-    &RaySyncerBidiReactorBase::GetNodeComponentVersions(const std::string &node_id) {
-  auto iter = node_versions_.find(node_id);
-  if (iter == node_versions_.end()) {
-    iter =
-        node_versions_.emplace(node_id, std::array<int64_t, kComponentArraySize>()).first;
-    iter->second.fill(-1);
-  }
-  return iter->second;
-}
-
 namespace {
 
 std::string GetNodeIDFromServerContext(grpc::CallbackServerContext *server_context) {
@@ -164,10 +90,11 @@ RayServerBidiReactor::RayServerBidiReactor(
     const std::string &local_node_id,
     std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
     std::function<void(const std::string &, bool)> cleanup_cb)
-    : BidiReactor<ServerBidiReactor>(io_context,
-                                     GetNodeIDFromServerContext(server_context),
-                                     std::move(message_processor),
-                                     std::move(cleanup_cb)),
+    : RaySyncerBidiReactorBase<ServerBidiReactor>(
+          io_context,
+          GetNodeIDFromServerContext(server_context),
+          std::move(message_processor),
+          std::move(cleanup_cb)),
       server_context_(server_context) {
   // Send the local node id to the remote
   server_context_->AddInitialMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
@@ -197,10 +124,10 @@ RayClientBidiReactor::RayClientBidiReactor(
     std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
     std::function<void(const std::string &, bool)> cleanup_cb,
     std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
-    : BidiReactor<ClientBidiReactor>(io_context,
-                                     remote_node_id,
-                                     std::move(message_processor),
-                                     std::move(cleanup_cb)),
+    : RaySyncerBidiReactorBase<ClientBidiReactor>(io_context,
+                                                  remote_node_id,
+                                                  std::move(message_processor),
+                                                  std::move(cleanup_cb)),
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
   stub_->async()->StartSync(&client_context_, this);
@@ -277,7 +204,7 @@ void RaySyncer::Connect(const std::string &node_id,
       "");
 }
 
-void RaySyncer::Connect(RaySyncerBidiReactorBase *reactor) {
+void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
   io_context_.dispatch(
       [this, reactor]() {
         RAY_CHECK(sync_reactors_.find(reactor->GetRemoteNodeID()) ==
@@ -301,7 +228,7 @@ void RaySyncer::Connect(RaySyncerBidiReactorBase *reactor) {
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
-  std::promise<RaySyncerBidiReactorBase *> promise;
+  std::promise<RaySyncerBidiReactor *> promise;
   io_context_.dispatch(
       [&]() {
         auto iter = sync_reactors_.find(node_id);

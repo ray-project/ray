@@ -148,15 +148,29 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
   ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
 }
 
+struct MockReactor {
+  void StartRead(RaySyncMessage *) { ++read_cnt; }
+
+  void StartWrite(const RaySyncMessage *,
+                  grpc::WriteOptions opts = grpc::WriteOptions()) {
+    ++write_cnt;
+  }
+
+  virtual void OnWriteDone(bool ok) {}
+  virtual void OnReadDone(bool ok) {}
+
+  size_t read_cnt = 0;
+  size_t write_cnt = 0;
+};
+
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   auto node_id = NodeID::FromRandom();
 
-  MockRaySyncerBidiReactorBase sync_reactor(
+  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
       io_context_,
       node_id.Binary(),
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
       [](auto, auto) {});
-
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
   auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg);
@@ -166,7 +180,6 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   auto msg_ptr3 = std::make_shared<RaySyncMessage>(msg);
 
   // First push will succeed and the second one will be deduplicated.
-  EXPECT_CALL(sync_reactor, Send(Eq(msg_ptr1), Eq(true)));
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr1));
   ASSERT_FALSE(sync_reactor.PushToSendingQueue(msg_ptr1));
   ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
@@ -184,10 +197,6 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   ASSERT_EQ(3, sync_reactor.sending_buffer_.begin()->second->version());
   ASSERT_EQ(
       3, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
-
-  // First message got sent
-  EXPECT_CALL(sync_reactor, Send(Eq(msg_ptr3), Eq(true)));
-  sync_reactor.SendNext();
 }
 
 struct SyncerServerTest {
@@ -261,12 +270,21 @@ struct SyncerServerTest {
       io_context.post(
           [&p, this]() mutable {
             for (const auto &[node_id, conn] : syncer->sync_reactors_) {
-              if (!conn->sending_buffer_.empty()) {
+              auto ptr = dynamic_cast<RayServerBidiReactor *>(conn);
+              size_t remainings = 0;
+              if (ptr == nullptr) {
+                remainings =
+                    dynamic_cast<RayClientBidiReactor *>(conn)->sending_buffer_.size();
+              } else {
+                remainings = ptr->sending_buffer_.size();
+              }
+
+              if (remainings != 0) {
                 p.set_value(false);
                 RAY_LOG(INFO) << NodeID::FromBinary(syncer->GetLocalNodeID()) << ": "
                               << "Waiting for message on " << NodeID::FromBinary(node_id)
                               << " to be sent."
-                              << " Remainings " << conn->sending_buffer_.size();
+                              << " Remainings " << remainings;
                 return;
               }
             }

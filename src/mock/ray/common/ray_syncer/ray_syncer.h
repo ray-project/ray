@@ -43,13 +43,24 @@ class MockReceiverInterface : public ReceiverInterface {
 namespace ray {
 namespace syncer {
 
-class MockRaySyncerBidiReactorBase : public RaySyncerBidiReactorBase {
+class MockRaySyncerBidiReactor : public RaySyncerBidiReactor {
  public:
-  using RaySyncerBidiReactorBase::RaySyncerBidiReactorBase;
+  using RaySyncerBidiReactor::RaySyncerBidiReactor;
 
   MOCK_METHOD(void, Disconnect, (), (override));
 
-  MOCK_METHOD(void, Send, (std::shared_ptr<const RaySyncMessage>, bool), (override));
+  MOCK_METHOD(bool,
+              PushToSendingQueue,
+              (std::shared_ptr<const RaySyncMessage>),
+              (override));
+};
+
+template <typename T>
+class MockRaySyncerBidiReactorBase : public RaySyncerBidiReactorBase<T> {
+ public:
+  using RaySyncerBidiReactorBase<T>::RaySyncerBidiReactorBase;
+
+  MOCK_METHOD(void, Disconnect, (), (override));
 };
 
 }  // namespace syncer
