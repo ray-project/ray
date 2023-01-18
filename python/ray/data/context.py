@@ -96,6 +96,9 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 # If disabled, users can still manually print stats with Dataset.stats().
 DEFAULT_AUTO_LOG_STATS = False
 
+# Whether to enable optimizer.
+DEFAULT_OPTIMIZER_ENABLED = False
+
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
 
@@ -138,6 +141,7 @@ class DatasetContext:
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
         trace_allocations: bool,
+        optimizer_enabled: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -164,6 +168,7 @@ class DatasetContext:
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
         self.trace_allocations = trace_allocations
+        self.optimizer_enabled = optimizer_enabled
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -205,6 +210,7 @@ class DatasetContext:
                     ),
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
+                    optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
                 )
 
             return _default_context

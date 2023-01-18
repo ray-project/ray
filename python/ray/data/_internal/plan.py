@@ -225,6 +225,14 @@ class ExecutionPlan:
         copy._stages_after_snapshot.append(stage)
         return copy
 
+    def link_logical_plan(self, logical_plan):
+        """Link the logical plan into this execution plan.
+
+        This is used for triggering execution for optimizer code path in this legacy
+        execution plan.
+        """
+        self._logical_plan = logical_plan
+
     def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.
 
@@ -503,6 +511,7 @@ class ExecutionPlan:
                     self,
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
+                    optimizer_enabled=context.optimizer_enabled,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
                 # to a fully lazy execution model, unless .cache() is used. The reason

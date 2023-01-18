@@ -62,6 +62,7 @@ def execute_to_legacy_block_list(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
+    optimizer_enabled: bool,
 ) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
 
@@ -70,11 +71,15 @@ def execute_to_legacy_block_list(
         plan: The legacy plan to execute.
         allow_clear_input_blocks: Whether the executor may consider clearing blocks.
         dataset_uuid: UUID of the dataset for this execution.
+        optimizer_enabled: Whether the execution optimizer is enabled.
 
     Returns:
         The output as a legacy block list.
     """
-    dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    if optimizer_enabled:
+        dag, stats = plan._logical_plan.get_execution_dag(), None
+    else:
+        dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
     bundles = executor.execute(dag, initial_stats=stats)
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
     return _bundles_to_block_list(bundles)

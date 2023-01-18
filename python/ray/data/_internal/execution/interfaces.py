@@ -154,18 +154,56 @@ class ExecutionOptions:
     preserve_order: bool = True
 
 
-class PhysicalOperator:
+class Operator:
+    """Abstract class for operators.
+
+    Operators are stateful and non-serializable; they live on the driver side of the
+    Dataset only.
+    """
+
+    def __init__(self, name: str, input_dependencies: List["Operator"]):
+        self._name = name
+        self._input_dependencies = input_dependencies
+        for x in input_dependencies:
+            assert isinstance(x, Operator), x
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def input_dependencies(self) -> List["Operator"]:
+        """List of operators that provide inputs for this operator."""
+        assert hasattr(
+            self, "_input_dependencies"
+        ), "Operator.__init__() was not called."
+        return self._input_dependencies
+
+    def __reduce__(self):
+        raise ValueError("LogicalOperator is not serializable.")
+
+    def __repr__(self) -> str:
+        if self.input_dependencies:
+            out_str = ", ".join([str(x) for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self._name}]"
+        return out_str
+
+    def __str__(self) -> str:
+        return repr(self)
+
+
+class PhysicalOperator(Operator):
     """Abstract class for physical operators.
 
     An operator transforms one or more input streams of RefBundles into a single
     output stream of RefBundles.
 
-    Operators are stateful and non-serializable; they live on the driver side of the
-    Dataset execution only.
-
     Here's a simple example of implementing a basic "Map" operator:
 
-        class Map(PhysicalOperator):
+        class MapOperator(PhysicalOperator):
             def __init__(self):
                 self.active_tasks = []
 
@@ -188,24 +226,11 @@ class PhysicalOperator:
     """
 
     def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
-        self._name = name
-        self._input_dependencies = input_dependencies
+        super().__init__(name, input_dependencies)
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
         self._started = False
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def input_dependencies(self) -> List["PhysicalOperator"]:
-        """List of operators that provide inputs for this operator."""
-        assert hasattr(
-            self, "_input_dependencies"
-        ), "PhysicalOperator.__init__() was not called."
-        return self._input_dependencies
 
     def completed(self) -> bool:
         """Return True when this operator is done and all outputs are taken."""
@@ -226,22 +251,9 @@ class PhysicalOperator:
         obj_store_mem_allocated, obj_store_mem_freed.
         """
         return {}
-
-    def __reduce__(self):
-        raise ValueError("PhysicalOperator is not serializable.")
-
-    def __str__(self) -> str:
-        if self.input_dependencies:
-            out_str = ", ".join([str(x) for x in self.input_dependencies])
-            out_str += " -> "
-        else:
-            out_str = ""
-        out_str += f"{self.__class__.__name__}[{self._name}]"
-        return out_str
-
+    
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
-
         For example, `<N> actors` to show current number of actors in an actor pool.
         """
         return ""

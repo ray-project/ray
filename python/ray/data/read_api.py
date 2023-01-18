@@ -10,6 +10,8 @@ from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators import Read
 from ray.data._internal.pandas_block import PandasRow
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -338,10 +340,14 @@ def read_datasource(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
     )
 
+    read_op = Read(block_list, datasource, parallelism, ray_remote_args, read_args)
+    logical_plan = LogicalPlan(read_op)
+
     return Dataset(
         plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
         epoch=0,
         lazy=True,
+        logical_plan=logical_plan,
     )
 
 
