@@ -212,6 +212,8 @@ message TaskStateUpdate {
   optional int64 finished_ts = 6;
   // Timestamp when status changes to FAILED.
   optional int64 failed_ts = 7;
+  // Timestamp when the ancestor failed.
+  optional bool ancestor_failed_ts = 8;
 }
 
 // Represents events and state changes from a single task run.

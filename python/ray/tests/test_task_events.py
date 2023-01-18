@@ -1,9 +1,11 @@
 from collections import defaultdict
 from typing import Dict
+import pytest
 
 import ray
 from ray._private.test_utils import (
     raw_metrics,
+    run_string_as_driver_nonblocking,
     wait_for_condition,
 )
 from ray.experimental.state.api import list_tasks
@@ -110,6 +112,143 @@ def test_fault_tolerance_parent_failed(shutdown_only):
         print(tasks)
         for task in tasks:
             assert task["scheduling_state"] == "FAILED"
+
+        return True
+
+    wait_for_condition(
+        verify,
+        timeout=10,
+        retry_interval_ms=500,
+    )
+
+
+def test_fault_tolerance_parents_finish(shutdown_only):
+    ray.init(num_cpus=8, _system_config=_SYSTEM_CONFIG)
+    import time
+
+    # Each parent task spins off 2 child task, where each child spins off
+    # 1 grand_child task.
+    NUM_CHILD = 2
+
+    @ray.remote
+    def grand_child():
+        time.sleep(999)
+
+    @ray.remote
+    def finished_child():
+        grand_child.remote()
+
+    @ray.remote
+    def failed_child():
+        grand_child.remote()
+        raise ValueError("task is expected to fail")
+
+    @ray.remote
+    def parent():
+        for _ in range(NUM_CHILD):
+            finished_child.remote()
+        for _ in range(NUM_CHILD):
+            failed_child.remote()
+
+        raise ValueError("task is expected to fail")
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(parent.remote())
+
+    def verify():
+        tasks = list_tasks()
+        assert len(tasks) == 9, (
+            "Incorrect number of tasks are reported. "
+            "Expected length: 1 parent + 4 child + 4 grandchild tasks"
+        )
+        for task in tasks:
+            # Finished child should have been
+            print(task)
+            if task["name"] == "finished_child":
+                assert (
+                    task["scheduling_state"] == "FINISHED"
+                ), f"{task['name']} has run state"
+            else:
+                assert (
+                    task["scheduling_state"] == "FAILED"
+                ), f"{task['name']} has run state"
+
+        return True
+
+    wait_for_condition(
+        verify,
+        timeout=10,
+        retry_interval_ms=500,
+    )
+
+
+def test_fault_tolerance_job_failed(shutdown_only):
+    ray.init(num_cpus=8, _system_config=_SYSTEM_CONFIG)
+    script = """
+import ray
+import time
+
+ray.init("auto")
+NUM_CHILD = 2
+
+@ray.remote
+def grandchild():
+    time.sleep(999)
+
+@ray.remote
+def child():
+    ray.get(grandchild.remote())
+
+@ray.remote
+def finished_child():
+    ray.put(1)
+    return
+
+@ray.remote
+def parent():
+    children = [child.remote() for _ in range(NUM_CHILD)]
+    finished_children = ray.get([finished_child.remote() for _ in range(NUM_CHILD)])
+    ray.get(children)
+
+ray.get(parent.remote())
+
+"""
+    proc = run_string_as_driver_nonblocking(script)
+
+    def verify():
+        tasks = list_tasks()
+        print(tasks)
+        assert len(tasks) == 7, (
+            "Incorrect number of tasks are reported. "
+            "Expected length: 1 parent + 2 finished child +  2 failed child + "
+            "2 failed grandchild tasks"
+        )
+        return True
+
+    wait_for_condition(
+        verify,
+        timeout=10,
+        retry_interval_ms=500,
+    )
+
+    proc.kill()
+
+    def verify():
+        tasks = list_tasks()
+        assert len(tasks) == 7, (
+            "Incorrect number of tasks are reported. "
+            "Expected length: 1 parent + 2 finished child +  2 failed child + "
+            "2 failed grandchild tasks"
+        )
+        for task in tasks:
+            if "finished" in task["func_or_class_name"]:
+                assert (
+                    task["scheduling_state"] == "FINISHED"
+                ), f"task {task['func_or_class_name']} has wrong state"
+            else:
+                assert (
+                    task["scheduling_state"] == "FAILED"
+                ), f"task {task['func_or_class_name']} has wrong state"
 
         return True
 

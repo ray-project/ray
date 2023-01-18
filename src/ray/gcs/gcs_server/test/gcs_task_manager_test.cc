@@ -61,6 +61,20 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
   }
 
+  void SyncAddTaskEvent(
+      const std::vector<TaskID> &tasks,
+      const std::vector<std::pair<rpc::TaskStatus, int64_t>> &status_timestamps,
+      const TaskID &parent_task_id = TaskID::Nil()) {
+    auto events = GenTaskEvents(tasks,
+                                /* attempt_number */ 0,
+                                /* job_id */ 0,
+                                /* profile event */ absl::nullopt,
+                                GenStateUpdate(status_timestamps),
+                                GenTaskInfo(JobID::FromInt(0), parent_task_id));
+    auto events_data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(events_data);
+  }
+
   rpc::AddTaskEventDataReply SyncAddTaskEventData(const rpc::TaskEventData &events_data) {
     rpc::AddTaskEventDataRequest request;
     rpc::AddTaskEventDataReply reply;
@@ -441,6 +455,66 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsByJob) {
                      reply_job2.mutable_events_by_task());
 }
 
+TEST_F(GcsTaskManagerTest, TestIntermediateTerminatedChild) {
+  // Test the below case:
+  // A -> B -> C -> D -> E
+  //  E: running at 1
+  //  D: fails at 2
+  //  C: running at 3
+  //  B: finishes at 4
+  //  A: failed at 5
+  //
+  // Expect D and E fails at 2, A and C fails at 5, B finishes at 4.
+  auto task_ids = GenTaskIDs(5);
+  auto A = task_ids[0];
+  auto B = task_ids[1];
+  auto C = task_ids[2];
+  auto D = task_ids[3];
+  auto E = task_ids[4];
+
+  // E running at 1
+  SyncAddTaskEvent({E}, {{rpc::TaskStatus::RUNNING, 1}}, D);
+
+  // D fails at 2
+  SyncAddTaskEvent({D}, {{rpc::TaskStatus::FAILED, 2}}, C);
+
+  // C running at 3
+  SyncAddTaskEvent({C}, {{rpc::TaskStatus::RUNNING, 3}}, B);
+
+  // B finishes at 4
+  SyncAddTaskEvent({B}, {{rpc::TaskStatus::FINISHED, 4}}, A);
+
+  // A fails at 5
+  SyncAddTaskEvent({A}, {{rpc::TaskStatus::FAILED, 5}});
+
+  // Expect D and E failed at 2
+  {
+    auto reply = SyncGetTaskEvents({D, E});
+    EXPECT_EQ(reply.events_by_task_size(), 2);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().failed_ts(), 2);
+    }
+  }
+
+  // Expect A and C fails at 5
+  {
+    auto reply = SyncGetTaskEvents({A, C});
+    EXPECT_EQ(reply.events_by_task_size(), 2);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().failed_ts(), 5);
+    }
+  }
+
+  // Expect B finishes at 4
+  {
+    auto reply = SyncGetTaskEvents({B});
+    EXPECT_EQ(reply.events_by_task_size(), 1);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().finished_ts(), 4);
+    }
+  }
+}
+
 TEST_F(GcsTaskManagerTest, TestFailingParentFailChildren) {
   // This tests that a failed parent task should automatically fail its children tasks.
   auto task_ids = GenTaskIDs(3);
@@ -449,38 +523,13 @@ TEST_F(GcsTaskManagerTest, TestFailingParentFailChildren) {
   auto child2 = task_ids[2];
 
   // Parent task running
-  {
-    auto events = GenTaskEvents({parent},
-                                /* attempt_number */ 0,
-                                /* job_id */ 0,
-                                /* profile event */ absl::nullopt,
-                                GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}));
-    auto events_data = Mocker::GenTaskEventsData(events);
-    SyncAddTaskEventData(events_data);
-  }
+  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::RUNNING, 1}});
 
   // Child tasks running
-  {
-    auto events = GenTaskEvents({child1, child2},
-                                /* attempt_number */ 0,
-                                /* job_id */ 0,
-                                /* profile event */ absl::nullopt,
-                                GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
-                                GenTaskInfo(/* job_id */ JobID::FromInt(0), parent));
-    auto events_data = Mocker::GenTaskEventsData(events);
-    SyncAddTaskEventData(events_data);
-  }
+  SyncAddTaskEvent({child1, child2}, {{rpc::TaskStatus::RUNNING, 2}}, parent);
 
   // Parent task failed
-  {
-    auto events = GenTaskEvents({parent},
-                                /* attempt_number */ 0,
-                                /* job_id */ 0,
-                                /* profile event */ absl::nullopt,
-                                GenStateUpdate({{rpc::TaskStatus::FAILED, 3}}));
-    auto events_data = Mocker::GenTaskEventsData(events);
-    SyncAddTaskEventData(events_data);
-  }
+  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::FAILED, 3}});
 
   // Get all children task events should be failed
   {
@@ -502,38 +551,13 @@ TEST_F(GcsTaskManagerTest, TestFailedParentShouldFailGrandChildren) {
   auto grand_child2 = task_ids[3];
 
   // Parent task running
-  {
-    auto events = GenTaskEvents({parent},
-                                /* attempt_number */ 0,
-                                /* job_id */ 0,
-                                /* profile event */ absl::nullopt,
-                                GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}));
-    auto events_data = Mocker::GenTaskEventsData(events);
-    SyncAddTaskEventData(events_data);
-  }
+  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::RUNNING, 1}});
 
   // Grandchild tasks running
-  {
-    auto events = GenTaskEvents({grand_child1, grand_child2},
-                                /* attempt_number */ 0,
-                                /* job_id */ 0,
-                                /* profile event */ absl::nullopt,
-                                GenStateUpdate({{rpc::TaskStatus::RUNNING, 3}}),
-                                GenTaskInfo(/* job_id */ JobID::FromInt(0), child));
-    auto events_data = Mocker::GenTaskEventsData(events);
-    SyncAddTaskEventData(events_data);
-  }
+  SyncAddTaskEvent({grand_child1, grand_child2}, {{rpc::TaskStatus::RUNNING, 3}}, child);
 
   // Parent task failed
-  {
-    auto events = GenTaskEvents({parent},
-                                /* attempt_number */ 0,
-                                /* job_id */ 0,
-                                /* profile event */ absl::nullopt,
-                                GenStateUpdate({{rpc::TaskStatus::FAILED, 4}}));
-    auto events_data = Mocker::GenTaskEventsData(events);
-    SyncAddTaskEventData(events_data);
-  }
+  SyncAddTaskEvent({parent}, {{rpc::TaskStatus::FAILED, 4}});
 
   // Get grand child should still be running since the parent-grand-child relationship is
   // not recorded yet.
@@ -546,16 +570,7 @@ TEST_F(GcsTaskManagerTest, TestFailedParentShouldFailGrandChildren) {
   }
 
   // Child task reported running.
-  {
-    auto events = GenTaskEvents({child},
-                                /* attempt_number */ 0,
-                                /* job_id */ 0,
-                                /* profile event */ absl::nullopt,
-                                GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
-                                GenTaskInfo(/* job_id */ JobID::FromInt(0), parent));
-    auto events_data = Mocker::GenTaskEventsData(events);
-    SyncAddTaskEventData(events_data);
-  }
+  SyncAddTaskEvent({child}, {{rpc::TaskStatus::RUNNING, 2}}, parent);
 
   // Both child and grand-child should report failure since their ancestor fail.
   // i.e. Child task should mark grandchildren failed.
