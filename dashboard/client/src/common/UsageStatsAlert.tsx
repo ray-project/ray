@@ -7,8 +7,6 @@ export const UsageStatsAlert = () => {
   const [usageStatsEnabled, setUsageStatsEnabled] = useState(false);
   useEffect(() => {
     getUsageStatsEnabled().then(({ data }) => {
-      console.log(data)
-      console.log(data.usageStatsPromptEnabled)
       setUsageStatsPromptEnabled(data.usageStatsPromptEnabled);
       setUsageStatsEnabled(data.usageStatsEnabled);
     });
