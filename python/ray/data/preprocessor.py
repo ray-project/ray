@@ -4,7 +4,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional, Union, Dict, Any
 
 from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
-from ray.data import Dataset
+from ray.data import Dataset, DatasetPipeline
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -16,6 +16,12 @@ if TYPE_CHECKING:
 @PublicAPI(stability="beta")
 class PreprocessorNotFittedException(RuntimeError):
     """Error raised when the preprocessor needs to be fitted first."""
+
+    pass
+
+
+class _InvalidPreprocessorException(RuntimeError):
+    """Error raised when this preprocessor is invalid for the provided dataset."""
 
     pass
 
@@ -170,6 +176,24 @@ class Preprocessor(abc.ABC):
             )
         return self._transform_batch(data)
 
+
+    def _transform_pipeline(self, pipeline: DatasetPipeline) -> DatasetPipeline:
+        """Transform the given DatasetPipeline.
+        
+        Args:
+            pipeline: The pipeline to transform.
+
+        Returns:
+            A DatasetPipeline with this preprocessor's transformation added as an
+                operation to the pipeline.
+        """
+
+        fit_status = self.fit_status()
+        if fit_status != Preprocessor.FitStatus.NOT_FITTABLE:
+            raise _InvalidPreprocessorException("Streaming/pipelined ingest only works with Preprocessors that are not fittable. It is not possible to fit on Datasets in a streaming fashion.")
+        
+        return self._transform(pipeline)
+
     def _check_is_fitted(self) -> bool:
         """Returns whether this preprocessor is fitted.
 
@@ -233,7 +257,7 @@ class Preprocessor(abc.ABC):
 
         return transform_type
 
-    def _transform(self, dataset: Dataset) -> Dataset:
+    def _transform(self, dataset: Union[Dataset, DatasetPipeline]) -> Union[Dataset, DatasetPipeline]:
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
 

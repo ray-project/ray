@@ -20,6 +20,8 @@ class _AbstractKBinsDiscretizer(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         def bin_values(s: pd.Series) -> pd.Series:
+            if s.name not in self.columns:
+                return s
             labels = self.dtypes.get(s.name) if self.dtypes else False
             ordered = True
             if labels:

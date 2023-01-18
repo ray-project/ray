@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 
 class DQNConfig(SimpleQConfig):
-    """Defines a configuration class from which a DQN Algorithm can be built.
+    r"""Defines a configuration class from which a DQN Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -288,10 +288,6 @@ class DQNConfig(SimpleQConfig):
             self.training_intensity = training_intensity
         if td_error_loss_fn is not NotProvided:
             self.td_error_loss_fn = td_error_loss_fn
-            assert self.td_error_loss_fn in [
-                "huber",
-                "mse",
-            ], "td_error_loss_fn must be 'huber' or 'mse'."
         if categorical_distribution_temperature is not NotProvided:
             self.categorical_distribution_temperature = (
                 categorical_distribution_temperature
@@ -303,6 +299,9 @@ class DQNConfig(SimpleQConfig):
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
+
+        if self.td_error_loss_fn not in ["huber", "mse"]:
+            raise ValueError("`td_error_loss_fn` must be 'huber' or 'mse'!")
 
         # Check rollout_fragment_length to be compatible with n_step.
         if (

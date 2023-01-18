@@ -280,9 +280,7 @@ OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
-# The default password to prevent redis port scanning attack.
-# Hex for ray.
-REDIS_DEFAULT_PASSWORD = "5241590000000000"
+REDIS_DEFAULT_PASSWORD = ""
 
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
@@ -363,3 +361,8 @@ def gcs_actor_scheduling_enabled():
 
 
 DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
+
+# Supported Python versions for runtime env's "conda" field. Ray downloads
+# Ray wheels into the conda environment, so the Ray wheels for these Python
+# versions must be available online.
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
