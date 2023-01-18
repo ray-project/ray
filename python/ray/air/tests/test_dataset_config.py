@@ -8,6 +8,7 @@ from ray.air import session
 from ray.air.config import DatasetConfig, ScalingConfig
 from ray.air.util.check_ingest import make_local_dataset_iterator
 from ray.data import DatasetIterator
+from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
@@ -466,6 +467,41 @@ def test_nondeterministic_per_epoch_preprocessor(ray_start_4_cpus):
             assert results[0] != results[1], (max_object_store_memory_fraction, results)
 
         TestStream.train_loop_per_worker(it, checker)
+
+
+def test_validate_per_epoch_preprocessor(ray_start_4_cpus):
+    ds = ray.data.range_table(5)
+
+    def multiply(x):
+        return x * 2
+
+    dataset_config = DatasetConfig(
+        per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas")
+    )
+    DatasetConfig.validated(
+        {
+            "train": dataset_config,
+        },
+        {"train": ds},
+    )
+
+    with pytest.raises(ValueError):
+        dataset_config = DatasetConfig(per_epoch_preprocessor=multiply)
+        DatasetConfig.validated(
+            {
+                "train": dataset_config,
+            },
+            {"train": ds},
+        )
+
+    with pytest.raises(ValueError):
+        dataset_config = DatasetConfig(per_epoch_preprocessor=Preprocessor())
+        DatasetConfig.validated(
+            {
+                "train": dataset_config,
+            },
+            {"train": ds},
+        )
 
 
 if __name__ == "__main__":

@@ -452,13 +452,20 @@ class DatasetConfig:
                     "must be None or a float with value -1 or >=0, but got "
                     f"{v.max_object_store_memory_fraction}."
                 )
-            if v.per_epoch_preprocessor is not None and not isinstance(
-                v.per_epoch_preprocessor, Preprocessor
-            ):
-                raise ValueError(
-                    "`per_epoch_preprocessor` must be a ray.data.Preprocessor "
-                    f"but got {v.per_epoch_preprocessor}."
-                )
+            if v.per_epoch_preprocessor is not None:
+                if not isinstance(v.per_epoch_preprocessor, Preprocessor):
+                    raise ValueError(
+                        "`per_epoch_preprocessor` must be a ray.data.Preprocessor "
+                        f"but got {v.per_epoch_preprocessor}."
+                    )
+                if (
+                    v.per_epoch_preprocessor.fit_status()
+                    != Preprocessor.FitStatus.NOT_FITTABLE
+                ):
+                    raise ValueError(
+                        "`per_epoch_preprocessor` currently does not support "
+                        "fittable ray.data.Preprocessors."
+                    )
 
         if len(fittable) > 1:
             raise ValueError(

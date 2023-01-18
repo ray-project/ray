@@ -174,7 +174,7 @@ preprocessor = BatchMapper(lambda df: df * 2, batch_format="pandas")
 # A randomized preprocessor that adds a random float to all values, to be
 # reapplied on each epoch after `preprocessor`. Each epoch will therefore add a
 # different random float to the scaled dataset.
-rand_preprocessor = BatchMapper(lambda df: df + random.random(), batch_format="pandas")
+add_noise = BatchMapper(lambda df: df + random.random(), batch_format="pandas")
 
 
 def train_loop_per_worker():
@@ -200,7 +200,7 @@ my_trainer = TorchTrainer(
         "train": DatasetConfig(
             # Don't randomize order, just to make it easier to read the results.
             randomize_block_order=False,
-            per_epoch_preprocessor=rand_preprocessor,
+            per_epoch_preprocessor=add_noise,
         ),
     },
     preprocessor=preprocessor,
