@@ -10,6 +10,7 @@ BLACK_VERSION_REQUIRED="22.10.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="0.982"
 ISORT_VERSION_REQUIRED="5.10.1"
+NBCONVERT_VERSION_REQUIRED="6.5.3"
 
 check_python_command_exist() {
     VERSION=""
@@ -25,6 +26,9 @@ check_python_command_exist() {
             ;;
         isort)
             VERSION=$ISORT_VERSION_REQUIRED
+            ;;
+        jupyter-nbconvert)
+            VERSION=$NBCONVERT_VERSION_REQUIRED
             ;;
         *)
             echo "$1 is not a required dependency"
@@ -55,6 +59,7 @@ check_python_command_exist black
 check_python_command_exist flake8
 check_python_command_exist mypy
 check_python_command_exist isort
+check_python_command_exist jupyter-nbconvert
 
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
@@ -79,6 +84,7 @@ fi
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 ISORT_VERSION=$(isort --version | grep VERSION | awk '{print $2}')
+NBCONVERT_VERSION=$(jupyter nbconvert --version)
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
 # params: tool name, tool version, required version
@@ -92,6 +98,7 @@ tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
 tool_version_check "black" "$BLACK_VERSION" "$BLACK_VERSION_REQUIRED"
 tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
 tool_version_check "isort" "$ISORT_VERSION" "$ISORT_VERSION_REQUIRED"
+tool_version_check "jupyter-nbconvert" "$NBCONVERT_VERSION" "$NBCONVERT_VERSION_REQUIRED"
 
 if command -v shellcheck >/dev/null; then
     SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
@@ -154,6 +161,17 @@ BLACK_EXCLUDES=(
     '--force-exclude' 'python/ray/core/src/ray/gcs/*'
     '--force-exclude' 'python/ray/thirdparty_files/*'
     '--force-exclude' 'python/ray/_private/thirdparty/*'
+)
+
+NBCONVERT_IGNORED_METADATA=(
+    collapsed
+    scrolled
+    deletable
+    editable
+    format name
+    tags
+    jupyter
+    execution
 )
 
 GIT_LS_EXCLUDES=(
@@ -280,6 +298,15 @@ format_all_scripts() {
       git ls-files -- '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
         flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
     fi
+    NBCONVERT_METADATA_MASK_ARGS=()
+    for tag in "${NBCONVERT_IGNORED_METADATA[@]}";
+    do
+      NBCONVERT_MASK_ARGS+=("--ClearMetadataPreprocessor.preserve_cell_metadata_mask=${tag}")
+    done
+    echo "$(date)" "Jupyter notebook metadata cleanup...."
+    git ls-files -- '*.ipynb' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
+      jupyter-nbconvert --to=notebook --inplace \
+        --ClearMetadataPreprocessor.enabled=True "${NBCONVERT_MASK_ARGS[@]}"
 
     if command -v shellcheck >/dev/null; then
       local shell_files non_shell_files
