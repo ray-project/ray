@@ -390,13 +390,15 @@ class LogMonitor:
                     raise
 
             if file_info.file_position == 0:
-                if "/raylet" in file_info.filename:
+                # make filename windows-agnostic
+                filename = file_info.filename.replace("\\", "/")
+                if "/raylet" in filename:
                     file_info.worker_pid = "raylet"
-                elif "/gcs_server" in file_info.filename:
+                elif "/gcs_server" in filename:
                     file_info.worker_pid = "gcs_server"
-                elif "/monitor" in file_info.filename:
+                elif "/monitor" in filename:
                     file_info.worker_pid = "autoscaler"
-                elif "/runtime_env" in file_info.filename:
+                elif "/runtime_env" in filename:
                     file_info.worker_pid = "runtime_env"
 
             # Record the current position in the file.
@@ -442,6 +444,17 @@ class LogMonitor:
             # for logs to avoid using too much CPU.
             if not anything_published:
                 time.sleep(0.1)
+
+
+def is_proc_alive(pid):
+    # Import locally to make sure the bundled version is used if needed
+    import psutil
+
+    try:
+        return psutil.Process(pid).is_running()
+    except psutil.NoSuchProcess:
+        # The process does not exist.
+        return False
 
 
 if __name__ == "__main__":
@@ -507,14 +520,6 @@ if __name__ == "__main__":
         max_bytes=args.logging_rotate_bytes,
         backup_count=args.logging_rotate_backup_count,
     )
-
-    def is_proc_alive(pid):
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError:
-            # If OSError is raised, the process is not alive.
-            return False
 
     log_monitor = LogMonitor(
         args.logs_dir, gcs_pubsub.GcsPublisher(address=args.gcs_address), is_proc_alive

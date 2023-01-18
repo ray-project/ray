@@ -20,6 +20,7 @@ from ray._private.log_monitor import (
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
     LogFileInfo,
     LogMonitor,
+    is_proc_alive,
 )
 from ray._private.test_utils import (
     get_log_batch,
@@ -521,25 +522,31 @@ def create_file(dir, filename, content):
     f.write_text(content)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows",
-)
-def test_log_monitor(tmp_path):
+@pytest.fixture
+def live_dead_pids():
+    p1 = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(6000)"])
+    p2 = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(6000)"])
+    p2.kill()
+    # avoid zombie processes
+    p2.wait()
+    yield p1.pid, p2.pid
+    p1.kill()
+    p1.wait()
+
+
+def test_log_monitor(tmp_path, live_dead_pids):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     # Create an old dir.
     (log_dir / "old").mkdir()
     worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
     job_id = "01000000"
-    dead_pid = "47660"
-    alive_pid = "12345"
-
-    def proc_alive(pid):
-        return pid != int(dead_pid)
+    alive_pid, dead_pid = live_dead_pids
 
     mock_publisher = MagicMock()
-    log_monitor = LogMonitor(str(log_dir), mock_publisher, proc_alive, max_files_open=5)
+    log_monitor = LogMonitor(
+        str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+    )
 
     # files
     worker_out_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.out"
@@ -684,10 +691,6 @@ def test_log_monitor(tmp_path):
     assert len(list((log_dir / "old").iterdir())) == 2
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows",
-)
 def test_log_monitor_actor_task_name(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
@@ -758,10 +761,6 @@ def mock_timer():
     time.time = f
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows",
-)
 def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
