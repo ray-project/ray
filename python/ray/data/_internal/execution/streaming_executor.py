@@ -95,6 +95,9 @@ class StreamingExecutor(Executor):
             True if we should continue running the scheduling loop.
         """
 
+        if "RAY_DATASET_TRACE_SCHEDULING" in os.environ:
+            print("Scheduling loop step...")
+
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
