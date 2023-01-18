@@ -47,7 +47,6 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 num_worker_nodes=num_worker_nodes,
                 num_cpus_per_node=num_cpus_per_node,
                 num_gpus_per_node=num_gpus_per_node,
-                safe_mode=False,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()

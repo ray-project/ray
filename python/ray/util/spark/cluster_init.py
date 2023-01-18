@@ -778,7 +778,7 @@ def setup_ray_cluster(
     head_node_options: Optional[Dict] = None,
     worker_node_options: Optional[Dict] = None,
     ray_temp_root_dir: Optional[str] = None,
-    safe_mode: bool = False,
+    strict_mode: bool = False,
     collect_log_to_path: Optional[str] = None,
 ) -> str:
     """
@@ -820,15 +820,20 @@ def setup_ray_cluster(
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
             The default value equals to
             "0.3 * spark_worker_physical_memory * 0.8 / num_tasks_per_spark_worker".
-        head_node_options: A dict representing Ray head node extra options.
-        worker_node_options: A dict representing Ray worker node extra options.
+        head_node_options: A dict representing Ray head node extra options, these
+            options will be passed to `ray start` script. Note you need to convert
+            `ray start` options key from `--foo-bar` format to `foo_bar` format.
+        worker_node_options: A dict representing Ray worker node extra options,
+            these options will be passed to `ray start` script. Note you need to
+            convert `ray start` options key from `--foo-bar` format to `foo_bar`
+            format.
         ray_temp_root_dir: A local disk path to store the ray temporary data. The
             created cluster will create a subdirectory
             "ray-{head_port}-{random_suffix}" beneath this path.
-        safe_mode: Boolean flag to fast-fail initialization of the ray cluster if
+        strict_mode: Boolean flag to fast-fail initialization of the ray cluster if
             the available spark cluster does not have sufficient resources to fulfill
             the resource allocation for memory, cpu and gpu. When set to true, if the
-            requested resources are not available for minimum recommended
+            requested resources are not available for recommended minimum recommended
             functionality, an exception will be raised that details the inadequate
             spark cluster configuration settings. If overridden as `False`,
             a warning is raised.
@@ -992,11 +997,11 @@ def setup_ray_cluster(
             "`object_store_memory_per_node`."
         )
     if insufficient_resources:
-        if safe_mode:
+        if strict_mode:
             raise ValueError(
-                "You are creating ray cluster on spark with safe mode (it can be "
-                "disabled by setting argument 'safe_mode=False' when calling API "
-                "'setup_ray_cluster'), safe mode requires the spark cluster config "
+                "You are creating ray cluster on spark with strict mode (it can be "
+                "disabled by setting argument 'strict_mode=False' when calling API "
+                "'setup_ray_cluster'), strict mode requires the spark cluster config "
                 "satisfying following criterion: "
                 "\n".join(insufficient_resources)
             )

@@ -74,7 +74,6 @@ class RayOnSparkCPUClusterTestBase(ABC):
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes_arg,
                 num_cpus_per_node=num_cpus_per_node,
-                safe_mode=False,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()
@@ -89,7 +88,6 @@ class RayOnSparkCPUClusterTestBase(ABC):
             collect_log_to_path = tempfile.mkdtemp()
             setup_ray_cluster(
                 num_worker_nodes=MAX_NUM_WORKER_NODES,
-                safe_mode=False,
                 collect_log_to_path=collect_log_to_path,
                 ray_temp_root_dir=ray_temp_root_dir,
                 head_node_options={"include_dashboard": True},
@@ -130,7 +128,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     def test_ray_cluster_shutdown(self):
         with _setup_ray_cluster(
-            num_worker_nodes=self.max_spark_tasks, safe_mode=False
+            num_worker_nodes=self.max_spark_tasks, s_mode=False
         ) as cluster:
             ray.init()
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
@@ -148,7 +146,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
         with _setup_ray_cluster(
-            num_worker_nodes=self.max_spark_tasks, safe_mode=False
+            num_worker_nodes=self.max_spark_tasks
         ) as cluster:
             ray.init()
             # Mimic the case the job failed unexpectedly.
