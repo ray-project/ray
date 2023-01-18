@@ -45,6 +45,7 @@ def py_test_run_all_notebooks(include, exclude, args, allow_empty = False, **kwa
             # directories inside cwd recursively if it cannot
             # find it right away. This allows to deal with
             # mismatches between `name` and `data` args.
+            # Extra args get passed through when testing the generated .py file.
             args = ["--find-recursively", "--path", file] + args,
             **kwargs
         )
