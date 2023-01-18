@@ -14,8 +14,10 @@ from ray.air.execution.tracked_actor_task import (
     TrackedActorTaskCollection,
 )
 from ray.air.execution.tracked_task import TrackedTask
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class EventType(enum.Enum):
     """Event type to specify when yielding control to the :class:`RayEventManager`.
 
@@ -35,6 +37,7 @@ class EventType(enum.Enum):
     ACTORS = 2
 
 
+@DeveloperAPI
 class RayEventManager:
     """Management class for Ray actors, tasks, and actor tasks.
 

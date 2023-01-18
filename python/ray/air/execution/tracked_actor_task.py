@@ -1,8 +1,10 @@
 from typing import Callable, Any
 
 from ray.air.execution.tracked_actor import TrackedActor
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class TrackedActorTask:
     """Actor task tracked by a Ray event manager.
 
@@ -47,6 +49,7 @@ class TrackedActorTask:
         raise NotImplementedError
 
 
+@DeveloperAPI
 class TrackedActorTaskCollection:
     """Collection of actor tasks tracked by a Ray event manager.
 
