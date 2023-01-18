@@ -107,7 +107,7 @@ from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.metrics import Histogram
+from ray.util.metrics import Counter
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import ensure_notebook_deps
@@ -567,6 +567,12 @@ class Dataset(Generic[T]):
 
         context = DatasetContext.get_current()
 
+        execution_time_counter = Counter(
+            "scott-metric",
+            description="Execution time of map_batches in ms.",
+            # tag_keys=("dataset_uuid",),
+        )
+
         def transform(
             blocks: Iterable[Block],
             batch_fn: BatchUDF,
@@ -603,26 +609,16 @@ class Dataset(Generic[T]):
             def process_next_batch(batch: DataBatch) -> Iterator[Block]:
                 # Apply UDF.
                 try:
-                    if not hasattr(self, "histogram"):
-                        print("===> initialized histogram")
-                        self.histogram = Histogram(
-                            "scott-metric",
-                            description="Execution time of map_batches in ms.",
-                            boundaries=[0.1, 1],
-                            # tag_keys=("dataset_uuid",),
-                        )
                     print("===> process batch")
                     # stage_uuid = self._plan._dataset_uuid + stage_name
-                    
                     start_time = time.perf_counter()
                     batch = batch_fn(batch, *fn_args, **fn_kwargs)
                     exec_time_ms = (time.perf_counter() - start_time) * 1000
-                    print("===> exec_time_ms:", exec_time_ms)
-                    self.histogram.observe(
+                    execution_time_counter.inc(
                         value=exec_time_ms,
                         # tags={"dataset_uuid": self._plan._dataset_uuid},
                     )
-                    print("===> histogram:", self.histogram)
+                    print(f"===> counter incremented exec_time_ms {exec_time_ms}")
                 except ValueError as e:
                     read_only_msgs = [
                         "assignment destination is read-only",
