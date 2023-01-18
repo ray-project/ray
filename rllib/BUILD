@@ -1491,7 +1491,7 @@ py_test(
 
 
 py_test(
-    name = "test_pg_tf_pong_v0",
+    name = "test_pg_tf_pong_v5",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [

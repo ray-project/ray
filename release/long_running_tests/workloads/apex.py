@@ -39,7 +39,7 @@ run_experiments(
     {
         "apex": {
             "run": "APEX",
-            "env": "Pong-v0",
+            "env": "ALE/Pong-v5",
             "config": {
                 "num_workers": 3,
                 "num_gpus": 0,
