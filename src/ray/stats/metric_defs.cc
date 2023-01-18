@@ -48,7 +48,7 @@ DEFINE_stats(
     // Name: the name of the function called.
     // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
     // IsRetry: whether this task is a retry.
-    ("State", "Name", "Source", "IsRetry"),
+    ("State", "Name", "Source", "IsRetry", "JobId"),
     (),
     ray::stats::GAUGE);
 
