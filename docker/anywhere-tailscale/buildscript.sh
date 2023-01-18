@@ -25,7 +25,7 @@ if [ -x /usr/bin/podman ]; then
     alias docker=podman
 else
     echo $DOCKER_PASSWORD | sudo $exec login --username jcoffi --password-stdin
-    exec=/usr/bin/docker
+    sudo exec=/usr/bin/docker
 fi
 
 
@@ -114,4 +114,4 @@ fi
 
 if [-x /usr/bin/docker ]; then
     sudo rm /root/.docker/config.json
-if
+fi
