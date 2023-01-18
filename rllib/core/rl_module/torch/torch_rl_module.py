@@ -4,13 +4,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.core.rl_module import RLModule
 
 torch, nn = try_import_torch()
-if torch:
-    from torch.nn.parallel import DistributedDataParallel as DDP
-else:
-    raise RuntimeError(
-        "Torch is not installed. Please install torch or do pip install ray[rllib]."
-    )
-
 
 class TorchRLModule(nn.Module, RLModule):
     def __init__(self, *args, **kwargs) -> None:
@@ -47,9 +40,9 @@ class TorchRLModule(nn.Module, RLModule):
         return False
 
 
-class TorchDDPRLModule(DDP, RLModule):
+class TorchDDPRLModule(nn.parallel.DistributedDataParallel, RLModule):
     def __init__(self, *args, **kwargs) -> None:
-        DDP.__init__(self, *args, **kwargs)
+        nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)
         # we do not want to call RLModule.__init__ here because it will all we need is
         # the interface of that base-class not the actual implementation.
 
