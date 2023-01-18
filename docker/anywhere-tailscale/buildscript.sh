@@ -21,13 +21,13 @@ if [ -x /usr/bin/podman ]; then
     export DOCKER_HOST
     exec=/usr/bin/podman
     sudo podman registry remove quay.io
-    $exec login --username jcoffi --password $DOCKER_PASSWORD
+    podman login --username jcoffi --password $DOCKER_PASSWORD
     alias docker=podman
 fi
 
 if [ -x /usr/bin/docker ]; then
     exec=/usr/bin/docker
-    echo $DOCKER_PASSWORD | $exec login --username jcoffi --password-stdin
+    echo $DOCKER_PASSWORD | docker login --username jcoffi --password-stdin
 fi
 
 
