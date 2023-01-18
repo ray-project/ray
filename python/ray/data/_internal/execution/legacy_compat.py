@@ -162,11 +162,16 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
                 def fn(item: Any) -> Any:
                     # Wrapper providing cached instantiation of stateful callable class
                     # UDFs.
-                    if ray.data._cached_fn is None or ray.data._cached_cls != fn_:
+                    if ray.data._cached_fn is None:
                         ray.data._cached_cls = fn_
                         ray.data._cached_fn = fn_(
                             *fn_constructor_args, **fn_constructor_kwargs
                         )
+                    else:
+                        # A worker is destroyed when its actor is killed, so we
+                        # shouldn't have any worker reuse across different UDF
+                        # applications (i.e. different map operators).
+                        assert ray.data._cached_cls == fn_
                     return ray.data._cached_fn(item)
 
             else:
