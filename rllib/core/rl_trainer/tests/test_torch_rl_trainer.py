@@ -13,7 +13,7 @@ from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.numpy import convert_to_numpy
 
 
-def get_trainer(scaling_config=None, distributed: bool = False) -> RLTrainer:
+def _get_trainer(scaling_config=None, distributed: bool = False) -> RLTrainer:
     env = gym.make("CartPole-v1")
     scaling_config = {} or scaling_config
     distributed = False
@@ -51,7 +51,7 @@ class TestRLTrainer(unittest.TestCase):
 
     def test_end_to_end_update(self):
 
-        trainer = get_trainer(scaling_config={"num_workers": 2})
+        trainer = _get_trainer(scaling_config={"num_workers": 2})
         reader = get_cartpole_dataset_reader(batch_size=512)
 
         min_loss = float("inf")
@@ -74,7 +74,7 @@ class TestRLTrainer(unittest.TestCase):
         Tests that if we sum all the trainable variables the gradient of output w.r.t.
         the weights is all ones.
         """
-        trainer = get_trainer(scaling_config={"num_workers": 2})
+        trainer = _get_trainer(scaling_config={"num_workers": 2})
 
         params = trainer.get_parameters(trainer.module[DEFAULT_POLICY_ID])
         loss = {"total_loss": sum([param.sum() for param in params])}
@@ -93,7 +93,7 @@ class TestRLTrainer(unittest.TestCase):
         standard SGD/Adam update rule.
         """
 
-        trainer = get_trainer(scaling_config={"num_workers": 2})
+        trainer = _get_trainer(scaling_config={"num_workers": 2})
 
         # calculated the expected new params based on gradients of all ones.
         params = trainer.get_parameters(trainer.module[DEFAULT_POLICY_ID])
@@ -117,7 +117,7 @@ class TestRLTrainer(unittest.TestCase):
         all variables the updated parameters follow the SGD update rule.
         """
         env = gym.make("CartPole-v1")
-        trainer = get_trainer(scaling_config={"num_workers": 2})
+        trainer = _get_trainer(scaling_config={"num_workers": 2})
 
         # add a test module with SGD optimizer with a known lr
         lr = 1e-4
