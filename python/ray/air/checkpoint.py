@@ -413,7 +413,6 @@ class Checkpoint:
         # If override_preprocessor is specified, then set that in the output dict.
         if self._override_preprocessor:
             checkpoint_data[PREPROCESSOR_KEY] = self._override_preprocessor
-            self._override_preprocessor = None
         return checkpoint_data
 
     @classmethod
@@ -596,7 +595,6 @@ class Checkpoint:
 
         if self._override_preprocessor:
             save_preprocessor_to_dir(self._override_preprocessor, path)
-            self._override_preprocessor = None
 
     def _to_directory_safe(self, path: str, move_instead_of_copy: bool = False) -> None:
         try:

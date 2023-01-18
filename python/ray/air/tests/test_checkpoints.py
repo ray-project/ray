@@ -774,6 +774,14 @@ class PreprocessorCheckpointTest(unittest.TestCase):
             preprocessor = checkpoint.get_preprocessor()
             assert preprocessor.multiplier == 1
 
+    def testObjectRefCheckpointSetPreprocessor(self):
+        ckpt = Checkpoint.from_dict({"x": 1})
+        ckpt = ray.get(ray.put(ckpt))
+        preprocessor = DummyPreprocessor(1)
+        ckpt.set_preprocessor(preprocessor)
+
+        assert ckpt.get_preprocessor() == preprocessor
+
     def testAttrPath(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint = Checkpoint.from_directory(tmpdir)
