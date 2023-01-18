@@ -24,9 +24,9 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
 #the $RANDOMSTRING variable is defined in the startup script
 #ENV N2N_KEY=$RANDOMSTRING
 
-RUN sudo apt-get update \
-        && sudo apt-get install -y --no-install-recommends ca-certificates curl wget jq lsb-release \ 
-        && sudo apt-get clean
+RUN sudo apt update \
+        && sudo apt install -y --no-install-recommends ca-certificates curl wget jq lsb-release \ 
+        && sudo apt clean
         #&& sudo rm -rf /var/lib/apt/lists/*
 
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
@@ -38,9 +38,9 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
 #installing tailscale
 RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null \
         && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list >/dev/null \ \
-        && sudo apt-get update \
-        && sudo apt-get install -y --no-install-recommends tailscale iptables dnsutils \
-        && sudo apt-get clean \
+        && sudo apt update \
+        && sudo apt install -y --no-install-recommends tailscale iptables dnsutils \
+        && sudo apt clean \
         && sudo rm -rf /var/lib/apt/lists/* \
         && sudo mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale
 
