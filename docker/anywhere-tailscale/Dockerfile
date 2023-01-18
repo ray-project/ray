@@ -1,21 +1,20 @@
 ARG IMAGETYPE=cpu
 FROM rayproject/ray:2.1.0-py38-$IMAGETYPE
-ENV __MODIN_AUTOIMPORT_PANDAS__=1
-ENV MODIN_ENGINE=ray
-ENV MODIN_RAY_CLUSTER=True
-ENV TZ=America/Los_Angeles
-ENV NODETYPE=head
-ENV TSKEY=""
-ENV TSAPIKEY=""
-ENV CFLAGS="-O3"
-ENV AWS_ACCESS_KEY_ID=""
-ENV AWS_SECRET_ACCESS_KEY=""
-ENV AWS_DEFAULT_REGION="us-west-2"
-ENV AWS_S3_BUCKET=""
-ENV CRATE_GC_LOG_DIR="/data/log"
-ENV CRATE_HEAP_DUMP_PATH="/data/data"
-ENV CRATE_JAVA_OPTS="-XX:+IgnoreUnrecognizedVMOptions -XX:+UseContainerSupport -XX:+IdleTuningCompactOnIdle -XX:+IdleTuningGcOnIdle -Xtune:virtualized -Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
-ENV N2N_INTERFACE=tailscale0
+ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
+        MODIN_ENGINE=ray \
+        MODIN_RAY_CLUSTER=True \
+        TZ=America/Los_Angeles \
+        NODETYPE=head \
+        TSKEY="" \
+        TSAPIKEY="" \
+        CFLAGS="-O3" \
+        AWS_ACCESS_KEY_ID="" \
+        AWS_SECRET_ACCESS_KEY="" \
+        AWS_DEFAULT_REGION="us-west-2" \
+        AWS_S3_BUCKET="" \
+        CRATE_GC_LOG_DIR="/data/log" \
+        CRATE_HEAP_DUMP_PATH="/data/data" \
+        CRATE_JAVA_OPTS="-XX:+IgnoreUnrecognizedVMOptions -XX:+UseContainerSupport -XX:+IdleTuningCompactOnIdle -XX:+IdleTuningGcOnIdle -Xtune:virtualized -Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS"
 
 
 #the $RANDOMSTRING variable is defined in the startup script
