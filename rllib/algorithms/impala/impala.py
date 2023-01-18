@@ -584,7 +584,10 @@ class Impala(Algorithm):
         # Aggregation workers are stateless, so we do not need to restore any
         # state here.
         if self._aggregator_actor_manager:
-            self._aggregator_actor_manager.probe_unhealthy_actors()
+            self._aggregator_actor_manager.probe_unhealthy_actors(
+                timeout_seconds=self.config.worker_health_probe_timeout_s,
+                mark_healthy=True,
+            )
 
         return train_results
 

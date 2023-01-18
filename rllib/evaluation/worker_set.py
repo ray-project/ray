@@ -660,6 +660,7 @@ class WorkerSet:
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
         return_obj_refs: bool = False,
+        mark_healthy: bool = False,
     ) -> List[T]:
         """Calls the given function with each worker instance as the argument.
 
@@ -673,6 +674,7 @@ class WorkerSet:
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of this WorkerSet.
+            mark_healthy: Whether to mark the worker as healthy based on call results.
 
         Returns:
              The list of return values of all calls to `func([worker])`.
@@ -691,6 +693,7 @@ class WorkerSet:
             remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
@@ -782,12 +785,14 @@ class WorkerSet:
         *,
         timeout_seconds: Optional[int] = 0,
         return_obj_refs: bool = False,
+        mark_healthy: bool = False,
     ) -> List[Tuple[int, T]]:
         """Get esults from outstanding asynchronous requests that are ready.
 
         Args:
             timeout_seconds: Time to wait for results. Default is 0, meaning
                 those requests that are already ready.
+            mark_healthy: Whether to mark the worker as healthy based on call results.
 
         Returns:
             A list of results successfully returned from outstanding remote calls,
@@ -796,6 +801,7 @@ class WorkerSet:
         remote_results = self.__worker_manager.fetch_ready_async_reqs(
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         handle_remote_call_result_errors(remote_results, self._ignore_worker_failures)
@@ -906,7 +912,9 @@ class WorkerSet:
         Returns:
             IDs of the workers that were restored.
         """
-        return self.__worker_manager.probe_unhealthy_actors()
+        return self.__worker_manager.probe_unhealthy_actors(
+            timeout_seconds=self._remote_config.worker_health_probe_timeout_s
+        )
 
     @staticmethod
     def _from_existing(
