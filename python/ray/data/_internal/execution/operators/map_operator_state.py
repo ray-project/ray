@@ -221,6 +221,7 @@ class MapOperatorState:
         else:
             num_active_workers = self.num_active_work_refs()
         return ExecutionResources(
+            # TODO: this should be real CPU not incremental cpu
             cpu=self._incremental_cpu * num_active_workers,
             gpu=self._incremental_gpu * num_active_workers,
             object_store_memory=self._obj_store_mem_cur,

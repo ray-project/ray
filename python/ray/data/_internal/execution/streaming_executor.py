@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Iterator, Optional
 
 import ray
@@ -104,6 +105,7 @@ class StreamingExecutor(Executor):
         cur_usage = self._get_and_report_current_usage(topology, limits)
         op = select_operator_to_run(topology, cur_usage, limits)
         while op is not None:
+            _print_topology(topology)
             topology[op].dispatch_next_task()
             cur_usage = self._get_and_report_current_usage(topology, limits)
             op = select_operator_to_run(topology, cur_usage, limits)
@@ -175,3 +177,13 @@ class StreamingExecutor(Executor):
                 f"{limits.object_store_memory_str()} object_store_memory"
             )
         return cur_usage
+
+
+def _print_topology(topology: Topology) -> None:
+    if "RAY_DATASET_TRACE_SCHEDULING" in os.environ:
+        print()
+        print("vvv scheduling trace vvv")
+        for i, (op, state) in enumerate(topology.items()):
+            print(i, op.name, state.summary_str())
+        print("^^^ scheduling trace ^^^")
+        print()

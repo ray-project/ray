@@ -65,12 +65,15 @@ class OpState:
     def refresh_progress_bar(self) -> None:
         """Update the console with the latest operator progress."""
         if self.progress_bar:
-            queued = self.num_queued()
-            desc = f"{self.op.name}: {self.num_active_tasks()} active, {queued} queued"
-            suffix = self.op.progress_str()
-            if suffix:
-                desc += f", {suffix}"
-            self.progress_bar.set_description(desc)
+            self.progress_bar.set_description(self.summary_str())
+
+    def summary_str(self) -> str:
+        queued = self.num_queued()
+        desc = f"{self.op.name}: {self.num_active_tasks()} active, {queued} queued"
+        suffix = self.op.progress_str()
+        if suffix:
+            desc += f", {suffix}"
+        return desc
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
