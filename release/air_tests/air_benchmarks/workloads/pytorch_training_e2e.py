@@ -68,7 +68,9 @@ def train_loop_per_worker(config):
 @click.option("--num-workers", type=int, default=1)
 @click.option("--smoke-test", is_flag=True, default=False)
 def main(data_size_gb: int, num_epochs=2, num_workers=1, smoke_test: bool = False):
-    data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
+    data_url = (
+        f"s3://anonymous@air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
+    )
     print(
         "Running Pytorch image model training with "
         f"{data_size_gb}GB data from {data_url}"
