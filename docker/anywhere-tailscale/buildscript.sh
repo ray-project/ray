@@ -28,7 +28,7 @@ fi
 if [ -x /usr/bin/docker ]; then
     sudo export exec=/usr/bin/docker
     exec=/usr/bin/docker
-    echo $DOCKER_PASSWORD | sudo $exec login --username jcoffi --password-stdin
+    echo $DOCKER_PASSWORD | $exec login --username jcoffi --password-stdin
 fi
 
 
