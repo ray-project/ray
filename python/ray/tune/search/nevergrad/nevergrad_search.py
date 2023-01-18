@@ -122,7 +122,7 @@ class NevergradSearch(Searcher):
         optimizer: Optional[
             Union[Optimizer, Type[Optimizer], ConfiguredOptimizer]
         ] = None,
-        optimizer_kwargs: Dict = dict(),
+        optimizer_kwargs: Optional[Dict] = None,
         space: Optional[Union[Dict, Parameter]] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
