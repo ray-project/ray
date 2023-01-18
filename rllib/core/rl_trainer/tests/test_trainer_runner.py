@@ -148,6 +148,7 @@ class TestTrainerRunner(unittest.TestCase):
             },
             optimizer_config={"lr": 1e-3},
             in_test=True,
+            enable_tf_function=False,
         )
         runner = TrainerRunner(
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=0)
