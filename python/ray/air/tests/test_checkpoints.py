@@ -728,6 +728,52 @@ class PreprocessorCheckpointTest(unittest.TestCase):
             preprocessor = checkpoint.get_preprocessor()
             assert preprocessor.multiplier == 1
 
+    def testDictCheckpointSetPreprocessor(self):
+        preprocessor = DummyPreprocessor(1)
+        data = {"metric": 5}
+        checkpoint = Checkpoint.from_dict(data)
+        checkpoint.set_preprocessor(preprocessor)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor.multiplier == 1
+
+    def testDictCheckpointSetPreprocessorAsDir(self):
+        preprocessor = DummyPreprocessor(1)
+        data = {"metric": 5}
+        checkpoint = Checkpoint.from_dict(data)
+        checkpoint.set_preprocessor(preprocessor)
+        checkpoint_path = checkpoint.to_directory()
+        checkpoint = Checkpoint.from_directory(checkpoint_path)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor.multiplier == 1
+
+    def testDirCheckpointSetPreprocessor(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            preprocessor = DummyPreprocessor(1)
+            data = {"metric": 5}
+            checkpoint_dir = os.path.join(tmpdir, "existing_checkpoint")
+            os.mkdir(checkpoint_dir, 0o755)
+            with open(os.path.join(checkpoint_dir, "test_data.pkl"), "wb") as fp:
+                pickle.dump(data, fp)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            checkpoint.set_preprocessor(preprocessor)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
+    def testDirCheckpointSetPreprocessorAsDict(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            preprocessor = DummyPreprocessor(1)
+            data = {"metric": 5}
+            checkpoint_dir = os.path.join(tmpdir, "existing_checkpoint")
+            os.mkdir(checkpoint_dir, 0o755)
+            with open(os.path.join(checkpoint_dir, "test_data.pkl"), "wb") as fp:
+                pickle.dump(data, fp)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            checkpoint.set_preprocessor(preprocessor)
+            checkpoint_dict = checkpoint.to_dict()
+            checkpoint = checkpoint.from_dict(checkpoint_dict)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
     def testAttrPath(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint = Checkpoint.from_directory(tmpdir)
