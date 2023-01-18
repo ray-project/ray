@@ -1487,19 +1487,19 @@ def test_schema_lazy(ray_start_regular_shared):
     assert ds._plan.execute()._num_computed() == 1
 
 
-def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
+def test_lazy_execution_doesnt_share_plan_state(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
     assert ds._plan.execute()._num_computed() == 0
     assert ds.take(10) == list(range(10))
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
     assert ds.take(20) == list(range(20))
-    assert ds._plan.execute()._num_computed() == 4
+    assert ds._plan.execute()._num_computed() == 0
     assert ds.take(30) == list(range(30))
-    assert ds._plan.execute()._num_computed() == 8
+    assert ds._plan.execute()._num_computed() == 0
     assert ds.take(50) == list(range(50))
-    assert ds._plan.execute()._num_computed() == 16
+    assert ds._plan.execute()._num_computed() == 0
     assert ds.take(100) == list(range(100))
-    assert ds._plan.execute()._num_computed() == 20
+    assert ds._plan.execute()._num_computed() == 0
 
 
 def test_dataset_repr(ray_start_regular_shared):

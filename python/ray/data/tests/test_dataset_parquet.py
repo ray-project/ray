@@ -143,7 +143,7 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -158,6 +158,7 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
     assert ds.schema().names == ["one"]
+    assert ds._plan.execute()._num_computed() == 1
 
 
 @pytest.mark.parametrize(
@@ -221,7 +222,7 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -298,7 +299,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -319,7 +320,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -388,7 +389,7 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -447,7 +448,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -477,8 +478,9 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     ds = ray.data.read_parquet(
         str(tmp_path), parallelism=1, filter=(pa.dataset.field("two") == "a")
     )
-
     values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 0
+    ds.schema()
     assert ds._plan.execute()._num_computed() == 1
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
@@ -489,7 +491,9 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
+    ds.schema()
+    assert ds._plan.execute()._num_computed() == 1
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
 
@@ -531,7 +535,7 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -560,6 +564,8 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path), parallelism=1, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
+    assert ds._plan.execute()._num_computed() == 0
+    ds.schema()
     assert ds._plan.execute()._num_computed() == 1
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
@@ -568,7 +574,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path), parallelism=2, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
+    ds.schema()
+    assert ds._plan.execute()._num_computed() == 1
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks, 1 empty block
@@ -581,7 +589,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     )
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert ds._plan.execute()._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 0
+    ds.schema()
+    assert ds._plan.execute()._num_computed() == 1
     np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
 
 
@@ -621,7 +631,7 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
 
     # Forces a data read.
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
-    assert ds._plan.execute()._num_computed() == parallelism
+    assert ds._plan.execute()._num_computed() == 0
     assert sorted(values) == list(range(3 * num_dfs))
 
 

@@ -245,10 +245,9 @@ def assert_base_partitioned_ds():
 
         # Force a data read.
         values = ds_take_transform_fn(ds.take())
-        if num_computed is not None:
-            assert (
-                ds._plan.execute()._num_computed() == num_computed
-            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
+        # The ds.take() is consumption read, after which the plan is reset
+        # to the beginning state.
+        assert ds._plan.execute()._num_computed() == 0
         actual_sorted_values = sorted_values_transform_fn(sorted(values))
         assert (
             actual_sorted_values == sorted_values
