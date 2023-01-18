@@ -20,12 +20,6 @@ class PreprocessorNotFittedException(RuntimeError):
     pass
 
 
-class _InvalidPreprocessorException(RuntimeError):
-    """Error raised when this preprocessor is invalid for the provided dataset."""
-
-    pass
-
-
 @PublicAPI(stability="beta")
 class Preprocessor(abc.ABC):
     """Implements an ML preprocessing operation.
@@ -190,7 +184,7 @@ class Preprocessor(abc.ABC):
 
         fit_status = self.fit_status()
         if fit_status != Preprocessor.FitStatus.NOT_FITTABLE:
-            raise _InvalidPreprocessorException("Streaming/pipelined ingest only works with Preprocessors that are not fittable. It is not possible to fit on Datasets in a streaming fashion.")
+            raise RuntimeError("Streaming/pipelined ingest only works with Preprocessors that are not fittable. It is not possible to fit on Datasets in a streaming fashion.")
         
         return self._transform(pipeline)
 
