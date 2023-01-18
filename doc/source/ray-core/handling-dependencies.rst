@@ -484,7 +484,7 @@ A container image can be specified in the :ref:`Cluster Launcher <vm-cluster-qui
 The runtime environment will inherit packages, files, and environment variables from the container image.
 
 My ``runtime_env`` was installed, but when I log into the node I can't import the packages.
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 The runtime environment is only active for the Ray worker processes; it does not install any packages "globally" on the node.
 
