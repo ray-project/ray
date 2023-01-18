@@ -1,8 +1,7 @@
-import pytest
 import gymnasium as gym
 import unittest
 
-import tensorflow as tf
+from ray.rllib.utils.framework import try_import_tf
 import ray
 
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
@@ -10,6 +9,8 @@ from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+
+tf1, tf, tfv = try_import_tf()
 
 
 class TestTrainerRunner(unittest.TestCase):
@@ -19,6 +20,7 @@ class TestTrainerRunner(unittest.TestCase):
     # So that the user can run it locally as well.
     @classmethod
     def setUp(cls) -> None:
+        tf1.executing_eagerly()
         ray.init()
 
     @classmethod
@@ -137,7 +139,6 @@ class TestTrainerRunner(unittest.TestCase):
                 set(result["loss"]) - {"total_loss"}, module_ids_before_add
             )
 
-    @pytest.mark.skip(reason="Test")
     def test_trainer_runner_no_gpus(self):
         env = gym.make("CartPole-v1")
         trainer_class = BCTfRLTrainer
@@ -150,7 +151,6 @@ class TestTrainerRunner(unittest.TestCase):
             },
             optimizer_config={"lr": 1e-3},
             in_test=True,
-            enable_tf_function=False,
         )
         runner = TrainerRunner(
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=0)
