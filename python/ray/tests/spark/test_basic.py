@@ -127,9 +127,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
 
     def test_ray_cluster_shutdown(self):
-        with _setup_ray_cluster(
-            num_worker_nodes=self.max_spark_tasks, s_mode=False
-        ) as cluster:
+        with _setup_ray_cluster(num_worker_nodes=self.max_spark_tasks) as cluster:
             ray.init()
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
@@ -145,9 +143,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         assert not check_port_open(hostname, int(port))
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
-        with _setup_ray_cluster(
-            num_worker_nodes=self.max_spark_tasks
-        ) as cluster:
+        with _setup_ray_cluster(num_worker_nodes=self.max_spark_tasks) as cluster:
             ray.init()
             # Mimic the case the job failed unexpectedly.
             cluster._cancel_background_spark_job()
