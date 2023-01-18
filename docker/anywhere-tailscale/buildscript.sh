@@ -115,6 +115,6 @@ else
   sudo $exec push docker.io/jcoffi/cluster-anywhere:latest
 fi 
 
-if [ -x /usr/bin/docker ]; then
+if [ -f /root/.docker/config.json ]; then
     sudo rm /root/.docker/config.json
 fi
