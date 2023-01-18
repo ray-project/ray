@@ -39,8 +39,8 @@ def train_loop_per_worker(config):
             train_dataset_shard.iter_torch_batches(batch_size=config["batch_size"])
         ):
             # get the inputs; data is a list of [inputs, labels]
-            inputs = data["image"].to(device="cuda")
-            labels = data["label"].to(device="cuda")
+            inputs = data["image"].to(device=train.torch.get_device())
+            labels = data["label"].to(device=train.torch.get_device())
             # zero the parameter gradients
             optimizer.zero_grad()
 
