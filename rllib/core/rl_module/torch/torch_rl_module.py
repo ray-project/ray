@@ -71,8 +71,9 @@ class DDPRLModuleWrapper(DDP, RLModule):
     @override(RLModule)
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
         # TODO (Kourosh): Not to sure about this make_distributed api belonging to
-        # RLModule or not? we should see if we use this api end-point for both tf and
-        # torch instead of doing it in the trainer.
+        # RLModule or the RLTrainer? For now the logic is kept in RLTrainer.
+        # We should see if we can use this api end-point for both tf
+        # and torch instead of doing it in the trainer.
         pass
 
     @override(RLModule)

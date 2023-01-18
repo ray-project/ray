@@ -52,6 +52,8 @@ class TorchRLTrainer(RLTrainer):
 
         self._world_size = scaling_config.get("num_workers", 1)
         self._use_gpu = scaling_config.get("use_gpu", False)
+        # These attributes are set in the `build` method.
+        self._device = None
 
     @property
     @override(RLTrainer)
@@ -96,13 +98,19 @@ class TorchRLTrainer(RLTrainer):
             optim.step()
 
     @override(RLTrainer)
-    def _make_distributed(self) -> MultiAgentRLModule:
-        module = self._make_module()
-
+    def build(self) -> None:
         # TODO (Kourosh): How do we handle model parallism?
         # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
         # api in ray.train but allow for session to be None without any errors raised.
-        self._device = _TorchAccelerator().get_device()
+        if self._use_gpu:
+            self._device = _TorchAccelerator().get_device()
+        else:
+            self._device = torch.device("cpu")
+        super().build()
+
+    @override(RLTrainer)
+    def _make_distributed(self) -> MultiAgentRLModule:
+        module = self._make_module()
 
         # if the module is a MultiAgentRLModule and nn.Module we can simply assume
         # all the submodules are registered. Otherwise, we need to loop through
@@ -173,4 +181,5 @@ class TorchRLTrainer(RLTrainer):
 
         # we need to ddpify the module that was just added to the pool
         self._module[module_id].to(self._device)
-        self._module[module_id] = DDPRLModuleWrapper(self._module[module_id])
+        if self.distributed:
+            self._module[module_id] = DDPRLModuleWrapper(self._module[module_id])
