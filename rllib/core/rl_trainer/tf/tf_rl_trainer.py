@@ -91,7 +91,6 @@ class TfRLTrainer(RLTrainer):
         scaling_config: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
-        in_test: bool = False,
         enable_tf_function: bool = True,
     ):
         super().__init__(
@@ -100,7 +99,6 @@ class TfRLTrainer(RLTrainer):
             scaling_config=scaling_config,
             optimizer_config=optimizer_config,
             distributed=distributed,
-            in_test=in_test,
         )
 
         self._enable_tf_function = enable_tf_function

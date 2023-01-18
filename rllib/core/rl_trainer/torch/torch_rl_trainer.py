@@ -39,7 +39,6 @@ class TorchRLTrainer(RLTrainer):
         scaling_config: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
-        in_test: bool = False,
     ):
         super().__init__(
             module_class=module_class,
@@ -47,7 +46,6 @@ class TorchRLTrainer(RLTrainer):
             scaling_config=scaling_config,
             optimizer_config=optimizer_config,
             distributed=distributed,
-            in_test=in_test,
         )
 
         self._world_size = scaling_config.get("num_workers", 1)

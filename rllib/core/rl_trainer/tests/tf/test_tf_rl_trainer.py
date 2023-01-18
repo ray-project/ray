@@ -38,7 +38,6 @@ class TestTfRLTrainer(unittest.TestCase):
                 "model_config": {"hidden_dim": 32},
             },
             optimizer_config={"lr": 1e-3},
-            in_test=True,
         )
         runner = TrainerRunner(
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)
@@ -79,7 +78,6 @@ class TestTfRLTrainer(unittest.TestCase):
                 "model_config": {"hidden_dim": 32},
             },
             optimizer_config={"lr": 1e-3},
-            in_test=True,
         )
         runner = TrainerRunner(
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=2)

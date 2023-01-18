@@ -33,7 +33,6 @@ def get_trainer(scaling_config=None, distributed: bool = False) -> RLTrainer:
         scaling_config=scaling_config,
         optimizer_config={"lr": 1e-3},
         distributed=distributed,
-        in_test=True,
     )
 
     trainer.build()

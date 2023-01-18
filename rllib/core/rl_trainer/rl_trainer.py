@@ -105,7 +105,6 @@ class RLTrainer:
         scaling_config: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
-        in_test: bool = False,
     ):
         # TODO (Kourosh): convert scaling and optimizer configs to dataclasses
         self.module_class = module_class
@@ -113,7 +112,6 @@ class RLTrainer:
         self.scaling_config = scaling_config
         self.optimizer_config = optimizer_config
         self.distributed = distributed
-        self.in_test = in_test
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
@@ -230,16 +228,7 @@ class RLTrainer:
             "loss": loss_numpy,
             "mean_gradient": np.mean(mean_grads),
         }
-
-        if self.in_test:
-            # this is to check if in the multi-gpu case, the weights across workers are
-            # the same. It is really only needed during testing.
-            mean_ws = {}
-            for module_id in self._module.keys():
-                m = self._module[module_id]
-                parameters = convert_to_numpy(self.get_parameters(m))
-                mean_ws[module_id] = np.mean([w.mean() for w in parameters])
-            ret["mean_weight"] = mean_ws
+        
         return ret
 
     def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:

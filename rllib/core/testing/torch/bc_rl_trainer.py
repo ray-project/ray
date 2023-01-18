@@ -4,9 +4,10 @@ from typing import Any, Mapping
 from ray.rllib.core.rl_trainer.torch.torch_rl_trainer import TorchRLTrainer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.core.testing.testing_trainer import BaseTestingTrainer
 
 
-class BCTorchRLTrainer(TorchRLTrainer):
+class BCTorchRLTrainer(TorchRLTrainer, BaseTestingTrainer):
     def compute_loss(
         self, fwd_out: MultiAgentBatch, batch: MultiAgentBatch
     ) -> Mapping[str, Any]:

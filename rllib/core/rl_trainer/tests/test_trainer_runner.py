@@ -64,7 +64,6 @@ def _get_trainer_runner(
             "model_config": {"hidden_dim": 32},
         },
         optimizer_config={"lr": 0.1},
-        in_test=True,
     )
     runner = TrainerRunner(trainer_class, trainer_cfg, compute_config=compute_config)
 
