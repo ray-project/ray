@@ -34,7 +34,10 @@ class DBReporter(Reporter):
             "stable": result.stable,
             "return_code": result.return_code,
             "smoke_test": result.smoke_test,
-            "prometheus_metrics": result.prometheus_metrics or {},
+            # Todo: Activate again once we can make sure metrics reporting
+            # isn't included in long-running test timeout.
+            # https://github.com/ray-project/ray/issues/31547.
+            "prometheus_metrics": {},  # result.prometheus_metrics or {},
             "extra_tags": result.extra_tags or {},
         }
 
