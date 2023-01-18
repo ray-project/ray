@@ -405,8 +405,8 @@ class Policy(metaclass=ABCMeta):
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
 
-    def get_connector_throughput_metrics(self) -> Dict:
-        """Get throughputs from connectors."""
+    def get_connector_metrics(self) -> Dict:
+        """Get metrics on timing from connectors."""
         return {
             "agent_connectors": {
                 name + "_ms": 1000 * timer.mean
