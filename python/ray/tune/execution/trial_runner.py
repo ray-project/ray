@@ -291,14 +291,15 @@ class TrialRunner:
         search_alg: SearchAlgorithm for generating
             Trial objects.
         scheduler: Defaults to FIFOScheduler.
-        local_checkpoint_dir: Path where
-            global checkpoints are stored and restored from.
-        remote_checkpoint_dir: Remote path where
-            global checkpoints are stored and restored from. Used
-            if `resume` == REMOTE.
-        sync_config: See `tune.py:run`.
-        stopper: Custom class for stopping whole experiments. See
-            ``Stopper``.
+        local_checkpoint_dir: Path where global experiment state checkpoints
+            are saved and restored from.
+        sync_config: See :class:`~ray.tune.syncer.SyncConfig`.
+            Within sync config, the `upload_dir` specifies cloud storage, and
+            experiment state checkpoints will be synced to the `remote_checkpoint_dir`:
+            `{sync_config.upload_dir}/{experiment_name}`.
+        experiment_dir_name: Experiment directory name.
+            See :class:`~ray.tune.experiment.Experiment`.
+        stopper: Custom class for stopping whole experiments. See ``Stopper``.
         resume: see `tune.py:run`.
         server_port: Port number for launching TuneServer.
         fail_fast: Finishes as soon as a trial fails if True.
