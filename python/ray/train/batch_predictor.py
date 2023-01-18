@@ -296,7 +296,6 @@ class BatchPredictor:
         ray_remote_args["num_gpus"] = num_gpus_per_worker
 
         preprocessor = self.get_preprocessor()
-        print(preprocessor)
         override_prep = None
         if preprocessor:
             # TODO: Delegate separate_gpu_stage flag to Datasets.
