@@ -1,18 +1,19 @@
-import logging
 from typing import Dict, List, Iterator, Optional
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
     RefBundle,
     PhysicalOperator,
 )
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 
-logger = logging.getLogger(__name__)
+logger = DatasetLogger(__name__)
 
 
 class BulkExecutor(Executor):
@@ -35,7 +36,7 @@ class BulkExecutor(Executor):
         assert not self._executed, "Can only call execute once."
         self._executed = True
         if not isinstance(dag, InputDataBuffer):
-            logger.info("Executing DAG %s", dag)
+            logger.get_logger().info("Executing DAG %s", dag)
 
         if initial_stats:
             self._stats = initial_stats
@@ -51,13 +52,13 @@ class BulkExecutor(Executor):
             inputs = [execute_recursive(dep) for dep in op.input_dependencies]
 
             # Fully execute this operator.
-            logger.debug("Executing op %s", op.name)
+            logger.get_logger().debug("Executing op %s", op.name)
             builder = self._stats.child_builder(op.name)
             try:
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
                         op.add_input(r, input_index=i)
-                    op.inputs_done(i)
+                op.inputs_done()
                 output = _naive_run_until_complete(op)
             finally:
                 op.shutdown()
@@ -69,6 +70,12 @@ class BulkExecutor(Executor):
             if op_stats:
                 self._stats = builder.build_multistage(op_stats)
                 self._stats.extra_metrics = op_metrics
+            stats_summary = self._stats.to_summary()
+            stats_summary_string = stats_summary.to_string(include_parent=False)
+            context = DatasetContext.get_current()
+            logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                stats_summary_string,
+            )
             return output
 
         return execute_recursive(dag)
@@ -101,9 +108,8 @@ def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
                 bar.update(1)
                 output.append(op.get_next())
         bar.close()
-    # An operator is finished only after it has no remaining work as well as no
-    # remaining outputs.
-    while op.has_next():
-        output.append(op.get_next())
-    assert not op.get_work_refs(), "Should not have any remaining work"
+    else:
+        while op.has_next():
+            output.append(op.get_next())
+    assert op.completed(), "Should have finished execution of the op."
     return output
