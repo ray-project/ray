@@ -184,7 +184,10 @@ class Preprocessor(abc.ABC):
         fit_status = self.fit_status()
         if fit_status != Preprocessor.FitStatus.NOT_FITTABLE:
             raise RuntimeError(
-                "Streaming/pipelined ingest only works with Preprocessors that are not fittable. It is not possible to fit on Datasets in a streaming fashion."
+                "Streaming/pipelined ingest only works with "
+                "Preprocessors that are not fittable. "
+                "It is not possible to fit on Datasets "
+                "in a streaming fashion."
             )
 
         return self._transform(pipeline)

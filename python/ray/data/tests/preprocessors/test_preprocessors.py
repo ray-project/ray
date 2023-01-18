@@ -137,7 +137,8 @@ def _apply_transform(preprocessor, ds):
 
 @pytest.mark.parametrize("pipeline", [True, False])
 def test_transform_config(pipeline):
-    """Tests that the transform_config of the Preprocessor is respected during transform."""
+    """Tests that the transform_config of
+    the Preprocessor is respected during transform."""
 
     batch_size = 2
 
@@ -164,6 +165,17 @@ def test_transform_config(pipeline):
     if pipeline:
         ds = ds.window(blocks_per_window=1).repeat()
     _apply_transform(prep, ds)
+
+
+def test_pipeline_fail():
+    ds = ray.data.range_table(5).window(blocks_per_window=1).repeat(1)
+
+    class FittablePreprocessor(Preprocessor):
+        _is_fittable = True
+
+    prep = FittablePreprocessor()
+    with pytest.raises(RuntimeError):
+        _apply_transform(prep, ds)
 
 
 @pytest.mark.parametrize("pipeline", [True, False])

@@ -298,7 +298,8 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
 
 
 def test_stream_transform_config(ray_start_4_cpus):
-    """Tests that the preprocessor's transform config is respected when using the stream API."""
+    """Tests that the preprocessor's transform config is
+    respected when using the stream API."""
     batch_size = 2
 
     def check_batch(batch):
