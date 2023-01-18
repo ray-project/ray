@@ -153,7 +153,7 @@ class StreamingExecutor(Executor):
             cpu=base.cpu or cluster.get("CPU", 0.0),
             gpu=base.gpu or cluster.get("GPU", 0.0),
             object_store_memory=base.object_store_memory
-            or (cluster.get("object_store_memory", 0.0) // 3),
+            or (cluster.get("object_store_memory", 0.0) // 4),
         )
 
     def _get_and_report_current_usage(
