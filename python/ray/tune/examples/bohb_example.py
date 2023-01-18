@@ -6,7 +6,6 @@ Requires the HpBandSter and ConfigSpace libraries to be installed
 (`pip install hpbandster ConfigSpace`).
 """
 
-import argparse
 import json
 import time
 import os

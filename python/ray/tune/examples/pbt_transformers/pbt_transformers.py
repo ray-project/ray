@@ -4,7 +4,6 @@ huggingface transformers `hyperparameter_search` API.
 """
 import os
 
-import ray
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.examples.pbt_transformers.utils import (

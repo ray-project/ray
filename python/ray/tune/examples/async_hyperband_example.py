@@ -3,7 +3,6 @@
 import argparse
 import time
 
-import ray
 from ray import air, tune
 from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
