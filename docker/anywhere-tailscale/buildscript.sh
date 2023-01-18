@@ -26,7 +26,7 @@ else
     exec=/usr/bin/docker
 fi
 
-docker login -u jcoffi -p ${DOCKER_PASSWORD}
+$exec login -u jcoffi -p ${DOCKER_PASSWORD}
 
 
 if [ -d /sys/class/power_supply/BAT0 ]; then
