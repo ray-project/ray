@@ -26,6 +26,7 @@ if [ -x /usr/bin/podman ]; then
 else
     echo $DOCKER_PASSWORD | sudo $exec login --username jcoffi --password-stdin
     sudo exec=/usr/bin/docker
+    exec=/usr/bin/docker
 fi
 
 
