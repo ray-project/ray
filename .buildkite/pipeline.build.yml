@@ -573,7 +573,7 @@
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
     - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
     - bazel clean --expunge
-    - python ./ci/env/setup_credentials.py wandb
+    - export WANDB_MODE=offline
     - ./ci/ci.sh build
 
 - label: ":octopus: Tune multinode tests"

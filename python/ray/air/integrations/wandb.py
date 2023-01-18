@@ -37,6 +37,7 @@ except ImportError:
 WANDB_ENV_VAR = "WANDB_API_KEY"
 WANDB_PROJECT_ENV_VAR = "WANDB_PROJECT_NAME"
 WANDB_GROUP_ENV_VAR = "WANDB_GROUP_NAME"
+WANDB_MODE_ENV_VAR = "WANDB_MODE"
 # Hook that is invoked before wandb.init in the setup method of WandbLoggerCallback
 # to populate the API key if it isn't already set when initializing the callback.
 # It doesn't take in any arguments and returns the W&B API key.
@@ -290,6 +291,9 @@ def _get_wandb_project(project: Optional[str] = None) -> Optional[str]:
 def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = None):
     """Set WandB API key from `wandb_config`. Will pop the
     `api_key_file` and `api_key` keys from `wandb_config` parameter"""
+    if os.environ[WANDB_MODE_ENV_VAR] in {"offline", "disabled"}:
+        return
+
     if api_key_file:
         if api_key:
             raise ValueError("Both WandB `api_key_file` and `api_key` set.")
@@ -443,6 +447,7 @@ class WandbLoggerCallback(LoggerCallback):
     Example:
 
         .. testcode::
+
             import random
 
             from ray import tune
@@ -473,6 +478,8 @@ class WandbLoggerCallback(LoggerCallback):
         .. testoutput::
             :hide:
             :options: +ELLIPSIS
+
+            ...
 
     Args:
         project: Name of the Wandb project. Mandatory.
