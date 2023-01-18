@@ -3,7 +3,7 @@ load("//bazel:python.bzl", "py_test_run_all_notebooks")
 filegroup(
     name = "data_examples",
     srcs = glob(["*.ipynb"]),
-    visibility = ["//doc:__subpackages__"]
+    visibility = ["//doc:__subpackages__"],
 )
 
 # --------------------------------------------------------------------
@@ -16,9 +16,13 @@ filegroup(
 py_test_run_all_notebooks(
     size = "large",
     include = ["*.ipynb"],
+    args = [],
+    data = ["//doc/source/data/examples:data_examples"],
     exclude = [
         "big_data_ingestion.ipynb",
     ],
-    data = ["//doc/source/data/examples:data_examples"],
-    tags = ["exclusive", "team:ml"]
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
 )
