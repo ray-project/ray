@@ -1,7 +1,7 @@
 import { makeStyles } from "@material-ui/core";
 import { Alert } from "@material-ui/lab";
 import dayjs from "dayjs";
-import React from "react";
+import React, { useState } from "react";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -10,15 +10,18 @@ import TitleCard from "../../components/TitleCard";
 import ActorList from "../actor/ActorList";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
+import { AdvancedProgressBar } from "./AdvancedProgressBar";
 
 import { useJobDetail } from "./hook/useJobDetail";
 import { useJobProgress } from "./hook/useJobProgress";
-import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
 import { TaskProgressBar } from "./TaskProgressBar";
 
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
+  },
+  advancedProgressBar: {
+    marginTop: theme.spacing(0.5),
   },
   taskProgressTable: {
     marginTop: theme.spacing(2),
@@ -30,6 +33,8 @@ export const JobDetailChartsPage = () => {
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
   const { progress, error, driverExists } = useJobProgress(jobId);
+  const [advancedProgressBarExpanded, setAdvancedProgressBarExpanded] =
+    useState(false);
 
   if (!job) {
     return (
@@ -69,27 +74,26 @@ export const JobDetailChartsPage = () => {
         </Alert>
       );
     }
-    if (status === "SUCCEEDED" || status === "FAILED") {
-      return (
-        <React.Fragment>
-          <TaskProgressBar {...progress} showAsComplete />
-          <JobTaskNameProgressTable
-            className={classes.taskProgressTable}
+
+    return (
+      <React.Fragment>
+        <TaskProgressBar
+          {...progress}
+          showAsComplete={status === "SUCCEEDED" || status === "FAILED"}
+          showTooltip={false}
+          expanded={advancedProgressBarExpanded}
+          onClick={() =>
+            setAdvancedProgressBarExpanded(!advancedProgressBarExpanded)
+          }
+        />
+        {advancedProgressBarExpanded && (
+          <AdvancedProgressBar
+            className={classes.advancedProgressBar}
             jobId={jobId}
           />
-        </React.Fragment>
-      );
-    } else {
-      return (
-        <React.Fragment>
-          <TaskProgressBar {...progress} />
-          <JobTaskNameProgressTable
-            className={classes.taskProgressTable}
-            jobId={jobId}
-          />
-        </React.Fragment>
-      );
-    }
+        )}
+      </React.Fragment>
+    );
   })();
 
   return (

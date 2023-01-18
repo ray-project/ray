@@ -7,6 +7,8 @@ import { TaskProgress } from "../../type/job";
 export type TaskProgressBarProps = TaskProgress & {
   showAsComplete?: boolean;
   showTooltip?: boolean;
+  expanded?: boolean;
+  onClick?: () => void;
 };
 
 export const TaskProgressBar = ({
@@ -19,6 +21,8 @@ export const TaskProgressBar = ({
   numUnknown = 0,
   showAsComplete = false,
   showTooltip = true,
+  expanded,
+  onClick,
 }: TaskProgressBarProps) => {
   const theme = useTheme<Theme>();
   if (showAsComplete) {
@@ -45,6 +49,8 @@ export const TaskProgressBar = ({
           },
         ]}
         showTooltip={showTooltip}
+        expanded={expanded}
+        onClick={onClick}
       />
     );
   } else {
@@ -80,7 +86,14 @@ export const TaskProgressBar = ({
         color: "#5f6469",
       },
     ];
-    return <ProgressBar progress={progress} />;
+    return (
+      <ProgressBar
+        progress={progress}
+        expanded={expanded}
+        showTooltip={showTooltip}
+        onClick={onClick}
+      />
+    );
   }
 };
 
@@ -94,6 +107,10 @@ export type MiniTaskProgressBarProps = TaskProgress & {
    * Whether to show tooltip.
    */
   showTooltip?: boolean;
+  /**
+   * Whether to show the total finished to the right of the progress bar.
+   */
+  showTotal?: boolean;
 };
 
 export const MiniTaskProgressBar = ({
@@ -106,6 +123,7 @@ export const MiniTaskProgressBar = ({
   numFailed = 0,
   showAsComplete = false,
   showTooltip = true,
+  showTotal = false,
 }: MiniTaskProgressBarProps) => {
   const theme = useTheme<Theme>();
   if (showAsComplete) {
@@ -173,6 +191,7 @@ export const MiniTaskProgressBar = ({
         progress={progress}
         showLegend={false}
         showTooltip={showTooltip}
+        showTotalProgress={showTotal ? numFinished : undefined}
       />
     );
   }

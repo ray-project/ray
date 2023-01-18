@@ -6,6 +6,7 @@ import {
   Typography,
 } from "@material-ui/core";
 import React from "react";
+import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { StyledTooltip } from "../Tooltip";
 
 const useStyles = makeStyles((theme) =>
@@ -37,6 +38,16 @@ const useStyles = makeStyles((theme) =>
       borderRadius: 4,
       marginRight: theme.spacing(1),
     },
+    progressBarContainer: {
+      display: "flex",
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    icon: {
+      width: 16,
+      height: 16,
+      marginRight: theme.spacing(1),
+    },
     progressBarRoot: {
       display: "flex",
       flexDirection: "row",
@@ -51,6 +62,12 @@ const useStyles = makeStyles((theme) =>
       "&:not(:last-child)": {
         marginRight: 1,
       },
+    },
+    progressTotal: {
+      flex: "1 0 40px",
+      marginLeft: theme.spacing(1),
+      textAlign: "end",
+      whiteSpace: "nowrap",
     },
   }),
 );
@@ -98,6 +115,20 @@ export type ProgressBarProps = {
    * Whether to show the a legend as a tooltip.
    */
   showTooltip?: boolean;
+  /**
+   * Whether to show the total progress to the right of the progress bar.
+   * Example: 5 / 20
+   * This should be set to the number that should be shown in the left side of the fraction.
+   * If this is undefined, don't show it.
+   */
+  showTotalProgress?: number;
+  /**
+   * If true, we show an expanded icon to the left of the progress bar.
+   * If false, we show an unexpanded icon to the left of the progress bar.
+   * If undefined, we don't show any icon.
+   */
+  expanded?: boolean;
+  onClick?: () => void;
 };
 
 export const ProgressBar = ({
@@ -106,6 +137,9 @@ export const ProgressBar = ({
   unaccountedLabel,
   showLegend = true,
   showTooltip = false,
+  showTotalProgress,
+  expanded,
+  onClick,
 }: ProgressBarProps) => {
   const classes = useStyles();
   const segmentTotal = progress.reduce((acc, { value }) => acc + value, 0);
@@ -127,7 +161,7 @@ export const ProgressBar = ({
   const filteredSegments = segments.filter(({ value }) => value);
 
   return (
-    <div className={classes.root}>
+    <div className={classes.root} onClick={onClick}>
       {showLegend && (
         <div className={classes.legendRoot}>
           <div className={classes.legendItemContainer}>
@@ -150,30 +184,43 @@ export const ProgressBar = ({
           ))}
         </div>
       )}
-      <LegendTooltip
-        showTooltip={showTooltip}
-        total={finalTotal}
-        segments={filteredSegments}
-      >
-        <div
-          className={classes.progressBarRoot}
-          style={{
-            backgroundColor: segmentTotal === 0 ? "lightGrey" : "white",
-          }}
-        >
-          {filteredSegments.map(({ color, label, value }) => (
-            <span
-              key={label}
-              className={classes.segment}
-              style={{
-                flex: value,
-                backgroundColor: color,
-              }}
-              data-testid="progress-bar-segment"
-            />
+      <div className={classes.progressBarContainer}>
+        {expanded !== undefined &&
+          (expanded ? (
+            <RiArrowDownSLine className={classes.icon} />
+          ) : (
+            <RiArrowRightSLine className={classes.icon} />
           ))}
-        </div>
-      </LegendTooltip>
+        <LegendTooltip
+          showTooltip={showTooltip}
+          total={finalTotal}
+          segments={filteredSegments}
+        >
+          <div
+            className={classes.progressBarRoot}
+            style={{
+              backgroundColor: segmentTotal === 0 ? "lightGrey" : "white",
+            }}
+          >
+            {filteredSegments.map(({ color, label, value }) => (
+              <span
+                key={label}
+                className={classes.segment}
+                style={{
+                  flex: value,
+                  backgroundColor: color,
+                }}
+                data-testid="progress-bar-segment"
+              />
+            ))}
+          </div>
+        </LegendTooltip>
+        {showTotalProgress !== undefined && (
+          <div className={classes.progressTotal}>
+            {showTotalProgress} / {finalTotal}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

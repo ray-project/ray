@@ -200,7 +200,10 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:
         timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
         filters = self._get_filters_from_req(req)
-        return SummaryApiOptions(timeout=timeout, filters=filters)
+        summary_by = req.query.get("summary_by", None)
+        return SummaryApiOptions(
+            timeout=timeout, filters=filters, summary_by=summary_by
+        )
 
     def _reply(self, success: bool, error_message: str, result: dict, **kwargs):
         """Reply to the client."""

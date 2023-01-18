@@ -2,8 +2,17 @@ import _ from "lodash";
 import { useState } from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
-import { getStateApiJobProgressByTaskName } from "../../../service/job";
-import { StateApiJobProgressByTaskName, TaskProgress } from "../../../type/job";
+import {
+  getStateApiJobProgressByLineage,
+  getStateApiJobProgressByTaskName,
+} from "../../../service/job";
+import {
+  JobProgressByLineage,
+  LineageSummary,
+  StateApiJobProgressByLineage,
+  StateApiJobProgressByTaskName,
+  TaskProgress,
+} from "../../../type/job";
 import { TypeTaskStatus } from "../../../type/task";
 
 const TASK_STATE_NAME_TO_PROGRESS_KEY: Record<
@@ -151,22 +160,101 @@ export const useJobProgressByTaskName = (jobId: string) => {
   };
 };
 
+const formatStateCountsToProgress = (stateCounts: {
+  [stateName: string]: number;
+}) => {
+  const formattedProgress: TaskProgress = {};
+  Object.entries(stateCounts).forEach(([state, count]) => {
+    const key: keyof TaskProgress =
+      TASK_STATE_NAME_TO_PROGRESS_KEY[state as TypeTaskStatus] ?? "numUnknown";
+
+    formattedProgress[key] = (formattedProgress[key] ?? 0) + count;
+  });
+
+  return formattedProgress;
+};
+
 export const formatSummaryToTaskProgress = (
   summary: StateApiJobProgressByTaskName,
 ) => {
   const tasks = summary.node_id_to_summary.cluster.summary;
   const formattedTasks = Object.entries(tasks).map(([name, task]) => {
-    const formattedProgress: TaskProgress = {};
-    Object.entries(task.state_counts).forEach(([state, count]) => {
-      const key: keyof TaskProgress =
-        TASK_STATE_NAME_TO_PROGRESS_KEY[state as TypeTaskStatus] ??
-        "numUnknown";
-
-      formattedProgress[key] = (formattedProgress[key] ?? 0) + count;
-    });
-
+    const formattedProgress = formatStateCountsToProgress(task.state_counts);
     return { name, progress: formattedProgress };
   });
 
   return formattedTasks;
+};
+
+const formatLineageSummaryToTaskProgress = (
+  lineageSummary: LineageSummary,
+): JobProgressByLineage => {
+  const formattedProgress = formatStateCountsToProgress(
+    lineageSummary.state_counts,
+  );
+  const name = lineageSummary.lineage.at(-1);
+  if (name === undefined) {
+    throw new Error("Unexpected empty lineage from API");
+  }
+  return {
+    name,
+    key: lineageSummary.lineage.join(","),
+    lineage: lineageSummary.lineage,
+    progress: formattedProgress,
+    children: lineageSummary.children.map(formatLineageSummaryToTaskProgress),
+  };
+};
+
+export const formatLineageSummariesToTaskProgress = (
+  summary: StateApiJobProgressByLineage,
+) => {
+  const tasks = summary.node_id_to_summary.cluster.summary;
+  const formattedTasks = Object.values(tasks).map(
+    formatLineageSummaryToTaskProgress,
+  );
+
+  return formattedTasks;
+};
+
+/**
+ * Hook for fetching a job's task progress grouped by lineage. This is
+ * used for the Advanced progress bar.
+ * Refetches every 4 seconds.
+ *
+ * @param jobId The id of the job whose task progress to fetch or undefined
+ *              to fetch all progress for all jobs
+ */
+export const useJobProgressByLineage = (jobId: string) => {
+  const [msg, setMsg] = useState("Loading progress...");
+  const [error, setError] = useState(false);
+  const [isRefreshing, setRefresh] = useState(true);
+  const onSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setRefresh(event.target.checked);
+  };
+
+  const { data: tasks } = useSWR(
+    jobId ? ["useJobProgressByLineage", jobId] : null,
+    async (_, jobId) => {
+      const rsp = await getStateApiJobProgressByLineage(jobId);
+      setMsg(rsp.data.msg);
+
+      if (rsp.data.result) {
+        return formatLineageSummariesToTaskProgress(
+          rsp.data.data.result.result,
+        );
+      } else {
+        setError(true);
+        setRefresh(false);
+      }
+    },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
+  );
+
+  return {
+    progress: tasks,
+    msg,
+    error,
+    isRefreshing,
+    onSwitchChange,
+  };
 };
