@@ -4,6 +4,7 @@ import unittest
 import tensorflow as tf
 import torch
 import ray
+import time
 
 from typing import Type, Union
 
@@ -73,8 +74,9 @@ def _get_trainer_runner(
 class TestTrainerRunner(unittest.TestCase):
     """This test is setup for 2 gpus."""
 
-    # TODO: Make a unittest that does not need 2 gpus to run.
-    # So that the user can run it locally as well.
+    # TODO: This unittest should also test other resource allocations like multi-cpu,
+    # multi-node multi-gpu, etc.
+
     @classmethod
     def setUp(cls) -> None:
         ray.init()
@@ -86,7 +88,8 @@ class TestTrainerRunner(unittest.TestCase):
     def test_update_multigpu(self):
         """Test training in a 2 gpu setup and that weights are synchronized."""
 
-        for fw in ["torch"]:  # , "torch"]:
+        for fw in ["tf", "torch"]:
+            ray.init(ignore_reinit_error=True)
             print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
             runner = _get_trainer_runner(fw, env, compute_config=dict(num_gpus=2))
@@ -110,12 +113,15 @@ class TestTrainerRunner(unittest.TestCase):
                 )
             self.assertLess(min_loss, 0.57)
 
-            # make sure the runner resources are freed up
+            # make sure the runner resources are freed up so that we don't autoscale
             del runner
+            ray.shutdown()
+            time.sleep(10)
 
     def test_add_remove_module(self):
 
-        for fw in ["torch"]:  # , "torch"]:
+        for fw in ["tf", "torch"]:
+            ray.init(ignore_reinit_error=True)
             print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
             runner = _get_trainer_runner(fw, env, compute_config=dict(num_gpus=2))
@@ -184,8 +190,10 @@ class TestTrainerRunner(unittest.TestCase):
                     set(result["loss"]) - {"total_loss"}, module_ids_before_add
                 )
 
-            # make sure the runner resources are freed up
+            # make sure the runner resources are freed up so that we don't autoscale
             del runner
+            ray.shutdown()
+            time.sleep(10)
 
 
 if __name__ == "__main__":
