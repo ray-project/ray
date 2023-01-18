@@ -182,4 +182,6 @@ class TorchRLTrainer(RLTrainer):
         # we need to ddpify the module that was just added to the pool
         self._module[module_id].to(self._device)
         if self.distributed:
-            self._module.add_module(module_id, TorchDDPRLModule(self._module[module_id]), override=True)
+            self._module.add_module(
+                module_id, TorchDDPRLModule(self._module[module_id]), override=True
+            )

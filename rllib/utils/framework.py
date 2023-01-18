@@ -166,6 +166,7 @@ class _FakeClassStub:
     def __init__(self, *a, **kw):
         raise ImportError("Could not import `torch`. Try pip install torch.")
 
+
 class _ParallelStub:
     def __init__(self, *a, **kw):
         self.DataParallel = _FakeClassStub

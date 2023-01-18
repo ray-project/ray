@@ -5,6 +5,7 @@ from ray.rllib.core.rl_module import RLModule
 
 torch, nn = try_import_torch()
 
+
 class TorchRLModule(nn.Module, RLModule):
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
