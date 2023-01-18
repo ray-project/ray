@@ -62,8 +62,12 @@ def test_disable_in_ray_client(ray_start_cluster_enabled):
     assert not DatasetContext.get_current().block_splitting_enabled
 
 
+@pytest.mark.parametrize("compute", ["actors", "tasks"])
 def test_dataset(
-    ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
+    ray_start_regular_shared,
+    enable_dynamic_block_splitting,
+    target_max_block_size,
+    compute,
 ):
     # Test 10 blocks from 10 tasks, each block is 1024 bytes.
     num_blocks = 10
@@ -81,13 +85,15 @@ def test_dataset(
     assert ds.num_blocks() == num_tasks
     assert ds.size_bytes() >= 0.7 * block_size * num_blocks * num_tasks
 
-    map_ds = ds.map_batches(lambda x: x)
+    map_ds = ds.map_batches(lambda x: x, compute=compute)
     map_ds.fully_executed()
     assert map_ds.num_blocks() == num_tasks
-    map_ds = ds.map_batches(lambda x: x, batch_size=num_blocks * num_tasks)
+    map_ds = ds.map_batches(
+        lambda x: x, batch_size=num_blocks * num_tasks, compute=compute
+    )
     map_ds.fully_executed()
     assert map_ds.num_blocks() == 1
-    map_ds = ds.map(lambda x: x)
+    map_ds = ds.map(lambda x: x, compute=compute)
     map_ds.fully_executed()
     assert map_ds.num_blocks() == num_blocks * num_tasks
 
