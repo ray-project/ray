@@ -1,10 +1,3 @@
 #!/bin/bash
 
-# Set image type based on build argument
-if [ $IMAGE_TAG = "cpu" ]; then
-    docker build . -t jcoffi/cluster-anywhere:cpu --build-arg IMAGETYPE=cpu --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-cpu
-elif [ $IMAGE_TAG = "gpu" ]; then
-    docker build . -t jcoffi/cluster-anywhere:gpu --build-arg IMAGETYPE=gpu --cache-from=index.docker.io/jcoffi/cluster-anywhere:gpu
-else
-    docker build . -t jcoffi/cluster-anywhere:$IMAGE_TAG --build-arg IMAGETYPE=$IMAGE_TAG --cache-from=index.docker.io/jcoffi/cluster-anywhere:$IMAGE_TAG   
-fi
+docker build . -t jcoffi/cluster-anywhere:$DOCKER_TAG --build-arg IMAGETYPE=$DOCKER_TAG --cache-from=index.docker.io/jcoffi/cluster-anywhere:$DOCKER_TAG --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-$DOCKER_TAG
