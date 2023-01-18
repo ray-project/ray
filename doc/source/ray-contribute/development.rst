@@ -71,39 +71,42 @@ Every time you want to update your local version you can pull the changes from t
 Prepare the Python environment
 ------------------------------
 
-You probably want to have some type of Python virtual environment. For example, you could use Anaconda's ``conda``. 
+You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``. 
 
 .. tabbed:: conda
 
-    Set up an isolated Anaconda environment using the instructions in :ref:`ray_anaconda`.
-
-    Creating a new virtual environment can come with older versions of ``pip`` and ``wheel``. To avoid problems when you install packages, use the module ``pip`` to install the latest version of ``pip`` (itself) and ``wheel``:
-
+    Set up a ``conda`` environment named ``ray``:
 
     .. code-block:: shell
 
-        python -m pip install --upgrade pip wheel
+        conda create -c conda-forge python=3.9 -n ray
 
+
+    Activate your virtual environment to tell the shell/terminal to use this particular Python:
+
+    .. code-block:: shell
+		    
+        conda activate ray
+        
+    You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
 .. tabbed:: venv
 
-    To use Python's integrated ``venv`` module to create one:
+    Use Python's integrated ``venv`` module to create a virtual environment called ``venv`` in the current directory:
 
     .. code-block:: shell
 
         python -m venv venv
 
-    That will create a virtual environment called ``venv`` in the current directory, it will contain a directory with all the packages used by the local Python of your project. You only need to do this step once.
+    This contains a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
-    Next, you need to activate the environment to tell your shell/terminal to use this particular Python. This will also depend on the system you use to set up your virtual environment (conda, venv, or other methods).
-
-    If you are using the example from above using ``venv``, you would activate your virtual environment with:
+    Activate your virtual environment to tell the  shell/terminal to use this particular Python:
 
     .. code-block:: shell
 
         source venv/bin/activate
 
-    You will need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
+    You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
     Creating a new virtual environment can come with older versions of ``pip`` and ``wheel``. To avoid problems when you install packages, use the module ``pip`` to install the latest version of ``pip`` (itself) and ``wheel``:
 
