@@ -18,5 +18,5 @@ def get_buildkite_artifact_urls(pattern: str) -> List[str]:
     ).split()
 
 
-def upload_buildkite_artifacts(path: str):
-    subprocess.check_output(["buildkite-agent", "artifact", "upload", path])
+def upload_buildkite_artifacts(path: str) -> str:
+    return subprocess.check_output(["buildkite-agent", "artifact", "upload", path])

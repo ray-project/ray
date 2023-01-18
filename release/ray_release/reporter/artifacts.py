@@ -48,5 +48,5 @@ class ArtifactsReporter(Reporter):
                 f"Wrote prometheus metrics to artifacts directory: {self.artifacts_dir}"
             )
 
-            upload_buildkite_artifacts(metrics_file)
+            logger.info(upload_buildkite_artifacts(metrics_file))
             os.remove(metrics_file)

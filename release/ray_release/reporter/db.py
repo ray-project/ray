@@ -43,6 +43,7 @@ class DBReporter(Reporter):
             metrics_artifact_urls = get_buildkite_artifact_urls(
                 f"*{METRICS_RESULT_FILE}"
             )
+            logger.info(metrics_artifact_urls)
             if metrics_artifact_urls:
                 result_json["prometheus_metrics_url"] = metrics_artifact_urls[0]
 
