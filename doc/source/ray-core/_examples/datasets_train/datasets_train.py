@@ -23,7 +23,6 @@ from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn.parallel import DistributedDataParallel
 
 import ray
 from ray import train
@@ -407,12 +406,20 @@ def train_func(config):
     print(f"Device: {device}")
 
     # Setup data.
-    train_dataset_pipeline = session.get_dataset_shard("train")
-    train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
-    test_dataset = session.get_dataset_shard("test")
-    test_torch_dataset = test_dataset.to_torch(
-        label_column="label", batch_size=batch_size, drop_last=True
-    )
+    train_dataset_iterator = session.get_dataset_shard("train")
+    test_dataset_iterator = session.get_dataset_shard("test")
+
+    def to_torch_dataset(torch_batch_iterator):
+        for batch in torch_batch_iterator:
+            label_column = "label"
+            labels = batch[label_column].unsqueeze(1)
+            features = [
+                batch[col_name].unsqueeze(1)
+                for col_name in batch
+                if col_name != label_column
+            ]
+            inputs = torch.cat(features, dim=1)
+            yield inputs, labels
 
     net = Net(
         n_layers=num_layers,
@@ -430,12 +437,9 @@ def train_func(config):
 
     print("Starting training...")
     for epoch in range(num_epochs):
-        train_dataset = next(train_dataset_epoch_iterator)
-
-        train_torch_dataset = train_dataset.to_torch(
-            label_column="label", batch_size=batch_size
+        train_torch_dataset = to_torch_dataset(
+            train_dataset_iterator.iter_torch_batches(batch_size=batch_size)
         )
-
         train_running_loss, train_num_correct, train_num_total = train_epoch(
             train_torch_dataset, net, device, criterion, optimizer
         )
@@ -445,6 +449,11 @@ def train_func(config):
             f"{train_num_correct} / {train_num_total} = {train_acc:.4f}"
         )
 
+        test_torch_dataset = to_torch_dataset(
+            test_dataset_iterator.iter_torch_batches(
+                batch_size=batch_size, drop_last=True
+            )
+        )
         test_running_loss, test_num_correct, test_num_total = test_epoch(
             test_torch_dataset, net, device, criterion
         )
@@ -455,8 +464,7 @@ def train_func(config):
         )
 
         # Checkpoint model.
-        module = net.module if isinstance(net, DistributedDataParallel) else net
-        checkpoint = Checkpoint.from_dict(dict(model=module.state_dict()))
+        checkpoint = Checkpoint.from_dict(dict(model=net.state_dict()))
 
         # Record and log stats.
         print(f"session report on {session.get_world_rank()}")
@@ -625,11 +633,7 @@ if __name__ == "__main__":
             resources_per_worker=resources_per_worker,
         ),
         run_config=RunConfig(callbacks=callbacks),
-        dataset_config={
-            "train": DatasetConfig(
-                use_stream_api=True, stream_window_size=-1, global_shuffle=True
-            )
-        },
+        dataset_config={"train": DatasetConfig(global_shuffle=True)},
     )
     results = trainer.fit()
     state_dict = results.checkpoint.to_dict()["model"]

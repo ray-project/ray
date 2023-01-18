@@ -45,7 +45,7 @@ def headers():
 
 
 @pytest.fixture(scope="module")
-def job_sdk_client(headers):
+def job_sdk_client(headers) -> JobSubmissionClient:
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
         address = ctx.address_info["webui_url"]
         assert wait_until_server_available(address)
@@ -162,7 +162,9 @@ def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
     if status == JobStatus.FAILED:
         logs = client.get_job_logs(job_id)
-        raise RuntimeError(f"Job failed\nlogs:\n{logs}")
+        raise RuntimeError(
+            f"Job failed\nlogs:\n{logs}, info: {client.get_job_info(job_id)}"
+        )
     return status == JobStatus.SUCCEEDED
 
 
@@ -331,12 +333,7 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
         runtime_env=runtime_env_option["runtime_env"],
     )
 
-    # Conda env takes longer to install, causing flakiness.
-    timeout = 240 if runtime_env_option["runtime_env"].get("conda") is not None else 120
-
-    wait_for_condition(
-        _check_job_succeeded, client=client, job_id=job_id, timeout=timeout
-    )
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=60)
 
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs
@@ -472,6 +469,31 @@ raise RuntimeError('Intentionally failed.')
         )
         assert client.stop_job(job_id) is True
         wait_for_condition(_check_job_stopped, client=client, job_id=job_id)
+
+
+def test_delete_job(job_sdk_client, capsys):
+    """
+    Submit a job and delete it.
+    """
+    client: JobSubmissionClient = job_sdk_client
+
+    job_id = client.submit_job(entrypoint="sleep 300 && echo hello")
+    with pytest.raises(Exception, match="but it is in a non-terminal state"):
+        # This should fail because the job is not in a terminal state.
+        client.delete_job(job_id)
+
+    # Check that the job appears in list_jobs
+    jobs = client.list_jobs()
+    assert job_id in [job.submission_id for job in jobs]
+
+    finished_job_id = client.submit_job(entrypoint="echo hello")
+    wait_for_condition(_check_job_succeeded, client=client, job_id=finished_job_id)
+    deleted = client.delete_job(finished_job_id)
+    assert deleted is True
+
+    # Check that the job no longer appears in list_jobs
+    jobs = client.list_jobs()
+    assert finished_job_id not in [job.submission_id for job in jobs]
 
 
 def test_job_metadata(job_sdk_client):

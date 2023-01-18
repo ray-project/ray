@@ -119,7 +119,6 @@ scripts/nodes.txt
 /doc/_build
 /doc/source/_static/thumbs
 /doc/source/tune/generated_guides/
-/doc/source/ray-more-libs/
 
 # User-specific stuff:
 .idea/**/workspace.xml
@@ -201,10 +200,6 @@ tools/prometheus*
 project-id
 .mypy_cache/
 
-# gitpod cache related
-.pip-cache/
-.bazel-cache/
-
 # release test related
 .anyscale.yaml
 test_state.json
@@ -225,3 +220,6 @@ workflow_data/
 /compile_commands.json
 # Directory where clangd puts its indexing work
 /.cache/
+
+# Auto-generated tag mapping
+tag-mapping.json

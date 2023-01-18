@@ -72,7 +72,7 @@ export const JobTaskNameProgressTable = ({
           {progress.map(
             ({ name, progress, numFailed, numActive, numFinished }) => {
               return (
-                <TableRow>
+                <TableRow key={name}>
                   <TableCell align="center">{name}</TableCell>
                   <TableCell align="center">{numFailed}</TableCell>
                   <TableCell align="center">{numActive}</TableCell>

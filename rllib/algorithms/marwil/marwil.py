@@ -9,13 +9,9 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
-from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -100,13 +96,6 @@ class MARWILConfig(AlgorithmConfig):
         self.train_batch_size = 2000
         # __sphinx_doc_end__
         # fmt: on
-
-        # TODO: Delete this and change off_policy_estimation_methods to {}
-        # Also remove the same section from BC
-        self.off_policy_estimation_methods = {
-            "is": {"type": ImportanceSampling},
-            "wis": {"type": WeightedImportanceSampling},
-        }
         self._set_off_policy_estimation_methods = False
 
     @override(AlgorithmConfig)
@@ -169,7 +158,6 @@ class MARWILConfig(AlgorithmConfig):
         **kwargs,
     ) -> "MARWILConfig":
         """Sets the evaluation related configuration.
-
         Returns:
             This updated AlgorithmConfig object.
         """
@@ -190,9 +178,9 @@ class MARWILConfig(AlgorithmConfig):
     ) -> "Algorithm":
         if not self._set_off_policy_estimation_methods:
             deprecation_warning(
-                old="MARWIL currently uses off_policy_estimation_methods: "
-                f"{self.off_policy_estimation_methods} by default. This will"
-                "change to off_policy_estimation_methods: {} in a future release."
+                old=r"MARWIL used to have off_policy_estimation_methods "
+                "is and wis by default. This has"
+                "changed to off_policy_estimation_methods: \{\}."
                 "If you want to use an off-policy estimator, specify it in"
                 ".evaluation(off_policy_estimation_methods=...)",
                 error=False,
@@ -206,9 +194,6 @@ class MARWILConfig(AlgorithmConfig):
 
         if self.beta < 0.0 or self.beta > 1.0:
             raise ValueError("`beta` must be within 0.0 and 1.0!")
-
-        if self.num_gpus > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 
         if self.postprocess_inputs is False and self.beta > 0.0:
             raise ValueError(

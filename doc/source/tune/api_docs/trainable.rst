@@ -4,8 +4,8 @@
     API does not really have a signature to just describe.
 .. TODO: Reusing actors and advanced resources allocation seem ill-placed.
 
-Training (tune.Trainable, session.report)
-==========================================
+Training in Tune (tune.Trainable, session.report)
+=================================================
 
 Training can be done with either a **Function API** (:ref:`session.report <tune-function-docstring>`) or **Class API** (:ref:`tune.Trainable <tune-trainable-docstring>`).
 
@@ -18,11 +18,14 @@ For the sake of example, let's maximize this objective function:
 
 .. _tune-function-api:
 
-Function API
-------------
+Tune's Function API
+-------------------
 
 The Function API allows you to define a custom training function that Tune will run in parallel Ray actor processes,
 one for each Tune trial.
+
+The ``config`` argument in the function is a dictionary populated automatically by Ray Tune and corresponding to
+the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
 
 With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the function.
 
@@ -77,8 +80,8 @@ references to framework-specific checkpoints such as `TensorflowCheckpoint`.
 
 .. _tune-class-api:
 
-Trainable Class API
--------------------
+Tune's Trainable Class API
+--------------------------
 
 .. caution:: Do not use ``session.report`` within a ``Trainable`` class.
 
@@ -97,6 +100,9 @@ separate process (using the :ref:`Ray Actor API <actor-guide>`).
      Each time, the Trainable object executes one logical iteration of training in the tuning process,
      which may include one or more iterations of actual training.
   3. ``cleanup`` is invoked when training is finished.
+
+The ``config`` argument in the ``setup`` method is a dictionary populated automatically by Tune and corresponding to
+the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
 
 .. tip:: As a rule of thumb, the execution time of ``step`` should be large enough to avoid overheads
     (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
@@ -174,8 +180,8 @@ Use ``validate_save_restore`` to catch ``save_checkpoint``/``load_checkpoint`` e
 
 
 
-Advanced: Reusing Actors
-~~~~~~~~~~~~~~~~~~~~~~~~
+Advanced: Reusing Actors in Tune
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. note:: This feature is only for the Trainable Class API.
 
@@ -211,8 +217,8 @@ It is up to the user to correctly update the hyperparameters of your trainable.
             return True
 
 
-Comparing the Function API and Class API
-----------------------------------------
+Comparing Tune's Function API and Class API
+-------------------------------------------
 
 Here are a few key concepts and what they look like for the Function and Class API's.
 
@@ -234,7 +240,7 @@ Trainables can themselves be distributed. If your trainable function / class cre
 that also consume CPU / GPU resources, you will want to add more bundles to the :class:`PlacementGroupFactory`
 to reserve extra resource slots.
 For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU,
-then you should use this:
+then you should use :ref:`tune-with-resources` like this:
 
 .. code-block:: python
    :emphasize-lines: 4-10
@@ -308,3 +314,9 @@ tune.with_parameters
 
 .. autofunction:: ray.tune.with_parameters
 
+.. _tune-with-resources:
+
+tune.with_resources
+--------------------
+
+.. autofunction:: ray.tune.with_resources

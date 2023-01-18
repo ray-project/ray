@@ -1,12 +1,15 @@
-from enum import Enum, auto
-from typing import Dict, Union, List
+from enum import Enum
+from typing import Dict, Union, List, TYPE_CHECKING
+import warnings
 
 import numpy as np
-import pandas as pd
 
 from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 # TODO: Consolidate data conversion edges for arrow bug workaround.
 try:
@@ -14,19 +17,42 @@ try:
 except ImportError:
     pyarrow = None
 
+# Lazy import to avoid ray init failures without pandas installed and allow
+# dataset to import modules in this file.
+_pandas = None
+
+
+def _lazy_import_pandas():
+    global _pandas
+    if _pandas is None:
+        import pandas
+
+        _pandas = pandas
+    return _pandas
+
 
 @DeveloperAPI
-class DataType(Enum):
-    PANDAS = auto()
-    ARROW = auto()
-    NUMPY = auto()  # Either a single numpy array or a Dict of numpy arrays.
+class BatchFormat(str, Enum):
+    PANDAS = "pandas"
+    # TODO: Remove once Arrow is deprecated as user facing batch format
+    ARROW = "arrow"
+    NUMPY = "numpy"  # Either a single numpy array or a Dict of numpy arrays.
+
+
+@DeveloperAPI
+class BlockFormat(str, Enum):
+    """Internal Dataset block format enum."""
+
+    PANDAS = "pandas"
+    ARROW = "arrow"
+    SIMPLE = "simple"
 
 
 @DeveloperAPI
 def convert_batch_type_to_pandas(
     data: DataBatchType,
     cast_tensor_columns: bool = False,
-) -> pd.DataFrame:
+) -> "pd.DataFrame":
     """Convert the provided data to a Pandas DataFrame.
 
     Args:
@@ -37,6 +63,8 @@ def convert_batch_type_to_pandas(
         A pandas Dataframe representation of the input data.
 
     """
+    pd = _lazy_import_pandas()
+
     if isinstance(data, np.ndarray):
         data = pd.DataFrame({TENSOR_COLUMN_NAME: _ndarray_to_column(data)})
     elif isinstance(data, dict):
@@ -64,15 +92,15 @@ def convert_batch_type_to_pandas(
 
 @DeveloperAPI
 def convert_pandas_to_batch_type(
-    data: pd.DataFrame,
-    type: DataType,
+    data: "pd.DataFrame",
+    type: BatchFormat,
     cast_tensor_columns: bool = False,
 ) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``.
 
     Args:
         data: A Pandas DataFrame
-        type: The specific ``DataBatchType`` to convert to.
+        type: The specific ``BatchFormat`` to convert to.
         cast_tensor_columns: Whether tensor columns should be cast to our tensor
             extension type.
 
@@ -81,10 +109,10 @@ def convert_pandas_to_batch_type(
     """
     if cast_tensor_columns:
         data = _cast_ndarray_columns_to_tensor_extension(data)
-    if type == DataType.PANDAS:
+    if type == BatchFormat.PANDAS:
         return data
 
-    elif type == DataType.NUMPY:
+    elif type == BatchFormat.NUMPY:
         if len(data.columns) == 1:
             # If just a single column, return as a single numpy array.
             return data.iloc[:, 0].to_numpy()
@@ -95,7 +123,7 @@ def convert_pandas_to_batch_type(
                 output_dict[column] = data[column].to_numpy()
             return output_dict
 
-    elif type == DataType.ARROW:
+    elif type == BatchFormat.ARROW:
         if not pyarrow:
             raise ValueError(
                 "Attempted to convert data to Pyarrow Table but Pyarrow "
@@ -106,7 +134,7 @@ def convert_pandas_to_batch_type(
 
     else:
         raise ValueError(
-            f"Received type {type}, but expected it to be one of {DataType}"
+            f"Received type {type}, but expected it to be one of {DataBatchType}"
         )
 
 
@@ -121,6 +149,8 @@ def _convert_batch_type_to_numpy(
     Returns:
         A numpy representation of the input data.
     """
+    pd = _lazy_import_pandas()
+
     if isinstance(data, np.ndarray):
         return data
     elif isinstance(data, dict):
@@ -164,7 +194,7 @@ def _convert_batch_type_to_numpy(
                 output_dict[col_name] = col.to_numpy(zero_copy_only=False)
             return output_dict
     elif isinstance(data, pd.DataFrame):
-        return convert_pandas_to_batch_type(data, DataType.NUMPY)
+        return convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:
         raise ValueError(
             f"Received data of type: {type(data)}, but expected it to be one "
@@ -172,13 +202,14 @@ def _convert_batch_type_to_numpy(
         )
 
 
-def _ndarray_to_column(arr: np.ndarray) -> Union[pd.Series, List[np.ndarray]]:
+def _ndarray_to_column(arr: np.ndarray) -> Union["pd.Series", List[np.ndarray]]:
     """Convert a NumPy ndarray into an appropriate column format for insertion into a
     pandas DataFrame.
 
     If conversion to a pandas Series fails (e.g. if the ndarray is multi-dimensional),
     fall back to a list of NumPy ndarrays.
     """
+    pd = _lazy_import_pandas()
     try:
         # Try to convert to Series, falling back to a list conversion if this fails
         # (e.g. if the ndarray is multi-dimensional).
@@ -201,10 +232,11 @@ def _unwrap_ndarray_object_type_if_needed(arr: np.ndarray) -> np.ndarray:
     return arr
 
 
-def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
+def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFrame":
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
+    pd = _lazy_import_pandas()
     from ray.air.util.tensor_extensions.pandas import (
         TensorArray,
         column_needs_tensor_extension,
@@ -218,7 +250,13 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
         for col_name, col in df.items():
             if column_needs_tensor_extension(col):
                 try:
-                    df.loc[:, col_name] = TensorArray(col)
+                    # Suppress Pandas warnings:
+                    # https://github.com/ray-project/ray/issues/29270
+                    # We actually want in-place operations so we surpress this warning.
+                    # https://stackoverflow.com/a/74193599
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=FutureWarning)
+                        df.loc[:, col_name] = TensorArray(col)
                 except Exception as e:
                     raise ValueError(
                         f"Tried to cast column {col_name} to the TensorArray tensor "
@@ -230,13 +268,20 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _cast_tensor_columns_to_ndarrays(df: pd.DataFrame) -> pd.DataFrame:
+def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
     """Cast all tensor extension columns in df to NumPy ndarrays."""
+    pd = _lazy_import_pandas()
     from ray.air.util.tensor_extensions.pandas import TensorDtype
 
     with pd.option_context("chained_assignment", None):
         # Try to convert any tensor extension columns to ndarray columns.
         for col_name, col in df.items():
             if isinstance(col.dtype, TensorDtype):
-                df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
+                # Suppress Pandas warnings:
+                # https://github.com/ray-project/ray/issues/29270
+                # We actually want in-place operations so we surpress this warning.
+                # https://stackoverflow.com/a/74193599
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=FutureWarning)
+                    df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
         return df

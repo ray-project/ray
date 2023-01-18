@@ -20,12 +20,10 @@ import logging
 import time
 from typing import Optional
 
-import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
@@ -47,6 +45,9 @@ logger = logging.getLogger(__name__)
 
 class DDPPOConfig(PPOConfig):
     """Defines a configuration class from which a DDPPO Algorithm can be built.
+
+    Note(jungong) : despite best efforts, DDPPO does not use fault tolerant and
+    elastic features of WorkerSet, because of the way Torch DDP is set up.
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
@@ -154,9 +155,7 @@ class DDPPOConfig(PPOConfig):
 
     @override(PPOConfig)
     def validate(self) -> None:
-        # Call (base) PPO's config validation function first.
-        # Note that this will not touch or check on the train_batch_size=-1
-        # setting.
+        # Call super's validation method.
         super().validate()
 
         # Must have `num_rollout_workers` >= 1.
@@ -228,72 +227,94 @@ class DDPPO(PPO):
 
         # Initialize torch process group for
         self._curr_learner_info = {}
-        ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
-        port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
+
+        worker_ids = self.workers.healthy_worker_ids()
+        assert worker_ids, "No healthy rollout workers."
+
+        # Find IP and Port of the first remote worker. This is our Rank 0  worker.
+        ip = self.workers.foreach_worker(
+            func=lambda w: w.get_node_ip(),
+            remote_worker_ids=[worker_ids[0]],
+            local_worker=False,
+        )[0]
+        port = self.workers.foreach_worker(
+            func=lambda w: w.find_free_port(),
+            remote_worker_ids=[worker_ids[0]],
+            local_worker=False,
+        )[0]
         address = "tcp://{ip}:{port}".format(ip=ip, port=port)
         logger.info("Creating torch process group with leader {}".format(address))
 
         # Get setup tasks in order to throw errors on failure.
-        ray.get(
-            [
-                worker.setup_torch_data_parallel.remote(
-                    url=address,
-                    world_rank=i,
-                    world_size=len(self.workers.remote_workers()),
-                    backend=self.config.torch_distributed_backend,
-                )
-                for i, worker in enumerate(self.workers.remote_workers())
-            ]
-        )
+        world_size = self.workers.num_remote_workers()
+        backend = self.config.torch_distributed_backend
+
+        def get_setup_fn(world_rank):
+            return lambda w: w.setup_torch_data_parallel(
+                url=address,
+                world_rank=world_rank,
+                world_size=world_size,
+                backend=backend,
+            )
+
+        funcs = [get_setup_fn(i) for i in range(world_size)]
+        # Set up torch distributed on all workers. The assumption here is that
+        # all workers should be healthy at this point.
+        self.workers.foreach_worker(func=funcs, local_worker=False, healthy_only=False)
+
         logger.info("Torch process group init completed")
-        self._ddppo_worker_manager = AsyncRequestsManager(
-            self.workers.remote_workers(),
-            max_remote_requests_in_flight_per_worker=1,
-            ray_wait_timeout_s=0.03,
-        )
 
     @override(PPO)
     def training_step(self) -> ResultDict:
-        # Shortcut.
-        first_worker = self.workers.remote_workers()[0]
-
-        self._ddppo_worker_manager.call_on_all_available(
-            self._sample_and_train_torch_distributed
+        self.workers.foreach_worker_async(
+            func=self._sample_and_train_torch_distributed,
+            healthy_only=False,
         )
-        sample_and_update_results = self._ddppo_worker_manager.get_ready()
+        sample_and_update_results = self.workers.fetch_ready_async_reqs(
+            timeout_seconds=0.03
+        )
 
         # For all results collected:
         # - Update our counters and timers.
         # - Update the worker's global_vars.
         # - Build info dict using a LearnerInfoBuilder object.
         learner_info_builder = LearnerInfoBuilder(num_devices=1)
-        for worker, results in sample_and_update_results.items():
-            for result in results:
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
-                self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
-                self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
-                self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
-                self._timers[LEARN_ON_BATCH_TIMER].push(result["learn_on_batch_time"])
-                self._timers[SAMPLE_TIMER].push(result["sample_time"])
+        sampled_workers = set()
+        for worker_id, result in sample_and_update_results:
+            sampled_workers.add(worker_id)
+
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
+            self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
+            self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
+            self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
+            self._timers[LEARN_ON_BATCH_TIMER].push(result["learn_on_batch_time"])
+            self._timers[SAMPLE_TIMER].push(result["sample_time"])
+
             # Add partial learner info to builder object.
             learner_info_builder.add_learn_on_batch_results_multi_agent(result["info"])
 
-            # Broadcast the local set of global vars.
-            global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
-            for worker in self.workers.remote_workers():
-                worker.set_global_vars.remote(global_vars)
+        # Broadcast the local set of global vars to this worker.
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
+        self.workers.foreach_worker(
+            func=lambda w: w.set_global_vars(global_vars),
+            local_worker=False,
+            remote_worker_ids=list(sampled_workers),
+            timeout_seconds=0,  # Don't wait for workers to finish.
+        )
 
         # Sync down the weights from 1st remote worker (only if we have received
         # some results from it).
         # As with the sync up, this is not really needed unless the user is
         # reading the local weights.
-        if (
-            self.config.keep_local_weights_in_sync
-            and first_worker in sample_and_update_results
-        ):
-            self.workers.local_worker().set_weights(
-                ray.get(first_worker.get_weights.remote())
+        worker_ids = self.workers.healthy_worker_ids()
+        assert worker_ids, "No healthy rollout workers?"
+        if self.config.keep_local_weights_in_sync and worker_ids[0] in sampled_workers:
+            weights = self.workers.foreach_worker(
+                func=lambda w: w.get_weights(),
+                local_worker=False,
+                remote_worker_ids=[worker_ids[0]],
             )
+            self.workers.local_worker().set_weights(weights[0])
         # Return merged laarner into results.
         new_learner_info = learner_info_builder.finalize()
         if new_learner_info:

@@ -196,6 +196,15 @@ with one of the following:
 
 .. tabbed:: TensorFlow
 
+    .. warning::
+        Ray will not automatically set any environment variables or configuration
+        related to local parallelism / threading
+        :ref:`aside from "OMP_NUM_THREADS" <omp-num-thread-note>`.
+        If you desire greater control over TensorFlow threading, use
+        the ``tf.config.threading`` module (eg.
+        ``tf.config.threading.set_inter_op_parallelism_threads(num_cpus)``)
+        at the beginning of your ``train_loop_per_worker`` function.
+
     .. code-block:: python
 
         from ray.air import ScalingConfig
@@ -467,7 +476,8 @@ be logged and displayed.
 .. warning::
 
     Only the results from rank 0 worker will be used. However, in order to ensure
-    consistency, ``session.report()`` has to be called on each worker.
+    consistency, ``session.report()`` has to be called on each worker. If you
+    want to aggregate results from multiple workers, see :ref:`train-aggregating-results`.
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
 the end of each training epoch.
@@ -518,7 +528,6 @@ appropriately in distributed training.
 
         import torch
         import torch.nn as nn
-        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
         from torch.optim import Adam
         import numpy as np
 
@@ -543,12 +552,7 @@ appropriately in distributed training.
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                # To fetch non-DDP state_dict
-                # w/o DDP: model.state_dict()
-                # w/  DDP: model.module.state_dict()
-                # See: https://github.com/ray-project/ray/issues/20915
                 state_dict = model.state_dict()
-                consume_prefix_in_state_dict_if_present(state_dict, "module.")
                 checkpoint = Checkpoint.from_dict(
                     dict(epoch=epoch, model_weights=state_dict)
                 )
@@ -705,7 +709,6 @@ Checkpoints can be loaded into the training function in 2 steps:
 
         import torch
         import torch.nn as nn
-        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
         from torch.optim import Adam
         import numpy as np
 
@@ -742,7 +745,6 @@ Checkpoints can be loaded into the training function in 2 steps:
                 loss.backward()
                 optimizer.step()
                 state_dict = model.state_dict()
-                consume_prefix_in_state_dict_if_present(state_dict, "module.")
                 checkpoint = Checkpoint.from_dict(
                     dict(epoch=epoch, model_weights=state_dict)
                 )
@@ -904,35 +906,30 @@ A simple example for creating a callback that will print out results:
     # {'epoch': 1, '_timestamp': 1656349412, '_time_this_iter_s': 0.0013833045959472656, '_training_iteration': 2, 'time_this_iter_s': 0.016670703887939453, 'done': False, 'timesteps_total': None, 'episodes_total': None, 'training_iteration': 2, 'trial_id': '0f1d0_00000', 'experiment_id': '494a1d050b4a4d11aeabd87ba475fcd3', 'date': '2022-06-27_17-03-32', 'timestamp': 1656349412, 'time_total_s': 3.4501540660858154, 'pid': 23018, 'hostname': 'ip-172-31-43-110', 'node_ip': '172.31.43.110', 'config': {}, 'time_since_restore': 3.4501540660858154, 'timesteps_since_restore': 0, 'iterations_since_restore': 2, 'warmup_time': 0.003779172897338867, 'experiment_tag': '0'}
 
 
-Example: PyTorch Distributed metrics
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _train-aggregating-results:
 
-In real applications, you may want to calculate optimization metrics besides
-accuracy and loss: recall, precision, Fbeta, etc.
+How to obtain and aggregate results from different workers?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Train natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable PyTorch models.
+In real applications, you may want to calculate optimization metrics besides accuracy and loss: recall, precision, Fbeta, etc.
+You may also want to collect metrics from multiple workers. While Ray Train currently only reports metrics from the rank 0
+worker, you can use third-party libraries or distributed primitives of your machine learning framework to report
+metrics from multiple workers.
 
-Here is an example:
+.. tabbed:: PyTorch
 
-.. code-block:: python
+    Ray Train natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable PyTorch models.
 
-    from typing import List, Dict
-    from ray.air import session, ScalingConfig
-    from ray.train.torch import TorchTrainer
+    Here is an example of reporting both the aggregated R2 score and mean train and validation loss from all workers.
 
-    import torch
-    import torchmetrics
+    .. literalinclude:: doc_code/torchmetrics_example.py
+        :language: python
+        :start-after: __start__
 
-    def train_func(config):
-        preds = torch.randn(10, 5).softmax(dim=-1)
-        target = torch.randint(5, (10,))
-        accuracy = torchmetrics.functional.accuracy(preds, target).item()
-        session.report({"accuracy": accuracy})
+.. tabbed:: TensorFlow
 
-    trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=2))
-    result = trainer.fit()
-    print(result.metrics["accuracy"])
-    # 0.20000000298023224
+    TensorFlow Keras automatically aggregates metrics from all workers. If you wish to have more
+    control over that, consider implementing a `custom training loop <https://www.tensorflow.org/tutorials/distribute/custom_training>`_.
 
 .. Running on the cloud
 .. --------------------

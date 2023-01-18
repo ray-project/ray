@@ -1,7 +1,6 @@
 import logging
 from typing import List, Optional, Union
 
-import ray
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
     _check_sample_batch_type,
@@ -59,7 +58,7 @@ def synchronous_parallel_sample(
         >>> print(len(batches)) # doctest: +SKIP
         2
         >>> print(batches[0]) # doctest: +SKIP
-        SampleBatch(16: ['obs', 'actions', 'rewards', 'dones'])
+        SampleBatch(16: ['obs', 'actions', 'rewards', 'terminateds', 'truncateds'])
         >>> # 0 remote workers (num_workers=0): Using the local worker.
         >>> batches = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
         >>> print(len(batches)) # doctest: +SKIP
@@ -79,13 +78,17 @@ def synchronous_parallel_sample(
     ):
         # No remote workers in the set -> Use local worker for collecting
         # samples.
-        if not worker_set.remote_workers():
+        if worker_set.num_remote_workers() <= 0:
             sample_batches = [worker_set.local_worker().sample()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
-            sample_batches = ray.get(
-                [worker.sample.remote() for worker in worker_set.remote_workers()]
+            sample_batches = worker_set.foreach_worker(
+                lambda w: w.sample(), local_worker=False, healthy_only=True
             )
+            if worker_set.num_healthy_remote_workers() <= 0:
+                # There is no point staying in this loop, since we will not be able to
+                # get any new samples if we don't have any healthy remote workers left.
+                break
         # Update our counters for the stopping criterion of the while loop.
         for b in sample_batches:
             if max_agent_steps:

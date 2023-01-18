@@ -10,7 +10,7 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging
-from typing import List, Optional, Type, Union
+from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -39,6 +39,9 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
+
+if TYPE_CHECKING:
+    from ray.rllib.core.rl_module import RLModule
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,17 @@ class PPOConfig(PGConfig):
 
         # Deprecated keys.
         self.vf_share_layers = DEPRECATED_VALUE
+
+    @override(AlgorithmConfig)
+    def get_default_rl_module_class(self) -> Union[Type["RLModule"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
+            )
+
+            return PPOTorchRLModule
+        else:
+            raise ValueError(f"The framework {self.framework_str} is not supported.")
 
     @override(AlgorithmConfig)
     def training(
@@ -198,10 +212,6 @@ class PPOConfig(PGConfig):
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
-            if isinstance(entropy_coeff, int):
-                entropy_coeff = float(entropy_coeff)
-            if entropy_coeff < 0.0:
-                raise ValueError("`entropy_coeff` must be >= 0.0")
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
@@ -251,6 +261,10 @@ class PPOConfig(PGConfig):
                 "batch_mode=complete_episodes."
             )
 
+        # Check `entropy_coeff` for correctness.
+        if self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0")
+
 
 class UpdateKL:
     """Callback to update the KL based on optimization info.
@@ -295,9 +309,17 @@ class PPO(Algorithm):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 
-            return PPOTorchPolicy
+            if config._enable_rl_module_api:
+                from ray.rllib.algorithms.ppo.torch.ppo_torch_policy_rlm import (
+                    PPOTorchPolicyWithRLModule,
+                )
+
+                return PPOTorchPolicyWithRLModule
+            else:
+                from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
+
+                return PPOTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 
@@ -342,7 +364,7 @@ class PPO(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
-        if self.workers.remote_workers():
+        if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
                     policies=policies_to_update,

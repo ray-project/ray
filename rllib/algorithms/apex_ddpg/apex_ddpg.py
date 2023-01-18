@@ -1,14 +1,11 @@
-from typing import List, Optional
+from typing import Optional
 
-from ray.actor import ActorHandle
-from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.typing import (
-    PartialAlgorithmConfigDict,
     ResultDict,
 )
 
@@ -57,7 +54,7 @@ class ApexDDPGConfig(DDPGConfig):
             "num_replay_buffer_shards": 4,
             "debug": False,
         }
-        self.max_requests_in_flight_per_sampler_worker = 2
+        # Overwrite the default max_requests_in_flight_per_replay_worker.
         self.max_requests_in_flight_per_replay_worker = float("inf")
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_replay_manager = 0.0
@@ -109,8 +106,6 @@ class ApexDDPGConfig(DDPGConfig):
     def training(
         self,
         *,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
-        max_requests_in_flight_per_replay_worker: Optional[int] = NotProvided,
         timeout_s_sampler_manager: Optional[float] = NotProvided,
         timeout_s_replay_manager: Optional[float] = NotProvided,
         **kwargs,
@@ -118,28 +113,6 @@ class ApexDDPGConfig(DDPGConfig):
         """Sets the training related configuration.
 
         Args:
-            max_requests_in_flight_per_sampler_worker: Max number of inflight requests
-                to each sampling worker. See the AsyncRequestsManager class for more
-                details. Tuning these values is important when running experimens with
-                large sample batches, where there is the risk that the object store may
-                fill up, causing spilling of objects to disk. This can cause any
-                asynchronous requests to become very slow, making your experiment run
-                slow as well. You can inspect the object store during your experiment
-                via a call to ray memory on your headnode, and by using the ray
-                dashboard. If you're seeing that the object store is filling up,
-                turn down the number of remote requests in flight, or enable compression
-                in your experiment of timesteps.
-            max_requests_in_flight_per_replay_worker: Max number of inflight requests
-                to each replay (shard) worker. See the AsyncRequestsManager class for
-                more details. Tuning these values is important when running experimens
-                with large sample batches, where there is the risk that the object store
-                may fill up, causing spilling of objects to disk. This can cause any
-                asynchronous requests to become very slow, making your experiment run
-                slow as well. You can inspect the object store during your experiment
-                via a call to ray memory on your headnode, and by using the ray
-                dashboard. If you're seeing that the object store is filling up,
-                turn down the number of remote requests in flight, or enable compression
-                in your experiment of timesteps.
             timeout_s_sampler_manager: The timeout for waiting for sampling results
                 for workers -- typically if this is too low, the manager won't be able
                 to retrieve ready sampling results.
@@ -152,14 +125,6 @@ class ApexDDPGConfig(DDPGConfig):
         """
         super().training(**kwargs)
 
-        if max_requests_in_flight_per_sampler_worker is not NotProvided:
-            self.max_requests_in_flight_per_sampler_worker = (
-                max_requests_in_flight_per_sampler_worker
-            )
-        if max_requests_in_flight_per_replay_worker is not NotProvided:
-            self.max_requests_in_flight_per_replay_worker = (
-                max_requests_in_flight_per_replay_worker
-            )
         if timeout_s_sampler_manager is not NotProvided:
             self.timeout_s_sampler_manager = timeout_s_sampler_manager
         if timeout_s_replay_manager is not NotProvided:
@@ -175,29 +140,13 @@ class ApexDDPG(DDPG, ApexDQN):
         return ApexDDPGConfig()
 
     @override(DDPG)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfig):
         return ApexDQN.setup(self, config)
 
     @override(DDPG)
     def training_step(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
         return ApexDQN.training_step(self)
-
-    @override(Algorithm)
-    def on_worker_failures(
-        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
-    ):
-        """Handle the failures of remote sampling workers
-
-        Args:
-            removed_workers: removed worker ids.
-            new_workers: ids of newly created workers.
-        """
-        super().on_worker_failures(removed_workers, new_workers)
-        self._sampling_actor_manager.remove_workers(
-            removed_workers, remove_in_flight_requests=True
-        )
-        self._sampling_actor_manager.add_workers(new_workers)
 
 
 # Deprecated: Use ray.rllib.algorithms.apex_ddpg.ApexDDPGConfig instead!

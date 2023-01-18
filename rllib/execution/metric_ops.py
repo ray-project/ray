@@ -1,6 +1,5 @@
 from typing import Any, Dict, List
 
-from ray.actor import ActorHandle
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.execution.common import (
     AGENT_STEPS_SAMPLED_COUNTER,
@@ -34,12 +33,11 @@ class CollectMetrics:
         min_history: int = 100,
         timeout_seconds: int = 180,
         keep_per_episode_custom_metrics: bool = False,
-        selected_workers: List[ActorHandle] = None,
+        selected_workers: List[int] = None,
         by_steps_trained: bool = False,
     ):
         self.workers = workers
         self.episode_history = []
-        self.to_be_collected = []
         self.min_history = min_history
         self.timeout_seconds = timeout_seconds
         self.keep_custom_metrics = keep_per_episode_custom_metrics
@@ -48,10 +46,9 @@ class CollectMetrics:
 
     def __call__(self, _: Any) -> Dict:
         # Collect worker metrics.
-        episodes, self.to_be_collected = collect_episodes(
-            self.workers.local_worker(),
-            self.selected_workers or self.workers.remote_workers(),
-            self.to_be_collected,
+        episodes = collect_episodes(
+            self.workers,
+            self.selected_workers or self.workers.healthy_worker_ids(),
             timeout_seconds=self.timeout_seconds,
         )
         orig_episodes = list(episodes)
@@ -78,7 +75,7 @@ class CollectMetrics:
                 timers["{}_throughput".format(k)] = round(timer.mean_throughput, 3)
         res.update(
             {
-                "num_healthy_workers": len(self.workers.remote_workers()),
+                "num_healthy_workers": self.workers.num_healthy_workers(),
                 "timesteps_total": (
                     metrics.counters[STEPS_TRAINED_COUNTER]
                     if self.by_steps_trained

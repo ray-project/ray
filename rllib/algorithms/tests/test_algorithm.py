@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 from pathlib import Path
@@ -20,7 +20,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 class TestAlgorithm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=6)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -48,9 +48,7 @@ class TestAlgorithm(unittest.TestCase):
             policy_map_capacity=2,
         ).evaluation(
             evaluation_num_workers=1,
-            evaluation_config={
-                "num_cpus_per_worker": 0.1,
-            },
+            evaluation_config=pg.PGConfig.overrides(num_cpus_per_worker=0.1),
         )
         # Don't override existing model settings.
         config.model.update(
@@ -107,22 +105,18 @@ class TestAlgorithm(unittest.TestCase):
                         # Change the list of policies to train.
                         policies_to_train=[f"p{i}", f"p{i-1}"],
                     )
+
                 # Make sure new policy is part of remote workers in the
                 # worker set and the eval worker set.
-                assert pid in (
-                    ray.get(
-                        algo.workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.workers.foreach_worker(func=lambda w: pid in w.policy_map)[0]
                 )
-                assert pid in (
-                    ray.get(
-                        algo.evaluation_workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.evaluation_workers.foreach_worker(
+                        func=lambda w: pid in w.policy_map
+                    )[0]
                 )
+
                 # Assert new policy is part of local worker (eval worker set does NOT
                 # have a local worker, only the main WorkerSet does).
                 pol_map = algo.workers.local_worker().policy_map
@@ -202,26 +196,22 @@ class TestAlgorithm(unittest.TestCase):
                     # Note that the complete signature of a policy_mapping_fn
                     # is: `agent_id, episode, worker, **kwargs`.
                     policy_mapping_fn=(
-                        lambda agent_id, worker, episode, **kwargs: f"p{i - 1}"
+                        lambda agent_id, episode, worker, **kwargs: f"p{i - 1}"
                     ),
                     # Update list of policies to train.
                     policies_to_train=[f"p{i - 1}"],
                 )
                 # Make sure removed policy is no longer part of remote workers in the
                 # worker set and the eval worker set.
-                assert pid not in (
-                    ray.get(
-                        algo.workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.workers.foreach_worker(func=lambda w: pid not in w.policy_map)[
+                        0
+                    ]
                 )
-                assert pid not in (
-                    ray.get(
-                        algo.evaluation_workers.remote_workers()[0].apply.remote(
-                            lambda w: list(w.policy_map.keys())
-                        )
-                    )
+                self.assertTrue(
+                    algo.evaluation_workers.foreach_worker(
+                        func=lambda w: pid not in w.policy_map
+                    )[0]
                 )
                 # Assert removed policy is no longer part of local worker
                 # (eval worker set does NOT have a local worker, only the main WorkerSet
@@ -242,9 +232,7 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_interval=2,
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
-                evaluation_config={
-                    "gamma": 0.98,
-                },
+                evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
             )
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -280,11 +268,10 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_interval=2,
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
-                evaluation_config={
-                    "gamma": 0.98,
-                },
+                evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
                 always_attach_evaluation_results=True,
             )
+            .reporting(min_sample_timesteps_per_iteration=100)
             .callbacks(callbacks_class=AssertEvalCallback)
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
@@ -419,12 +406,12 @@ class TestAlgorithm(unittest.TestCase):
             .evaluation(
                 evaluation_interval=1,
                 evaluation_num_workers=1,
-                evaluation_config={
-                    "env": "CartPole-v1",
-                    "input": "sampler",
-                    "observation_space": None,  # Test, whether this is inferred.
-                    "action_space": None,  # Test, whether this is inferred.
-                },
+                evaluation_config=BCConfig.overrides(
+                    env="CartPole-v1",
+                    input_="sampler",
+                    observation_space=None,  # Test, whether this is inferred.
+                    action_space=None,  # Test, whether this is inferred.
+                ),
             )
             .offline_data(input_=[input_file])
         )

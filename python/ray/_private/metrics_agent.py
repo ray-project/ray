@@ -4,28 +4,34 @@ import os
 import threading
 import time
 import traceback
-from collections import namedtuple, defaultdict
-from typing import List, Tuple
+from collections import namedtuple
+from typing import List, Tuple, Any, Dict
 
+from prometheus_client.core import (
+    CounterMetricFamily,
+    GaugeMetricFamily,
+    HistogramMetricFamily,
+)
 from opencensus.metrics.export.value import ValueDouble
 from opencensus.stats import aggregation
 from opencensus.stats import measure as measure_module
 from opencensus.stats.view_manager import ViewManager
 from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats.base_exporter import StatsExporter
+from prometheus_client.core import Metric as PrometheusMetric
 from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
     LastValueAggregationData,
 )
 from opencensus.stats.view import View
-from opencensus.stats.view_data import ViewData
 from opencensus.tags import tag_key as tag_key_module
 from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 
 import ray
 from ray._private.gcs_utils import GcsClient
+
 from ray.core.generated.metrics_pb2 import Metric
 
 logger = logging.getLogger(__name__)
@@ -34,6 +40,7 @@ logger = logging.getLogger(__name__)
 # If the worker doesn't report for more than
 # this time, we treat workers as dead.
 RAY_WORKER_TIMEOUT_S = "RAY_WORKER_TIMEOUT_S"
+GLOBAL_COMPONENT_KEY = "CORE"
 
 
 class Gauge(View):
@@ -66,28 +73,303 @@ class Gauge(View):
 Record = namedtuple("Record", ["gauge", "value", "tags"])
 
 
-class WorkerProxyExportState:
-    def __init__(self):
+class OpencensusProxyMetric:
+    def __init__(self, name: str, desc: str, unit: str, label_keys: List[str]):
+        """Represents the OpenCensus metrics that will be proxy exported."""
+        self._name = name
+        self._desc = desc
+        self._unit = unit
+        # -- The label keys of the metric --
+        self._label_keys = label_keys
+        # -- The data that needs to be proxy exported --
+        # tuple of label values -> data (OpenCesnsus Aggregation data)
+        self._data = {}
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def desc(self):
+        return self._desc
+
+    @property
+    def unit(self):
+        return self._unit
+
+    @property
+    def label_keys(self):
+        return self._label_keys
+
+    @property
+    def data(self):
+        return self._data
+
+    def record(self, metric: Metric):
+        """Parse the Opencensus Protobuf and store the data.
+
+        The data can be accessed via `data` API once recorded.
+        """
+        timeseries = metric.timeseries
+
+        if len(timeseries) == 0:
+            return
+
+        # Create the aggregation and fill it in the our stats
+        for series in timeseries:
+            labels = tuple(val.value for val in series.label_values)
+
+            # Aggregate points.
+            for point in series.points:
+                if point.HasField("int64_value"):
+                    data = CountAggregationData(point.int64_value)
+                elif point.HasField("double_value"):
+                    data = LastValueAggregationData(ValueDouble, point.double_value)
+                elif point.HasField("distribution_value"):
+                    dist_value = point.distribution_value
+                    counts_per_bucket = [bucket.count for bucket in dist_value.buckets]
+                    bucket_bounds = dist_value.bucket_options.explicit.bounds
+                    data = DistributionAggregationData(
+                        dist_value.sum / dist_value.count,
+                        dist_value.count,
+                        dist_value.sum_of_squared_deviation,
+                        counts_per_bucket,
+                        bucket_bounds,
+                    )
+                else:
+                    raise ValueError("Summary is not supported")
+                self._data[labels] = data
+
+
+class Component:
+    def __init__(self, id: str):
+        """Represent a component that requests to proxy export metrics
+
+        Args:
+            id: Id of this component.
+        """
+        self.id = id
+        # -- The time this component reported its metrics last time --
+        # It is used to figure out if this component is stale.
         self._last_reported_time = time.monotonic()
-        # view_name
-        # -> set of tag_vals tuple that this worker genereated.
-        # NOTE: We assume a tuple of tag_vals correspond to a
-        # single worker because it always contain WorkerId.
-        self._view_to_owned_tag_vals = defaultdict(set)
+        # -- Metrics requested to proxy export from this component --
+        # metrics_name (str) -> metric (OpencensusProxyMetric)
+        self._metrics = {}
+
+    @property
+    def metrics(self) -> Dict[str, OpencensusProxyMetric]:
+        """Return the metrics requested to proxy export from this component."""
+        return self._metrics
 
     @property
     def last_reported_time(self):
         return self._last_reported_time
 
-    @property
-    def view_to_owned_tag_vals(self):
-        return self._view_to_owned_tag_vals
+    def record(self, metrics: List[Metric]):
+        """Parse the Opencensus protobuf and store metrics.
 
-    def update_last_reported_time(self):
+        Metrics can be accessed via `metrics` API for proxy export.
+
+        Args:
+            metrics: A list of Opencensus protobuf for proxy export.
+        """
         self._last_reported_time = time.monotonic()
+        for metric in metrics:
+            descriptor = metric.metric_descriptor
+            name = descriptor.name
+            label_keys = [label_key.key for label_key in descriptor.label_keys]
 
-    def put_tag_vals(self, view_name: str, tag_vals: Tuple[str]):
-        self._view_to_owned_tag_vals[view_name].add(tag_vals)
+            if name not in self._metrics:
+                self._metrics[name] = OpencensusProxyMetric(
+                    name, descriptor.description, descriptor.unit, label_keys
+                )
+            self._metrics[name].record(metric)
+
+
+class OpenCensusProxyCollector:
+    def __init__(self, namespace: str, component_timeout_s: int = 60):
+        """Prometheus collector implementation for opencensus proxy export.
+
+        Prometheus collector requires to implement `collect` which is
+        invoked whenever Prometheus queries the endpoint.
+
+        The class is thread-safe.
+
+        Args:
+            namespace: Prometheus namespace.
+        """
+        # -- Protect `self._components` --
+        self._components_lock = threading.Lock()
+        # -- Timeout until the component is marked as stale --
+        # Once the component is considered as stale,
+        # the metrics from that worker won't be exported.
+        self._component_timeout_s = component_timeout_s
+        # -- Prometheus namespace --
+        self._namespace = namespace
+        # -- Component that requests to proxy export metrics --
+        # Component means core worker, raylet, and GCS.
+        # component_id -> Components
+        # For workers, they contain worker ids.
+        # For other components (raylet, GCS),
+        # they contain the global key `GLOBAL_COMPONENT_KEY`.
+        self._components = {}
+
+    def record(self, metrics: List[Metric], worker_id_hex: str = None):
+        """Record the metrics reported from the component that reports it.
+
+        Args:
+            metrics: A list of opencensus protobuf to proxy export metrics.
+            worker_id_hex: A worker id that reports these metrics.
+                If None, it means they are reported from Raylet or GCS.
+        """
+        key = GLOBAL_COMPONENT_KEY if not worker_id_hex else worker_id_hex
+        with self._components_lock:
+            if key not in self._components:
+                self._components[key] = Component(key)
+            self._components[key].record(metrics)
+
+    def clean_stale_components(self):
+        """Clean up stale components.
+
+        Stale means the component is dead or unresponsive.
+
+        Stale components won't be reported to Prometheus anymore.
+        """
+        with self._components_lock:
+            stale_components = []
+            stale_component_ids = []
+            for id, component in self._components.items():
+                elapsed = time.monotonic() - component.last_reported_time
+                if elapsed > self._component_timeout_s:
+                    stale_component_ids.append(id)
+                    logger.info(
+                        "Metrics from a worker ({}) is cleaned up due to "
+                        "timeout. Time since last report {}s".format(id, elapsed)
+                    )
+            for id in stale_component_ids:
+                stale_components.append(self._components.pop(id))
+            return stale_components
+
+    # TODO(sang): add start and end timestamp
+    def to_metric(
+        self,
+        metric_name: str,
+        metric_description: str,
+        label_keys: List[str],
+        metric_units: str,
+        label_values: Tuple[tag_value_module.TagValue],
+        agg_data: Any,
+        metrics_map: Dict[str, PrometheusMetric],
+    ) -> PrometheusMetric:
+        """to_metric translate the data that OpenCensus create
+        to Prometheus format, using Prometheus Metric object.
+
+        This method is from Opencensus Prometheus Exporter.
+
+        Args:
+            metric_name: Name of the metric.
+            metric_description: Description of the metric.
+            label_keys: The fixed label keys of the metric.
+            metric_units: Units of the metric.
+            label_values: The values of `label_keys`.
+            agg_data: `opencensus.stats.aggregation_data.AggregationData` object.
+                Aggregated data that needs to be converted as Prometheus samples
+
+        Returns:
+            A Prometheus metric object
+        """
+        assert self._components_lock.locked()
+        metric_name = f"{self._namespace}_{metric_name}"
+        assert len(label_values) == len(label_keys), (label_values, label_keys)
+        # Prometheus requires that all tag values be strings hence
+        # the need to cast none to the empty string before exporting. See
+        # https://github.com/census-instrumentation/opencensus-python/issues/480
+        label_values = [tv if tv else "" for tv in label_values]
+
+        if isinstance(agg_data, CountAggregationData):
+            metric = metrics_map.get(metric_name)
+            if not metric:
+                metric = CounterMetricFamily(
+                    name=metric_name,
+                    documentation=metric_description,
+                    unit=metric_units,
+                    labels=label_keys,
+                )
+                metrics_map[metric_name] = metric
+            metric.add_metric(labels=label_values, value=agg_data.count_data)
+            return metric
+
+        elif isinstance(agg_data, DistributionAggregationData):
+
+            assert agg_data.bounds == sorted(agg_data.bounds)
+            # buckets are a list of buckets. Each bucket is another list with
+            # a pair of bucket name and value, or a triple of bucket name,
+            # value, and exemplar. buckets need to be in order.
+            buckets = []
+            cum_count = 0  # Prometheus buckets expect cumulative count.
+            for ii, bound in enumerate(agg_data.bounds):
+                cum_count += agg_data.counts_per_bucket[ii]
+                bucket = [str(bound), cum_count]
+                buckets.append(bucket)
+            # Prometheus requires buckets to be sorted, and +Inf present.
+            # In OpenCensus we don't have +Inf in the bucket bonds so need to
+            # append it here.
+            buckets.append(["+Inf", agg_data.count_data])
+            metric = metrics_map.get(metric_name)
+            if not metric:
+                metric = HistogramMetricFamily(
+                    name=metric_name,
+                    documentation=metric_description,
+                    labels=label_keys,
+                )
+                metrics_map[metric_name] = metric
+            metric.add_metric(
+                labels=label_values,
+                buckets=buckets,
+                sum_value=agg_data.sum,
+            )
+            return metric
+
+        elif isinstance(agg_data, LastValueAggregationData):
+            metric = metrics_map.get(metric_name)
+            if not metric:
+                metric = GaugeMetricFamily(
+                    name=metric_name,
+                    documentation=metric_description,
+                    labels=label_keys,
+                )
+                metrics_map[metric_name] = metric
+            metric.add_metric(labels=label_values, value=agg_data.value)
+            return metric
+
+        else:
+            raise ValueError(f"unsupported aggregation type {type(agg_data)}")
+
+    def collect(self):  # pragma: NO COVER
+        """Collect fetches the statistics from OpenCensus
+        and delivers them as Prometheus Metrics.
+        Collect is invoked every time a prometheus.Gatherer is run
+        for example when the HTTP endpoint is invoked by Prometheus.
+
+        This method is required as a Prometheus Collector.
+        """
+        with self._components_lock:
+            metrics_map = {}
+            for component in self._components.values():
+                for metric in component.metrics.values():
+                    for label_values, data in metric.data.items():
+                        self.to_metric(
+                            metric.name,
+                            metric.desc,
+                            metric.label_keys,
+                            metric.unit,
+                            label_values,
+                            data,
+                            metrics_map,
+                        )
+
+        for metric in metrics_map.values():
+            yield metric
 
 
 class MetricsAgent:
@@ -122,6 +404,9 @@ class MetricsAgent:
         self.stats_recorder = stats_recorder
         # A class to export metrics.
         self.stats_exporter = stats_exporter
+        # -- A Prometheus custom collector to proxy export metrics --
+        # `None` if the prometheus server is not started.
+        self.proxy_exporter_collector = None
 
         if self.stats_exporter is None:
             # If the exporter is not given,
@@ -129,40 +414,10 @@ class MetricsAgent:
             self.view_manager = None
         else:
             self.view_manager.register_exporter(stats_exporter)
-
-        # Below fields are used to clean up view data when workers are dead.
-        # Note that Opencensus export metrics from
-        # `view_data.tag_value_aggregation_data_map[tag_vals]`, which means
-        # we can stop exporting metrics by deleting data in there.
-        # Note that tag_vals is something like (<WorkerId>, <IP>, <tags..>).
-        # Each worker metrics will have its own unique tag_vals because they
-        # always contain WorkerId.
-        # - When we proxy exports metrics, if they are from a worker, we store
-        #   the corresponding {worker_id -> tag vals} and last reported time to
-        #   `WorkerProxyExportState`.
-        # - We periodically go over all `WorkerProxyExportState`. If the last
-        #   reported time is bigger than the threashold, we treat
-        #   the worker as dead.
-        # - If the worker somehow reports metrics again, we starts reporting
-        #   again. If workers are dead, they will stop reporting, so the dead
-        #   worker metrics will eventually be cleaned up
-
-        # {worker_id -> {view_name -> {tag_vals}}}
-        # Used to clean up data created from a worker of worker id.
-        self.worker_id_to_state = defaultdict(WorkerProxyExportState)
-        # After the timeout, the worker is marked as dead.
-        # The timeout is reset every time worker reports
-        # new metrics (it happens every 2 seconds by default).
-        # This value must be longer than the Prometheus
-        # scraping interval (10s by default in Ray).
-        self.worker_timeout_s = int(os.getenv(RAY_WORKER_TIMEOUT_S, 120))
-
-    def _get_mutable_view_data(self, view_name: str) -> ViewData:
-        """Return the current view data for a given view name."""
-        assert self._lock.locked()
-        return self.view_manager.measure_to_view_map._measure_to_view_data_list_map[
-            view_name
-        ][-1]
+            self.proxy_exporter_collector = OpenCensusProxyCollector(
+                self.stats_exporter.options.namespace,
+                component_timeout_s=int(os.getenv(RAY_WORKER_TIMEOUT_S, 120)),
+            )
 
     def record_and_export(self, records: List[Record], global_tags=None):
         """Directly record and export stats from the same process."""
@@ -208,85 +463,16 @@ class MetricsAgent:
             if not self.view_manager:
                 return
 
-            self._proxy_export_metrics(metrics, worker_id_hex)
+        self._proxy_export_metrics(metrics, worker_id_hex)
 
     def _proxy_export_metrics(self, metrics: List[Metric], worker_id_hex: str = None):
-        assert self._lock.locked()
-        # The list of view data is what we are going to use for the
-        # final export to exporter.
-        view_data_changed: List[ViewData] = []
-
-        # Walk the protobufs and convert them to ViewData
-        for metric in metrics:
-            descriptor = metric.metric_descriptor
-            timeseries = metric.timeseries
-
-            if len(timeseries) == 0:
-                continue
-
-            columns = [label_key.key for label_key in descriptor.label_keys]
-            start_time = timeseries[0].start_timestamp.seconds
-
-            # Create the view and view_data
-            measure = measure_module.BaseMeasure(
-                descriptor.name, descriptor.description, descriptor.unit
-            )
-            view = self.view_manager.measure_to_view_map.get_view(descriptor.name, None)
-            if not view:
-                view = View(
-                    descriptor.name,
-                    descriptor.description,
-                    columns,
-                    measure,
-                    aggregation=None,
-                )
-                self.view_manager.measure_to_view_map.register_view(view, start_time)
-            view_data = self._get_mutable_view_data(measure.name)
-            view_data_changed.append(view_data)
-
-            # Create the aggregation and fill it in the our stats
-            for series in timeseries:
-                tag_vals = tuple(val.value for val in series.label_values)
-
-                # If the metric is reported from a worker,
-                # we update the states accordingly.
-                if worker_id_hex:
-                    state = self.worker_id_to_state[worker_id_hex]
-                    state.update_last_reported_time()
-                    state.put_tag_vals(descriptor.name, tag_vals)
-
-                # Aggregate points.
-                for point in series.points:
-                    if point.HasField("int64_value"):
-                        data = CountAggregationData(point.int64_value)
-                    elif point.HasField("double_value"):
-                        data = LastValueAggregationData(ValueDouble, point.double_value)
-                    elif point.HasField("distribution_value"):
-                        dist_value = point.distribution_value
-                        counts_per_bucket = [
-                            bucket.count for bucket in dist_value.buckets
-                        ]
-                        bucket_bounds = dist_value.bucket_options.explicit.bounds
-                        data = DistributionAggregationData(
-                            dist_value.sum / dist_value.count,
-                            dist_value.count,
-                            dist_value.sum_of_squared_deviation,
-                            counts_per_bucket,
-                            bucket_bounds,
-                        )
-                    else:
-                        raise ValueError("Summary is not supported")
-                    view_data.tag_value_aggregation_data_map[tag_vals] = data
-
-        # Finally, export all the values.
-        # When the view data is exported, they are hard-copied.
-        self.view_manager.measure_to_view_map.export(view_data_changed)
+        self.proxy_exporter_collector.record(metrics, worker_id_hex)
 
     def clean_all_dead_worker_metrics(self):
         """Clean dead worker's metrics.
 
-        Worker metrics are cleaned up if there was no metrics
-        report for more than `worker_timeout_s`.
+        Worker metrics are cleaned up and won't be exported once
+        it is considered as dead.
 
         This method has to be periodically called by a caller.
         """
@@ -294,47 +480,7 @@ class MetricsAgent:
             if not self.view_manager:
                 return
 
-            worker_ids_to_clean = []
-            for worker_id_hex, state in self.worker_id_to_state.items():
-                elapsed = time.monotonic() - state.last_reported_time
-                if elapsed > self.worker_timeout_s:
-                    logger.info(
-                        "Metrics from a worker ({}) is cleaned up due to "
-                        "timeout. Time since last report {}s".format(
-                            worker_id_hex, elapsed
-                        )
-                    )
-                    worker_ids_to_clean.append(worker_id_hex)
-
-            for worker_id in worker_ids_to_clean:
-                self._clean_worker_metrics(worker_id)
-
-    def _clean_worker_metrics(self, worker_id_hex: str):
-        assert self._lock.locked()
-        assert worker_id_hex in self.worker_id_to_state
-
-        state = self.worker_id_to_state[worker_id_hex]
-        state.view_to_owned_tag_vals
-        view_names_changed = set()
-
-        for view_name, tag_vals_to_clean in state.view_to_owned_tag_vals.items():
-            view_data = self._get_mutable_view_data(view_name)
-            for tag_vals in tag_vals_to_clean:
-                if tag_vals in view_data.tag_value_aggregation_data_map:
-                    # If we remove tag_vals from here,
-                    # exporter will stop exporting metrics.
-                    del view_data.tag_value_aggregation_data_map[tag_vals]
-            view_names_changed.add(view_name)
-
-        # We need to re-export the view data so that prometheus
-        # exporter updates its view data.
-        view_data_changed = [
-            self._get_mutable_view_data(view_name) for view_name in view_names_changed
-        ]
-        self.view_manager.measure_to_view_map.export(view_data_changed)
-
-        # Clean up worker states.
-        del self.worker_id_to_state[worker_id_hex]
+        self.proxy_exporter_collector.clean_stale_components()
 
 
 class PrometheusServiceDiscoveryWriter(threading.Thread):

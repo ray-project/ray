@@ -38,7 +38,6 @@ def actor_table_data_to_dict(message):
             "taskId",
             "parentTaskId",
             "sourceActorId",
-            "placementGroupId",
         },
         including_default_value_fields=True,
     )
@@ -56,9 +55,29 @@ def actor_table_data_to_dict(message):
         "numRestarts",
         "timestamp",
         "className",
+        "startTime",
+        "endTime",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
+    exit_detail = "-"
+    if "deathCause" in orig_message:
+        context = orig_message["deathCause"]
+        if "actorDiedErrorContext" in context:
+            exit_detail = context["actorDiedErrorContext"]["errorMessage"]  # noqa
+        elif "runtimeEnvFailedContext" in context:
+            exit_detail = context["runtimeEnvFailedContext"]["errorMessage"]  # noqa
+        elif "actorUnschedulableContext" in context:
+            exit_detail = context["actorUnschedulableContext"]["errorMessage"]  # noqa
+        elif "creationTaskFailureContext" in context:
+            exit_detail = context["creationTaskFailureContext"][
+                "formattedExceptionString"
+            ]  # noqa
+    light_message["exitDetail"] = exit_detail
+    light_message["startTime"] = int(light_message["startTime"])
+    light_message["endTime"] = int(light_message["endTime"])
+    light_message["requiredResources"] = dict(message.required_resources)
+
     return light_message
 
 
@@ -113,7 +132,16 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                     actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS
                 )
 
-        state_keys = ("state", "address", "numRestarts", "timestamp", "pid")
+        state_keys = (
+            "state",
+            "address",
+            "numRestarts",
+            "timestamp",
+            "pid",
+            "exitDetail",
+            "startTime",
+            "endTime",
+        )
 
         def process_actor_data_from_pubsub(actor_id, actor_table_data):
             actor_table_data = actor_table_data_to_dict(actor_table_data)
@@ -122,7 +150,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
                 actors = DataSource.actors[actor_id]
                 for k in state_keys:
-                    actors[k] = actor_table_data[k]
+                    if k in actor_table_data:
+                        actors[k] = actor_table_data[k]
                 actor_table_data = actors
             actor_id = actor_table_data["actorId"]
             node_id = actor_table_data["address"]["rayletId"]
@@ -211,7 +240,13 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
         return rest_response(
-            success=True, message="All actors fetched.", actors=DataSource.actors
+            success=True,
+            message="All actors fetched.",
+            actors=DataSource.actors,
+            # False to avoid converting Ray resource name to google style.
+            # It's not necessary here because the fields are already
+            # google formatted when protobuf was converted into dict.
+            convert_google_style=False,
         )
 
     async def run(self, server):
@@ -219,9 +254,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             gcs_channel
         )
-
-        asyncio.get_event_loop().create_task(self._cleanup_actors())
-        await asyncio.gather(self._update_actors())
+        await asyncio.gather(self._update_actors(), self._cleanup_actors())
 
     @staticmethod
     def is_minimal_module():

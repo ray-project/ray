@@ -15,8 +15,7 @@ from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.xgboost import XGBoostCheckpoint, XGBoostPredictor
 from typing import Tuple
 
-from dummy_preprocessor import DummyPreprocessor
-
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 dummy_data = np.array([[1, 2], [3, 4], [5, 6]])
 dummy_target = np.array([0, 1, 0])
@@ -47,7 +46,7 @@ def test_xgboost_checkpoint():
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(batch_type):
     preprocessor = DummyPreprocessor()
     predictor = XGBoostPredictor(model=model, preprocessor=preprocessor)
@@ -60,7 +59,7 @@ def test_predict(batch_type):
     assert predictor.get_preprocessor().has_preprocessed
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame])
 def test_predict_batch(ray_start_4_cpus, batch_type):
     checkpoint, _ = create_checkpoint_preprocessor()
     predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)

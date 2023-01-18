@@ -1,4 +1,5 @@
 import unittest
+import numpy as np
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -6,10 +7,13 @@ from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.connectors.connector import ActionConnector, ConnectorContext
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
-from ray.rllib.examples.env.multi_agent import BasicMultiAgent
+from ray.rllib.examples.env.multi_agent import BasicMultiAgent, GuessTheNumberGame
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
+
+from ray.rllib.utils.test_utils import check
 
 
 register_env("basic_multiagent", lambda _: BasicMultiAgent(2))
@@ -49,7 +53,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -60,7 +63,9 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         rollout_worker = algo.workers.local_worker()
         sample_batch = rollout_worker.sample()
+        sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
 
+        self.assertEqual(sample_batch["t"][0], 0)
         self.assertEqual(sample_batch.env_steps(), 200)
         self.assertEqual(sample_batch.agent_steps(), 200)
 
@@ -74,7 +79,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -91,20 +95,99 @@ class TestEnvRunnerV2(unittest.TestCase):
         self.assertEqual(sample_batch.env_steps(), 200)
         self.assertEqual(sample_batch.agent_steps(), 400)
 
+    def test_guess_the_number_multi_agent(self):
+        """This test will test env runner in the game of GuessTheNumberGame.
+
+        The policies are chosen to be deterministic, so that we can test for an
+        expected reward. Agent 1 will always pick 1, and agent 2 will always guess that
+        the picked number is higher than 1. The game will end when the picked number is
+        1, and agent 1 will win. The reward will be 100 for winning, and 1 for each
+        step that the game is dragged on for. So the expected reward for agent 1 is 100
+        + 19 = 119. 19 is the number of steps that the game will last for agent 1
+        before it wins or loses.
+        """
+
+        register_env("env_under_test", lambda config: GuessTheNumberGame(config))
+
+        def mapping_fn(agent_id, *args, **kwargs):
+            return "pol1" if agent_id == 0 else "pol2"
+
+        class PickOne(RandomPolicy):
+            """This policy will always pick 1."""
+
+            def compute_actions(
+                self,
+                obs_batch,
+                state_batches=None,
+                prev_action_batch=None,
+                prev_reward_batch=None,
+                **kwargs
+            ):
+                return [np.array([2, 1])] * len(obs_batch), [], {}
+
+        class GuessHigherThanOne(RandomPolicy):
+            """This policy will guess that the picked number is higher than 1."""
+
+            def compute_actions(
+                self,
+                obs_batch,
+                state_batches=None,
+                prev_action_batch=None,
+                prev_reward_batch=None,
+                **kwargs
+            ):
+                return [np.array([1, 1])] * len(obs_batch), [], {}
+
+        config = (
+            PPOConfig()
+            .framework("torch")
+            .environment(disable_env_checking=True, env="env_under_test")
+            .rollouts(
+                num_envs_per_worker=1,
+                num_rollout_workers=0,
+                # Enable EnvRunnerV2.
+                enable_connectors=True,
+                rollout_fragment_length=100,
+            )
+            .multi_agent(
+                # this makes it independent of neural networks
+                policies={
+                    "pol1": PolicySpec(policy_class=PickOne),
+                    "pol2": PolicySpec(policy_class=GuessHigherThanOne),
+                },
+                policy_mapping_fn=mapping_fn,
+            )
+            .debugging(seed=42)
+        )
+
+        algo = PPO(config, env="env_under_test")
+
+        rollout_worker = algo.workers.local_worker()
+        sample_batch = rollout_worker.sample()
+        pol1_batch = sample_batch.policy_batches["pol1"]
+
+        # reward should be 100 (for winning) + 19 (for dragging the game for 19 steps)
+        check(pol1_batch["rewards"], 119 * np.ones_like(pol1_batch["rewards"]))
+        # check if pol1 only has one timestep of transition informatio per each episode
+        check(len(set(pol1_batch["eps_id"])), len(pol1_batch["eps_id"]))
+        # check if pol2 has 19 timesteps of transition information per each episode
+        pol2_batch = sample_batch.policy_batches["pol2"]
+        check(len(set(pol2_batch["eps_id"])) * 19, len(pol2_batch["eps_id"]))
+
     def test_inference_batches_are_grouped_by_policy(self):
         # Create 2 policies that have different inference batch shapes.
         class RandomPolicyOne(RandomPolicy):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self.view_requirements["rewards"].used_for_compute_actions = True
-                self.view_requirements["dones"].used_for_compute_actions = True
+                self.view_requirements["terminateds"].used_for_compute_actions = True
 
         # Create 2 policies that have different inference batch shapes.
         class RandomPolicyTwo(RandomPolicy):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self.view_requirements["rewards"].used_for_compute_actions = False
-                self.view_requirements["dones"].used_for_compute_actions = False
+                self.view_requirements["terminateds"].used_for_compute_actions = False
 
         config = (
             PPOConfig()
@@ -115,7 +198,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -139,15 +221,15 @@ class TestEnvRunnerV2(unittest.TestCase):
         local_worker = algo.workers.local_worker()
         env = local_worker.env
 
-        obs, rewards, dones, infos = local_worker.env.step(
+        obs, rewards, terminateds, truncateds, infos = local_worker.env.step(
             {0: env.action_space.sample(), 1: env.action_space.sample()}
         )
 
         env_id = 0
         env_runner = local_worker.sampler._env_runner_obj
         env_runner.create_episode(env_id)
-        to_eval, _ = env_runner._process_observations(
-            {0: obs}, {0: rewards}, {0: dones}, {0: infos}
+        _, to_eval, _ = env_runner._process_observations(
+            {0: obs}, {0: rewards}, {0: terminateds}, {0: truncateds}, {0: infos}
         )
 
         # We should have 2 separate batches for both policies.
@@ -181,7 +263,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -204,7 +285,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -252,7 +332,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -303,7 +382,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rollouts(
                 num_envs_per_worker=1,
-                horizon=4,
                 num_rollout_workers=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
@@ -336,13 +414,15 @@ class TestEnvRunnerV2(unittest.TestCase):
         env_runner.step()
         env_runner.step()
 
-        to_eval, outputs = env_runner._process_observations(
+        active_envs, to_eval, outputs = env_runner._process_observations(
             unfiltered_obs={0: AttributeError("mock error")},
             rewards={0: {}},
-            dones={0: {"__all__": True}},
+            terminateds={0: {"__all__": True}},
+            truncateds={0: {"__all__": False}},
             infos={0: {}},
         )
 
+        self.assertEqual(active_envs, {0})
         self.assertTrue(to_eval)  # to_eval contains data for the resetted new episode.
         self.assertEqual(len(outputs), 1)
         self.assertTrue(isinstance(outputs[0], RolloutMetrics))

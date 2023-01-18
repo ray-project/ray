@@ -488,6 +488,10 @@ class Worker:
         return self.core_worker.get_current_node_id()
 
     @property
+    def task_depth(self):
+        return self.core_worker.get_task_depth()
+
+    @property
     def namespace(self):
         return self.core_worker.get_job_config().ray_namespace
 
@@ -683,7 +687,14 @@ class Worker:
             debugger_breakpoint,
         )
 
-    @Deprecated
+    @Deprecated(
+        message="This function is deprecated and will be removed by Ray 2.4. "
+        "Please use Runtime Environments "
+        f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core"
+        "/handling-dependencies.html "
+        "to manage dependencies in workers.",
+        warning=True,
+    )
     def run_function_on_all_workers(self, function: callable):
         """This function has been deprecated given the following issues:
             - no guarantee that the function run before the remote function run.
@@ -869,7 +880,10 @@ def get_gpu_ids():
     return assigned_ids
 
 
-@Deprecated(message="Use ray.get_runtime_context().get_assigned_resources() instead.")
+@Deprecated(
+    message="Use ray.get_runtime_context().get_assigned_resources() instead.",
+    warning=True,
+)
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
 
@@ -1159,7 +1173,8 @@ def init(
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address: The IP address of the node that we are on.
         _driver_object_store_memory: Deprecated.
-        _memory: Amount of reservable memory resource to create.
+        _memory: Amount of reservable memory resource in bytes rounded
+            down to the nearest integer.
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
@@ -1436,7 +1451,10 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
-            head=True, shutdown_at_exit=False, spawn_reaper=True, ray_params=ray_params
+            head=True,
+            shutdown_at_exit=False,
+            spawn_reaper=True,
+            ray_params=ray_params,
         )
     else:
         # In this case, we are connecting to an existing cluster.
@@ -1769,7 +1787,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.CYAN
 
     if data.get("pid") == "autoscaler":
-        pid = "scheduler +{}".format(time_string())
+        pid = "autoscaler +{}".format(time_string())
         lines = filter_autoscaler_events(data.get("lines", []))
     else:
         pid = data.get("pid")
@@ -1963,6 +1981,7 @@ def connect(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 gcs_publisher=worker.gcs_publisher,
+                num_retries=1,
             )
 
     driver_name = ""
@@ -2017,6 +2036,29 @@ def connect(
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
+
+    if mode == SCRIPT_MODE:
+        # Add the directory containing the script that is running to the Python
+        # paths of the workers. Also add the current directory. Note that this
+        # assumes that the directory structures on the machines in the clusters
+        # are the same.
+        # When using an interactive shell, there is no script directory.
+        code_paths = []
+        if not interactive_mode:
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
+            # If driver's sys.path doesn't include the script directory
+            # (e.g driver is started via `python -m`,
+            # see https://peps.python.org/pep-0338/),
+            # then we shouldn't add it to the workers.
+            if script_directory in sys.path:
+                code_paths.append(script_directory)
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
+        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
+            current_directory = os.path.abspath(os.path.curdir)
+            code_paths.append(current_directory)
+        if len(code_paths) != 0:
+            job_config.py_driver_sys_path.extend(code_paths)
 
     serialized_job_config = job_config.serialize()
     if not node.should_redirect_logs():
@@ -2088,28 +2130,6 @@ def connect(
             worker.logger_thread.start()
 
     if mode == SCRIPT_MODE:
-        # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        # When using an interactive shell, there is no script directory.
-        if not interactive_mode:
-            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
-            # If driver's sys.path doesn't include the script directory
-            # (e.g driver is started via `python -m`,
-            # see https://peps.python.org/pep-0338/),
-            # then we shouldn't add it to the workers.
-            if script_directory in sys.path:
-                worker.run_function_on_all_workers(
-                    lambda worker_info: sys.path.insert(1, script_directory)
-                )
-        # In client mode, if we use runtime envs with "working_dir", then
-        # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
-            current_directory = os.path.abspath(os.path.curdir)
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, current_directory)
-            )
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
         # run may set the Python path, which is needed to import a module used
@@ -2259,11 +2279,25 @@ def get(
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
 
+    Related patterns and anti-patterns:
+
+    - :doc:`/ray-core/patterns/ray-get-loop`
+    - :doc:`/ray-core/patterns/unnecessary-ray-get`
+    - :doc:`/ray-core/patterns/ray-get-submission-order`
+    - :doc:`/ray-core/patterns/ray-get-too-many-objects`
+
+
     Args:
         object_refs: Object ref of the object to get or a list of object refs
             to get.
         timeout (Optional[float]): The maximum amount of time in seconds to
-            wait before returning.
+            wait before returning. Set this to None will block until the
+            corresponding object becomes available.
+            WARNING: In future ray releases ``timeout=0`` will return the object
+            immediately if it's available, else raise GetTimeoutError in accordance with
+            the above docstring. The current behavior of blocking until objects become
+            available of ``timeout=0`` is considered to be a bug, see
+            https://github.com/ray-project/ray/issues/28465.
 
     Returns:
         A Python object or a list of Python objects.
@@ -2274,6 +2308,26 @@ def get(
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
+    if timeout == 0:
+        if os.environ.get("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "1") == "1":
+            import warnings
+
+            warnings.warn(
+                (
+                    "Please use timeout=None if you expect ray.get() to block. "
+                    "Setting timeout=0 in future ray releases will raise "
+                    "GetTimeoutError if the objects references are not available. "
+                    "You could suppress this warning by setting "
+                    "RAY_WARN_RAY_GET_TIMEOUT_ZERO=0."
+                ),
+                UserWarning,
+            )
+
+        # Record this usage in telemetry
+        import ray._private.usage.usage_lib as usage_lib
+
+        usage_lib.record_extra_usage_tag(usage_lib.TagKey.RAY_GET_TIMEOUT_ZERO, "True")
+
     worker = global_worker
     worker.check_connected()
 
@@ -2337,6 +2391,12 @@ def put(
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
+
+    Related patterns and anti-patterns:
+
+    - :doc:`/ray-core/patterns/return-ray-put`
+    - :doc:`/ray-core/patterns/pass-large-arg-by-value`
+    - :doc:`/ray-core/patterns/closure-capture-large-objects`
 
     Args:
         value: The Python object to be stored.
@@ -2414,6 +2474,11 @@ def wait(
     This method will issue a warning if it's running inside an async context.
     Instead of ``ray.wait(object_refs)``, you can use
     ``await asyncio.wait(object_refs)``.
+
+    Related patterns and anti-patterns:
+
+    - :doc:`/ray-core/patterns/limit-pending-tasks`
+    - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
         object_refs: List of object refs for objects that may
@@ -2913,7 +2978,7 @@ def remote(
 
         Instead, use ray.put to create a copy of the object in the object store.
 
-        See :ref:`more info here <tip-delay-get>`.
+        See :ref:`more info here <ray-pass-large-arg-by-value>`.
 
     Args:
         num_returns: This is only for *remote functions*. It specifies
@@ -2922,6 +2987,7 @@ def remote(
             return values to return during execution, and the caller will
             receive an ObjectRef[ObjectRefGenerator] (note, this setting is
             experimental).
+            See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
         num_gpus: The quantity of GPUs to reserve
@@ -2931,8 +2997,9 @@ def remote(
             This is a dictionary mapping strings (resource names) to floats.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
-            See `ray.accelerators` for accelerator types.
-        memory: The heap memory request for this task/actor.
+            See `ray.util.accelerators` for accelerator types.
+        memory: The heap memory request in bytes for this task/actor,
+            rounded down to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
@@ -2964,8 +3031,7 @@ def remote(
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation. This API is
-            in beta and may change before becoming stable.
+            :ref:`runtime-environments` for detailed documentation.
         retry_exceptions: Only for *remote functions*. This specifies whether
             application-level errors should be retried up to max_retries times.
             This can be a boolean or a list of exceptions that should be retried.
@@ -2979,7 +3045,9 @@ def remote(
             "DEFAULT": default hybrid scheduling;
             "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
-            placement group based scheduling.
+            placement group based scheduling;
+            `NodeAffinitySchedulingStrategy`:
+            node id based affinity scheduling.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
 

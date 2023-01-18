@@ -3,7 +3,9 @@ import copy
 import json
 import logging
 import os
+import psutil
 import random
+import signal
 import string
 import subprocess
 import sys
@@ -18,6 +20,7 @@ from ray.util.scheduling_strategies import (
 )
 import ray
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.utils import run_background_task
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
@@ -140,7 +143,9 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
+    DEFAULT_RAY_JOB_STOP_WAIT_TIME_S = 3
     SUBPROCESS_POLL_PERIOD_S = 0.1
+    VALID_STOP_SIGNALS = ["SIGINT", "SIGTERM"]
 
     def __init__(
         self,
@@ -222,13 +227,25 @@ class JobSupervisor:
                 start_new_session=True,
                 stdout=logs_file,
                 stderr=subprocess.STDOUT,
+                # Ray intentionally blocks SIGINT in all processes, so if the user wants
+                # to stop job through SIGINT, we need to unblock it in the child process
+                preexec_fn=lambda: signal.pthread_sigmask(
+                    signal.SIG_UNBLOCK, {signal.SIGINT}
+                )
+                if sys.platform != "win32"
+                and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
+                else None,
             )
             parent_pid = os.getpid()
             child_pid = child_process.pid
             # Create new pgid with new subprocess to execute driver command
 
             if sys.platform != "win32":
-                child_pgid = os.getpgid(child_pid)
+                try:
+                    child_pgid = os.getpgid(child_pid)
+                except ProcessLookupError:
+                    # Process died before we could get its pgid.
+                    return child_process
 
                 # Open a new subprocess to kill the child process when the parent
                 # process dies kill -s 0 parent_pid will succeed if the parent is
@@ -299,21 +316,33 @@ class JobSupervisor:
             "PYTHONUNBUFFERED": "1",
         }
 
-    async def _polling(self, child_process) -> int:
-        try:
-            while child_process is not None:
-                return_code = child_process.poll()
-                if return_code is not None:
-                    # subprocess finished with return code
-                    return return_code
-                else:
-                    # still running, yield control, 0.1s by default
-                    await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
-        except Exception:
-            if child_process:
-                # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                child_process.kill()
-            return 1
+    async def _polling(self, child_process: subprocess.Popen) -> int:
+        while child_process is not None:
+            return_code = child_process.poll()
+            if return_code is not None:
+                # subprocess finished with return code
+                return return_code
+            else:
+                # still running, yield control, 0.1s by default
+                await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
+
+    async def _poll_all(self, processes: List[psutil.Process]):
+        """Poll processes until all are completed."""
+        while True:
+            (_, alive) = psutil.wait_procs(processes, timeout=0)
+            if len(alive) == 0:
+                return
+            else:
+                await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
+
+    def _kill_processes(self, processes: List[psutil.Process], sig: signal.Signals):
+        """Ensure each process is already finished or send a kill signal."""
+        for proc in processes:
+            try:
+                os.kill(proc.pid, sig)
+            except ProcessLookupError:
+                # Process is already dead
+                pass
 
     async def run(
         self,
@@ -364,6 +393,7 @@ class JobSupervisor:
             )
             log_path = self._log_client.get_log_file_path(self._job_id)
             child_process = self._exec_entrypoint(log_path)
+            child_pid = child_process.pid
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
@@ -375,8 +405,41 @@ class JobSupervisor:
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
-                    # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                    child_process.kill()
+                    stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
+                    if stop_signal not in self.VALID_STOP_SIGNALS:
+                        logger.warning(
+                            f"{stop_signal} not a valid stop signal. Terminating "
+                            "job with SIGTERM."
+                        )
+                        stop_signal = "SIGTERM"
+
+                    job_process = psutil.Process(child_pid)
+                    proc_to_kill = [job_process] + job_process.children(recursive=True)
+
+                    # Send stop signal and wait for job to terminate gracefully,
+                    # otherwise SIGKILL job forcefully after timeout.
+                    self._kill_processes(proc_to_kill, getattr(signal, stop_signal))
+                    try:
+                        stop_job_wait_time = int(
+                            os.environ.get(
+                                "RAY_JOB_STOP_WAIT_TIME_S",
+                                self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
+                            )
+                        )
+                        poll_job_stop_task = create_task(self._poll_all(proc_to_kill))
+                        await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
+                        logger.info(
+                            f"Job {self._job_id} has been terminated gracefully "
+                            f"with {stop_signal}."
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"Attempt to gracefully terminate job {self._job_id} "
+                            f"through {stop_signal} has timed out after "
+                            f"{stop_job_wait_time} seconds. Job is now being "
+                            "force-killed with SIGKILL."
+                        )
+                        self._kill_processes(proc_to_kill, signal.SIGKILL)
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
@@ -406,6 +469,15 @@ class JobSupervisor:
                 "Got unexpected exception while trying to execute driver "
                 f"command. {traceback.format_exc()}"
             )
+            try:
+                await self._job_info_client.put_status(
+                    self._job_id, JobStatus.FAILED, message=traceback.format_exc()
+                )
+            except Exception:
+                logger.error(
+                    "Failed to update job status to FAILED. "
+                    f"Exception: {traceback.format_exc()}"
+                )
         finally:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
@@ -426,6 +498,7 @@ class JobManager:
     # available.
     LOG_TAIL_SLEEP_S = 1
     JOB_MONITOR_LOOP_PERIOD_S = 1
+    WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
@@ -439,7 +512,7 @@ class JobManager:
         except Exception:
             self.event_logger = None
 
-        create_task(self._recover_running_jobs())
+        run_background_task(self._recover_running_jobs())
 
     async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
@@ -450,7 +523,7 @@ class JobManager:
         all_jobs = await self._job_info_client.get_all_jobs()
         for job_id, job_info in all_jobs.items():
             if not job_info.status.is_terminal():
-                create_task(self._monitor_job(job_id))
+                run_background_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
@@ -503,6 +576,12 @@ class JobManager:
                 is_alive = False
                 job_status = await self._job_info_client.get_status(job_id)
                 job_error_message = None
+                if job_status == JobStatus.FAILED:
+                    job_error_message = (
+                        "See more details from the dashboard "
+                        "`Job` page or the state API `ray list jobs`."
+                    )
+
                 if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
@@ -558,7 +637,7 @@ class JobManager:
 
         It can be used for actor placement.
         """
-        current_node_id = ray.get_runtime_context().node_id.hex()
+        current_node_id = ray.get_runtime_context().get_node_id()
         for node in ray.nodes():
             if node["NodeID"] == current_node_id:
                 # Found the node.
@@ -776,7 +855,9 @@ class JobManager:
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
-            create_task(self._monitor_job(submission_id, job_supervisor=supervisor))
+            run_background_task(
+                self._monitor_job(submission_id, job_supervisor=supervisor)
+            )
         except Exception as e:
             await self._job_info_client.put_status(
                 submission_id,
@@ -799,6 +880,19 @@ class JobManager:
             return True
         else:
             return False
+
+    async def delete_job(self, job_id):
+        """Delete a job's info and metadata from the cluster."""
+        job_status = await self._job_info_client.get_status(job_id)
+
+        if job_status is None or not job_status.is_terminal():
+            raise RuntimeError(
+                f"Attempted to delete job '{job_id}', "
+                f"but it is in a non-terminal state {job_status}."
+            )
+
+        await self._job_info_client.delete_info(job_id)
+        return True
 
     def job_info_client(self) -> JobInfoStorageClient:
         return self._job_info_client

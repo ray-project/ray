@@ -2,7 +2,6 @@ import copy
 import datetime
 from functools import partial
 import grpc
-import inspect
 import logging
 import os
 from pathlib import Path
@@ -24,11 +23,11 @@ from typing import (
 
 from ray.air import CheckpointConfig
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable
+from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig
-from ray.tune.utils import date_str, _detect_checkpoint_function
+from ray.tune.utils import date_str
 
 from ray.util.annotations import DeveloperAPI
 
@@ -169,23 +168,21 @@ class Experiment:
         else:
             checkpoint_config = checkpoint_config or CheckpointConfig()
 
-        if (
-            callable(run)
-            and not inspect.isclass(run)
-            and _detect_checkpoint_function(run)
-        ):
+        if is_function_trainable(run):
             if checkpoint_config.checkpoint_at_end:
                 raise ValueError(
-                    "'checkpoint_at_end' cannot be used with a "
-                    "checkpointable function. You can specify "
-                    "and register checkpoints within "
-                    "your trainable function."
+                    "'checkpoint_at_end' cannot be used with a function trainable. "
+                    "You should include one last call to "
+                    "`ray.air.session.report(metrics=..., checkpoint=...)` at the end "
+                    "of your training loop to get this behavior."
                 )
             if checkpoint_config.checkpoint_frequency:
                 raise ValueError(
-                    "'checkpoint_freq' cannot be used with a "
-                    "checkpointable function. You can specify checkpoints "
-                    "within your trainable function."
+                    "'checkpoint_frequency' cannot be set for a function trainable. "
+                    "You will need to report a checkpoint every "
+                    "`checkpoint_frequency` iterations within your training loop using "
+                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "to get this behavior."
                 )
         try:
             self._run_identifier = Experiment.register_if_needed(run)
@@ -429,6 +426,10 @@ class Experiment:
     @property
     def local_dir(self):
         return self.spec.get("local_dir")
+
+    @property
+    def checkpoint_config(self):
+        return self.spec.get("checkpoint_config")
 
     @property
     def checkpoint_dir(self):

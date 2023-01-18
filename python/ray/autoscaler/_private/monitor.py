@@ -9,7 +9,6 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
-from multiprocessing.synchronize import Event
 from typing import Any, Callable, Dict, Optional, Union
 
 import ray
@@ -138,7 +137,6 @@ class Monitor:
         log_dir: str = None,
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
-        stop_event: Optional[Event] = None,
         retry_on_failure: bool = True,
     ):
         self.gcs_address = address
@@ -165,6 +163,8 @@ class Monitor:
             gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
+        self._session_name = self.get_session_name(gcs_client)
+        logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
         head_node_ip = self.gcs_address.split(":")[0]
 
@@ -172,8 +172,6 @@ class Monitor:
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info
-        # Can be used to signal graceful exit from monitor loop.
-        self.stop_event = stop_event  # type: Optional[Event]
         self.retry_on_failure = retry_on_failure
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
@@ -191,7 +189,7 @@ class Monitor:
         else:
             self.event_logger = None
 
-        self.prom_metrics = AutoscalerPrometheusMetrics()
+        self.prom_metrics = AutoscalerPrometheusMetrics(session_name=self._session_name)
         if monitor_ip and prometheus_client:
             # If monitor_ip wasn't passed in, then don't attempt to start the
             # metric server to keep behavior identical to before metrics were
@@ -236,6 +234,7 @@ class Monitor:
             autoscaling_config,
             self.load_metrics,
             self.gcs_node_info_stub,
+            self._session_name,
             prefix_cluster_info=self.prefix_cluster_info,
             event_summarizer=self.event_summarizer,
             prom_metrics=self.prom_metrics,
@@ -328,6 +327,27 @@ class Monitor:
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(mirror_node_types)
 
+    def get_session_name(self, gcs_client: GcsClient) -> Optional[str]:
+        """Obtain the session name from the GCS.
+
+        If the GCS doesn't respond, session name is considered None.
+        In this case, the metrics reported from the monitor won't have
+        the correct session name.
+        """
+        if not _internal_kv_initialized():
+            return None
+
+        session_name = gcs_client.internal_kv_get(
+            b"session_name",
+            ray_constants.KV_NAMESPACE_SESSION,
+            timeout=10,
+        )
+
+        if session_name:
+            session_name = session_name.decode()
+
+        return session_name
+
     def update_resource_requests(self):
         """Fetches resource requests from the internal KV and updates load."""
         if not _internal_kv_initialized():
@@ -346,16 +366,15 @@ class Monitor:
         """Run the monitor loop."""
         while True:
             try:
-                if self.stop_event and self.stop_event.is_set():
-                    break
                 gcs_request_start_time = time.time()
                 self.update_load_metrics()
                 gcs_request_time = time.time() - gcs_request_start_time
                 self.update_resource_requests()
                 self.update_event_summary()
+                load_metrics_summary = self.load_metrics.summary()
                 status = {
                     "gcs_request_time": gcs_request_time,
-                    "load_metrics_report": asdict(self.load_metrics.summary()),
+                    "load_metrics_report": asdict(load_metrics_summary),
                     "time": time.time(),
                     "monitor_pid": os.getpid(),
                 }
@@ -380,6 +399,22 @@ class Monitor:
                         ] = (
                             self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
                         )
+
+                        for resource_name in ["CPU", "GPU"]:
+                            _, total = load_metrics_summary.usage.get(
+                                resource_name, (0, 0)
+                            )
+                            pending = autoscaler_summary.pending_resources.get(
+                                resource_name, 0
+                            )
+                            self.prom_metrics.cluster_resources.labels(
+                                resource=resource_name,
+                                SessionName=self.prom_metrics.session_name,
+                            ).set(total)
+                            self.prom_metrics.pending_resources.labels(
+                                resource=resource_name,
+                                SessionName=self.prom_metrics.session_name,
+                            ).set(pending)
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to

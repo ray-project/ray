@@ -1,6 +1,7 @@
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.dataset import Dataset
+from ray.data.dataset_iterator import DatasetIterator
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.preprocessor import Preprocessor
@@ -32,12 +33,14 @@ from ray.data.read_api import (  # noqa: F401
     read_parquet,
     read_parquet_bulk,
     read_text,
+    read_mongo,
     read_tfrecords,
 )
 
 __all__ = [
     "ActorPoolStrategy",
     "Dataset",
+    "DatasetIterator",
     "DatasetPipeline",
     "Datasource",
     "ReadTask",
@@ -65,6 +68,7 @@ __all__ = [
     "read_images",
     "read_json",
     "read_numpy",
+    "read_mongo",
     "read_parquet",
     "read_parquet_bulk",
     "read_tfrecords",

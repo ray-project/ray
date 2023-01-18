@@ -109,11 +109,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             reporter_stub = list(self._stubs.values())[0]
         pid = int(req.query["pid"])
+        # Default not using `--native` for profiling
+        native = req.query.get("native", False) == "1"
         logger.info(
-            "Sending stack trace request to {}:{}".format(req.query.get("ip"), pid)
+            "Sending stack trace request to {}:{} with native={}".format(
+                req.query.get("ip"), pid, native
+            )
         )
         reply = await reporter_stub.GetTraceback(
-            reporter_pb2.GetTracebackRequest(pid=pid)
+            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
         )
         if reply.success:
             logger.info("Returning stack trace, size {}".format(len(reply.output)))
@@ -132,11 +136,18 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if duration > 60:
             raise ValueError(f"The max duration allowed is 60: {duration}.")
         format = req.query.get("format", "flamegraph")
+
+        # Default not using `--native` for profiling
+        native = req.query.get("native", False) == "1"
         logger.info(
-            "Sending CPU profiling request to {}:{}".format(req.query.get("ip"), pid)
+            "Sending CPU profiling request to {}:{} with native={}".format(
+                req.query.get("ip"), pid, native
+            )
         )
         reply = await reporter_stub.CpuProfiling(
-            reporter_pb2.CpuProfilingRequest(pid=pid, duration=duration, format=format)
+            reporter_pb2.CpuProfilingRequest(
+                pid=pid, duration=duration, format=format, native=native
+            )
         )
         if reply.success:
             logger.info(

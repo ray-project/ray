@@ -176,7 +176,7 @@ class TestCallbacks(unittest.TestCase):
                 RandomEnv,
                 env_config={
                     "max_episode_len": 200,
-                    "p_done": 0.0,
+                    "p_terminated": 0.0,
                 },
             )
             .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
@@ -194,13 +194,12 @@ class TestCallbacks(unittest.TestCase):
             # -> 1 episode = 200 timesteps
             # -> 2.5 episodes per sub-env
             # -> 3 episodes created [per sub-env] = 6 episodes total
-            self.assertTrue(
-                6
-                == ray.get(
-                    algo.workers.remote_workers()[0].apply.remote(
-                        lambda w: w.callbacks._reset_counter
-                    )
-                )
+            self.assertEqual(
+                6,
+                algo.workers.foreach_worker(
+                    lambda w: w.callbacks._reset_counter,
+                    local_worker=False,
+                )[0],
             )
             algo.stop()
 

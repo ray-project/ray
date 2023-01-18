@@ -40,6 +40,8 @@ message GetProfilingStatsReply {
 message GetTracebackRequest {
   // PID of the worker process.
   uint32 pid = 1;
+  // If using native flag for py-spy
+  optional bool native = 2;
 }
 
 message GetTracebackReply {
@@ -51,6 +53,8 @@ message CpuProfilingRequest {
   uint32 pid = 1;
   optional string format = 2;
   optional uint32 duration = 3;
+  // If using native flag for py-spy
+  optional bool native = 4;
 }
 
 message CpuProfilingReply {
@@ -71,16 +75,7 @@ message ReportOCMetricsRequest {
   bytes worker_id = 2;
 }
 
-message ReportOCMetricsReply {
-}
-
-// Resource usage reported by the node reporter.
-message NodeResourceUsage {
-  // Node resource usage in serialized json.
-  // TODO: add schema for the subfields, e.g.
-  // https://github.com/ray-project/ray/blob/e54d3117a40c20ca5441d38ffc72b908bc1b0609/dashboard/modules/reporter/reporter_agent.py#L330-L347
-  string json = 1;
-}
+message ReportOCMetricsReply {}
 
 // Service for communicating with the reporter agent module on a remote node.
 service ReporterService {

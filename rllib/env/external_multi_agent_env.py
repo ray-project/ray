@@ -1,5 +1,5 @@
 import uuid
-import gym
+import gymnasium as gym
 from typing import Optional
 
 from ray.rllib.utils.annotations import override, PublicAPI

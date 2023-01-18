@@ -287,10 +287,15 @@ download_mnist() {
 install_pip_packages() {
 
   # Install modules needed in all jobs.
+  # shellcheck disable=SC2262
   alias pip="python -m pip"
 
   if [ "${MINIMAL_INSTALL-}" != 1 ]; then
+    # Some architectures will build dm-tree from source.
+    # Move bazelrc to a different location temporarily to disable --config=ci settings
+    mv "$HOME/.bazelrc" "$HOME/._brc" || true
     pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+    mv "$HOME/._brc" "$HOME/.bazelrc" || true
   fi
 
   if { [ -n "${PYTHON-}" ] || [ "${DL-}" = "1" ]; } && [ "${MINIMAL_INSTALL-}" != 1 ]; then
@@ -386,11 +391,11 @@ install_pip_packages() {
     pip install -U "ludwig[test]>=0.4" "jsonschema>=4"
   fi
 
-  # Additional dependency for statsforecast.
+  # Additional dependency for time series libraries.
   # This cannot be included in requirements_tune.txt as it has conflicting
   # dependencies.
-  if [ "${INSTALL_STATSFORECAST-}" = 1 ]; then
-    pip install -U "statsforecast==1.1.0"
+  if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
+    pip install -U "statsforecast==1.1.0" "prophet==1.1.1"
   fi
 
   # Data processing test dependencies.
@@ -405,6 +410,9 @@ install_pip_packages() {
       else
         pip install -U pyarrow=="${ARROW_VERSION}"
       fi
+    fi
+    if [ -n "${ARROW_MONGO_VERSION-}" ]; then
+	pip install -U pymongoarrow=="${ARROW_MONGO_VERSION}"
     fi
   fi
 
@@ -437,8 +445,7 @@ install_pip_packages() {
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
-    # TODO: eventually pin this to master.
-    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git@a1f17d81f01543196b2c23240da692d9ae310942
+    "${SCRIPT_DIR}"/install-horovod.sh
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"

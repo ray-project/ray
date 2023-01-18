@@ -27,6 +27,10 @@ class TestFeatureImportance(unittest.TestCase):
             # check if the estimate is positive
             assert all(val > 0 for val in estimate.values())
 
+    def test_feat_importance_estimate_on_dataset(self):
+        # TODO (Kourosh): add a test for this
+        pass
+
 
 if __name__ == "__main__":
     import pytest

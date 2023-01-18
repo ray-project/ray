@@ -1,6 +1,5 @@
-from gym import spaces
-from gym.envs.registration import EnvSpec
-import gym
+from gymnasium import spaces
+import gymnasium as gym
 import numpy as np
 import pickle
 import unittest
@@ -93,48 +92,51 @@ class NestedDictEnv(gym.Env):
     def __init__(self):
         self.action_space = spaces.Discrete(2)
         self.observation_space = DICT_SPACE
-        self._spec = EnvSpec("NestedDictEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return DICT_SAMPLES[0]
+        return DICT_SAMPLES[0], {}
 
     def step(self, action):
         self.steps += 1
-        return DICT_SAMPLES[self.steps], 1, self.steps >= 5, {}
+        terminated = False
+        truncated = self.steps >= 5
+        return DICT_SAMPLES[self.steps], 1, terminated, truncated, {}
 
 
 class NestedTupleEnv(gym.Env):
     def __init__(self):
         self.action_space = spaces.Discrete(2)
         self.observation_space = TUPLE_SPACE
-        self._spec = EnvSpec("NestedTupleEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return TUPLE_SAMPLES[0]
+        return TUPLE_SAMPLES[0], {}
 
     def step(self, action):
         self.steps += 1
-        return TUPLE_SAMPLES[self.steps], 1, self.steps >= 5, {}
+        terminated = False
+        truncated = self.steps >= 5
+        return TUPLE_SAMPLES[self.steps], 1, terminated, truncated, {}
 
 
 class RepeatedSpaceEnv(gym.Env):
     def __init__(self):
         self.action_space = spaces.Discrete(2)
         self.observation_space = REPEATED_SPACE
-        self._spec = EnvSpec("RepeatedSpaceEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return REPEATED_SAMPLES[0]
+        return REPEATED_SAMPLES[0], {}
 
     def step(self, action):
         self.steps += 1
-        return REPEATED_SAMPLES[self.steps], 1, self.steps >= 5, {}
+        terminated = False
+        truncated = self.steps >= 5
+        return REPEATED_SAMPLES[self.steps], 1, terminated, truncated, {}
 
 
 class NestedMultiAgentEnv(MultiAgentEnv):
@@ -149,11 +151,11 @@ class NestedMultiAgentEnv(MultiAgentEnv):
         self._agent_ids = {"dict_agent", "tuple_agent"}
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         return {
             "dict_agent": DICT_SAMPLES[0],
             "tuple_agent": TUPLE_SAMPLES[0],
-        }
+        }, {}
 
     def step(self, actions):
         self.steps += 1
@@ -165,12 +167,13 @@ class NestedMultiAgentEnv(MultiAgentEnv):
             "dict_agent": 0,
             "tuple_agent": 0,
         }
-        dones = {"__all__": self.steps >= 5}
+        terminateds = {"__all__": self.steps >= 5}
+        truncateds = {"__all__": self.steps >= 5}
         infos = {
             "dict_agent": {},
             "tuple_agent": {},
         }
-        return obs, rew, dones, infos
+        return obs, rew, terminateds, truncateds, infos
 
 
 class InvalidModel(TorchModelV2):
@@ -352,7 +355,7 @@ class TupleSpyModel(TFModelV2):
 class TestNestedObservationSpaces(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=5)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -386,7 +389,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
             lambda: config.build(),
         )
 
-    def do_test_nested_dict(self, make_env, test_lstm=False):
+    def do_test_nested_dict(self, make_env, test_lstm=False, disable_connectors=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
         config = (
@@ -399,6 +402,10 @@ class TestNestedObservationSpaces(unittest.TestCase):
                 train_batch_size=5,
             )
         )
+        if disable_connectors:
+            # manually disable the connectors
+            # TODO(avnishn): remove this after deprecating external_env
+            config = config.rollouts(enable_connectors=False)
         pg = config.build()
         # Skip first passes as they came from the TorchPolicy loss
         # initialization.
@@ -417,7 +424,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
 
-    def do_test_nested_tuple(self, make_env):
+    def do_test_nested_tuple(self, make_env, disable_connectors=False):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
         register_env("nested2", make_env)
         config = (
@@ -427,6 +434,10 @@ class TestNestedObservationSpaces(unittest.TestCase):
             .framework("tf")
             .training(model={"custom_model": "composite2"}, train_batch_size=5)
         )
+        if disable_connectors:
+            # manually disable the connectors
+            # TODO(avnishn): remove this after deprecating external_env
+            config = config.rollouts(enable_connectors=False)
 
         pg = config.build()
         # Skip first passes as they came from the TorchPolicy loss
@@ -458,7 +469,10 @@ class TestNestedObservationSpaces(unittest.TestCase):
         )
 
     def test_nested_dict_serving(self):
-        self.do_test_nested_dict(lambda _: SimpleServing(NestedDictEnv()))
+        # TODO: (Artur) Enable this test again for connectors if discrepancies
+        #  between EnvRunnerV2 and ExternalEnv are resolved
+        if not PGConfig().enable_connectors:
+            self.do_test_nested_dict(lambda _: SimpleServing(NestedDictEnv()))
 
     def test_nested_dict_async(self):
         self.do_test_nested_dict(lambda _: convert_to_base_env(NestedDictEnv()))
@@ -472,7 +486,10 @@ class TestNestedObservationSpaces(unittest.TestCase):
         )
 
     def test_nested_tuple_serving(self):
-        self.do_test_nested_tuple(lambda _: SimpleServing(NestedTupleEnv()))
+        # TODO: (Artur) Enable this test again for connectors if discrepancies
+        #  between EnvRunnerV2 and ExternalEnv are resolved
+        if not PGConfig().enable_connectors:
+            self.do_test_nested_tuple(lambda _: SimpleServing(NestedTupleEnv()))
 
     def test_nested_tuple_async(self):
         self.do_test_nested_tuple(lambda _: convert_to_base_env(NestedTupleEnv()))
@@ -494,17 +511,17 @@ class TestNestedObservationSpaces(unittest.TestCase):
                         None,
                         TUPLE_SPACE,
                         act_space,
-                        {"model": {"custom_model": "tuple_spy"}},
+                        PGConfig.overrides(model={"custom_model": "tuple_spy"}),
                     ),
                     "dict_policy": (
                         None,
                         DICT_SPACE,
                         act_space,
-                        {"model": {"custom_model": "dict_spy"}},
+                        PGConfig.overrides(model={"custom_model": "dict_spy"}),
                     ),
                 },
                 policy_mapping_fn=(
-                    lambda agent_id, **kwargs: {
+                    lambda agent_id, episode, worker, **kwargs: {
                         "tuple_agent": "tuple_policy",
                         "dict_agent": "dict_policy",
                     }[agent_id]

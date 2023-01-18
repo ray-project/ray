@@ -37,7 +37,7 @@ class RandomAccessDataset(Generic[T]):
         The constructor is a private API. Use ``dataset.to_random_access_dataset()``
         to construct a RandomAccessDataset.
         """
-        self._format = dataset._dataset_format()
+        self._format = dataset.dataset_format()
         if self._format not in ["arrow", "pandas"]:
             raise ValueError("RandomAccessDataset only supports Arrow-format datasets.")
 
@@ -234,7 +234,7 @@ class _RandomAccessWorker:
         return result
 
     def ping(self):
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     def stats(self) -> dict:
         return {

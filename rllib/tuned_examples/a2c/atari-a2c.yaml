@@ -3,15 +3,18 @@
 atari-a2c:
     env:
         grid_search:
-            - BreakoutNoFrameskip-v4
-            - BeamRiderNoFrameskip-v4
-            - QbertNoFrameskip-v4
-            - SpaceInvadersNoFrameskip-v4
+            - ALE/Breakout-v5
+            - ALE/BeamRider-v5
+            - ALE/Qbert-v5
+            - ALE/SpaceInvaders-v5
     run: A2C
     config:
         # Works for both torch and tf.
         framework: tf
-        rollout_fragment_length: 20
+        env_config:
+            frameskip: 1  # no frameskip
+        train_batch_size: 500
+        rollout_fragment_length: auto
         clip_rewards: True
         num_workers: 5
         num_envs_per_worker: 5

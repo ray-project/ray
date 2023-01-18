@@ -10,7 +10,8 @@ import warnings
 
 import psutil
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from collections import defaultdict
 
 import ray
 import ray._private.services
@@ -18,13 +19,13 @@ import ray._private.utils
 from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     COMPONENT_METRICS_TAG_KEYS,
-    AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
 )
 from ray.dashboard.modules.reporter.profile_manager import CpuProfilingManager
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
 import ray._private.prometheus_exporter as prometheus_exporter
+from prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
@@ -284,7 +285,14 @@ class ReporterAgent(
         self._log_dir = dashboard_agent.log_dir
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
         self._hostname = socket.gethostname()
-        self._workers = set()
+        # (pid, created_time) -> psutil.Process
+        self._workers = {}
+        # psutil.Process of the parent.
+        self._raylet_proc = None
+        # psutil.Process of the current process.
+        self._agent_proc = None
+        # The last reported worker proc names (e.g., ray::*).
+        self._latest_worker_proc_names = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
         self._disk_io_stats_hist = [
             (0, (0.0, 0.0, 0, 0))
@@ -316,22 +324,30 @@ class ReporterAgent(
                 stats_module.stats.stats_recorder,
                 stats_exporter,
             )
+            if self._metrics_agent.proxy_exporter_collector:
+                # proxy_exporter_collector is None
+                # if Prometheus server is not started.
+                REGISTRY.register(self._metrics_agent.proxy_exporter_collector)
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
 
     async def GetTraceback(self, request, context):
         pid = request.pid
+        native = request.native
         p = CpuProfilingManager(self._log_dir)
-        success, output = await p.trace_dump(pid)
+        success, output = await p.trace_dump(pid, native=native)
         return reporter_pb2.GetTracebackReply(output=output, success=success)
 
     async def CpuProfiling(self, request, context):
         pid = request.pid
         duration = request.duration
         format = request.format
+        native = request.native
         p = CpuProfilingManager(self._log_dir)
-        success, output = await p.cpu_profile(pid, format=format, duration=duration)
+        success, output = await p.cpu_profile(
+            pid, format=format, duration=duration, native=native
+        )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
 
     async def ReportOCMetrics(self, request, context):
@@ -431,23 +447,55 @@ class ReporterAgent(
     @staticmethod
     def _get_disk_io_stats():
         stats = psutil.disk_io_counters()
-        return (
-            stats.read_bytes,
-            stats.write_bytes,
-            stats.read_count,
-            stats.write_count,
-        )
+        # stats can be None or {} if the machine is diskless.
+        # https://psutil.readthedocs.io/en/latest/#psutil.disk_io_counters
+        if not stats:
+            return (0, 0, 0, 0)
+        else:
+            return (
+                stats.read_bytes,
+                stats.write_bytes,
+                stats.read_count,
+                stats.write_count,
+            )
+
+    def _get_agent_proc(self) -> psutil.Process:
+        # Agent is the current process.
+        # This method is not necessary, but we have it for mock testing.
+        return psutil.Process()
+
+    def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
+        return (proc.pid, proc.create_time())
 
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()
+
         if raylet_proc is None:
             return []
         else:
-            workers = set(raylet_proc.children())
+            workers = {
+                self._generate_worker_key(proc): proc for proc in raylet_proc.children()
+            }
+
+            # We should keep `raylet_proc.children()` in `self` because
+            # when `cpu_percent` is first called, it returns the meaningless 0.
+            # See more: https://github.com/ray-project/ray/issues/29848
+            keys_to_pop = []
+            # Add all new workers.
+            for key, worker in workers.items():
+                if key not in self._workers:
+                    self._workers[key] = worker
+
+            # Pop out stale workers.
+            for key in self._workers:
+                if key not in workers:
+                    keys_to_pop.append(key)
+            for k in keys_to_pop:
+                self._workers.pop(k)
+
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
-            workers.discard(psutil.Process())
-            self._workers = workers
+            self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
             return [
                 w.as_dict(
                     attrs=[
@@ -460,23 +508,24 @@ class ReporterAgent(
                         "memory_full_info",
                     ]
                 )
-                for w in self._workers
+                for w in self._workers.values()
                 if w.status() != psutil.STATUS_ZOMBIE
             ]
 
-    @staticmethod
-    def _get_raylet_proc():
+    def _get_raylet_proc(self):
         try:
-            curr_proc = psutil.Process()
-            # Here, parent is always raylet because the
-            # dashboard agent is a child of the raylet process.
-            parent = curr_proc.parent()
-            if parent is not None:
-                if parent.pid == 1:
+            if not self._raylet_proc:
+                curr_proc = psutil.Process()
+                # Here, parent is always raylet because the
+                # dashboard agent is a child of the raylet process.
+                self._raylet_proc = curr_proc.parent()
+
+            if self._raylet_proc is not None:
+                if self._raylet_proc.pid == 1:
                     return None
-                if parent.status() == psutil.STATUS_ZOMBIE:
+                if self._raylet_proc.status() == psutil.STATUS_ZOMBIE:
                     return None
-            return parent
+            return self._raylet_proc
         except (psutil.AccessDenied, ProcessLookupError):
             pass
         return None
@@ -500,8 +549,9 @@ class ReporterAgent(
 
     def _get_agent(self):
         # Current proc == agent proc
-        agent_proc = psutil.Process()
-        return agent_proc.as_dict(
+        if not self._agent_proc:
+            self._agent_proc = psutil.Process()
+        return self._agent_proc.as_dict(
             attrs=[
                 "pid",
                 "create_time",
@@ -562,6 +612,137 @@ class ReporterAgent(
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
         }
+
+    def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:
+        """Return a list of Record that will reset
+        the system metrics of a given component name.
+
+        Args:
+            component_name: a component name for a given stats.
+
+        Returns:
+            a list of Record instances of all values 0.
+        """
+        tags = {"ip": self._ip, "Component": component_name}
+
+        records = []
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_cpu_percentage"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_rss_mb"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_uss_mb"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        return records
+
+    def _generate_system_stats_record(
+        self, stats: List[dict], component_name: str, pid: Optional[str] = None
+    ) -> List[Record]:
+        """Generate a list of Record class from a given component names.
+
+        Args:
+            stats: a list of stats dict generated by `psutil.as_dict`.
+                If empty, it will create the metrics of a given "component_name"
+                which has all 0 values.
+            component_name: a component name for a given stats.
+            pid: optionally provided pids.
+
+        Returns:
+            a list of Record class that will be exposed to Prometheus.
+        """
+        total_cpu_percentage = 0.0
+        total_rss = 0.0
+        total_uss = 0.0
+
+        for stat in stats:
+            total_cpu_percentage += float(stat.get("cpu_percent", 0.0))  # noqa
+            memory_info = stat.get("memory_info")
+            if memory_info:
+                total_rss += float(stat["memory_info"].rss) / 1.0e6  # noqa
+            mem_full_info = stat.get("memory_full_info")
+            if mem_full_info is not None:
+                total_uss += float(mem_full_info.uss) / 1.0e6
+
+        tags = {"ip": self._ip, "Component": component_name}
+        if pid:
+            tags["pid"] = pid
+
+        records = []
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_cpu_percentage"],
+                value=total_cpu_percentage,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_rss_mb"],
+                value=total_rss,
+                tags=tags,
+            )
+        )
+        if total_uss > 0.0:
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_uss_mb"],
+                    value=total_uss,
+                    tags=tags,
+                )
+            )
+
+        return records
+
+    def generate_worker_stats_record(self, worker_stats: List[dict]) -> List[Record]:
+        """Generate a list of Record class for worker proceses.
+
+        This API automatically sets the component_name of record as
+        the name of worker processes. I.e., ray::* so that we can report
+        per task/actor (grouped by a func/class name) resource usages.
+
+        Args:
+            stats: a list of stats dict generated by `psutil.as_dict`
+                for worker processes.
+        """
+        # worekr cmd name (ray::*) -> stats dict.
+        proc_name_to_stats = defaultdict(list)
+        for stat in worker_stats:
+            cmdline = stat.get("cmdline")
+            # All ray processes start with ray::
+            if cmdline and len(cmdline) > 0 and cmdline[0].startswith("ray::"):
+                proc_name = cmdline[0]
+                proc_name_to_stats[proc_name].append(stat)
+            # We will lose worker stats that don't follow the ray worker proc
+            # naming convention. Theoretically, there should be no data loss here
+            # because all worker processes are renamed to ray::.
+
+        records = []
+        for proc_name, stats in proc_name_to_stats.items():
+            records.extend(self._generate_system_stats_record(stats, proc_name))
+
+        # Reset worker metrics that are from finished processes.
+        new_proc_names = set(proc_name_to_stats.keys())
+        stale_procs = self._latest_worker_proc_names - new_proc_names
+        self._latest_worker_proc_names = new_proc_names
+
+        for stale_proc_name in stale_procs:
+            records.extend(self._generate_reseted_stats_record(stale_proc_name))
+
+        return records
 
     def _record_stats(self, stats, cluster_stats):
         records_reported = []
@@ -773,66 +954,25 @@ class ReporterAgent(
         Record system stats.
         """
 
-        def record_system_stats(
-            stats: List[dict], component_name: str, pid: Optional[str] = None
-        ) -> List[Record]:
-            assert component_name in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
-            records = []
-            total_cpu_percentage = 0.0
-            total_rss = 0.0
-            total_uss = 0.0
-            for stat in stats:
-                total_cpu_percentage += float(stat["cpu_percent"]) * 100.0
-                total_rss += float(stat["memory_info"].rss) / 1.0e6
-                mem_full_info = stat.get("memory_full_info")
-                if mem_full_info is not None:
-                    total_uss += float(mem_full_info.uss) / 1.0e6
-
-            tags = {"ip": ip, "Component": component_name}
-            if pid:
-                tags["pid"] = pid
-
-            records.append(
-                Record(
-                    gauge=METRICS_GAUGES["component_cpu_percentage"],
-                    value=total_cpu_percentage,
-                    tags=tags,
-                )
-            )
-            records.append(
-                Record(
-                    gauge=METRICS_GAUGES["component_rss_mb"],
-                    value=total_rss,
-                    tags=tags,
-                )
-            )
-            if total_uss > 0.0:
-                records.append(
-                    Record(
-                        gauge=METRICS_GAUGES["component_uss_mb"],
-                        value=total_uss,
-                        tags=tags,
-                    )
-                )
-
-            return records
-
         # Record component metrics.
         raylet_stats = stats["raylet"]
         if raylet_stats:
             raylet_pid = str(raylet_stats["pid"])
             records_reported.extend(
-                record_system_stats([raylet_stats], "raylet", pid=raylet_pid)
+                self._generate_system_stats_record(
+                    [raylet_stats], "raylet", pid=raylet_pid
+                )
             )
         workers_stats = stats["workers"]
         if workers_stats:
-            # TODO(sang): Maybe we can report per worker memory usage.
-            records_reported.extend(record_system_stats(workers_stats, "workers"))
+            records_reported.extend(self.generate_worker_stats_record(workers_stats))
         agent_stats = stats["agent"]
         if agent_stats:
             agent_pid = str(agent_stats["pid"])
             records_reported.extend(
-                record_system_stats([agent_stats], "agent", pid=agent_pid)
+                self._generate_system_stats_record(
+                    [agent_stats], "agent", pid=agent_pid
+                )
             )
 
         # TODO(sang): Record GCS metrics.

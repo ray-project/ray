@@ -1,9 +1,9 @@
 import sys
 from typing import Dict, Callable, Optional, Union, Any, TYPE_CHECKING
-import warnings
 
 import numpy as np
 
+from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
@@ -46,7 +46,7 @@ class BatchMapper(Preprocessor):
         >>> def fn(batch: pd.DataFrame) -> pd.DataFrame:
         ...     return batch.drop("Y", axis="columns")
         >>>
-        >>> preprocessor = BatchMapper(fn)
+        >>> preprocessor = BatchMapper(fn, batch_format="pandas")
         >>> preprocessor.transform(ds)  # doctest: +SKIP
         Dataset(num_blocks=1, num_rows=3, schema={X: int64})
         >>>
@@ -80,22 +80,21 @@ class BatchMapper(Preprocessor):
                 Union[np.ndarray, Dict[str, np.ndarray]],
             ],
         ],
-        batch_format: Optional[str] = None,
+        batch_format: Optional[BatchFormat] = None,
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         # TODO: Make batch_format required from user
         # TODO: Introduce a "zero_copy" format
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
         if not batch_format:
-            warnings.warn(
-                "batch_format will be a required argument for BatchMapper in future "
-                "releases. Defaulting to 'pandas' batch format.",
-                DeprecationWarning,
+            raise DeprecationWarning(
+                "batch_format is a required argument for BatchMapper from Ray 2.1."
+                "You must specify either 'pandas' or 'numpy' batch format."
             )
-            batch_format = "pandas"
-        if batch_format and batch_format not in [
-            "pandas",
-            "numpy",
+
+        if batch_format not in [
+            BatchFormat.PANDAS,
+            BatchFormat.NUMPY,
         ]:
             raise ValueError("BatchMapper only supports pandas and numpy batch format.")
 
@@ -111,7 +110,7 @@ class BatchMapper(Preprocessor):
     def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
         return self.fn(df)
 
-    def _determine_transform_to_use(self, data_format: str):
+    def _determine_transform_to_use(self, data_format: BlockFormat):
         if self.batch_format:
             return self.batch_format
         else:

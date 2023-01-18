@@ -478,10 +478,9 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     RAY_LOG(DEBUG) << "Releasing lineage internal for argument " << argument_id;
     arg_it->second.lineage_ref_count--;
     if (arg_it->second.ShouldDelete(lineage_pinning_enabled_)) {
-      // We only decremented the lineage ref count, so the argument value
-      // should already be released.
       RAY_CHECK(arg_it->second.on_ref_removed == nullptr);
       lineage_bytes_evicted += ReleaseLineageReferences(arg_it);
+      ReleasePlasmaObject(arg_it);
       EraseReference(arg_it);
     }
   }
@@ -511,6 +510,11 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
       DeleteReferenceInternal(it, deleted);
     }
   }
+}
+
+bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  return object_id_refs_.find(object_id) != object_id_refs_.end();
 }
 
 bool ReferenceCounter::GetOwner(const ObjectID &object_id,

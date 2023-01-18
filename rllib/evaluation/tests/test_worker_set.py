@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import unittest
 
 import ray
@@ -46,8 +46,8 @@ class TestWorkerSet(unittest.TestCase):
 
         ws.stop()
 
-    def test_foreach_worker_return_objrefs(self):
-        """Test to make sure return_objref parameter works."""
+    def test_foreach_worker_return_obj_refss(self):
+        """Test to make sure return_obj_refs parameter works."""
         ws = WorkerSet(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
@@ -58,7 +58,7 @@ class TestWorkerSet(unittest.TestCase):
         policy_refs = ws.foreach_worker(
             lambda w: w.get_policy(DEFAULT_POLICY_ID),
             local_worker=False,
-            return_objref=True,
+            return_obj_refs=True,
         )
 
         # 2 policy references from remote workers.

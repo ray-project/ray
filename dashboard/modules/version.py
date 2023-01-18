@@ -6,7 +6,8 @@ from dataclasses import dataclass
 #                   instead of a dictionary.
 # Version 2 -> 3: - Added optional fields entrypoint_num_cpus, entrypoint_num_gpus
 #                   and entrypoint_resources to submit_job sdk/cli/api.
-CURRENT_VERSION = "3"
+# Version 3 -> 4: - Added DELETE endpoint for deleting jobs.
+CURRENT_VERSION = "4"
 
 
 @dataclass

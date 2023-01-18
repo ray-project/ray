@@ -6,7 +6,7 @@ import ray
 from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
 
 
-from dummy_preprocessor import DummyPreprocessor
+from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from test_huggingface_predictor import (
     model_checkpoint,
     tokenizer_checkpoint,

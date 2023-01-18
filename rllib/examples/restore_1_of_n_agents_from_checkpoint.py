@@ -5,7 +5,7 @@ Control the number of agents and policies via --num-agents and --num-policies.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import os
 import random
 
@@ -62,7 +62,7 @@ if __name__ == "__main__":
 
     # Setup PPO with an ensemble of `num_policies` different policies.
     policies = {
-        f"policy_{i}": (None, obs_space, act_space, {})
+        f"policy_{i}": (None, obs_space, act_space, None)
         for i in range(args.num_policies)
     }
     policy_ids = list(policies.keys())
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         best_checkpoint.to_directory(), "policies/policy_0"
     )
     restored_policy_0 = Policy.from_checkpoint(policy_0_checkpoint)
-
+    restored_policy_0_weights = restored_policy_0.get_weights()
     print("Starting new tune.Tuner().fit()")
 
     # Start our actual experiment.
@@ -114,11 +114,11 @@ if __name__ == "__main__":
 
     class RestoreWeightsCallback(DefaultCallbacks):
         def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
-            algorithm.set_weights({"policy_0": restored_policy_0.get_weights()})
+            algorithm.set_weights({"policy_0": restored_policy_0_weights})
 
     # Make sure, the non-1st policies are not updated anymore.
     config.policies_to_train = [pid for pid in policy_ids if pid != "policy_0"]
-    config.callbacks = RestoreWeightsCallback
+    config.callbacks(RestoreWeightsCallback)
 
     results = tune.run(
         "PPO",

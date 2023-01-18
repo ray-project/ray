@@ -28,7 +28,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DatasetContext
-from ray.data.dataset import BatchType, Dataset
+from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI
 
 
@@ -247,7 +247,7 @@ class GroupedDataset(Generic[T]):
 
     def map_groups(
         self,
-        fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+        fn: Union[CallableClass, Callable[[DataBatch], DataBatch]],
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "default",
@@ -329,8 +329,7 @@ class GroupedDataset(Generic[T]):
 
             boundaries = []
             # Get the keys of the batch in numpy array format
-            keys_block = block_accessor.select([self._key])
-            keys = BlockAccessor.for_block(keys_block).to_numpy()
+            keys = block_accessor.to_numpy(self._key)
             start = 0
             while start < keys.size:
                 end = start + np.searchsorted(keys[start:], keys[start], side="right")
@@ -341,7 +340,8 @@ class GroupedDataset(Generic[T]):
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
         def group_fn(batch):
-            block_accessor = BlockAccessor.for_block(batch)
+            block = BlockAccessor.batch_to_block(batch)
+            block_accessor = BlockAccessor.for_block(block)
             if self._key:
                 boundaries = get_key_boundaries(block_accessor)
             else:
@@ -349,9 +349,14 @@ class GroupedDataset(Generic[T]):
             builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
-                group = block_accessor.slice(start, end)
-                applied = fn(group)
-                builder.add_block(applied)
+                group_block = block_accessor.slice(start, end)
+                group_block_accessor = BlockAccessor.for_block(group_block)
+                # Convert block of each group to batch format here, because the
+                # block format here can be different from batch format
+                # (e.g. block is Arrow format, and batch is NumPy format).
+                group_batch = group_block_accessor.to_batch_format(batch_format)
+                applied = fn(group_batch)
+                builder.add_batch(applied)
                 start = end
             rs = builder.build()
             return rs
@@ -389,7 +394,7 @@ class GroupedDataset(Generic[T]):
     def sum(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
-        """Compute grouped sum aggregation.
+        r"""Compute grouped sum aggregation.
 
         This is a blocking operation.
 

@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete
 import json
 import numpy as np
 import os
@@ -16,6 +16,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.examples.env.mock_env import (
     MockEnv,
     MockEnv2,
@@ -31,6 +32,7 @@ from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
     SampleBatch,
+    convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED
@@ -81,7 +83,7 @@ class FailOnStepEnv(gym.Env):
         self.observation_space = gym.spaces.Discrete(1)
         self.action_space = gym.spaces.Discrete(2)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         raise ValueError("kaboom")
 
     def step(self, action):
@@ -103,12 +105,13 @@ class TestRolloutWorker(unittest.TestCase):
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(num_rollout_workers=0),
         )
-        batch = ev.sample()
+        batch = convert_ma_batch_to_sample_batch(ev.sample())
         for key in [
             "obs",
             "actions",
             "rewards",
-            "dones",
+            "terminateds",
+            "terminateds",
             "advantages",
             "prev_rewards",
             "prev_actions",
@@ -116,10 +119,14 @@ class TestRolloutWorker(unittest.TestCase):
             self.assertIn(key, batch)
             self.assertGreater(np.abs(np.mean(batch[key])), 0)
 
+        # Our MockPolicy should never reach a full truncated episode.
+        # Expect all truncateds flags to be False.
+        self.assertEqual(np.abs(np.mean(batch["truncateds"])), 0.0)
+
         def to_prev(vec):
             out = np.zeros_like(vec)
             for i, v in enumerate(vec):
-                if i + 1 < len(out) and not batch["dones"][i]:
+                if i + 1 < len(out) and not batch["terminateds"][i]:
                     out[i + 1] = v
             return out.tolist()
 
@@ -137,8 +144,8 @@ class TestRolloutWorker(unittest.TestCase):
                 rollout_fragment_length=fragment_len, num_rollout_workers=0
             ),
         )
-        batch1 = ev.sample()
-        batch2 = ev.sample()
+        batch1 = convert_ma_batch_to_sample_batch(ev.sample())
+        batch2 = convert_ma_batch_to_sample_batch(ev.sample())
         unroll_ids_1 = set(batch1["unroll_id"])
         unroll_ids_2 = set(batch2["unroll_id"])
         # Assert no overlap of unroll IDs between sample() calls.
@@ -234,7 +241,7 @@ class TestRolloutWorker(unittest.TestCase):
                 config=dict(
                     action_space=action_space,
                     max_episode_len=10,
-                    p_done=0.0,
+                    p_terminated=0.0,
                     check_action_bounds=True,
                 )
             ),
@@ -242,7 +249,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
@@ -251,7 +259,7 @@ class TestRolloutWorker(unittest.TestCase):
                 action_space=action_space, normalize_actions=False, clip_actions=True
             ),
         )
-        sample = ev.sample()
+        sample = convert_ma_batch_to_sample_batch(ev.sample())
         # Check, whether the action bounds have been breached (expected).
         # We still arrived here b/c we clipped according to the Env's action
         # space.
@@ -266,7 +274,7 @@ class TestRolloutWorker(unittest.TestCase):
                 config=dict(
                     action_space=action_space,
                     max_episode_len=10,
-                    p_done=0.0,
+                    p_terminated=0.0,
                     check_action_bounds=True,
                 )
             ),
@@ -282,7 +290,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             ),
@@ -297,7 +306,7 @@ class TestRolloutWorker(unittest.TestCase):
                 config=dict(
                     action_space=action_space,
                     max_episode_len=10,
-                    p_done=0.0,
+                    p_terminated=0.0,
                     check_action_bounds=True,
                 )
             ),
@@ -310,7 +319,7 @@ class TestRolloutWorker(unittest.TestCase):
                 action_space=action_space, normalize_actions=False, clip_actions=False
             ),
         )
-        sample = ev3.sample()
+        sample = convert_ma_batch_to_sample_batch(ev3.sample())
         self.assertGreater(np.min(sample["actions"]), action_space.low[0])
         self.assertLess(np.max(sample["actions"]), action_space.high[0])
         ev3.stop()
@@ -326,7 +335,7 @@ class TestRolloutWorker(unittest.TestCase):
                 config=dict(
                     action_space=action_space,
                     max_episode_len=10,
-                    p_done=0.0,
+                    p_terminated=0.0,
                     check_action_bounds=True,
                 )
             ),
@@ -334,7 +343,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
@@ -343,7 +353,7 @@ class TestRolloutWorker(unittest.TestCase):
                 action_space=action_space, normalize_actions=True, clip_actions=False
             ),
         )
-        sample = ev.sample()
+        sample = convert_ma_batch_to_sample_batch(ev.sample())
         # Check, whether the action bounds have been breached (expected).
         # We still arrived here b/c we unsquashed according to the Env's action
         # space.
@@ -360,7 +370,8 @@ class TestRolloutWorker(unittest.TestCase):
             data = {
                 "type": "SampleBatch",
                 "actions": [[2.0], [-2.0]],
-                "dones": [0.0, 0.0],
+                "terminateds": [0.0, 0.0],
+                "truncateds": [0.0, 0.0],
                 "rewards": [0.0, 0.0],
                 "obs": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
                 "new_obs": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
@@ -373,10 +384,10 @@ class TestRolloutWorker(unittest.TestCase):
 
             # create input reader functions
             def dataset_reader_creator(ioctx):
-                config = {
-                    "input": "dataset",
-                    "input_config": {"format": "json", "paths": data_file},
-                }
+                config = AlgorithmConfig().offline_data(
+                    input_="dataset",
+                    input_config={"format": "json", "paths": data_file},
+                )
                 _, shards = get_dataset_and_shards(config, num_workers=0)
                 return DatasetReader(shards[0], ioctx)
 
@@ -463,7 +474,7 @@ class TestRolloutWorker(unittest.TestCase):
                     test_case=self,
                     action_space=action_space,
                     max_episode_len=10,
-                    p_done=0.0,
+                    p_terminated=0.0,
                     check_action_bounds=True,
                 )
             ),
@@ -471,7 +482,8 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={
                     "default_policy": PolicySpec(
-                        policy_class=RandomPolicy, config={"ignore_action_bounds": True}
+                        policy_class=RandomPolicy,
+                        config={"ignore_action_bounds": True},
                     )
                 }
             )
@@ -483,16 +495,31 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_reward_clipping(self):
         # Clipping: True (clip between -1.0 and 1.0).
+        config = (
+            AlgorithmConfig()
+            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
+            .environment(clip_rewards=True)
+        )
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
             default_policy_class=MockPolicy,
-            config=AlgorithmConfig()
-            .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
-            .environment(clip_rewards=True),
+            config=config,
         )
-        self.assertEqual(max(ev.sample()["rewards"]), 1)
-        result = collect_metrics(ev, [])
-        self.assertEqual(result["episode_reward_mean"], 1000)
+        sample = convert_ma_batch_to_sample_batch(ev.sample())
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[],
+        )
+        self.assertEqual(max(sample["rewards"]), 1)
+        result = collect_metrics(ws, [])
+        # Shows different behavior when connector is on/off.
+        if config.enable_connectors:
+            # episode_reward_mean shows the correct clipped value.
+            self.assertEqual(result["episode_reward_mean"], 10)
+        else:
+            # episode_reward_mean shows the unclipped raw value
+            # when connector is off, and old env_runner v1 is used.
+            self.assertEqual(result["episode_reward_mean"], 1000)
         ev.stop()
 
         from ray.rllib.examples.env.random_env import RandomEnv
@@ -502,7 +529,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: RandomEnv(
                 dict(
                     reward_space=gym.spaces.Box(low=-10, high=10, shape=()),
-                    p_done=0.0,
+                    p_terminated=0.0,
                     max_episode_len=10,
                 )
             ),
@@ -511,7 +538,7 @@ class TestRolloutWorker(unittest.TestCase):
             .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
             .environment(clip_rewards=2.0),
         )
-        sample = ev2.sample()
+        sample = convert_ma_batch_to_sample_batch(ev2.sample())
         self.assertEqual(max(sample["rewards"]), 2.0)
         self.assertEqual(min(sample["rewards"]), -2.0)
         self.assertLess(np.mean(sample["rewards"]), 0.5)
@@ -526,90 +553,15 @@ class TestRolloutWorker(unittest.TestCase):
             .rollouts(num_rollout_workers=0, batch_mode="complete_episodes")
             .environment(clip_rewards=False),
         )
-        self.assertEqual(max(ev2.sample()["rewards"]), 100)
-        result2 = collect_metrics(ev2, [])
+        sample = convert_ma_batch_to_sample_batch(ev2.sample())
+        ws2 = WorkerSet._from_existing(
+            local_worker=ev2,
+            remote_workers=[],
+        )
+        self.assertEqual(max(sample["rewards"]), 100)
+        result2 = collect_metrics(ws2, [])
         self.assertEqual(result2["episode_reward_mean"], 1000)
         ev2.stop()
-
-    def test_hard_horizon(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: MockEnv2(episode_length=10),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                num_rollout_workers=0,
-                batch_mode="complete_episodes",
-                rollout_fragment_length=10,
-                horizon=4,
-                soft_horizon=False,
-            ),
-        )
-        samples = ev.sample()
-        # Three logical episodes and correct episode resets (always after 4
-        # steps).
-        self.assertEqual(len(set(samples["eps_id"])), 3)
-        for i in range(4):
-            self.assertEqual(np.argmax(samples["obs"][i]), i)
-        self.assertEqual(np.argmax(samples["obs"][4]), 0)
-        # 3 done values.
-        self.assertEqual(sum(samples["dones"]), 3)
-        ev.stop()
-
-        # A gym env's max_episode_steps is smaller than Algorithm's horizon.
-        ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v1"),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                num_rollout_workers=0,
-                batch_mode="complete_episodes",
-                rollout_fragment_length=10,
-                horizon=6,
-                soft_horizon=False,
-            ),
-        )
-        samples = ev.sample()
-        # 12 steps due to `complete_episodes` batch_mode.
-        self.assertEqual(len(samples["eps_id"]), 12)
-        # Two logical episodes and correct episode resets (always after 6(!)
-        # steps).
-        self.assertEqual(len(set(samples["eps_id"])), 2)
-        # 2 done values after 6 and 12 steps.
-        check(
-            samples["dones"],
-            [
-                False,
-                False,
-                False,
-                False,
-                False,
-                True,
-                False,
-                False,
-                False,
-                False,
-                False,
-                True,
-            ],
-        )
-        ev.stop()
-
-    def test_soft_horizon(self):
-        ev = RolloutWorker(
-            env_creator=lambda _: MockEnv(episode_length=10),
-            default_policy_class=MockPolicy,
-            config=AlgorithmConfig().rollouts(
-                num_rollout_workers=0,
-                batch_mode="complete_episodes",
-                rollout_fragment_length=10,
-                horizon=4,
-                soft_horizon=True,
-            ),
-        )
-        samples = ev.sample()
-        # three logical episodes
-        self.assertEqual(len(set(samples["eps_id"])), 3)
-        # only 1 hard done value
-        self.assertEqual(sum(samples["dones"]), 1)
-        ev.stop()
 
     def test_metrics(self):
         ev = RolloutWorker(
@@ -630,9 +582,13 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="complete_episodes",
             ),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[remote_ev],
+        )
         ev.sample()
         ray.get(remote_ev.sample.remote())
-        result = collect_metrics(ev, [remote_ev])
+        result = collect_metrics(ws)
         self.assertEqual(result["episodes_this_iter"], 20)
         self.assertEqual(result["episode_reward_mean"], 10)
         ev.stop()
@@ -643,8 +599,15 @@ class TestRolloutWorker(unittest.TestCase):
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(sample_async=True, num_rollout_workers=0),
         )
-        batch = ev.sample()
-        for key in ["obs", "actions", "rewards", "dones", "advantages"]:
+        batch = convert_ma_batch_to_sample_batch(ev.sample())
+        for key in [
+            "obs",
+            "actions",
+            "rewards",
+            "terminateds",
+            "truncateds",
+            "advantages",
+        ]:
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
         ev.stop()
@@ -660,15 +623,19 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[],
+        )
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 16)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 8)
         indices = []
         for env in ev.async_env.vector_env.envs:
@@ -688,12 +655,16 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[],
+        )
         batch = ev.sample()
         self.assertEqual(batch.count, 16)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 0)
         batch = ev.sample()
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 4)
         ev.stop()
 
@@ -709,15 +680,19 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[],
+        )
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 8)
         ev.stop()
 
@@ -732,15 +707,19 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
+        ws = WorkerSet._from_existing(
+            local_worker=ev,
+            remote_workers=[],
+        )
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertGreater(result["episodes_this_iter"], 3)
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
-        result = collect_metrics(ev, [])
+        result = collect_metrics(ws, [])
         self.assertGreater(result["episodes_this_iter"], 6)
         ev.stop()
 
@@ -756,7 +735,7 @@ class TestRolloutWorker(unittest.TestCase):
         )
         batch = ev_env_steps.sample()
         self.assertEqual(batch.count, 15)
-        self.assertTrue(isinstance(batch, SampleBatch))
+        self.assertTrue(issubclass(type(batch), (SampleBatch, MultiAgentBatch)))
         ev_env_steps.stop()
 
         action_space = Discrete(2)
@@ -773,7 +752,7 @@ class TestRolloutWorker(unittest.TestCase):
             .multi_agent(
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=(
-                    lambda agent_id, episode, **kwargs: "pol0"
+                    lambda agent_id, episode, worker, **kwargs: "pol0"
                     if agent_id == 0
                     else "pol1"
                 ),
@@ -798,7 +777,7 @@ class TestRolloutWorker(unittest.TestCase):
                 count_steps_by="agent_steps",
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=(
-                    lambda agent_id, episode, **kwargs: "pol0"
+                    lambda agent_id, episode, worker, **kwargs: "pol0"
                     if agent_id == 0
                     else "pol1"
                 ),
@@ -839,6 +818,7 @@ class TestRolloutWorker(unittest.TestCase):
             ),
         )
         batch = ev.sample()
+        batch = convert_ma_batch_to_sample_batch(batch)
         self.assertEqual(batch.count, 20)
         self.assertEqual(
             batch["t"].tolist(),
@@ -960,20 +940,20 @@ class TestRolloutWorker(unittest.TestCase):
 
             def __init__(self):
                 # Intentinoally don't call super().__init__(),
-                # so this env doesn't have _spaces_in_preferred_format
-                # attribute.
+                # so this env doesn't have
+                # `self._[action|observation]_space_in_preferred_format`attributes.
                 self.observation_space = gym.spaces.Discrete(2)
                 self.action_space = gym.spaces.Discrete(2)
 
-            def reset(self):
+            def reset(self, *, seed=None, options=None):
                 pass
 
             def step(self, action_dict):
                 obs = {1: [0, 0], 2: [1, 1]}
                 rewards = {1: 0, 2: 0}
-                dones = {1: False, 2: False, "__all__": False}
+                terminateds = truncated = {1: False, 2: False, "__all__": False}
                 infos = {1: {}, 2: {}}
-                return obs, rewards, dones, infos
+                return obs, rewards, terminateds, truncated, infos
 
         ev = RolloutWorker(
             env_creator=lambda _: MockMultiAgentEnv(),
@@ -1008,15 +988,16 @@ class TestRolloutWorker(unittest.TestCase):
     def test_no_training(self):
         class NoTrainingEnv(MockEnv):
             def __init__(self, episode_length, training_enabled):
-                super(NoTrainingEnv, self).__init__(episode_length)
+                super().__init__(episode_length)
                 self.training_enabled = training_enabled
 
             def step(self, action):
-                obs, rew, done, info = super(NoTrainingEnv, self).step(action)
+                obs, rew, terminated, truncated, info = super().step(action)
                 return (
                     obs,
                     rew,
-                    done,
+                    terminated,
+                    truncated,
                     {**info, "training_enabled": self.training_enabled},
                 )
 
@@ -1030,6 +1011,7 @@ class TestRolloutWorker(unittest.TestCase):
             ),
         )
         batch = ev.sample()
+        batch = convert_ma_batch_to_sample_batch(batch)
         self.assertEqual(batch.count, 10)
         self.assertEqual(len(batch["obs"]), 10)
         ev.stop()

@@ -1,7 +1,7 @@
 import asyncio
-import pickle
+import json
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, replace, asdict
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
@@ -12,6 +12,8 @@ from ray._private.runtime_env.packaging import parse_uri
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
 )
+
+from ray.util.annotations import PublicAPI
 
 # NOTE(edoakes): these constants should be considered a public API because
 # they're exposed in the snapshot API.
@@ -25,6 +27,7 @@ JOB_ACTOR_NAME_TEMPLATE = (
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 
 
+@PublicAPI(stability="stable")
 class JobStatus(str, Enum):
     """An enumeration for describing the status of a job."""
 
@@ -55,6 +58,7 @@ class JobStatus(str, Enum):
 
 
 # TODO(aguo): Convert to pydantic model
+@PublicAPI(stability="stable")
 @dataclass
 class JobInfo:
     """A class for recording information associated with a job and its execution."""
@@ -89,6 +93,8 @@ class JobInfo:
     driver_node_id: Optional[str] = None
 
     def __post_init__(self):
+        if isinstance(self.status, str):
+            self.status = JobStatus(self.status)
         if self.message is None:
             if self.status == JobStatus.PENDING:
                 self.message = "Job has not started yet."
@@ -101,8 +107,10 @@ class JobInfo:
                         self.entrypoint_resources not in [None, {}],
                     ]
                 ):
-                    self.message += " It may be waiting for resources "
-                    "(CPUs, GPUs, custom resources) to become available."
+                    self.message += (
+                        " It may be waiting for resources "
+                        "(CPUs, GPUs, custom resources) to become available."
+                    )
                 if self.runtime_env not in [None, {}]:
                     self.message += (
                         " It may be waiting for the runtime environment to be set up."
@@ -115,6 +123,35 @@ class JobInfo:
                 self.message = "Job finished successfully."
             elif self.status == JobStatus.FAILED:
                 self.message = "Job failed."
+
+    def to_json(self) -> Dict[str, Any]:
+        """Convert this object to a JSON-serializable dictionary.
+
+        Returns:
+            A JSON-serializable dictionary representing the JobInfo object.
+        """
+
+        json_dict = asdict(self)
+
+        # Convert enum values to strings.
+        json_dict["status"] = str(json_dict["status"])
+
+        # Assert that the dictionary is JSON-serializable.
+        json.dumps(json_dict)
+
+        return json_dict
+
+    @classmethod
+    def from_json(cls, json_dict: Dict[str, Any]) -> None:
+        """Initialize this object from a JSON dictionary.
+
+        Args:
+            json_dict: A JSON dictionary to use to initialize the JobInfo object.
+        """
+        # Convert enum values to enum objects.
+        json_dict["status"] = JobStatus(json_dict["status"])
+
+        return cls(**json_dict)
 
 
 class JobInfoStorageClient:
@@ -129,24 +166,32 @@ class JobInfoStorageClient:
         self._gcs_aio_client = gcs_aio_client
         assert _internal_kv_initialized()
 
-    async def put_info(self, job_id: str, data: JobInfo):
+    async def put_info(self, job_id: str, job_info: JobInfo):
         await self._gcs_aio_client.internal_kv_put(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
-            pickle.dumps(data),
+            json.dumps(job_info.to_json()).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
-        pickled_info = await self._gcs_aio_client.internal_kv_get(
+        serialized_info = await self._gcs_aio_client.internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
             timeout=timeout,
         )
-        if pickled_info is None:
+        if serialized_info is None:
             return None
         else:
-            return pickle.loads(pickled_info)
+            return JobInfo.from_json(json.loads(serialized_info))
+
+    async def delete_info(self, job_id: str, timeout: int = 30):
+        await self._gcs_aio_client.internal_kv_del(
+            self.JOB_DATA_KEY.format(job_id=job_id).encode(),
+            False,
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
+        )
 
     async def put_status(
         self,
@@ -343,6 +388,11 @@ class JobSubmitResponse:
 @dataclass
 class JobStopResponse:
     stopped: bool
+
+
+@dataclass
+class JobDeleteResponse:
+    deleted: bool
 
 
 # TODO(jiaodong): Support log streaming #19415

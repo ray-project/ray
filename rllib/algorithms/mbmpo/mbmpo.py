@@ -23,20 +23,25 @@ from ray.rllib.execution.common import (
 )
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+    concat_samples,
+    convert_ma_batch_to_sample_batch,
+)
 from ray.rllib.utils.annotations import Deprecated, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import EnvType, AlgorithmConfigDict
+from ray.rllib.utils.typing import EnvType
 from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
 
 
 class MBMPOConfig(AlgorithmConfig):
-    """Defines a configuration class from which an MBMPO Algorithm can be built.
+    r"""Defines a configuration class from which an MBMPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
@@ -105,8 +110,6 @@ class MBMPOConfig(AlgorithmConfig):
         self.maml_optimizer_steps = 8
         # Inner adaptation step size.
         self.inner_lr = 1e-3
-        # Horizon of the environment (200 in MB-MPO paper).
-        self.horizon = 200
         # Dynamics ensemble hyperparameters.
         self.dynamics_model = {
             "custom_model": DynamicsEnsembleCustomModel,
@@ -169,7 +172,6 @@ class MBMPOConfig(AlgorithmConfig):
         inner_adaptation_steps: Optional[int] = NotProvided,
         maml_optimizer_steps: Optional[int] = NotProvided,
         inner_lr: Optional[float] = NotProvided,
-        horizon: Optional[int] = NotProvided,
         dynamics_model: Optional[dict] = NotProvided,
         custom_vector_env: Optional[type] = NotProvided,
         num_maml_steps: Optional[int] = NotProvided,
@@ -195,7 +197,6 @@ class MBMPOConfig(AlgorithmConfig):
             maml_optimizer_steps: Number of MAML steps per meta-update iteration
                 (PPO steps).
             inner_lr: Inner adaptation step size.
-            horizon: Horizon of the environment (200 in MB-MPO paper).
             dynamics_model: Dynamics ensemble hyperparameters.
             custom_vector_env: Workers sample from dynamics models, not from actual
                 envs.
@@ -231,8 +232,6 @@ class MBMPOConfig(AlgorithmConfig):
             self.maml_optimizer_steps = maml_optimizer_steps
         if inner_lr is not NotProvided:
             self.inner_lr = inner_lr
-        if horizon is not NotProvided:
-            self.horizon = horizon
         if dynamics_model is not NotProvided:
             self.dynamics_model.update(dynamics_model)
         if custom_vector_env is not NotProvided:
@@ -383,7 +382,7 @@ def post_process_metrics(prefix, workers, metrics):
         workers: Set of workers
         metrics: Current metrics dictionary
     """
-    res = collect_metrics(remote_workers=workers.remote_workers())
+    res = collect_metrics(workers=workers)
     for key in METRICS_KEYS:
         metrics[prefix + "_" + key] = res[key]
     return metrics
@@ -455,15 +454,15 @@ def sync_stats(workers: WorkerSet) -> None:
             e.foreach_policy.remote(set_func, normalizations=normalization_dict)
 
 
-def post_process_samples(samples, config: AlgorithmConfigDict):
+def post_process_samples(samples, config: AlgorithmConfig):
     # Instead of using NN for value function, we use regression
     split_lst = []
     for sample in samples:
-        indexes = np.asarray(sample["dones"]).nonzero()[0]
+        indexes = np.asarray(sample[SampleBatch.TERMINATEDS]).nonzero()[0]
         indexes = indexes + 1
 
-        reward_list = np.split(sample["rewards"], indexes)[:-1]
-        observation_list = np.split(sample["obs"], indexes)[:-1]
+        reward_list = np.split(sample[SampleBatch.REWARDS], indexes)[:-1]
+        observation_list = np.split(sample[SampleBatch.OBS], indexes)[:-1]
 
         paths = []
         for i in range(0, len(reward_list)):
@@ -507,7 +506,7 @@ class MBMPO(Algorithm):
     @staticmethod
     @override(Algorithm)
     def execution_plan(
-        workers: WorkerSet, config: AlgorithmConfigDict, **kwargs
+        workers: WorkerSet, config: AlgorithmConfig, **kwargs
     ) -> LocalIterator[dict]:
         assert (
             len(kwargs) == 0
@@ -524,18 +523,16 @@ class MBMPO(Algorithm):
         sync_stats(workers)
 
         # Dropping metrics from the first iteration
-        _, _ = collect_episodes(
-            workers.local_worker(), workers.remote_workers(), [], timeout_seconds=9999
-        )
+        _ = collect_episodes(workers=workers, timeout_seconds=9999)
 
         # Metrics Collector.
         metric_collect = CollectMetrics(
             workers,
             min_history=0,
-            timeout_seconds=config["metrics_episode_collection_timeout_s"],
+            timeout_seconds=config.metrics_episode_collection_timeout_s,
         )
 
-        num_inner_steps = config["inner_adaptation_steps"]
+        num_inner_steps = config.inner_adaptation_steps
 
         def inner_adaptation_steps(itr):
             buf = []
@@ -544,6 +541,7 @@ class MBMPO(Algorithm):
             for samples in itr:
                 print("Collecting Samples, Inner Adaptation {}".format(len(split)))
                 # Processing Samples (Standardize Advantages)
+                samples = [convert_ma_batch_to_sample_batch(batch) for batch in samples]
                 samples, split_lst = post_process_samples(samples, config)
 
                 buf.extend(samples)
@@ -575,8 +573,8 @@ class MBMPO(Algorithm):
         train_op = rollouts.combine(
             MetaUpdate(
                 workers,
-                config["num_maml_steps"],
-                config["maml_optimizer_steps"],
+                config.num_maml_steps,
+                config.maml_optimizer_steps,
                 metric_collect,
             )
         )

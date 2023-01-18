@@ -134,14 +134,9 @@ class CQLConfig(SACConfig):
         # Call super's validation method.
         super().validate()
 
-        if self.num_gpus > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
-
         # CQL-torch performs the optimizer steps inside the loss function.
         # Using the multi-GPU optimizer will therefore not work (see multi-GPU
         # check above) and we must use the simple optimizer for now.
-        if self.simple_optimizer is not True and self.framework_str == "torch":
-            self.simple_optimizer = True
 
         if self.framework_str in ["tf", "tf2"] and tfp is None:
             logger.warning(
@@ -210,7 +205,7 @@ class CQL(SAC):
 
         # Update remote workers's weights after learning on local worker
         # (only those policies that were actually trained).
-        if self.workers.remote_workers():
+        if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(policies=list(train_results.keys()))
 
