@@ -23,9 +23,6 @@ class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
         super().__init__(ctx, connectors)
         self.timers = defaultdict(_Timer)
 
-    def reset(self, env_id: str):
-        self.timers.clear()
-
     def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
         for c in self.connectors:
             timer = self.timers[str(c)]

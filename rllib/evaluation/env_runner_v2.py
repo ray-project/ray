@@ -396,7 +396,10 @@ class EnvRunnerV2:
             return atari_metrics
         # Create connector metrics
         connector_metrics = {}
-        for policy_id, policy in self._worker.policy_map.items():
+        active_agents = episode.get_agents()
+        for agent in active_agents:
+            policy_id = episode.policy_for(agent)
+            policy = episode.policy_map[policy_id]
             connector_metrics[policy_id] = policy.get_connector_throughput_metrics()
         # Otherwise, return RolloutMetrics for the episode.
         return [
@@ -838,7 +841,7 @@ class EnvRunnerV2:
 
         # Reset connector state if this is a hard reset.
         for p in self._worker.policy_map.cache.values():
-            p.reset_connectors(env_id)
+            p.agent_connectors.reset(env_id)
 
         # Creates a new episode if this is not async return.
         # If reset is async, we will get its result in some future poll.
