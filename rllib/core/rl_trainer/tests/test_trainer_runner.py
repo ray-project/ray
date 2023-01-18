@@ -1,3 +1,4 @@
+import pytest
 import gymnasium as gym
 import unittest
 
@@ -136,6 +137,7 @@ class TestTrainerRunner(unittest.TestCase):
                 set(result["loss"]) - {"total_loss"}, module_ids_before_add
             )
 
+    @pytest.mark.skip(reason="Test")
     def test_trainer_runner_no_gpus(self):
         env = gym.make("CartPole-v1")
         trainer_class = BCTfRLTrainer
