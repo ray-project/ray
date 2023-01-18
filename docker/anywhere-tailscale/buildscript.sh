@@ -27,7 +27,7 @@ fi
 
 if [ -x /usr/bin/docker ]; then
     exec=/usr/bin/docker
-    echo $DOCKER_PASSWORD | docker login --username jcoffi --password-stdin
+    docker login --username jcoffi --password $DOCKER_PASSWORD
 fi
 
 
