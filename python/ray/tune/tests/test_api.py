@@ -1081,7 +1081,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             return actor
 
         # This actor should create a default aws syncer, so check should fail
-        actor1 = _create_remote_actor(TestDurable, None)
+        actor1 = _create_remote_actor(TestDurable, "auto")
         self.assertFalse(ray.get(actor1.has_custom_syncer.remote()))
 
         # This actor should create a custom syncer, so check should pass
