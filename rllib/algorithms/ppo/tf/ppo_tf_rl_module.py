@@ -13,7 +13,7 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagG
 from ray.rllib.models.tf.primitives import FCNet
 
 
-tf1, tf, _= try_import_tf()
+tf1, tf, _ = try_import_tf()
 
 
 @dataclass
