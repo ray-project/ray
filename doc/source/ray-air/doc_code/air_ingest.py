@@ -158,6 +158,56 @@ my_trainer = TorchTrainer(
 my_trainer.fit()
 # __config_5_end__
 
+# __config_6__
+import random
+
+import ray
+from ray.air import session
+from ray.data import DatasetIterator
+from ray.data.preprocessors import BatchMapper
+from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig, DatasetConfig
+
+# A simple preprocessor that just scales all values by 2.0.
+preprocessor = BatchMapper(lambda df: df * 2, batch_format="pandas")
+
+# A randomized preprocessor that adds a random float to all values, to be
+# reapplied on each epoch after `preprocessor`. Each epoch will therefore add a
+# different random float to the scaled dataset.
+rand_preprocessor = BatchMapper(lambda df: df + random.random(), batch_format="pandas")
+
+
+def train_loop_per_worker():
+    # Get a handle to the worker's assigned DatasetIterator shard.
+    data_shard: DatasetIterator = session.get_dataset_shard("train")
+
+    # Manually iterate over the data 10 times (10 epochs).
+    for _ in range(10):
+        for batch in data_shard.iter_batches():
+            print("Do some training on batch", batch)
+
+    # Print the stats for performance debugging.
+    print(data_shard.stats())
+
+
+my_trainer = TorchTrainer(
+    train_loop_per_worker,
+    scaling_config=ScalingConfig(num_workers=1),
+    datasets={
+        "train": ray.data.range_tensor(100),
+    },
+    dataset_config={
+        "train": DatasetConfig(
+            # Don't randomize order, just to make it easier to read the results.
+            randomize_block_order=False,
+            per_epoch_preprocessor=rand_preprocessor,
+        ),
+    },
+    preprocessor=preprocessor,
+)
+my_trainer.fit()
+# __config_6_end__
+
 # __global_shuffling_start__
 import ray
 from ray.air import session
