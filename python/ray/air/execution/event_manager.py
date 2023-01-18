@@ -1,5 +1,6 @@
+import enum
 from numbers import Number
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.air.execution.resources import (
     AcquiredResources,
@@ -13,6 +14,25 @@ from ray.air.execution.tracked_actor_task import (
     TrackedActorTaskCollection,
 )
 from ray.air.execution.tracked_task import TrackedTask
+
+
+class EventType(enum.Enum):
+    """Event type to specify when yielding control to the :class:`RayEventManager`.
+
+    This enum can be passed to
+    :meth:`RayEventManager.wait() <ray.air.execution.event_manager.RayEventManager.wait`
+    to specify which kind of events to await.
+
+    Attributes:
+        ALL: All event types are awaited.
+        TASKS: Only events relating to tasks or actor tasks will be awaited.
+        ACTORS: Only events relating to actor starts or stops will be awaited.
+
+    """
+
+    ALL = 0
+    TASKS = 1
+    ACTORS = 2
 
 
 class RayEventManager:
@@ -78,7 +98,10 @@ class RayEventManager:
         raise NotImplementedError
 
     def wait(
-        self, num_events: Optional[int] = None, timeout: Optional[Number] = None
+        self,
+        num_events: Optional[int] = None,
+        timeout: Optional[Number] = None,
+        event_type: EventType = EventType.ALL,
     ) -> None:
         """Yield control to event manager to await events and invoke callbacks.
 
@@ -88,12 +111,34 @@ class RayEventManager:
         invoked. A timeout of ``None`` will block until the next event arrives.
 
         If ``num_events`` is set, it will only wait for that many events to arrive
-        before returning control to the caller.
+        before returning control to the caller. If ``num_events=None``, this will
+        block until all tracked tasks resolved.
+
+        ``event_type`` specifies the event types to await. If this includes
+        Ray Actor events (i.e. ``EventType.ACTORS`` or ``EventType.ALL``), a
+        timeout must be specified. This is to ensure that we don't run into a
+        deadlock if not enough resources are available to start ``num_events``
+        actors.
+
+        Note:
+            If an actor task fails with a ``RayActorError``, this is one event,
+            but it may trigger _two_ `on_error` callbacks: One for the actor,
+            and one for the task.
+
+        Note:
+            The ``timeout`` argument is used for pure waiting time for events. It does
+            not include time spent on processing callbacks. Depending on the processing
+            time of the callbacks, it can take much longer for this function to
+            return than the specified timeout.
 
         Args:
             num_events: Number of events to await before returning control
                 to the caller.
             timeout: Timeout in seconds to wait for events.
+            event_type: Type of events to await. Defaults to ``EventType.ALL``.
+
+        Raises:
+            ValueError: If awaiting actor events and no ``timeout`` is set.
 
         """
         raise RuntimeError
@@ -255,7 +300,7 @@ class RayEventManager:
 
     def schedule_actor_tasks(
         self,
-        tracked_actors: Iterable[TrackedActor],
+        tracked_actors: List[TrackedActor],
         method_name: str,
         args: Optional[Union[Tuple, List[Tuple]]] = None,
         kwargs: Optional[Union[Dict, List[Dict]]] = None,

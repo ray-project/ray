@@ -26,6 +26,8 @@ class TrackedActor:
         """Set callback to invoke when actor stopped gracefully."""
         raise NotImplementedError
 
-    def on_error(self, callback: Callable[["TrackedActor"], None]) -> "TrackedActor":
+    def on_error(
+        self, callback: Callable[["TrackedActor", Exception], None]
+    ) -> "TrackedActor":
         """Set callback to invoke when actor died."""
         raise NotImplementedError
