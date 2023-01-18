@@ -1,6 +1,6 @@
 #!/bin/bash
 if ! [ -n $DOCKER_PASSWORD ]; then
-  echo "environmental variable for DOCKER_PASSWORD not set"
+  echo "Environmental variable for DOCKER_PASSWORD not set"
   exit 1
 fi
 
