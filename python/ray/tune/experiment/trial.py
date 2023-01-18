@@ -931,6 +931,20 @@ class Trial:
             self._state_valid = True
         return self._state_json
 
+    @classmethod
+    def from_json_state(cls, json_state: str, stub: bool = False) -> "Trial":
+        trial_state = json.loads(json_state, cls=TuneFunctionDecoder)
+
+        new_trial = Trial(
+            trial_state["trainable_name"],
+            stub=stub,
+            _setup_default_resource=False,
+        )
+
+        new_trial.__setstate__(trial_state)
+
+        return new_trial
+
     def __getstate__(self):
         """Memento generator for Trial.
 
@@ -970,21 +984,3 @@ class Trial:
             validate_trainable(self.trainable_name)
 
         assert self.placement_group_factory
-
-    @classmethod
-    def from_json_state(cls, json_state, stub: bool = False) -> "Trial":
-        trial_state = (
-            json.loads(json_state, cls=TuneFunctionDecoder)
-            if isinstance(json_state, str)
-            else json_state
-        )
-
-        new_trial = Trial(
-            trial_state["trainable_name"],
-            stub=stub,
-            _setup_default_resource=False,
-        )
-
-        new_trial.__setstate__(trial_state)
-
-        return new_trial
