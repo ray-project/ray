@@ -49,7 +49,7 @@ Env Fault Tolerance
 In addition to worker fault tolerance, RLlib offers fault tolerance at environment level as well.
 
 It's common for a rollout or evaluation workers to run multiple environments in parallel to take
-advantage of, for example, the parallel computing power that GPU offers. The can be controlled with
+advantage of, for example, the parallel computing power that GPU offers. This can be controlled with
 the ``num_envs_per_worker`` config. It may then be wasteful if the entire worker needs to be
 reconstructed because of errors from a single environment.
 
@@ -79,3 +79,7 @@ certain number of iterations for some of the workers to recover before the entir
 job failed.
 The number of iterations it waits can be configured with the config
 ``num_consecutive_worker_failures_tolerance``.
+
+..
+    TODO(jungong) : move fault tolerance related options into a separate AlgorithmConfig
+    group and update the doc here.
