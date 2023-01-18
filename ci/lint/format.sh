@@ -301,12 +301,12 @@ format_all_scripts() {
     NBCONVERT_METADATA_MASK_ARGS=()
     for tag in "${NBCONVERT_IGNORED_METADATA[@]}";
     do
-      NBCONVERT_MASK_ARGS+=("--ClearMetadataPreprocessor.preserve_cell_metadata_mask=${tag}")
+      NBCONVERT_METADATA_MASK_ARGS+=("--ClearMetadataPreprocessor.preserve_cell_metadata_mask=${tag}")
     done
     echo "$(date)" "Jupyter notebook metadata cleanup...."
     git ls-files -- '*.ipynb' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
       jupyter-nbconvert --to=notebook --inplace \
-        --ClearMetadataPreprocessor.enabled=True "${NBCONVERT_MASK_ARGS[@]}"
+        --ClearMetadataPreprocessor.enabled=True "${NBCONVERT_METADATA_MASK_ARGS[@]}"
 
     if command -v shellcheck >/dev/null; then
       local shell_files non_shell_files
