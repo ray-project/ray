@@ -1,3 +1,6 @@
+import requests
+from ray import serve
+
 # __doc_import_begin__
 from ray.serve.gradio_integrations import GradioServer
 
@@ -28,6 +31,7 @@ example_input = (
     "of millions of people on earth."
 )
 
+
 def gradio_summarizer_builder():
     summarizer = pipeline("summarization", model="t5-small")
 
@@ -51,9 +55,6 @@ app = GradioServer.options(num_replicas=2, ray_actor_options={"num_cpus": 4}).bi
 # __doc_app_end__
 
 # Test example code
-import requests
-from ray import serve
-
 serve.run(app)
 response = requests.post(
     "http://127.0.0.1:8000/api/predict/", json={"data": [example_input]}

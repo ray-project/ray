@@ -1,5 +1,6 @@
 import gradio as gr
 from transformers import pipeline
+import requests
 
 # __doc_code_begin__
 generator1 = pipeline("text-generation", model="gpt2")
@@ -24,8 +25,6 @@ demo = gr.Interface(
 # __doc_code_end__
 
 # Test example code
-import requests
-
 demo.launch(prevent_thread_lock=True)
 response = requests.post(
     "http://127.0.0.1:7860/api/predict/", json={"data": ["My name is Lewis"]}

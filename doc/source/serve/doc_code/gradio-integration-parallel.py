@@ -1,3 +1,5 @@
+import requests
+
 # __doc_import_begin__
 import ray
 from ray import serve
@@ -54,15 +56,13 @@ app = MyGradioServer.bind(app1, app2)
 # __doc_app_end__
 
 # Test example code
-import requests
-
 serve.run(app)
 response = requests.post(
     "http://127.0.0.1:8000/api/predict/", json={"data": ["My name is Lewis"]}
 )
 assert response.status_code == 200
 print(
-    "gradio-integration-parallel.py: Response from example code is", 
-    response.json()["data"]
+    "gradio-integration-parallel.py: Response from example code is",
+    response.json()["data"],
 )
 serve.shutdown()
