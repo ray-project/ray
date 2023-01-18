@@ -6,19 +6,14 @@ from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.rl_module.encoder_tf import FCTfConfig, IdentityTfConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
 from ray.rllib.models.tf.primitives import FCNet
 
 
-tf1, tf, tfv = try_import_tf()
-tfp = try_import_tfp()
-
-tf1.enable_eager_execution()
-
-ENCODER_OUT = "encoder_out"
+tf1, tf, _= try_import_tf()
 
 
 @dataclass
@@ -40,6 +35,9 @@ class PPOTfModuleConfig(RLModuleConfig):
 
 class PPOTfModule(TfRLModule):
     def __init__(self, config: PPOTfModuleConfig):
+        # moving this statement inside so that tf1 eager execution is enabled
+        # only when the module is instantiated, not when it is imported.
+        tf1.enable_eager_execution()
         super().__init__()
         self.config = config
         self.setup()
