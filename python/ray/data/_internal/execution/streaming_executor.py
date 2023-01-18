@@ -17,6 +17,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     process_completed_tasks,
     select_operator_to_run,
 )
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class StreamingExecutor(Executor):
         # object as data is streamed through (similar to how iterating over the output
         # data updates the stats object in legacy code).
         self._stats: Optional[DatasetStats] = None
+        self._global_info = ProgressBar("Resource usage vs limits", 100, 0)
         super().__init__(options)
 
     def execute(
@@ -88,11 +90,13 @@ class StreamingExecutor(Executor):
         process_completed_tasks(topology)
 
         # Dispatch as many operators as we can for completed tasks.
-        updated_limits = self._get_or_refresh_resource_limits()
-        op = select_operator_to_run(topology, updated_limits)
+        limits = self._get_or_refresh_resource_limits()
+        cur_usage = self._get_and_report_current_usage(topology, limits)
+        op = select_operator_to_run(topology, cur_usage, limits)
         while op is not None:
             topology[op].dispatch_next_task()
-            op = select_operator_to_run(topology, updated_limits)
+            cur_usage = self._get_and_report_current_usage(topology, limits)
+            op = select_operator_to_run(topology, cur_usage, limits)
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
@@ -138,5 +142,22 @@ class StreamingExecutor(Executor):
             cpu=base.cpu or cluster.get("CPU", 0.0),
             gpu=base.gpu or cluster.get("GPU", 0.0),
             object_store_memory=base.object_store_memory
-            or (cluster.get("object_store_memory", 0.0) // 2),
+            or (cluster.get("object_store_memory", 0.0) // 3),
         )
+
+    def _get_and_report_current_usage(
+        self, topology: Topology, limits: ExecutionResources
+    ) -> ExecutionResources:
+        cur_usage = ExecutionResources()
+        for op, state in topology.items():
+            cur_usage = cur_usage.add(op.current_resource_usage())
+            for bundle in state.outqueue:
+                cur_usage.object_store_memory += bundle.size_bytes()
+        self._global_info.set_description(
+            "Resource usage vs limits: "
+            f"{cur_usage.cpu}/{limits.cpu} CPU, "
+            f"{cur_usage.gpu}/{limits.gpu} GPU, "
+            f"{cur_usage.object_store_memory_str()}/"
+            f"{limits.object_store_memory_str()} object_store_memory"
+        )
+        return cur_usage

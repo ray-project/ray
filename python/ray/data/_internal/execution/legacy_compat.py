@@ -9,6 +9,7 @@ from typing import Iterator, Tuple
 import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
+from ray.data.context import DatasetContext
 from ray.data.datasource import ReadTask
 from ray.data._internal.stats import StatsDict, DatasetStats
 from ray.data._internal.stage_impl import RandomizeBlocksStage
@@ -80,7 +81,15 @@ def _to_operator_dag(
 ) -> (PhysicalOperator, DatasetStats):
     """Translate a plan into an operator DAG for the new execution backend."""
 
-    blocks, stats, stages = plan._optimize()
+    try:
+        # Disable the read stage optimization since we handle that in
+        # blocks_to_input_buffer below.
+        ctx = DatasetContext.get_current()
+        old_value = ctx.optimize_fuse_read_stages
+        ctx.optimize_fuse_read_stages = False
+        blocks, stats, stages = plan._optimize()
+    finally:
+        ctx.optimize_fuse_read_stages = old_value
     if allow_clear_input_blocks:
         if isinstance(blocks, LazyBlockList):
             # Always clear lazy input blocks since they can be recomputed.

@@ -133,10 +133,10 @@ class MapOperatorState:
         self._obj_store_mem_cur += allocated
         # TODO(ekl) this isn't strictly correct if multiple operators depend on this
         # bundle, but it doesn't happen in linear dags for now.
-        freed = task.inputs.destroy_if_owned()
-        if freed:
-            self._obj_store_mem_freed += freed
-            self._obj_store_mem_cur -= freed
+        task.inputs.destroy_if_owned()
+        freed = task.inputs.size_bytes()
+        self._obj_store_mem_freed += freed
+        self._obj_store_mem_cur -= freed
         if self._obj_store_mem_cur > self._obj_store_mem_peak:
             self._obj_store_mem_peak = self._obj_store_mem_cur
 

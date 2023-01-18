@@ -86,6 +86,12 @@ class ExecutionResources:
     # Object store memory usage in bytes.
     object_store_memory: Optional[int] = None
 
+    def object_store_memory_str(self) -> str:
+        if self.object_store_memory > 1e9:
+            return f"{round(self.object_store_memory / 1e9, 2)} GiB"
+        else:
+            return f"{round(self.object_store_memory / 1e6, 2)} MiB"
+
     def add(self, other: "ExecutionResources") -> "ExecutionResources":
         """Adds execution resources, replacing None with zeros.
 
@@ -93,15 +99,15 @@ class ExecutionResources:
             A new ExecutionResource object with summed resources.
         """
         return ExecutionResources(
-            (self.cpu or 0) + (other.cpu or 0),
-            (self.gpu or 0) + (other.gpu or 0),
-            (self.object_store_memory or 0) + (other.object_store_memory or 0),
+            (self.cpu or 0.0) + (other.cpu or 0.0),
+            (self.gpu or 0.0) + (other.gpu or 0.0),
+            (self.object_store_memory or 0.0) + (other.object_store_memory or 0.0),
         )
 
-    def empty(self) -> bool:
-        """Return if all fields are zero or unspecified."""
+    def has_cpu_or_gpu(self) -> bool:
+        """Return if using CPU or GPU."""
 
-        return not self.cpu and not self.gpu and not self.object_store_memory
+        return self.cpu or self.gpu
 
     def satisfies_limits(self, limit: "ExecutionResources") -> bool:
         """Return if this resource struct meets the specified limits."""

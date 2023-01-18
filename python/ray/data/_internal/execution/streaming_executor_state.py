@@ -112,7 +112,7 @@ def build_streaming_topology(dag: PhysicalOperator) -> Topology:
 
     # Create the progress bars starting from the first operator to run.
     # Note that the topology dict is in topological sort order.
-    i = 0
+    i = 1
     for op_state in list(topology.values()):
         if not isinstance(op_state.op, InputDataBuffer):
             op_state.initialize_progress_bar(i)
@@ -165,7 +165,7 @@ def process_completed_tasks(topology: Topology) -> None:
 
 
 def select_operator_to_run(
-    topology: Topology, limits: ExecutionResources
+    topology: Topology, cur_usage: ExecutionResources, limits: ExecutionResources
 ) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
@@ -177,10 +177,6 @@ def select_operator_to_run(
     operators with a large number of running tasks `num_active_tasks()`.
     """
 
-    cur_usage = ExecutionResources()
-    for op in topology:
-        cur_usage = cur_usage.add(op.current_resource_usage())
-
     # Filter to ops that are eligible for execution.
     ops = [
         op
@@ -188,7 +184,15 @@ def select_operator_to_run(
         if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
     ]
     if not ops:
-        return None
+        if not cur_usage.has_cpu_or_gpu():
+            ops = [
+                op
+                for op, state in topology.items()
+                if state.num_queued() > 0
+                and _execution_allowed(op, cur_usage, limits, soft_limit=True)
+            ]
+        if not ops:
+            return None
 
     # Equally penalize outqueue length and active tasks for backpressure.
     return min(
@@ -200,9 +204,10 @@ def _execution_allowed(
     op: PhysicalOperator,
     global_usage: ExecutionResources,
     global_limits: ExecutionResources,
+    soft_limit: bool = False,
 ) -> bool:
     # If no resources are currently used, execution is always allowed.
-    if op.current_resource_usage().empty():
+    if soft_limit and not op.current_resource_usage().has_cpu_or_gpu():
         return True
 
     # To avoid starvation problems when dealing with fractional resource types,
