@@ -59,6 +59,12 @@ def chdir_tmpdir(tmpdir):
     os.chdir(old_cwd)
 
 
+@pytest.fixture
+def clear_memory_filesys():
+    yield
+    delete_at_uri("memory:///")
+
+
 def _train_fn_sometimes_failing(config):
     # Fails if failing is set and marker file exists.
     # Hangs if hanging is set and marker file exists.
@@ -370,7 +376,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
     assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 1, 3, 0])
 
 
-def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
+def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys):
     """Check that restoring Tuner() objects from cloud storage works"""
     tuner = Tuner(
         lambda config: 1,
@@ -424,7 +430,7 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
     [None, "memory:///test/test_tuner_restore_latest_available_checkpoint"],
 )
 def test_tuner_restore_latest_available_checkpoint(
-    ray_start_4_cpus, tmpdir, upload_uri
+    ray_start_4_cpus, tmpdir, upload_uri, clear_memory_filesys
 ):
     """Resuming errored trials should pick up from previous state"""
     fail_marker = tmpdir / "fail_marker"
@@ -751,8 +757,11 @@ def test_tuner_restore_from_moved_experiment_path(
     assert not old_local_dir.exists()
 
 
-def test_tuner_restore_from_moved_cloud_uri(ray_start_2_cpus, tmp_path):
-    """Test that moving a"""
+def test_tuner_restore_from_moved_cloud_uri(
+    ray_start_2_cpus, tmp_path, clear_memory_filesys
+):
+    """Test that that restoring an experiment that was moved to a new remote URI
+    resumes and continues saving new results at that URI."""
 
     def failing_fn(config):
         data = {"score": 1}
