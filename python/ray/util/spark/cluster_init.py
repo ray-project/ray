@@ -56,7 +56,7 @@ def _check_system_environment():
 
 class RayClusterOnSpark:
     """
-    This class is the type of instance returned by the `setup_ray_cluster` API.
+    This class is the type of instance returned by the `_setup_ray_cluster` interface.
     Its main functionality is to:
     Connect to, disconnect from, and shutdown the Ray cluster running on Apache Spark.
     Serve as a Python context manager for the `RayClusterOnSpark` instance.
@@ -192,7 +192,6 @@ class RayClusterOnSpark:
             self.is_shutdown = True
 
     def __enter__(self):
-        self.connect()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
