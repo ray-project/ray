@@ -132,10 +132,11 @@ class StreamingExecutor(Executor):
                     "Operator incremental resource usage must not include memory."
                 )
 
-        if not base_usage.satisfies_limits(self._options.resource_limits):
+        limits = self._get_or_refresh_resource_limits()
+        if not base_usage.satisfies_limits(limits):
             raise ValueError(
                 f"The base resource usage of this topology {base_usage} "
-                f"exceeds the execution limits {self._options.resource_limits}!"
+                f"exceeds the execution limits {limits}!"
             )
 
     def _get_or_refresh_resource_limits(self) -> ExecutionResources:
