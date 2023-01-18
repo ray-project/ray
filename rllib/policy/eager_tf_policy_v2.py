@@ -111,9 +111,6 @@ class EagerTFPolicyV2(Policy):
         if self.config.get("_enable_rl_module_api", False):
             self.model = self.make_rl_module()
             self.dist_class = None
-            # There is no stats dict anymore since no longer using
-            # model v2, so we need to add one
-            self.stats = {}
         else:
             self.dist_class = self._init_dist_class()
             self.model = self.make_model()

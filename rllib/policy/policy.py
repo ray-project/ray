@@ -1465,6 +1465,7 @@ class Policy(metaclass=ABCMeta):
                         # this key to save space in the sample batch.
                         elif self.config["output"] is None:
                             del self.view_requirements[key]
+
         if type(self.global_timestep) is int:
             self.global_timestep = global_ts_before_init
         elif isinstance(self.global_timestep, tf.Variable):
