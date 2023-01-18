@@ -24,6 +24,9 @@ from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
 
+preserve_order = False
+
+
 class MapOperatorState:
     def __init__(
         self,
@@ -68,9 +71,11 @@ class MapOperatorState:
 
         # Execution state.
         self._tasks: Dict[ObjectRef[Union[ObjectRefGenerator, Block]], _TaskState] = {}
-        self._tasks_by_output_order: Dict[int, _TaskState] = {}
+        if preserve_order:
+            self._output_queue = _OrderedOutputQueue()
+        else:
+            self._output_queue = _UnorderedOutputQueue()
         self._next_task_index: int = 0
-        self._next_output_index: int = 0
         self._obj_store_mem_alloc: int = 0
         self._obj_store_mem_freed: int = 0
         self._obj_store_mem_cur: int = 0
@@ -136,6 +141,7 @@ class MapOperatorState:
         for ref in block_refs:
             trace_allocation(ref, "map_operator_work_completed")
         task.output = RefBundle(list(zip(block_refs, block_metas)), owns_blocks=True)
+        self._output_queue.notify_task_completed(task)
         allocated = task.output.size_bytes()
         self._obj_store_mem_alloc += allocated
         self._obj_store_mem_cur += allocated
@@ -149,16 +155,10 @@ class MapOperatorState:
             self._obj_store_mem_peak = self._obj_store_mem_cur
 
     def has_next(self) -> bool:
-        i = self._next_output_index
-        return (
-            i in self._tasks_by_output_order
-            and self._tasks_by_output_order[i].output is not None
-        )
+        return self._output_queue.has_next()
 
     def get_next(self) -> RefBundle:
-        i = self._next_output_index
-        self._next_output_index += 1
-        bundle = self._tasks_by_output_order.pop(i).output
+        bundle = self._output_queue.get_next()
         self._obj_store_mem_cur -= bundle.size_bytes()
         return bundle
 
@@ -209,8 +209,7 @@ class MapOperatorState:
             ref, block_metadata_ref = ref
             task.block_metadata_ref = block_metadata_ref
         self._tasks[ref] = task
-        self._tasks_by_output_order[self._next_task_index] = task
-        self._next_task_index += 1
+        self._output_queue.add_pending_task(task)
         self._obj_store_mem_cur += bundle.size_bytes()
         if self._obj_store_mem_cur > self._obj_store_mem_peak:
             self._obj_store_mem_peak = self._obj_store_mem_cur
@@ -235,6 +234,48 @@ class MapOperatorState:
             cpu=self._incremental_cpu,
             gpu=self._incremental_gpu,
         )
+
+
+class _OrderedOutputQueue:
+    def __init__(self):
+        self._tasks_by_output_order: Dict[int, _TaskState] = {}
+        self._next_output_index: int = 0
+
+    def add_pending_task(self, task: "_TaskState"):
+        self._tasks_by_output_order[self._next_task_index] = task
+        self._next_task_index += 1
+
+    def notify_task_completed(self, task: "_TaskState"):
+        pass
+
+    def has_next(self) -> bool:
+        i = self._next_output_index
+        return (
+            i in self._tasks_by_output_order
+            and self._tasks_by_output_order[i].output is not None
+        )
+
+    def get_next(self) -> RefBundle:
+        i = self._next_output_index
+        self._next_output_index += 1
+        return self._tasks_by_output_order.pop(i).output
+
+
+class _UnorderedOutputQueue:
+    def __init__(self):
+        self._completed_tasks: List[_TaskState] = []
+
+    def add_pending_task(self, task: "_TaskState"):
+        pass
+
+    def notify_task_completed(self, task: "_TaskState"):
+        self._completed_tasks.append(task)
+
+    def has_next(self) -> bool:
+        return len(self._completed_tasks) > 0
+
+    def get_next(self) -> RefBundle:
+        return self._completed_tasks.pop(0).output
 
 
 @dataclass
