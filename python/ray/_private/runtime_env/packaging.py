@@ -321,7 +321,10 @@ def _store_package_in_gcs(
         raise ValueError(
             f"Package size ({size_str}) exceeds the maximum size of "
             f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
-            "files using the 'excludes' option to the runtime_env."
+            "files using the 'excludes' option to the runtime_env or provide "
+            "a remote URI of a zip file using protocols such as 's3://', "
+            "'https://' and so on, refer to "
+            "https://docs.ray.io/en/latest/ray-core/handling-dependencies.html#api-reference."  # noqa
         )
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
