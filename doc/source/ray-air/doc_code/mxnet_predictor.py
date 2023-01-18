@@ -25,7 +25,8 @@ class MXNetPredictor(Predictor):
     # __mxnetpredictor_init_start__
     def __init__(
         self,
-        net: gluon.Block,
+        #net: gluon.Block,
+        net,
         preprocessor: Optional[Preprocessor] = None,
     ):
         self.net = net
@@ -37,7 +38,7 @@ class MXNetPredictor(Predictor):
     def from_checkpoint(
         cls,
         checkpoint: Checkpoint,
-        net: gluon.Block,
+        net,
         preprocessor: Optional[Preprocessor] = None,
     ) -> Predictor:
         # with checkpoint.as_directory() as directory:
@@ -58,10 +59,12 @@ class MXNetPredictor(Predictor):
         if isinstance(data, dict) and len(data) == 1:
             data = next(iter(data.values()))
 
-        inputs = mx.nd.array(data, dtype=dtype)
-        outputs = self.net(inputs).asnumpy()
+        print(data.shape)
+        # inputs = mx.nd.array(data, dtype=dtype)
+        # outputs = self.net(inputs).asnumpy()
 
-        return {"predictions": outputs}
+        # return {"predictions": outputs}
+        return data
 # __mxnetpredictor_predict_numpy_end__
 
 
@@ -85,6 +88,7 @@ dataset = ray.data.read_images(
 
 def preprocess(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     # (B, H, W, C) -> (B, C, H, W)
+    print(batch["image"]).shape
     batch["image"] = batch["image"].transpose(0, 3, 1, 2)
     return batch
 

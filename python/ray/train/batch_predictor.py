@@ -75,6 +75,7 @@ class BatchPredictor:
 
     def get_preprocessor(self) -> Preprocessor:
         """Get the preprocessor to use prior to executing predictions."""
+        import pdb; pdb.set_trace()
         if self._override_preprocessor:
             return self._override_preprocessor
 
@@ -296,7 +297,7 @@ class BatchPredictor:
         ray_remote_args["num_gpus"] = num_gpus_per_worker
 
         preprocessor = self.get_preprocessor()
-
+        print(preprocessor)
         override_prep = None
         if preprocessor:
             # TODO: Delegate separate_gpu_stage flag to Datasets.
