@@ -22,11 +22,12 @@ if [ -x /usr/bin/podman ]; then
     exec=/usr/bin/podman
     sudo podman registry remove quay.io
     alias docker=podman
-    sudo docker login -u jcoffi -p $DOCKER_PASSWORD
-    docker login -u jcoffi -p $DOCKER_PASSWORD
 else
     exec=/usr/bin/docker
 fi
+
+docker login -u jcoffi -p $DOCKER_PASSWORD
+
 
 if [ -d /sys/class/power_supply/BAT0 ]; then
     echo "Script is running on a laptop"
