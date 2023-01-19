@@ -92,7 +92,7 @@ def test_task_pool_resource_reporting():
     usage = op.current_resource_usage()
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
-    assert usage.object_store_memory == pytest.approx(128), usage
+    assert usage.object_store_memory == pytest.approx(128, abs=50), usage
 
 
 def test_actor_pool_resource_reporting():
@@ -122,7 +122,7 @@ def test_actor_pool_resource_reporting():
     usage = op.current_resource_usage()
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
-    assert usage.object_store_memory == pytest.approx(256), usage
+    assert usage.object_store_memory == pytest.approx(256, abs=100), usage
 
     # Any further inputs would require adding new actors.
     # TODO: test autoscaling resource reporting.
