@@ -76,7 +76,7 @@ class PlacementGroupFactory:
 
     This function should be used to define resource requests for Ray Tune
     trials. It holds the parameters to create
-    :ref:`placement groups <https://docs.ray.io/en/latest/ray-core/placement-group.html>`.
+    :ref:`placement groups <ray-placement-group-doc-ref>`.
     At a minimum, this will hold at least one bundle specifying the
     resource requirements for each trial:
 
