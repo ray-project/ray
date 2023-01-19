@@ -11,6 +11,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     RefBundle,
     PhysicalOperator,
+    ExecutionOptions,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
@@ -84,12 +85,18 @@ class OpState:
         assert False, "Nothing to dispatch"
 
 
-def build_streaming_topology(dag: PhysicalOperator) -> Topology:
-    """Build the streaming operator state topology for the given DAG.
+def build_streaming_topology(
+    dag: PhysicalOperator, options: ExecutionOptions
+) -> Topology:
+    """Instantiate the streaming operator state topology for the given DAG.
 
     This involves creating the operator state for each operator in the DAG,
     registering it with this class, and wiring up the inqueues/outqueues of
     dependent operator states.
+
+    Args:
+        dag: The operator DAG to instantiate.
+        options: The execution options to use to start operators.
 
     Returns:
         The topology dict holding the streaming execution state.
@@ -111,6 +118,7 @@ def build_streaming_topology(dag: PhysicalOperator) -> Topology:
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
+        op.start(options)
         return op_state
 
     setup_state(dag)

@@ -87,8 +87,9 @@ class ExecutionResources:
     object_store_memory: Optional[int] = None
 
     def object_store_memory_str(self) -> str:
+        """Returns a human-readable string for the object store memory field."""
         if self.object_store_memory is None:
-            return "inf"
+            return "None"
         elif self.object_store_memory > 1e9:
             return f"{round(self.object_store_memory / 1e9, 2)} GiB"
         else:
@@ -105,11 +106,6 @@ class ExecutionResources:
             (self.gpu or 0.0) + (other.gpu or 0.0),
             (self.object_store_memory or 0.0) + (other.object_store_memory or 0.0),
         )
-
-    def has_cpu_or_gpu(self) -> bool:
-        """Return if using CPU or GPU."""
-
-        return self.cpu or self.gpu
 
     def satisfies_limits(self, limit: "ExecutionResources") -> bool:
         """Return if this resource struct meets the specified limits."""
@@ -185,6 +181,7 @@ class PhysicalOperator:
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._started = False
 
     @property
     def name(self) -> str:
@@ -231,6 +228,10 @@ class PhysicalOperator:
         return out_str
 
     def progress_str(self) -> str:
+        """Return any extra status to be displayed in the operator progress bar.
+
+        For example, `<N> actors` to show current number of actors in an actor pool.
+        """
         return ""
 
     def num_outputs_total(self) -> Optional[int]:
@@ -241,6 +242,14 @@ class PhysicalOperator:
         if len(self.input_dependencies) == 1:
             return self.input_dependencies[0].num_outputs_total()
         return None
+
+    def start(self, options: ExecutionOptions) -> None:
+        """Called by the executor when execution starts for an operator.
+
+        Args:
+            options: The global options used for the overall execution.
+        """
+        self._started = True
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
@@ -307,7 +316,32 @@ class PhysicalOperator:
         This release any Ray resources acquired by this operator such as active
         tasks, actors, and objects.
         """
-        pass
+        if not self._started:
+            raise ValueError("Operator must be started before being shutdown.")
+
+    def current_resource_usage(self) -> ExecutionResources:
+        """Returns the current estimated resource usage of this operator.
+
+        This method is called by the executor to decide how to allocate resources
+        between different operators.
+        """
+        return ExecutionResources()
+
+    def base_resource_usage(self) -> ExecutionResources:
+        """Returns the minimum amount of resources required for execution.
+
+        For example, an operator that creates an actor pool requiring 8 GPUs could
+        return ExecutionResources(gpu=8) as its base usage.
+        """
+        return ExecutionResources()
+
+    def incremental_resource_usage(self) -> ExecutionResources:
+        """Returns the incremental resources required for processing another input.
+
+        For example, an operator that launches a task per input could return
+        ExecutionResources(cpu=1) as its incremental usage.
+        """
+        return ExecutionResources()
 
     def current_resource_usage(self) -> ExecutionResources:
         """Returns the current estimated resource usage of this operator.

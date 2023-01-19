@@ -10,6 +10,7 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.execution.interfaces import (
     RefBundle,
+    ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
 )
@@ -49,26 +50,14 @@ class MapOperator(PhysicalOperator):
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
-        ray_remote_args = ray_remote_args or {}
-        if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
-            ray_remote_args["num_cpus"] = 1
-        if "num_gpus" in ray_remote_args:
-            self._incremental_gpu = 1
-            self._incremental_cpu = 0
-            assert ray_remote_args.get("num_cpus", 1) == 0, ray_remote_args
-        elif "num_cpus" in ray_remote_args:
-            self._incremental_gpu = 0
-            self._incremental_cpu = 1
-            assert ray_remote_args.get("num_gpus", 0) == 0, ray_remote_args
-        else:
-            assert False, ray_remote_args
+        ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         compute_strategy = compute_strategy or TaskPoolStrategy()
         if isinstance(compute_strategy, TaskPoolStrategy):
             self._base_resource_usage = ExecutionResources()
         elif isinstance(compute_strategy, ActorPoolStrategy):
             self._base_resource_usage = ExecutionResources(
-                cpu=self._incremental_cpu * compute_strategy.min_size,
-                gpu=self._incremental_gpu * compute_strategy.min_size,
+                cpu=ray_remote_args.get("num_cpus", 0) * compute_strategy.min_size,
+                gpu=ray_remote_args.get("num_gpus", 0) * compute_strategy.min_size,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -77,8 +66,6 @@ class MapOperator(PhysicalOperator):
             compute_strategy,
             ray_remote_args,
             min_rows_per_bundle,
-            self._incremental_cpu,
-            self._incremental_gpu,
         )
         self._output_metadata: List[BlockMetadata] = []
         super().__init__(name, [input_op])
@@ -102,6 +89,7 @@ class MapOperator(PhysicalOperator):
         super().inputs_done()
 
     def has_next(self) -> bool:
+        assert self._started
         return self._execution_state.has_next()
 
     def get_next(self) -> RefBundle:
@@ -122,8 +110,13 @@ class MapOperator(PhysicalOperator):
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
 
+    def start(self, options: ExecutionOptions) -> None:
+        self._execution_state.start(options)
+        super().start(options)
+
     def shutdown(self) -> None:
         self._execution_state.shutdown()
+        super().shutdown()
 
     def base_resource_usage(self) -> ExecutionResources:
         return self._base_resource_usage
@@ -133,3 +126,24 @@ class MapOperator(PhysicalOperator):
 
     def current_resource_usage(self) -> ExecutionResources:
         return self._execution_state.current_resource_usage()
+
+
+def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
+    """Enforce rules on ray remote args for map tasks.
+
+    Namely, args must explicitly specify either CPU or GPU, not both.
+    """
+    ray_remote_args = ray_remote_args.copy()
+    if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
+        ray_remote_args["num_cpus"] = 1
+    if "num_gpus" in ray_remote_args:
+        if ray_remote_args.get("num_cpus", 0) != 0:
+            raise ValueError(
+                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
+            )
+    elif "num_cpus" in ray_remote_args:
+        if ray_remote_args.get("num_gpus", 0) != 0:
+            raise ValueError(
+                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
+            )
+    return ray_remote_args

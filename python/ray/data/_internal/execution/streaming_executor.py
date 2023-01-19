@@ -56,7 +56,8 @@ class StreamingExecutor(Executor):
             self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
 
         # Setup the streaming DAG topology.
-        topology, self._stats = build_streaming_topology(dag)
+        topology, self._stats = build_streaming_topology(dag, self._options)
+        output_node: OpState = topology[dag]
 
         try:
             self._validate_topology(topology)

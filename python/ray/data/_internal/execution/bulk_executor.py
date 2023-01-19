@@ -55,6 +55,7 @@ class BulkExecutor(Executor):
             logger.get_logger().debug("Executing op %s", op.name)
             builder = self._stats.child_builder(op.name)
             try:
+                op.start(self._options)
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
                         op.add_input(r, input_index=i)

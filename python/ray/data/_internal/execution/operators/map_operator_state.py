@@ -13,6 +13,7 @@ from ray.data._internal.execution.util import merge_ref_bundles
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
+    ExecutionOptions,
 )
 from ray.data._internal.execution.operators.map_task_submitter import MapTaskSubmitter
 from ray.data._internal.execution.operators.actor_pool_submitter import (
@@ -32,7 +33,7 @@ class MapOperatorState:
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         compute_strategy: ComputeStrategy,
-        ray_remote_args: Optional[Dict[str, Any]],
+        ray_remote_args: Dict[str, Any],
         min_rows_per_bundle: Optional[int],
         incremental_cpu: int,
         incremental_gpu: int,
@@ -45,8 +46,7 @@ class MapOperatorState:
         transform_fn_ref = ray.put(transform_fn)
 
         # Submitter of Ray tasks mapping transform_fn over data.
-        if ray_remote_args is None:
-            ray_remote_args = {}
+        self._ray_remote_args = ray_remote_args
         if isinstance(compute_strategy, TaskPoolStrategy):
             task_submitter = TaskPoolSubmitter(transform_fn_ref, ray_remote_args)
         elif isinstance(compute_strategy, ActorPoolStrategy):
@@ -62,8 +62,6 @@ class MapOperatorState:
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
         self._task_submitter: MapTaskSubmitter = task_submitter
-        # Whether we have started the task submitter yet.
-        self._have_started_submitter = False
 
         # The temporary block bundle used to accumulate inputs until they meet the
         # min_rows_per_bundle requirement.
@@ -71,27 +69,20 @@ class MapOperatorState:
 
         # Execution state.
         self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
-        if preserve_order:
-            self._output_queue = _OrderedOutputQueue()
-        else:
-            self._output_queue = _UnorderedOutputQueue()
-        self._next_task_index: int = 0
         self._obj_store_mem_alloc: int = 0
         self._obj_store_mem_freed: int = 0
         self._obj_store_mem_cur: int = 0
         self._obj_store_mem_peak: int = 0
-        self._incremental_cpu: int = incremental_cpu
-        self._incremental_gpu: int = incremental_gpu
+        self._output_queue: Optional[_OutputQueue] = None
 
-    def progress_str(self) -> str:
-        return self._task_submitter.progress_str()
+    def start(self, options: ExecutionOptions) -> None:
+        self._task_submitter.start()
+        if options.preserve_order:
+            self._output_queue = _OrderedOutputQueue()
+        else:
+            self._output_queue = _UnorderedOutputQueue()
 
     def add_input(self, bundle: RefBundle) -> None:
-        if not self._have_started_submitter:
-            # Start the task submitter on the first input.
-            self._task_submitter.start()
-            self._have_started_submitter = True
-
         if self._min_rows_per_bundle is None:
             self._create_task(bundle)
             return
@@ -161,6 +152,9 @@ class MapOperatorState:
     def num_active_work_refs(self) -> int:
         return len(self._tasks)
 
+    def progress_str(self) -> str:
+        return self._task_submitter.progress_str()
+
     def shutdown(self) -> None:
         self._task_submitter.shutdown(self.get_work_refs())
 
@@ -202,33 +196,64 @@ class MapOperatorState:
         else:
             num_active_workers = self.num_active_work_refs()
         return ExecutionResources(
-            # TODO: this should be real CPU not incremental cpu
-            cpu=self._incremental_cpu * num_active_workers,
-            gpu=self._incremental_gpu * num_active_workers,
+            cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
+            gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
             object_store_memory=self._obj_store_mem_cur,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
         if isinstance(self._task_submitter, ActorPoolSubmitter):
-            # TODO(ekl) this should be non-zero if all actors are saturated.
+            # TODO(ekl) this should be non-zero if all actors are saturated, otherwise
+            # we will submit way too many tasks.
             return ExecutionResources(cpu=0, gpu=0)
         return ExecutionResources(
-            cpu=self._incremental_cpu,
-            gpu=self._incremental_gpu,
+            cpu=self._ray_remote_args.get("num_cpus", 0),
+            gpu=self._ray_remote_args.get("num_gpus", 0),
         )
 
 
-class _OrderedOutputQueue:
+@dataclass
+class _TaskState:
+    """Tracks the driver-side state for an MapOperator task.
+
+    Attributes:
+        inputs: The input ref bundle.
+        output: The output ref bundle that is set when the task completes.
+    """
+
+    inputs: RefBundle
+    output: Optional[RefBundle] = None
+
+
+class _OutputQueue:
+    """Interface for swapping between different output order modes."""
+
+    def add_pending_task(self, task: "_TaskState"):
+        """Track the addition of a new task."""
+        pass
+
+    def notify_task_completed(self, task: "_TaskState"):
+        """Called when a previously added task completes."""
+        pass
+
+    def has_next(self) -> bool:
+        raise NotImplementedError
+
+    def get_next(self) -> RefBundle:
+        raise NotImplementedError
+
+
+class _OrderedOutputQueue(_OutputQueue):
+    """An queue that returns finished tasks in submission order."""
+
     def __init__(self):
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
+        self._next_task_index: int = 0
         self._next_output_index: int = 0
 
     def add_pending_task(self, task: "_TaskState"):
         self._tasks_by_output_order[self._next_task_index] = task
         self._next_task_index += 1
-
-    def notify_task_completed(self, task: "_TaskState"):
-        pass
 
     def has_next(self) -> bool:
         i = self._next_output_index
@@ -243,12 +268,11 @@ class _OrderedOutputQueue:
         return self._tasks_by_output_order.pop(i).output
 
 
-class _UnorderedOutputQueue:
+class _UnorderedOutputQueue(_OutputQueue):
+    """An queue that does not guarantee output order of finished tasks."""
+
     def __init__(self):
         self._completed_tasks: List[_TaskState] = []
-
-    def add_pending_task(self, task: "_TaskState"):
-        pass
 
     def notify_task_completed(self, task: "_TaskState"):
         self._completed_tasks.append(task)
@@ -258,16 +282,3 @@ class _UnorderedOutputQueue:
 
     def get_next(self) -> RefBundle:
         return self._completed_tasks.pop(0).output
-
-
-@dataclass
-class _TaskState:
-    """Tracks the driver-side state for an MapOperator task.
-
-    Attributes:
-        inputs: The input ref bundle.
-        output: The output ref bundle that is set when the task completes.
-    """
-
-    inputs: RefBundle
-    output: Optional[RefBundle] = None

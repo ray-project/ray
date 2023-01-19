@@ -441,7 +441,7 @@ class ExecutionPlan:
             execute_to_legacy_block_iterator,
         )
 
-        executor = StreamingExecutor(ExecutionOptions())
+        executor = StreamingExecutor(ExecutionOptions(preserve_order=False))
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,
