@@ -27,7 +27,7 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
 #ENV N2N_KEY=$RANDOMSTRING
 
 RUN sudo apt update \
-        && sudo apt install -y --no-install-recommends ca-certificates curl wget jq lsb-release \ 
+        && sudo apt install -y --no-install-recommends ca-certificates curl bc wget jq lsb-release \ 
         && sudo apt clean \
         && sudo rm -rf /var/lib/apt/lists/*
 
