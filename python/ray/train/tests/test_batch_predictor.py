@@ -323,6 +323,49 @@ def test_batch_prediction_feature_cols():
     ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
 
 
+def test_batch_prediction_feature_cols_after_preprocess():
+    """Tests that feature cols are applied after preprocessing the dataset."""
+
+    # Pandas path
+    class DummyPreprocessorWithColumn(DummyPreprocessor):
+        def _transform_pandas(self, df):
+            df["c"] = df["a"]
+            return super()._transform_pandas(df)
+
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict(
+            {"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessorWithColumn()}
+        ),
+        DummyPredictor,
+    )
+    test_dataset = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+
+    assert batch_predictor.predict(
+        test_dataset, feature_columns=["c"]
+    ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
+
+    # Numpy path
+    class DummyNumpyPreprocessorWithColumn(DummyWithNumpyPreprocessor):
+        def _transform_numpy(self, np_dict):
+            np_dict["c"] = np.copy(np_dict["a"])
+            return super()._transform_numpy(np_dict)
+
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict(
+            {"factor": 2.0, PREPROCESSOR_KEY: DummyNumpyPreprocessorWithColumn()}
+        ),
+        DummyWithNumpyPredictor,
+    )
+
+    test_dataset = ray.data.from_arrow(
+        pa.Table.from_pydict({"a": [1, 2, 3], "b": [4, 5, 6]})
+    )
+
+    assert batch_predictor.predict(
+        test_dataset, feature_columns=["a"]
+    ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
+
+
 def test_batch_prediction_keep_cols():
     # Pandas path
     batch_predictor = BatchPredictor.from_checkpoint(
@@ -341,7 +384,7 @@ def test_batch_prediction_keep_cols():
     assert set(output_df.columns) == {"a", "b"}
 
     assert output_df["a"].tolist() == [4.0, 8.0, 12.0]
-    assert output_df["b"].tolist() == [4, 5, 6]
+    assert output_df["b"].tolist() == [8, 10, 12]
 
     # Numpy path
     batch_predictor = BatchPredictor.from_checkpoint(
@@ -362,7 +405,7 @@ def test_batch_prediction_keep_cols():
     assert set(output_df.columns) == {"a", "b"}
 
     assert output_df["a"].tolist() == [4.0, 8.0, 12.0]
-    assert output_df["b"].tolist() == [4, 5, 6]
+    assert output_df["b"].tolist() == [8, 10, 12]
 
 
 def test_batch_prediction_from_pandas_udf():
