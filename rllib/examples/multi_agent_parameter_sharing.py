@@ -1,23 +1,18 @@
 from ray import air, tune
 from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
-from pettingzoo.sisl import waterworld_v3
-
-# TODO (Kourosh): Noticed that the env is broken and throws an error in this test.
-# The error is ValueError: Input vector should be 1-D. (Could be pettingzoo version
-# issue)
-# Based on code from github.com/parametersharingmadrl/parametersharingmadrl
+from pettingzoo.sisl import waterworld_v4
 
 if __name__ == "__main__":
     # RDQN - Rainbow DQN
     # ADQN - Apex DQN
 
-    register_env("waterworld", lambda _: PettingZooEnv(waterworld_v3.env()))
+    register_env("waterworld", lambda _: PettingZooEnv(waterworld_v4.env()))
 
     tune.Tuner(
         "APEX_DDPG",
         run_config=air.RunConfig(
-            stop={"episodes_total": 60000},
+            stop={"episodes_total": 10},
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=10,
             ),
@@ -26,8 +21,8 @@ if __name__ == "__main__":
             # Enviroment specific.
             "env": "waterworld",
             # General
-            "num_gpus": 1,
-            "num_workers": 2,
+            "num_gpus": 0,
+            "num_workers": 1,
             "num_envs_per_worker": 8,
             "replay_buffer_config": {
                 "capacity": int(1e5),
