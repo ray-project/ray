@@ -32,6 +32,14 @@ const basicTheme: ThemeOptions = {
     body1: {
       fontSize: "0.75rem",
     },
+    body2: {
+      fontSize: "14px",
+      lineHeight: "20px",
+    },
+    caption: {
+      fontSize: "0.75rem",
+      lineHeight: "16px",
+    },
   },
   props: {
     MuiPaper: {

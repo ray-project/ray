@@ -39,7 +39,7 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
   const classes = useStyles();
 
   const { jobList } = useJobList();
-  const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 5);
+  const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 4);
 
   return (
     <OverviewCard className={classNames(classes.root, className)}>
@@ -108,6 +108,7 @@ const useRecentJobListItemStyles = makeStyles((theme) =>
       overflow: "hidden",
       textOverflow: "ellipsis",
       whiteSpace: "nowrap",
+      color: "#5F6469",
     },
   }),
 );
@@ -148,10 +149,14 @@ const RecentJobListItem = ({ job, className }: RecentJobListItemProps) => {
       <Link className={classes.root} to={`/new/jobs/${job.job_id}`}>
         {icon}
         <div className={classes.textContainer}>
-          <Typography className={classes.title} variant="h4">
+          <Typography className={classes.title} variant="body2">
             {job.job_id ?? job.submission_id}
           </Typography>
-          <Typography className={classes.entrypoint} title={job.entrypoint}>
+          <Typography
+            className={classes.entrypoint}
+            title={job.entrypoint}
+            variant="caption"
+          >
             {job.entrypoint}
           </Typography>
         </div>

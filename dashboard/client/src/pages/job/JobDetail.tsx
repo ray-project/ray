@@ -25,7 +25,13 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-export const JobDetailChartsPage = () => {
+type JobDetailChartsPageProps = {
+  newIA?: boolean;
+};
+
+export const JobDetailChartsPage = ({
+  newIA = false,
+}: JobDetailChartsPageProps) => {
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
@@ -164,7 +170,9 @@ export const JobDetailChartsPage = () => {
       <TitleCard title="Task Table">
         <TaskList jobId={jobId} />
       </TitleCard>
-      <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
+      {!newIA && (
+        <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
+      )}
       <TitleCard title="Placement Groups">
         <PlacementGroupList jobId={jobId} />
       </TitleCard>

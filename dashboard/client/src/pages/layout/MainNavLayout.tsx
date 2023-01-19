@@ -88,13 +88,14 @@ const useMainNavBarStyles = makeStyles((theme) =>
       boxShadow: "0px 1px 0px #D2DCE6",
     },
     logo: {
-      width: 60,
       display: "flex",
       justifyContent: "center",
+      marginLeft: theme.spacing(2),
+      marginRight: theme.spacing(3),
     },
     navItem: {
-      marginRight: theme.spacing(2),
-      fontSize: "1em",
+      marginRight: theme.spacing(6),
+      fontSize: "1rem",
       fontWeight: 500,
       color: "black",
       textDecoration: "none",
