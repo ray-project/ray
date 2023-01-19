@@ -91,6 +91,10 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     for work in op.get_work_refs():
         ray.get(work)
         op.notify_work_completed(work)
+    if use_actors:
+        assert op.progress_str() == "0 actors"
+    else:
+        assert op.progress_str() == ""
 
     # Check we return transformed bundles in order.
     assert not op.completed()

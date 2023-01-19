@@ -132,7 +132,9 @@ class MapOperator(PhysicalOperator):
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
     """Enforce rules on ray remote args for map tasks.
 
-    Namely, args must explicitly specify either CPU or GPU, not both.
+    Namely, args must explicitly specify either CPU or GPU, not both. Disallowing
+    mixed resources avoids potential starvation and deadlock issues during scheduling,
+    and should not be a serious limitation for users.
     """
     ray_remote_args = ray_remote_args.copy()
     if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
