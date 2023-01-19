@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from typing import Callable, Optional, List, Dict, Any, Union, Tuple, Iterator
+from typing import Callable, Optional, List, Dict, Any, Iterator
 
 import ray
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block
 from ray.data.context import DatasetContext
 from ray.data._internal.compute import (
     ComputeStrategy,
@@ -64,7 +64,7 @@ class MapOperatorState:
         self._block_bundle: Optional[RefBundle] = None
 
         # Execution state.
-        self._tasks: Dict[ObjectRef[Union[ObjectRefGenerator, Block]], _TaskState] = {}
+        self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
         self._next_task_index: int = 0
         self._next_output_index: int = 0
@@ -109,21 +109,14 @@ class MapOperatorState:
             self._block_bundle = None
         self._task_submitter.task_submission_done()
 
-    def work_completed(self, ref: ObjectRef[Union[ObjectRefGenerator, Block]]) -> None:
+    def work_completed(self, ref: ObjectRef[ObjectRefGenerator]) -> None:
         self._task_submitter.task_done(ref)
         task: _TaskState = self._tasks.pop(ref)
-        if task.block_metadata_ref is not None:
-            # Non-dynamic block splitting path.
-            # TODO(Clark): Remove this special case once dynamic block splitting is
-            # supported for actors.
-            block_refs = [ref]
-            block_metas = [ray.get(task.block_metadata_ref)]
-        else:
-            # Dynamic block splitting path.
-            all_refs = list(ray.get(ref))
-            del ref
-            block_refs = all_refs[:-1]
-            block_metas = ray.get(all_refs[-1])
+        # Dynamic block splitting path.
+        all_refs = list(ray.get(ref))
+        del ref
+        block_refs = all_refs[:-1]
+        block_metas = ray.get(all_refs[-1])
         assert len(block_metas) == len(block_refs), (block_refs, block_metas)
         for ref in block_refs:
             trace_allocation(ref, "map_operator_work_completed")
@@ -187,19 +180,8 @@ class MapOperatorState:
         # TODO fix for Ray client: https://github.com/ray-project/ray/issues/30458
         if not DatasetContext.get_current().block_splitting_enabled:
             raise NotImplementedError("New backend requires block splitting")
-        ref: Union[
-            ObjectRef[ObjectRefGenerator],
-            Tuple[ObjectRef[Block], ObjectRef[BlockMetadata]],
-        ] = self._task_submitter.submit(input_blocks)
+        ref: ObjectRef[ObjectRefGenerator] = self._task_submitter.submit(input_blocks)
         task = _TaskState(bundle)
-        if isinstance(ref, tuple):
-            # Task submitter returned a block ref and block metadata ref tuple; we make
-            # the block ref the canonical task ref, and store the block metadata ref for
-            # future resolution, when the task completes.
-            # TODO(Clark): Remove this special case once dynamic block splitting is
-            # supported for actors.
-            ref, block_metadata_ref = ref
-            task.block_metadata_ref = block_metadata_ref
         self._tasks[ref] = task
         self._tasks_by_output_order[self._next_task_index] = task
         self._next_task_index += 1
@@ -215,12 +197,7 @@ class _TaskState:
     Attributes:
         inputs: The input ref bundle.
         output: The output ref bundle that is set when the task completes.
-        block_metadata_ref: A future for the block metadata; this will only be set for
-            the ActorPoolTaskSubmitter, which doesn't yet support dynamic block
-            splitting.
     """
 
     inputs: RefBundle
     output: Optional[RefBundle] = None
-    #  TODO(Clark): Remove this once dynamic block splitting is supported for actors.
-    block_metadata_ref: Optional[ObjectRef[BlockMetadata]] = None
