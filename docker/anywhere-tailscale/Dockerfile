@@ -32,7 +32,8 @@ RUN sudo apt update \
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     pandas \
     modin[dask] \
-    modin[ray]
+    modin[ray] \
+    'ray>=2.2.0'
 
 
 #installing tailscale
