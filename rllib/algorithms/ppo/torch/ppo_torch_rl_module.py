@@ -1,13 +1,17 @@
 from dataclasses import dataclass
-import gymnasium as gym
 from typing import Mapping, Any, Union
 
-from ray.rllib.core.rl_module.torch import TorchRLModule
+import gymnasium as gym
+
+from ray.rllib.core.rl_module.encoder import (
+    FCConfig,
+    FCEncoderConfig,
+    LSTMEncoderConfig,
+    LSTMEncoder,
+)
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.models.base_model import STATE_OUT
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.torch_distributions import (
@@ -15,16 +19,12 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchDeterministic,
     TorchDiagGaussian,
 )
-from ray.rllib.core.rl_module.encoder import (
-    FCConfig,
-    LSTMConfig,
-    IdentityConfig,
-    LSTMEncoder,
-    STATE_OUT,
-)
-from ray.rllib.models.base_model import BaseModelIOKeys, ModelIOKeyHelper
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
-
+from ray.rllib.utils.nested_dict import NestedDict
+from rllib.core.rl_module.encoder import ENCODER_OUT
 
 torch, nn = try_import_torch()
 
@@ -47,22 +47,22 @@ class PPOModuleConfig(RLModuleConfig):
     """Configuration for the PPO module.
 
     Attributes:
+        observation_space: The observation space of the environment.
+        action_space: The action space of the environment.
+        shared_encoder_config: The configuration for the encoder network.
         pi_config: The configuration for the policy network.
         vf_config: The configuration for the value network.
-        shared_encoder_config: The configuration for the encoder network.
         free_log_std: For DiagGaussian action distributions, make the second half of
             the model outputs floating bias variables instead of state-dependent. This
             only has an effect is using the default fully connected net.
-        shared_encoder: Whether to share the encoder between the pi and value
     """
 
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    shared_encoder_config: FCConfig = None
     pi_config: FCConfig = None
     vf_config: FCConfig = None
-    pi_encoder_config: FCConfig = None
-    vf_encoder_config: FCConfig = None
-    shared_encoder_config: FCConfig = None
     free_log_std: bool = False
-    shared_encoder: bool = True
 
 
 class PPOTorchRLModule(TorchRLModule):
@@ -72,13 +72,13 @@ class PPOTorchRLModule(TorchRLModule):
         self.setup()
 
     def setup(self) -> None:
-
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
+        assert self.config.shared_encoder_config, (
+            "shared encoder config must be " "provided."
+        )
 
         self.shared_encoder = self.config.shared_encoder_config.build()
-        self.pi_encoder = self.config.pi_encoder_config.build()
-        self.vf_encoder = self.config.vf_encoder_config.build()
         self.pi = self.config.pi_config.build()
         self.vf = self.config.vf_config.build()
 
@@ -111,76 +111,38 @@ class PPOTorchRLModule(TorchRLModule):
 
         obs_dim = observation_space.shape[0]
         fcnet_hiddens = model_config["fcnet_hiddens"]
-        vf_share_layers = model_config["vf_share_layers"]
         free_log_std = model_config["free_log_std"]
-        use_lstm = model_config["use_lstm"]
+        assert (
+            model_config.get("vf_share_layers") is False
+        ), "`vf_share_layers=False` is no longer supported."
 
-        if vf_share_layers:
-            shared_encoder_kh = ModelIOKeyHelper("shared_encoder")
-            shared_encoder_config = FCConfig(
+        if model_config["use_lstm"]:
+            shared_encoder_config = LSTMEncoderConfig(
                 input_dim=obs_dim,
-                hidden_layers=fcnet_hiddens,
-                activation=activation,
-                output_dim=model_config["fcnet_hiddens"][-1],
-                input_key=SampleBatch.OBS,
-                output_key=shared_encoder_kh.create(BaseModelIOKeys.OUT),
+                hidden_dim=model_config["lstm_cell_size"],
+                batch_first=not model_config["_time_major"],
+                num_layers=1,
+                output_dim=model_config["lstm_cell_size"],
             )
-            pi_encoder_config = IdentityConfig(
-                output_dim=model_config["fcnet_hiddens"][-1]
-            )
-            vf_encoder_config = IdentityConfig(
-                output_dim=model_config["fcnet_hiddens"][-1]
-            )
-            pi_input_key = shared_encoder_config.output_key
-            vf_input_key = shared_encoder_config.output_key
         else:
-            shared_encoder_config = IdentityConfig(output_dim=obs_dim)
-            pi_encoder_kh = ModelIOKeyHelper("pi_encoder")
-
-            if use_lstm:
-                pi_encoder_config = LSTMConfig(
-                    input_dim=shared_encoder_config.output_dim,
-                    hidden_dim=model_config["lstm_cell_size"],
-                    batch_first=not model_config["_time_major"],
-                    output_dim=model_config["lstm_cell_size"],
-                    num_layers=1,
-                    input_key=SampleBatch.OBS,
-                    state_in_key="state_in_0",
-                    output_key=pi_encoder_kh.create(BaseModelIOKeys.OUT),
-                    state_out_key="state_out_0",
-                )
-            else:
-                pi_encoder_config = FCConfig(
-                    input_dim=shared_encoder_config.output_dim,
-                    hidden_layers=fcnet_hiddens,
-                    activation=activation,
-                    output_dim=model_config["fcnet_hiddens"][-1],
-                    input_key=SampleBatch.OBS,
-                    output_key=pi_encoder_kh.create(BaseModelIOKeys.OUT),
-                )
-
-                vf_encoder_kh = ModelIOKeyHelper("vf_encoder")
-                vf_encoder_config = FCConfig(
-                    input_dim=shared_encoder_config.output_dim,
-                    hidden_layers=fcnet_hiddens,
-                    activation=activation,
-                    output_dim=model_config["fcnet_hiddens"][-1],
-                    input_key=SampleBatch.OBS,
-                    output_key=vf_encoder_kh.create(BaseModelIOKeys.OUT),
-                )
-                pi_input_key = pi_encoder_config.output_key
-                vf_input_key = vf_encoder_config.output_key
-
-            pi_kh = ModelIOKeyHelper("pi")
-            vf_kh = ModelIOKeyHelper("vf")
-            pi_config = FCConfig(
-                input_key=pi_input_key,
-                output_key=pi_kh.create(BaseModelIOKeys.OUT),
+            shared_encoder_config = FCEncoderConfig(
+                input_dim=obs_dim,
+                hidden_layers=fcnet_hiddens[:-1],
+                activation=activation,
+                output_dim=fcnet_hiddens[-1],
             )
-            vf_config = FCConfig(
-                input_key=vf_input_key,
-                output_key=vf_kh.create(BaseModelIOKeys.OUT),
-            )
+
+        pi_config = FCConfig(
+            input_dim=shared_encoder_config.output_dim,
+            hidden_layers=[32],
+            activation="ReLU",
+        )
+        vf_config = FCConfig(
+            input_dim=shared_encoder_config.output_dim,
+            hidden_layers=[32, 1],
+            activation="ReLU",
+            output_dim=1,
+        )
 
         assert isinstance(
             observation_space, gym.spaces.Box
@@ -194,31 +156,21 @@ class PPOTorchRLModule(TorchRLModule):
             "This simple PPOModule only supports Discrete and Box action space.",
         )
 
-        # build pi network
+        # build policy network head
         shared_encoder_config.input_dim = observation_space.shape[0]
-        pi_encoder_config.input_dim = shared_encoder_config.output_dim
-        pi_config.input_dim = pi_encoder_config.output_dim
+        pi_config.input_dim = shared_encoder_config.output_dim
         if isinstance(action_space, gym.spaces.Discrete):
             pi_config.output_dim = action_space.n
         else:
             pi_config.output_dim = action_space.shape[0] * 2
 
-        # build vf network
-        vf_encoder_config.input_dim = shared_encoder_config.output_dim
-        vf_config.input_dim = vf_encoder_config.output_dim
-        vf_config.output_dim = 1
-
         config_ = PPOModuleConfig(
             observation_space=observation_space,
             action_space=action_space,
-            max_seq_len=model_config["max_seq_len"],
             shared_encoder_config=shared_encoder_config,
             pi_config=pi_config,
             vf_config=vf_config,
-            pi_encoder_config=pi_encoder_config,
-            vf_encoder_config=vf_encoder_config,
             free_log_std=free_log_std,
-            shared_encoder=vf_share_layers,
         )
 
         module = PPOTorchRLModule(config_)
@@ -227,8 +179,6 @@ class PPOTorchRLModule(TorchRLModule):
     def get_initial_state(self) -> NestedDict:
         if isinstance(self.shared_encoder, LSTMEncoder):
             return self.shared_encoder.get_initial_state()
-        elif isinstance(self.pi_encoder, LSTMEncoder):
-            return self.pi_encoder.get_initial_state()
         else:
             return NestedDict({})
 
@@ -242,23 +192,20 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoder_out = self.shared_encoder(batch)
-        encoder_out_pi = self.pi_encoder(encoder_out)
-        pi_out = self.pi(encoder_out_pi)
-        action_logits = pi_out[self.pi.config.output_key]
+        output = {}
 
+        encoder_out = self.shared_encoder(batch)
+        if STATE_OUT in encoder_out:
+            output[STATE_OUT] = encoder_out[STATE_OUT]
+
+        # Actions
+        action_logits = self.pi(encoder_out[ENCODER_OUT])
         if self._is_discrete:
             action = torch.argmax(action_logits, dim=-1)
         else:
             action, _ = action_logits.chunk(2, dim=-1)
-
         action_dist = TorchDeterministic(action)
-        output = {SampleBatch.ACTION_DIST: action_dist}
-
-        if hasattr(self.shared_encoder.config, "state_out_key"):
-            output[STATE_OUT] = encoder_out[self.shared_encoder.config.state_out_key]
-        if hasattr(self.pi_encoder.config, "state_out_key"):
-            output[STATE_OUT] = encoder_out_pi[self.pi_encoder.config.state_out_key]
+        output[SampleBatch.ACTION_DIST] = action_dist
 
         return output
 
@@ -289,14 +236,20 @@ class PPOTorchRLModule(TorchRLModule):
         policy distribution to be used for computing KL divergence between the old
         policy and the new policy during training.
         """
-        encoder_out = self.shared_encoder(batch)
-        encoder_out_pi = self.pi_encoder(encoder_out)
-        encoder_out_vf = self.vf_encoder(encoder_out)
-        pi_out = self.pi(encoder_out_pi)
-        action_logits = pi_out[self.pi.config.output_key]
-        vf_out = self.vf(encoder_out_vf)
-
         output = {}
+
+        # Shared encoder
+        encoder_out = self.shared_encoder(batch)
+        if STATE_OUT in encoder_out:
+            output[STATE_OUT] = encoder_out[STATE_OUT]
+
+        # Value head
+        vf_out = self.vf(encoder_out[ENCODER_OUT])
+        output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
+
+        # Policy head
+        pi_out = self.pi(encoder_out[ENCODER_OUT])
+        action_logits = pi_out
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
             output[SampleBatch.ACTION_DIST_INPUTS] = {"logits": action_logits}
@@ -307,13 +260,6 @@ class PPOTorchRLModule(TorchRLModule):
             output[SampleBatch.ACTION_DIST_INPUTS] = {"loc": loc, "scale": scale}
         output[SampleBatch.ACTION_DIST] = action_dist
 
-        if hasattr(self.shared_encoder.config, "state_out_key"):
-            output[STATE_OUT] = encoder_out[self.shared_encoder.config.state_out_key]
-        if hasattr(self.pi_encoder.config, "state_out_key"):
-            output[STATE_OUT] = encoder_out_pi[self.pi_encoder.config.state_out_key]
-
-        # compute the value function
-        output[SampleBatch.VF_PREDS] = vf_out[self.vf.config.output_key].squeeze(-1)
         return output
 
     @override(RLModule)
@@ -345,33 +291,30 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoder_out = self.shared_encoder(batch)
-        encoder_out_pi = self.pi_encoder(encoder_out)
-        encoder_out_vf = self.vf_encoder(encoder_out)
-        pi_out = self.pi(encoder_out_pi)
-        action_logits = pi_out[self.pi.config.output_key]
-        vf_out = self.vf(encoder_out_vf)
+        output = {}
 
+        # Shared encoder
+        encoder_out = self.shared_encoder(batch)
+        if STATE_OUT in encoder_out:
+            output[STATE_OUT] = encoder_out[STATE_OUT]
+
+        # Value head
+        vf_out = self.vf(encoder_out[ENCODER_OUT])
+        output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
+
+        # Policy head
+        pi_out = self.pi(encoder_out[ENCODER_OUT])
+        action_logits = pi_out
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
         else:
             mu, scale = action_logits.chunk(2, dim=-1)
             action_dist = TorchDiagGaussian(mu, scale.exp())
-
         logp = action_dist.logp(batch[SampleBatch.ACTIONS])
         entropy = action_dist.entropy()
-
-        output = {
-            SampleBatch.ACTION_DIST: action_dist,
-            SampleBatch.ACTION_LOGP: logp,
-            SampleBatch.VF_PREDS: vf_out[self.vf.config.output_key].squeeze(-1),
-            "entropy": entropy,
-        }
-
-        if hasattr(self.shared_encoder.config, "state_out_key"):
-            output[STATE_OUT] = encoder_out[self.shared_encoder.config.state_out_key]
-        if hasattr(self.pi_encoder.config, "state_out_key"):
-            output[STATE_OUT] = encoder_out_pi[self.pi_encoder.config.state_out_key]
+        output[SampleBatch.ACTION_DIST] = action_dist
+        output[SampleBatch.ACTION_LOGP] = logp
+        output["entropy"] = entropy
 
         return output
 

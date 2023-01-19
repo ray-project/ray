@@ -1,9 +1,7 @@
 import abc
-from enum import Enum
 from typing import Optional, Tuple
-from collections import defaultdict
-from typing import Mapping
 from ray.rllib.models.specs.specs_dict import SpecDict
+from dataclasses import dataclass
 
 from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
 from ray.rllib.utils.annotations import (
@@ -18,33 +16,8 @@ ForwardOutputType = TensorDict
 # [Output, Recurrent State(s)]
 UnrollOutputType = Tuple[TensorDict, TensorDict]
 
-
-@ExperimentalAPI
-class BaseModelIOKeys(Enum):
-    IN: str = "in"
-    OUT: str = "out"
-    STATE_IN: str = "state_in"
-    STATE_OUT: str = "state_out"
-
-
-class ModelIOKeyHelper:
-    """Creates unique IO keys for models.
-
-    In order to distinguish keys in input- and outputs-specs of multiple instances of
-    a give model, each instance is supposed to have distinct keys.
-    This helper provides a way to generate distinct keys per instance of
-    ModelIOMapping.
-    """
-
-    __init_counters__ = defaultdict(lambda: 0)
-
-    def __init__(self, model_name: str):
-        self._name: str = model_name
-        self._init_idx: str = str(self.__init_counters__[model_name])
-        self.__init_counters__[model_name] += 1
-
-    def create(self, key):
-        return self._name + "_" + str(key) + "_" + self._init_idx
+STATE_IN: str = "state_in"
+STATE_OUT: str = "state_out"
 
 
 @ExperimentalAPI
@@ -72,8 +45,9 @@ class RecurrentModel(abc.ABC):
         name: An optional name for the module
     """
 
-    def __init__(self, name: Optional[str] = None):
+    def __init__(self, config: ModelConfig, name: Optional[str] = None):
         self._name = name or self.__class__.__name__
+        self.config = config
 
     @property
     def name(self) -> str:
@@ -289,18 +263,8 @@ class Model(RecurrentModel):
         outputs = self._forward(inputs, **kwargs)
         return outputs, TensorDict()
 
-    def forward(
-        self, input_dict, input_mapping: Mapping = None, **kwargs
-    ) -> ForwardOutputType:
-        if input_mapping:
-            for forward_key, input_dict_key in input_mapping.items():
-                if input_dict_key in input_dict:
-                    input_dict[forward_key] = input_dict[input_dict_key]
-        input_dict.update(self._forward(input_dict, **kwargs))
-        return input_dict
-
     @abc.abstractmethod
-    def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
+    def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         """Computes the output of this module for each timestep.
 
         Args:
@@ -319,7 +283,7 @@ class Model(RecurrentModel):
 
 @ExperimentalAPI
 class ModelIO(abc.ABC):
-    """Abstract class defining how to save and load model weights
+    """Abstract class defining how to save and load model weights.
 
     Args:
         config: The ModelConfig passed to the underlying model
@@ -336,7 +300,7 @@ class ModelIO(abc.ABC):
     @DeveloperAPI
     @abc.abstractmethod
     def save(self, path: str) -> None:
-        """Save model weights to a path
+        """Save model weights to a path.
 
         Args:
             path: The path on disk where weights are to be saved
@@ -349,7 +313,7 @@ class ModelIO(abc.ABC):
     @DeveloperAPI
     @abc.abstractmethod
     def load(self, path: str) -> RecurrentModel:
-        """Load model weights from a path
+        """Load model weights from a path.
 
         Args:
             path: The path on disk where to load weights from
@@ -357,4 +321,22 @@ class ModelIO(abc.ABC):
         Examples:
             model.load("/tmp/model_path.cpt")
         """
+        raise NotImplementedError
+
+
+@ExperimentalAPI
+@dataclass
+class ModelConfig(abc.ABC):
+    """Configuration for an encoder network.
+
+    Attributes:
+        output_dim: The output dimension of the network. if None, the last layer would
+            be the last hidden layer.
+    """
+
+    output_dim: int = None
+
+    @abc.abstractmethod
+    def build(self) -> RecurrentModel:
+        """Builds the model."""
         raise NotImplementedError
