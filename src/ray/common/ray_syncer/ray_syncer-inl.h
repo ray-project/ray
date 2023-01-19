@@ -199,6 +199,10 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     }
   }
 
+  /// Sending a message to the remote node
+  ///
+  /// \param message The message to be sent
+  /// \param flush Whether to flush the sending queue in gRPC.
   void Send(std::shared_ptr<const RaySyncMessage> message, bool flush) {
     sending_message_ = std::move(message);
     grpc::WriteOptions opts;
@@ -213,6 +217,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     StartWrite(sending_message_.get(), opts);
   }
 
+  // Please refer to grpc callback api for the following four methods:
+  //     https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md
   using T::StartRead;
   using T::StartWrite;
 
@@ -220,6 +226,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     if (ok) {
       io_context_.dispatch([this]() { SendNext(); }, "");
     } else {
+      // No need to resent the message since if ok=false, it's the end
+      // of gRPC call and we'll reconnect in case of a failure.
       RAY_LOG_EVERY_N(ERROR, 100)
           << "Failed to send the message to: " << NodeID::FromBinary(GetRemoteNodeID());
     }
