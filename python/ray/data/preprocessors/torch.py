@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Callable, Dict, List, Union
 
 import numpy as np
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
@@ -85,7 +86,9 @@ class TorchVisionPreprocessor(Preprocessor):
         def transform(batch: np.ndarray) -> np.ndarray:
             if self._batched:
                 return self._fn(batch).numpy()
-            return np.array([self._fn(array).numpy() for array in batch])
+            return _create_possibly_ragged_ndarray(
+                [self._fn(array).numpy() for array in batch],
+            )
 
         if isinstance(np_data, dict):
             outputs = {}
