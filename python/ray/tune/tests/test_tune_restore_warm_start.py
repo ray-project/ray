@@ -261,7 +261,7 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         search_alg = NevergradSearch(
             optimizer,
-            parameter_names,
+            space=parameter_names,
             metric="loss",
             mode="min",
         )
