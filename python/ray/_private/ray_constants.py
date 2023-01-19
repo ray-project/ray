@@ -254,6 +254,8 @@ LOG_PREFIX_INFO_MESSAGE = ":info_message:"
 LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 # Task names are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_TASK_NAME = ":task_name:"
+# Job ids are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_JOB_ID = ":job_id:"
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
