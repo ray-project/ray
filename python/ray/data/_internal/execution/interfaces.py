@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Iterable, Tuple
 
 import ray
+from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
@@ -152,47 +153,6 @@ class ExecutionOptions:
     # Always preserve ordering of blocks, even if using operators that
     # don't require it.
     preserve_order: bool = True
-
-
-class Operator:
-    """Abstract class for operators.
-
-    Operators are stateful and non-serializable; they live on the driver side of the
-    Dataset only.
-    """
-
-    def __init__(self, name: str, input_dependencies: List["Operator"]):
-        self._name = name
-        self._input_dependencies = input_dependencies
-        for x in input_dependencies:
-            assert isinstance(x, Operator), x
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def input_dependencies(self) -> List["Operator"]:
-        """List of operators that provide inputs for this operator."""
-        assert hasattr(
-            self, "_input_dependencies"
-        ), "Operator.__init__() was not called."
-        return self._input_dependencies
-
-    def __reduce__(self):
-        raise ValueError("LogicalOperator is not serializable.")
-
-    def __repr__(self) -> str:
-        if self.input_dependencies:
-            out_str = ", ".join([str(x) for x in self.input_dependencies])
-            out_str += " -> "
-        else:
-            out_str = ""
-        out_str += f"{self.__class__.__name__}[{self._name}]"
-        return out_str
-
-    def __str__(self) -> str:
-        return repr(self)
 
 
 class PhysicalOperator(Operator):

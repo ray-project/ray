@@ -1,11 +1,45 @@
 from typing import List
 
-from ray.data._internal.execution.interfaces import Operator, PhysicalOperator
-from ray.data._internal.execution.legacy_compat import (
-    _blocks_to_input_buffer,
-    _stage_to_operator,
-)
-from ray.data._internal.plan import Stage
+
+class Operator:
+    """Abstract class for operators.
+
+    Operators are stateful and non-serializable; they live on the driver side of the
+    Dataset only.
+    """
+
+    def __init__(self, name: str, input_dependencies: List["Operator"]):
+        self._name = name
+        self._input_dependencies = input_dependencies
+        for x in input_dependencies:
+            assert isinstance(x, Operator), x
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def input_dependencies(self) -> List["Operator"]:
+        """List of operators that provide inputs for this operator."""
+        assert hasattr(
+            self, "_input_dependencies"
+        ), "Operator.__init__() was not called."
+        return self._input_dependencies
+
+    def __reduce__(self):
+        raise ValueError("Operator is not serializable.")
+
+    def __repr__(self) -> str:
+        if self.input_dependencies:
+            out_str = ", ".join([str(x) for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self._name}]"
+        return out_str
+
+    def __str__(self) -> str:
+        return repr(self)
 
 
 class LogicalOperator(Operator):
@@ -23,101 +57,36 @@ class LogicalOperator(Operator):
     def set_input_dependencies(self, input_dependencies: List["LogicalOperator"]):
         self._input_dependencies = input_dependencies
 
-    def set_legacy_stage(self, stage: Stage):
-        self._stage = stage
+    def get_physical_dag(self):
+        """Get the corresponding DAG of physical operators.
 
-
-class LogicalPlan:
-    """The plan with a DAG of logical operators."""
-
-    def __init__(self, dag: LogicalOperator):
-        self._dag = dag
-
-    def add(self, operator: LogicalOperator) -> "LogicalPlan":
-        """Add the operator into DAG of logical operators."""
-        assert self._dag is not None
-        operator.set_input_dependencies([self._dag])
-        self._dag = operator
-        return self
-
-    def get_execution_dag(self) -> PhysicalOperator:
-        """Get the DAG of physical operators to execute.
-
-        This process has 3 steps:
-        (1).logical optimization: optimize logical plan.
-        (2).planning: convert logical to physical plan.
-        (3).physical optimization: optimize physical plan.
+        Returns:
+            DAG of physical operators as List[PhysicalOperator].
         """
-        logical_optimizer = LogicalOptimizer()
-        optimized_plan = logical_optimizer.optimize(self)
-        physical_plan = logical_optimizer.plan(optimized_plan)
-        final_plan = PhysicalOptimizer().optimize(physical_plan)
-        return final_plan._dag
-
-
-class PhysicalPlan:
-    """The plan with a DAG of physical operators."""
-
-    def __init__(self, dag: PhysicalOperator):
-        self._dag = dag
-
-
-class LogicalOptimizer:
-    """The optimizer for logical plan."""
-
-    def __init__(self):
-        self._rules = []
-
-    def optimize(self, plan: LogicalPlan) -> LogicalPlan:
-        """Optimize logical plan with a list of rules."""
-        for rule in self._rules:
-            plan = rule.apply(plan)
-        return plan
-
-    def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
-        """Convert logical plan into physical plan."""
-        return PhysicalPlan(self._plan_op(logical_plan._dag))
-
-    def _plan_op(self, op: LogicalOperator) -> PhysicalOperator:
-        """Convert logical operators to physical operators in post-order."""
-        # Plan the input dependencies first.
-        physical_children = []
-        for child in op.input_dependencies:
-            physical_children.append(self._plan_op(child))
-
-        if op.name == "Read":
-            assert not physical_children
-            physical_op = _blocks_to_input_buffer(op._blocks, owns_blocks=True)
-        elif op.name == "MapBatches":
-            assert len(physical_children) == 1
-            physical_op = _stage_to_operator(op._stage, physical_children[0])
-        else:
-            raise ValueError(f"Found unknown logical operator during planning: {op}")
-        return physical_op
-
-
-class PhysicalOptimizer:
-    """The optimizer for physical plan."""
-
-    def __init__(self):
-        self._rules = []
-
-    def optimize(self, plan: PhysicalPlan) -> PhysicalPlan:
-        """Optimize physical plan with a list of rules."""
-        for rule in self._rules:
-            plan = rule.apply(plan)
-        return plan
-
-
-class LogicalRule:
-    """Abstract optimization rule for logical plan."""
-
-    def apply(plan: LogicalPlan) -> LogicalPlan:
         raise NotImplementedError
 
 
-class PhysicalRule:
-    """Abstract optimization rule for physical plan."""
+class Rule:
+    """Abstract class for optimization rule."""
 
-    def apply(plan: PhysicalPlan) -> PhysicalPlan:
+    def apply(dag: Operator) -> Operator:
+        """Apply the optimization rule to the DAG of operators."""
         raise NotImplementedError
+
+
+class Optimizer:
+    """Abstract class for optimizers.
+
+    An optimizers transforms a DAG of operators with a list of predefined rules.
+    """
+
+    @property
+    def rules(self) -> List[Rule]:
+        """List of predefined rules for this optimizer."""
+        raise NotImplementedError
+
+    def optimize(self, dag: Operator) -> Operator:
+        """Optimize operators with a list of rules."""
+        for rule in self.rules:
+            dag = rule.apply(dag)
+        return dag
