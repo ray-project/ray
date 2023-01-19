@@ -203,6 +203,16 @@ def test_sync_config_validate_custom_syncer():
     sync_config.validate_upload_dir()
 
 
+def test_sync_config_upload_dir_custom_syncer_mismatch():
+    # Shouldn't be able to disable syncing if upload dir is specified
+    with pytest.raises(ValueError):
+        tune.SyncConfig(upload_dir="s3://valid/bucket", syncer=None)
+
+    # Shouldn't be able to use a custom cloud syncer without specifying cloud dir
+    with pytest.raises(ValueError):
+        tune.SyncConfig(upload_dir=None, syncer=_DefaultSyncer())
+
+
 def test_syncer_sync_up_down(temp_data_dirs):
     """Check that syncing up and down works"""
     tmp_source, tmp_target = temp_data_dirs
