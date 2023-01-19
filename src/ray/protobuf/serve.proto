@@ -204,7 +204,6 @@ enum ApplicationStatus {
   RUNNING = 1;
   DEPLOY_FAILED = 2;
   DELETING = 3;
-  NOT_EXISTED = 4;
   NOT_STARTED = 5;
 }
 

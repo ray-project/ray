@@ -5,6 +5,7 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 import requests
 import pytest
 import starlette.responses
+from fastapi import FastAPI
 
 import ray
 from ray import serve
@@ -497,6 +498,15 @@ def test_deploy_application(serve_instance):
         def __call__(self):
             return "got model1"
 
+    app = FastAPI()
+
+    @serve.deployment(route_prefix="/hello")
+    @serve.ingress(app)
+    class MyFastAPIDeployment:
+        @app.get("/")
+        def root(self):
+            return "Hello, world!"
+
     f_handle = serve.run(f.bind(), name="app_f")
     assert ray.get(f_handle.remote()) == "got f"
     assert requests.get("http://127.0.0.1:8000/").text == "got f"
@@ -515,8 +525,13 @@ def test_deploy_application(serve_instance):
     assert ray.get(graph_handle.predict.remote()) == "got model1"
     assert requests.get("http://127.0.0.1:8000/my_graph").text == '"got model1"'
 
+    serve.run(MyFastAPIDeployment.bind(), name="FastAPI")
+    assert requests.get("http://127.0.0.1:8000/hello").text == '"Hello, world!"'
+
 
 def test_delete_application(serve_instance):
+    """Test delete single application"""
+
     @serve.deployment
     def f():
         return "got f"
@@ -539,6 +554,28 @@ def test_delete_application(serve_instance):
     # make sure no affect to app_g
     assert ray.get(g_handle.remote()) == "got g"
     assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
+
+
+def test_deployment_name_with_app_name():
+    """Test replica name with app name as prefix"""
+
+    controller = serve.context._global_client._controller
+
+    @serve.deployment
+    def g():
+        return "got g"
+
+    serve.run(g.bind())
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "g" in deployment_info
+
+    @serve.deployment
+    def f():
+        return "got f"
+
+    serve.run(f.bind(), name="app1")
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "app1_f" in deployment_info
 
 
 if __name__ == "__main__":

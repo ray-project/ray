@@ -34,7 +34,6 @@ class ApplicationStatus(str, Enum):
     RUNNING = "RUNNING"
     DEPLOY_FAILED = "DEPLOY_FAILED"
     DELETING = "DELETING"
-    NOT_EXISTED = "NOT_EXISTED"
 
 
 @dataclass(eq=True)

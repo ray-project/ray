@@ -665,22 +665,22 @@ def test_status_schema_helpers():
         pass
 
     client = serve.start()
-    serve.run(f1.bind(), name="f1")
-    serve.run(f2.bind(), name="f2")
+    serve.run(f1.bind(), name="app1")
+    serve.run(f2.bind(), name="app2")
 
     # Check statuses
     f1_statuses = serve_status_to_schema(
-        client.get_serve_status("f1")
+        client.get_serve_status("app1")
     ).deployment_statuses
     f2_statuses = serve_status_to_schema(
-        client.get_serve_status("f2")
+        client.get_serve_status("app2")
     ).deployment_statuses
     assert len(f1_statuses) == 1
     assert f1_statuses[0].status in {"UPDATING", "HEALTHY"}
-    assert f1_statuses[0].name == "f1"
+    assert f1_statuses[0].name == "app1_f1"
     assert len(f2_statuses) == 1
     assert f2_statuses[0].status in {"UPDATING", "HEALTHY"}
-    assert f2_statuses[0].name == "f2"
+    assert f2_statuses[0].name == "app2_f2"
 
     serve.shutdown()
 

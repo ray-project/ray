@@ -32,7 +32,7 @@ from ray.dag.utils import _DAGNodeNameGenerator
 from ray.experimental.gradio_utils import type_to_string
 
 
-def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
+def build(ray_dag_root_node: DAGNode, app_name: str = None) -> List[Deployment]:
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
     DAG authored with Ray DAG API.
@@ -64,6 +64,8 @@ def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
         ray_dag_root_node: DAGNode acting as root of a Ray authored DAG. It
             should be executable via `ray_dag_root_node.execute(user_input)`
             and should have `InputNode` in it.
+        app_name: If provided, formatting all the deployment name to
+            {app_name}_{deployment_name}
 
     Returns:
         deployments: All deployments needed for an e2e runnable serve pipeline,
@@ -86,7 +88,9 @@ def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
     """
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag_root_node.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+            lambda node: transform_ray_dag_to_serve_dag(
+                node, node_name_generator, app_name
+            )
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
 
@@ -133,11 +137,12 @@ def get_and_validate_ingress_deployment(
 
 
 def transform_ray_dag_to_serve_dag(
-    dag_node: DAGNode, node_name_generator: _DAGNodeNameGenerator
+    dag_node: DAGNode, node_name_generator: _DAGNodeNameGenerator, app_name: str = None
 ):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
     ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
+    When provided app_name, all Deployment name will {app_name}_{deployment_name}
     """
     if isinstance(dag_node, ClassNode):
         deployment_name = node_name_generator.get_node_name(dag_node)
@@ -194,6 +199,9 @@ def transform_ray_dag_to_serve_dag(
             and deployment_shell.name != dag_node._body.__name__
         ):
             deployment_name = deployment_shell.name
+
+        if app_name:
+            deployment_name = f"{app_name}_{deployment_name}"
 
         # Set the route prefix, prefer the one user supplied,
         # otherwise set it to /deployment_name
@@ -256,6 +264,9 @@ def transform_ray_dag_to_serve_dag(
             other_args_to_resolve["result_type_string"] = type_to_string(
                 dag_node._body.__annotations__["return"]
             )
+
+        if app_name:
+            deployment_name = f"{app_name}_{deployment_name}"
 
         return DeploymentFunctionNode(
             dag_node._body,

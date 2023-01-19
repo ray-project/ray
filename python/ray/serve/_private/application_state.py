@@ -11,9 +11,7 @@ from ray.serve._private.common import (
 import time
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 import logging
-from ray.serve._private.constants import (
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -182,8 +180,8 @@ class ApplicationStateManager:
     def get_app_status(self, name: str) -> ApplicationStatusInfo:
         if name not in self._application_states:
             return ApplicationStatusInfo(
-                ApplicationStatus.NOT_EXISTED,
-                message=f"Application {name} doesn't existed",
+                ApplicationStatus.NOT_STARTED,
+                message=f"Application {name} doesn't exist",
                 deployment_timestamp=0,
             )
         return self._application_states[name].get_application_status_info()

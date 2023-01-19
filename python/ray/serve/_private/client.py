@@ -328,7 +328,7 @@ class ServeControllerClient:
                     cur_status = StatusOverview.from_proto(
                         StatusOverviewProto.FromString(cur_status_bytes)
                     )
-                    if cur_status.app_status.status != ApplicationStatus.NOT_EXISTED:
+                    if cur_status.app_status.status != ApplicationStatus.NOT_STARTED:
                         all_deleted = False
                 if all_deleted:
                     return

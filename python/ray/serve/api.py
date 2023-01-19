@@ -494,14 +494,17 @@ def run(
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
+        if name:
+            for deployment in deployments:
+                deployment._name = f"{name}_{deployment._name}"
         ingress = target.ingress
     # Each DAG should always provide a valid Driver ClassNode
     elif isinstance(target, ClassNode):
-        deployments = pipeline_build(target)
+        deployments = pipeline_build(target, name)
         ingress = get_and_validate_ingress_deployment(deployments)
     # Special case where user is doing single function serve.run(func.bind())
     elif isinstance(target, FunctionNode):
-        deployments = pipeline_build(target)
+        deployments = pipeline_build(target, name)
         ingress = get_and_validate_ingress_deployment(deployments)
         if len(deployments) != 1:
             raise ValueError(

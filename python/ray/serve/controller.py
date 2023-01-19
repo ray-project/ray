@@ -581,10 +581,10 @@ class ServeController:
         return deployment_route_list.SerializeToString()
 
     def get_serve_status(self, name: str = "") -> bytes:
-        """Return applicaition status
+        """Return application status
         Args:
             name: application name. If application name doesn't exist, app_status
-            is NOT_EXISTED.
+            is NOT_STARTED.
         """
 
         app_status = self.application_state_manager.get_app_status(name)
