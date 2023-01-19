@@ -84,6 +84,7 @@ ray start --address='nexus.chimp-beta.ts.net:6379' --node-ip-address ${HOSTNAME}
             
 fi
 
+EXPOSE 41641:41641/udp
 
 #CREATE REPOSITORY s3backup TYPE s3
 #[ WITH (parameter_name [= value], [, ...]) ]
