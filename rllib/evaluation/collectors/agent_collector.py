@@ -1,14 +1,14 @@
+import copy
 import logging
-
-from copy import deepcopy
-from gymnasium.spaces import Space
 import math
-import numpy as np
-import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional
 
-from ray.rllib.policy.view_requirement import ViewRequirement
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Space
+
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import (
     flatten_to_single_ndarray,
@@ -20,7 +20,6 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
-
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -36,6 +35,17 @@ def _to_float_np_array(v: List[Any]) -> np.ndarray:
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
     return arr
+
+
+def _get_buffered_slice_with_paddings(d, inds):
+    element_at_t = []
+    for index in inds:
+        if index < len(d):
+            element_at_t.append(d[index])
+        else:
+            # zero pad similar to the last element.
+            element_at_t.append(tree.map_structure(np.zeros_like, d[-1]))
+    return element_at_t
 
 
 @PublicAPI
@@ -230,8 +240,7 @@ class AgentCollector:
             AgentCollector._next_unroll_id += 1
 
         # Next obs -> obs.
-        # TODO @kourosh: remove the in-place operations and get rid of this deepcopy.
-        values = deepcopy(input_values)
+        values = copy.copy(input_values)
         assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
@@ -356,8 +365,10 @@ class AgentCollector:
                 # before the last one (len(d) - 2) and so on.
                 element_at_t = d[view_req.shift_arr + len(d) - 1]
                 if element_at_t.shape[0] == 1:
-                    # squeeze to remove the T dimension if it is 1.
-                    element_at_t = element_at_t.squeeze(0)
+                    # We'd normally squeeze here to remove the time dim, but we'll
+                    # simply use the time dim as the batch dim.
+                    data.append(element_at_t)
+                    continue
                 # add the batch dimension with [None]
                 data.append(element_at_t[None])
 
@@ -458,20 +469,20 @@ class AgentCollector:
                     # handle the case where the inds are out of bounds from the end.
                     # if during the indexing any of the indices are out of bounds, we
                     # need to use padding on the end to fill in the missing indices.
-                    element_at_t = []
-                    for index in inds:
-                        if index < len(d):
-                            element_at_t.append(d[index])
-                        else:
-                            # zero pad similar to the last element.
-                            element_at_t.append(
-                                tree.map_structure(np.zeros_like, d[-1])
-                            )
-                    element_at_t = np.stack(element_at_t)
+                    # Create padding first time we encounter data
+                    if max(inds) < len(d):
+                        # Simple case where we can simply pick slices from buffer
+                        element_at_t = d[inds]
+                    else:
+                        # Case in which we have to pad because buffer has insufficient
+                        # length. This branch takes more time than simply picking
+                        # slices we try to avoid it.
+                        element_at_t = _get_buffered_slice_with_paddings(d, inds)
+                        element_at_t = np.stack(element_at_t)
 
                     if element_at_t.shape[0] == 1:
-                        # squeeze to remove the T dimension if it is 1.
-                        element_at_t = element_at_t.squeeze(0)
+                        # Remove the T dimension if it is 1.
+                        element_at_t = element_at_t[0]
                     shifted_data.append(element_at_t)
 
                 # in some multi-agent cases shifted_data may be an empty list.
