@@ -43,7 +43,7 @@ struct Group {
   const TaskID &OwnerId() const;
 
   /// Whether tasks in this group are retriable.
-  bool IsRetriable() const;
+  const bool IsRetriable() const;
 
   /// Gets the task time of the earliest task of this group, to be
   /// used for group priority.
@@ -63,12 +63,14 @@ struct Group {
   std::vector<std::shared_ptr<WorkerInterface>> workers_;
 
   /// The earliest creation time of the tasks.
-  absl::Time time_ = absl::Now();
+  absl::Time earliest_task_time_ = absl::Now();
 
   /// The owner id shared by tasks of this group.
+  /// TODO(clarng): make this const and implement move / swap.
   TaskID owner_id_;
 
   /// Whether the tasks are retriable.
+  /// TODO(clarng): make this const and implement move / swap.
   bool retriable_;
 };
 

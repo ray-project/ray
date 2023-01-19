@@ -46,6 +46,8 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   std::unordered_map<TaskID, Group> group_map;
   for (auto worker : workers) {
     bool retriable = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
+    /// TODO(clarng): The Nil value is not stable / unique, and cannot be used
+    /// as the grouping key. Make Nil stable / unique.
     if (non_retriable_owner_id == TaskID::Nil()) {
       non_retriable_owner_id = TaskID::FromRandom(worker->GetAssignedJobId());
     }
@@ -73,7 +75,7 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   /// Prioritizes killing groups that are retriable, else it picks the largest group,
   /// else it picks the newest group.
   std::sort(
-      sorted.begin(), sorted.end(), [](Group const &left, Group const &right) -> bool {
+      sorted.begin(), sorted.end(), [](const Group &left, const Group &right) -> bool {
         int left_retriable = left.IsRetriable() ? 0 : 1;
         int right_retriable = right.IsRetriable() ? 0 : 1;
 
@@ -141,20 +143,16 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
 
 const TaskID &Group::OwnerId() const { return owner_id_; }
 
-bool Group::IsRetriable() const { return retriable_; }
+const bool Group::IsRetriable() const { return retriable_; }
 
-const absl::Time Group::GetAssignedTaskTime() const { return time_; }
+const absl::Time Group::GetAssignedTaskTime() const { return earliest_task_time_; }
 
 void Group::AddToGroup(std::shared_ptr<WorkerInterface> worker) {
-  if (worker->GetAssignedTaskTime() < time_) {
-    time_ = worker->GetAssignedTaskTime();
+  if (worker->GetAssignedTaskTime() < earliest_task_time_) {
+    earliest_task_time_ = worker->GetAssignedTaskTime();
   }
   bool retriable = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
-  if (workers_.empty()) {
-    retriable_ = retriable;
-  } else {
-    RAY_CHECK_EQ(retriable_, retriable);
-  }
+  RAY_CHECK_EQ(retriable_, retriable);
   workers_.push_back(worker);
 }
 
@@ -166,14 +164,7 @@ const std::shared_ptr<WorkerInterface> Group::SelectWorkerToKill() const {
             sorted.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
                std::shared_ptr<WorkerInterface> const &right) -> bool {
-              int left_retriable =
-                  left->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
-              int right_retriable =
-                  right->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
-              if (left_retriable == right_retriable) {
-                return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
-              }
-              return left_retriable < right_retriable;
+              return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
             });
 
   return sorted.front();
