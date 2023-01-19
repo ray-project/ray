@@ -1492,7 +1492,8 @@ def test_count_lazy(ray_start_regular_shared):
     # We do not kick off the read task by default.
     assert ds._plan._in_blocks._num_computed() == 0
     assert ds.count() == 100
-    # Getting number of rows should not trigger execution of any read tasks.
+    # Getting number of rows should not trigger execution of any read tasks
+    # for ray.data.range(), as the number of rows is known beforehand.
     assert ds._plan._in_blocks._num_computed() == 0
 
 
