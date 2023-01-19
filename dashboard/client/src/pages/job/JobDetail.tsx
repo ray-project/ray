@@ -1,4 +1,4 @@
-import { Button, makeStyles } from "@material-ui/core";
+import { makeStyles } from "@material-ui/core";
 import { Alert } from "@material-ui/lab";
 import dayjs from "dayjs";
 import React from "react";
@@ -7,7 +7,6 @@ import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
-import { getTaskTimeline } from "../../service/task";
 import ActorList from "../actor/ActorList";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
@@ -17,8 +16,6 @@ import { useJobProgress } from "./hook/useJobProgress";
 import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
 import { TaskProgressBar } from "./TaskProgressBar";
 
-const ORIGIN = "https://ui.perfetto.dev";
-
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
@@ -27,35 +24,6 @@ const useStyle = makeStyles((theme) => ({
     marginTop: theme.spacing(2),
   },
 }));
-
-const onClick = (job_id: string | null) => {
-  getTaskTimeline(job_id).then((resp) => {
-    console.log(resp);
-    openTrace(resp.data);
-  });
-};
-
-let timer: null | any = undefined;
-
-const openTrace = (arrayBuffer: any) => {
-  const win = window.open(ORIGIN);
-  window.addEventListener("message", (evt) => onMessage(evt, win, arrayBuffer));
-  if (win) {
-    timer = setInterval(() => win.postMessage("PING", ORIGIN), 50);
-  }
-};
-
-const onMessage = (evt: any, win: any, arrayBuffer: any) => {
-  console.log("ping");
-  if (evt.data !== "PONG") {
-    console.log("ping not done");
-    return;
-  }
-  console.log("ping done");
-  window.clearInterval(timer);
-  console.log(arrayBuffer);
-  win.postMessage(arrayBuffer, ORIGIN);
-};
 
 export const JobDetailChartsPage = () => {
   const classes = useStyle();
@@ -191,9 +159,6 @@ export const JobDetailChartsPage = () => {
             },
           ]}
         />
-        <Button onClick={() => onClick(job.job_id)} color="primary">
-          Timeline
-        </Button>
       </TitleCard>
       <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
       <TitleCard title="Task Table">

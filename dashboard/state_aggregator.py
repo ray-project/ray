@@ -4,11 +4,10 @@ import json
 
 from dataclasses import asdict, fields
 from itertools import islice
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from datetime import datetime
 
 from ray._private.ray_constants import env_integer
-from ray._private.profiling import get_perfetto_output
 
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
@@ -377,11 +376,9 @@ class StateAPIManager:
             profile_events = task_attempt.get("profile_events", {})
             if profile_events:
                 for event in profile_events["events"]:
-                    # End/start times are recorded in ns. Convert it to ms.
-                    # TODO(sang): Record time in ms from the source
-                    # and change the protobuf name.
-                    event["end_time"] = int(event["end_time"]) // 1e6
-                    event["start_time"] = int(event["start_time"]) // 1e6
+                    # End/start times are recorded in ns. We convert them to ms.
+                    event["end_time"] = int(event["end_time"]) / 1e6
+                    event["start_time"] = int(event["start_time"]) / 1e6
                     event["extra_data"] = json.loads(event["extra_data"])
             task_state["profile_events"] = profile_events
 
@@ -415,8 +412,7 @@ class StateAPIManager:
             for state in common_pb2.TaskStatus.keys():
                 key = f"{state.lower()}_ts"
                 if key in state_updates:
-                    # timestamp is recorded as nanosecond from the backend.
-                    # We need to convert it to the second.
+                    # timestamp is recorded in ns.
                     ts_ms = int(state_updates[key]) // 1e6
                     events.append(
                         {
@@ -739,13 +735,6 @@ class StateAPIManager:
             # so we don't calculate this separately.
             num_filtered=len(result.result),
         )
-
-    async def generate_task_timeline(self, job_id: Optional[str]) -> List[dict]:
-        filters = [("job_id", "=", job_id)] if job_id else None
-        result = await self.list_tasks(
-            option=ListApiOptions(detail=True, filters=filters, limit=10000)
-        )
-        return get_perfetto_output(result.result)
 
     def _message_to_dict(
         self,
