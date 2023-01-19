@@ -577,3 +577,24 @@ def use_gcs_for_bootstrap():
     This function is included for the purposes of backwards compatibility.
     """
     return True
+
+
+def cleanup_redis_storage(host, port, storage_namespace, **kwargs):
+    """This function is used to cleanup the storage. Before we having
+    a good design for storage backend, it can be used to delete the old
+    data. It support redis cluster and non cluster mode.
+
+    Args:
+       host: The host address of the Redis.
+       port: The port of the Redis.
+       storage_namespace: The namespace of the storage to be deleted.
+    """
+
+    import redis
+
+    try:
+        cli = redis.RedisCluster(host, port, **kwargs)
+    except redis.exceptions.RedisClusterException:
+        cli = redis.Redis(host, port, **kwargs)
+
+    cli.delete(storage_namespace)

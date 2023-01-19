@@ -7,6 +7,7 @@ import sys
 import grpc
 import pytest
 import ray
+import redis
 from ray._private.gcs_utils import GcsClient
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
@@ -209,6 +210,44 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     await async_wait_for_condition_async_predicate(
         check, expect_liveness=[True, False, False]
     )
+
+
+@pytest.fixture(params=[True, False])
+def redis_replicas(request, monkeypatch):
+    if request.param:
+        monkeypatch.setenv("TEST_EXTERNAL_REDIS_REPLICAS", "3")
+    yield
+
+
+@pytest.mark.skipif(
+    not enable_external_redis(), reason="Only valid when start with an external redis"
+)
+def test_redis_cleanup(redis_replicas, shutdown_only):
+    addr = ray.init(
+        namespace="a", _system_config={"external_storage_namespace": "c1"}
+    ).address_info["address"]
+    gcs_client = GcsClient(address=addr)
+    gcs_client.internal_kv_put(b"ABC", b"DEF", True, None)
+
+    ray.shutdown()
+    addr = ray.init(
+        namespace="a", _system_config={"external_storage_namespace": "c2"}
+    ).address_info["address"]
+    gcs_client = GcsClient(address=addr)
+    gcs_client.internal_kv_put(b"ABC", b"XYZ", True, None)
+    ray.shutdown()
+    redis_addr = os.environ["RAY_REDIS_ADDRESS"]
+    host, port = redis_addr.split(":")
+    if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
+        cli = redis.RedisCluster(host, port)
+    else:
+        cli = redis.Redis(host, port)
+
+    assert set(cli.keys()) == {b"c1", b"c2"}
+    gcs_utils.cleanup_redis_storage(host, port, "c1")
+    assert set(cli.keys()) == {b"c2"}
+    gcs_utils.cleanup_redis_storage(host, port, "c2")
+    assert len(cli.keys()) == 0
 
 
 if __name__ == "__main__":
