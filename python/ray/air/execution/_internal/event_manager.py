@@ -1,6 +1,6 @@
 import enum
 from numbers import Number
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from ray.air.execution.resources import (
     AcquiredResources,
@@ -13,7 +13,6 @@ from ray.air.execution._internal.tracked_actor_task import (
     TrackedActorTask,
     TrackedActorTaskCollection,
 )
-from ray.air.execution._internal.tracked_task import TrackedTask
 
 
 class EventType(enum.Enum):
@@ -72,20 +71,10 @@ class RayEventManager:
     method can then be used to specify a callback that is invoked when the task
     fails.
 
-    Lastly, regular tasks (not on actors) can be tracked. When scheduling a task
-    using
-    :meth:`schedule_task()
-    <ray.air.execution._internal.event_manager.RayEventManager.schedule_task>`,
-    a :ref:`TrackedTask <ray.air.execution._internal.tracked_task.TrackedTask`
-    object is returned.
-    The :meth:`TrackedTask.on_result()
-    <ray.air.execution._internal.tracked_task.TrackedTask.on_result>`
-    method can then be used to specify a callback that is invoked once the task
-    successfully resolved.
-    The :meth:`TrackedTask.on_error()
-    <ray.air.execution._internal.tracked_task.TrackedTask.on_error>`
-    method can then be used to specify a callback that is invoked when the actor task
-    fails.
+    The RayEventManager does not implement any true asynchronous processing. Control
+    has to be explicitly yielded to the event manager via :meth:`RayEventManager.wait`.
+    Callbacks will only be invoked when control is with the RayEventManager, and
+    callbacks will always be executed sequentially in order of arriving events.
 
     Args:
         resource_manager: Resource manager used to request resources for the actors.
@@ -277,30 +266,6 @@ class RayEventManager:
 
         Args:
             tracked_actor: Tracked actor object.
-        """
-        raise NotImplementedError
-
-    def schedule_task(
-        self,
-        remote_fn: Callable,
-        args: Optional[Tuple] = None,
-        kwargs: Optional[Dict] = None,
-    ) -> TrackedTask:
-        """Schedule and track a Ray task.
-
-        This method will schedule a Ray task and return a
-        :ref:`TrackedTask <ray.air.execution._internal.tracked_task.TrackedTask>`
-        object.
-
-        The ``TrackedTask`` object can be used to specify callbacks that are invoked
-        when the task resolves.
-
-        Args:
-            remote_fn: Remote function to schedule and track. This should be a
-                Ray function, e.g. decorated using ``ray.remote()``.
-            args: Arguments to pass to the task.
-            kwargs: Keyword arguments to pass to the task.
-
         """
         raise NotImplementedError
 

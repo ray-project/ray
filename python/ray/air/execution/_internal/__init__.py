@@ -5,7 +5,6 @@ from ray.air.execution._internal.tracked_actor_task import (
     TrackedActorTask,
     TrackedActorTaskCollection,
 )
-from ray.air.execution._internal.tracked_task import TrackedTask
 
 
 __all__ = [
@@ -15,5 +14,4 @@ __all__ = [
     "TrackedActor",
     "TrackedActorTask",
     "TrackedActorTaskCollection",
-    "TrackedTask",
 ]

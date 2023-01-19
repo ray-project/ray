@@ -9,6 +9,10 @@ class TrackedActorTask:
     This container class is used to define callbacks to be invoked when
     the task resolves, errors, or times out.
 
+    Note:
+        Objects of this class are returned by the :class:`RayEventManager`.
+        This class should not be instantiated manually.
+
     Example:
 
         .. code-block:: python
@@ -54,6 +58,10 @@ class TrackedActorTaskCollection:
 
     Callbacks specified for this collection will be propagated to each single
     actor task.
+
+    Note:
+        Objects of this class are returned by the :class:`RayEventManager`.
+        This class should not be instantiated manually.
 
     Example:
 
