@@ -426,14 +426,12 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
   absl::MutexLock lock(&mutex_);
   // Dispatch to the handler
   auto data = std::move(request.data());
-  size_t num_to_process = data.events_by_task_size();
   // Update counters.
   total_num_profile_task_events_dropped_ += data.num_profile_task_events_dropped();
   total_num_status_task_events_dropped_ += data.num_status_task_events_dropped();
 
   for (auto events_by_task : *data.mutable_events_by_task()) {
     total_num_task_events_reported_++;
-    auto task_id = TaskID::FromBinary(events_by_task.task_id());
     // TODO(rickyx): add logic to handle too many profile events for a single task
     // attempt.  https://github.com/ray-project/ray/issues/31279
 
