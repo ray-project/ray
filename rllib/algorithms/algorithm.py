@@ -1280,7 +1280,11 @@ class Algorithm(Trainable):
             # to bring these workers up to date.
             workers.foreach_worker(
                 func=lambda w: w.set_state(ray.get(state)),
+                remote_worker_ids=restored,
                 local_worker=False,
+                timeout_seconds=self.config.worker_restore_timeout_s,
+                # Bring back actor after successful state syncing.
+                mark_healthy=True,
             )
 
     @OverrideToImplementCustomLogic
