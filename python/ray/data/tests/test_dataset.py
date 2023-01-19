@@ -5414,13 +5414,17 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     ray.data.range(10, parallelism=10).map_batches(
         f, batch_size=1, compute=compute_strategy
     ).fully_executed()
-    expected_max_num_workers = math.ceil(
-        num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
-    )
-    assert (
-        compute_strategy.num_workers >= num_cpus
-        and compute_strategy.num_workers <= expected_max_num_workers
-    ), "Number of actors is out of the expected bound"
+
+    # The new execution backend is not using the ActorPoolStrategy under
+    # the hood, so the expectation here applies only to the old backend.
+    if not DatasetContext.get_current().new_execution_backend:
+        expected_max_num_workers = math.ceil(
+            num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
+        )
+        assert (
+            compute_strategy.num_workers >= num_cpus
+            and compute_strategy.num_workers <= expected_max_num_workers
+        ), "Number of actors is out of the expected bound"
 
 
 def test_default_batch_format(shutdown_only):
