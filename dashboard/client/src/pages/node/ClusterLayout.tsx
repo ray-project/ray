@@ -1,5 +1,5 @@
 import React from "react";
-import { RiInformationLine, RiLineChartLine } from "react-icons/ri";
+import { RiInformationLine, RiTableAltLine } from "react-icons/ri";
 import { SideTabLayout, SideTabRouteLink } from "../layout/SideTabLayout";
 
 export const ClusterLayout = () => {
@@ -8,9 +8,9 @@ export const ClusterLayout = () => {
       <SideTabRouteLink tabId="info" title="Info" Icon={RiInformationLine} />
       <SideTabRouteLink
         to=""
-        tabId="charts"
-        title="Charts"
-        Icon={RiLineChartLine}
+        tabId="table"
+        title="Table"
+        Icon={RiTableAltLine}
       />
     </SideTabLayout>
   );

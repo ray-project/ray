@@ -182,7 +182,7 @@ const App = () => {
                       />
                       <Route
                         element={
-                          <SideTabPage tabId="charts">
+                          <SideTabPage tabId="table">
                             <Nodes newIA />
                           </SideTabPage>
                         }

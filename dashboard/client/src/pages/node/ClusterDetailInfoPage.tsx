@@ -46,7 +46,7 @@ export const ClusterDetailInfoPage = () => {
         pageInfo={{
           title: "Cluster Info",
           id: "cluster-info",
-          path: "/cluster/detail/info",
+          path: "/cluster/info",
         }}
       />
       <TitleCard title={"Cluster Info"}>
