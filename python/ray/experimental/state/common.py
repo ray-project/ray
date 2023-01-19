@@ -133,6 +133,15 @@ class SummaryApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
 
+    # Filters. Each tuple pair (key, predicate, value) means key predicate value.
+    # If there's more than 1 filter, it means AND.
+    # E.g., [(key, "=", val), (key2, "!=" val2)] means (key=val) AND (key2!=val2)
+    # For summary endpoints that call list under the hood, we'll pass
+    # these filters directly into the list call.
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
+        default_factory=list
+    )
+
 
 def state_column(*, filterable: bool, detail: bool = False, **kwargs):
     """A wrapper around dataclass.field to add additional metadata.
@@ -512,6 +521,8 @@ class TaskState(StateSchema):
     required_resources: dict = state_column(detail=True, filterable=False)
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
+    #: The parent task id.
+    parent_task_id: str = state_column(filterable=True)
 
 
 @dataclass(init=True)

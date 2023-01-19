@@ -1,9 +1,11 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterator, Tuple
+from typing import Dict, List, Optional, Iterable, Tuple
 
 import ray
+from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 
 
@@ -13,7 +15,7 @@ class RefBundle:
 
     Operators take in and produce streams of RefBundles.
 
-    Most commonly an RefBundle consists of a single block object reference.
+    Most commonly a RefBundle consists of a single block object reference.
     In some cases, e.g., due to block splitting, or for a reduce task, there may
     be more than one block.
 
@@ -62,7 +64,10 @@ class RefBundle:
         Returns:
             The number of bytes freed.
         """
-        raise NotImplementedError
+        should_free = self.owns_blocks and DatasetContext.get_current().eager_free
+        for b in self.blocks:
+            trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
+        return self.size_bytes() if should_free else 0
 
 
 @dataclass
@@ -105,7 +110,7 @@ class PhysicalOperator:
             def __init__(self):
                 self.active_tasks = []
 
-            def add_input(self, refs):
+            def add_input(self, refs, _):
                 self.active_tasks.append(map_task.remote(refs))
 
             def has_next(self):
@@ -128,6 +133,7 @@ class PhysicalOperator:
         self._input_dependencies = input_dependencies
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
+        self._inputs_complete = not input_dependencies
 
     @property
     def name(self) -> str:
@@ -140,6 +146,14 @@ class PhysicalOperator:
             self, "_input_dependencies"
         ), "PhysicalOperator.__init__() was not called."
         return self._input_dependencies
+
+    def completed(self) -> bool:
+        """Return True when this operator is done and all outputs are taken."""
+        return (
+            self._inputs_complete
+            and len(self.get_work_refs()) == 0
+            and not self.has_next()
+        )
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
@@ -156,7 +170,7 @@ class PhysicalOperator:
     def __reduce__(self):
         raise ValueError("PhysicalOperator is not serializable.")
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.input_dependencies:
             out_str = ", ".join([str(x) for x in self.input_dependencies])
             out_str += " -> "
@@ -188,19 +202,13 @@ class PhysicalOperator:
         """
         raise NotImplementedError
 
-    def inputs_done(self, input_index: int) -> None:
-        """Called when an upstream operator finishes.
+    def inputs_done(self) -> None:
+        """Called when all upstream operators have completed().
 
-        This is called exactly once per input dependency. After this is called, the
-        upstream operator guarantees no more inputs will be added via `add_input`
-        for that input index.
-
-        Args:
-            input_index: The index identifying the input dependency producing the
-                input. For most operators, this is always `0` since there is only
-                one upstream input operator.
+        After this is called, the executor guarantees that no more inputs will be added
+        via `add_input` for any input index.
         """
-        pass
+        self._inputs_complete = True
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available.
@@ -223,6 +231,13 @@ class PhysicalOperator:
         `notify_work_completed(ref)` to tell this operator of the state change.
         """
         return []
+
+    def num_active_work_refs(self) -> int:
+        """Return the number of active work refs.
+
+        Subclasses can override this as a performance optimization.
+        """
+        return len(self.get_work_refs())
 
     def notify_work_completed(self, work_ref: ray.ObjectRef) -> None:
         """Executor calls this when the given work is completed and local.
@@ -255,7 +270,7 @@ class Executor:
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
-    ) -> Iterator[RefBundle]:
+    ) -> Iterable[RefBundle]:
         """Start execution.
 
         Args:

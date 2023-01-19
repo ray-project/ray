@@ -652,7 +652,7 @@ py_test(
     name = "learning_tests_two_step_game_qmix_vdn_mixer",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/qmix/two-step-game-qmix-vdn-mixer.yaml"],
     args = ["--dir=tuned_examples/qmix", "--framework=torch"]
@@ -898,6 +898,13 @@ py_test(
     srcs = ["algorithms/appo/tests/test_appo.py"]
 )
 
+py_test(
+    name = "test_appo_off_policyness",
+    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["algorithms/appo/tests/test_appo_off_policyness.py"]
+)
+
 # ARS
 py_test(
     name = "test_ars",
@@ -1033,6 +1040,12 @@ py_test(
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace.py"]
 )
+py_test(
+    name = "test_impala_off_policyness",
+    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
+)
 
 # MARWIL
 py_test(
@@ -1093,6 +1106,13 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_with_rl_module.py"]
+)
+
+py_test(
+    name = "test_ppo_rl_module",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_ppo_rl_module.py"]
 )
 
 # PPO Reproducibility
@@ -1471,7 +1491,7 @@ py_test(
 
 
 py_test(
-    name = "test_pg_tf_pong_v0",
+    name = "test_pg_tf_pong_v5",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
@@ -1806,17 +1826,24 @@ py_test(
 )
 
 py_test(
-    name = "test_rl_optimizer_torch",
-    tags = ["team:rllib", "core"],
+    name = "test_trainer_runner",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "medium",
-    srcs = ["core/optim/tests/test_rl_optimizer_torch.py"]
+    srcs = ["core/rl_trainer/tests/test_trainer_runner.py"]
 )
 
 py_test(
-    name = "test_rl_optimizer_tf",
+    name = "test_trainer_runner_local",
+    tags = ["team:rllib", "core", "exclusive"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/test_trainer_runner_local.py"]
+)
+
+py_test(
+    name = "test_rl_trainer",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/optim/tests/test_rl_optimizer_tf.py"]
+    srcs = ["core/rl_trainer/tests/test_rl_trainer.py"]
 )
 
 # --------------------------------------------------------------------
@@ -2526,12 +2553,30 @@ py_test(
 )
 
 py_test(
-     name = "tests/test_supported_spaces_pg",
+     name = "tests/test_supported_spaces_impala_appo",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "multi_gpu"],
+     tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesPG"]
+     args = ["TestSupportedSpacesIMPALAAPPO"]
+ )
+
+py_test(
+     name = "tests/test_supported_spaces_a3c_ppo",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:rllib", "tests_dir"],
+     size = "large",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesA3CPPO"]
+ )
+
+py_test(
+     name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
+     main = "tests/test_supported_spaces.py",
+     tags = ["team:rllib", "tests_dir", "multi_gpu", "exclusive"],
+     size = "medium",
+     srcs = ["tests/test_supported_spaces.py"],
+     args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
  )
 
 py_test(
@@ -2651,18 +2696,18 @@ py_test(
     name = "examples/batch_norm_model_dqn_tf",
     main = "examples/batch_norm_model.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--run=DQN", "--stop-reward=70"]
+    args = ["--as-test", "--run=DQN", "--stop-reward=70", "--stop-time=400"]
 )
 
 py_test(
     name = "examples/batch_norm_model_dqn_torch",
     main = "examples/batch_norm_model.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",  # DQN learns much slower with BatchNorm.
+    size = "large",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
-    args = ["--as-test", "--framework=torch", "--run=DQN", "--stop-reward=70"]
+    args = ["--as-test", "--framework=torch", "--run=DQN", "--stop-reward=70", "--stop-time=400"]
 )
 
 py_test(
