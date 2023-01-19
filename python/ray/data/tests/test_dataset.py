@@ -5417,6 +5417,8 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
 
     # The new execution backend is not using the ActorPoolStrategy under
     # the hood, so the expectation here applies only to the old backend.
+    # TODO(https://github.com/ray-project/ray/issues/31723): we should check
+    # the num of workers once we have autoscaling in new execution backend.
     if not DatasetContext.get_current().new_execution_backend:
         expected_max_num_workers = math.ceil(
             num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
