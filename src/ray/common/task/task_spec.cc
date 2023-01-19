@@ -290,24 +290,15 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
       dependencies.push_back(ArgId(i));
     }
   }
-  if (IsActorTask()) {
-    dependencies.push_back(PreviousActorTaskDummyObjectId());
-  }
   return dependencies;
 }
 
-std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies(
-    bool add_dummy_dependency) const {
+std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
   std::vector<rpc::ObjectReference> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
       dependencies.push_back(message_->args(i).object_ref());
     }
-  }
-  if (add_dummy_dependency && IsActorTask()) {
-    const auto &dummy_ref =
-        GetReferenceForActorDummyObject(PreviousActorTaskDummyObjectId());
-    dependencies.push_back(dummy_ref);
   }
   return dependencies;
 }
@@ -397,12 +388,6 @@ ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
   RAY_CHECK(IsActorTask());
   return ObjectID::FromBinary(
       message_->actor_task_spec().actor_creation_dummy_object_id());
-}
-
-ObjectID TaskSpecification::PreviousActorTaskDummyObjectId() const {
-  RAY_CHECK(IsActorTask());
-  return ObjectID::FromBinary(
-      message_->actor_task_spec().previous_actor_task_dummy_object_id());
 }
 
 ObjectID TaskSpecification::ActorDummyObject() const {

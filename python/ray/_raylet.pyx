@@ -1414,6 +1414,14 @@ def maybe_initialize_job_config():
             sys.path.insert(0, p)
     job_config_initialized = True
 
+    # Record the task name via :task_name: magic token in the log file.
+    # This is used for the prefix in driver logs `(task_name pid=123) ...`
+    job_id_magic_token = "{}{}\n".format(
+        ray_constants.LOG_PREFIX_JOB_ID, core_worker.get_current_job_id().hex())
+    # Print on both .out and .err
+    print(job_id_magic_token, end="")
+    print(job_id_magic_token, file=sys.stderr, end="")
+
 
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
 # up to hundreds of thousands of times per second).
