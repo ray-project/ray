@@ -2,70 +2,62 @@ from dataclasses import dataclass
 from typing import Callable, Optional, List, Dict, Any, Iterator
 
 import ray
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.memory_tracing import trace_allocation
+from ray.data.block import Block
+from ray.data.context import DatasetContext
+from ray.data._internal.compute import (
+    ComputeStrategy,
+    TaskPoolStrategy,
+    ActorPoolStrategy,
+)
+from ray.data._internal.execution.util import merge_ref_bundles
 from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
-from ray.data._internal.execution.util import merge_ref_bundles
-from ray.data.block import Block, BlockAccessor, BlockExecStats
-from ray.data.context import DatasetContext
+from ray.data._internal.execution.operators.map_task_submitter import MapTaskSubmitter
+from ray.data._internal.execution.operators.actor_pool_submitter import (
+    ActorPoolSubmitter,
+)
+from ray.data._internal.execution.operators.task_pool_submitter import TaskPoolSubmitter
+from ray.data._internal.memory_tracing import trace_allocation
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
 
-def _map_task(
-    fn: Callable[[Iterator[Block]], Iterator[Block]], *blocks: Block
-) -> Iterator[Block]:
-    """Remote function for a single operator task.
-
-    Args:
-        fn: The callable that takes Iterator[Block] as input and returns
-            Iterator[Block] as output.
-        blocks: The concrete block values from the task ref bundle.
-
-    Returns:
-        A generator of blocks, followed by the list of BlockMetadata for the blocks
-        as the last generator return.
-    """
-    output_metadata = []
-    stats = BlockExecStats.builder()
-    for b_out in fn(iter(blocks)):
-        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
-        m_out.exec_stats = stats.build()
-        output_metadata.append(m_out)
-        yield b_out
-        stats = BlockExecStats.builder()
-    yield output_metadata
-
-
-@dataclass
-class _TaskState:
-    """Tracks the driver-side state for an MapOperator task.
-
-    Attributes:
-        inputs: The input ref bundle.
-        output: The output ref bundle that is set when the task completes.
-    """
-
-    inputs: RefBundle
-    output: Optional[RefBundle] = None
-
-
-class MapOperatorTasksImpl:
+class MapOperatorState:
     def __init__(
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
+        compute_strategy: ComputeStrategy,
         ray_remote_args: Optional[Dict[str, Any]],
         min_rows_per_bundle: Optional[int],
     ):
         # Execution arguments.
-        self._ray_remote_args = (ray_remote_args or {}).copy()
         self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
 
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
-        self._transform_fn_ref = ray.put(transform_fn)
+        transform_fn_ref = ray.put(transform_fn)
+
+        # Submitter of Ray tasks mapping transform_fn over data.
+        if ray_remote_args is None:
+            ray_remote_args = {}
+        if isinstance(compute_strategy, TaskPoolStrategy):
+            task_submitter = TaskPoolSubmitter(transform_fn_ref, ray_remote_args)
+        elif isinstance(compute_strategy, ActorPoolStrategy):
+            # TODO(Clark): Better mapping from configured min/max pool size to static
+            # pool size?
+            pool_size = compute_strategy.max_size
+            if pool_size == float("inf"):
+                # Use min_size if max_size is unbounded (default).
+                pool_size = compute_strategy.min_size
+            task_submitter = ActorPoolSubmitter(
+                transform_fn_ref, ray_remote_args, pool_size
+            )
+        else:
+            raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        self._task_submitter: MapTaskSubmitter = task_submitter
+        # Whether we have started the task submitter yet.
+        self._have_started_submitter = False
 
         # The temporary block bundle used to accumulate inputs until they meet the
         # min_rows_per_bundle requirement.
@@ -82,6 +74,11 @@ class MapOperatorTasksImpl:
         self._obj_store_mem_peak: int = 0
 
     def add_input(self, bundle: RefBundle) -> None:
+        if not self._have_started_submitter:
+            # Start the task submitter on the first input.
+            self._task_submitter.start()
+            self._have_started_submitter = True
+
         if self._min_rows_per_bundle is None:
             self._create_task(bundle)
             return
@@ -106,14 +103,16 @@ class MapOperatorTasksImpl:
             # TODO(ekl) add a warning if we merge 10+ blocks per bundle.
             self._block_bundle = merge_ref_bundles(self._block_bundle, bundle)
 
-    def inputs_done(self, input_index: int) -> None:
-        assert input_index == 0, "Map operator only supports one input."
+    def inputs_done(self) -> None:
         if self._block_bundle:
             self._create_task(self._block_bundle)
             self._block_bundle = None
+        self._task_submitter.task_submission_done()
 
     def work_completed(self, ref: ObjectRef[ObjectRefGenerator]) -> None:
-        task = self._tasks.pop(ref)
+        self._task_submitter.task_done(ref)
+        task: _TaskState = self._tasks.pop(ref)
+        # Dynamic block splitting path.
         all_refs = list(ray.get(ref))
         del ref
         block_refs = all_refs[:-1]
@@ -149,21 +148,30 @@ class MapOperatorTasksImpl:
         return bundle
 
     def get_work_refs(self) -> List[ray.ObjectRef]:
-        return list(self._tasks)
+        return list(self._tasks.keys())
+
+    def num_active_work_refs(self) -> int:
+        return len(self._tasks)
 
     def shutdown(self) -> None:
-        # Cancel all active tasks.
-        for task in self._tasks:
-            ray.cancel(task)
-        # Wait until all tasks have failed or been cancelled.
-        for task in self._tasks:
-            try:
-                ray.get(task)
-            except ray.exceptions.RayError:
-                # Cancellation either succeeded, or the task had already failed with
-                # a different error, or cancellation failed. In all cases, we
-                # swallow the exception.
-                pass
+        self._task_submitter.shutdown(self.get_work_refs())
+
+    @property
+    def obj_store_mem_alloc(self) -> int:
+        """Return the object store memory allocated by this operator execution."""
+        return self._obj_store_mem_alloc
+
+    @property
+    def obj_store_mem_freed(self) -> int:
+        """Return the object store memory freed by this operator execution."""
+        return self._obj_store_mem_freed
+
+    @property
+    def obj_store_mem_peak(self) -> int:
+        """Return the peak object store memory utilization during this operator
+        execution.
+        """
+        return self._obj_store_mem_peak
 
     def _create_task(self, bundle: RefBundle) -> None:
         input_blocks = []
@@ -172,14 +180,24 @@ class MapOperatorTasksImpl:
         # TODO fix for Ray client: https://github.com/ray-project/ray/issues/30458
         if not DatasetContext.get_current().block_splitting_enabled:
             raise NotImplementedError("New backend requires block splitting")
-        map_task = cached_remote_fn(_map_task, num_returns="dynamic")
-        generator_ref = map_task.options(**self._ray_remote_args).remote(
-            self._transform_fn_ref, *input_blocks
-        )
+        ref: ObjectRef[ObjectRefGenerator] = self._task_submitter.submit(input_blocks)
         task = _TaskState(bundle)
-        self._tasks[generator_ref] = task
+        self._tasks[ref] = task
         self._tasks_by_output_order[self._next_task_index] = task
         self._next_task_index += 1
         self._obj_store_mem_cur += bundle.size_bytes()
         if self._obj_store_mem_cur > self._obj_store_mem_peak:
             self._obj_store_mem_peak = self._obj_store_mem_cur
+
+
+@dataclass
+class _TaskState:
+    """Tracks the driver-side state for an MapOperator task.
+
+    Attributes:
+        inputs: The input ref bundle.
+        output: The output ref bundle that is set when the task completes.
+    """
+
+    inputs: RefBundle
+    output: Optional[RefBundle] = None
