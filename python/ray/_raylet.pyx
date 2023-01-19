@@ -1020,8 +1020,8 @@ cdef execute_task_with_cancellation_handler(
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
 
-    # Reconfigure worker logs in case the worker is lazily intialized.
-    ray._private.ray_logging.reconfigure_worker_logs("WORKER", job_id.hex())
+    # Init worker logs in case the worker is lazily intialized.
+    ray._private.ray_logging.init_worker_logs("WORKER", job_id.hex())
 
     # Automatically restrict the GPUs available to this task.
     ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())

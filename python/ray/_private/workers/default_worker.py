@@ -216,8 +216,11 @@ if __name__ == "__main__":
         ray_debugger_external=args.ray_debugger_external,
     )
 
-    # Setup log file.
-    init_worker_logs(args.worker_type)
+    # Setup worker log files for non executing-workers.
+    # The executing-worker's logs will be initialized after
+    # recieved the first task.
+    if args.worker_type != "WORKER":
+        init_worker_logs(args.worker_type)
 
     if mode == ray.WORKER_MODE:
         ray._private.worker.global_worker.main_loop()

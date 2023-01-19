@@ -15,7 +15,6 @@ from ray.dashboard.datacenter import DataSource
 logger = logging.getLogger(__name__)
 
 WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
-LOG_FILE_NIL_JOB_ID = "ffffffff"
 
 
 class LogsManager:
@@ -186,15 +185,7 @@ class LogsManager:
                 worker_pid_from_filename = int(
                     WORKER_LOG_PATTERN.match(filename).group(3)
                 )
-                worker_job_id_from_filename = WORKER_LOG_PATTERN.match(filename).group(
-                    2
-                )
-                # ignore files with Nil job_id, which should not be visible to users.
-                # TODO: handle the case multiple files with same pid better.
-                if (
-                    worker_pid_from_filename == pid
-                    and worker_job_id_from_filename != LOG_FILE_NIL_JOB_ID
-                ):
+                if worker_pid_from_filename == pid:
                     log_filename = filename
                     break
 
