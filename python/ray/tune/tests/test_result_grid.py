@@ -1,8 +1,9 @@
 import json
 import os
 import pickle
-from pathlib import Path
 import shutil
+from pathlib import Path
+from typing import Optional, List
 
 import pytest
 import pandas as pd
@@ -14,6 +15,7 @@ from ray.air import Checkpoint, session
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
+from ray.tune.syncer import Syncer
 from ray.tune.tests.tune_test_util import create_tune_experiment_checkpoint
 
 
@@ -23,6 +25,21 @@ def ray_start_2_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+class MockSyncer(Syncer):
+    def sync_up(
+        self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
+    ) -> bool:
+        return True
+
+    def sync_down(
+        self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
+    ) -> bool:
+        return True
+
+    def delete(self, remote_dir: str) -> bool:
+        return True
 
 
 def test_result_grid(ray_start_2_cpus):
@@ -342,6 +359,35 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
         assert "moved_ray_results" in checkpoint._local_path
         checkpoint_data.append(checkpoint.to_dict()["it"])
     assert set(checkpoint_data) == {5, 6}
+
+
+def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
+    # Test that checkpoints returned by ResultGrid point to URI
+    # if upload_dir is specified in SyncConfig.
+    local_dir = Path(tmpdir) / "local_dir"
+    sync_config = tune.SyncConfig(upload_dir="s3://bucket", syncer=MockSyncer())
+
+    def trainable(config):
+        for i in range(5):
+            checkpoint = Checkpoint.from_dict({"model": i})
+            session.report(metrics={"metric": i}, checkpoint=checkpoint)
+
+    tuner = tune.Tuner(
+        trainable,
+        run_config=air.RunConfig(sync_config=sync_config, local_dir=local_dir),
+        tune_config=tune.TuneConfig(
+            metric="metric",
+            mode="max",
+        ),
+    )
+    results = tuner.fit()
+    shutil.rmtree(local_dir)
+    best_checkpoint = results.get_best_result().checkpoint
+    assert not best_checkpoint.uri.startswith("file://")
+    assert (
+        best_checkpoint.get_internal_representation()
+        == results._experiment_analysis.best_checkpoint.get_internal_representation()
+    )
 
 
 if __name__ == "__main__":

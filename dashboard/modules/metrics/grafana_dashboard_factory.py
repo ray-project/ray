@@ -287,11 +287,24 @@ GRAFANA_PANELS = [
     Panel(
         id=34,
         title="Node Memory by Component",
-        description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed USS (unique set size) per Ray component.",
+        description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed USS (unique set size) per Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.",
         unit="bytes",
         targets=[
             Target(
                 expr="sum(ray_component_uss_mb{{{global_filters}}} * 1e6) by (Component)",
+                legend="{{Component}}",
+            )
+        ],
+    ),
+    Panel(
+        id=37,
+        title="Node CPU by Component",
+        description="The physical (hardware) CPU usage across the cluster, broken down by component. This reports the summed CPU usage per Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.",
+        unit="cores",
+        targets=[
+            Target(
+                # ray_component_cpu_percentage returns a percentage that can be > 100. It means that it uses more than 1 CPU.
+                expr="sum(ray_component_cpu_percentage{{{global_filters}}}) by (Component) / 100",
                 legend="{{Component}}",
             )
         ],
