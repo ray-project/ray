@@ -47,7 +47,7 @@ spec:
     - podSelector: {}
     ports:
     - protocol: TCP
-      port: 8079
+      port: 52365
   - from:
     - podSelector: {}
     ports:
@@ -196,7 +196,7 @@ spec:
     - podSelector: {}
     ports:
     - protocol: TCP
-      port: 8079
+      port: 52365
   - to:
     - podSelector: {}
     ports:

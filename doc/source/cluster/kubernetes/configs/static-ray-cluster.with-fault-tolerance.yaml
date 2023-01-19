@@ -34,8 +34,8 @@ spec:
     targetPort: 8078
   - name: dashboard-agent-listen-port
     protocol: TCP
-    port: 8079
-    targetPort: 8079
+    port: 52365
+    targetPort: 52365
   - name: worker-port-1
     protocol: TCP
     port: 10002
@@ -155,7 +155,7 @@ spec:
           command: [ "/bin/bash", "-c", "--" ]
           # if there is no password for Redis, set --redis-password=''
           args:
-            - "ray start --head --port=6380 --num-cpus=$MY_CPU_REQUEST --dashboard-host=0.0.0.0 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=8079 --min-worker-port=10002 --max-worker-port=10020 --redis-password='' --block"
+            - "ray start --head --port=6380 --num-cpus=$MY_CPU_REQUEST --dashboard-host=0.0.0.0 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --min-worker-port=10002 --max-worker-port=10020 --redis-password='' --block"
           ports:
             - containerPort: 6380 # GCS server
             - containerPort: 10001 # Used by Ray Client
@@ -163,7 +163,7 @@ spec:
             - containerPort: 8076
             - containerPort: 8077
             - containerPort: 8078
-            - containerPort: 8079
+            - containerPort: 52365
             - containerPort: 10002
             - containerPort: 10003
             - containerPort: 10004
@@ -247,12 +247,12 @@ spec:
         imagePullPolicy: Always
         command: ["/bin/bash", "-c", "--"]
         args:
-          - "ray start --num-cpus=$MY_CPU_REQUEST --address=$SERVICE_RAY_CLUSTER_SERVICE_HOST:$SERVICE_RAY_CLUSTER_SERVICE_PORT_GCS_SERVER --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=8079 --min-worker-port=10002 --max-worker-port=10020 --block"
+          - "ray start --num-cpus=$MY_CPU_REQUEST --address=$SERVICE_RAY_CLUSTER_SERVICE_HOST:$SERVICE_RAY_CLUSTER_SERVICE_PORT_GCS_SERVER --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --min-worker-port=10002 --max-worker-port=10020 --block"
         ports:
           - containerPort: 8076
           - containerPort: 8077
           - containerPort: 8078
-          - containerPort: 8079
+          - containerPort: 52365
           - containerPort: 10002
           - containerPort: 10003
           - containerPort: 10004
