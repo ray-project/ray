@@ -257,9 +257,9 @@ def test_lazy_fanout(shutdown_only, local_path):
     ray.get(map_counter.reset.remote())
     # The source data shouldn't be cleared since it's non-lazy.
     ds = ray.data.from_items(list(range(10)))
-    # Add extra transformation before being lazy.
-    ds = ds.map(inc)
+    # Add extra transformation after being lazy.
     ds = ds.lazy()
+    ds = ds.map(inc)
     ds1 = ds.map(inc)
     ds2 = ds.map(inc)
     # Test content.

@@ -2680,19 +2680,24 @@ class Dataset(Generic[T]):
         # During row-based ops, we also choose a batch format that lines up with the
         # current dataset format in order to eliminate unnecessary copies and type
         # conversions.
-        try:
-            dataset_format = self.dataset_format()
-        except ValueError:
-            # Dataset is empty or cleared, so fall back to "default".
+        ctx = DatasetContext.get_current()
+        if ctx.use_streaming_executor:
+            # TODO: calling dataset_format() triggers bulk execution.
             batch_format = "default"
         else:
-            batch_format = (
-                "pyarrow"
-                if dataset_format == BlockFormat.ARROW
-                else "pandas"
-                if dataset_format == BlockFormat.PANDAS
-                else "default"
-            )
+            try:
+                dataset_format = self.dataset_format()
+            except ValueError:
+                # Dataset is empty or cleared, so fall back to "default".
+                batch_format = "default"
+            else:
+                batch_format = (
+                    "pyarrow"
+                    if dataset_format == BlockFormat.ARROW
+                    else "pandas"
+                    if dataset_format == BlockFormat.PANDAS
+                    else "default"
+                )
         for batch in self.iter_batches(
             batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
@@ -2749,15 +2754,14 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        blocks, stats = self._plan.consume()
-
+        block_iterator, stats, owned = self._plan.execute_to_iterator()
         time_start = time.perf_counter()
 
         yield from batch_block_refs(
-            blocks.iter_blocks(),
+            block_iterator,
             stats=stats,
             prefetch_blocks=prefetch_blocks,
-            clear_block_after_read=blocks._owned_by_consumer,
+            clear_block_after_read=owned,
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
@@ -3619,7 +3623,7 @@ class Dataset(Generic[T]):
                 self._blocks = blocks
                 self._i = 0
 
-            def __next__(self) -> "Dataset[T]":
+            def __next__(self) -> Callable[[], "Dataset[T]"]:
                 if times and self._i >= times:
                     raise StopIteration
                 epoch = self._i

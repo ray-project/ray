@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray.types import ObjectRef
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
@@ -416,6 +417,52 @@ class ExecutionPlan:
             self._reset_plan()
         return bl, stats
 
+    def execute_to_iterator(
+        self,
+        allow_clear_input_blocks: bool = True,
+        force_read: bool = False,
+    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats]:
+        """Execute this plan, returning an iterator.
+
+        If the streaming execution backend is enabled, this will use streaming
+        execution to generate outputs, otherwise it will fall back to bulk exec.
+
+        Args:
+            allow_clear_input_blocks: Whether we should try to clear the input blocks
+                for each stage.
+            force_read: Whether to force the read stage to fully execute.
+
+        Returns:
+            Tuple of iterator over output blocks and Dataset stats.
+        """
+
+        ctx = DatasetContext.get_current()
+        if not ctx.use_streaming_executor:
+            bl, stats = self.consume()
+            return bl.iter_blocks(), stats, bl._owned_by_consumer
+
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
+        from ray.data._internal.execution.interfaces import ExecutionOptions
+        from ray.data._internal.execution.legacy_compat import (
+            execute_to_legacy_block_iterator,
+        )
+
+        executor = StreamingExecutor(ExecutionOptions())
+        block_iter = execute_to_legacy_block_iterator(
+            executor,
+            self,
+            allow_clear_input_blocks=allow_clear_input_blocks,
+            dataset_uuid=self._dataset_uuid,
+        )
+        # Since the generator doesn't run any code until we try to fetch the first
+        # value, force execution of one bundle before we call get_stats().
+        gen = iter(block_iter)
+        try:
+            block_iter = itertools.chain([next(gen)], gen)
+        except StopIteration:
+            pass
+        return block_iter, executor.get_stats()
+
     def execute(
         self,
         allow_clear_input_blocks: bool = True,
@@ -423,6 +470,8 @@ class ExecutionPlan:
         cache_output_blocks: bool = False,
     ) -> BlockList:
         """Execute this plan.
+
+        This will always execute the plan using bulk execution.
 
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
