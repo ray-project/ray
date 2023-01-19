@@ -4227,14 +4227,13 @@
   frequency: nightly
   team: data
   cluster:
-    cluster_env: pipelined_training_app.yaml
-    cluster_compute: pipelined_training_compute.yaml
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    timeout: 1200
+    # Expect the test to finish around 40 seconds.
+    timeout: 80
     script: python parquet_metadata_resolution.py --num-files 915
-    wait_for_nodes:
-      num_nodes: 15
 
 
 - name: dataset_random_access
