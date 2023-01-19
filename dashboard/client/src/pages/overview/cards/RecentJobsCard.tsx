@@ -17,6 +17,7 @@ const useStyles = makeStyles((theme) =>
     root: {
       display: "flex",
       flexDirection: "column",
+      padding: theme.spacing(2, 3),
     },
     listContainer: {
       marginTop: theme.spacing(2),

@@ -64,6 +64,7 @@ const basicTheme: ThemeOptions = {
     MuiPaper: {
       outlined: {
         borderColor: "#D2DCE6",
+        borderRadius: 8,
       },
     },
   },

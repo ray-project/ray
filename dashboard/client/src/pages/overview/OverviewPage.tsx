@@ -25,11 +25,10 @@ const useStyles = makeStyles((theme) =>
       },
     },
     overviewCard: {
-      flex: "0 0 448px",
-      maxWidth: 448,
+      flex: "1 0 448px",
+      maxWidth: "100%",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus padding between cards
-        flex: "1 0 448px",
         maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
       },
     },

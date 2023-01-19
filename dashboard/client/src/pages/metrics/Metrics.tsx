@@ -23,12 +23,12 @@ const useStyles = makeStyles((theme) =>
       gap: theme.spacing(3),
     },
     chart: {
-      flex: "0 0 448px",
-      maxWidth: 448,
+      flex: "1 0 448px",
+      maxWidth: "100%",
       height: 300,
+      overflow: "hidden",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus padding between cards
-        flex: "1 0 448px",
         maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
       },
     },
@@ -225,7 +225,7 @@ export const Metrics = () => {
           </Alert>
           <div className={classes.grafanaEmbedsContainer}>
             {METRICS_CONFIG.map(({ title, path }) => (
-              <Paper className={classes.chart} elevation={2} variant="outlined">
+              <Paper className={classes.chart} elevation={1} variant="outlined">
                 <iframe
                   key={title}
                   title={title}

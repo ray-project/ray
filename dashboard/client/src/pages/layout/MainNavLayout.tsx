@@ -212,15 +212,21 @@ const MainNavBreadcrumbs = () => {
         );
         if (index === 0) {
           return (
-            <Typography key={id} className={classes.breadcrumbItem}>
+            <Typography
+              key={id}
+              className={classes.breadcrumbItem}
+              variant="body2"
+            >
               {linkOrText}
             </Typography>
           );
         } else {
           return (
             <React.Fragment key={id}>
-              <Typography className={classes.breadcrumbItem}>{"/"}</Typography>
-              <Typography className={classes.breadcrumbItem}>
+              <Typography className={classes.breadcrumbItem} variant="body2">
+                {"/"}
+              </Typography>
+              <Typography className={classes.breadcrumbItem} variant="body2">
                 {linkOrText}
               </Typography>
             </React.Fragment>

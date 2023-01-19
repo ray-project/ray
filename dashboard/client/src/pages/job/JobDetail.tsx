@@ -170,9 +170,7 @@ export const JobDetailChartsPage = ({
       <TitleCard title="Task Table">
         <TaskList jobId={jobId} />
       </TitleCard>
-      {!newIA && (
-        <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
-      )}
+      <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
       <TitleCard title="Placement Groups">
         <PlacementGroupList jobId={jobId} />
       </TitleCard>

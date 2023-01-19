@@ -12,6 +12,7 @@ const useStyles = makeStyles((theme) =>
       flexWrap: "nowrap",
       alignItems: "center",
       fontWeight: 500,
+      cursor: "pointer",
     },
     icon: {
       marginRight: theme.spacing(1),
