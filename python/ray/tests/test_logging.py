@@ -317,7 +317,7 @@ def test_worker_id_names(shutdown_only):
         if "python-core-worker" in str(path):
             pattern = ".*-([a-f0-9]*).*"
         elif "worker" in str(path):
-            pattern = ".*worker-([a-f0-9]*)-.*-.*"
+            pattern = ".*worker-([a-f0-9]*)-.*"
         else:
             continue
         worker_id = re.match(pattern, str(path)).group(1)
@@ -549,8 +549,8 @@ def test_log_monitor(tmp_path, live_dead_pids):
     )
 
     # files
-    worker_out_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.out"
-    worker_err_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.err"
+    worker_out_log_file = f"worker-{worker_id}-{dead_pid}.out"
+    worker_err_log_file = f"worker-{worker_id}-{dead_pid}.err"
     monitor = "monitor.log"
     raylet_out = "raylet.out"
     raylet_err = "raylet.err"
@@ -610,8 +610,8 @@ def test_log_monitor(tmp_path, live_dead_pids):
     assert not worker_out_log_file_info.is_err_file
     assert worker_err_log_file_info.is_err_file
 
-    assert worker_out_log_file_info.job_id == job_id
-    assert worker_err_log_file_info.job_id == job_id
+    assert worker_out_log_file_info.job_id == None
+    assert worker_err_log_file_info.job_id == None
     assert worker_out_log_file_info.worker_pid == int(dead_pid)
     assert worker_out_log_file_info.worker_pid == int(dead_pid)
 
@@ -673,7 +673,7 @@ def test_log_monitor(tmp_path, live_dead_pids):
     """
     # log_monitor.open_closed_files() should close all files
     # if it cannot open new files.
-    new_worker_err_file = f"worker-{worker_id}-{job_id}-{alive_pid}.err"
+    new_worker_err_file = f"worker-{worker_id}-{alive_pid}.err"
     create_file(log_dir, new_worker_err_file, contents)
     log_monitor.update_log_filenames()
 
@@ -702,7 +702,7 @@ def test_log_monitor_actor_task_name(tmp_path):
     log_monitor = LogMonitor(
         str(log_dir), mock_publisher, lambda _: True, max_files_open=5
     )
-    worker_out_log_file = f"worker-{worker_id}-{job_id}-{pid}.out"
+    worker_out_log_file = f"worker-{worker_id}-{pid}.out"
     first_line = "First line\n"
     create_file(log_dir, worker_out_log_file, first_line)
     log_monitor.update_log_filenames()

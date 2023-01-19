@@ -203,8 +203,6 @@ def get_worker_log_file_name(worker_type, job_id=None):
         f"{worker_name}-"
         f"{binary_to_hex(ray._private.worker.global_worker.worker_id)}-"
     )
-    if job_id:
-        filename += f"{job_id}-"
     filename += f"{os.getpid()}"
     return filename
 
