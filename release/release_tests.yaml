@@ -989,7 +989,7 @@
     script: python workloads/tune_small.py
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
   alert: default
 

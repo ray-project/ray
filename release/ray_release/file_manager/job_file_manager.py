@@ -18,7 +18,7 @@ from ray_release.util import exponential_backoff_retry
 
 class JobFileManager(FileManager):
     def __init__(self, cluster_manager: ClusterManager):
-        import anyscale
+        # import anyscale
 
         super(JobFileManager, self).__init__(cluster_manager=cluster_manager)
 
@@ -27,7 +27,7 @@ class JobFileManager(FileManager):
         self.bucket = str(RELEASE_AWS_BUCKET)
         self.job_manager = JobManager(cluster_manager)
 
-        sys.path.insert(0, f"{anyscale.ANYSCALE_RAY_DIR}/bin")
+        # sys.path.insert(0, f"{anyscale.ANYSCALE_RAY_DIR}/bin")
 
     def _run_with_retry(self, f, initial_retry_delay_s: int = 10):
         assert callable(f)
@@ -155,3 +155,66 @@ class JobFileManager(FileManager):
             )
         except Exception as e:
             logger.warning(f"Could not remove temporary S3 object: {e}")
+
+
+class AnyscaleJobFileManager(JobFileManager):
+    def __init__(self, cluster_manager: ClusterManager):
+        super().__init__(cluster_manager)
+        self.upload_to = f"working_dirs/{self.cluster_manager.test_name.replace(' ', '_')}_{self._generate_tmp_s3_path()}"
+
+    def _generate_tmp_s3_path(self):
+        fn = "".join(random.choice(string.ascii_lowercase) for i in range(10))
+        return fn
+
+    @property
+    def uri(self):
+        return f"s3://{self.bucket}/{self.upload_to}"
+
+    def download(self, target: str):
+        # Attention: Only works for single files at the moment
+        remote_upload_to = self.upload_to
+
+        # s3 -> local target
+        self._run_with_retry(
+            lambda: self.s3_client.download_file(
+                Bucket=self.bucket,
+                Key=remote_upload_to,
+                Filename=target,
+            )
+        )
+
+    def _push_local_dir(self):
+        remote_upload_to = remote_upload_to + "/working_dir.zip"
+        # pack local dir
+        _, local_path = tempfile.mkstemp()
+        shutil.make_archive(local_path, "zip", os.getcwd())
+        # local source -> s3
+        self._run_with_retry(
+            lambda: self.s3_client.upload_file(
+                Filename=local_path + ".zip",
+                Bucket=self.bucket,
+                Key=remote_upload_to,
+            )
+        )
+        # remove local archive
+        os.unlink(local_path)
+        return f"s3://{self.bucket}/{remote_upload_to}"
+
+    def upload(self, source: Optional[str] = None, target: Optional[str] = None):
+        if source is None and target is None:
+            return self._push_local_dir()
+
+        assert isinstance(source, str)
+        assert isinstance(target, str)
+
+        remote_upload_to = self.upload_to
+
+        # local source -> s3
+        self._run_with_retry(
+            lambda: self.s3_client.upload_file(
+                Filename=source,
+                Bucket=self.bucket,
+                Key=remote_upload_to,
+            )
+        )
+        return self.bucket, remote_upload_to

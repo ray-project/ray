@@ -6,8 +6,10 @@ from ray_release.alerts.handle import handle_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
+from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.client_runner import ClientRunner
 from ray_release.command_runner.job_runner import JobRunner
+from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner
 from ray_release.config import (
     Test,
@@ -32,7 +34,10 @@ from ray_release.exception import (
     LocalEnvSetupError,
     ClusterEnvCreateError,
 )
-from ray_release.file_manager.job_file_manager import JobFileManager
+from ray_release.file_manager.job_file_manager import (
+    JobFileManager,
+    AnyscaleJobFileManager,
+)
 from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
@@ -48,6 +53,7 @@ type_str_to_command_runner = {
     "command": SDKRunner,
     "sdk_command": SDKRunner,
     "job": JobRunner,
+    "anyscale_job": AnyscaleJobRunner,
     "client": ClientRunner,
 }
 
@@ -55,18 +61,21 @@ command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
     ClientRunner: FullClusterManager,
     JobRunner: FullClusterManager,
+    AnyscaleJobRunner: MinimalClusterManager,
 }
 
 file_manager_str_to_file_manager = {
     "sdk": SessionControllerFileManager,
     "client": RemoteTaskFileManager,
     "job": JobFileManager,
+    "anyscale_job": AnyscaleJobFileManager,
 }
 
 command_runner_to_file_manager = {
     SDKRunner: JobFileManager,  # Use job file manager per default
     ClientRunner: RemoteTaskFileManager,
     JobRunner: JobFileManager,
+    AnyscaleJobRunner: AnyscaleJobFileManager,
 }
 
 
@@ -264,8 +273,9 @@ def run_release_test(
 
             cluster_manager.build_configs(timeout=build_timeout)
 
-            buildkite_group(":rocket: Starting up cluster")
-            cluster_manager.start_cluster(timeout=cluster_timeout)
+            if isinstance(cluster_manager, FullClusterManager):
+                buildkite_group(":rocket: Starting up cluster")
+                cluster_manager.start_cluster(timeout=cluster_timeout)
 
         result.cluster_url = cluster_manager.get_cluster_url()
         result.cluster_id = cluster_manager.cluster_id
@@ -362,7 +372,7 @@ def run_release_test(
 
     result.last_logs = last_logs
 
-    if not no_terminate:
+    if not no_terminate or not isinstance(cluster_manager, FullClusterManager):
         buildkite_group(":earth_africa: Terminating cluster")
         try:
             cluster_manager.terminate_cluster(wait=False)

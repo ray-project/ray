@@ -126,7 +126,8 @@
 						"command",
 						"sdk_command",
 						"job",
-						"client"
+						"client",
+						"anyscale_job"
 					]
 				},
 				"file_manager": {
@@ -134,7 +135,8 @@
 					"enum": [
 						"sdk",
 						"client",
-						"job"
+						"job",
+						"anyscale_job"
 					]
 				},
 				"wait_for_nodes": {

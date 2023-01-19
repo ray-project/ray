@@ -95,6 +95,10 @@ def anyscale_cluster_env_build_url(build_id: str) -> str:
     )
 
 
+def anyscale_job_url(job_id: str) -> str:
+    return f"{ANYSCALE_HOST}" f"/o/anyscale-internal/jobs/{job_id}"
+
+
 _anyscale_sdk = None
 
 
@@ -138,7 +142,7 @@ def reinstall_anyscale_dependencies() -> None:
 
     # Copy anyscale pin to requirements.txt and requirements_buildkite.txt
     subprocess.check_output(
-        "pip install -U anyscale==0.5.51",
+        "pip install -U anyscale==0.5.71",
         shell=True,
         text=True,
     )
