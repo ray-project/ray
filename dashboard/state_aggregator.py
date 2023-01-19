@@ -367,7 +367,9 @@ class StateAPIManager:
                 job_id = filter[2]
 
         try:
-            reply = await self._client.get_all_task_info(timeout=option.timeout, job_id=job_id)
+            reply = await self._client.get_all_task_info(
+                timeout=option.timeout, job_id=job_id
+            )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 

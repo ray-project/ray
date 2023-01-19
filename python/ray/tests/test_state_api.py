@@ -2200,7 +2200,7 @@ def test_list_get_tasks(shutdown_only):
         for task in tasks:
             assert task["node_id"] == node_id
 
-        tasks = list_tasks(filters=[("job_id", "=", "job_id")])
+        tasks = list_tasks(filters=[("job_id", "=", job_id)])
         for task in tasks:
             assert task["job_id"] == job_id
 

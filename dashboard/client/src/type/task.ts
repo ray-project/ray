@@ -34,6 +34,6 @@ export type Task = {
   required_resources: { [key: string]: number };
   runtime_env_info: string;
   events: { [key: string]: string }[];
-  start_time_ms: int | null;
-  end_time_ms: int | null;
+  start_time_ms: number | null;
+  end_time_ms: number | null;
 };
