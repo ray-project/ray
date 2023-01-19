@@ -1,22 +1,25 @@
 #!/bin/bash
 
-# Generate a random string
-RANDOMSTRING=$(openssl rand -hex 16)
-
 # Pull external IP
 IPADDRESS=$(curl -s http://ifconfig.me/ip)
 export IPADDRESS=$IPADDRESS
 
-# Export the random string as an environment variable
-export RANDOMSTRING=$RANDOMSTRING
+memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+
+# Convert kB to GB
+gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
+
+shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
+
+CRATE_HEAP_SIZE=$(echo "scale=2; $shm_memory * 2" | bc)
+export CRATE_HEAP_SIZE
+
 
 set -ae
 
-# GC logging set to default value of path.logs
-
 # Make sure directories exist as they are not automatically created
 # This needs to happen at runtime, as the directory could be mounted.
-mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
+sudo mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH $TS_STATE
 
 
 if [ -c /dev/net/tun ]; then
