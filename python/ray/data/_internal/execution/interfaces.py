@@ -71,20 +71,71 @@ class RefBundle:
 
 
 @dataclass
+class ExecutionResources:
+    """Specifies resources usage or resource limits for execution.
+
+    The value `None` represents unknown resource usage or an unspecified limit.
+    """
+
+    # CPU usage in cores (Ray logical CPU slots).
+    cpu: Optional[float] = None
+
+    # GPU usage in devices (Ray logical GPU slots).
+    gpu: Optional[float] = None
+
+    # Object store memory usage in bytes.
+    object_store_memory: Optional[int] = None
+
+    def object_store_memory_str(self) -> str:
+        if self.object_store_memory is None:
+            return "inf"
+        elif self.object_store_memory > 1e9:
+            return f"{round(self.object_store_memory / 1e9, 2)} GiB"
+        else:
+            return f"{round(self.object_store_memory / 1e6, 2)} MiB"
+
+    def add(self, other: "ExecutionResources") -> "ExecutionResources":
+        """Adds execution resources, replacing None with zeros.
+
+        Returns:
+            A new ExecutionResource object with summed resources.
+        """
+        return ExecutionResources(
+            (self.cpu or 0.0) + (other.cpu or 0.0),
+            (self.gpu or 0.0) + (other.gpu or 0.0),
+            (self.object_store_memory or 0.0) + (other.object_store_memory or 0.0),
+        )
+
+    def has_cpu_or_gpu(self) -> bool:
+        """Return if using CPU or GPU."""
+
+        return self.cpu or self.gpu
+
+    def satisfies_limits(self, limit: "ExecutionResources") -> bool:
+        """Return if this resource struct meets the specified limits."""
+
+        if limit.cpu is not None and self.cpu > limit.cpu:
+            return False
+        if limit.gpu is not None and self.gpu > limit.gpu:
+            return False
+        if (
+            limit.object_store_memory is not None
+            and self.object_store_memory > limit.object_store_memory
+        ):
+            return False
+        return True
+
+
+@dataclass
 class ExecutionOptions:
     """Common options for execution.
 
-    Some options may not be supported on all executors (e.g., parallelism limit).
+    Some options may not be supported on all executors (e.g., resource limits).
     """
 
-    # Max number of in flight tasks. This is a soft limit, and is not supported in
-    # bulk execution mode.
-    parallelism_limit: Optional[int] = None
-
-    # Example: set to 1GB and executor will try to limit object store
-    # memory usage to 1GB. This is a soft limit, and is not supported in
-    # bulk execution mode.
-    memory_limit_bytes: Optional[int] = None
+    # Set a soft limit on the resource usage during execution. This is not supported
+    # in bulk execution mode.
+    resource_limits: ExecutionResources = ExecutionResources()
 
     # Set this to prefer running tasks on the same node as the output
     # node (node driving the execution).
@@ -179,6 +230,9 @@ class PhysicalOperator:
         out_str += f"{self.__class__.__name__}[{self._name}]"
         return out_str
 
+    def progress_str(self) -> str:
+        return ""
+
     def num_outputs_total(self) -> Optional[int]:
         """Returns the total number of output bundles of this operator, if known.
 
@@ -254,6 +308,30 @@ class PhysicalOperator:
         tasks, actors, and objects.
         """
         pass
+
+    def current_resource_usage(self) -> ExecutionResources:
+        """Returns the current estimated resource usage of this operator.
+
+        This method is called by the executor to decide how to allocate resources
+        between different operators.
+        """
+        return ExecutionResources()
+
+    def base_resource_usage(self) -> ExecutionResources:
+        """Returns the minimum amount of resources required for execution.
+
+        For example, an operator that creates an actor pool requiring 8 GPUs could
+        return ExecutionResources(gpu=8) as its base usage.
+        """
+        return ExecutionResources()
+
+    def incremental_resource_usage(self) -> ExecutionResources:
+        """Returns the incremental resources required for processing another input.
+
+        For example, an operator that launches a task per input could return
+        ExecutionResources(cpu=1) as its incremental usage.
+        """
+        return ExecutionResources()
 
 
 class Executor:
