@@ -236,10 +236,11 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(
       continue;
     }
     for (const auto &child_task_id : children_tasks_itr->second) {
-      // Only traverse if ancestor failure info has not been relayed to the children.
-      // If a child already has ancestor failure timestamp, all its reachable children
-      // will have the info as well, and all its reachable non-terminated children
-      // will be marked as failure.
+      // Only traverse if failure info has not been relayed to the children (e.g. no fail
+      // time set). If a child already has ancestor failure timestamp or itself is a
+      // failure, all its reachable grandchildren will have the info as well when the
+      // failure timestamp was first set on the child, and all its reachable
+      // non-terminated children will be marked as failure.
       if (!GetItselfOrAncestorFailTime(child_task_id).has_value()) {
         tasks_to_add_failure_info.push_back(child_task_id);
       }
@@ -423,7 +424,6 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
-  RAY_LOG(DEBUG) << "Adding task state event:" << request.data().ShortDebugString();
   // Dispatch to the handler
   auto data = std::move(request.data());
   size_t num_to_process = data.events_by_task_size();
@@ -452,11 +452,9 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
             replaced_task_events->profile_events().events_size();
       }
     }
-    RAY_LOG(DEBUG) << "Processed a task event. [task_id=" << task_id.Hex() << "]";
   }
 
   // Processed all the task events
-  RAY_LOG(DEBUG) << "Processed all " << num_to_process << " task events";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
