@@ -120,6 +120,7 @@ class MapOperator(PhysicalOperator):
 
     def shutdown(self) -> None:
         self._execution_state.shutdown()
+        super().shutdown()
 
     def base_resource_usage(self) -> ExecutionResources:
         return self._base_resource_usage

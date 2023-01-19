@@ -186,6 +186,7 @@ class PhysicalOperator:
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._started = False
 
     @property
     def name(self) -> str:
@@ -253,7 +254,7 @@ class PhysicalOperator:
         Args:
             options: The global options used for the overall execution.
         """
-        pass
+        self._started = True
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
@@ -320,7 +321,8 @@ class PhysicalOperator:
         This release any Ray resources acquired by this operator such as active
         tasks, actors, and objects.
         """
-        pass
+        if not self._started:
+            raise ValueError("Operator must be started before being shutdown.")
 
     def current_resource_usage(self) -> ExecutionResources:
         """Returns the current estimated resource usage of this operator.
