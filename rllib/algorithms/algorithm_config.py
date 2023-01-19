@@ -2594,7 +2594,7 @@ class AlgorithmConfig:
         raise NotImplementedError
 
     def get_trainer_runner_config(
-        self, observation_space: Space, action_space: Space, validate: bool = False
+        self, observation_space: Space, action_space: Space
     ) -> TrainerRunnerConfig:
 
         if not self._is_frozen:
@@ -2619,9 +2619,6 @@ class AlgorithmConfig:
             )
             .resources(num_gpus=self.num_gpus, fake_gpus=self._fake_gpus)
         )
-
-        if validate:
-            config.validate()
 
         return config
 
