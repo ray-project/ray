@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Tuple
 
 
 class Barrier:
@@ -110,11 +110,11 @@ class Barrier:
         """Number of received errors."""
         raise NotImplementedError
 
-    def get_results(self) -> List[Any]:
+    def get_results(self) -> List[Tuple[Any]]:
         """Return list of received results."""
         raise NotImplementedError
 
-    def get_errors(self) -> List[Any]:
+    def get_errors(self) -> List[Tuple[Any]]:
         """Return list of received errors."""
         raise NotImplementedError
 
