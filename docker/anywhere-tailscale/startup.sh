@@ -51,7 +51,7 @@ echo -e "/usr/local/bin/crash -c \"SET GLOBAL TRANSIENT 'cluster.routing.allocat
 echo -e "/usr/local/bin/crash -c \"ALTER CLUSTER DECOMMISSION '$HOSTNAME';\"\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null
 
 #making sure we delete our machine from tailscale on shutdown
-echo -e "curl -X DELETE https://api.tailscale.com/api/v2/device/${deviceid} -u ${TSAPIKEY}:\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null
+#echo -e "curl -X DELETE https://api.tailscale.com/api/v2/device/${deviceid} -u ${TSAPIKEY}:\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null
 
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
@@ -67,7 +67,7 @@ ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-hos
             -Cdiscovery.seed_hosts=nexus:4300 \
             -Ccluster.initial_master_nodes=nexus \
             -Ccluster.graceful_stop.min_availability=primaries \
-            -Cstats.enabled=false
+            -Cstats.enabled=false &
             
 
 else
@@ -80,11 +80,10 @@ ray start --address='nexus.chimp-beta.ts.net:6379' --node-ip-address ${HOSTNAME}
             -Cdiscovery.seed_hosts=nexus:4300 \
             -Ccluster.initial_master_nodes=nexus \
             -Ccluster.graceful_stop.min_availability=primaries \
-            -Cstats.enabled=false
+            -Cstats.enabled=false &
             
 fi
 
-EXPOSE 41641:41641/udp
 
 #CREATE REPOSITORY s3backup TYPE s3
 #[ WITH (parameter_name [= value], [, ...]) ]
@@ -92,5 +91,26 @@ EXPOSE 41641:41641/udp
 #
 
 
+# SIGTERM-handler this funciton will be executed when the container receives the SIGTERM signal (when stopping)
+term_handler(){
+   echo "***Stopping"
+   /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
+   /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION '$HOSTNAME';"
+   tailscale down
+   curl -X DELETE https://api.tailscale.com/api/v2/device/${deviceid} -u ${TSAPIKEY}:
+   exit 0
+}
 
+# Setup signal handlers
+trap 'term_handler' SIGTERM
+
+#echo "***Starting"
+#/bin/tcsh ./my-command
+
+# Running something in foreground, otherwise the container will stop
+while true
+do
+   #sleep 1000 - Doesn't work with sleep. Not sure why.
+   tail -f /dev/null & wait ${!}
+done
 
