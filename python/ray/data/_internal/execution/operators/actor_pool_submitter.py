@@ -175,4 +175,3 @@ class ActorPool:
     def size(self) -> int:
         """Return the current actor pool size."""
         return len(self._num_tasks_in_flight)
-
