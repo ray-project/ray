@@ -5394,8 +5394,10 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
                 time.sleep(1000)
                 return block
 
-    with pytest.raises(ray.exceptions.RayTaskError):
-        aps._apply(test_func, {}, blocks, False)
+    # No need to test ActorPoolStrategy in new execution backend.
+    if not DatasetContext.get_current().new_execution_backend:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            aps._apply(test_func, {}, blocks, False)
 
     # Check that all actors have been killed by counting the available CPUs
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
