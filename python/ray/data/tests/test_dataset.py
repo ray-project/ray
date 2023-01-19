@@ -65,7 +65,9 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
         original = ctx.block_splitting_enabled
 
         ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
-        ctx.block_splitting_enabled = block_split
+        if not block_split:
+            # Setting infinite block size effectively disables block splitting.
+            ctx.target_max_block_size = float("inf")
         ds = ray.data.read_datasource(
             SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
         )
@@ -2430,6 +2432,13 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
 
 
 def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
+    def put(x):
+        # We only support automatic deref in the legacy backend.
+        if DatasetContext.get_current().new_execution_backend:
+            return x
+        else:
+            return ray.put(x)
+
     # Test input validation
     ds = ray.data.range(5)
 
@@ -2481,7 +2490,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_args=(ray.put(1),),
+        fn_args=(put(1),),
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2500,7 +2509,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_kwargs={"b": ray.put(2)},
+        fn_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2520,8 +2529,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_args=(ray.put(1),),
-        fn_kwargs={"b": ray.put(2)},
+        fn_args=(put(1),),
+        fn_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2546,7 +2555,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_args=(ray.put(1),),
+        fn_constructor_args=(put(1),),
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2570,7 +2579,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_kwargs={"b": ray.put(2)},
+        fn_constructor_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2596,8 +2605,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_args=(ray.put(1),),
-        fn_constructor_kwargs={"b": ray.put(2)},
+        fn_constructor_args=(put(1),),
+        fn_constructor_kwargs={"b": put(2)},
     )
     assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
@@ -2608,8 +2617,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
 
     # Test callable chain.
     ds = ray.data.read_parquet(str(tmp_path))
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     ds2 = (
         ds.lazy()
         .map_batches(
@@ -2638,8 +2647,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
 
     # Test function + callable chain.
     ds = ray.data.read_parquet(str(tmp_path))
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     ds2 = (
         ds.lazy()
         .map_batches(
@@ -2647,8 +2656,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
             batch_size=1,
             batch_format="pandas",
             compute="actors",
-            fn_args=(ray.put(1),),
-            fn_kwargs={"b": ray.put(2)},
+            fn_args=(put(1),),
+            fn_kwargs={"b": put(2)},
         )
         .map_batches(
             CallableFn,

@@ -14,6 +14,7 @@ from ray.rllib.models.tf.primitives import FCNet
 
 
 tf1, tf, _ = try_import_tf()
+tf1.enable_eager_execution()
 
 
 @dataclass

@@ -289,32 +289,40 @@ def _get_wandb_project(project: Optional[str] = None) -> Optional[str]:
 
 def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = None):
     """Set WandB API key from `wandb_config`. Will pop the
-    `api_key_file` and `api_key` keys from `wandb_config` parameter"""
+    `api_key_file` and `api_key` keys from `wandb_config` parameter.
+
+    The order of fetching the API key is:
+      1) From `api_key` or `api_key_file` arguments
+      2) From WANDB_API_KEY environment variables
+      3) User already logged in to W&B (wandb.api.api_key set)
+      4) From external hook WANDB_SETUP_API_KEY_HOOK"""
     if api_key_file:
         if api_key:
             raise ValueError("Both WandB `api_key_file` and `api_key` set.")
         with open(api_key_file, "rt") as fp:
             api_key = fp.readline().strip()
-    # Try to get API key from external hook
-    if not api_key and WANDB_SETUP_API_KEY_HOOK in os.environ:
+
+    if not api_key and not os.environ.get(WANDB_ENV_VAR):
+        # Check if user is already logged into wandb.
         try:
-            api_key = _load_class(os.environ[WANDB_SETUP_API_KEY_HOOK])()
-        except Exception as e:
-            logger.exception(
-                f"Error executing {WANDB_SETUP_API_KEY_HOOK} to setup API key: {e}",
-                exc_info=e,
-            )
-    if api_key:
-        os.environ[WANDB_ENV_VAR] = api_key
-    elif not os.environ.get(WANDB_ENV_VAR):
-        try:
-            # Check if user is already logged into wandb.
             wandb.ensure_configured()
             if wandb.api.api_key:
                 logger.info("Already logged into W&B.")
                 return
         except AttributeError:
             pass
+        # Try to get API key from external hook
+        if WANDB_SETUP_API_KEY_HOOK in os.environ:
+            try:
+                api_key = _load_class(os.environ[WANDB_SETUP_API_KEY_HOOK])()
+            except Exception as e:
+                logger.exception(
+                    f"Error executing {WANDB_SETUP_API_KEY_HOOK} to setup API key: {e}",
+                    exc_info=e,
+                )
+    if api_key:
+        os.environ[WANDB_ENV_VAR] = api_key
+    elif not os.environ.get(WANDB_ENV_VAR):
         raise ValueError(
             "No WandB API key found. Either set the {} environment "
             "variable, pass `api_key` or `api_key_file` to the"
@@ -454,7 +462,7 @@ class WandbLoggerCallback(LoggerCallback):
             the ``results`` dict should be logged. This makes sense if
             parameters will change during training, e.g. with
             PopulationBasedTraining. Defaults to False.
-        save_checkpoints: If ``True``, model checkpoints will be saved to
+        upload_checkpoints: If ``True``, model checkpoints will be uploaded to
             Wandb as artifacts. Defaults to ``False``.
         **kwargs: The keyword arguments will be pased to ``wandb.init()``.
 
@@ -509,16 +517,24 @@ class WandbLoggerCallback(LoggerCallback):
         api_key: Optional[str] = None,
         excludes: Optional[List[str]] = None,
         log_config: bool = False,
+        upload_checkpoints: bool = False,
         save_checkpoints: bool = False,
         **kwargs,
     ):
+        if save_checkpoints:
+            warnings.warn(
+                "`save_checkpoints` is deprecated. Use `upload_checkpoints` instead.",
+                DeprecationWarning,
+            )
+            upload_checkpoints = save_checkpoints
+
         self.project = project
         self.group = group
         self.api_key_path = api_key_file
         self.api_key = api_key
         self.excludes = excludes or []
         self.log_config = log_config
-        self.save_checkpoints = save_checkpoints
+        self.upload_checkpoints = upload_checkpoints
         self.kwargs = kwargs
 
         self._remote_logger_class = None
@@ -636,7 +652,7 @@ class WandbLoggerCallback(LoggerCallback):
         self._trial_queues[trial].put((_QueueItem.RESULT, result))
 
     def log_trial_save(self, trial: "Trial"):
-        if self.save_checkpoints and trial.checkpoint:
+        if self.upload_checkpoints and trial.checkpoint:
             self._trial_queues[trial].put(
                 (_QueueItem.CHECKPOINT, trial.checkpoint.dir_or_data)
             )
