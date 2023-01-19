@@ -1,9 +1,6 @@
 from typing import Callable, Any
 
-from ray.util.annotations import DeveloperAPI
 
-
-@DeveloperAPI
 class TrackedTask:
     """Task tracked by a Ray event manager.
 

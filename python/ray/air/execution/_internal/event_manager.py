@@ -8,21 +8,19 @@ from ray.air.execution.resources import (
     ResourceRequest,
 )
 
-from ray.air.execution.tracked_actor import TrackedActor
-from ray.air.execution.tracked_actor_task import (
+from ray.air.execution._internal.tracked_actor import TrackedActor
+from ray.air.execution._internal.tracked_actor_task import (
     TrackedActorTask,
     TrackedActorTaskCollection,
 )
-from ray.air.execution.tracked_task import TrackedTask
-from ray.util.annotations import DeveloperAPI
+from ray.air.execution._internal.tracked_task import TrackedTask
 
 
-@DeveloperAPI
 class EventType(enum.Enum):
     """Event type to specify when yielding control to the :class:`RayEventManager`.
 
     This enum can be passed to
-    :meth:`RayEventManager.wait() <ray.air.execution.event_manager.RayEventManager.wait`
+    :meth:`RayEventManager.wait() <RayEventManager.wait>`
     to specify which kind of events to await.
 
     Attributes:
@@ -37,7 +35,6 @@ class EventType(enum.Enum):
     ACTORS = 2
 
 
-@DeveloperAPI
 class RayEventManager:
     """Management class for Ray actors, tasks, and actor tasks.
 
@@ -49,44 +46,44 @@ class RayEventManager:
     The manager will then invoke callbacks related to the tracked entities.
 
     For instance, when an actor is added with
-    :meth:`add_actor() <ray.air.execution.event_manager.RayEventManager.add_actor>`,
-    a :ref:`TrackedActor <ray.air.execution.tracked_actor.TrackedActor` object is
-    returned.
+    :meth:`add_actor() <RayEventManager.add_actor>`,
+    a :ref:`TrackedActor <ray.air.execution._internal.tracked_actor.TrackedActor`
+    object is returned.
     The :meth:`TrackedActor.on_start()
-    <ray.air.execution.tracked_actor.TrackedActor.on_start>`
+    <ray.air.execution._internal.tracked_actor.TrackedActor.on_start>`
     method can then be used to specify a callback that is invoked once the actor
     successfully started. The other callbacks relating to tracked actors
     :meth:`TrackedActor.on_stop()
-    <ray.air.execution.tracked_actor.TrackedActor.on_stop>` and
+    <ray.air.execution._internal.tracked_actor.TrackedActor.on_stop>` and
     :meth:`TrackedActor.on_error()
-    <ray.air.execution.tracked_actor.TrackedActor.on_error>`
+    <ray.air.execution._internal.tracked_actor.TrackedActor.on_error>`
 
     Similarly, when scheduling an actor task using
     :meth:`schedule_actor_task()
-    <ray.air.execution.event_manager.RayEventManager.schedule_actor_task>`,
-    a :ref:`TrackedActorTask <ray.air.execution.tracked_actor_task.TrackedActorTask`
+    <ray.air.execution._internal.event_manager.RayEventManager.schedule_actor_task>`,
+    a :ref:`TrackedActorTask <TrackedActorTask>`
     object is returned.
     The :meth:`TrackedActorTask.on_result()
-    <ray.air.execution.tracked_actor_task.TrackedActorTask.on_result>`
+    <ray.air.execution._internal.tracked_actor_task.TrackedActorTask.on_result>`
     method can then be used to specify a callback that is invoked when the task
     successfully resolved.
     The :meth:`TrackedActorTask.on_error()
-    <ray.air.execution.tracked_actor_task.TrackedActorTask.on_error>`
+    <ray.air.execution._internal.tracked_actor_task.TrackedActorTask.on_error>`
     method can then be used to specify a callback that is invoked when the task
     fails.
 
     Lastly, regular tasks (not on actors) can be tracked. When scheduling a task
     using
     :meth:`schedule_task()
-    <ray.air.execution.event_manager.RayEventManager.schedule_task>`,
-    a :ref:`TrackedTask <ray.air.execution.tracked_task.TrackedTask`
+    <ray.air.execution._internal.event_manager.RayEventManager.schedule_task>`,
+    a :ref:`TrackedTask <ray.air.execution._internal.tracked_task.TrackedTask`
     object is returned.
     The :meth:`TrackedTask.on_result()
-    <ray.air.execution.tracked_task.TrackedTask.on_result>`
+    <ray.air.execution._internal.tracked_task.TrackedTask.on_result>`
     method can then be used to specify a callback that is invoked once the task
     successfully resolved.
     The :meth:`TrackedTask.on_error()
-    <ray.air.execution.tracked_task.TrackedTask.on_error>`
+    <ray.air.execution._internal.tracked_task.TrackedTask.on_error>`
     method can then be used to specify a callback that is invoked when the actor task
     fails.
 
@@ -97,7 +94,8 @@ class RayEventManager:
 
         .. code-block:: python
 
-            from ray.air.execution import EventType, RayEventManager, ResourceRequest
+            from ray.air.execution import ResourceRequest
+            from ray.air.execution._internal import EventType, RayEventManager
 
             event_manager = RayEventManager()
 
@@ -216,7 +214,7 @@ class RayEventManager:
         This method will request resources to start the actor. Once the resources
         are available, the actor will be started and the
         :meth:`TrackedActor.on_start
-        <ray.air.execution.tracked_actor.TrackedActor.on_start>` callback
+        <ray.air.execution._internal.tracked_actor.TrackedActor.on_start>` callback
         will be invoked.
 
         Args:
@@ -240,8 +238,8 @@ class RayEventManager:
 
         If the actor has already been started, this will stop the actor. This will
         trigger the :meth:`TrackedActor.on_stop
-        <ray.air.execution.tracked_actor.TrackedActor.on_stop>` callback once the
-        actor stopped.
+        <ray.air.execution._internal.tracked_actor.TrackedActor.on_stop>`
+        callback once the actor stopped.
 
         If the actor has only been requested, but not started, yet, this will cancel
         the actor request. This will not trigger any callback.
@@ -291,7 +289,8 @@ class RayEventManager:
         """Schedule and track a Ray task.
 
         This method will schedule a Ray task and return a
-        :ref:`TrackedTask <ray.air.execution.tracked_task.TrackedTask>` object.
+        :ref:`TrackedTask <ray.air.execution._internal.tracked_task.TrackedTask>`
+        object.
 
         The ``TrackedTask`` object can be used to specify callbacks that are invoked
         when the task resolves.
@@ -317,7 +316,7 @@ class RayEventManager:
         This method will schedule a remote task ``method_name`` on the
         ``tracked_actor`` and return a
         :ref:`TrackedActorTask
-        <ray.air.execution.tracked_actor_task.TrackedActorTask>` object.
+        <ray.air.execution._internal.tracked_actor_task.TrackedActorTask>` object.
 
         The ``TrackedActorTask`` object can be used to specify callbacks that are
         invoked when the task resolves, errors, or times out.
@@ -345,7 +344,7 @@ class RayEventManager:
         This method will schedule a remote task ``method_name`` on all
         ``tracked_actors`` and return a
         :ref:`TrackedActorTaskCollection
-        <ray.air.execution.tracked_actor_task.TrackedActorTaskCollection>`
+        <ray.air.execution._internal.tracked_actor_task.TrackedActorTaskCollection>`
         object.
 
         The ``TrackedActorTaskCollection`` object can be used to specify callbacks that

@@ -1,9 +1,6 @@
 from typing import Callable
 
-from ray.util.annotations import DeveloperAPI
 
-
-@DeveloperAPI
 class TrackedActor:
     """Actor tracked by an actor manager.
 

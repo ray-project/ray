@@ -1,9 +1,6 @@
 from typing import Any, Callable, List, Optional
 
-from ray.util.annotations import DeveloperAPI
 
-
-@DeveloperAPI
 class Barrier:
     """Barrier to collect results and process them in bulk.
 
