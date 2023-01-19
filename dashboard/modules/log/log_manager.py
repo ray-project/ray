@@ -14,7 +14,7 @@ from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 
-WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
+WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-(\d+).(out|err)")
 
 
 class LogsManager:
@@ -183,7 +183,7 @@ class LogsManager:
             for filename in [*log_files["worker_out"], *log_files["worker_err"]]:
                 # worker-[worker_id]-[job_id]-[pid].out
                 worker_pid_from_filename = int(
-                    WORKER_LOG_PATTERN.match(filename).group(3)
+                    WORKER_LOG_PATTERN.match(filename).group(2)
                 )
                 if worker_pid_from_filename == pid:
                     log_filename = filename
