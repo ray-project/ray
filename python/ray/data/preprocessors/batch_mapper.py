@@ -90,7 +90,9 @@ class BatchMapper(Preprocessor):
             BatchFormat.PANDAS,
             BatchFormat.NUMPY,
         ]:
-            raise ValueError("BatchMapper only supports pandas and numpy batch format.")
+            raise ValueError(
+                "BatchMapper only supports 'pandas' or 'numpy' batch format."
+            )
 
         self.batch_format = batch_format
         self.batch_size = batch_size
