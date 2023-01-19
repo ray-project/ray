@@ -330,6 +330,9 @@ class PPO(Algorithm):
             return PPOTF1Policy
         else:
             if config._enable_rl_module_api:
+                if config.eager_tracing:
+                    raise ValueError("The TensorFlow PPO with RLModule does not support "
+                        "eager tracing yet.")
                 from ray.rllib.algorithms.ppo.tf.ppo_tf_policy_rlm import (
                     PPOTfPolicyWithRLModule,
                 )
