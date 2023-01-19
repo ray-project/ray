@@ -378,16 +378,6 @@ def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
     assert results.checkpoint
 
 
-def test_torch_prepare_model_deprecated():
-    model = torch.nn.Linear(1, 1)
-
-    with pytest.raises(DeprecationWarning):
-        train.torch.prepare_model(model, wrap_ddp=True)
-
-    with pytest.raises(DeprecationWarning):
-        train.torch.prepare_model(model, ddp_kwargs={"x": "y"})
-
-
 if __name__ == "__main__":
     import sys
 
