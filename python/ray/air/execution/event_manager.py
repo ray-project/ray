@@ -93,6 +93,38 @@ class RayEventManager:
     Args:
         resource_manager: Resource manager used to request resources for the actors.
 
+    Example:
+
+        .. code-block:: python
+
+            from ray.air.execution import EventType, RayEventManager, ResourceRequest
+
+            event_manager = RayEventManager()
+
+            # Request an actor
+            tracked_actor = event_manager.add_actor(
+                ActorClass,
+                kwargs={},
+                resource_request=ResourceRequest([{"CPU": 1}])
+            )
+            tracked_actor.on_start(actor_start_callback)
+            tracked_actor.on_stop(actor_stop_callback)
+            tracked_actor.on_fail(actor_fail_callback)
+
+            # Yield control to event manager to start actor
+            event_manager.wait(timeout=1)
+
+            # Start task on the actor (ActorClass.foo.remote())
+            tracked_actor_task = event_manager.schedule_actor_task(
+                tracked_actor,
+                method_name="foo"
+            )
+            tracked_actor_task.on_result(task_result_callback)
+            tracked_actor_task.on_error(task_error_callback)
+
+            # Again yield control to event manager to process task futures
+            event_manager.wait(event_type=EventType.TASKS)
+
     """
 
     def __init__(self, resource_manager: ResourceManager):
