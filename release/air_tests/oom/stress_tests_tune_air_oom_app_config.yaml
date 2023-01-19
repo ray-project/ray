@@ -1,0 +1,17 @@
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
+debian_packages: []
+# Lower the threshold to trigger memory pressure.
+env_vars: {"RAY_memory_usage_threshold": "0.7"}
+
+
+python:
+  pip_packages:
+    - tensorflow
+    - torch
+  conda_packages: []
+
+post_build_cmds:
+  - pip3 uninstall -y ray && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install ray[default]
+  - echo {{env["DATESTAMP"]}}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

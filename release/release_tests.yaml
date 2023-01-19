@@ -3848,6 +3848,21 @@
     script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
 
 
+- name: tune_air_oom
+  group: core-daily-test
+  working_dir: air_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
+    cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
+
+  run:
+    timeout: 3600
+    script: bash oom/tune_air_oom.sh
+
+
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
   working_dir: nightly_tests
