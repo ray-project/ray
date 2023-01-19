@@ -42,8 +42,8 @@ class RLTrainer:
     Args:
         module_class: The (MA)RLModule class to use.
         module_kwargs: The kwargs for the (MA)RLModule.
-        scaling_config: A mapping that holds the world size and rank of this
-            trainer. Note this is only used for distributed training.
+        optimizer_config: The config for the optimizer.
+        in_test: Whether to enable additional logging behavior for testing purposes.
         distributed: Whether this trainer is distributed or not.
 
     Abstract Methods:
@@ -65,7 +65,6 @@ class RLTrainer:
         trainer = MyRLTrainer(
             module_class,
             module_kwargs,
-            scaling_config,
             optimizer_config
         )
         trainer.build()
@@ -102,14 +101,12 @@ class RLTrainer:
         self,
         module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
         module_kwargs: Mapping[str, Any],
-        scaling_config: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
     ):
         # TODO (Kourosh): convert scaling and optimizer configs to dataclasses
         self.module_class = module_class
         self.module_kwargs = module_kwargs
-        self.scaling_config = scaling_config
         self.optimizer_config = optimizer_config
         self.distributed = distributed
 
@@ -239,6 +236,7 @@ class RLTrainer:
         Returns:
             A dictionary of results.
         """
+        self.__check_if_build_called()
         if not self.distributed:
             return self._update(batch)
         else:
@@ -320,6 +318,7 @@ class RLTrainer:
                 from `get_state`.
 
         """
+        self.__check_if_build_called()
         # TODO: once we figure out the optimizer format, we can set/get the state
         self._module.set_state(state.get("module_state", {}))
 
@@ -330,6 +329,7 @@ class RLTrainer:
             The state of the optimizer and module.
 
         """
+        self.__check_if_build_called()
         # TODO: once we figure out the optimizer format, we can set/get the state
         return {"module_state": self._module.get_state()}
 
@@ -356,6 +356,7 @@ class RLTrainer:
             optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
                 should be provided.
         """
+        self.__check_if_build_called()
         module = module_cls.from_model_config(**module_kwargs)
 
         # construct a default set_optimizer_fn if not provided
@@ -387,6 +388,7 @@ class RLTrainer:
             module_id: The id of the module to remove.
 
         """
+        self.__check_if_build_called()
         module = self._module[module_id]
 
         parameters = self.get_parameters(module)
@@ -513,3 +515,10 @@ class RLTrainer:
         Returns:
             The optimizer object.
         """
+
+    def __check_if_build_called(self):
+        if self._module is None:
+            raise ValueError(
+                "RLTrainer.build() must be called after constructing a "
+                "RLTrainer and before calling any methods on it."
+            )
