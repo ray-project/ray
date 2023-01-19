@@ -165,7 +165,7 @@ class TestActorManager(unittest.TestCase):
 
         results1 = []
         for _ in range(10):
-            manager.probe_unhealthy_actors()
+            manager.probe_unhealthy_actors(mark_healthy=True)
             results1.extend(
                 manager.foreach_actor(lambda w: w.call(), timeout_seconds=0)
             )
@@ -230,13 +230,32 @@ class TestActorManager(unittest.TestCase):
 
         results = []
         for _ in range(10):
-            manager.probe_unhealthy_actors()
+            manager.probe_unhealthy_actors(mark_healthy=True)
             results.extend(manager.foreach_actor(lambda w: w.call()))
             # Wait for actors to recover.
             wait_for_restore()
 
         # Some calls did error out.
         self.assertTrue(any([not r.ok for r in results]))
+
+        manager.clear()
+
+    def test_sync_call_not_bringing_back_actors(self):
+        """Test successful remote calls will not bring back actors unless told to."""
+        actors = [Actor.remote(i) for i in range(4)]
+        manager = FaultTolerantActorManager(actors=actors)
+
+        results = manager.foreach_actor(lambda w: w.call())
+        # Some calls did error out.
+        self.assertTrue(any([not r.ok for r in results]))
+
+        # Wait for actors to recover.
+        wait_for_restore()
+        manager.probe_unhealthy_actors()
+
+        # Restored actors are not marked healthy if we just do probing.
+        # Only 2 healthy actors.
+        self.assertEqual(manager.num_healthy_actors(), 2)
 
         manager.clear()
 
@@ -336,7 +355,7 @@ class TestActorManager(unittest.TestCase):
         manager.set_actor_state(2, False)
 
         # These actors are actually healthy.
-        manager.probe_unhealthy_actors()
+        manager.probe_unhealthy_actors(mark_healthy=True)
         # Both actors are now healthy.
         self.assertEqual(len(manager.healthy_actor_ids()), 4)
 

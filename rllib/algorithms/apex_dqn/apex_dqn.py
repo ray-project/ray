@@ -410,7 +410,10 @@ class ApexDQN(DQN):
 
         # Training step done. Try to bring replay actors back to life if necessary.
         # Replay actors can start fresh, so we do not need to restore any state.
-        self._replay_actor_manager.probe_unhealthy_actors()
+        self._replay_actor_manager.probe_unhealthy_actors(
+            timeout_seconds=self.config.worker_health_probe_timeout_s,
+            mark_healthy=True,
+        )
 
         return copy.deepcopy(self.learner_thread.learner_info)
 
