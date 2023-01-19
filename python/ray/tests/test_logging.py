@@ -317,7 +317,7 @@ def test_worker_id_names(shutdown_only):
         if "python-core-worker" in str(path):
             pattern = ".*-([a-f0-9]*).*"
         elif "worker" in str(path):
-            pattern = ".*worker-([a-f0-9]*)-.*"
+            pattern = ".*worker-([a-f0-9]*)-.*-.*"
         else:
             continue
         worker_id = re.match(pattern, str(path)).group(1)
@@ -540,6 +540,7 @@ def test_log_monitor(tmp_path, live_dead_pids):
     # Create an old dir.
     (log_dir / "old").mkdir()
     worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    job_id = "01000000"
     alive_pid, dead_pid = live_dead_pids
 
     mock_publisher = MagicMock()
@@ -548,8 +549,8 @@ def test_log_monitor(tmp_path, live_dead_pids):
     )
 
     # files
-    worker_out_log_file = f"worker-{worker_id}-{dead_pid}.out"
-    worker_err_log_file = f"worker-{worker_id}-{dead_pid}.err"
+    worker_out_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.out"
+    worker_err_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.err"
     monitor = "monitor.log"
     raylet_out = "raylet.out"
     raylet_err = "raylet.err"
@@ -672,7 +673,7 @@ def test_log_monitor(tmp_path, live_dead_pids):
     """
     # log_monitor.open_closed_files() should close all files
     # if it cannot open new files.
-    new_worker_err_file = f"worker-{worker_id}-{alive_pid}.err"
+    new_worker_err_file = f"worker-{worker_id}-{job_id}-{alive_pid}.err"
     create_file(log_dir, new_worker_err_file, contents)
     log_monitor.update_log_filenames()
 
@@ -694,13 +695,14 @@ def test_log_monitor_actor_task_name_and_job_id(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    job_id = "01000000"
     pid = "47660"
 
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
         str(log_dir), mock_publisher, lambda _: True, max_files_open=5
     )
-    worker_out_log_file = f"worker-{worker_id}-{pid}.out"
+    worker_out_log_file = f"worker-{worker_id}-{job_id}-{pid}.out"
     first_line = "First line\n"
     create_file(log_dir, worker_out_log_file, first_line)
     log_monitor.update_log_filenames()

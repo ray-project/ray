@@ -24,7 +24,7 @@ from ray._private.ray_logging import setup_component_logger
 logger = logging.getLogger(__name__)
 
 # The group is pid.
-WORKER_LOG_PATTERN = re.compile(".*worker.*-(\d+)")
+WORKER_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
@@ -220,7 +220,7 @@ class LogMonitor:
             if os.path.isfile(file_path) and file_path not in self.log_filenames:
                 worker_match = WORKER_LOG_PATTERN.match(file_path)
                 if worker_match:
-                    worker_pid = int(worker_match.group(1))
+                    worker_pid = int(worker_match.group(2))
                 else:
                     worker_pid = None
                 job_id = None
