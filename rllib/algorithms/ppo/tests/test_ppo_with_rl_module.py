@@ -92,7 +92,7 @@ class TestPPO(unittest.TestCase):
                 ),
             )
             .rollouts(
-                num_rollout_workers=0,
+                num_rollout_workers=1,
                 # Test with compression.
                 compress_observations=True,
                 enable_connectors=True,
@@ -141,7 +141,7 @@ class TestPPO(unittest.TestCase):
             )
             .rollouts(
                 # Run locally.
-                num_rollout_workers=0,
+                num_rollout_workers=1,
                 enable_connectors=True,
             )
             .rl_module(_enable_rl_module_api=True)
