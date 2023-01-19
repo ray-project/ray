@@ -127,7 +127,7 @@ time.sleep(15)
     assert "Error: No available node types can fulfill" in out_str
 
 
-def test_autoscaler_warn_deadlock():
+def test_autoscaler_warn_deadlock(enable_syncer_test):
     script = """
 import ray
 import time
@@ -177,15 +177,39 @@ ray.get([f.remote() for _ in range(15)])
     assert "Tip:" not in err_str
 
 
+def test_autoscaler_prefix():
+    script = """
+import ray
+import time
+
+ray.init(num_cpus=1)
+
+@ray.remote(num_cpus=1)
+class A:
+    pass
+
+a = A.remote()
+b = A.remote()
+time.sleep(25)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "(autoscaler" in out_str
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
-    script = """
+    script = f"""
 import os
 import sys
 import tempfile
 import ray
 
-ray.init()
+ray.init(address='{ray_start_regular.address_info["address"]}')
 temporary_python_file = '''
 def temporary_helper_function():
    return 1
@@ -230,13 +254,13 @@ sleep(3)
 
 
 def test_fail_importing_task(ray_start_regular, error_pubsub):
-    script = """
+    script = f"""
 import os
 import sys
 import tempfile
 import ray
 
-ray.init()
+ray.init(address='{ray_start_regular.address_info["address"]}')
 temporary_python_file = '''
 def temporary_helper_function():
    return 1
@@ -627,24 +651,31 @@ time.sleep(5)
 def test_node_name_in_raylet_death():
     NODE_NAME = "RAY_TEST_RAYLET_DEATH_NODE_NAME"
     script = f"""
-import ray
 import time
 import os
 
-NUM_HEARTBEATS=10
-HEARTBEAT_PERIOD=500
 WAIT_BUFFER_SECONDS=5
 
-os.environ["RAY_num_heartbeats_timeout"]=str(NUM_HEARTBEATS)
-os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
+os.environ["RAY_pull_based_healthcheck"]="true"
+os.environ["RAY_health_check_initial_delay_ms"]="0"
+os.environ["RAY_health_check_period_ms"]="1000"
+os.environ["RAY_health_check_timeout_ms"]="10"
+os.environ["RAY_health_check_failure_threshold"]="2"
+sleep_time = float(os.environ["RAY_health_check_period_ms"]) / 1000.0 * \
+    int(os.environ["RAY_health_check_failure_threshold"])
+sleep_time += WAIT_BUFFER_SECONDS
+
+import ray
 
 ray.init(_node_name=\"{NODE_NAME}\")
 # This will kill raylet without letting it exit gracefully.
 ray._private.worker._global_node.kill_raylet()
-time.sleep(NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS)
+
+time.sleep(sleep_time)
 ray.shutdown()
     """
     out = run_string_as_driver(script)
+    print(out)
     assert out.count(f"node name: {NODE_NAME} has been marked dead") == 1
 
 
@@ -654,7 +685,7 @@ if __name__ == "__main__":
         # about low shm memory in Linux environment.
         # The test failures currently complain it only has 2 GB memory,
         # so let's set it much lower than that.
-        MB = 1000 ** 2
+        MB = 1000**2
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:

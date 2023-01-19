@@ -1,7 +1,78 @@
 from typing import Optional
+from ray.rllib.models.specs.specs_base import TensorSpec
 
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
+
+
+@ExperimentalAPI
+def input_to_output_spec(
+    input_spec: SpecDict,
+    num_input_feature_dims: int,
+    output_key: str,
+    output_feature_spec: TensorSpec,
+) -> SpecDict:
+    """Convert an input spec to an output spec, based on a module.
+
+    Drops the feature dimension(s) from an input_spec, replacing them with
+    output_feature_spec dimension(s).
+
+    Examples:
+        input_to_output_spec(
+            input_spec=SpecDict({
+                "bork": "batch, time, feature0",
+                "dork": "batch, time, feature1"
+                }, feature0=2, feature1=3
+            ),
+            num_input_feature_dims=1,
+            output_key="outer_product",
+            output_feature_spec=TensorSpec("row, col", row=2, col=3)
+        )
+
+        will return:
+        SpecDict({"outer_product": "batch, time, row, col", row=2, col=3})
+
+        input_to_output_spec(
+            input_spec=SpecDict({
+                "bork": "batch, time, h, w, c",
+                }, h=32, w=32, c=3,
+            ),
+            num_input_feature_dims=3,
+            output_key="latent_image_representation",
+            output_feature_spec=TensorSpec("feature", feature=128)
+        )
+
+        will return:
+        SpecDict({"latent_image_representation": "batch, time, feature"}, feature=128)
+
+
+    Args:
+        input_spec: SpecDict describing input to a specified module
+        num_input_dims: How many feature dimensions the module will process. E.g.
+            a linear layer will only process the last dimension (1), while a CNN
+            might process the last two dimensions (2)
+        output_key: The key in the output spec we will write the resulting shape to
+        output_feature_spec: A spec denoting the feature dimensions output by a
+            specified module
+
+    Returns:
+        A SpecDict based on the input_spec, with the trailing dimensions replaced
+            by the output_feature_spec
+
+    """
+    assert num_input_feature_dims >= 1, "Must specify at least one feature dim"
+    num_dims = [len(v.shape) != len for v in input_spec.values()]
+    assert all(
+        nd == num_dims[0] for nd in num_dims
+    ), "All specs in input_spec must all have the same number of dimensions"
+
+    # All keys in input should have the same numbers of dims
+    # so it doesn't matter which key we use
+    key = list(input_spec.keys())[0]
+    batch_spec = input_spec[key].rdrop(num_input_feature_dims)
+    full_spec = batch_spec.append(output_feature_spec)
+    return SpecDict({output_key: full_spec})
 
 
 @DeveloperAPI
@@ -11,7 +82,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     Args:
         name (Optional[str]): One of "relu" (default), "tanh", "elu",
             "swish", or "linear" (same as None).
-        framework: One of "jax", "tf|tfe|tf2" or "torch".
+        framework: One of "jax", "tf|tf2" or "torch".
 
     Returns:
         A framework-specific activtion function. e.g. tf.nn.tanh or
@@ -52,7 +123,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
         elif name == "elu":
             return jax.nn.elu
     else:
-        assert framework in ["tf", "tfe", "tf2"], "Unsupported framework `{}`!".format(
+        assert framework in ["tf", "tf2"], "Unsupported framework `{}`!".format(
             framework
         )
         if name in ["linear", None]:
@@ -146,7 +217,7 @@ def get_initializer(name, framework="tf"):
 
     Args:
         name: One of "xavier_uniform" (default), "xavier_normal".
-        framework: One of "jax", "tf|tfe|tf2" or "torch".
+        framework: One of "jax", "tf|tf2" or "torch".
 
     Returns:
         A framework-specific initializer function, e.g.
@@ -177,7 +248,7 @@ def get_initializer(name, framework="tf"):
         elif name == "xavier_normal":
             return nn.init.xavier_normal_
     else:
-        assert framework in ["tf", "tfe", "tf2"], "Unsupported framework `{}`!".format(
+        assert framework in ["tf", "tf2"], "Unsupported framework `{}`!".format(
             framework
         )
         tf1, tf, tfv = try_import_tf()

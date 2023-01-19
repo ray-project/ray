@@ -14,6 +14,13 @@ NUM_SYNCH_WORKER_WEIGHTS = "num_weight_broadcasts"
 NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS = (
     "num_training_step_calls_since_last_synch_worker_weights"
 )
+# Number of total gradient updates that have been performed on a policy.
+NUM_GRAD_UPDATES_LIFETIME = "num_grad_updates_lifetime"
+# Average difference between the number of grad-updates that the policy/ies had
+# that collected the training batch vs the policy that was just updated (trained).
+# Good measuere for the off-policy'ness of training. Should be 0.0 for PPO and PG,
+# small for IMPALA and APPO, and any (larger) value for DQN and other off-policy algos.
+DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY = "diff_num_grad_updates_vs_sampler_policy"
 
 # Counters to track target network updates.
 LAST_TARGET_UPDATE_TS = "last_target_update_ts"

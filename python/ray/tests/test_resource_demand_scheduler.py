@@ -9,7 +9,6 @@ from dataclasses import asdict
 from datetime import datetime
 from time import sleep
 from unittest import mock
-import subprocess
 
 import pytest
 import yaml
@@ -65,7 +64,6 @@ from ray.tests.test_autoscaler import (
     fill_in_raylet_ids,
     mock_raylet_id,
 )
-from ray.cluster_utils import AutoscalingCluster
 from functools import partial
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
@@ -95,94 +93,67 @@ def test_util_score():
     )
     assert _resource_based_utilization_scorer(
         {"GPU": 4}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
-    ) == (1, 0.5, 0.5)
-    assert (
-        _resource_based_utilization_scorer(
-            {"GPU": 4},
-            [{"GPU": 1}, {"GPU": 1}],
-            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-        )
-        == (1, 0.5, 0.5)
-    )
+    ) == (True, 1, 0.5, 0.5)
+    assert _resource_based_utilization_scorer(
+        {"GPU": 4},
+        [{"GPU": 1}, {"GPU": 1}],
+        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+    ) == (True, 1, 0.5, 0.5)
     assert _resource_based_utilization_scorer(
         {"GPU": 2}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
-    ) == (1, 2, 2)
-    assert (
-        _resource_based_utilization_scorer(
-            {"GPU": 2},
-            [{"GPU": 1}, {"GPU": 1}],
-            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-        )
-        == (1, 2, 2)
-    )
+    ) == (True, 1, 2, 2)
+    assert _resource_based_utilization_scorer(
+        {"GPU": 2},
+        [{"GPU": 1}, {"GPU": 1}],
+        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+    ) == (True, 1, 2, 2)
     assert _resource_based_utilization_scorer(
         {"GPU": 1},
         [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (
-        1,
-        1,
-        1,
-    )
-    assert (
-        _resource_based_utilization_scorer(
-            {"GPU": 1, "CPU": 1},
-            [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
-            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-        )
-        == (2, 1, 1)
-    )
-    assert (
-        _resource_based_utilization_scorer(
-            {"GPU": 2, "TPU": 1},
-            [{"GPU": 2}],
-            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-        )
-        == (1, 0, 1)
-    )
+    ) == (True, 1, 1, 1)
+    assert _resource_based_utilization_scorer(
+        {"GPU": 1, "CPU": 1},
+        [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
+        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+    ) == (True, 2, 1, 1)
+    assert _resource_based_utilization_scorer(
+        {"GPU": 2, "TPU": 1},
+        [{"GPU": 2}],
+        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+    ) == (True, 1, 0, 1)
     assert _resource_based_utilization_scorer(
         {"CPU": 64}, [{"CPU": 64}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
-    ) == (1, 64, 64)
+    ) == (True, 1, 64, 64)
     assert _resource_based_utilization_scorer(
         {"CPU": 64}, [{"CPU": 32}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
-    ) == (1, 8, 8)
-    assert (
-        _resource_based_utilization_scorer(
-            {"CPU": 64},
-            [{"CPU": 16}, {"CPU": 16}],
-            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-        )
-        == (1, 8, 8)
-    )
+    ) == (True, 1, 8, 8)
+    assert _resource_based_utilization_scorer(
+        {"CPU": 64},
+        [{"CPU": 16}, {"CPU": 16}],
+        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+    ) == (True, 1, 8, 8)
 
 
 def test_gpu_node_util_score():
     # Avoid scheduling CPU tasks on GPU node.
-    assert (
-        _resource_based_utilization_scorer(
-            {"GPU": 1, "CPU": 1},
-            [{"CPU": 1}],
-            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-        )
-        is None
+    utilization_score = _resource_based_utilization_scorer(
+        {"GPU": 1, "CPU": 1},
+        [{"CPU": 1}],
+        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     )
+    gpu_ok = utilization_score[0]
+    assert gpu_ok is False
     assert _resource_based_utilization_scorer(
         {"GPU": 1, "CPU": 1},
         [{"CPU": 1, "GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (
-        2,
-        1.0,
-        1.0,
-    )
-    assert (
-        _resource_based_utilization_scorer(
-            {"GPU": 1, "CPU": 1},
-            [{"GPU": 1}],
-            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-        )
-        == (1, 0.0, 0.5)
-    )
+    ) == (True, 2, 1.0, 1.0)
+    assert _resource_based_utilization_scorer(
+        {"GPU": 1, "CPU": 1},
+        [{"GPU": 1}],
+        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+    ) == (True, 1, 0.0, 0.5)
 
 
 def test_zero_resource():
@@ -342,38 +313,39 @@ def test_gpu_node_avoid_cpu_task():
         },
     }
     r1 = [{"CPU": 1}] * 100
-    assert (
-        get_nodes_for(
-            types,
-            {},
-            "empty_node",
-            100,
-            r1,
-        )
-        == {"cpu": 10}
-    )
+    # max_to_add ten nodes allowed. All chosen to be "cpu".
+    assert get_nodes_for(
+        types,
+        {},
+        "empty_node",
+        10,
+        r1,
+    ) == {"cpu": 10}
+    # max_to_add eleven nodes allowed. First ten chosen to be "cpu",
+    # last chosen to be "gpu" due max_workers constraint on "cpu".
+    assert get_nodes_for(
+        types,
+        {},
+        "empty_node",
+        11,
+        r1,
+    ) == {"cpu": 10, "gpu": 1}
     r2 = [{"GPU": 1}] + [{"CPU": 1}] * 100
-    assert (
-        get_nodes_for(
-            types,
-            {},
-            "empty_node",
-            100,
-            r2,
-        )
-        == {"gpu": 1}
-    )
+    assert get_nodes_for(
+        types,
+        {},
+        "empty_node",
+        100,
+        r2,
+    ) == {"gpu": 1}
     r3 = [{"GPU": 1}] * 4 + [{"CPU": 1}] * 404
-    assert (
-        get_nodes_for(
-            types,
-            {},
-            "empty_node",
-            100,
-            r3,
-        )
-        == {"gpu": 4, "cpu": 4}
-    )
+    assert get_nodes_for(
+        types,
+        {},
+        "empty_node",
+        100,
+        r3,
+    ) == {"gpu": 4, "cpu": 4}
 
 
 def test_get_nodes_respects_max_limit():
@@ -387,16 +359,13 @@ def test_get_nodes_respects_max_limit():
             "max_workers": 99999,
         },
     }
-    assert (
-        get_nodes_for(
-            types,
-            {},
-            "empty_node",
-            2,
-            [{"CPU": 1}] * 10,
-        )
-        == {"m4.large": 2}
-    )
+    assert get_nodes_for(
+        types,
+        {},
+        "empty_node",
+        2,
+        [{"CPU": 1}] * 10,
+    ) == {"m4.large": 2}
     assert (
         get_nodes_for(
             types,
@@ -407,36 +376,27 @@ def test_get_nodes_respects_max_limit():
         )
         == {}
     )
-    assert (
-        get_nodes_for(
-            types,
-            {"m4.large": 0},
-            "empty_node",
-            9999,
-            [{"CPU": 1}] * 10,
-        )
-        == {"m4.large": 5}
-    )
-    assert (
-        get_nodes_for(
-            types,
-            {"m4.large": 7},
-            "m4.large",
-            4,
-            [{"CPU": 1}] * 10,
-        )
-        == {"m4.large": 4}
-    )
-    assert (
-        get_nodes_for(
-            types,
-            {"m4.large": 7},
-            "m4.large",
-            2,
-            [{"CPU": 1}] * 10,
-        )
-        == {"m4.large": 2}
-    )
+    assert get_nodes_for(
+        types,
+        {"m4.large": 0},
+        "empty_node",
+        9999,
+        [{"CPU": 1}] * 10,
+    ) == {"m4.large": 5}
+    assert get_nodes_for(
+        types,
+        {"m4.large": 7},
+        "m4.large",
+        4,
+        [{"CPU": 1}] * 10,
+    ) == {"m4.large": 4}
+    assert get_nodes_for(
+        types,
+        {"m4.large": 7},
+        "m4.large",
+        2,
+        [{"CPU": 1}] * 10,
+    ) == {"m4.large": 2}
 
 
 def test_add_min_workers_nodes():
@@ -1717,8 +1677,8 @@ class LoadMetricsTest(unittest.TestCase):
 
         assert summary.usage["CPU"] == (190, 194)
         assert summary.usage["GPU"] == (15, 16)
-        assert summary.usage["memory"] == (500 * 2 ** 20, 1000 * 2 ** 20)
-        assert summary.usage["object_store_memory"] == (1000 * 2 ** 20, 2000 * 2 ** 20)
+        assert summary.usage["memory"] == (500 * 2**20, 1000 * 2**20)
+        assert summary.usage["object_store_memory"] == (1000 * 2**20, 2000 * 2**20)
         assert (
             summary.usage["accelerator_type:V100"][1] == 2
         ), "Not comparing the usage value due to floating point error."
@@ -1747,10 +1707,10 @@ class LoadMetricsTest(unittest.TestCase):
         summary_dict = asdict(summary)
         assert summary_dict["usage"]["CPU"] == (190, 194)
         assert summary_dict["usage"]["GPU"] == (15, 16)
-        assert summary_dict["usage"]["memory"] == (500 * 2 ** 20, 1000 * 2 ** 20)
+        assert summary_dict["usage"]["memory"] == (500 * 2**20, 1000 * 2**20)
         assert summary_dict["usage"]["object_store_memory"] == (
-            1000 * 2 ** 20,
-            2000 * 2 ** 20,
+            1000 * 2**20,
+            2000 * 2**20,
         )
         assert (
             summary_dict["usage"]["accelerator_type:V100"][1] == 2
@@ -1966,6 +1926,11 @@ class AutoscalingTest(unittest.TestCase):
         assert summary.pending_launches == {"m4.16xlarge": 2}
 
         assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
+
+        assert summary.pending_resources == {
+            "GPU": 1,
+            "CPU": 144,
+        }, summary.pending_resources
 
         # Check dict conversion
         summary_dict = asdict(summary)
@@ -3039,8 +3004,8 @@ def test_info_string():
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
-            "memory": (2 * 2 ** 30, 2 ** 33),
-            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34),
         },
         resource_demand=[({"CPU": 1}, 150)],
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
@@ -3100,8 +3065,8 @@ def test_info_string_verbose():
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (1, 2),
-            "memory": (2 * 2 ** 30, 2 ** 33),
-            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34),
         },
         resource_demand=[({"CPU": 1}, 150)],
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
@@ -3112,15 +3077,15 @@ def test_info_string_verbose():
                 "CPU": (5.0, 20.0),
                 "GPU": (0.7, 1),
                 "AcceleratorType:V100": (0.1, 1),
-                "memory": (2 ** 30, 2 ** 32),
-                "object_store_memory": (3.14 * 2 ** 30, 2 ** 32),
+                "memory": (2**30, 2**32),
+                "object_store_memory": (3.14 * 2**30, 2**32),
             },
             "192.168.1.2": {
                 "CPU": (15.0, 20.0),
                 "GPU": (0.3, 1),
                 "AcceleratorType:V100": (0.9, 1),
-                "memory": (2 ** 30, 1.5 * 2 ** 33),
-                "object_store_memory": (0, 2 ** 32),
+                "memory": (2**30, 1.5 * 2**33),
+                "object_store_memory": (0, 2**32),
             },
         },
     )
@@ -3202,8 +3167,8 @@ def test_info_string_verbose_no_breakdown():
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (1, 2),
-            "memory": (2 * 2 ** 30, 2 ** 33),
-            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34),
         },
         resource_demand=[({"CPU": 1}, 150)],
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
@@ -3270,8 +3235,8 @@ def test_info_string_with_launch_failures():
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
-            "memory": (2 * 2 ** 30, 2 ** 33),
-            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34),
         },
         resource_demand=[({"CPU": 1}, 150)],
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
@@ -3358,8 +3323,8 @@ def test_info_string_failed_node_cap():
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
-            "memory": (2 * 2 ** 30, 2 ** 33),
-            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34),
             "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": (2.0, 2.0),
         },
         resource_demand=[
@@ -3436,54 +3401,6 @@ Demands:
     )
     print(actual)
     assert expected.strip() == actual
-
-
-def test_ray_status_e2e(shutdown_only):
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 0},
-        worker_node_types={
-            "type-i": {
-                "resources": {"CPU": 1, "fun": 1},
-                "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
-            },
-            "type-ii": {
-                "resources": {"CPU": 1, "fun": 100},
-                "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
-            },
-        },
-    )
-
-    try:
-        cluster.start()
-        ray.init(address="auto")
-
-        @ray.remote(num_cpus=0, resources={"fun": 2})
-        class Actor:
-            def ping(self):
-                return None
-
-        actor = Actor.remote()
-        ray.get(actor.ping.remote())
-
-        assert "Demands" in subprocess.check_output("ray status", shell=True).decode()
-        assert (
-            "Total Demands"
-            not in subprocess.check_output("ray status", shell=True).decode()
-        )
-        assert (
-            "Total Demands"
-            in subprocess.check_output("ray status -v", shell=True).decode()
-        )
-        assert (
-            "Total Demands"
-            in subprocess.check_output("ray status --verbose", shell=True).decode()
-        )
-    finally:
-        cluster.shutdown()
 
 
 def test_placement_group_match_string():

@@ -2,49 +2,65 @@ import click
 import time
 import json
 import os
-import numpy as np
-import pandas as pd
 
+import numpy as np
+import torch
 from torchvision import transforms
 from torchvision.models import resnet18
 
 import ray
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
-from ray.data.preprocessors import BatchMapper
-
-
-def preprocess(batch: np.ndarray) -> pd.DataFrame:
-    """
-    User Pytorch code to transform user image.
-    """
-    preprocess = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-    return pd.DataFrame({"image": [preprocess(image) for image in batch]})
+from ray.data.preprocessors import TorchVisionPreprocessor
 
 
 @click.command(help="Run Batch prediction on Pytorch ResNet models.")
 @click.option("--data-size-gb", type=int, default=1)
-def main(data_size_gb: int):
-    data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
-    print(f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}")
+@click.option("--smoke-test", is_flag=True, default=False)
+def main(data_size_gb: int, smoke_test: bool = False):
+    data_url = (
+        f"s3://anonymous@air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
+    )
+
+    if smoke_test:
+        # Only read one image
+        data_url = [data_url + "/dog.jpg"]
+        print("Running smoke test on CPU with a single example")
+    else:
+        print(
+            f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}"
+        )
+
     start = time.time()
     dataset = ray.data.read_images(data_url, size=(256, 256))
 
     model = resnet18(pretrained=True)
 
-    preprocessor = BatchMapper(preprocess, batch_format="numpy")
+    def to_tensor(batch: np.ndarray) -> torch.Tensor:
+        tensor = torch.as_tensor(batch, dtype=torch.float)
+        # (B, H, W, C) -> (B, C, H, W)
+        tensor = tensor.permute(0, 3, 1, 2).contiguous()
+        # [0., 255.] -> [0., 1.]
+        tensor = tensor.div(255)
+        return tensor
+
+    transform = transforms.Compose(
+        [
+            transforms.Lambda(to_tensor),
+            transforms.CenterCrop(224),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+    preprocessor = TorchVisionPreprocessor(
+        columns=["image"], transform=transform, batched=True
+    )
     ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
     predictor.predict(
-        dataset, num_gpus_per_worker=1, feature_columns=["image"], batch_size=512
+        dataset,
+        num_gpus_per_worker=int(not smoke_test),
+        batch_size=512,
     )
     total_time_s = round(time.time() - start, 2)
 

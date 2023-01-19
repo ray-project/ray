@@ -43,7 +43,6 @@ void GcsResourceManager::ConsumeSyncMessage(
         rpc::ResourcesData resources;
         resources.ParseFromString(message->sync_message());
         resources.set_node_id(message->node_id());
-        RAY_CHECK(message->message_type() == syncer::MessageType::RESOURCE_VIEW);
         UpdateFromResourceReport(resources);
       },
       "GcsResourceManager::Update");
@@ -111,6 +110,11 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
+  // When gcs detects task pending, we may receive an local update. But it can be ignored
+  // here because gcs' syncer has already broadcast it.
+  if (node_id == local_node_id_) {
+    return;
+  }
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
@@ -215,20 +219,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
-}
-
-void GcsResourceManager::HandleGetGcsSchedulingStats(
-    rpc::GetGcsSchedulingStatsRequest request,
-    rpc::GetGcsSchedulingStatsReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  if (cluster_task_manager_) {
-    // Fill pending (actor creation) tasks of gcs when gcs actor scheduler is enabled.
-    rpc::GetNodeStatsReply gcs_stats;
-    cluster_task_manager_->FillPendingActorInfo(&gcs_stats);
-    reply->mutable_infeasible_tasks()->CopyFrom(gcs_stats.infeasible_tasks());
-    reply->mutable_ready_tasks()->CopyFrom(gcs_stats.ready_tasks());
-  }
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,

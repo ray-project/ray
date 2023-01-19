@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # The maximum field value for int32 id's -- which is also the maximum
 # number of simultaneous in-flight requests.
-INT32_MAX = (2 ** 31) - 1
+INT32_MAX = (2**31) - 1
 
 # gRPC status codes that the client shouldn't attempt to recover from
 # Resource exhausted: Server is low on resources, or has hit the max number
@@ -80,10 +80,10 @@ GRPC_OPTIONS = [
 CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
 # Large objects are chunked into 64 MiB messages
-OBJECT_TRANSFER_CHUNK_SIZE = 64 * 2 ** 20
+OBJECT_TRANSFER_CHUNK_SIZE = 64 * 2**20
 
 # Warn the user if the object being transferred is larger than 2 GiB
-OBJECT_TRANSFER_WARNING_SIZE = 2 * 2 ** 30
+OBJECT_TRANSFER_WARNING_SIZE = 2 * 2**30
 
 
 class ClientObjectRef(raylet.ObjectRef):
@@ -473,8 +473,17 @@ class ClientActorHandle(ClientStub):
         return self.actor_ref
 
     def __getattr__(self, key):
+        if key == "_method_num_returns":
+            # We need to explicitly handle this value since it is used below,
+            # otherwise we may end up infinitely recursing when deserializing.
+            # This can happen after unpickling an object but before
+            # _method_num_returns is correctly populated.
+            raise AttributeError(f"ClientActorRef has no attribute '{key}'")
+
         if self._method_num_returns is None:
             self._init_class_info()
+        if key not in self._method_signatures:
+            raise AttributeError(f"ClientActorRef has no attribute '{key}'")
         return ClientRemoteMethod(
             self,
             key,

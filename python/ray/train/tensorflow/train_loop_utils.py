@@ -9,8 +9,8 @@ def prepare_dataset_shard(tf_dataset_shard: tf.data.Dataset):
 
     This should be used on a TensorFlow ``Dataset`` created by calling
     ``iter_tf_batches()`` on a ``ray.data.Dataset`` returned by
-    ``ray.train.get_dataset_shard()`` since the dataset has already been sharded
-    across the workers.
+    ``ray.air.session.get_dataset_shard()`` since the dataset has already
+    been sharded across the workers.
 
     Args:
         tf_dataset_shard (tf.data.Dataset): A TensorFlow Dataset.

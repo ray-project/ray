@@ -6,12 +6,13 @@ from typing import Dict, Any, List, Optional, Set, Tuple, Union, Callable
 import pickle
 import warnings
 
+from ray.air.execution.resources.request import _sum_bundles
 from ray.util.annotations import PublicAPI
 from ray.tune.execution import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment import Trial
-from ray.tune.execution.placement_groups import PlacementGroupFactory, _sum_bundles
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
@@ -451,7 +452,12 @@ class DistributeResources:
             base_bundles, added_bundles, increase_by, False
         )
 
-        pgf = PlacementGroupFactory(new_bundles)
+        pgf = PlacementGroupFactory(
+            new_bundles,
+            strategy=base_trial_resource.strategy,
+            *base_trial_resource._args,
+            **base_trial_resource._kwargs,
+        )
         pgf._head_bundle_is_empty = base_trial_resource._head_bundle_is_empty
         return pgf
 
@@ -601,7 +607,7 @@ class ResourceChangingScheduler(TrialScheduler):
     If the functional API is used, the current trial resources can be obtained
     by calling `tune.get_trial_resources()` inside the training function.
     The function should be able to
-    :ref:`load and save checkpoints <tune-checkpoint-syncing>`
+    :ref:`load and save checkpoints <tune-function-checkpointing>`
     (the latter preferably every iteration).
 
     If the Trainable (class) API is used, you can obtain the current trial

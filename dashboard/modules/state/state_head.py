@@ -1,10 +1,11 @@
 import asyncio
 import logging
 from dataclasses import asdict
-from typing import Callable, Optional
+from typing import Callable, List, Tuple, Optional
 
 import aiohttp.web
 from abc import ABC, abstractmethod
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import (
@@ -21,6 +22,8 @@ from ray.experimental.state.common import (
     RAY_MAX_LIMIT_FROM_API_SERVER,
     ListApiOptions,
     GetLogOptions,
+    PredicateType,
+    SupportedFilterType,
     SummaryApiOptions,
     SummaryApiResponse,
     DEFAULT_RPC_TIMEOUT,
@@ -152,13 +155,25 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             success=False,
             error_message=(
                 "Max number of in-progress requests="
-                f"{self.max_num_call_} reached."
+                f"{self.max_num_call_} reached. "
                 "To set a higher limit, set environment variable: "
-                f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='xxx'."
+                f"export {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME}='xxx'. "
                 f"Max allowed = {RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED}"
             ),
             result=None,
         )
+
+    def _get_filters_from_req(
+        self, req: aiohttp.web.Request
+    ) -> List[Tuple[str, PredicateType, SupportedFilterType]]:
+        filter_keys = req.query.getall("filter_keys", [])
+        filter_predicates = req.query.getall("filter_predicates", [])
+        filter_values = req.query.getall("filter_values", [])
+        assert len(filter_keys) == len(filter_values)
+        filters = []
+        for key, predicate, val in zip(filter_keys, filter_predicates, filter_values):
+            filters.append((key, predicate, val))
+        return filters
 
     def _options_from_req(self, req: aiohttp.web.Request) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
@@ -174,14 +189,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 f"limit {RAY_MAX_LIMIT_FROM_API_SERVER}. Use a lower limit."
             )
 
-        timeout = int(req.query.get("timeout"))
-        filter_keys = req.query.getall("filter_keys", [])
-        filter_predicates = req.query.getall("filter_predicates", [])
-        filter_values = req.query.getall("filter_values", [])
-        assert len(filter_keys) == len(filter_values)
-        filters = []
-        for key, predicate, val in zip(filter_keys, filter_predicates, filter_values):
-            filters.append((key, predicate, val))
+        timeout = int(req.query.get("timeout", 30))
+        filters = self._get_filters_from_req(req)
         detail = convert_string_to_type(req.query.get("detail", False), bool)
 
         return ListApiOptions(
@@ -190,7 +199,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
 
     def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:
         timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
-        return SummaryApiOptions(timeout=timeout)
+        filters = self._get_filters_from_req(req)
+        return SummaryApiOptions(timeout=timeout, filters=filters)
 
     def _reply(self, success: bool, error_message: str, result: dict, **kwargs):
         """Reply to the client."""
@@ -261,11 +271,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @routes.get("/api/v0/actors")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_ACTORS, "1")
         return await self._handle_list_api(self._state_api.list_actors, req)
 
     @routes.get("/api/v0/jobs")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_jobs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_JOBS, "1")
         try:
             result = await self._state_api.list_jobs(option=self._options_from_req(req))
             return self._reply(
@@ -279,6 +291,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @routes.get("/api/v0/nodes")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_nodes(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_NODES, "1")
         return await self._handle_list_api(self._state_api.list_nodes, req)
 
     @routes.get("/api/v0/placement_groups")
@@ -286,26 +299,31 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def list_placement_groups(
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_PLACEMENT_GROUPS, "1")
         return await self._handle_list_api(self._state_api.list_placement_groups, req)
 
     @routes.get("/api/v0/workers")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_workers(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_WORKERS, "1")
         return await self._handle_list_api(self._state_api.list_workers, req)
 
     @routes.get("/api/v0/tasks")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_TASKS, "1")
         return await self._handle_list_api(self._state_api.list_tasks, req)
 
     @routes.get("/api/v0/objects")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_OBJECTS, "1")
         return await self._handle_list_api(self._state_api.list_objects, req)
 
     @routes.get("/api/v0/runtime_envs")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
     @routes.get("/api/v0/cluster_events")
@@ -313,6 +331,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def list_cluster_events(
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
         return await self._handle_list_api(self._state_api.list_cluster_events, req)
 
     @routes.get("/api/v0/logs")
@@ -323,6 +342,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         Unlike other list APIs that display all existing resources in the cluster,
         this API always require to specify node id and node ip.
         """
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_LOGS, "1")
         glob_filter = req.query.get("glob", "*")
         node_id = req.query.get("node_id", None)
         node_ip = req.query.get("node_ip", None)
@@ -360,6 +380,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @routes.get("/api/v0/logs/{media_type}")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request):
+        record_extra_usage_tag(TagKey.CORE_STATE_API_GET_LOG, "1")
         options = GetLogOptions(
             timeout=int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT)),
             node_id=req.query.get("node_id", None),
@@ -371,6 +392,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             pid=req.query.get("pid", None),
             lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),
+            suffix=req.query.get("suffix", None),
         )
 
         response = aiohttp.web.StreamResponse()
@@ -418,16 +440,19 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @routes.get("/api/v0/tasks/summarize")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_TASKS, "1")
         return await self._handle_summary_api(self._state_api.summarize_tasks, req)
 
     @routes.get("/api/v0/actors/summarize")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_ACTORS, "1")
         return await self._handle_summary_api(self._state_api.summarize_actors, req)
 
     @routes.get("/api/v0/objects/summarize")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_OBJECTS, "1")
         return await self._handle_summary_api(self._state_api.summarize_objects, req)
 
     @routes.get("/api/v0/delay/{delay_s}")

@@ -13,7 +13,7 @@ from ray.util.collective.tests.util import (
 
 @pytest.mark.parametrize("tensor_backend", ["cupy", "torch"])
 @pytest.mark.parametrize(
-    "array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20, [2, 2], [5, 5, 5]]
+    "array_size", [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 5, 5]]
 )
 def test_reducescatter_different_array_size(
     ray_start_distributed_2_nodes_4_gpus, array_size, tensor_backend

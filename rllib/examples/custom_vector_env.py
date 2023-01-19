@@ -6,6 +6,7 @@ from ray import air, tune
 from ray.rllib.examples.env.mock_env import MockVectorEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -16,7 +17,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -45,13 +46,15 @@ if __name__ == "__main__":
     # carries a single CartPole sub-env in it).
     tune.register_env("custom_vec_env", lambda env_ctx: MockVectorEnv(100, 4))
 
-    config = {
-        "env": "custom_vec_env",
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("custom_vec_env")
+        .framework(args.framework)
+        .rollouts(num_rollout_workers=2)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 2,  # parallelism
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -60,7 +63,9 @@ if __name__ == "__main__":
     }
 
     tuner = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        args.run,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

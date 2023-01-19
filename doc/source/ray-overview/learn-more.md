@@ -21,7 +21,7 @@ Please raise an issue if any of the below links are broken, or if you'd like to 
 - [How to Speed up Pandas by 4x with one line of code](https://www.kdnuggets.com/2019/11/speed-up-pandas-4x.html)
 - [Quick Tip -- Speed up Pandas using Modin](https://pythondata.com/quick-tip-speed-up-pandas-using-modin/)
 - [Ray Blog](https://medium.com/distributed-computing-with-ray)
-
+- [How to launch a Ray Serve API on a remote cluster (AWS)](https://jbesomi.com/ray-serve-remote-cluster)
 
 ## Talks (Videos)
 
@@ -45,7 +45,8 @@ Please raise an issue if any of the below links are broken, or if you'd like to 
 
 ## Papers
 
--   [Ray 1.0 Architecture whitepaper](https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview)
+-   [Ray 2.0 Architecture whitepaper](https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview)
+-   [Ray 1.0 Architecture whitepaper (old)](https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview)
 -   [Ray AIR Technical whitepaper](https://docs.google.com/document/d/1bYL-638GN6EeJ45dPuLiPImA8msojEDDKiBx3YzB4_s/preview)
 -   [Exoshuffle: large-scale data shuffle in Ray](https://arxiv.org/abs/2203.05072)
 -   [RLlib paper](https://arxiv.org/abs/1712.09381)

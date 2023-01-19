@@ -20,7 +20,7 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class RuntimeEnvConfig(dict):
     """Used to specify configuration options for a runtime environment.
 
@@ -155,7 +155,7 @@ class RuntimeEnv(dict):
         ray.init("ray://123.456.7.89:10001", runtime_env=RuntimeEnv(...))
 
     Can specify different runtime environments per-actor or per-task using
-    ``.options()`` or the ``@ray.remote()`` decorator:
+    ``.options()`` or the ``@ray.remote`` decorator:
 
     .. code-block:: python
 

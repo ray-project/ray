@@ -35,7 +35,8 @@ class WorkerContext {
 
   const WorkerID &GetWorkerID() const;
 
-  const JobID &GetCurrentJobID() const;
+  JobID GetCurrentJobID() const LOCKS_EXCLUDED(mutex_);
+  rpc::JobConfig GetCurrentJobConfig() const LOCKS_EXCLUDED(mutex_);
 
   const TaskID &GetCurrentTaskID() const;
 
@@ -50,12 +51,19 @@ class WorkerContext {
 
   std::shared_ptr<json> GetCurrentRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
+  // Initialize worker's job_id and job_config if they haven't already.
+  // Note a worker's job config can't be changed after initialization.
+  void MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
+      LOCKS_EXCLUDED(mutex_);
+
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
 
   const TaskID &GetCurrentInternalTaskId() const;
 
   void SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_);
+
+  void SetTaskDepth(int64_t depth) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetCurrentTask(const TaskSpecification &task_spec) LOCKS_EXCLUDED(mutex_);
 
@@ -102,7 +110,12 @@ class WorkerContext {
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
-  const JobID current_job_id_;
+
+  // a worker's job infomation might be lazily initialized.
+  JobID current_job_id_ GUARDED_BY(mutex_);
+  std::optional<rpc::JobConfig> job_config_ GUARDED_BY(mutex_);
+
+  int64_t task_depth_ GUARDED_BY(mutex_) = 0;
   ActorID current_actor_id_ GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ GUARDED_BY(mutex_) = 1;
   bool current_actor_is_asyncio_ GUARDED_BY(mutex_) = false;

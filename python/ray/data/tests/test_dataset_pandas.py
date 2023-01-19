@@ -1,9 +1,16 @@
 import pytest
 import pandas as pd
+import pyarrow as pa
 import numpy as np
 
 import ray
 
+from ray.data.extensions import (
+    TensorDtype,
+    TensorArray,
+    ArrowTensorType,
+    ArrowTensorArray,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -18,7 +25,7 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
         df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
         ds = ray.data.from_pandas([df1, df2])
-        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
         values = [(r["one"], r["two"]) for r in ds.take(6)]
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
@@ -27,7 +34,7 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas(df1)
-        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
         values = [(r["one"], r["two"]) for r in ds.take(3)]
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
@@ -46,7 +53,7 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
         df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
         ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
-        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
         values = [(r["one"], r["two"]) for r in ds.take(6)]
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
@@ -55,7 +62,7 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
 
         # test from single pandas dataframe ref
         ds = ray.data.from_pandas_refs(ray.put(df1))
-        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        assert ds.dataset_format() == "pandas" if enable_pandas_block else "arrow"
         values = [(r["one"], r["two"]) for r in ds.take(3)]
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
@@ -95,6 +102,47 @@ def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
     ds = ray.data.from_pandas([df1, df2])
     dfds = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dfds)
+
+
+def test_to_pandas_tensor_column_cast_pandas(ray_start_regular_shared):
+    # Check that tensor column casting occurs when converting a Dataset to a Pandas
+    # DataFrame.
+    data = np.arange(12).reshape((3, 2, 2))
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.enable_tensor_extension_casting
+    try:
+        ctx.enable_tensor_extension_casting = True
+        in_df = pd.DataFrame({"a": TensorArray(data)})
+        ds = ray.data.from_pandas(in_df)
+        dtypes = ds.schema().types
+        assert len(dtypes) == 1
+        assert isinstance(dtypes[0], TensorDtype)
+        out_df = ds.to_pandas()
+        assert out_df["a"].dtype.type is np.object_
+        expected_df = pd.DataFrame({"a": list(data)})
+        pd.testing.assert_frame_equal(out_df, expected_df)
+    finally:
+        ctx.enable_tensor_extension_casting = original
+
+
+def test_to_pandas_tensor_column_cast_arrow(ray_start_regular_shared):
+    # Check that tensor column casting occurs when converting a Dataset to a Pandas
+    # DataFrame.
+    data = np.arange(12).reshape((3, 2, 2))
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.enable_tensor_extension_casting
+    try:
+        ctx.enable_tensor_extension_casting = True
+        in_table = pa.table({"a": ArrowTensorArray.from_numpy(data)})
+        ds = ray.data.from_arrow(in_table)
+        dtype = ds.schema().field(0).type
+        assert isinstance(dtype, ArrowTensorType)
+        out_df = ds.to_pandas()
+        assert out_df["a"].dtype.type is np.object_
+        expected_df = pd.DataFrame({"a": list(data)})
+        pd.testing.assert_frame_equal(out_df, expected_df)
+    finally:
+        ctx.enable_tensor_extension_casting = original
 
 
 def test_read_pandas_data_array_column(ray_start_regular_shared):

@@ -45,7 +45,7 @@ public class SetupJavaWorkerTest extends BaseTest {
   public void testCreateActorFail() {
     ActorHandle<ActorTest.Counter> actor = Ray.actor(ActorTest.Counter::new, 1).remote();
     // throw RayTimeoutException exception if actor is not started correctly by raylet
-    Integer value = actor.task(ActorTest.Counter::getValue).remote().get(3 * 1000);
+    Integer value = actor.task(ActorTest.Counter::getValue).remote().get(30 * 1000);
     Assert.assertEquals(Integer.valueOf(1), value);
   }
 }

@@ -1,5 +1,5 @@
 cartpole-ppo:
-    env: CartPole-v0
+    env: CartPole-v1
     run: PPO
     stop:
         episode_reward_mean: 150
@@ -17,4 +17,4 @@ cartpole-ppo:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
-        enable_connectors: True
+        enable_connectors: true

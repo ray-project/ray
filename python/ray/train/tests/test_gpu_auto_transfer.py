@@ -8,8 +8,7 @@ import ray
 from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.air.config import ScalingConfig
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
-from ray.train.torch.torch_trainer import TorchTrainer
+from ray.train.torch import TorchTrainer, TorchCheckpoint
 import ray.train.torch.train_loop_utils
 
 
@@ -106,7 +105,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
 
         assert next(model.parameters()).is_cuda
 
-        session.report({"model": model}, checkpoint=TorchCheckpoint.from_model(model))
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
@@ -114,9 +113,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     results = trainer.fit()
 
     model_checkpoint = results.checkpoint.get_model()
-    model_report = results.metrics["model"]
     assert not next(model_checkpoint.parameters()).is_cuda
-    assert not next(model_report.parameters()).is_cuda
 
     # Test the same thing for state dict.
 
@@ -134,7 +131,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
             assert tensor.is_cuda
 
         session.report(
-            {"state_dict": state_dict},
+            {},
             checkpoint=TorchCheckpoint.from_state_dict(state_dict),
         )
 
@@ -144,10 +141,6 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     results = trainer.fit()
 
     state_dict_checkpoint = results.checkpoint.to_dict()[MODEL_KEY]
-    state_dict_report = results.metrics["state_dict"]
-
-    for tensor in state_dict_report.values():
-        assert not tensor.is_cuda
 
     for tensor in state_dict_checkpoint.values():
         assert not tensor.is_cuda

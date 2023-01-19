@@ -79,7 +79,7 @@ def construct_metadata() -> WorkerMetadata:
 
     This function is expected to be run on the actor.
     """
-    node_id = ray.get_runtime_context().node_id.hex()
+    node_id = ray.get_runtime_context().get_node_id()
     node_ip = ray.util.get_node_ip_address()
     hostname = socket.gethostname()
     gpu_ids = [str(gpu_id) for gpu_id in ray.get_gpu_ids()]

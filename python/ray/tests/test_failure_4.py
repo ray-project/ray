@@ -156,8 +156,9 @@ def test_retry_application_level_error_exception_filter(ray_start_regular):
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
-        "num_heartbeats_timeout": 50,
-        "raylet_heartbeat_period_milliseconds": 10,
+        "health_check_failure_threshold": 50,
+        "health_check_period_ms": 10,
+        "health_check_initial_delay_ms": 0,
     }
     cluster = Cluster()
     cluster.add_node(num_cpus=0, _system_config=config)
@@ -245,7 +246,9 @@ if __name__ == "__main__":
 def test_object_lost_error(ray_start_cluster, debug_enabled):
     cluster = ray_start_cluster
     system_config = {
-        "num_heartbeats_timeout": 3,
+        "health_check_failure_threshold": 3,
+        "health_check_period_ms": 1000,
+        "health_check_initial_delay_ms": 0,
     }
     if debug_enabled:
         system_config["record_ref_creation_sites"] = True
@@ -314,10 +317,11 @@ def test_object_lost_error(ray_start_cluster, debug_enabled):
         {
             "num_cpus": 0,
             "_system_config": {
-                "num_heartbeats_timeout": 10,
-                "raylet_heartbeat_period_milliseconds": 100,
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 100,
+                "health_check_failure_threshold": 10,
             },
-        }
+        },
     ],
     indirect=True,
 )
@@ -360,7 +364,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
             assert not graceful
 
     """
-    Kill the first worker non-gracefully.
+    Kill the first worker ungracefully.
     """
     ip = worker.node_ip_address
     kill_raylet(ip, worker_node_port, graceful=False)
@@ -412,8 +416,9 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
         {
             "num_cpus": 0,
             "_system_config": {
-                "num_heartbeats_timeout": 10,
-                "raylet_heartbeat_period_milliseconds": 100,
+                "health_check_failure_threshold": 10,
+                "health_check_period_ms": 100,
+                "health_check_initial_delay_ms": 0,
             },
         }
     ],
@@ -562,8 +567,9 @@ def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
     """Test that locality-ware scheduling can handle dead nodes."""
     # Create a cluster with 4 nodes.
     config = {
-        "num_heartbeats_timeout": 5,
-        "raylet_heartbeat_period_milliseconds": 50,
+        "health_check_failure_threshold": 5,
+        "health_check_period_ms": 50,
+        "health_check_initial_delay_ms": 0,
     }
     cluster = Cluster()
     cluster.add_node(num_cpus=4, resources={"node1": 1}, _system_config=config)

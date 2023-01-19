@@ -1,7 +1,7 @@
 """This is the module that is in charge of Ray usage report (telemetry) APIs.
 
-NOTE: Ray's usage report is currently "off by default".
-      But we are planning to make it opt-in by default.
+NOTE: Ray's usage report is currently "on by default".
+      One could opt-out, see details at https://docs.ray.io/en/master/cluster/usage-stats.html. # noqa
 
 Ray usage report follows the specification from
 https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/edit#heading=h.17dss3b9evbj. # noqa
@@ -63,8 +63,10 @@ import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
 from ray._private import gcs_utils
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
+from ray.core.generated import usage_pb2
 
 logger = logging.getLogger(__name__)
+TagKey = usage_pb2.TagKey
 
 #################
 # Internal APIs #
@@ -241,28 +243,6 @@ def _put_library_usage(library_usage: str):
             logger.debug(f"Failed to write a library usage to the home folder, {e}")
 
 
-class TagKey(Enum):
-    _TEST1 = auto()
-    _TEST2 = auto()
-
-    # RLlib
-    # The deep learning framework ("tf", "torch", etc.).
-    RLLIB_FRAMEWORK = auto()
-    # The algorithm name (only built-in algorithms).
-    RLLIB_ALGORITHM = auto()
-    # The number of workers as a string.
-    RLLIB_NUM_WORKERS = auto()
-
-    # Serve
-    # The public Python API version ("v1", "v2").
-    SERVE_API_VERSION = auto()
-    # The total number of running serve deployments as a string.
-    SERVE_NUM_DEPLOYMENTS = auto()
-
-    # The GCS storage type, which could be memory or redis.
-    GCS_STORAGE = auto()
-
-
 def record_extra_usage_tag(key: TagKey, value: str):
     """Record extra kv usage tag.
 
@@ -272,7 +252,7 @@ def record_extra_usage_tag(key: TagKey, value: str):
     then call this function.
     It will make a synchronous call to the internal kv store if the tag is updated.
     """
-    key = key.name.lower()
+    key = TagKey.Name(key).lower()
     with _recorded_extra_usage_tags_lock:
         if _recorded_extra_usage_tags.get(key) == value:
             return
@@ -624,6 +604,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
         except Exception as e:
             logger.info(f"Failed to parse extra usage tags env var. Error: {e}")
 
+    valid_tag_keys = [tag_key.lower() for tag_key in TagKey.keys()]
     try:
         keys = gcs_client.internal_kv_keys(
             usage_constant.EXTRA_USAGE_TAG_PREFIX.encode(),
@@ -635,6 +616,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
             )
             key = key.decode("utf-8")
             key = key[len(usage_constant.EXTRA_USAGE_TAG_PREFIX) :]
+            assert key in valid_tag_keys
             extra_usage_tags[key] = value.decode("utf-8")
     except Exception as e:
         logger.info(f"Failed to get extra usage tags from kv store {e}")
@@ -661,7 +643,7 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
             return ClusterStatusToReport()
 
         result = ClusterStatusToReport()
-        to_GiB = 1 / 2 ** 30
+        to_GiB = 1 / 2**30
         cluster_status = json.loads(cluster_status.decode("utf-8"))
         if (
             "load_metrics_report" not in cluster_status
@@ -762,9 +744,6 @@ def get_cluster_config_to_report(
             # Check if we're using KubeRay >= 0.4.0.
             if usage_constant.KUBERAY_ENV in os.environ:
                 result.cloud_provider = usage_constant.PROVIDER_KUBERAY
-            # Check if we're using the legacy Ray Operator with Ray >= 2.1.0.
-            elif usage_constant.LEGACY_RAY_OPERATOR_ENV in os.environ:
-                result.cloud_provider = usage_constant.PROVIDER_LEGACY_RAY_OPERATOR
             # Else, we're on Kubernetes but not in either of the above categories.
             else:
                 result.cloud_provider = usage_constant.PROVIDER_KUBERNETES_GENERIC

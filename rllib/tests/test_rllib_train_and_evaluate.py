@@ -5,16 +5,17 @@ import sys
 import unittest
 
 import ray
-from ray import air
-from ray import tune
+from ray import air, tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
+from ray.tune.registry import get_trainable_cls
 
 
 rllib_dir = str(Path(__file__).parent.parent.absolute())
 
 
-def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
+def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
     extra_config = ""
     if algo == "ARS":
         extra_config = ',"train_batch_size": 10, "noise_size": 250000'
@@ -78,7 +79,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         os.popen('rm -rf "{}"'.format(tmp_dir)).read()
 
 
-def learn_test_plus_evaluate(algo, env="CartPole-v0"):
+def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
     for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ', \\"framework\\": \\"{}\\"'.format(fw)
 
@@ -150,7 +151,7 @@ def learn_test_plus_evaluate(algo, env="CartPole-v0"):
         os.popen('rm -rf "{}"'.format(tmp_dir)).read()
 
 
-def learn_test_multi_agent_plus_evaluate(algo):
+def learn_test_multi_agent_plus_evaluate(algo: str):
     for fw in framework_iterator(frameworks=("tf", "torch")):
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
@@ -167,18 +168,22 @@ def learn_test_multi_agent_plus_evaluate(algo):
         def policy_fn(agent_id, episode, **kwargs):
             return "pol{}".format(agent_id)
 
-        config = {
-            "num_gpus": 0,
-            "num_workers": 1,
-            "evaluation_config": {"explore": False},
-            "framework": fw,
-            "env": MultiAgentCartPole,
-            "multiagent": {
-                "policies": {"pol0", "pol1"},
-                "policy_mapping_fn": policy_fn,
-            },
-        }
+        config = (
+            get_trainable_cls(algo)
+            .get_default_config()
+            .environment(MultiAgentCartPole)
+            .framework(fw)
+            .rollouts(num_rollout_workers=1)
+            .multi_agent(
+                policies={"pol0", "pol1"},
+                policy_mapping_fn=policy_fn,
+            )
+            .resources(num_gpus=0)
+            .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
+        )
+
         stop = {"episode_reward_mean": 100.0}
+
         results = tune.Tuner(
             algo,
             param_space=config,
@@ -245,10 +250,10 @@ class TestEvaluate2(unittest.TestCase):
 
 class TestEvaluate3(unittest.TestCase):
     def test_impala(self):
-        evaluate_test("IMPALA", env="CartPole-v0")
+        evaluate_test("IMPALA", env="CartPole-v1")
 
     def test_ppo(self):
-        evaluate_test("PPO", env="CartPole-v0", test_episode_rollout=True)
+        evaluate_test("PPO", env="CartPole-v1", test_episode_rollout=True)
 
 
 class TestEvaluate4(unittest.TestCase):
@@ -274,18 +279,29 @@ class TestCLISmokeTests(unittest.TestCase):
         assert os.popen(f"python {rllib_dir}/scripts.py example list --help").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example run --help").read()
 
-    def test_simple_commands(self):
+    def test_example_commands(self):
         assert os.popen(f"python {rllib_dir}/scripts.py example list").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example list -f=ppo").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example get atari-a2c").read()
+        assert os.popen(
+            f"python {rllib_dir}/scripts.py example run cartpole-simpleq-test"
+        ).read()
 
+    def test_yaml_run(self):
         assert os.popen(
             f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
             f"cartpole-simpleq-test.yaml"
         ).read()
 
+    def test_python_run(self):
+        assert os.popen(
+            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
+            f"cartpole_simpleq_test.py "
+            f"--stop={'timesteps_total': 50000, 'episode_reward_mean': 200}"
+        ).read()
+
     def test_all_example_files_exist(self):
-        """ "The 'example' command now knows about example files,
+        """The 'example' command now knows about example files,
         so we check that they exist."""
         from ray.rllib.common import EXAMPLES
 

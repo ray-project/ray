@@ -44,7 +44,10 @@ from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
 from pandas.core.indexers import check_array_indexer, validate_indices
 from pandas.io.formats.format import ExtensionArrayFormatter
 
-from ray.air.util.tensor_extensions.utils import _is_ndarray_variable_shaped_tensor
+from ray.air.util.tensor_extensions.utils import (
+    _create_possibly_ragged_ndarray,
+    _is_ndarray_variable_shaped_tensor,
+)
 from ray.util.annotations import PublicAPI
 
 try:
@@ -283,7 +286,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     # https://github.com/CODAIT/text-extensions-for-pandas/issues/166
     base = None
 
-    def __init__(self, shape: Optional[Tuple[int, ...]], dtype: np.dtype):
+    def __init__(self, shape: Tuple[Optional[int], ...], dtype: np.dtype):
         self._shape = shape
         self._dtype = dtype
 
@@ -308,8 +311,8 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     @property
     def element_shape(self):
         """
-        The shape of the underlying tensor elements. This will be None if the
-        corresponding TensorArray for this TensorDtype holds variable-shaped tensor
+        The shape of the underlying tensor elements. This will be a tuple of Nones if
+        the corresponding TensorArray for this TensorDtype holds variable-shaped tensor
         elements.
         """
         return self._shape
@@ -320,7 +323,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         Whether the corresponding TensorArray for this TensorDtype holds variable-shaped
         tensor elements.
         """
-        return self.shape is None
+        return all(dim_size is None for dim_size in self.shape)
 
     @property
     def name(self) -> str:
@@ -332,7 +335,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
     @classmethod
     def construct_from_string(cls, string: str):
-        """
+        r"""
         Construct this type from a string.
 
         This is useful mainly for data types that accept parameters.
@@ -384,7 +387,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
             )
         # Upstream code uses exceptions as part of its normal control flow and
         # will pass this method bogus class names.
-        regex = r"^TensorDtype\(shape=((?:\((?:\d+,?\s?)*\))|(?:None)), dtype=(\w+)\)$"
+        regex = r"^TensorDtype\(shape=(\((?:(?:\d+|None),?\s?)*\)), dtype=(\w+)\)$"
         m = re.search(regex, string)
         err_msg = (
             f"Cannot construct a '{cls.__name__}' from '{string}'; expected a string "
@@ -890,7 +893,7 @@ class TensorArray(
             # A tensor is only considered variable-shaped if it's non-empty, so no
             # non-empty check is needed here.
             dtype = self._tensor[0].dtype
-            shape = None
+            shape = (None,) * self._tensor[0].ndim
         else:
             dtype = self.numpy_dtype
             shape = self.numpy_shape[1:]
@@ -1419,33 +1422,6 @@ TensorArrayElement._add_logical_ops()
 TensorArray._add_arithmetic_ops()
 TensorArray._add_comparison_ops()
 TensorArray._add_logical_ops()
-
-
-def _create_possibly_ragged_ndarray(
-    values: Union[
-        np.ndarray, ABCSeries, Sequence[Union[np.ndarray, TensorArrayElement]]
-    ]
-) -> np.ndarray:
-    """
-    Create a possibly ragged ndarray.
-
-    Using the np.array() constructor will fail to construct a ragged ndarray that has a
-    uniform first dimension (e.g. uniform channel dimension in imagery). This function
-    catches this failure and tries a create-and-fill method to construct the ragged
-    ndarray.
-    """
-    try:
-        return np.array(values, copy=False)
-    except ValueError as e:
-        if "could not broadcast input array from shape" in str(e):
-            # Create an empty object-dtyped 1D array.
-            arr = np.empty(len(values), dtype=object)
-            # Try to fill the 1D array of pointers with the (ragged) tensors.
-            arr[:] = list(values)
-            return arr
-        else:
-            # Re-raise original error if the failure wasn't a broadcast error.
-            raise e from None
 
 
 @PublicAPI(stability="beta")

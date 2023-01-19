@@ -19,62 +19,79 @@ be played by the user against the "main" agent on the command line.
 """
 
 import argparse
-import numpy as np
 import os
-import pyspiel
-from open_spiel.python.rl_environment import Environment
 import sys
+
+import numpy as np
 
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.ppo import PPO
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import CLIReporter, register_env
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
-    default="tf",
-    help="The DL framework specifier.",
-)
-parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument("--num-workers", type=int, default=2)
-parser.add_argument(
-    "--from-checkpoint",
-    type=str,
-    default=None,
-    help="Full path to a checkpoint file for restoring a previously saved "
-    "Algorithm state.",
-)
-parser.add_argument(
-    "--env", type=str, default="connect_four", choices=["markov_soccer", "connect_four"]
-)
-parser.add_argument(
-    "--stop-iters", type=int, default=200, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-timesteps", type=int, default=10000000, help="Number of timesteps to train."
-)
-parser.add_argument(
-    "--win-rate-threshold",
-    type=float,
-    default=0.95,
-    help="Win-rate at which we setup another opponent by freezing the "
-    "current main policy and playing against a uniform distribution "
-    "of previously frozen 'main's from here on.",
-)
-parser.add_argument(
-    "--num-episodes-human-play",
-    type=int,
-    default=10,
-    help="How many episodes to play against the user on the command "
-    "line after training has finished.",
-)
-args = parser.parse_args()
+open_spiel = try_import_open_spiel(error=True)
+pyspiel = try_import_pyspiel(error=True)
+
+# Import after try_import_open_spiel, so we can error out with hints
+from open_spiel.python.rl_environment import Environment  # noqa: E402
+
+
+def get_cli_args():
+    """Create CLI parser and return parsed arguments"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--framework",
+        choices=["tf", "tf2", "torch"],
+        default="tf",
+        help="The DL framework specifier.",
+    )
+    parser.add_argument("--num-cpus", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument(
+        "--from-checkpoint",
+        type=str,
+        default=None,
+        help="Full path to a checkpoint file for restoring a previously saved "
+        "Algorithm state.",
+    )
+    parser.add_argument(
+        "--env",
+        type=str,
+        default="connect_four",
+        choices=["markov_soccer", "connect_four"],
+    )
+    parser.add_argument(
+        "--stop-iters", type=int, default=200, help="Number of iterations to train."
+    )
+    parser.add_argument(
+        "--stop-timesteps",
+        type=int,
+        default=10000000,
+        help="Number of timesteps to train.",
+    )
+    parser.add_argument(
+        "--win-rate-threshold",
+        type=float,
+        default=0.95,
+        help="Win-rate at which we setup another opponent by freezing the "
+        "current main policy and playing against a uniform distribution "
+        "of previously frozen 'main's from here on.",
+    )
+    parser.add_argument(
+        "--num-episodes-human-play",
+        type=int,
+        default=10,
+        help="How many episodes to play against the user on the command "
+        "line after training has finished.",
+    )
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+    return args
 
 
 def ask_user_for_action(time_step):
@@ -166,6 +183,8 @@ class SelfPlayCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
+
+    args = get_cli_args()
     ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
     register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
@@ -176,20 +195,19 @@ if __name__ == "__main__":
         # (start player) and sometimes agent1 (player to move 2nd).
         return "main" if episode.episode_id % 2 == agent_id else "random"
 
-    config = {
-        "env": "open_spiel_env",
-        "callbacks": SelfPlayCallback,
-        "model": {
-            "fcnet_hiddens": [512, 512],
-        },
-        "num_sgd_iter": 20,
-        "num_envs_per_worker": 5,
-        "multiagent": {
+    config = (
+        PPOConfig()
+        .environment("open_spiel_env")
+        .framework(args.framework)
+        .callbacks(SelfPlayCallback)
+        .rollouts(num_envs_per_worker=5, num_rollout_workers=args.num_workers)
+        .training(num_sgd_iter=20, model={"fcnet_hiddens": [512, 512]})
+        .multi_agent(
             # Initial policy map: Random and PPO. This will be expanded
             # to more policy snapshots taken from "main" against which "main"
             # will then play (instead of "random"). This is done in the
             # custom callback defined above (`SelfPlayCallback`).
-            "policies": {
+            policies={
                 # Our main policy, we'd like to optimize.
                 "main": PolicySpec(),
                 # An initial random opponent to play against.
@@ -199,15 +217,13 @@ if __name__ == "__main__":
             # to the opponent ("random" at first). Make sure (via episode_id)
             # that "main" always plays against "random" (and not against
             # another "main").
-            "policy_mapping_fn": policy_mapping_fn,
+            policy_mapping_fn=policy_mapping_fn,
             # Always just train the "main" policy.
-            "policies_to_train": ["main"],
-        },
-        "num_workers": args.num_workers,
+            policies_to_train=["main"],
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
 
     stop = {
         "timesteps_total": args.stop_timesteps,
@@ -246,14 +262,15 @@ if __name__ == "__main__":
     # human on command line.
     if args.num_episodes_human_play > 0:
         num_episodes = 0
-        trainer = PPO(config=dict(config, **{"explore": False}))
+        config.explore = False
+        algo = config.build()
         if args.from_checkpoint:
-            trainer.restore(args.from_checkpoint)
+            algo.restore(args.from_checkpoint)
         else:
             checkpoint = results.get_best_result().checkpoint
             if not checkpoint:
                 raise ValueError("No last checkpoint found in results!")
-            trainer.restore(checkpoint)
+            algo.restore(checkpoint)
 
         # Play from the command line against the trained agent
         # in an actual (non-RLlib-wrapped) open-spiel env.
@@ -269,7 +286,7 @@ if __name__ == "__main__":
                     action = ask_user_for_action(time_step)
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
-                    action = trainer.compute_single_action(obs, policy_id="main")
+                    action = algo.compute_single_action(obs, policy_id="main")
                     # In case computer chooses an invalid action, pick a
                     # random one.
                     legal = time_step.observations["legal_actions"][player_id]
@@ -291,5 +308,7 @@ if __name__ == "__main__":
             human_player = 1 - human_player
 
             num_episodes += 1
+
+        algo.stop()
 
     ray.shutdown()

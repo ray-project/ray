@@ -20,15 +20,16 @@ If you've stopped a run and and want to resume from where you left off,
 you can then call ``Tuner.restore()`` like this:
 
 .. code-block:: python
-    :emphasize-lines: 4
 
     tuner = Tuner.restore(
         path="~/ray_results/my_experiment"
     )
     tuner.fit()
 
-There are a few options for resuming an experiment:
-"resume_unfinished", "resume_errored" and "restart_errored". See ``Tuner.restore()`` for more details.
+There are a few options for restoring an experiment:
+``resume_unfinished``, ``resume_errored`` and ``restart_errored``.
+Please see the documentation of
+:meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
 
 ``path`` here is determined by the ``air.RunConfig.name`` you supplied to your ``Tuner()``.
 If you didn't supply name to ``Tuner``, it is likely that your ``path`` looks something like:
@@ -47,19 +48,19 @@ of your original tuning run:
     Result logdir: /Users/ray/ray_results/my_trainable_2021-01-29_10-16-44
     Number of trials: 1/1 (1 RUNNING)
 
-What's happening under the hood?
---------------------------------
+What's happening under the hood in a Tune run?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:ref:`Here <tune-two-types-of-ckpt>` we talked about two types of Tune checkpoints.
-Both checkpoints come into play when resuming a Tune run.
+:ref:`Here <tune-persisted-experiment-data>`, we describe the two types of Tune checkpoints:
+experiment-level and trial-level checkpoints.
 
-When resuming an interrupted/errored Tune run, Tune first looks at the experiment-level checkpoint
-to find the list of trials at the time of the interruption. Ray Tune then locates the trial-level
-checkpoint of each trial.
+Upon resuming an interrupted/errored Tune run:
 
-Depending on the specified resume option
-("resume_unfinished", "resume_errored", "restart_errored"), Ray Tune then decides whether to
-restore a given non-finished trial from its latest available checkpoint or start from scratch.
+#. Tune first looks at the experiment-level checkpoint to find the list of trials at the time of the interruption.
+
+#. Tune then locates and restores from the trial-level checkpoint of each trial.
+
+#. Depending on the specified resume option (``resume_unfinished``, ``resume_errored``, ``restart_errored``), Tune decides whether to restore a given unfinished trial from its latest available checkpoint or to start from scratch.
 
 .. _tune-stopping-ref:
 
@@ -73,8 +74,8 @@ This argument takes, a dictionary, a function, or a :class:`Stopper <ray.tune.st
 If a dictionary is passed in, the keys may be any field in the return result of ``session.report`` in the
 Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
 
-Stopping with a dictionary
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Stopping Tune runs with a dictionary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In the example below, each trial will be stopped either when it completes ``10`` iterations or when it
 reaches a mean accuracy of ``0.98``.
@@ -88,8 +89,8 @@ These metrics are assumed to be **increasing**.
         run_config=air.RunConfig(stop={"training_iteration": 10, "mean_accuracy": 0.98})
     ).fit()
 
-Stopping with a function
-~~~~~~~~~~~~~~~~~~~~~~~~
+Stopping Tune runs with a function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For more flexibility, you can pass in a function instead.
 If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean
@@ -102,8 +103,8 @@ If a function is passed in, it must take ``(trial_id, result)`` as arguments and
 
     tune.Tuner(my_trainable, run_config=air.RunConfig(stop=stopper)).fit()
 
-Stopping with a class
-~~~~~~~~~~~~~~~~~~~~~
+Stopping Tune runs with a class
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Finally, you can implement the :class:`Stopper <ray.tune.stopper.Stopper>` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
 
@@ -134,8 +135,8 @@ once their current iterations are complete.
 Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
 
 
-Stopping after the first failure
---------------------------------
+Stopping a ``Tuner`` after the first failure
+--------------------------------------------
 
 By default, ``Tuner.fit()`` will continue executing until all trials have terminated or errored.
 To stop the entire Tune run as soon as **any** trial errors:

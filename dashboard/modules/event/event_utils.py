@@ -7,9 +7,13 @@ import asyncio
 import itertools
 import collections
 import logging.handlers
+from ray._private.utils import get_or_create_event_loop
 
+from concurrent.futures import ThreadPoolExecutor
+
+from ray._private.utils import run_background_task
 from ray.dashboard.modules.event import event_consts
-from ray.dashboard.utils import async_loop_forever, create_task
+from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,7 @@ def _read_file(
 def monitor_events(
     event_dir,
     callback,
+    monitor_thread_pool_executor: ThreadPoolExecutor,
     scan_interval_seconds=event_consts.SCAN_EVENT_DIR_INTERVAL_SECONDS,
     start_mtime=time.time() + event_consts.SCAN_EVENT_START_OFFSET_SECONDS,
     monitor_files=None,
@@ -106,6 +111,10 @@ def monitor_events(
         event_dir: The event log directory.
         callback (def callback(List[str]): pass): A callback accepts a list of
             event strings.
+        monitor_thread_pool_executor: A thread pool exector to monitor/update
+            events. None means it will use the default execturo which uses
+            num_cpus of the machine * 5 threads (before python 3.8) or
+            min(32, num_cpus + 5) (from Python 3.8).
         scan_interval_seconds: An interval seconds between two scans.
         start_mtime: Only the event log files whose last modification
             time is greater than start_mtime are monitored.
@@ -116,7 +125,7 @@ def monitor_events(
             event_pb2.Event.SourceType.keys(). Monitor all source types if the
             value is None.
     """
-    loop = asyncio.get_event_loop()
+    loop = get_or_create_event_loop()
     if monitor_files is None:
         monitor_files = {}
 
@@ -174,7 +183,11 @@ def monitor_events(
     async def _scan_event_log_files():
         # Scan event files.
         source_files = await loop.run_in_executor(
-            None, _get_source_files, event_dir, source_types, _source_file_filter
+            monitor_thread_pool_executor,
+            _get_source_files,
+            event_dir,
+            source_types,
+            _source_file_filter,
         )
 
         # Limit concurrent read to avoid fd exhaustion.
@@ -182,7 +195,9 @@ def monitor_events(
 
         async def _concurrent_coro(filename):
             async with semaphore:
-                return await loop.run_in_executor(None, _read_monitor_file, filename, 0)
+                return await loop.run_in_executor(
+                    monitor_thread_pool_executor, _read_monitor_file, filename, 0
+                )
 
         # Read files.
         await asyncio.gather(
@@ -192,4 +207,4 @@ def monitor_events(
             ]
         )
 
-    return create_task(_scan_event_log_files())
+    return run_background_task(_scan_event_log_files())

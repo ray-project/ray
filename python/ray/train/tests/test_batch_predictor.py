@@ -2,13 +2,18 @@ import re
 import time
 from typing import Optional
 
+import numpy as np
 import pandas as pd
+import pyarrow as pa
+
 import pytest
 from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 
 import ray
 from ray.air.checkpoint import Checkpoint
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.tests.conftest import *  # noqa
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import Predictor
@@ -22,6 +27,14 @@ class DummyPreprocessor(Preprocessor):
 
     def _transform_pandas(self, df):
         return df * self.multiplier
+
+
+class DummyWithNumpyPreprocessor(DummyPreprocessor):
+    def _transform_numpy(self, np_data):
+        if isinstance(np_data, dict):
+            return {k: v * self.multiplier for k, v in np_data.items()}
+        else:
+            return np_data * self.multiplier
 
 
 def test_repr(shutdown_only):
@@ -65,6 +78,18 @@ class DummyPredictor(Predictor):
             raise ValueError("DummyPredictor does not support GPU prediction.")
         else:
             return data * self.factor
+
+
+class DummyWithNumpyPredictor(DummyPredictor):
+    def _predict_numpy(self, data, **kwargs):
+        if isinstance(data, dict):
+            return {k: v * self.factor for k, v in data.items()}
+        else:
+            return data * self.factor
+
+    @classmethod
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.NUMPY
 
 
 class DummyPredictorFS(DummyPredictor):
@@ -132,7 +157,7 @@ def test_batch_prediction():
         DummyPredictor,
     )
 
-    test_dataset = ray.data.range(4)
+    test_dataset = ray.data.range_table(4)
     ds = batch_predictor.predict(test_dataset)
     # Check fusion occurred.
     assert "read->map_batches" in ds.stats(), ds.stats()
@@ -143,15 +168,124 @@ def test_batch_prediction():
         12.0,
     ]
 
-    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
+    test_dataset = ray.data.range_table(4)
     assert next(
         batch_predictor.predict_pipelined(
             test_dataset, blocks_per_window=2
         ).iter_datasets()
     ).to_pandas().to_numpy().squeeze().tolist() == [
+        0.0,
         4.0,
-        8.0,
     ]
+
+
+def test_batch_prediction_simple():
+    """Tests that simple dataset is not supported with"""
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
+        DummyPredictor,
+    )
+
+    test_dataset = ray.data.range(4)
+
+    with pytest.raises(ValueError):
+        batch_predictor.predict(test_dataset)
+
+    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
+    with pytest.raises(ValueError):
+        assert next(
+            batch_predictor.predict_pipelined(
+                test_dataset, blocks_per_window=2
+            ).iter_datasets()
+        )
+
+
+def test_batch_prediction_various_combination():
+    """Dataset level predictor test against various
+    - Dataset format
+    - Preprocessor implementation (pandas vs numpy)
+    - Predictor implementation (pandas vs numpy)
+    """
+    # Got to inline this rather than using @pytest.mark.parametrize to void
+    # unknown object owner error when running test with python cli.
+    test_cases = [
+        (
+            DummyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
+        ),
+        (
+            DummyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
+        ),
+        (
+            DummyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
+        ),
+        (
+            DummyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
+        ),
+    ]
+
+    for test_case in test_cases:
+        preprocessor, predictor_cls, input_dataset, dataset_format = test_case
+        # Test with pandas preprocessor
+        batch_predictor = BatchPredictor.from_checkpoint(
+            Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: preprocessor}),
+            predictor_cls,
+        )
+
+        ds = batch_predictor.predict(input_dataset)
+        print(ds.stats())
+        # Check no fusion needed since we're not doing a dataset read.
+        assert "Stage 1 map_batches" in ds.stats(), ds.stats()
+        assert ds.to_pandas().to_numpy().squeeze().tolist() == [
+            4.0,
+            8.0,
+            12.0,
+        ]
+
+        assert ds.dataset_format() == dataset_format, test_case
 
 
 def test_batch_prediction_fs():
@@ -160,7 +294,9 @@ def test_batch_prediction_fs():
         DummyPredictorFS,
     )
 
-    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0] * 32).repartition(8)
+    test_dataset = ray.data.from_pandas(
+        pd.DataFrame({"x": [1.0, 2.0, 3.0, 4.0] * 32})
+    ).repartition(8)
     assert (
         batch_predictor.predict(test_dataset, min_scoring_workers=4)
         .to_pandas()
@@ -178,6 +314,7 @@ def test_batch_prediction_fs():
 
 
 def test_batch_prediction_feature_cols():
+    # Pandas path
     batch_predictor = BatchPredictor.from_checkpoint(
         Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
         DummyPredictor,
@@ -189,8 +326,95 @@ def test_batch_prediction_feature_cols():
         test_dataset, feature_columns=["a"]
     ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
 
+    # Numpy path
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict(
+            {"factor": 2.0, PREPROCESSOR_KEY: DummyWithNumpyPreprocessor()}
+        ),
+        DummyWithNumpyPredictor,
+    )
+
+    test_dataset = ray.data.from_arrow(
+        pa.Table.from_pydict({"a": [1, 2, 3], "b": [4, 5, 6]})
+    )
+
+    assert batch_predictor.predict(
+        test_dataset, feature_columns=["a"]
+    ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
+
+
+def test_batch_prediction_feature_cols_after_preprocess():
+    """Tests that feature cols are applied after preprocessing the dataset."""
+
+    # Pandas path
+    class DummyPreprocessorWithColumn(DummyPreprocessor):
+        def _transform_pandas(self, df):
+            df["c"] = df["a"]
+            return super()._transform_pandas(df)
+
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict(
+            {"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessorWithColumn()}
+        ),
+        DummyPredictor,
+    )
+    test_dataset = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+
+    assert batch_predictor.predict(
+        test_dataset, feature_columns=["c"]
+    ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
+
+    # Numpy path
+    class DummyNumpyPreprocessorWithColumn(DummyWithNumpyPreprocessor):
+        def _transform_numpy(self, np_dict):
+            np_dict["c"] = np.copy(np_dict["a"])
+            return super()._transform_numpy(np_dict)
+
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict(
+            {"factor": 2.0, PREPROCESSOR_KEY: DummyNumpyPreprocessorWithColumn()}
+        ),
+        DummyWithNumpyPredictor,
+    )
+
+    test_dataset = ray.data.from_arrow(
+        pa.Table.from_pydict({"a": [1, 2, 3], "b": [4, 5, 6]})
+    )
+
+    assert batch_predictor.predict(
+        test_dataset, feature_columns=["a"]
+    ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
+
+
+def test_batch_predictor_transform_config():
+    """Tests that the preprocessor's transform config is
+    respected when using BatchPredictor."""
+    batch_size = 2
+
+    def check_batch(batch):
+        assert isinstance(batch, dict)
+        assert isinstance(batch["value"], np.ndarray)
+        assert len(batch["value"]) == batch_size
+        return batch
+
+    prep = BatchMapper(check_batch, batch_format="numpy", batch_size=2)
+    ds = ray.data.range_table(6, parallelism=1)
+
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: prep}),
+        DummyWithNumpyPredictor,
+    )
+
+    batch_predictor.predict(ds)
+
+    # Pipelined case.
+    ds = ray.data.range_table(6, parallelism=1)
+
+    batch_predictor.predict_pipelined(ds, blocks_per_window=1)
+
 
 def test_batch_prediction_keep_cols():
+    # Pandas path
     batch_predictor = BatchPredictor.from_checkpoint(
         Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
         DummyPredictor,
@@ -207,7 +431,28 @@ def test_batch_prediction_keep_cols():
     assert set(output_df.columns) == {"a", "b"}
 
     assert output_df["a"].tolist() == [4.0, 8.0, 12.0]
-    assert output_df["b"].tolist() == [4, 5, 6]
+    assert output_df["b"].tolist() == [8, 10, 12]
+
+    # Numpy path
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict(
+            {"factor": 2.0, PREPROCESSOR_KEY: DummyWithNumpyPreprocessor()}
+        ),
+        DummyWithNumpyPredictor,
+    )
+
+    test_dataset = ray.data.from_arrow(
+        pa.Table.from_pydict({"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]})
+    )
+
+    output_df = batch_predictor.predict(
+        test_dataset, feature_columns=["a"], keep_columns=["b"]
+    ).to_pandas()
+
+    assert set(output_df.columns) == {"a", "b"}
+
+    assert output_df["a"].tolist() == [4.0, 8.0, 12.0]
+    assert output_df["b"].tolist() == [8, 10, 12]
 
 
 def test_batch_prediction_from_pandas_udf():
@@ -239,7 +484,7 @@ def test_get_and_set_preprocessor():
     )
     assert batch_predictor.get_preprocessor() == preprocessor
 
-    test_dataset = ray.data.range(4)
+    test_dataset = ray.data.range_table(4)
     output_ds = batch_predictor.predict(test_dataset)
     assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
         0.0,
@@ -259,6 +504,27 @@ def test_get_and_set_preprocessor():
         8.0,
         12.0,
     ]
+
+
+def test_batch_prediction_large_predictor_kwarg():
+    class StubPredictor(Predictor):
+        def __init__(self, **kwargs):
+            super().__init__()
+
+        @classmethod
+        def from_checkpoint(cls, checkpoint, **kwargs):
+            return cls(**kwargs)
+
+        def _predict_numpy(self, data):
+            return data
+
+    checkpoint = Checkpoint.from_dict({"spam": "ham"})
+    predictor_kwargs = {"array": np.arange(1e8)}  # This array is 800MB large
+    predictor = BatchPredictor.from_checkpoint(
+        checkpoint, StubPredictor, **predictor_kwargs
+    )
+    dataset = ray.data.range(1)
+    predictor.predict(dataset)
 
 
 def test_separate_gpu_stage_pipelined(shutdown_only):
@@ -299,4 +565,4 @@ def test_separate_gpu_stage_pipelined(shutdown_only):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))

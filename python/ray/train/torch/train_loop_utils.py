@@ -2,14 +2,12 @@ import logging
 import os
 import random
 import types
-import warnings
 import collections
 from distutils.version import LooseVersion
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 
 import ray
-from ray import train
 from ray.air import session
 from ray.train._internal.accelerator import Accelerator
 from torch.optim import Optimizer
@@ -55,9 +53,6 @@ def prepare_model(
     move_to_device: bool = True,
     parallel_strategy: Optional[str] = "ddp",
     parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
-    # Deprecated args.
-    wrap_ddp: bool = True,
-    ddp_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
 
@@ -77,39 +72,6 @@ def prepare_model(
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
     """
-    if not wrap_ddp and parallel_strategy != "ddp":
-        raise ValueError(
-            "`parallel_strategy` and `wrap_ddp` cannot both be set. "
-            "`wrap_ddp` argument is deprecated as of Ray 2.1. To "
-            "disable DDP wrapping, set `parallel_strategy=None`."
-        )
-
-    if parallel_strategy_kwargs and ddp_kwargs:
-        raise ValueError(
-            "`parallel_strategy_kwargs` and `ddp_kwargs` cannot both be "
-            "set. The `ddp_kwargs` argument is deprecated as of Ray 2.1. "
-            "To provide DDP kwargs, use the "
-            "`parallel_strategy_kwargs` argument."
-        )
-
-    if not wrap_ddp:
-        warnings.warn(
-            "The `wrap_ddp` argument is deprecated as of Ray 2.1. Use the "
-            "`parallel_strategy` argument instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        # If wrap_ddp is False, then set parallel_strategy to None.
-        parallel_strategy = None
-
-    if ddp_kwargs:
-        warnings.warn(
-            "The `ddp_kwargs` argument is deprecated as of Ray 2.1. Use the "
-            "`parallel_strategy_kwargs` arg instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        parallel_strategy_kwargs = ddp_kwargs
 
     if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
         raise ImportError(
@@ -282,12 +244,7 @@ class _TorchAccelerator(Accelerator):
         """
         parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
-        # Backwards compatibility
-        try:
-            rank = session.get_local_rank()
-        except Exception:
-            rank = train.local_rank()
-
+        rank = session.get_local_rank()
         device = self.get_device()
 
         if torch.cuda.is_available():
@@ -334,11 +291,7 @@ class _TorchAccelerator(Accelerator):
             # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
             model.__getstate__ = types.MethodType(model_get_state, model)
 
-        # Backwards compatibility
-        try:
-            world_size = session.get_world_size()
-        except Exception:
-            world_size = train.world_size()
+        world_size = session.get_world_size()
 
         if parallel_strategy and world_size > 1:
             if parallel_strategy == "ddp":
@@ -393,13 +346,8 @@ class _TorchAccelerator(Accelerator):
                 if ``move_to_device`` is False.
         """
 
-        # Backwards compatibility
-        try:
-            world_size = session.get_world_size()
-            world_rank = session.get_world_rank()
-        except Exception:
-            world_size = train.world_size()
-            world_rank = train.world_rank()
+        world_size = session.get_world_size()
+        world_rank = session.get_world_rank()
 
         # Only add Distributed Sampler if the following conditions hold:
         # 1. More than one training worker is being used.
@@ -430,19 +378,22 @@ class _TorchAccelerator(Accelerator):
                 # shuffling is enabled by checking the default sampler type.
                 shuffle = not isinstance(loader.sampler, SequentialSampler)
 
-                def seeded_worker_init_fn(worker_init_fn):
-                    def wrapper(worker_id):
-                        worker_seed = torch.initial_seed() % 2 ** 32
+                def seeded_worker_init_fn(
+                    worker_init_fn: Optional[Callable[[int], None]]
+                ):
+                    def wrapper(worker_id: int):
+                        worker_seed = torch.initial_seed() % 2**32
                         np.random.seed(worker_seed)
                         random.seed(worker_seed)
-                        worker_init_fn(worker_id)
+                        if worker_init_fn:
+                            worker_init_fn(worker_id)
 
                     return wrapper
 
-                worker_init_fn = loader.worker_init_fn
-                generator = loader.generator
+                worker_init_fn: Optional[Callable[[int], None]] = loader.worker_init_fn
+                generator: Optional[torch.Generator] = loader.generator
                 if self._seed is not None:
-                    worker_init_fn = seeded_worker_init_fn(loader.worker_init_fn)
+                    worker_init_fn = seeded_worker_init_fn(worker_init_fn)
                     generator = torch.Generator()
                     generator.manual_seed(self._seed)
 
@@ -614,7 +565,7 @@ class _WrappedDataLoader(DataLoader):
             elif isinstance(item, torch.Tensor):
                 item_on_device = try_move_device(item)
             else:
-                logger.info(
+                logger.debug(
                     f"Data type {type(item)} doesn't support being moved to device."
                 )
                 item_on_device = item

@@ -83,6 +83,12 @@ K-Bins Discretizers
 .. autoclass:: ray.data.preprocessors.UniformKBinsDiscretizer
     :show-inheritance:
 
+Image Preprocessors
+###################
+
+.. autoclass:: ray.data.preprocessors.TorchVisionPreprocessor
+    :show-inheritance:
+    
 Text Encoders
 #############
 
@@ -123,7 +129,22 @@ Abstract Classes
 
     .. automethod:: __init__
 
+.. autoclass:: ray.air.util.check_ingest.DummyTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
 .. _air-results-ref:
+
+Dataset Iteration
+#################
+
+.. autoclass:: ray.data.DatasetIterator
+    :members:
+    :noindex:
+
+.. autofunction:: ray.air.util.check_ingest.make_local_dataset_iterator
 
 Training Result
 ###############
@@ -349,20 +370,20 @@ Monitoring Integrations
 Comet
 #####
 
-.. autoclass:: ray.air.callbacks.comet.CometLoggerCallback
+.. autoclass:: ray.air.integrations.comet.CometLoggerCallback
 
 Keras
 #####
 
-.. autoclass:: ray.air.callbacks.keras.Callback
+.. autoclass:: ray.air.integrations.keras.Callback
     :members:
 
 MLflow
 ######
 
-.. autoclass:: ray.air.callbacks.mlflow.MLflowLoggerCallback
+.. autoclass:: ray.air.integrations.mlflow.MLflowLoggerCallback
 
 Weights and Biases
 ##################
 
-.. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
+.. autoclass:: ray.air.integrations.wandb.WandbLoggerCallback

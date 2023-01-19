@@ -1,5 +1,5 @@
 cartpole-es:
-    env: CartPole-v0
+    env: CartPole-v1
     run: ES
     stop:
         episode_reward_mean: 100

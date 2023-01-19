@@ -1,5 +1,3 @@
-import logging
-
 from ray._private.usage import usage_lib
 
 # Note: do not introduce unnecessary library dependencies here, e.g. gym.
@@ -16,48 +14,15 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.tune.registry import register_trainable
 
 
-def _setup_logger():
-    logger = logging.getLogger("ray.rllib")
-    handler = logging.StreamHandler()
-    handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
-        )
-    )
-    logger.addHandler(handler)
-    logger.propagate = False
-
-
 def _register_all():
-    from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.algorithms.registry import ALGORITHMS, get_algorithm_class
-    from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
+    from ray.rllib.algorithms.registry import ALGORITHMS, _get_algorithm_class
 
-    for key in (
-        list(ALGORITHMS.keys())
-        + list(CONTRIBUTED_ALGORITHMS.keys())
-        + ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]
-    ):
-        register_trainable(key, get_algorithm_class(key))
+    for key, get_trainable_class_and_config in ALGORITHMS.items():
+        register_trainable(key, get_trainable_class_and_config()[0])
 
-    def _see_contrib(name):
-        """Returns dummy agent class warning algo is in contrib/."""
+    for key in ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]:
+        register_trainable(key, _get_algorithm_class(key))
 
-        class _SeeContrib(Algorithm):
-            def setup(self, config):
-                raise NameError("Please run `contrib/{}` instead.".format(name))
-
-        return _SeeContrib
-
-    # Also register the aliases minus contrib/ to give a good error message.
-    for key in list(CONTRIBUTED_ALGORITHMS.keys()):
-        assert key.startswith("contrib/")
-        alias = key.split("/", 1)[1]
-        if alias not in ALGORITHMS:
-            register_trainable(alias, _see_contrib(alias))
-
-
-_setup_logger()
 
 usage_lib.record_library_usage("rllib")
 

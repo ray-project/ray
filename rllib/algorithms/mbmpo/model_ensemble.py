@@ -1,13 +1,15 @@
-import gym
-from gym.spaces import Discrete, Box
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Box
 import numpy as np
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.framework import try_import_torch
+
 from ray.rllib.evaluation.rollout_worker import get_global_worker
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import SampleBatchType
 
 torch, nn = try_import_torch()
 
@@ -197,9 +199,11 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         for pid, pol in local_worker.policy_map.items():
             pol.view_requirements[SampleBatch.NEXT_OBS].used_for_training = True
         new_samples = local_worker.sample()
+        new_samples = convert_ma_batch_to_sample_batch(new_samples)
         # Initial Exploration of 8000 timesteps
         if not self.global_itr:
             extra = local_worker.sample()
+            extra = convert_ma_batch_to_sample_batch(extra)
             new_samples.concat(extra)
 
         # Process Samples

@@ -51,6 +51,9 @@ DictCount = Tuple[Dict, Number]
 # e.g., cpu_4_ondemand.
 NodeType = str
 
+# e.g., head, worker, unmanaged
+NodeKind = str
+
 # e.g., {"resources": ..., "max_workers": ...}.
 NodeTypeConfigDict = Dict[str, Any]
 
@@ -65,6 +68,11 @@ NodeIP = str
 
 # Number of nodes to launch
 NodeCount = int
+
+# e.g. "up-to-date", "update-failed"
+# See autoscaler/tags.py for other status
+# values used by the autoscaler.
+NodeStatus = str
 
 Usage = Dict[str, Tuple[Number, Number]]
 
@@ -424,7 +432,7 @@ def hash_runtime_conf(
     def add_content_hashes(path, allow_non_existing_paths: bool = False):
         def add_hash_of_file(fpath):
             with open(fpath, "rb") as f:
-                for chunk in iter(lambda: f.read(2 ** 20), b""):
+                for chunk in iter(lambda: f.read(2**20), b""):
                     contents_hasher.update(chunk)
 
         path = os.path.expanduser(path)
@@ -566,7 +574,7 @@ def parse_usage(usage: Usage) -> List[str]:
             used = used - pg_total + pg_used
 
         if resource in ["memory", "object_store_memory"]:
-            to_GiB = 1 / 2 ** 30
+            to_GiB = 1 / 2**30
             line = f"{(used * to_GiB):.2f}/" f"{(total * to_GiB):.3f} GiB {resource}"
             if used_in_pg:
                 line = line + (

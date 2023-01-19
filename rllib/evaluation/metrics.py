@@ -1,18 +1,15 @@
 import collections
 import logging
 import numpy as np
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-import ray
-from ray import ObjectRef
-from ray.actor import ActorHandle
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.rollout_worker import RolloutWorker
+    from ray.rllib.evaluation.worker_set import WorkerSet
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +25,11 @@ RolloutMetrics = DeveloperAPI(
             "hist_data",
             "media",
             "episode_faulty",
+            "connector_metrics",
         ],
     )
 )
-RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False)
+RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False, {})
 
 
 def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
@@ -71,21 +69,24 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
 
 @DeveloperAPI
 def collect_metrics(
-    local_worker: Optional["RolloutWorker"] = None,
-    remote_workers: Optional[List[ActorHandle]] = None,
-    to_be_collected: Optional[List[ObjectRef]] = None,
+    workers: "WorkerSet",
+    remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
     keep_custom_metrics: bool = False,
 ) -> ResultDict:
-    """Gathers episode metrics from RolloutWorker instances."""
-    if remote_workers is None:
-        remote_workers = []
+    """Gathers episode metrics from rollout worker set.
 
-    if to_be_collected is None:
-        to_be_collected = []
+    Args:
+        workers: WorkerSet.
+        remote_worker_ids: Optional list of IDs of remote workers to collect
+            metrics from.
+        timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
 
-    episodes, to_be_collected = collect_episodes(
-        local_worker, remote_workers, to_be_collected, timeout_seconds=timeout_seconds
+    Returns:
+        A result dict of metrics.
+    """
+    episodes = collect_episodes(
+        workers, remote_worker_ids, timeout_seconds=timeout_seconds
     )
     metrics = summarize_episodes(
         episodes, episodes, keep_custom_metrics=keep_custom_metrics
@@ -95,46 +96,38 @@ def collect_metrics(
 
 @DeveloperAPI
 def collect_episodes(
-    local_worker: Optional["RolloutWorker"] = None,
-    remote_workers: Optional[List[ActorHandle]] = None,
-    to_be_collected: Optional[List[ObjectRef]] = None,
+    workers: "WorkerSet",
+    remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
-) -> Tuple[List[RolloutMetrics], List[ObjectRef]]:
+) -> List[RolloutMetrics]:
     """Gathers new episodes metrics tuples from the given RolloutWorkers.
 
     Args:
-        local_worker: The local RolloutWorker (if any). By default, evaluation
-            WorkerSets don't have a local worker anymore (not needed).
-        remote_workers: List of ActorHandle pointing to remote RolloutWorkers.
+        workers: WorkerSet.
+        remote_worker_ids: Optional list of IDs of remote workers to collect
+            metrics from.
+        timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
 
+    Returns:
+        List of RolloutMetrics.
     """
-    if remote_workers is None:
-        remote_workers = []
+    # This will drop get_metrics() calls that are too slow.
+    # We can potentially make this an asynchronous call if this turns
+    # out to be a problem.
+    metric_lists = workers.foreach_worker(
+        lambda w: w.get_metrics(),
+        local_worker=True,
+        remote_worker_ids=remote_worker_ids,
+        timeout_seconds=timeout_seconds,
+    )
+    if len(metric_lists) == 0:
+        logger.warning("WARNING: collected no metrics.")
 
-    if to_be_collected is None:
-        to_be_collected = []
-
-    if remote_workers:
-        pending = [
-            a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_workers
-        ] + to_be_collected
-        collected, to_be_collected = ray.wait(
-            pending, num_returns=len(pending), timeout=timeout_seconds * 1.0
-        )
-        if pending and len(collected) == 0:
-            logger.warning(
-                "WARNING: collected no metrics in {} seconds".format(timeout_seconds)
-            )
-        metric_lists = ray.get(collected)
-    else:
-        metric_lists = []
-
-    if local_worker:
-        metric_lists.append(local_worker.get_metrics())
     episodes = []
     for metrics in metric_lists:
         episodes.extend(metrics)
-    return episodes, to_be_collected
+
+    return episodes
 
 
 @DeveloperAPI
@@ -150,6 +143,9 @@ def summarize_episodes(
             (not newly collected in this iteration) in order to achieve the size of
             the smoothing window.
         new_episodes: All the episodes that were completed in this iteration.
+
+    Returns:
+        A result dict of metrics.
     """
 
     if new_episodes is None:
@@ -162,13 +158,13 @@ def summarize_episodes(
     perf_stats = collections.defaultdict(list)
     hist_stats = collections.defaultdict(list)
     episode_media = collections.defaultdict(list)
+    connector_metrics = collections.defaultdict(list)
     num_faulty_episodes = 0
 
     for episode in episodes:
         # Faulty episodes may still carry perf_stats data.
         for k, v in episode.perf_stats.items():
             perf_stats[k].append(v)
-
         # Continue if this is a faulty episode.
         # There should be other meaningful stats to be collected.
         if episode.episode_faulty:
@@ -186,6 +182,12 @@ def summarize_episodes(
             hist_stats[k] += v
         for k, v in episode.media.items():
             episode_media[k].append(v)
+        if hasattr(episode, "connector_metrics"):
+            # Group connector metrics by connector_metric name for all policies
+            for per_pipeline_metrics in episode.connector_metrics.values():
+                for per_connector_metrics in per_pipeline_metrics.values():
+                    for connector_metric_name, val in per_connector_metrics.items():
+                        connector_metrics[connector_metric_name].append(val)
 
     if episode_rewards:
         min_reward = min(episode_rewards)
@@ -232,6 +234,10 @@ def summarize_episodes(
     for k, v_list in perf_stats.copy().items():
         perf_stats[k] = np.mean(v_list)
 
+    mean_connector_metrics = dict()
+    for k, v_list in connector_metrics.items():
+        mean_connector_metrics[k] = np.mean(v_list)
+
     return dict(
         episode_reward_max=max_reward,
         episode_reward_min=min_reward,
@@ -246,4 +252,5 @@ def summarize_episodes(
         hist_stats=dict(hist_stats),
         sampler_perf=dict(perf_stats),
         num_faulty_episodes=num_faulty_episodes,
+        connector_metrics=mean_connector_metrics,
     )

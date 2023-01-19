@@ -37,7 +37,6 @@ namespace ray {
 
 using raylet_scheduling_policy::SchedulingOptions;
 using raylet_scheduling_policy::SchedulingResult;
-using rpc::HeartbeatTableData;
 
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
@@ -123,6 +122,8 @@ class ClusterResourceScheduler {
   ClusterResourceManager &GetClusterResourceManager() {
     return *cluster_resource_manager_;
   }
+
+  bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
 
  private:
   void Init(const NodeResources &local_node_resources,

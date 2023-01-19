@@ -63,6 +63,7 @@ def test_memory_sanity(shutdown_only):
     info = ray.init(num_cpus=1, object_store_memory=500e6)
     ds = ray.data.range(10)
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
+    ds.fully_executed()
     meminfo = memory_summary(info.address_info["address"], stats_only=True)
 
     # Sanity check spilling is happening as expected.
@@ -228,9 +229,8 @@ def test_lazy_fanout(shutdown_only, local_path):
         {"one": 4, "two": "b"},
         {"one": 5, "two": "c"},
     ]
-    # Test that data is read twice (+ 1 extra for ramp-up read before converting to a
-    # lazy dataset).
-    assert ray.get(read_counter.get.remote()) == 3
+    # Test that data is read twice.
+    assert ray.get(read_counter.get.remote()) == 2
     # Test that first map is executed twice.
     assert ray.get(map_counter.get.remote()) == 2 * 3 + 3 + 3
 
@@ -254,6 +254,22 @@ def test_lazy_fanout(shutdown_only, local_path):
     # Test that first map is executed twice.
     assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
 
+    ray.get(map_counter.reset.remote())
+    # The source data shouldn't be cleared since it's non-lazy.
+    ds = ray.data.from_items(list(range(10)))
+    # Add extra transformation after being lazy.
+    ds = ds.lazy()
+    ds = ds.map(inc)
+    ds1 = ds.map(inc)
+    ds2 = ds.map(inc)
+    # Test content.
+    assert ds1.fully_executed().take() == list(range(2, 12))
+    assert ds2.fully_executed().take() == list(range(2, 12))
+    # Test that first map is executed twice, because ds1.fully_executed()
+    # clears up the previous snapshot blocks, and ds2.fully_executed()
+    # has to re-execute ds.map(inc) again.
+    assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
+
 
 def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ray.data.range(10).lazy()
@@ -275,23 +291,11 @@ def _assert_has_stages(stages, stage_names):
 
 
 def test_stage_linking(ray_start_regular_shared):
-    # NOTE: This tests the internals of `ExecutionPlan`, which is bad practice. Remove
-    # this test once we have proper unit testing of `ExecutionPlan`.
-    # Test eager dataset.
-    ds = ray.data.range(10)
-    assert len(ds._plan._stages_before_snapshot) == 0
-    assert len(ds._plan._stages_after_snapshot) == 0
-    assert len(ds._plan._last_optimized_stages) == 0
-    ds = ds.map(lambda x: x + 1)
-    _assert_has_stages(ds._plan._stages_before_snapshot, ["map"])
-    assert len(ds._plan._stages_after_snapshot) == 0
-    _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
-
     # Test lazy dataset.
     ds = ray.data.range(10).lazy()
     assert len(ds._plan._stages_before_snapshot) == 0
     assert len(ds._plan._stages_after_snapshot) == 0
-    assert len(ds._plan._last_optimized_stages) == 0
+    assert ds._plan._last_optimized_stages is None
     ds = ds.map(lambda x: x + 1)
     assert len(ds._plan._stages_before_snapshot) == 0
     _assert_has_stages(ds._plan._stages_after_snapshot, ["map"])
@@ -432,6 +436,22 @@ def test_optimize_equivalent_remote_args(ray_start_regular_shared):
                 1,
                 [
                     "read->map_batches->map_batches",
+                ],
+            )
+
+    for kwa in equivalent_kwargs:
+        for kwb in equivalent_kwargs:
+            print("CHECKING", kwa, kwb)
+            pipe = ray.data.range(3).repeat(2)
+            pipe = pipe.map_batches(lambda x: x, compute="tasks", **kwa)
+            pipe = pipe.random_shuffle_each_window(**kwb)
+            pipe.take()
+            expect_stages(
+                pipe,
+                1,
+                [
+                    "read->map_batches->random_shuffle_map",
+                    "random_shuffle_reduce",
                 ],
             )
 
@@ -587,7 +607,7 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
     pipe = ds1.repeat(N)
     pipe.take()
     num_reads = ray.get(counter.get.remote())
-    assert num_reads == N + 1, num_reads
+    assert num_reads == N, num_reads
 
     # Re-read off.
     context.optimize_fuse_read_stages = False

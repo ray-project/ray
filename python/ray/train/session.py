@@ -1,12 +1,12 @@
 import warnings
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional
 
 from ray.air._internal.session import Session
 from ray.air.checkpoint import Checkpoint
 
 if TYPE_CHECKING:
     # avoid circular import
-    from ray.data import Dataset, DatasetPipeline
+    from ray.data import DatasetIterator
     from ray.train._internal.session import _TrainSession
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -32,6 +32,10 @@ class _TrainSessionImpl(Session):
             # The new API should only interact with Checkpoint object.
             assert isinstance(ckpt, Checkpoint)
         return ckpt
+
+    @property
+    def experiment_name(self) -> str:
+        return self._session.trial_info.experiment_name
 
     @property
     def trial_name(self) -> str:
@@ -61,10 +65,18 @@ class _TrainSessionImpl(Session):
     def local_rank(self) -> int:
         return self._session.local_rank
 
+    @property
+    def local_world_size(self) -> int:
+        return self._session.local_world_size
+
+    @property
+    def node_rank(self) -> int:
+        return self._session.node_rank
+
     def get_dataset_shard(
         self,
         dataset_name: Optional[str] = None,
-    ) -> Optional[Union["Dataset", "DatasetPipeline"]]:
+    ) -> Optional["DatasetIterator"]:
         shard = self._session.dataset_shard
         if shard is None:
             warnings.warn(

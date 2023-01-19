@@ -18,7 +18,7 @@ from typing import (
     Union,
 )
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -34,7 +34,11 @@ from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_GRAD_UPDATES_LIFETIME,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -465,12 +469,22 @@ class TorchPolicy(Policy):
         # Step the optimizers.
         self.apply_gradients(_directStepOptimizerSingleton)
 
+        self.num_grad_updates += 1
+
         if self.model:
             fetches["model"] = self.model.metrics()
+
         fetches.update(
             {
                 "custom_metrics": learn_stats,
                 NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+                NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                # -1, b/c we have to measure this diff before we do the update above.
+                DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                    self.num_grad_updates
+                    - 1
+                    - (postprocessed_batch.num_grad_updates or 0)
+                ),
             }
         )
 
@@ -610,14 +624,21 @@ class TorchPolicy(Policy):
 
         self.apply_gradients(_directStepOptimizerSingleton)
 
+        self.num_grad_updates += 1
+
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
                     LEARNER_STATS_KEY: self.extra_grad_info(batch),
                     "model": model.metrics(),
+                    NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
+                    # -1, b/c we have to measure this diff before we do the update
+                    # above.
+                    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY: (
+                        self.num_grad_updates - 1 - (batch.num_grad_updates or 0)
+                    ),
                 }
             )
-
         batch_fetches.update(self.extra_compute_grad_fetches())
 
         return batch_fetches
@@ -1130,11 +1151,12 @@ class TorchPolicy(Policy):
                 with lock:
                     results[shard_idx] = (
                         ValueError(
-                            e.args[0]
-                            + "\n traceback"
-                            + traceback.format_exc()
-                            + "\n"
-                            + "In tower {} on device {}".format(shard_idx, device)
+                            f"Error In tower {shard_idx} on device "
+                            f"{device} during multi GPU parallel gradient "
+                            f"calculation:"
+                            f": {e}\n"
+                            f"Traceback: \n"
+                            f"{traceback.format_exc()}\n"
                         ),
                         e,
                     )

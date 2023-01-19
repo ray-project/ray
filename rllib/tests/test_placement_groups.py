@@ -37,7 +37,7 @@ class TestPlacementGroups(unittest.TestCase):
         config["num_workers"] = 2
         # 3 Trials: Can only run 2 at a time (num_cpus=6; needed: 3).
         config["lr"] = tune.grid_search([0.1, 0.01, 0.001])
-        config["env"] = "CartPole-v0"
+        config["env"] = "CartPole-v1"
         config["framework"] = "tf"
 
         # Create an Algorithm with an overridden default_resource_request
@@ -63,7 +63,6 @@ class TestPlacementGroups(unittest.TestCase):
                 verbose=2,
                 callbacks=[_TestCallback()],
             ),
-            tune_config=tune.TuneConfig(reuse_actors=True),
         ).fit()
 
     def test_default_resource_request(self):
@@ -73,7 +72,7 @@ class TestPlacementGroups(unittest.TestCase):
         config["num_cpus_per_worker"] = 2
         # 3 Trials: Can only run 1 at a time (num_cpus=6; needed: 5).
         config["lr"] = tune.grid_search([0.1, 0.01, 0.001])
-        config["env"] = "CartPole-v0"
+        config["env"] = "CartPole-v1"
         config["framework"] = "torch"
         config["placement_strategy"] = "SPREAD"
 
@@ -92,7 +91,7 @@ class TestPlacementGroups(unittest.TestCase):
         config = DEFAULT_CONFIG.copy()
         config["model"]["fcnet_hiddens"] = [10]
         config["num_workers"] = 0
-        config["env"] = "CartPole-v0"
+        config["env"] = "CartPole-v1"
 
         try:
             tune.Tuner(

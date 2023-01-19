@@ -6,5 +6,5 @@ pandas
 requests
 tabulate
 tensorflow
-black==21.12b0
+black==22.10.0
 yq

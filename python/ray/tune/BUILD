@@ -145,35 +145,11 @@ py_test(
 )
 
 py_test(
-    name = "test_integration_comet",
-    size = "small",
-    srcs = ["tests/test_integration_comet.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_integration_wandb",
-    size = "small",
-    srcs = ["tests/test_integration_wandb.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_integration_mlflow",
-    size = "small",
-    srcs = ["tests/test_integration_mlflow.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"]
 )
 
 py_test(
@@ -290,7 +266,7 @@ py_test(
 
 py_test(
     name = "test_syncer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_syncer.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -330,7 +306,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_runner.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -338,7 +314,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner_2",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_runner_2.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -346,7 +322,7 @@ py_test(
 
 py_test(
     name = "test_trial_runner_3",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_runner_3.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "medium_instance"],
@@ -434,7 +410,7 @@ py_test(
 
 py_test(
     name = "test_tuner",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tuner.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "medium_instance"],
@@ -442,7 +418,7 @@ py_test(
 
 py_test(
     name = "test_tuner_restore",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tuner_restore.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
@@ -679,7 +655,7 @@ py_test(
 
 py_test(
     name = "mnist_ptl_mini",
-    size = "small",
+    size = "medium",
     srcs = ["examples/mnist_ptl_mini.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "pytorch"],
@@ -733,7 +709,7 @@ py_test(
 
 py_test(
     name = "optuna_multiobjective_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/optuna_multiobjective_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "medium_instance"],
@@ -796,7 +772,7 @@ py_test(
 
 py_test(
     name = "pbt_function",
-    size = "medium",
+    size = "small",
     srcs = ["examples/pbt_function.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
@@ -921,7 +897,7 @@ py_test(
 
 py_test(
     name = "wandb_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/wandb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],

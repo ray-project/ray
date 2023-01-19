@@ -6,6 +6,7 @@ import pandas as pd
 import time
 
 from ray import air, tune
+from ray.rllib.algorithms.bandit import BanditLinUCBConfig
 import ray.rllib.examples.env.recommender_system_envs_with_recsim  # noqa
 
 
@@ -22,7 +23,8 @@ if __name__ == "__main__":
 
     ray.init()
 
-    config = {
+    config = (
+        BanditLinUCBConfig()
         # "RecSim-v1" is a pre-registered RecSim env.
         # Alternatively, you can do:
         # `from ray.rllib.examples.env.recommender_system_envs_with_recsim import ...`
@@ -30,16 +32,16 @@ if __name__ == "__main__":
         # - InterestExplorationRecSimEnv
         # - InterestEvolutionRecSimEnv
         # Then: "env": [the imported RecSim class]
-        "env": "RecSim-v1",
-        "env_config": {
-            "num_candidates": 10,
-            "slate_size": 1,
-            "convert_to_discrete_action_space": True,
-            "wrap_for_bandits": True,
-        },
-        "framework": args.framework,
-        "eager_tracing": (args.framework == "tf2"),
-    }
+        .environment(
+            "RecSim-v1",
+            env_config={
+                "num_candidates": 10,
+                "slate_size": 1,
+                "convert_to_discrete_action_space": True,
+                "wrap_for_bandits": True,
+            },
+        ).framework(args.framework, eager_tracing=args.framework == "tf2")
+    )
 
     # Actual env timesteps per `train()` call will be
     # 10 * min_sample_timesteps_per_iteration (100 by default) = 1000
@@ -50,7 +52,7 @@ if __name__ == "__main__":
     start_time = time.time()
     tuner = tune.Tuner(
         "BanditLinUCB",
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop={"training_iteration": training_iterations},
             checkpoint_config=air.CheckpointConfig(

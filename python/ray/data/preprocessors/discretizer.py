@@ -6,6 +6,7 @@ import numpy as np
 from ray.data import Dataset
 from ray.data.aggregate import Max, Min
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import PublicAPI
 
 
 class _AbstractKBinsDiscretizer(Preprocessor):
@@ -19,6 +20,8 @@ class _AbstractKBinsDiscretizer(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         def bin_values(s: pd.Series) -> pd.Series:
+            if s.name not in self.columns:
+                return s
             labels = self.dtypes.get(s.name) if self.dtypes else False
             ordered = True
             if labels:
@@ -62,6 +65,7 @@ class _AbstractKBinsDiscretizer(Preprocessor):
         return f"{self.__class__.__name__}({attr_str})"
 
 
+@PublicAPI(stability="alpha")
 class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals using custom bin edges.
 
@@ -154,13 +158,12 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self.duplicates = duplicates
         self.dtypes = dtypes
 
+        self._validate_bins_columns()
+
     _is_fittable = False
 
-    def _transform(self, dataset: Dataset) -> Dataset:
-        self._validate_bins_columns()
-        return super()._transform(dataset)
 
-
+@PublicAPI(stability="alpha")
 class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals (bins) of uniform width.
 

@@ -1,4 +1,6 @@
-from ray.air.callbacks.mlflow import MLflowLoggerCallback as _MLflowLoggerCallback
+import warnings
+
+from ray.air.integrations.mlflow import MLflowLoggerCallback as _MLflowLoggerCallback
 
 import logging
 from typing import Callable, Dict, Optional
@@ -13,7 +15,7 @@ logger = logging.getLogger(__name__)
 callback_deprecation_message = (
     "`ray.tune.integration.mlflow.MLflowLoggerCallback` "
     "is deprecated and will be removed in "
-    "the future. Please use `ray.air.callbacks.mlflow.MLflowLoggerCallback` "
+    "the future. Please use `ray.air.integrations.mlflow.MLflowLoggerCallback` "
     "instead."
 )
 
@@ -34,6 +36,13 @@ class MLflowLoggerCallback(_MLflowLoggerCallback):
         )
 
 
+# Deprecate: Remove in 2.4
+@Deprecated(
+    message=(
+        "The MLflowTrainableMixin is deprecated. "
+        "Use `ray.air.integrations.mlflow.setup_mlflow` instead."
+    )
+)
 def mlflow_mixin(func: Callable):
     """mlflow_mixin
 
@@ -131,6 +140,12 @@ def mlflow_mixin(func: Callable):
         tuner.fit()
 
     """
+    warnings.warn(
+        "The mlflow_mixin/MLflowTrainableMixin is deprecated. "
+        "Use `ray.air.integrations.mlflow.setup_mlflow` instead.",
+        DeprecationWarning,
+    )
+
     if ray.util.client.ray.is_connected():
         logger.warning(
             "When using mlflow_mixin with Ray Client, "
@@ -147,6 +162,12 @@ def mlflow_mixin(func: Callable):
     return func
 
 
+@Deprecated(
+    message=(
+        "The MLflowTrainableMixin is deprecated. "
+        "Use `ray.air.integrations.mlflow.setup_mlflow` instead."
+    )
+)
 class MLflowTrainableMixin:
     def __init__(self, config: Dict, *args, **kwargs):
         self.mlflow_util = _MLflowLoggerUtil()

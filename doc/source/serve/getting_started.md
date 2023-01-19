@@ -25,7 +25,7 @@ If you have suggestions on how to improve this tutorial,
 To run this example, you will need to install the following:
 
 ```bash
-pip install "ray[serve]" transformers requests
+pip install "ray[serve]" transformers requests torch
 ```
 
 
@@ -218,13 +218,13 @@ Here's a Ray Serve deployment graph that chains the two models together. The gra
 This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code on lines 44 and 45:
 
 ```python
-translation_ref = self.translator.translate.remote(summary)
-translation = ray.get(translation_ref)
+translation_ref = await self.translator.translate.remote(summary)
+translation = await translation_ref
 ```
 
-`self.translator.translate.remote(summary)` issues an asynchronous call to the `Translator`'s `translate` method. Essentially, this line tells Ray to schedule a request to the `Translator` deployment's `translate` method, which can be fulfilled asynchronously. The line immediately returns a reference to the method's output. The next line `ray.get(translation_ref)` waits for `translate` to execute and returns the value of that execution.
+`self.translator.translate.remote(summary)` issues an asynchronous call to the `Translator`'s `translate` method. Essentially, this line tells Ray to schedule a request to the `Translator` deployment's `translate` method, which can be fulfilled asynchronously. The line immediately returns a reference to the method's output. The next line `await translation_ref` waits for `translate` to execute and returns the value of that execution.
 
-We compose our graph in line 50:
+We compose our graph in line 52:
 
 ```python
 deployment_graph = Summarizer.bind(Translator.bind())

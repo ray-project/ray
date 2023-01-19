@@ -6,6 +6,7 @@ import os
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.dqn.distributional_q_tf_model import DistributionalQTFModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
@@ -14,6 +15,7 @@ from ray.rllib.models.tf.visionnet import VisionNetwork as MyVisionNetwork
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.tune.registry import get_trainable_cls
 
 tf1, tf, tfv = try_import_tf()
 
@@ -117,32 +119,35 @@ if __name__ == "__main__":
                 r = r[DEFAULT_POLICY_ID].get(LEARNER_STATS_KEY, r[DEFAULT_POLICY_ID])
             assert r["model"]["foo"] == 42, result
 
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("ALE/Breakout-v5" if args.use_vision_network else "CartPole-v1")
+        .framework("tf")
+        .callbacks(MyCallbacks)
+        .training(
+            model={
+                "custom_model": "keras_q_model" if args.run == "DQN" else "keras_model"
+            }
+        )
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+
     if args.run == "DQN":
-        extra_config = {"num_steps_sampled_before_learning_starts": 0}
-    else:
-        extra_config = {}
+        config = (
+            DQNConfig()
+            .update_from_dict(config.to_dict())
+            .training(num_steps_sampled_before_learning_starts=0)
+        )
+
+    stop = {
+        "episode_reward_mean": args.stop,
+    }
 
     tuner = tune.Tuner(
         args.run,
-        run_config=air.RunConfig(
-            stop={"episode_reward_mean": args.stop},
-        ),
-        param_space=dict(
-            extra_config,
-            **{
-                "env": "BreakoutNoFrameskip-v4"
-                if args.use_vision_network
-                else "CartPole-v0",
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-                "callbacks": MyCallbacks,
-                "model": {
-                    "custom_model": "keras_q_model"
-                    if args.run == "DQN"
-                    else "keras_model"
-                },
-                "framework": "tf",
-            }
-        ),
+        param_space=config,
+        run_config=air.RunConfig(stop=stop),
     )
     tuner.fit()

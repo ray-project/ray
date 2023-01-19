@@ -1,6 +1,8 @@
 import argparse
 import os
 
+from ray.tune.registry import get_trainable_cls
+
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
@@ -8,7 +10,7 @@ parser.add_argument(
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
-    choices=["tf", "tf2", "tfe", "torch"],
+    choices=["tf", "tf2", "torch"],
     default="tf",
     help="The DL framework specifier.",
 )
@@ -37,28 +39,32 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    config = {
-        "env": "VizdoomBasic-v0",
+    config = (
+        get_trainable_cls(args.run)
+        .get_default_config()
+        .environment("VizdoomBasic-v0")
+        .training(
+            model={
+                "conv_filters": [],
+                "use_attention": True,
+                "attention_num_transformer_units": 1,
+                "attention_dim": 64,
+                "attention_num_heads": 2,
+                "attention_memory_inference": 100,
+                "attention_memory_training": 50,
+                "vf_share_layers": True,
+                "attention_use_n_prev_actions": args.use_n_prev_actions,
+                "attention_use_n_prev_rewards": args.use_n_prev_rewards,
+            }
+        )
+        # Run with tracing enabled for tf2.
+        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .rollouts(num_rollout_workers=args.num_workers)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "model": {
-            "conv_filters": [],
-            "use_attention": True,
-            "attention_num_transformer_units": 1,
-            "attention_dim": 64,
-            "attention_num_heads": 2,
-            "attention_memory_inference": 100,
-            "attention_memory_training": 50,
-            "vf_share_layers": True,
-            "attention_use_n_prev_actions": args.use_n_prev_actions,
-            "attention_use_n_prev_rewards": args.use_n_prev_rewards,
-        },
-        "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2.
-        "eager_tracing": args.framework in ["tfe", "tf2"],
-        "num_workers": args.num_workers,
-        "vf_loss_coeff": 0.01,
-    }
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+    )
+    if args.run == "PPO":
+        config.training(vf_loss_coeff=0.01)
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -68,7 +74,7 @@ if __name__ == "__main__":
 
     results = tune.Tuner(
         args.run,
-        param_space=config,
+        param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop=stop,
             verbose=2,

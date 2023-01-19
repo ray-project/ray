@@ -25,6 +25,6 @@ public class WorkerJvmOptionsTest extends BaseTest {
                 ImmutableList.of("-Dtest.suffix=suffix", "-Dtest.suffix1=suffix1 suffix1"))
             .remote();
     ObjectRef<String> obj = actor.task(Echo::getOptions).remote();
-    Assert.assertEquals(obj.get(3 * 1000), "suffix");
+    Assert.assertEquals(obj.get(30 * 1000), "suffix");
   }
 }

@@ -37,7 +37,7 @@ class RandomAccessDataset(Generic[T]):
         The constructor is a private API. Use ``dataset.to_random_access_dataset()``
         to construct a RandomAccessDataset.
         """
-        self._format = dataset._dataset_format()
+        self._format = dataset.dataset_format()
         if self._format not in ["arrow", "pandas"]:
             raise ValueError("RandomAccessDataset only supports Arrow-format datasets.")
 
@@ -225,7 +225,7 @@ class _RandomAccessWorker:
             col = block[self.key_field]
             indices = np.searchsorted(col, keys)
             acc = BlockAccessor.for_block(block)
-            result = [acc._get_row(i, copy=True) for i in indices]
+            result = [acc._get_row(i) for i in indices]
             # assert result == [self._get(i, k) for i, k in zip(block_indices, keys)]
         else:
             result = [self._get(i, k) for i, k in zip(block_indices, keys)]
@@ -234,7 +234,7 @@ class _RandomAccessWorker:
         return result
 
     def ping(self):
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     def stats(self) -> dict:
         return {
@@ -254,7 +254,7 @@ class _RandomAccessWorker:
         if i is None:
             return None
         acc = BlockAccessor.for_block(block)
-        return acc._get_row(i, copy=True)
+        return acc._get_row(i)
 
 
 def _binary_search_find(column, x):

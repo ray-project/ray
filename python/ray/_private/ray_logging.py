@@ -11,7 +11,10 @@ from ray._private.utils import binary_to_hex
 _default_handler = None
 
 
-def setup_logger(logging_level, logging_format):
+def setup_logger(
+    logging_level: int,
+    logging_format: str,
+):
     """Setup default logging for ray."""
     logger = logging.getLogger("ray")
     if type(logging_level) is str:
@@ -36,6 +39,7 @@ def setup_component_logger(
     max_bytes,
     backup_count,
     logger_name=None,
+    propagate=True,
 ):
     """Configure the root logger that is used for Ray's python components.
 
@@ -51,8 +55,9 @@ def setup_component_logger(
             to stderr.
         max_bytes: Same argument as RotatingFileHandler's maxBytes.
         backup_count: Same argument as RotatingFileHandler's backupCount.
-        logger_name: used to create or get the correspoding
+        logger_name: Used to create or get the correspoding
             logger in getLogger call. It will get the root logger by default.
+        propagate: Whether to propagate the log to the parent logger.
     Returns:
         the created or modified logger.
     """
@@ -71,6 +76,7 @@ def setup_component_logger(
     logger.setLevel(logging_level)
     handler.setFormatter(logging.Formatter(logging_format))
     logger.addHandler(handler)
+    logger.propagate = propagate
     return logger
 
 
@@ -226,74 +232,6 @@ def configure_log_file(out_file, err_file):
     sys.stderr = ray._private.utils.open_log(
         stderr_fileno, unbuffered=True, closefd=False
     )
-
-
-def setup_and_get_worker_interceptor_logger(
-    args, max_bytes=0, backup_count=0, is_for_stdout: bool = True
-):
-    """Setup a logger to be used to intercept worker log messages.
-
-    NOTE: This method is only meant to be used within default_worker.py.
-
-    Ray worker logs should be treated in a special way because
-    there's a need to intercept stdout and stderr to support various
-    ray features. For example, ray will prepend 0 or 1 in the beggining
-    of each log message to decide if logs should be streamed to driveres.
-
-    This logger will also setup the RotatingFileHandler for
-    ray workers processes.
-
-    If max_bytes and backup_count is not set, files will grow indefinitely.
-
-    Args:
-        args: args received from default_worker.py.
-        max_bytes: maxBytes argument of RotatingFileHandler.
-        backup_count: backupCount argument of RotatingFileHandler.
-        is_for_stdout: True if logger will be used to intercept stdout.
-                             False otherwise.
-    """
-    file_extension = "out" if is_for_stdout else "err"
-    logger = logging.getLogger(f"ray_default_worker_{file_extension}")
-    if len(logger.handlers) == 1:
-        return logger
-    logger.setLevel(logging.INFO)
-    # TODO(sang): This is how the job id is propagated to workers now.
-    # But eventually, it will be clearer to just pass the job id.
-    job_id = os.environ.get("RAY_JOB_ID")
-    if args.worker_type == "WORKER":
-        assert job_id is not None, (
-            "RAY_JOB_ID should be set as an env "
-            "variable within default_worker.py. If you see this error, "
-            "please report it to Ray's Github issue."
-        )
-        worker_name = "worker"
-    else:
-        job_id = ray.JobID.nil()
-        worker_name = "io_worker"
-
-    # Make sure these values are set already.
-    assert ray._private.worker._global_node is not None
-    assert ray._private.worker.global_worker is not None
-    filename = (
-        f"{ray._private.worker._global_node.get_session_dir_path()}/logs/"
-        f"{worker_name}-"
-        f"{binary_to_hex(ray._private.worker.global_worker.worker_id)}-"
-        f"{job_id}-{os.getpid()}.{file_extension}"
-    )
-    handler = StandardFdRedirectionRotatingFileHandler(
-        filename,
-        maxBytes=max_bytes,
-        backupCount=backup_count,
-        is_for_stdout=is_for_stdout,
-    )
-    logger.addHandler(handler)
-    handler.setFormatter(logging.Formatter("%(message)s"))
-    # Avoid messages are propagated to parent loggers.
-    logger.propagate = False
-    # Remove the terminator. It is important because we don't want this
-    # logger to add a newline at the end of string.
-    handler.terminator = ""
-    return logger
 
 
 class WorkerStandardStreamDispatcher:
