@@ -1,41 +1,25 @@
-from dataclasses import dataclass
 import gymnasium as gym
 from typing import Mapping, Any, List
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.core.rl_module.encoder_tf import FCTfConfig, IdentityTfConfig
+from ray.rllib.core.rl_module.model_configs import FCConfig, IdentityConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
 from ray.rllib.models.tf.primitives import FCNet
+from ray.rllib.core.rl_module.tf.encoder import ENCODER_OUT
+from ray.rllib.algorithms.ppo.ppo import PPOModuleConfig
 
 
 tf1, tf, _ = try_import_tf()
 tf1.enable_eager_execution()
 
 
-@dataclass
-class PPOTfModuleConfig(RLModuleConfig):
-    """Configuration for the PPO module.
-
-    Attributes:
-        pi_config: The configuration for the policy network.
-        vf_config: The configuration for the value network.
-    """
-
-    observation_space: gym.Space = None
-    action_space: gym.Space = None
-    pi_config: FCTfConfig = None
-    vf_config: FCTfConfig = None
-    shared_encoder_config: FCTfConfig = None
-    shared_encoder: bool = True
-
-
-class PPOTfRLModule(TfRLModule):
-    def __init__(self, config: PPOTfModuleConfig):
+class PPOTfModule(TfRLModule):
+    def __init__(self, config: RLModuleConfig):
         super().__init__()
         self.config = config
         self.setup()
@@ -43,7 +27,7 @@ class PPOTfRLModule(TfRLModule):
     def setup(self) -> None:
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
-        self.shared_encoder = self.config.shared_encoder_config.build()
+        self.shared_encoder = self.config.shared_encoder_config.build(framework="tf")
 
         self.pi = FCNet(
             input_dim=self.config.shared_encoder_config.output_dim,
@@ -77,10 +61,9 @@ class PPOTfRLModule(TfRLModule):
 
     @override(TfRLModule)
     def _forward_train(self, batch: NestedDict):
-        obs = batch[SampleBatch.OBS]
-        encoder_out = self.shared_encoder(obs)
-        action_logits = self.pi(encoder_out)
-        vf = self.vf(encoder_out)
+        encoder_out = self.shared_encoder(batch)
+        action_logits = self.pi(encoder_out[ENCODER_OUT])
+        vf = self.vf(encoder_out[ENCODER_OUT])
 
         if self._is_discrete:
             action_dist = Categorical(action_logits)
@@ -105,10 +88,9 @@ class PPOTfRLModule(TfRLModule):
 
     @override(TfRLModule)
     def _forward_inference(self, batch) -> Mapping[str, Any]:
-        obs = batch[SampleBatch.OBS]
-        encoder_out = self.shared_encoder(obs)
+        encoder_out = self.shared_encoder(batch)
 
-        action_logits = self.pi(encoder_out)
+        action_logits = self.pi(encoder_out[ENCODER_OUT])
 
         if self._is_discrete:
             action = tf.math.argmax(action_logits, axis=-1)
@@ -135,11 +117,10 @@ class PPOTfRLModule(TfRLModule):
 
     @override(TfRLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        obs = batch[SampleBatch.OBS]
-        encoder_out = self.shared_encoder(obs)
+        encoder_out = self.shared_encoder(batch)
 
-        action_logits = self.pi(encoder_out)
-        vf = self.vf(encoder_out)
+        action_logits = self.pi(encoder_out[ENCODER_OUT])
+        vf = self.vf(encoder_out[ENCODER_OUT])
 
         if self._is_discrete:
             action_dist = Categorical(action_logits)
@@ -180,14 +161,14 @@ class PPOTfRLModule(TfRLModule):
         if use_lstm:
             raise ValueError("LSTM not supported by PPOTfRLModule yet.")
         if vf_share_layers:
-            shared_encoder_config = FCTfConfig(
+            shared_encoder_config = FCConfig(
                 input_dim=obs_dim,
                 hidden_layers=fcnet_hiddens,
                 activation=activation,
                 output_dim=model_config["fcnet_hiddens"][-1],
             )
         else:
-            shared_encoder_config = IdentityTfConfig(output_dim=obs_dim)
+            shared_encoder_config = IdentityConfig(output_dim=obs_dim)
         assert isinstance(
             observation_space, gym.spaces.Box
         ), "This simple PPOModule only supports Box observation space."
@@ -199,8 +180,8 @@ class PPOTfRLModule(TfRLModule):
         assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
             "This simple PPOModule only supports Discrete and Box action space.",
         )
-        pi_config = FCTfConfig()
-        vf_config = FCTfConfig()
+        pi_config = FCConfig()
+        vf_config = FCConfig()
         shared_encoder_config.input_dim = observation_space.shape[0]
         pi_config.input_dim = shared_encoder_config.output_dim
         pi_config.hidden_layers = fcnet_hiddens
@@ -212,7 +193,7 @@ class PPOTfRLModule(TfRLModule):
         vf_config.input_dim = shared_encoder_config.output_dim
         vf_config.hidden_layers = fcnet_hiddens
         vf_config.output_dim = 1
-        config_ = PPOTfModuleConfig(
+        config_ = PPOModuleConfig(
             pi_config=pi_config,
             vf_config=vf_config,
             shared_encoder_config=shared_encoder_config,

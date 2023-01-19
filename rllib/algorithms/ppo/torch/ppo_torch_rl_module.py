@@ -1,15 +1,15 @@
-from dataclasses import dataclass
 from typing import Mapping, Any, Union
 
 import gymnasium as gym
 
-from ray.rllib.core.rl_module.encoder import (
-    FCConfig,
-    FCEncoderConfig,
-    LSTMEncoderConfig,
-    LSTMEncoder,
+from ray.rllib.core.rl_module.torch.encoder import (
+    ENCODER_OUT,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
+from ray.rllib.core.rl_module.model_configs import (
+    LSTMEncoderConfig,
+)
+from ray.rllib.core.rl_module.model_configs import FCConfig, FCEncoderConfig
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.base_model import STATE_OUT
 from ray.rllib.models.specs.specs_dict import SpecDict
@@ -24,7 +24,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
-from rllib.core.rl_module.encoder import ENCODER_OUT
+from rllib.algorithms.ppo.ppo import PPOModuleConfig
 
 torch, nn = try_import_torch()
 
@@ -42,29 +42,6 @@ def get_ppo_loss(fwd_in, fwd_out):
     return loss
 
 
-@dataclass
-class PPOModuleConfig(RLModuleConfig):
-    """Configuration for the PPO module.
-
-    Attributes:
-        observation_space: The observation space of the environment.
-        action_space: The action space of the environment.
-        shared_encoder_config: The configuration for the encoder network.
-        pi_config: The configuration for the policy network.
-        vf_config: The configuration for the value network.
-        free_log_std: For DiagGaussian action distributions, make the second half of
-            the model outputs floating bias variables instead of state-dependent. This
-            only has an effect is using the default fully connected net.
-    """
-
-    observation_space: gym.Space = None
-    action_space: gym.Space = None
-    shared_encoder_config: FCConfig = None
-    pi_config: FCConfig = None
-    vf_config: FCConfig = None
-    free_log_std: bool = False
-
-
 class PPOTorchRLModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
         super().__init__()
@@ -78,9 +55,10 @@ class PPOTorchRLModule(TorchRLModule):
             "shared encoder config must be " "provided."
         )
 
-        self.shared_encoder = self.config.shared_encoder_config.build()
-        self.pi = self.config.pi_config.build()
-        self.vf = self.config.vf_config.build()
+        # TODO(Artur): Unify to tf and torch setup(framework)
+        self.shared_encoder = self.config.shared_encoder_config.build(framework="torch")
+        self.pi = self.config.pi_config.build(framework="torch")
+        self.vf = self.config.vf_config.build(framework="torch")
 
         self._is_discrete = isinstance(
             convert_old_gym_space_to_gymnasium_space(self.config.action_space),
@@ -177,7 +155,7 @@ class PPOTorchRLModule(TorchRLModule):
         return module
 
     def get_initial_state(self) -> NestedDict:
-        if isinstance(self.shared_encoder, LSTMEncoder):
+        if hasattr(self.shared_encoder, "get_initial_state"):
             return self.shared_encoder.get_initial_state()
         else:
             return NestedDict({})

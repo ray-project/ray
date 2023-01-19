@@ -337,6 +337,6 @@ class ModelConfig(abc.ABC):
     output_dim: int = None
 
     @abc.abstractmethod
-    def build(self) -> RecurrentModel:
+    def build(self, framework: str = "torch") -> RecurrentModel:
         """Builds the model."""
         raise NotImplementedError

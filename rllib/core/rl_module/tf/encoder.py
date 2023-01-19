@@ -2,45 +2,33 @@ import torch
 import torch.nn as nn
 import tree
 
-from dataclasses import dataclass
-
 from ray.rllib.models.base_model import (
-    ModelConfig,
     Model,
     STATE_IN,
     STATE_OUT,
     ForwardOutputType,
+    ModelConfig,
 )
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-from ray.rllib.core.rl_module.fc import FC, FCConfig
+from ray.rllib.models.specs.specs_tf import TFTensorSpecs
+from ray.rllib.core.rl_module.tf.fcmodel import FCModel
+from ray.rllib.core.rl_module.torch.encoder import ENCODER_OUT
 
 
-ENCODER_OUT: str = "encoder_out"
-
-
-@dataclass
-class FCEncoderConfig(FCConfig):
-    def build(self):
-        return FCEncoder(self)
-
-
-class FCEncoder(FC):
+class FCEncoder(FCModel):
     @property
     def input_spec(self):
         return SpecDict(
-            {SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dim)}
+            {SampleBatch.OBS: TFTensorSpecs("b, h", h=self.config.input_dim)}
         )
 
     @property
     def output_spec(self):
-        return SpecDict(
-            {ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim)}
-        )
+        return SpecDict({ENCODER_OUT: TFTensorSpecs("b, h", h=self.config.output_dim)})
 
     @check_input_specs("input_spec", filter=True, cache=False)
     @check_output_specs("output_spec", cache=False)
@@ -48,19 +36,8 @@ class FCEncoder(FC):
         return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
-@dataclass
-class LSTMEncoderConfig(ModelConfig):
-    input_dim: int = None
-    hidden_dim: int = None
-    num_layers: int = None
-    batch_first: bool = True
-
-    def build(self):
-        return LSTMEncoder(self)
-
-
 class LSTMEncoder(Model, nn.Module):
-    def __init__(self, config: LSTMEncoderConfig) -> None:
+    def __init__(self, config: ModelConfig) -> None:
         nn.Module.__init__(self)
         Model.__init__(self, config)
 
@@ -85,12 +62,12 @@ class LSTMEncoder(Model, nn.Module):
         return SpecDict(
             {
                 # bxt is just a name for better readability to indicated padded batch
-                self.config.input_key: TorchTensorSpec("bxt, h", h=config.input_dim),
-                self.config.state_in_key: {
-                    "h": TorchTensorSpec(
+                SampleBatch.OBS: TFTensorSpecs("bxt, h", h=config.input_dim),
+                STATE_IN: {
+                    "h": TFTensorSpecs(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
-                    "c": TorchTensorSpec(
+                    "c": TFTensorSpecs(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
                 },
@@ -103,12 +80,12 @@ class LSTMEncoder(Model, nn.Module):
         config = self.config
         return SpecDict(
             {
-                self.config.output_key: TorchTensorSpec("bxt, h", h=config.output_dim),
-                self.config.state_out_key: {
-                    "h": TorchTensorSpec(
+                ENCODER_OUT: TFTensorSpecs("bxt, h", h=config.output_dim),
+                STATE_OUT: {
+                    "h": TFTensorSpecs(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
-                    "c": TorchTensorSpec(
+                    "c": TFTensorSpecs(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
                 },
@@ -136,26 +113,16 @@ class LSTMEncoder(Model, nn.Module):
         x = x.view(-1, x.shape[-1])
 
         return {
-            self.config.output_key: x,
-            self.config.state_out_key: tree.map_structure(
-                lambda x: x.transpose(0, 1), states_o
-            ),
+            ENCODER_OUT: x,
+            STATE_OUT: tree.map_structure(lambda x: x.transpose(0, 1), states_o),
         }
 
 
-@dataclass
-class IdentityConfig(ModelConfig):
-    """Configuration for an identity encoder."""
-
-    def build(self):
-        return IdentityEncoder(self)
-
-
-class IdentityEncoder(Model):
+class Identity(Model):
     def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         pass
 
-    def __init__(self, config: IdentityConfig) -> None:
+    def __init__(self, config: ModelConfig) -> None:
         super().__init__(config)
 
     def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:

@@ -1,10 +1,9 @@
 from typing import List
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from rllib.models.torch.primitives import Identity
 
 _, tf, _ = try_import_tf()
-
-# TODO (Kourosh): Find a better hierarchy for the primitives after the POC is done.
 
 
 class FCNet(tf.keras.Model):
@@ -47,9 +46,5 @@ class FCNet(tf.keras.Model):
         return self.network(inputs)
 
 
-class IdentityNetwork(tf.keras.Model):
-    """A network that returns the input as the output."""
-
-    @override(tf.keras.Model)
-    def call(self, inputs, training=None, mask=None):
-        return inputs
+# Reuse our torch IdentityEncoder here because it is not framework-specific.
+Identity = Identity
