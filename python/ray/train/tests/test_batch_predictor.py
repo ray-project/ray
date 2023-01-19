@@ -191,9 +191,6 @@ def test_batch_prediction_simple():
     with pytest.raises(ValueError):
         batch_predictor.predict(test_dataset)
 
-    # # Check fusion occurred.
-    # assert "read->map_batches" in ds.stats(), ds.stats()
-
     test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
     with pytest.raises(ValueError):
         assert next(
