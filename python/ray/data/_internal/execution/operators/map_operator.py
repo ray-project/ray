@@ -61,6 +61,7 @@ class MapOperator(PhysicalOperator):
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        self._ray_remote_args = ray_remote_args
         self._execution_state = MapOperatorState(
             transform_fn,
             compute_strategy,
