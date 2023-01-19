@@ -210,7 +210,7 @@ class MapOperatorState:
 
     def incremental_resource_usage(self) -> ExecutionResources:
         if isinstance(self._task_submitter, ActorPoolSubmitter):
-            # TODO(ekl) this should be non-zero for autoscaling actor pools.
+            # TODO(ekl) this should be non-zero if all actors are saturated.
             return ExecutionResources(cpu=0, gpu=0)
         return ExecutionResources(
             cpu=self._incremental_cpu,
