@@ -10,7 +10,6 @@ from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
 from ray.data import Preprocessor
 from ray.data.context import DatasetContext
-from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -99,18 +98,20 @@ class BatchPredictor:
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
-    ) -> ray.data.Dataset:
+    ) -> Union[ray.data.Dataset, ray.data.DatasetPipeline]:
         """Run batch scoring on a Dataset.
 
         Args:
             data: Ray dataset or pipeline to run batch prediction on.
-            feature_columns: List of columns in data to use for prediction. Columns not
-                specified will be dropped from `data` before being passed to the
-                predictor. If None, use all columns.
-            keep_columns: List of columns in `data` to include in the prediction result.
-                This is useful for calculating final accuracies/metrics on the result
-                dataset. If None, the columns in the output dataset will contain just
-                the prediction results.
+            feature_columns: List of columns in the preprocessed dataset to use for
+                prediction. Columns not specified will be dropped
+                from `data` before being passed to the predictor.
+                If None, use all columns in the preprocessed dataset.
+            keep_columns: List of columns in the preprocessed dataset to include
+                in the prediction result. This is useful for calculating final
+                accuracies/metrics on the result dataset. If None,
+                the columns in the output dataset will contain
+                just the prediction results.
             batch_size: Split dataset into batches of this size for prediction.
             min_scoring_workers: Minimum number of scoring actors.
             max_scoring_workers: If set, specify the maximum number of scoring actors.
@@ -172,7 +173,7 @@ class BatchPredictor:
 
         predictor_cls = self._predictor_cls
         checkpoint_ref = self._checkpoint_ref
-        override_prep = self._override_preprocessor
+
         # Automatic set use_gpu in predictor constructor if user provided
         # explicit GPU resources
         if (
@@ -203,7 +204,7 @@ class BatchPredictor:
         cast_tensor_columns = ctx.enable_tensor_extension_casting
 
         class ScoringWrapper:
-            def __init__(self):
+            def __init__(self, override_prep: Preprocessor = None):
                 checkpoint = ray.get(checkpoint_ref)
                 predictor_kwargs = ray.get(predictor_kwargs_ref)
                 self._predictor = predictor_cls.from_checkpoint(
@@ -212,8 +213,12 @@ class BatchPredictor:
                 if cast_tensor_columns:
                     # Enable automatic tensor column casting at UDF boundaries.
                     self._predictor._set_cast_tensor_columns()
-                if override_prep:
-                    self._predictor.set_preprocessor(override_prep)
+
+                # We want preprocessing to happen before feature column selection.
+                # So we manually apply preprocessing in BatchPredictor rather
+                # than in Predictor.
+                self.override_prep = override_prep
+                self._predictor.set_preprocessor(None)
 
             def _select_columns_from_input_batch(
                 self,
@@ -260,11 +265,17 @@ class BatchPredictor:
                     return prediction_output_batch
 
             def __call__(self, input_batch: DataBatchType) -> DataBatchType:
+                # TODO: Delegate separate_gpu_stage flag to Datasets.
+                if self.override_prep:
+                    # Apply preprocessing before selecting feature columns.
+                    input_batch = self.override_prep.transform_batch(input_batch)
+
                 # TODO (jiaodong): Investigate if there's room to optimize prediction
                 # result joins to minimize GPU <> CPU transfer
                 prediction_batch: DataBatchType = self._select_columns_from_input_batch(
                     input_batch, select_columns=feature_columns
                 )
+
                 prediction_output_batch: DataBatchType = self._predictor.predict(
                     prediction_batch, **predict_kwargs
                 )
@@ -284,17 +295,26 @@ class BatchPredictor:
         ray_remote_args["num_cpus"] = num_cpus_per_worker
         ray_remote_args["num_gpus"] = num_gpus_per_worker
 
-        if separate_gpu_stage and num_gpus_per_worker > 0:
-            preprocessor = self.get_preprocessor()
-            if preprocessor:
-                # Set the in-predictor preprocessing to a no-op when using a separate
-                # GPU stage. Otherwise, the preprocessing will be applied twice.
-                override_prep = BatchMapper(
-                    lambda x: x, batch_format=predict_stage_batch_format
-                )
-                # preprocessor.transform will break for DatasetPipeline due to
-                # missing _dataset_format()
+        preprocessor = self.get_preprocessor()
+        override_prep = None
+        if preprocessor:
+            # TODO: Delegate separate_gpu_stage flag to Datasets.
+            if not separate_gpu_stage and num_gpus_per_worker > 0:
+                override_prep = preprocessor
+            else:
+                # In batch prediction, preprocessing is always done in a separate stage.
+                # We should not in-line it with prediction, unless separate_gpu_stage is
+                # False.
+                # Dataset optimizer will fuse preprocessing+prediction stage as
+                # necessary.
+
+                # TODO: Use preprocessor.transform here.
+                # preprocessor.transform will break for DatasetPipeline as it
+                # does not support _dataset_format()
                 batch_fn = preprocessor._transform_batch
+
+                # Dataset is lazy by default so this map_batches
+                # will not trigger execution.
                 data = data.map_batches(
                     batch_fn, batch_format=predict_stage_batch_format
                 )
@@ -306,8 +326,13 @@ class BatchPredictor:
             if self.get_preprocessor() is not None
             else predict_stage_batch_format,
             batch_size=batch_size,
+            fn_constructor_kwargs={"override_prep": override_prep},
             **ray_remote_args,
         )
+
+        if isinstance(prediction_results, ray.data.Dataset):
+            # Force execution because Dataset uses lazy execution by default.
+            prediction_results.fully_executed()
 
         return prediction_results
 

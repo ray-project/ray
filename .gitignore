@@ -189,6 +189,7 @@ venv
 tags
 tags.lock
 tags.temp
+*.vim
 
 # Emacs
 .#*
@@ -220,3 +221,6 @@ workflow_data/
 /compile_commands.json
 # Directory where clangd puts its indexing work
 /.cache/
+
+# Auto-generated tag mapping
+tag-mapping.json

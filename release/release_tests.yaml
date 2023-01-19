@@ -1631,7 +1631,7 @@
       cluster_compute: tpl_20x2.yaml
 
     run:
-      timeout: 400
+      timeout: 500
       prepare_timeout: 600
       wait_for_nodes:
         num_nodes: 20
@@ -3481,7 +3481,6 @@
     timeout: 7200
     script: python stress_tests/test_placement_group.py
     type: sdk_command
-    file_manager: sdk
 
 - name: shuffle_1tb_5000_partitions
   group: core-multi-test
@@ -4182,7 +4181,7 @@
 ###############
 
 - name: inference
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: inference
@@ -4202,7 +4201,7 @@
 
 
 - name: shuffle_data_loader
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: shuffle_data_loader
@@ -4219,7 +4218,7 @@
     script: python dataset_shuffle_data_loader.py
 
 - name: parquet_metadata_resolution
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: parquet_metadata_resolution
@@ -4239,7 +4238,7 @@
 
 
 - name: dataset_random_access
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   stable: false
 
@@ -4257,7 +4256,7 @@
 
 
 - name: pipelined_data_ingest_benchmark
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4274,7 +4273,7 @@
 
 
 - name: aggregate_benchmark
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4288,8 +4287,26 @@
     script: python aggregate_benchmark.py
 
 
-- name: read_images_benchmark_single_node
+- name: read_parquet_benchmark_single_node
   group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish less than 4 mins.
+    timeout: 300
+    script: python read_parquet_benchmark.py
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: read_images_benchmark_single_node
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4304,7 +4321,7 @@
 
 
 - name: read_tfrecords_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4319,10 +4336,9 @@
     script: python read_tfrecords_benchmark.py
 
     type: sdk_command
-    file_manager: sdk
 
 - name: map_batches_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4337,7 +4353,6 @@
     script: python map_batches_benchmark.py
 
     type: sdk_command
-    file_manager: sdk
 
 - name: iter_batches_benchmark_single_node
   group: core-dataset-tests
@@ -4355,10 +4370,9 @@
     script: python iter_batches_benchmark.py
 
     type: sdk_command
-    file_manager: sdk
 
 - name: pipelined_training_50_gb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: pipelined_training_50_gb
@@ -4378,7 +4392,7 @@
 
 
 - name: pipelined_ingestion_1500_gb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: pipelined_ingestion_1500_gb
@@ -4400,7 +4414,7 @@
 
 
 - name: datasets_preprocess_ingest
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: datasets_preprocess_ingest
@@ -4422,7 +4436,7 @@
 
 
 - name: datasets_ingest_400G
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
   legacy:
     test_name: datasets_ingest_400G
@@ -4439,7 +4453,7 @@
     script: python ray_sgd_runner.py --address auto --use-gpu --num-epochs 1
 
 - name: dataset_shuffle_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_random_shuffle_1tb
@@ -4458,7 +4472,7 @@
       num_nodes: 20
 
 - name: dataset_shuffle_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_sort_1tb
@@ -4477,7 +4491,7 @@
       num_nodes: 20
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_random_shuffle_1tb
@@ -4496,7 +4510,7 @@
       num_nodes: 20
 
 - name: dataset_shuffle_push_based_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_sort_1tb
@@ -4515,7 +4529,7 @@
       num_nodes: 20
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_push_based_random_shuffle_100tb
@@ -4580,14 +4594,14 @@
 
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dask_on_ray_large_scale_test_no_spilling
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
@@ -4602,14 +4616,14 @@
 
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dask_on_ray_large_scale_test_spilling
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
@@ -4624,14 +4638,14 @@
 
 
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_pipelined_ingestion_1500_gb_15_windows
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: dataset/pipelined_ingestion_app.yaml
     cluster_compute: dataset/pipelined_ingestion_compute.yaml
@@ -4646,7 +4660,7 @@
 
 
 - name: chaos_dataset_shuffle_push_based_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_push_based_sort_1tb
@@ -4655,7 +4669,7 @@
   stable: false
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
@@ -4668,14 +4682,14 @@
       num_nodes: 20
 
 - name: chaos_dataset_shuffle_sort_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_sort_1tb
     test_suite: chaos_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
@@ -4688,7 +4702,7 @@
       num_nodes: 20
 
 - name: chaos_dataset_shuffle_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_random_shuffle_1tb
@@ -4697,7 +4711,7 @@
   stable: false
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
@@ -4711,7 +4725,7 @@
       num_nodes: 20
 
 - name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests
   legacy:
     test_name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
@@ -4720,7 +4734,7 @@
   stable: false
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
