@@ -146,7 +146,7 @@ def train_func(config):
         checkpoint = Checkpoint.from_dict(
             {
                 "epoch": epoch,
-                "model": model.state_dict(),
+                "model": model.module.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
             }
         )
