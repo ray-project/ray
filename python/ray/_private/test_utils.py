@@ -3,6 +3,7 @@ from datetime import datetime
 import fnmatch
 import functools
 import io
+import json
 import logging
 import math
 import os
@@ -1801,3 +1802,22 @@ def wandb_populate_run_location_hook():
 
     os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
     os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
+
+
+def safe_write_to_results_json(
+    result: str,
+    default_file_name: str = "/tmp/release_test_output.json",
+    env_var: Optional[str] = "TEST_OUTPUT_JSON",
+):
+    """
+    Safe (atomic) write to file to guard against malforming the json
+    if the job gets interrupted in the middle of writing.
+    """
+    if env_var:
+        test_output_json = os.environ.get(env_var, default_file_name)
+    else:
+        test_output_json = default_file_name
+    test_output_json_tmp = test_output_json + ".tmp"
+    with open(test_output_json_tmp, "wt") as f:
+        json.dump(result, f)
+    os.replace(test_output_json_tmp, test_output_json)

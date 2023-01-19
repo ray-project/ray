@@ -8,7 +8,6 @@ Acceptance criteria: Should run through and print "PASSED"
 """
 
 import argparse
-import json
 import os
 import time
 import random
@@ -17,6 +16,7 @@ from ray.dashboard.modules.job.common import JobStatus
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 import ray
 from ray.job_submission import JobSubmissionClient
+from ray._private.test_utils import safe_write_to_results_json
 
 NUM_CLIENTS = 4
 NUM_JOBS_PER_BATCH = 4
@@ -130,12 +130,6 @@ if __name__ == "__main__":
     result = {
         "time_taken": time_taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/jobs_basic.json")
-    # Safe write to file to guard against malforming the json
-    # when the job gets interrupted in the middle of writing
-    test_output_json_tmp = test_output_json + ".tmp"
-    with open(test_output_json_tmp, "wt") as f:
-        json.dump(result, f)
-    os.replace(test_output_json_tmp, test_output_json)
+    safe_write_to_results_json(result, "/tmp/jobs_basic.json")
 
     print("PASSED")

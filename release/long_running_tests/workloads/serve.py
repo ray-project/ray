@@ -1,5 +1,3 @@
-import json
-import os
 import re
 import time
 import subprocess
@@ -10,6 +8,7 @@ import requests
 import ray
 from ray import serve
 from ray.cluster_utils import Cluster
+from ray._private.test_utils import safe_write_to_results_json
 
 # Global variables / constants appear only right after imports.
 # Ray serve deployment setup constants
@@ -36,15 +35,7 @@ def update_progress(result):
     anyscale product runs in each releaser test
     """
     result["last_update"] = time.time()
-    test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/release_test_output.json"
-    )
-    # Safe write to file to guard against malforming the json
-    # when the job gets interrupted in the middle of writing
-    test_output_json_tmp = test_output_json + ".tmp"
-    with open(test_output_json_tmp, "wt") as f:
-        json.dump(result, f)
-    os.replace(test_output_json_tmp, test_output_json)
+    safe_write_to_results_json(result)
 
 
 cluster = Cluster()
