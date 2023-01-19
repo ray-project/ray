@@ -87,7 +87,9 @@ class ExecutionResources:
     object_store_memory: Optional[int] = None
 
     def object_store_memory_str(self) -> str:
-        if self.object_store_memory > 1e9:
+        if self.object_store_memory is None:
+            return "inf"
+        elif self.object_store_memory > 1e9:
             return f"{round(self.object_store_memory / 1e9, 2)} GiB"
         else:
             return f"{round(self.object_store_memory / 1e6, 2)} MiB"

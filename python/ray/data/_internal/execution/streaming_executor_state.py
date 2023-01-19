@@ -129,8 +129,6 @@ def build_streaming_topology(dag: PhysicalOperator) -> Topology:
 
 def process_completed_tasks(topology: Topology) -> None:
     """Process any newly completed tasks and update operator state."""
-    for op_state in topology.values():
-        op_state.refresh_progress_bar()
 
     # Update active tasks.
     active_tasks: Dict[ray.ObjectRef, PhysicalOperator] = {}
@@ -204,6 +202,11 @@ def select_operator_to_run(
     return min(
         ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_active_tasks()
     )
+
+
+def refresh_progress_bar(topology: Topology) -> None:
+    for op_state in topology.values():
+        op_state.refresh_progress_bar()
 
 
 def _execution_allowed(

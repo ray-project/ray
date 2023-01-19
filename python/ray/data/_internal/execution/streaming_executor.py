@@ -16,6 +16,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     build_streaming_topology,
     process_completed_tasks,
+    refresh_progress_bar,
     select_operator_to_run,
 )
 from ray.data._internal.progress_bar import ProgressBar
@@ -102,6 +103,7 @@ class StreamingExecutor(Executor):
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
         process_completed_tasks(topology)
+        refresh_progress_bar(topology)
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
@@ -110,6 +112,7 @@ class StreamingExecutor(Executor):
         while op is not None:
             _print_topology(topology)
             topology[op].dispatch_next_task()
+            refresh_progress_bar(topology)
             cur_usage = self._get_and_report_current_usage(topology, limits)
             op = select_operator_to_run(topology, cur_usage, limits)
 
@@ -157,8 +160,7 @@ class StreamingExecutor(Executor):
         return ExecutionResources(
             cpu=base.cpu or cluster.get("CPU", 0.0),
             gpu=base.gpu or cluster.get("GPU", 0.0),
-            object_store_memory=base.object_store_memory
-            or (cluster.get("object_store_memory", 0.0) // 4),
+            object_store_memory=base.object_store_memory,
         )
 
     def _get_and_report_current_usage(
