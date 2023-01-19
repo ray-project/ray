@@ -107,11 +107,6 @@ class ExecutionResources:
             (self.object_store_memory or 0.0) + (other.object_store_memory or 0.0),
         )
 
-    def has_cpu_or_gpu(self) -> bool:
-        """Return if using CPU or GPU."""
-
-        return self.cpu or self.gpu
-
     def satisfies_limits(self, limit: "ExecutionResources") -> bool:
         """Return if this resource struct meets the specified limits."""
 

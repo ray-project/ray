@@ -263,7 +263,7 @@ class _OrderedOutputQueue(_OutputQueue):
         return self._tasks_by_output_order.pop(i).output
 
 
-class _UnorderedOutputQueue:
+class _UnorderedOutputQueue(_OutputQueue):
     """An queue that does not guarantee output order of finished tasks."""
 
     def __init__(self):
