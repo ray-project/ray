@@ -50,7 +50,6 @@ from ray.core.generated import (
 )
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
-from ray.experimental.state.state_manager import StateDataSourceClient
 
 
 logger = logging.getLogger(__name__)
@@ -90,6 +89,12 @@ def enable_external_redis():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
+def redis_replicas():
+    import os
+
+    return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
+
+
 def start_redis_instance(
     session_dir_path: str,
     port: int,
@@ -103,6 +108,9 @@ def start_redis_instance(
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
     enable_tls: bool = False,
+    replica_of=None,
+    leader_id=None,
+    db_dir=None,
 ):
     """Start a single Redis server.
 
@@ -152,7 +160,8 @@ def start_redis_instance(
         if " " in password:
             raise ValueError("Spaces not permitted in redis password.")
         command += ["--requirepass", password]
-
+    if redis_replicas() > 1:
+        command += ["--cluster-enabled", "yes", "--cluster-config-file", f"node-{port}"]
     if enable_tls:
         import socket
 
@@ -184,6 +193,8 @@ def start_redis_instance(
         command += ["--tls-replication", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
+    if db_dir is not None:
+        command += ["--dir", str(db_dir)]
     process_info = ray._private.services.start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -191,8 +202,32 @@ def start_redis_instance(
         stderr_file=stderr_file,
         fate_share=fate_share,
     )
-    port = ray._private.services.new_port(denylist=port_denylist)
-    return port, process_info
+    node_id = None
+    if redis_replicas() > 1:
+        # Setup redis cluster
+        import redis
+
+        while True:
+            try:
+                redis_cli = redis.Redis("localhost", str(port))
+                if replica_of is None:
+                    slots = [str(i) for i in range(16384)]
+                    redis_cli.cluster("addslots", *slots)
+                else:
+                    redis_cli.cluster("meet", "127.0.0.1", str(replica_of))
+                    redis_cli.cluster("replicate", leader_id)
+                node_id = redis_cli.cluster("myid")
+                break
+            except (
+                redis.exceptions.ConnectionError,
+                redis.exceptions.ResponseError,
+            ) as e:
+                from time import sleep
+
+                print(f"Waiting for redis to be up {e}")
+                sleep(0.1)
+
+    return node_id, process_info
 
 
 def _pid_alive(pid):
@@ -206,7 +241,9 @@ def _pid_alive(pid):
     """
     alive = True
     try:
-        psutil.Process(pid)
+        proc = psutil.Process(pid)
+        if proc.status() == psutil.STATUS_ZOMBIE:
+            alive = False
     except psutil.NoSuchProcess:
         alive = False
     return alive
@@ -1653,26 +1690,6 @@ def kill_raylet(raylet, graceful=False):
         stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
     except _InactiveRpcError:
         assert not graceful
-
-
-# Creates a state api client assuming the head node (gcs) is local.
-def get_local_state_client():
-    hostname = ray.worker._global_node.gcs_address
-
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
-    )
-
-    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
-        client.register_agent_client(node_id, ip, port)
-
-    return client
 
 
 # Global counter to test different return values

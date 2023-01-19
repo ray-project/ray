@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray.types import ObjectRef
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
@@ -135,6 +136,81 @@ class ExecutionPlan:
             f"stages_after_snapshot={self._stages_after_snapshot}, "
             f"snapshot_blocks={self._snapshot_blocks})"
         )
+
+    def get_plan_as_string(self) -> str:
+        """Create a cosmetic string representation of this execution plan.
+
+        Returns:
+            The string representation of this execution plan.
+        """
+
+        # NOTE: this is used for Dataset.__repr__ to give a user-facing string
+        # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
+        # method as well.
+
+        # Do not force execution for schema, as this method is expected to be very
+        # cheap.
+        plan_str = ""
+        num_stages = 0
+        dataset_blocks = None
+        if self._stages_after_snapshot:
+            # Get string representation of each stage in reverse order.
+            for stage in self._stages_after_snapshot[::-1]:
+                # Get name of each stage in camel case.
+                stage_name = stage.name.title().replace("_", "")
+                if num_stages == 0:
+                    plan_str += f"{stage_name}\n"
+                else:
+                    trailing_space = " " * ((num_stages - 1) * 3)
+                    plan_str += f"{trailing_space}+- {stage_name}\n"
+                num_stages += 1
+
+            # Get schema of initial blocks.
+            if self._snapshot_blocks is not None:
+                schema = self._get_unified_blocks_schema(
+                    self._snapshot_blocks, fetch_if_missing=False
+                )
+                dataset_blocks = self._snapshot_blocks
+            else:
+                assert self._in_blocks is not None
+                schema = self._get_unified_blocks_schema(
+                    self._in_blocks, fetch_if_missing=False
+                )
+                dataset_blocks = self._in_blocks
+        else:
+            # Get schema of output blocks.
+            schema = self.schema(fetch_if_missing=False)
+            dataset_blocks = self._snapshot_blocks
+
+        if schema is None:
+            schema_str = "Unknown schema"
+        elif isinstance(schema, type):
+            schema_str = str(schema)
+        else:
+            schema_str = []
+            for n, t in zip(schema.names, schema.types):
+                if hasattr(t, "__name__"):
+                    t = t.__name__
+                schema_str.append(f"{n}: {t}")
+            schema_str = ", ".join(schema_str)
+            schema_str = "{" + schema_str + "}"
+        count = self._get_num_rows_from_blocks_metadata(dataset_blocks)
+        if count is None:
+            count = "?"
+        if dataset_blocks is None:
+            num_blocks = "?"
+        else:
+            num_blocks = dataset_blocks.initial_num_blocks()
+        dataset_str = "Dataset(num_blocks={}, num_rows={}, schema={})".format(
+            num_blocks, count, schema_str
+        )
+
+        if num_stages == 0:
+            plan_str = dataset_str
+        else:
+            trailing_space = " " * ((num_stages - 1) * 3)
+            plan_str += f"{trailing_space}+- {dataset_str}"
+        return plan_str
 
     def with_stage(self, stage: "Stage") -> "ExecutionPlan":
         """Return a copy of this plan with the given stage appended.
@@ -260,6 +336,17 @@ class ExecutionPlan:
         blocks = self._snapshot_blocks
         if not blocks:
             return None
+        return self._get_unified_blocks_schema(blocks, fetch_if_missing)
+
+    def _get_unified_blocks_schema(
+        self, blocks: BlockList, fetch_if_missing: bool = False
+    ) -> Union[type, "pyarrow.lib.Schema"]:
+        """Get the unified schema of the blocks.
+
+        Args:
+            blocks: the blocks to get schema
+            fetch_if_missing: Whether to execute the blocks to fetch the schema.
+        """
 
         # Only trigger the execution of first block in case it's a lazy block list.
         # Don't trigger full execution for a schema read.
@@ -313,12 +400,62 @@ class ExecutionPlan:
         if self._stages_after_snapshot:
             return None
         # Snapshot is now guaranteed to be the output of the final stage or None.
-        blocks = self._snapshot_blocks
+        return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
+
+    def _get_num_rows_from_blocks_metadata(self, blocks: BlockList) -> Optional[int]:
         metadata = blocks.get_metadata() if blocks else None
         if metadata and all(m.num_rows is not None for m in metadata):
             return sum(m.num_rows for m in metadata)
         else:
             return None
+
+    def execute_to_iterator(
+        self,
+        allow_clear_input_blocks: bool = True,
+        force_read: bool = False,
+    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats]:
+        """Execute this plan, returning an iterator.
+
+        If the streaming execution backend is enabled, this will use streaming
+        execution to generate outputs, otherwise it will fall back to bulk exec.
+
+        Args:
+            allow_clear_input_blocks: Whether we should try to clear the input blocks
+                for each stage.
+            force_read: Whether to force the read stage to fully execute.
+
+        Returns:
+            Tuple of iterator over output blocks and Dataset stats.
+        """
+
+        ctx = DatasetContext.get_current()
+        if not ctx.use_streaming_executor:
+            return (
+                self.execute(allow_clear_input_blocks, force_read).iter_blocks(),
+                self._snapshot_stats,
+            )
+
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
+        from ray.data._internal.execution.interfaces import ExecutionOptions
+        from ray.data._internal.execution.legacy_compat import (
+            execute_to_legacy_block_iterator,
+        )
+
+        executor = StreamingExecutor(ExecutionOptions())
+        block_iter = execute_to_legacy_block_iterator(
+            executor,
+            self,
+            allow_clear_input_blocks=allow_clear_input_blocks,
+            dataset_uuid=self._dataset_uuid,
+        )
+        # Since the generator doesn't run any code until we try to fetch the first
+        # value, force execution of one bundle before we call get_stats().
+        gen = iter(block_iter)
+        try:
+            block_iter = itertools.chain([next(gen)], gen)
+        except StopIteration:
+            pass
+        return block_iter, executor.get_stats()
 
     def execute(
         self,
@@ -326,6 +463,8 @@ class ExecutionPlan:
         force_read: bool = False,
     ) -> BlockList:
         """Execute this plan.
+
+        This will always execute the plan using bulk execution.
 
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
@@ -335,9 +474,17 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
+        context = DatasetContext.get_current()
+        if not ray.available_resources().get("CPU"):
+            logger.get_logger().warning(
+                "Warning: The Ray cluster currently does not have "
+                "any available CPUs. The Dataset job will hang unless more CPUs "
+                "are freed up. A common reason is that cluster resources are "
+                "used by Actors or Tune trials; see the following link "
+                "for more details: "
+                "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
+            )
         if not self.has_computed_output():
-            context = DatasetContext.get_current()
-
             # Read stage is handled with the legacy execution impl for now.
             if (
                 context.new_execution_backend
