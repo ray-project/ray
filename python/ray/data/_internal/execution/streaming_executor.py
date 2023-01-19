@@ -107,12 +107,13 @@ class StreamingExecutor(Executor):
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
-        cur_usage = self._get_and_report_current_usage(topology, limits)
+        cur_usage = self._get_current_usage(topology)
+        self._report_current_usage(cur_usage, limits)
         op = select_operator_to_run(topology, cur_usage, limits)
         while op is not None:
             _print_topology(topology)
             topology[op].dispatch_next_task()
-            cur_usage = self._get_and_report_current_usage(topology, limits)
+            cur_usage = self._get_current_usage(topology)
             op = select_operator_to_run(topology, cur_usage, limits)
 
         # Keep going until all operators run to completion.
@@ -162,7 +163,7 @@ class StreamingExecutor(Executor):
             or cluster.get("object_store_memory", 0.0) // 4,
         )
 
-    def _get_and_report_current_usage(
+    def _get_current_usage(
         self, topology: Topology, limits: ExecutionResources
     ) -> ExecutionResources:
         cur_usage = ExecutionResources()
@@ -172,6 +173,11 @@ class StreamingExecutor(Executor):
                 continue  # Don't count input refs towards dynamic memory usage.
             for bundle in state.outqueue:
                 cur_usage.object_store_memory += bundle.size_bytes()
+        return cur_usage
+
+    def _report_current_usage(
+        self, cur_usage: ExecutionResources, limits: ExecutionResources
+    ) -> None:
         if self._global_info:
             self._global_info.set_description(
                 "Resource usage vs limits: "
@@ -180,7 +186,6 @@ class StreamingExecutor(Executor):
                 f"{cur_usage.object_store_memory_str()}/"
                 f"{limits.object_store_memory_str()} object_store_memory"
             )
-        return cur_usage
 
 
 def _print_topology(topology: Topology) -> None:
