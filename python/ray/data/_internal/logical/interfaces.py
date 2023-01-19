@@ -26,9 +26,6 @@ class Operator:
         ), "Operator.__init__() was not called."
         return self._input_dependencies
 
-    def __reduce__(self):
-        raise ValueError("Operator is not serializable.")
-
     def __repr__(self) -> str:
         if self.input_dependencies:
             out_str = ", ".join([str(x) for x in self.input_dependencies])
