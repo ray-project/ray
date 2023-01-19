@@ -113,9 +113,6 @@ class ActorPool:
         # the first call to kill_idle_actors().
         self._should_kill_idle_actors = False
 
-    def size(self) -> int:
-        return len(self._num_tasks_in_flight)
-
     def add_actor(self, actor: ray.actor.ActorHandle):
         """Adds an actor to the pool."""
         self._num_tasks_in_flight[actor] = 0

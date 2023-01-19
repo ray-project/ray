@@ -343,30 +343,6 @@ class PhysicalOperator:
         """
         return ExecutionResources()
 
-    def current_resource_usage(self) -> ExecutionResources:
-        """Returns the current estimated resource usage of this operator.
-
-        This method is called by the executor to decide how to allocate resources
-        between different operators.
-        """
-        return ExecutionResources()
-
-    def base_resource_usage(self) -> ExecutionResources:
-        """Returns the minimum amount of resources required for execution.
-
-        For example, an operator that creates an actor pool requiring 8 GPUs could
-        return ExecutionResources(gpu=8) as its base usage.
-        """
-        return ExecutionResources()
-
-    def incremental_resource_usage(self) -> ExecutionResources:
-        """Returns the incremental resources required for processing another input.
-
-        For example, an operator that launches a task per input could return
-        ExecutionResources(cpu=1) as its incremental usage.
-        """
-        return ExecutionResources()
-
 
 class Executor:
     """Abstract class for executors, which implement physical operator execution.
