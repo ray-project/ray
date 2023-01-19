@@ -112,7 +112,6 @@ class StreamingExecutor(Executor):
         while op is not None:
             _print_topology(topology)
             topology[op].dispatch_next_task()
-            refresh_progress_bar(topology)
             cur_usage = self._get_and_report_current_usage(topology, limits)
             op = select_operator_to_run(topology, cur_usage, limits)
 
