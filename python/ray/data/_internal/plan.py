@@ -399,7 +399,12 @@ class ExecutionPlan:
         """
         if self._stages_after_snapshot:
             return None
-        # Snapshot is now guaranteed to be the output of the final stage or None.
+        elif self._in_blocks is not None and self._snapshot_blocks is None:
+            # If the plan only has input blocks, we execute it, so snapshot has output.
+            # This applies to newly created dataset. For example, initial dataset from
+            # read, and output datasets of Dataset.split().
+            self.execute()
+        # Snapshot is now guaranteed to be the final block or None.
         return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
 
     def _get_num_rows_from_blocks_metadata(self, blocks: BlockList) -> Optional[int]:
