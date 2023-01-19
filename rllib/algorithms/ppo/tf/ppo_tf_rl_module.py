@@ -35,9 +35,6 @@ class PPOTfModuleConfig(RLModuleConfig):
 
 class PPOTfModule(TfRLModule):
     def __init__(self, config: PPOTfModuleConfig):
-        # moving this statement inside so that tf1 eager execution is enabled
-        # only when the module is instantiated, not when it is imported.
-        tf1.enable_eager_execution()
         super().__init__()
         self.config = config
         self.setup()

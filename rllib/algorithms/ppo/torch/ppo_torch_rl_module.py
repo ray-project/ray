@@ -244,7 +244,9 @@ class PPOTorchRLModule(TorchRLModule):
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
         if self._is_discrete:
-            action_dist_inputs = ((SampleBatch.ACTION_DIST_INPUTS, "logits"),)
+            specs[SampleBatch.ACTION_DIST_INPUTS] = {
+                "logits": TorchTensorSpec("b, h", h=int(self.config.action_space.n))
+            }
         else:
             action_dist_inputs = (
                 (SampleBatch.ACTION_DIST_INPUTS, "loc"),
