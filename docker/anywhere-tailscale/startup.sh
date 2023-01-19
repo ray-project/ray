@@ -10,9 +10,9 @@ memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
 shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
-
+export shm_memory=$shm_memory"G"
 CRATE_HEAP_SIZE=$(echo "scale=2; $shm_memory * 2" | bc)
-export CRATE_HEAP_SIZE
+export CRATE_HEAP_SIZE=$CRATE_HEAP_SIZE"G"
 
 
 set -ae
