@@ -298,7 +298,7 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
       3) User already logged in to W&B (wandb.api.api_key set)
       4) From external hook WANDB_SETUP_API_KEY_HOOK
     """
-    if os.environ[WANDB_MODE_ENV_VAR] in {"offline", "disabled"}:
+    if os.environ.get(WANDB_MODE_ENV_VAR) in {"offline", "disabled"}:
         return
 
     if api_key_file:
