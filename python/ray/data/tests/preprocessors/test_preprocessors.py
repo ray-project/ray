@@ -173,9 +173,20 @@ def test_pipeline_fail():
     class FittablePreprocessor(Preprocessor):
         _is_fittable = True
 
+        def _fit(self, dataset):
+            self.fitted_ = True
+            return self
+
+        def _transform_numpy(data):
+            return data
+
     prep = FittablePreprocessor()
     with pytest.raises(RuntimeError):
         _apply_transform(prep, ds)
+
+    # Does not fail if preprocessor is already fitted.
+    fitted_prep = prep.fit(ds)
+    _apply_transform(fitted_prep, ds)
 
 
 @pytest.mark.parametrize("pipeline", [True, False])

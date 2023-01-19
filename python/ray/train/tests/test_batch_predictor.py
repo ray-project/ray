@@ -294,7 +294,9 @@ def test_batch_prediction_fs():
         DummyPredictorFS,
     )
 
-    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0] * 32).repartition(8)
+    test_dataset = ray.data.from_pandas(
+        pd.DataFrame({"x": [1.0, 2.0, 3.0, 4.0] * 32})
+    ).repartition(8)
     assert (
         batch_predictor.predict(test_dataset, min_scoring_workers=4)
         .to_pandas()
@@ -384,7 +386,7 @@ def test_batch_prediction_feature_cols_after_preprocess():
     ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
 
 
-def test_batch_predictor_transform_config(ray_start_4_cpus):
+def test_batch_predictor_transform_config():
     """Tests that the preprocessor's transform config is
     respected when using BatchPredictor."""
     batch_size = 2
@@ -482,7 +484,7 @@ def test_get_and_set_preprocessor():
     )
     assert batch_predictor.get_preprocessor() == preprocessor
 
-    test_dataset = ray.data.range(4)
+    test_dataset = ray.data.range_table(4)
     output_ds = batch_predictor.predict(test_dataset)
     assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
         0.0,
