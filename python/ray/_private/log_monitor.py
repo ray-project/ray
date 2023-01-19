@@ -23,7 +23,7 @@ from ray._private.ray_logging import setup_component_logger
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-# The group is pid.
+# The groups are job id, and pid.
 WORKER_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
