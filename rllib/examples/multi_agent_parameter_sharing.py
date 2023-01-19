@@ -4,9 +4,6 @@ from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v4
 
 if __name__ == "__main__":
-    # RDQN - Rainbow DQN
-    # ADQN - Apex DQN
-
     register_env("waterworld", lambda _: PettingZooEnv(waterworld_v4.env()))
 
     tune.Tuner(
