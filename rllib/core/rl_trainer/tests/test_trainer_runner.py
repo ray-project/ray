@@ -1,73 +1,11 @@
 import gymnasium as gym
 import unittest
-
-import tensorflow as tf
-import torch
 import ray
 import time
 
-from typing import Type, Union
-
-from ray.rllib.core.rl_module import RLModule
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
-from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
-
-Optimizer = Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer]
-
-
-def _get_trainer_class(framework: str) -> Type[RLTrainer]:
-    if framework == "tf":
-        from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
-
-        return BCTfRLTrainer
-    elif framework == "torch":
-        from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchRLTrainer
-
-        return BCTorchRLTrainer
-    else:
-        raise ValueError(f"Unsupported framework: {framework}")
-
-
-def _get_module_class(framework: str) -> Type[RLModule]:
-    if framework == "tf":
-        from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-
-        return DiscreteBCTFModule
-    elif framework == "torch":
-        from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-
-        return DiscreteBCTorchModule
-    else:
-        raise ValueError(f"Unsupported framework: {framework}")
-
-
-def _get_optimizer_default_class(framework: str) -> Type[Optimizer]:
-    if framework == "tf":
-        return tf.keras.optimizers.Adam
-    elif framework == "torch":
-        return torch.optim.Adam
-    else:
-        raise ValueError(f"Unsupported framework: {framework}")
-
-
-def _get_trainer_runner(
-    framework: str, env: gym.Env, compute_config: dict
-) -> TrainerRunner:
-    trainer_class = _get_trainer_class(framework)
-    trainer_cfg = dict(
-        module_class=_get_module_class(framework),
-        module_kwargs={
-            "observation_space": env.observation_space,
-            "action_space": env.action_space,
-            "model_config": {"hidden_dim": 32},
-        },
-        optimizer_config={"lr": 0.1},
-    )
-    runner = TrainerRunner(trainer_class, trainer_cfg, compute_config=compute_config)
-
-    return runner
+from ray.rllib.core.testing.utils import get_trainer_runner, add_module_to_runner_or_trainer
 
 
 class TestTrainerRunner(unittest.TestCase):
@@ -91,7 +29,7 @@ class TestTrainerRunner(unittest.TestCase):
             ray.init(ignore_reinit_error=True)
             print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
-            runner = _get_trainer_runner(fw, env, compute_config=dict(num_gpus=2))
+            runner = get_trainer_runner(fw, env, compute_config=dict(num_gpus=2))
             reader = get_cartpole_dataset_reader(batch_size=500)
 
             min_loss = float("inf")
@@ -123,7 +61,7 @@ class TestTrainerRunner(unittest.TestCase):
             ray.init(ignore_reinit_error=True)
             print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
-            runner = _get_trainer_runner(fw, env, compute_config=dict(num_gpus=2))
+            runner = get_trainer_runner(fw, env, compute_config=dict(num_gpus=2))
             reader = get_cartpole_dataset_reader(batch_size=500)
             batch = reader.next()
 
@@ -133,16 +71,7 @@ class TestTrainerRunner(unittest.TestCase):
             new_module_id = "test_module"
 
             # add a test_module
-            runner.add_module(
-                module_id=new_module_id,
-                module_cls=_get_module_class(fw),
-                module_kwargs={
-                    "observation_space": env.observation_space,
-                    "action_space": env.action_space,
-                    "model_config": {"hidden_dim": 32},
-                },
-                optimizer_cls=_get_optimizer_default_class(fw),
-            )
+            add_module_to_runner_or_trainer(fw, env, new_module_id, runner)
 
             # do training that includes the test_module
             results = runner.update(
