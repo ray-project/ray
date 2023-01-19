@@ -5,6 +5,7 @@ It should be deleted once we fully move to the new executor backend.
 
 import ray.cloudpickle as cloudpickle
 from typing import Iterator, Tuple, Any
+import itertools
 
 import ray
 from ray.types import ObjectRef
@@ -37,7 +38,7 @@ def execute_to_legacy_block_iterator(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
-) -> Iterator[ObjectRef[Block]]:
+) -> Tuple[Iterator[ObjectRef[Block]], bool]:
     """Execute a plan with the new executor and return a block iterator.
 
     Args:
@@ -47,14 +48,25 @@ def execute_to_legacy_block_iterator(
         dataset_uuid: UUID of the dataset for this execution.
 
     Returns:
-        The output as a block iterator.
+        The output as a block iterator and a bool indicating if the blocks are owned
+        by consumer.
     """
     dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
     bundle_iter = executor.execute(dag, initial_stats=stats)
 
-    for bundle in bundle_iter:
-        for block, _ in bundle.blocks:
-            yield block
+    # Assuming all bundles have the same value in "owns_blocks" field.
+    # This may not be true in a general DAG plan, but in the legacy plan
+    # where there is only unary operators, this assumption is true.
+    first_bundle = next(bundle_iter)
+    owned = first_bundle.owns_blocks
+    bundle_iter = itertools.chain([first_bundle], bundle_iter)
+
+    def to_block_iter(bundle_iter) -> Iterator[ObjectRef[Block]]:
+        for bundle in bundle_iter:
+            for block, _ in bundle.blocks:
+                yield block
+
+    return to_block_iter(bundle_iter), owned
 
 
 def execute_to_legacy_block_list(

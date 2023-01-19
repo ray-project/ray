@@ -410,7 +410,7 @@ class ExecutionPlan:
         else:
             return None
 
-    def consume(self) -> (BlockList, DatasetStats):
+    def consume(self) -> Tuple[BlockList, DatasetStats]:
         bl = self.execute(force_read=True)
         stats = self._snapshot_stats
         if not self._cache_execution_results:
@@ -421,7 +421,7 @@ class ExecutionPlan:
         self,
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
-    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats]:
+    ) -> Tuple[Iterator[ObjectRef[Block]], DatasetStats, bool]:
         """Execute this plan, returning an iterator.
 
         If the streaming execution backend is enabled, this will use streaming
@@ -433,7 +433,8 @@ class ExecutionPlan:
             force_read: Whether to force the read stage to fully execute.
 
         Returns:
-            Tuple of iterator over output blocks and Dataset stats.
+            Tuple of iterator over output blocks, Dataset stats and whether the blocks
+            are owned by consumer.
         """
 
         ctx = DatasetContext.get_current()
@@ -448,7 +449,7 @@ class ExecutionPlan:
         )
 
         executor = StreamingExecutor(ExecutionOptions())
-        block_iter = execute_to_legacy_block_iterator(
+        block_iter, owned = execute_to_legacy_block_iterator(
             executor,
             self,
             allow_clear_input_blocks=allow_clear_input_blocks,
@@ -461,7 +462,7 @@ class ExecutionPlan:
             block_iter = itertools.chain([next(gen)], gen)
         except StopIteration:
             pass
-        return block_iter, executor.get_stats()
+        return block_iter, executor.get_stats(), owned
 
     def execute(
         self,
