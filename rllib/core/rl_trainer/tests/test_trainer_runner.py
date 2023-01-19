@@ -1,7 +1,7 @@
 import gymnasium as gym
 import unittest
 
-import tensorflow as tf
+from ray.rllib.utils.framework import try_import_tf
 import ray
 
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
@@ -9,6 +9,22 @@ from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
+
+tf1, tf, tfv = try_import_tf()
+tf1.executing_eagerly()
+
+
+def add_module_helper(env, module_id, runner_or_trainer):
+    runner_or_trainer.add_module(
+        module_id=module_id,
+        module_cls=DiscreteBCTFModule,
+        module_kwargs={
+            "observation_space": env.observation_space,
+            "action_space": env.action_space,
+            "model_config": {"hidden_dim": 32},
+        },
+        optimizer_cls=tf.keras.optimizers.Adam,
+    )
 
 
 class TestTrainerRunner(unittest.TestCase):
@@ -91,16 +107,7 @@ class TestTrainerRunner(unittest.TestCase):
         new_module_id = "test_module"
 
         # add a test_module
-        runner.add_module(
-            module_id=new_module_id,
-            module_cls=DiscreteBCTFModule,
-            module_kwargs={
-                "observation_space": env.observation_space,
-                "action_space": env.action_space,
-                "model_config": {"hidden_dim": 32},
-            },
-            optimizer_cls=tf.keras.optimizers.Adam,
-        )
+        add_module_helper(env, new_module_id, runner)
 
         # do training that includes the test_module
         results = runner.update(
