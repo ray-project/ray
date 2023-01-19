@@ -1,7 +1,7 @@
 from typing import Type, Union, TYPE_CHECKING
 
 import torch
-import tf
+import tensorflow as tf
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner

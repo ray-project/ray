@@ -24,6 +24,8 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
 
+from ray.air.config import ScalingConfig
+
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
 
@@ -103,6 +105,7 @@ class RLTrainer:
         module_kwargs: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
+        scaling_config: Optional[ScalingConfig] = None,
     ):
         # TODO (Kourosh): convert scaling and optimizer configs to dataclasses
         self.module_class = module_class

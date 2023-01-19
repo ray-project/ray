@@ -77,9 +77,10 @@ class TrainerRunner:
                 max_retries=0,
             )
 
-            # TODO(avnishn, kourosh): let's not pass this into the config which will
-            # cause information leakage into the RLTrainer about other workers.
+            # TODO(avnishn, kourosh): Should we pass in scaling config into the
+            # trainer?
             trainer_config["distributed"] = self._distributed = bool(num_gpus > 1)
+            trainer_config["scaling_config"] = scaling_config
             self.backend_executor.start(
                 train_cls=trainer_class, train_cls_kwargs=trainer_config
             )
