@@ -467,7 +467,8 @@ def debug(address):
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir of the Ray process",
+    help="manually specify the root temporary dir of the Ray process, only works"
+    "when --head is specified",
 )
 @click.option(
     "--storage",
