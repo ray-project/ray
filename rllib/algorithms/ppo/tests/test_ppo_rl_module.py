@@ -29,7 +29,6 @@ from ray.rllib.core.rl_module.encoder_tf import (
 )
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.test_utils import framework_iterator
 
 
 def get_expected_model_config_torch(
@@ -228,133 +227,6 @@ class TestPPO(unittest.TestCase):
 
     def test_rollouts(self):
         # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
-<<<<<<< HEAD
-        for fw in framework_iterator(frameworks=["torch", "tf2"]):
-            for env_name in ["CartPole-v1", "Pendulum-v1"]:
-                for fwd_fn in ["forward_exploration", "forward_inference"]:
-                    for shared_encoder in [False, True]:
-                        for lstm in [True, False]:
-                            if lstm and shared_encoder:
-                                # Not yet implemented
-                                # TODO (Artur): Implement
-                                continue
-                            if lstm and fw == "tf2":
-                                # LSTM not implemented in TF2 yet
-                                continue
-                            print(
-                                f"[ENV={env_name}] | [SHARED={shared_encoder}] | LSTM"
-                                f"={lstm}"
-                            )
-                            env = gym.make(env_name)
-                            module = self.get_ppo_module(fw, env, lstm, shared_encoder)
-
-                            obs, _ = env.reset()
-
-                            batch = self.get_input_batch_from_obs(fw, obs)
-
-                            if lstm:
-                                state_in = module.get_initial_state()
-                                state_in = tree.map_structure(
-                                    lambda x: x[None], convert_to_torch_tensor(state_in)
-                                )
-                                batch[STATE_IN] = state_in
-                                batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
-
-                            if fwd_fn == "forward_exploration":
-                                module.forward_exploration(batch)
-                            else:
-                                module.forward_inference(batch)
-
-    def test_forward_train(self):
-        # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
-        for fw in framework_iterator(frameworks=["torch", "tf2"]):
-            for env_name in ["CartPole-v1", "Pendulum-v1"]:
-                for shared_encoder in [False, True]:
-                    for lstm in [True, False]:
-                        if lstm and shared_encoder:
-                            # Not yet implemented
-                            # TODO (Artur): Implement
-                            continue
-                        if lstm and fw == "tf2":
-                            # LSTM not implemented in TF2 yet
-                            continue
-                        print(
-                            f"[ENV={env_name}] | [SHARED="
-                            f"{shared_encoder}] | LSTM={lstm}"
-                        )
-                        env = gym.make(env_name)
-
-                        module = self.get_ppo_module(fw, env, lstm, shared_encoder)
-
-                        # collect a batch of data
-                        batches = []
-                        obs, _ = env.reset()
-                        tstep = 0
-                        if lstm:
-                            state_in = module.get_initial_state()
-                            state_in = tree.map_structure(
-                                lambda x: x[None], convert_to_torch_tensor(state_in)
-                            )
-                            initial_state = state_in
-                        while tstep < 10:
-                            if lstm:
-                                input_batch = self.get_input_batch_from_obs(fw, obs)
-                                input_batch[STATE_IN] = state_in
-                                input_batch[SampleBatch.SEQ_LENS] = np.array([1])
-                            else:
-                                input_batch = self.get_input_batch_from_obs(fw, obs)
-                            fwd_out = module.forward_exploration(input_batch)
-                            action = convert_to_numpy(
-                                fwd_out["action_dist"].sample()[0]
-                            )
-                            new_obs, reward, terminated, truncated, _ = env.step(action)
-                            output_batch = {
-                                SampleBatch.OBS: obs,
-                                SampleBatch.NEXT_OBS: new_obs,
-                                SampleBatch.ACTIONS: action,
-                                SampleBatch.REWARDS: np.array(reward),
-                                SampleBatch.TERMINATEDS: np.array(terminated),
-                                SampleBatch.TRUNCATEDS: np.array(truncated),
-                            }
-                            if lstm:
-                                assert STATE_OUT in fwd_out
-                                state_in = fwd_out[STATE_OUT]
-                            batches.append(output_batch)
-                            obs = new_obs
-                            tstep += 1
-
-                        # convert the list of dicts to dict of lists
-                        batch = tree.map_structure(lambda *x: np.array(x), *batches)
-                        # convert dict of lists to dict of tensors
-                        if fw == "torch":
-                            fwd_in = {
-                                k: convert_to_torch_tensor(np.array(v))
-                                for k, v in batch.items()
-                            }
-                            if lstm:
-                                fwd_in[STATE_IN] = initial_state
-                                fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
-
-                            # forward train
-                            # before training make sure module is on the right device
-                            # and in training mode
-                            module.to("cpu")
-                            module.train()
-                            fwd_out = module.forward_train(fwd_in)
-                            loss = dummy_torch_ppo_loss(fwd_in, fwd_out)
-                            loss.backward()
-
-                            # check that all neural net parameters have gradients
-                            for param in module.parameters():
-                                self.assertIsNotNone(param.grad)
-                        else:
-                            with tf.GradientTape() as tape:
-                                fwd_out = module.forward_train(batch)
-                                loss = dummy_tf_ppo_loss(batch, fwd_out)
-                            grads = tape.gradient(loss, module.trainable_variables)
-                            for grad in grads:
-                                self.assertIsNotNone(grad)
-=======
         frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1"]
         fwd_fns = ["forward_exploration", "forward_inference"]
@@ -477,7 +349,6 @@ class TestPPO(unittest.TestCase):
                 grads = tape.gradient(loss, module.trainable_variables)
                 for grad in grads:
                     self.assertIsNotNone(grad)
->>>>>>> 11ed16b6f061840738950d14a1f358e146533a4b
 
 
 if __name__ == "__main__":
