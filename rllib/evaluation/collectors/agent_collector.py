@@ -1,13 +1,14 @@
+import copy
 import logging
-
-from gymnasium.spaces import Space
 import math
-import numpy as np
-import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional
 
-from ray.rllib.policy.view_requirement import ViewRequirement
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Space
+
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import (
     flatten_to_single_ndarray,
@@ -19,7 +20,6 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
-
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,17 @@ def _to_float_np_array(v: List[Any]) -> np.ndarray:
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
     return arr
+
+
+def _get_buffered_slice_with_paddings(d, inds):
+    element_at_t = []
+    for index in inds:
+        if index < len(d):
+            element_at_t.append(d[index])
+        else:
+            # zero pad similar to the last element.
+            element_at_t.append(tree.map_structure(np.zeros_like, d[-1]))
+    return element_at_t
 
 
 @PublicAPI
@@ -229,7 +240,7 @@ class AgentCollector:
             AgentCollector._next_unroll_id += 1
 
         # Next obs -> obs.
-        values = {k: v for k, v in input_values.items()}
+        values = copy.copy(input_values)
         assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
@@ -466,15 +477,7 @@ class AgentCollector:
                         # Case in which we have to pad because buffer has insufficient
                         # length. This branch takes more time than simply picking
                         # slices we try to avoid it.
-                        element_at_t = []
-                        for index in inds:
-                            if index < len(d):
-                                element_at_t.append(d[index])
-                            else:
-                                # zero pad similar to the last element.
-                                element_at_t.append(
-                                    tree.map_structure(np.zeros_like, d[-1])
-                                )
+                        element_at_t = _get_buffered_slice_with_paddings(d, inds)
                         element_at_t = np.stack(element_at_t)
 
                     if element_at_t.shape[0] == 1:
