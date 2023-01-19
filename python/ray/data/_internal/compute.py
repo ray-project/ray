@@ -271,7 +271,7 @@ class ActorPoolStrategy(ComputeStrategy):
         # Otherwise, it leads to inefficiencies with creating extra actor tasks and
         # prevents the actor task from doing optimizations
         # such as batch or block prefetching.
-        if self.max_size and len(block_bundles) > self.max_size:
+        if len(block_bundles) > self.max_size:
 
             def chunkify(bundles: List, num_chunks: int):
                 return [bundles[i::num_chunks] for i in range(num_chunks)]

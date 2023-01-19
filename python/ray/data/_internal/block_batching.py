@@ -167,12 +167,12 @@ def _make_async_gen(
     base_iterator: Iterator[T], prefetch_buffer_size: int = 1
 ) -> Iterator[T]:
     """Returns a new iterator with elements fetched from the base_iterator
-    in an sync fashion using a background thread.
+    in an async fashion using a background thread.
 
     Args:
         base_iterator: The iterator to asynchronously fetch from.
         prefetch_buffer_size: The maximum number of items to prefetch. Increasing the
-            size allows for more computation overlap for very expensive downstream udfs.
+            size allows for more computation overlap for very expensive downstream UDFs.
             However it comes at the cost of additional memory overhead. Defaults to 1.
 
     Returns:
