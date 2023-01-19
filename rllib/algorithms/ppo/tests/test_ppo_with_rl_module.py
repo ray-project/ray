@@ -15,6 +15,33 @@ from ray.rllib.utils.test_utils import (
 )
 
 
+def get_model_config(framework, lstm=False):
+    model_config = {
+        "torch": dict(
+            # Settings in case we use an LSTM.
+            lstm_cell_size=10,
+            max_seq_len=20,
+        ),
+        "tf2": dict(
+            fcnet_activation="relu",
+            fcnet_hiddens=[32, 32],
+            vf_share_layers=False,
+        ),
+    }
+    if framework == "tf2":
+        return model_config["tf2"]
+    elif framework == "torch":
+        torch_model_config = model_config["torch"]
+        for k in [
+            "use_lstm",
+            "lstm_use_prev_action",
+            "lstm_use_prev_reward",
+            "vf_share_layers",
+        ]:
+            torch_model_config[k] = lstm
+        return model_config["torch"]
+
+
 class MyCallbacks(DefaultCallbacks):
     @staticmethod
     def _check_lr_torch(policy, policy_id):
@@ -60,19 +87,6 @@ class TestPPO(unittest.TestCase):
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether PPO can be built with all frameworks."""
 
-        model_config = {
-            "torch": dict(
-                # Settings in case we use an LSTM.
-                lstm_cell_size=10,
-                max_seq_len=20,
-            ),
-            "tf2": dict(
-                fcnet_activation="relu",
-                fcnet_hiddens=[32, 32],
-                vf_share_layers=False,
-            ),
-        }
-
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
@@ -85,11 +99,6 @@ class TestPPO(unittest.TestCase):
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
                 train_batch_size=128,
-                model=dict(
-                    # Settings in case we use an LSTM.
-                    lstm_cell_size=10,
-                    max_seq_len=20,
-                ),
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -103,6 +112,8 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
+        # TODO (avnish): re enable eager tracing when we get this working with the new
+        # sampler.
         for fw in framework_iterator(
             config, frameworks=("torch", "tf2"), with_eager_tracing=False
         ):
@@ -112,7 +123,7 @@ class TestPPO(unittest.TestCase):
                 # TODO (Kourosh, Avnishn): for now just do lstm=False
                 for lstm in [False]:
                     print("LSTM={}".format(lstm))
-                    config.training(model=model_config[fw])
+                    config.training(model=get_model_config(fw, lstm=lstm))
 
                     algo = config.build(env=env)
                     policy = algo.get_policy()
