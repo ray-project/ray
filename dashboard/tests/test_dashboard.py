@@ -1048,9 +1048,11 @@ def test_dashboard_module_no_warnings(enable_test_module):
         debug._disabled = old_val
 
 
-def test_dashboard_not_included_ray_init(shutdown_only):
-    addr = ray.init(include_dashboard=False)
+def test_dashboard_not_included_ray_init(shutdown_only, capsys):
+    addr = ray.init(include_dashboard=False, dashboard_port=8265)
     dashboard_url = addr["webui_url"]
+    assert "View the dashboard" not in capsys.readouterr().err
+    assert not dashboard_url
 
     # Warm up.
     @ray.remote
@@ -1062,15 +1064,21 @@ def test_dashboard_not_included_ray_init(shutdown_only):
     with pytest.raises(ConnectionError):
         # Since the dashboard doesn't start, it should raise ConnectionError
         # becasue we cannot estabilish a connection.
-        requests.get(f"http://{dashboard_url}")
+        requests.get(f"http://localhost:8265")
 
 
-def test_dashboard_not_included_ray_start(shutdown_only):
+def test_dashboard_not_included_ray_start(shutdown_only, capsys):
     runner = CliRunner()
     try:
-        runner.invoke(scripts.start, ["--head", "--include-dashboard=False"])
+        runner.invoke(
+            scripts.start,
+            ["--head", "--include-dashboard=False", "--dashboard-port=8265"],
+        )
         addr = ray.init("auto")
         dashboard_url = addr["webui_url"]
+        assert not dashboard_url
+
+        assert "view the dashboard at" not in capsys.readouterr().err
 
         # Warm up.
         @ray.remote
@@ -1082,7 +1090,7 @@ def test_dashboard_not_included_ray_start(shutdown_only):
         with pytest.raises(ConnectionError):
             # Since the dashboard doesn't start, it should raise ConnectionError
             # becasue we cannot estabilish a connection.
-            requests.get(f"http://{dashboard_url}")
+            requests.get(f"http://localhost:8265")
     finally:
         runner.invoke(scripts.stop, ["--force"])
 
