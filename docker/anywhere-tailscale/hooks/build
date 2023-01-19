@@ -1,3 +1,10 @@
 #!/bin/bash
-echo "docker build -f $DOCKERFILE_PATH -t jcoffi/cluster-anywhere:$DOCKER_TAG --build-arg IMAGETYPE=$DOCKER_TAG"
-docker build -f $DOCKERFILE_PATH -t jcoffi/cluster-anywhere:$DOCKER_TAG --build-arg IMAGETYPE=$DOCKER_TAG
+
+# Set image type based on build argument
+if [ $DOCKER_TAG = "cpu" ]; then
+    docker build . -t jcoffi/cluster-anywhere:cpu --build-arg IMAGETYPE=cpu
+elif [ $DOCKER_TAG = "gpu" ]; then
+    docker build . -t jcoffi/cluster-anywhere:gpu --build-arg IMAGETYPE=gpu
+else
+    docker build . -t jcoffi/cluster-anywhere:$DOCKER_TAG --build-arg IMAGETYPE=$DOCKER_TAG
+fi
