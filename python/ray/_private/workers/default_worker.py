@@ -9,7 +9,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.utils
 import ray.actor
 from ray._private.parameter import RayParams
-from ray._private.ray_logging import init_worker_logs
+from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -216,11 +216,11 @@ if __name__ == "__main__":
         ray_debugger_external=args.ray_debugger_external,
     )
 
-    # Setup worker log files for non executing-workers.
-    # The executing-worker's logs will be initialized after
-    # recieved the first task.
-    if args.worker_type != "WORKER":
-        init_worker_logs(args.worker_type)
+    # Setup log file.
+    out_file, err_file = node.get_log_file_handles(
+        get_worker_log_file_name(args.worker_type)
+    )
+    configure_log_file(out_file, err_file)
 
     if mode == ray.WORKER_MODE:
         ray._private.worker.global_worker.main_loop()

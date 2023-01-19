@@ -3,13 +3,12 @@ import os
 import sys
 import threading
 from logging.handlers import RotatingFileHandler
-from typing import Optional, Callable
+from typing import Callable
 
 import ray
 from ray._private.utils import binary_to_hex
 
 _default_handler = None
-log_initialized = False
 
 
 def setup_logger(
@@ -230,20 +229,6 @@ def configure_log_file(out_file, err_file):
     sys.stderr = ray._private.utils.open_log(
         stderr_fileno, unbuffered=True, closefd=False
     )
-
-
-def init_worker_logs(worker_type: str, job_id: Optional[str] = None):
-    global log_initialized
-    if log_initialized:
-        return
-    assert (
-        ray._private.worker._global_node is not None
-    ), "Failed to setup logs for uninitialized worker."
-    out_file, err_file = ray._private.worker._global_node.get_log_file_handles(
-        get_worker_log_file_name(worker_type, job_id)
-    )
-    configure_log_file(out_file, err_file)
-    log_initialized = True
 
 
 class WorkerStandardStreamDispatcher:
