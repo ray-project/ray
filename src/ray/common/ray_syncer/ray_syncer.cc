@@ -93,8 +93,8 @@ RayServerBidiReactor::RayServerBidiReactor(
     : RaySyncerBidiReactorBase<ServerBidiReactor>(
           io_context,
           GetNodeIDFromServerContext(server_context),
-          std::move(message_processor),
-          std::move(cleanup_cb)),
+          std::move(message_processor)),
+      cleanup_cb_(std::move(cleanup_cb)),
       server_context_(server_context) {
   // Send the local node id to the remote
   server_context_->AddInitialMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
@@ -124,10 +124,9 @@ RayClientBidiReactor::RayClientBidiReactor(
     std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
     std::function<void(const std::string &, bool)> cleanup_cb,
     std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
-    : RaySyncerBidiReactorBase<ClientBidiReactor>(io_context,
-                                                  remote_node_id,
-                                                  std::move(message_processor),
-                                                  std::move(cleanup_cb)),
+    : RaySyncerBidiReactorBase<ClientBidiReactor>(
+          io_context, remote_node_id, std::move(message_processor)),
+      cleanup_cb_(std::move(cleanup_cb)),
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
   stub_->async()->StartSync(&client_context_, this);

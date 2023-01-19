@@ -79,6 +79,11 @@ class NodeState {
       cluster_view_;
 };
 
+/// This is the base class for the bidi-streaming call and defined the method
+/// needed. A bidi-stream for ray syncer needs to support pushing message and
+/// disconnect from the remote node.
+/// For the implementation, in the constructor, it needs to connect to the remote
+/// node and it needs to implement the communication between the two nodes.
 class RaySyncerBidiReactor {
  public:
   RaySyncerBidiReactor(const std::string &remote_node_id)
@@ -105,6 +110,10 @@ class RaySyncerBidiReactor {
   std::string remote_node_id_;
 };
 
+/// This class implements the communication between two nodes except the initialization
+/// and cleanup.
+/// It keeps track of the message received and sent between two nodes and uses that to
+/// deduplicate the messages. It also supports the batching for performance purposes.
 template <typename T>
 class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
  public:
@@ -118,12 +127,10 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   RaySyncerBidiReactorBase(
       instrumented_io_context &io_context,
       const std::string &remote_node_id,
-      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      std::function<void(const std::string &, bool)> cleanup_cb)
+      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor)
       : RaySyncerBidiReactor(remote_node_id),
         io_context_(io_context),
-        message_processor_(std::move(message_processor)),
-        cleanup_cb_(std::move(cleanup_cb)) {}
+        message_processor_(std::move(message_processor)) {}
 
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) override {
     // Try to filter out the messages the target node already has.
@@ -253,9 +260,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   /// Handler of a message update.
   const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
 
- protected:
-  const std::function<void(const std::string &, bool)> cleanup_cb_;
-
  private:
   /// The remote node id.
   const std::string remote_node_id_;
@@ -274,7 +278,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   bool sending_ = false;
 };
 
-/// Reactor for gRPC server side. It has customized logic for sending.
+/// Reactor for gRPC server side. It defines the server's specific behavior for a
+/// streaming call.
 class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> {
  public:
   RayServerBidiReactor(
@@ -292,11 +297,15 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
   void OnCancel() override;
   void OnDone() override;
 
+  /// Cleanup callback when the call ends.
+  const std::function<void(const std::string &, bool)> cleanup_cb_;
+
   /// grpc callback context
   grpc::CallbackServerContext *server_context_;
 };
 
-/// Reactor for gRPC client side. It has customized logic for sending.
+/// Reactor for gRPC client side. It defines the client's specific behavior for a
+/// streaming call.
 class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> {
  public:
   RayClientBidiReactor(
@@ -314,6 +323,9 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
  protected:
   /// Callback from gRPC
   void OnDone(const grpc::Status &status) override;
+
+  /// Cleanup callback when the call ends.
+  const std::function<void(const std::string &, bool)> cleanup_cb_;
 
   /// grpc callback context
   grpc::ClientContext client_context_;

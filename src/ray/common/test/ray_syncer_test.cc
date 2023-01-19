@@ -169,8 +169,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
       io_context_,
       node_id.Binary(),
-      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
-      [](auto, auto) {});
+      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {});
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
   auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg);
