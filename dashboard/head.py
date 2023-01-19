@@ -78,7 +78,7 @@ class DashboardHead:
         temp_dir: str,
         session_dir: str,
         minimal: bool,
-        disable_frontend_serving: bool,
+        serve_frontend: bool,
         modules_to_load: Optional[Set[str]] = None,
     ):
         """
@@ -91,18 +91,18 @@ class DashboardHead:
             temp_dir: The temp directory. E.g., /tmp.
             session_dir: The session directory. E.g., tmp/session_latest.
             minimal: Whether or not it will load the minimal modules.
-            disable_frontend_serving: If configured, frontend HTML is
-                not served from the dashboard.
+            serve_frontend: If configured, frontend HTML is
+                served from the dashboard.
             modules_to_load: A set of module name in string to load.
                 By default (None), it loads all available modules.
                 Note that available modules could be changed depending on
                 minimal flags.
         """
         self.minimal = minimal
-        self.disable_frontend_serving = disable_frontend_serving
+        self.serve_frontend = serve_frontend
         # If it is the minimal mode, we shouldn't serve frontend.
         if self.minimal:
-            self.disable_frontend_serving = True
+            self.serve_frontend = False
         self.health_check_thread: GCSHealthCheckThread = None
         self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all head modules.
@@ -297,7 +297,7 @@ class DashboardHead:
         modules = self._load_modules(self._modules_to_load)
 
         http_host, http_port = self.http_host, self.http_port
-        if not self.disable_frontend_serving:
+        if self.serve_frontend:
             logger.info("Initialize the http server.")
             self.http_server = await self._configure_http_server(modules)
             http_host, http_port = self.http_server.get_address()

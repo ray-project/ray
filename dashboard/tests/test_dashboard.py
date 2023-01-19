@@ -1064,7 +1064,7 @@ def test_dashboard_not_included_ray_init(shutdown_only, capsys):
     with pytest.raises(ConnectionError):
         # Since the dashboard doesn't start, it should raise ConnectionError
         # becasue we cannot estabilish a connection.
-        requests.get(f"http://localhost:8265")
+        requests.get("http://localhost:8265")
 
 
 def test_dashboard_not_included_ray_start(shutdown_only, capsys):
@@ -1090,9 +1090,32 @@ def test_dashboard_not_included_ray_start(shutdown_only, capsys):
         with pytest.raises(ConnectionError):
             # Since the dashboard doesn't start, it should raise ConnectionError
             # becasue we cannot estabilish a connection.
-            requests.get(f"http://localhost:8265")
+            requests.get("http://localhost:8265")
     finally:
         runner.invoke(scripts.stop, ["--force"])
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This test only works for minimal installation.",
+)
+def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
+    addr = ray.init(dashboard_port=8265)
+    dashboard_url = addr["webui_url"]
+    assert "View the dashboard" not in capsys.readouterr().err
+    assert not dashboard_url
+
+    # Warm up.
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with pytest.raises(ConnectionError):
+        # Since the dashboard doesn't start, it should raise ConnectionError
+        # becasue we cannot estabilish a connection.
+        requests.get("http://localhost:8265")
 
 
 if __name__ == "__main__":
