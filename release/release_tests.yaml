@@ -4288,7 +4288,7 @@
 
 
 - name: read_parquet_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4354,7 +4354,7 @@
     type: sdk_command
 
 - name: iter_batches_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4411,45 +4411,6 @@
     wait_for_nodes:
       num_nodes: 21
 
-
-- name: datasets_preprocess_ingest
-  group: data-tests
-  working_dir: nightly_tests/dataset
-  legacy:
-    test_name: datasets_preprocess_ingest
-    test_suite: dataset_test
-
-  frequency: nightly
-  team: data
-  cluster:
-    cluster_env: ray_sgd_training_app.yaml
-    cluster_compute: ray_sgd_training_compute_no_gpu.yaml
-
-  run:
-    timeout: 7200
-    script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu
-      --large-dataset --debug
-
-    wait_for_nodes:
-      num_nodes: 17
-
-
-- name: datasets_ingest_400G
-  group: data-tests
-  working_dir: nightly_tests/dataset
-  legacy:
-    test_name: datasets_ingest_400G
-    test_suite: dataset_test
-
-  frequency: nightly
-  team: data
-  cluster:
-    cluster_env: ray_sgd_training_app.yaml
-    cluster_compute: dataset_ingest_400G_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python ray_sgd_runner.py --address auto --use-gpu --num-epochs 1
 
 - name: dataset_shuffle_random_shuffle_1tb
   group: data-tests
