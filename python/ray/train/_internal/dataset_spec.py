@@ -189,9 +189,7 @@ class DataParallelIngestSpec:
                 dataset = dataset.window(bytes_per_window=stream_window_size).repeat()
                 # In windowed mode, we re-apply the preprocessor on each iteration.
                 if self.preprocessor:
-                    # TODO: Replace with self.preprocessor.transform when possible.
-                    prep = self.preprocessor.transform_batch
-                    dataset = dataset.map_batches(prep, batch_format="pandas")
+                    dataset = self.preprocessor._transform_pipeline(dataset)
                 # Always re-randomize each window; this doesn't help with reducing
                 # cluster hot-spots since we already randomized the based blocks, but
                 # can help with improving randomness in combination with local shuffle.

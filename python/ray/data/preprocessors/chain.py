@@ -1,6 +1,6 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
-from ray.data import Dataset
+from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
@@ -81,10 +81,14 @@ class Chain(Preprocessor):
         self._transform_stats = preprocessor.transform_stats()
         return ds
 
-    def _transform(self, ds: Dataset) -> Dataset:
+    def _transform(
+        self, ds: Union[Dataset, DatasetPipeline]
+    ) -> Union[Dataset, DatasetPipeline]:
         for preprocessor in self.preprocessors:
-            ds = preprocessor.transform(ds)
-        self._transform_stats = preprocessor.transform_stats()
+            if isinstance(ds, Dataset):
+                ds = preprocessor.transform(ds)
+            elif isinstance(ds, DatasetPipeline):
+                ds = preprocessor._transform_pipeline(ds)
         return ds
 
     def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":

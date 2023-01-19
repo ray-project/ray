@@ -8,7 +8,7 @@ import ray
 from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import BatchFormat, BlockFormat
-from ray.data import Preprocessor
+from ray.data import Dataset, DatasetPipeline, Preprocessor
 from ray.data.context import DatasetContext
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
@@ -308,22 +308,18 @@ class BatchPredictor:
                 # Dataset optimizer will fuse preprocessing+prediction stage as
                 # necessary.
 
-                # TODO: Use preprocessor.transform here.
-                # preprocessor.transform will break for DatasetPipeline as it
-                # does not support _dataset_format()
-                batch_fn = preprocessor._transform_batch
-
-                # Dataset is lazy by default so this map_batches
-                # will not trigger execution.
-                data = data.map_batches(
-                    batch_fn, batch_format=predict_stage_batch_format
-                )
+                if isinstance(data, Dataset):
+                    # Dataset is lazy by default so this transform
+                    # will not trigger execution.
+                    data = preprocessor.transform(data)
+                elif isinstance(data, DatasetPipeline):
+                    data = preprocessor._transform_pipeline(data)
 
         prediction_results = data.map_batches(
             ScoringWrapper,
             compute=compute,
             batch_format=preprocessor_batch_format
-            if self.get_preprocessor() is not None
+            if override_prep is not None
             else predict_stage_batch_format,
             batch_size=batch_size,
             fn_constructor_kwargs={"override_prep": override_prep},
