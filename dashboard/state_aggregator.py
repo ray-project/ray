@@ -411,7 +411,7 @@ class StateAPIManager:
             task_state["start_time_ms"] = None
             task_state["end_time_ms"] = None
             events = []
-            
+
             for state in common_pb2.TaskStatus.keys():
                 key = f"{state.lower()}_ts"
                 if key in state_updates:
@@ -448,7 +448,7 @@ class StateAPIManager:
                         "node_id",
                         "actor_id",
                         "parent_task_id",
-                        "component_id"
+                        "component_id",
                     ],
                 )
             )

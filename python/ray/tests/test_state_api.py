@@ -911,19 +911,19 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     expected_events = [
         {
             "state": "PENDING_ARGS_AVAIL",
-            "created": str(datetime.fromtimestamp(current // second))
+            "created": str(datetime.fromtimestamp(current // second)),
         },
         {
             "state": "SUBMITTED_TO_WORKER",
-            "created": str(datetime.fromtimestamp((current + second) // second))
+            "created": str(datetime.fromtimestamp((current + second) // second)),
         },
         {
             "state": "RUNNING",
-            "created": str(datetime.fromtimestamp((current + 2 * second) // second))
+            "created": str(datetime.fromtimestamp((current + 2 * second) // second)),
         },
         {
             "state": "FINISHED",
-            "created": str(datetime.fromtimestamp((current + 3 * second) // second))
+            "created": str(datetime.fromtimestamp((current + 3 * second) // second)),
         },
     ]
     for actual, expected in zip(result["events"], expected_events):
@@ -2101,9 +2101,7 @@ def test_list_get_tasks(shutdown_only):
             assert get_task_data == task
 
         # Test node id.
-        tasks = list_tasks(
-            filters=[("state", "=", "PENDING_NODE_ASSIGNMENT")]
-        )
+        tasks = list_tasks(filters=[("state", "=", "PENDING_NODE_ASSIGNMENT")])
         for task in tasks:
             assert task["node_id"] is None
 
@@ -2269,8 +2267,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["state"]
-                        == "PENDING_NODE_ASSIGNMENT",
+                        lambda task: task["state"] == "PENDING_NODE_ASSIGNMENT",
                         tasks,
                     )
                 )

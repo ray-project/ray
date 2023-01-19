@@ -1,7 +1,6 @@
 import os
 from collections import defaultdict
 from typing import List
-import json
 
 import ray
 
@@ -80,8 +79,8 @@ def profile(event_type, extra_data=None):
 
 
 def get_perfetto_output(
-        tasks: List[dict],
-    ) -> str:
+    tasks: List[dict],
+) -> str:
     all_events = []
     nodes = {}
     nodes_cnt = 0
@@ -142,17 +141,14 @@ def get_perfetto_output(
                 if "name" in extra_data:
                     new_event["name"] = extra_data["name"]
                 all_events.append(new_event)
-        
+
             for node, i in nodes.items():
                 all_events.append(
                     {
                         "name": "process_name",
                         "ph": "M",
                         "pid": i,
-                        "args": {
-                            "name" : f"Node {node}",
-                            "label": "1234"
-                        }
+                        "args": {"name": f"Node {node}", "label": "1234"},
                     }
                 )
 
@@ -163,9 +159,7 @@ def get_perfetto_output(
                         "ph": "M",
                         "tid": i,
                         "pid": worker[0],
-                        "args": {
-                            "name" : worker[1]
-                        }
+                        "args": {"name": worker[1]},
                     }
                 )
 

@@ -33,7 +33,7 @@ export type Task = {
   language: string;
   required_resources: { [key: string]: number };
   runtime_env_info: string;
-  events: {[key: string]: string}[];
+  events: { [key: string]: string }[];
   start_time_ms: int | null;
   end_time_ms: int | null;
 };

@@ -453,9 +453,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def tasks_timeline(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         job_id = req.query.get("job_id")
         result = await self._state_api.generate_task_timeline(job_id)
-        return Response(
-            text=json.dumps(result), content_type="application/json"
-        )
+        return Response(text=json.dumps(result), content_type="application/json")
 
     @routes.get("/api/v0/delay/{delay_s}")
     async def delayed_response(self, req: aiohttp.web.Request):

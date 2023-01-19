@@ -11,10 +11,7 @@ export const getTaskTimeline = (job_id: string | null) => {
   if (job_id) {
     url += `?job_id=${job_id}`;
   }
-  return get<string>(
-    url,
-    {
-      responseType: "arraybuffer",
-    },
-  );
+  return get<string>(url, {
+    responseType: "arraybuffer",
+  });
 };

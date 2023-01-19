@@ -8,6 +8,7 @@ import click
 import yaml
 
 import ray._private.services as services
+from ray._private.profiling import get_perfetto_output
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.state.api import (
     StateApiClient,
@@ -31,7 +32,6 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.exception import RayStateApiException
 from ray.util.annotations import PublicAPI
-from ray._private.profiling import get_perfetto_output
 
 logger = logging.getLogger(__name__)
 

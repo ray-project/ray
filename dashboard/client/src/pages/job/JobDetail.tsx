@@ -17,7 +17,7 @@ import { useJobProgress } from "./hook/useJobProgress";
 import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
 import { TaskProgressBar } from "./TaskProgressBar";
 
-const ORIGIN = 'https://ui.perfetto.dev';
+const ORIGIN = "https://ui.perfetto.dev";
 
 const useStyle = makeStyles((theme) => ({
   root: {
@@ -28,27 +28,26 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-
 const onClick = (job_id: string | null) => {
-  getTaskTimeline(job_id).then(resp => {
+  getTaskTimeline(job_id).then((resp) => {
     console.log(resp);
     openTrace(resp.data);
   });
-}
+};
 
 let timer: null | any = undefined;
 
 const openTrace = (arrayBuffer: any) => {
   const win = window.open(ORIGIN);
-  window.addEventListener('message', evt => onMessage(evt, win, arrayBuffer));
+  window.addEventListener("message", (evt) => onMessage(evt, win, arrayBuffer));
   if (win) {
-    timer = setInterval(() => win.postMessage('PING', ORIGIN), 50);
+    timer = setInterval(() => win.postMessage("PING", ORIGIN), 50);
   }
-}
+};
 
-const  onMessage = (evt: any, win: any, arrayBuffer: any) => {
+const onMessage = (evt: any, win: any, arrayBuffer: any) => {
   console.log("ping");
-	if (evt.data !== 'PONG') {
+  if (evt.data !== "PONG") {
     console.log("ping not done");
     return;
   }
@@ -56,7 +55,7 @@ const  onMessage = (evt: any, win: any, arrayBuffer: any) => {
   window.clearInterval(timer);
   console.log(arrayBuffer);
   win.postMessage(arrayBuffer, ORIGIN);
-}
+};
 
 export const JobDetailChartsPage = () => {
   const classes = useStyle();
@@ -192,10 +191,7 @@ export const JobDetailChartsPage = () => {
             },
           ]}
         />
-        <Button
-          onClick={() => onClick(job.job_id)}
-          color="primary"
-        >
+        <Button onClick={() => onClick(job.job_id)} color="primary">
           Timeline
         </Button>
       </TitleCard>

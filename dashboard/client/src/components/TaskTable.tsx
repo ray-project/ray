@@ -154,7 +154,7 @@ const TaskTable = ({
               required_resources,
               events,
               start_time_ms,
-              end_time_ms
+              end_time_ms,
             }) => (
               <TableRow>
                 <TableCell align="center">
@@ -174,7 +174,10 @@ const TaskTable = ({
                 </TableCell>
                 <TableCell align="center">
                   {start_time_ms && start_time_ms > 0 ? (
-                    <DurationText startTime={start_time_ms} endTime={end_time_ms} />
+                    <DurationText
+                      startTime={start_time_ms}
+                      endTime={end_time_ms}
+                    />
                   ) : (
                     "-"
                   )}
