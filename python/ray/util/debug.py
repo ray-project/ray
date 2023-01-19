@@ -1,10 +1,12 @@
 from collections import defaultdict, namedtuple
-import numpy as np
+import gc
 import os
 import re
 import time
 import tracemalloc
 from typing import Callable, List, Optional
+
+import numpy as np
 
 from ray.util.annotations import DeveloperAPI
 
@@ -137,7 +139,11 @@ def _test_some_code_for_memory_leaks(
         # Run `code` n times, each time taking a memory snapshot.
         for i in range(actual_repeats):
             _i_print(i)
+            # Manually trigger garbage collection before and after code runs in order to
+            # make tracemalloc snapshots as accurate as possible.
+            gc.collect()
             code()
+            gc.collect()
             _take_snapshot(table, suspicious)
         print("\n")
 
