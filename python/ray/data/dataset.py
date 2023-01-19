@@ -230,8 +230,8 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
+        self._logical_plan = logical_plan
         if logical_plan is not None:
-            self._logical_plan = logical_plan
             self._plan.link_logical_plan(logical_plan)
 
         if not lazy:
