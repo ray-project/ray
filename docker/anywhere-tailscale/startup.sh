@@ -17,16 +17,22 @@ set -ae
 # Make sure directories exist as they are not automatically created
 # This needs to happen at runtime, as the directory could be mounted.
 mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH
-# Special VM options for Java in Docker
+
 
 if [ -c /dev/net/tun ]; then
     sudo tailscaled &
     sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
 else
     echo "tun doesn't exist"
-    sudo tailscaled --tun=userspace-networking --state=mem: &
+    sudo tailscaled --tun=userspace-networking --state=mem: --socks5-server=localhost:1080 &
+    export ALL_PROXY=socks5h://localhost:1080
+    export http_proxy=socks5h://localhost:1080
     sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
 fi
+
+# TS_STATE environment variable would specify where the tailscaled.state file is stored, if that is being set.
+# TS_STATEDIR environment variable would specify a directory path other than /var/lib/tailscale, if that is being set.
+
 
 while [ not $status = "Running" ]
     do 
