@@ -144,8 +144,10 @@ There are handful of ways to address these issues:
    * Are you reserving GPUs for your deployment replicas using `ray_actor_options` (e.g. `ray_actor_options={“num_gpus”: 1}`)?
    * Are you reserving one or more cores for your deployment replicas using `ray_actor_options` (e.g. `ray_actor_options={“num_cpus”: 2}`)?
    * Are you setting [OMP_NUM_THREADS](serve-omp-num-threads) to increase the performance of your deep learning framework?
-2. Consider using `async` methods in your callable. See [the section below](serve-performance-async-methods).
-3. Consider batching your requests. See [the section below](serve-performance-batching-requests).
+2. Try batching your requests. See [the section above](serve-performance-batching-requests).
+3. Consider using `async` methods in your callable. See [the section below](serve-performance-async-methods).
+4. Set an end-to-end timeout for your HTTP requests. See [the section below](serve-performance-e2e-timeout).
+
 
 (serve-performance-async-methods)=
 ### Using `async` methods
@@ -159,3 +161,10 @@ hitting the same queuing issue mentioned above, you might want to increase
 `max_concurrent_queries`. Serve sets a low number (100) by default so the client gets
 proper backpressure. You can increase the value in the deployment decorator; e.g.
 `@serve.deployment(max_concurrent_queries=1000)`.
+
+(serve-performance-e2e-timeout)=
+### Set an end-to-end request timeout
+
+By default, Serve lets client HTTP requests run to completion no matter how long they take. Slow requests could bottleneck the replica processing them while other requests wait in a queue. It's recommended that you set an end-to-end timeout, so slow requests can be terminated and retried at another replica.
+
+You can set an end-to-end timeout for HTTP requests by setting the `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable. HTTP Proxies will wait for that many seconds before terminating an HTTP request and retrying it at another replica.
