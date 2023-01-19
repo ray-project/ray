@@ -26,9 +26,7 @@ from ray.tune.logger import TBXLoggerCallback  # TODO move this to AIR
 
 def read_dataset(path: str) -> ray.data.Dataset:
     print(f"reading data from {path}")
-    ds = ray.data.read_parquet(path).repartition(400).random_shuffle()
-    ds.fully_executed()
-    return ds
+    return ray.data.read_parquet(path).repartition(400).random_shuffle()
 
 
 class DataPreprocessor:
