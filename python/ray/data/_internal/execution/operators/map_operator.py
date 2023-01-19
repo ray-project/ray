@@ -50,21 +50,13 @@ class MapOperator(PhysicalOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
-        if "num_gpus" in ray_remote_args:
-            self._incremental_gpu = 1
-            self._incremental_cpu = 0
-        elif "num_cpus" in ray_remote_args:
-            self._incremental_gpu = 0
-            self._incremental_cpu = 1
-        else:
-            assert False, ray_remote_args
         compute_strategy = compute_strategy or TaskPoolStrategy()
         if isinstance(compute_strategy, TaskPoolStrategy):
             self._base_resource_usage = ExecutionResources()
         elif isinstance(compute_strategy, ActorPoolStrategy):
             self._base_resource_usage = ExecutionResources(
-                cpu=self._incremental_cpu * compute_strategy.min_size,
-                gpu=self._incremental_gpu * compute_strategy.min_size,
+                cpu=ray_remote_args.get("num_cpus", 0) * compute_strategy.min_size,
+                gpu=ray_remote_args.get("num_gpus", 0) * compute_strategy.min_size,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -73,8 +65,6 @@ class MapOperator(PhysicalOperator):
             compute_strategy,
             ray_remote_args,
             min_rows_per_bundle,
-            self._incremental_cpu,
-            self._incremental_gpu,
         )
         self._output_metadata: List[BlockMetadata] = []
         super().__init__(name, [input_op])
@@ -117,6 +107,9 @@ class MapOperator(PhysicalOperator):
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
+
+    def start(self) -> None:
+        self._execution_state.start()
 
     def shutdown(self) -> None:
         self._execution_state.shutdown()

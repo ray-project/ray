@@ -62,8 +62,6 @@ class MapOperatorState:
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
         self._task_submitter: MapTaskSubmitter = task_submitter
-        # Whether we have started the task submitter yet.
-        self._have_started_submitter = False
 
         # The temporary block bundle used to accumulate inputs until they meet the
         # min_rows_per_bundle requirement.
@@ -83,15 +81,10 @@ class MapOperatorState:
         self._incremental_cpu: int = incremental_cpu
         self._incremental_gpu: int = incremental_gpu
 
-    def progress_str(self) -> str:
-        return self._task_submitter.progress_str()
+    def start(self) -> None:
+        self._task_submitter.start()
 
     def add_input(self, bundle: RefBundle) -> None:
-        if not self._have_started_submitter:
-            # Start the task submitter on the first input.
-            self._task_submitter.start()
-            self._have_started_submitter = True
-
         if self._min_rows_per_bundle is None:
             self._create_task(bundle)
             return
@@ -160,6 +153,9 @@ class MapOperatorState:
 
     def num_active_work_refs(self) -> int:
         return len(self._tasks)
+
+    def progress_str(self) -> str:
+        return self._task_submitter.progress_str()
 
     def shutdown(self) -> None:
         self._task_submitter.shutdown(self.get_work_refs())
