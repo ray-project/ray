@@ -118,6 +118,7 @@ if __name__ == "__main__":
             ds = ds.random_shuffle()
         else:
             ds = ds.sort(key="c_0")
+        ds.fully_executed()
     except Exception as e:
         exc = e
         pass

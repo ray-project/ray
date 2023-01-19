@@ -19,9 +19,13 @@ def map_batches(
     batch_format: Literal["default", "pandas", "pyarrow", "numpy"],
     compute: Optional[Union[str, ComputeStrategy]] = None,
     num_calls: Optional[int] = 1,
+    is_eager_executed: Optional[bool] = False,
 ) -> Dataset:
 
     ds = input_ds
+    if is_eager_executed:
+        ds.fully_executed()
+
     for _ in range(num_calls):
         ds = ds.map_batches(
             lambda x: x,
@@ -29,6 +33,8 @@ def map_batches(
             batch_size=batch_size,
             compute=compute,
         )
+        if is_eager_executed:
+            ds.fully_executed()
     return ds
 
 
@@ -37,6 +43,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
         "s3://air-example-data/ursa-labs-taxi-data/by_year/2018/01"
     )
     lazy_input_ds = input_ds.lazy()
+    input_ds.fully_executed()
 
     batch_formats = ["pandas", "numpy"]
     batch_sizes = [1024, 2048, 4096, None]
@@ -56,7 +63,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 continue
 
             num_calls = 2
-            test_name = f"map-batches-{batch_format}-{batch_size}-{num_calls}-default"
+            test_name = f"map-batches-{batch_format}-{batch_size}-{num_calls}-eager"
             benchmark.run(
                 test_name,
                 map_batches,
@@ -64,6 +71,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 batch_format=batch_format,
                 batch_size=batch_size,
                 num_calls=num_calls,
+                is_eager_executed=True,
             )
             test_name = f"map-batches-{batch_format}-{batch_size}-{num_calls}-lazy"
             benchmark.run(
@@ -86,7 +94,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
 
             test_name = (
                 f"map-batches-{batch_format}-{batch_size}-{num_calls}-"
-                f"{compute_strategy}-default"
+                f"{compute_strategy}-eager"
             )
             benchmark.run(
                 test_name,
@@ -96,6 +104,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 batch_size=batch_size,
                 compute=compute,
                 num_calls=num_calls,
+                is_eager_executed=True,
             )
             test_name = (
                 f"map-batches-{batch_format}-{batch_size}-{num_calls}-"
@@ -131,7 +140,8 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     # Test reading multiple files.
     input_ds = ray.data.read_parquet(
         "s3://air-example-data/ursa-labs-taxi-data/by_year/2018"
-    )
+    ).fully_executed()
+
     for batch_format in batch_formats:
         for compute in ["tasks", "actors"]:
             test_name = f"map-batches-{batch_format}-{compute}-multi-files"
