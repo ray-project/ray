@@ -570,15 +570,6 @@ TEST_F(SyncerTest, Reconnect) {
       5));
 }
 
-TEST_F(SyncerTest, Reconnect2) {
-  ray::rpc::GrpcServer server("test", 19990, false);
-  server.Run();
-  auto channel = MakeChannel("19990");
-  auto &s2 = MakeServer("19991");
-  s2.syncer->Connect(ray::NodeID::FromRandom().Binary(), channel);
-  std::this_thread::sleep_for(30s);
-}
-
 TEST_F(SyncerTest, Broadcast) {
   // This test covers the broadcast feature of ray syncer.
   auto &s1 = MakeServer("19990");
