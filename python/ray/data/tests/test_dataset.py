@@ -2285,11 +2285,11 @@ def test_iter_batches_grid(ray_start_regular_shared):
                         assert len(batches[-1]) == num_rows % batch_size
 
 
-def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
+def test_iter_batches_doesnt_share_plan_state(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
-    for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
-        assert ds._plan.execute()._num_computed() == expected
+    for _, _ in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
+        assert ds._plan.execute()._num_computed() == 0
 
 
 def test_add_column(ray_start_regular_shared):
@@ -5362,6 +5362,7 @@ def test_polars_lazy_import(shutdown_only):
             ray.data.from_pandas(dfs)
             .map_batches(lambda t: t, batch_format="pyarrow", batch_size=None)
             .sort(key="a")
+            .fully_executed()
         )
         assert any(ray.get([f.remote(True) for _ in range(parallelism)]))
 
