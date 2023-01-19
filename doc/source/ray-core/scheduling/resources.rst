@@ -185,4 +185,4 @@ The precision of the fractional resource requirement is 0.0001 so you should avo
 
 Dynamic Resource Update
 -----------------------
-Ray **does not allow to dynamically update of resources capacities after a node starts**.
+Ray **does not permit dynamic updates of resource capacities after a node has begun**.
