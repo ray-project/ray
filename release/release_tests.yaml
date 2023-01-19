@@ -4303,7 +4303,6 @@
     script: python read_parquet_benchmark.py
 
     type: sdk_command
-    file_manager: sdk
 
 - name: read_images_benchmark_single_node
   group: data-tests
