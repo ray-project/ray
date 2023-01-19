@@ -1813,10 +1813,7 @@ def safe_write_to_results_json(
     Safe (atomic) write to file to guard against malforming the json
     if the job gets interrupted in the middle of writing.
     """
-    if env_var:
-        test_output_json = os.environ.get(env_var, default_file_name)
-    else:
-        test_output_json = default_file_name
+    test_output_json = os.environ.get(env_var, default_file_name)
     test_output_json_tmp = test_output_json + ".tmp"
     with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)

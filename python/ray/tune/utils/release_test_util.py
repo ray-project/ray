@@ -24,7 +24,7 @@ class ProgressCallback(Callback):
                 "iteration": iteration,
                 "trial_states": dict(Counter([trial.status for trial in trials])),
             }
-            safe_write_to_results_json(result, "/tmp/release_test.json")
+            safe_write_to_results_json(result, "/tmp/release_test_out.json")
 
             self.last_update = now
 
