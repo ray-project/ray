@@ -67,10 +67,9 @@ class TestPPO(unittest.TestCase):
                 max_seq_len=20,
             ),
             "tf2": dict(
-                custom_model_config=dict(
-                    policy_hiddens=[32, 32],
-                    vf_hiddens=[32, 32],
-                )
+                fcnet_activation="relu",
+                fcnet_hiddens=[32, 32],
+                vf_share_layers=False,
             ),
         }
 
