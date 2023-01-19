@@ -80,7 +80,8 @@ class ClusterResourceScheduler {
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
   ///
   ///  \param task_spec: Task/Actor to be scheduled.
-  ///  \param preferred_node_id: the node where the task is preferred to be placed.
+  ///  \param preferred_node_id: the node where the task is preferred to be placed. An
+  ///  empty `preferred_node_id` (string) means no preferred node.
   ///  \param exclude_local_node: true if we want to avoid local node. This will cancel
   ///  prioritize_local_node if set to true.
   ///  \param requires_object_store_memory: take object store memory usage as part of

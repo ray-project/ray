@@ -157,6 +157,8 @@ struct SchedulingOptions {
   std::shared_ptr<SchedulingContext> scheduling_context;
   std::string node_affinity_node_id;
   bool node_affinity_soft = false;
+  // The node where the task is preferred to be placed. By default, this node id
+  // is empty, which means no preferred node.
   std::string preferred_node_id;
 
  private:
