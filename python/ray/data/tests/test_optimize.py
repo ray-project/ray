@@ -229,9 +229,8 @@ def test_lazy_fanout(shutdown_only, local_path):
         {"one": 4, "two": "b"},
         {"one": 5, "two": "c"},
     ]
-    # Test that data is read twice (+ 1 extra for ramp-up read before converting to a
-    # lazy dataset).
-    assert ray.get(read_counter.get.remote()) == 3
+    # Test that data is read twice.
+    assert ray.get(read_counter.get.remote()) == 2
     # Test that first map is executed twice.
     assert ray.get(map_counter.get.remote()) == 2 * 3 + 3 + 3
 
@@ -258,9 +257,9 @@ def test_lazy_fanout(shutdown_only, local_path):
     ray.get(map_counter.reset.remote())
     # The source data shouldn't be cleared since it's non-lazy.
     ds = ray.data.from_items(list(range(10)))
-    # Add extra transformation before being lazy.
-    ds = ds.map(inc)
+    # Add extra transformation after being lazy.
     ds = ds.lazy()
+    ds = ds.map(inc)
     ds1 = ds.map(inc)
     ds2 = ds.map(inc)
     # Test content.
@@ -608,7 +607,7 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
     pipe = ds1.repeat(N)
     pipe.take()
     num_reads = ray.get(counter.get.remote())
-    assert num_reads == N + 1, num_reads
+    assert num_reads == N, num_reads
 
     # Re-read off.
     context.optimize_fuse_read_stages = False

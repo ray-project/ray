@@ -4,6 +4,7 @@ from typing import Iterator, List, Optional, Tuple
 import numpy as np
 
 from ray.data.block import Block, BlockMetadata
+from ray.data._internal.memory_tracing import trace_allocation
 from ray.types import ObjectRef
 
 
@@ -23,12 +24,17 @@ class BlockList:
         owned_by_consumer: bool,
     ):
         assert len(blocks) == len(metadata), (blocks, metadata)
+        for b in blocks:
+            trace_allocation(b, "BlockList.__init__")
         self._blocks: List[ObjectRef[Block]] = blocks
         self._num_blocks = len(self._blocks)
         self._metadata: List[BlockMetadata] = metadata
         # Whether the block list is owned by consuming APIs, and if so it can be
         # eagerly deleted after read by the consumer.
         self._owned_by_consumer = owned_by_consumer
+
+    def __repr__(self):
+        return f"BlockList(owned_by_consumer={self._owned_by_consumer})"
 
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
