@@ -27,6 +27,8 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 
+from ray.air.config import ScalingConfig
+
 tf1, tf, tfv = try_import_tf()
 tf1.enable_eager_execution()
 
@@ -41,7 +43,6 @@ class TfRLTrainer(RLTrainer):
         module_kwargs: The kwargs for the (MA)RLModule.
         optimizer_config: The config for the optimizer.
         distributed: Whether this trainer is distributed or not.
-        in_test: Whether to enable additional logging behavior for testing purposes.
         enable_tf_function: Whether to enable tf.function tracing for the update
             function.
 
@@ -79,7 +80,7 @@ class TfRLTrainer(RLTrainer):
 
     """
 
-    TOTAL_LOSS_KEY = "total_loss"
+    framework: str = "tf"
 
     def __init__(
         self,
@@ -87,6 +88,7 @@ class TfRLTrainer(RLTrainer):
         module_kwargs: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
+        scaling_config: Optional[ScalingConfig] = None,
         enable_tf_function: bool = True,
     ):
         super().__init__(
@@ -94,6 +96,7 @@ class TfRLTrainer(RLTrainer):
             module_kwargs=module_kwargs,
             optimizer_config=optimizer_config,
             distributed=distributed,
+            scaling_config=scaling_config,
         )
 
         self._enable_tf_function = enable_tf_function

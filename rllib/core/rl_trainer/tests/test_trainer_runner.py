@@ -5,7 +5,10 @@ import time
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
-from ray.rllib.core.testing.utils import get_trainer_runner, add_module_to_runner_or_trainer
+from ray.rllib.core.testing.utils import (
+    get_trainer_runner,
+    add_module_to_runner_or_trainer,
+)
 
 
 class TestTrainerRunner(unittest.TestCase):

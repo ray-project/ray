@@ -11,6 +11,7 @@ from typing import (
 )
 import torch
 
+from ray.air.config import ScalingConfig
 from ray.train.torch.train_loop_utils import _TorchAccelerator
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
@@ -32,24 +33,31 @@ logger = logging.getLogger(__name__)
 
 
 class TorchRLTrainer(RLTrainer):
+
+    framework: str = "torch"
+
     def __init__(
         self,
         module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
         module_kwargs: Mapping[str, Any],
-        scaling_config: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
+        scaling_config: Optional[Mapping[str, Any]] = None,
     ):
         super().__init__(
             module_class=module_class,
             module_kwargs=module_kwargs,
-            scaling_config=scaling_config,
             optimizer_config=optimizer_config,
             distributed=distributed,
+            scaling_config=scaling_config,
         )
 
-        self._world_size = scaling_config.get("num_workers", 1)
-        self._use_gpu = scaling_config.get("use_gpu", False)
+        # TODO (Kourosh): Scaling config is required for torch trainer to do proper DDP
+        # wraping setup but not so much required for tf. we need to
+        scaling_config = scaling_config or ScalingConfig()
+        self._world_size = scaling_config.num_workers or 1
+        self._use_gpu = scaling_config.use_gpu
+
         # These attributes are set in the `build` method.
         self._device = None
 
