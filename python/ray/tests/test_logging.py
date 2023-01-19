@@ -540,7 +540,6 @@ def test_log_monitor(tmp_path, live_dead_pids):
     # Create an old dir.
     (log_dir / "old").mkdir()
     worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
-    job_id = "01000000"
     alive_pid, dead_pid = live_dead_pids
 
     mock_publisher = MagicMock()
@@ -610,8 +609,8 @@ def test_log_monitor(tmp_path, live_dead_pids):
     assert not worker_out_log_file_info.is_err_file
     assert worker_err_log_file_info.is_err_file
 
-    assert worker_out_log_file_info.job_id == None
-    assert worker_err_log_file_info.job_id == None
+    assert worker_out_log_file_info.job_id is None
+    assert worker_err_log_file_info.job_id is None
     assert worker_out_log_file_info.worker_pid == int(dead_pid)
     assert worker_out_log_file_info.worker_pid == int(dead_pid)
 
@@ -691,11 +690,10 @@ def test_log_monitor(tmp_path, live_dead_pids):
     assert len(list((log_dir / "old").iterdir())) == 2
 
 
-def test_log_monitor_actor_task_name(tmp_path):
+def test_log_monitor_actor_task_name_and_job_id(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
-    job_id = "01000000"
     pid = "47660"
 
     mock_publisher = MagicMock()
@@ -740,6 +738,26 @@ def test_log_monitor_actor_task_name(tmp_path):
     log_monitor.check_log_files_and_publish_updates()
     assert file_info.task_name is None
     assert file_info.actor_name == actor_name
+    mock_publisher.publish_logs.assert_any_call(
+        {
+            "ip": log_monitor.ip,
+            "pid": file_info.worker_pid,
+            "job": file_info.job_id,
+            "is_err": file_info.is_err_file,
+            "lines": ["line2"],
+            "actor_name": actor_name,
+            "task_name": None,
+        }
+    )
+
+    # Test the job_id is updated.
+    job_id = "01000000"
+    with open(file_info.filename, "a") as f:
+        # Write 150 more lines.
+        f.write(f"{ray_constants.LOG_PREFIX_JOB_ID}{job_id}\n")
+        f.write("line2")
+    log_monitor.check_log_files_and_publish_updates()
+    assert file_info.job_id == job_id
     mock_publisher.publish_logs.assert_any_call(
         {
             "ip": log_monitor.ip,
