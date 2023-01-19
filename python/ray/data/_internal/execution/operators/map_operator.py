@@ -89,6 +89,7 @@ class MapOperator(PhysicalOperator):
         super().inputs_done()
 
     def has_next(self) -> bool:
+        assert self._started
         return self._execution_state.has_next()
 
     def get_next(self) -> RefBundle:
