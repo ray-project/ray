@@ -49,17 +49,13 @@ class MapOperator(PhysicalOperator):
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
-        ray_remote_args = ray_remote_args or {}
-        if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
-            ray_remote_args["num_cpus"] = 1
+        ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         if "num_gpus" in ray_remote_args:
             self._incremental_gpu = 1
             self._incremental_cpu = 0
-            assert ray_remote_args.get("num_cpus", 1) == 0, ray_remote_args
         elif "num_cpus" in ray_remote_args:
             self._incremental_gpu = 0
             self._incremental_cpu = 1
-            assert ray_remote_args.get("num_gpus", 0) == 0, ray_remote_args
         else:
             assert False, ray_remote_args
         compute_strategy = compute_strategy or TaskPoolStrategy()
@@ -133,3 +129,24 @@ class MapOperator(PhysicalOperator):
 
     def current_resource_usage(self) -> ExecutionResources:
         return self._execution_state.current_resource_usage()
+
+
+def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
+    """Enforce rules on ray remote args for map tasks.
+
+    Namely, args must explicitly specify either CPU or GPU, not both.
+    """
+    ray_remote_args = ray_remote_args.copy()
+    if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
+        ray_remote_args["num_cpus"] = 1
+    if "num_gpus" in ray_remote_args:
+        if ray_remote_args.get("num_cpus", 0) != 0:
+            raise ValueError(
+                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
+            )
+    elif "num_cpus" in ray_remote_args:
+        if ray_remote_args.get("num_gpus", 0) != 0:
+            raise ValueError(
+                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
+            )
+    return ray_remote_args

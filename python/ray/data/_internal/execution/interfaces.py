@@ -87,8 +87,9 @@ class ExecutionResources:
     object_store_memory: Optional[int] = None
 
     def object_store_memory_str(self) -> str:
+        """Returns a human-readable string for the object store memory field."""
         if self.object_store_memory is None:
-            return "inf"
+            return "None"
         elif self.object_store_memory > 1e9:
             return f"{round(self.object_store_memory / 1e9, 2)} GiB"
         else:
@@ -231,6 +232,10 @@ class PhysicalOperator:
         return out_str
 
     def progress_str(self) -> str:
+        """Return any extra status to be displayed in the operator progress bar.
+
+        For example, `<N> actors` to show current number of actors in an actor pool.
+        """
         return ""
 
     def num_outputs_total(self) -> Optional[int]:
@@ -241,6 +246,14 @@ class PhysicalOperator:
         if len(self.input_dependencies) == 1:
             return self.input_dependencies[0].num_outputs_total()
         return None
+
+    def start(self, options: ExecutionOptions):
+        """Called by the executor when execution starts for an operator.
+
+        Args:
+            options: The global options used for the overall execution.
+        """
+        pass
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.

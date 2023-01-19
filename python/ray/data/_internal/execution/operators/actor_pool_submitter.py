@@ -28,6 +28,8 @@ class ActorPoolSubmitter(MapTaskSubmitter):
             ray_remote_args: Remote arguments for the Ray actors to be created.
             pool_size: The size of the actor pool.
         """
+        if "num_cpus" not in ray_remote_args:
+            raise ValueError("Remote args should have explicit CPU spec.")
         self._transform_fn_ref = transform_fn_ref
         self._ray_remote_args = ray_remote_args
         self._pool_size = pool_size

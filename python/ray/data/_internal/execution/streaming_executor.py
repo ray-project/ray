@@ -48,6 +48,8 @@ class StreamingExecutor(Executor):
 
         # Setup the streaming DAG topology.
         topology, self._stats = build_streaming_topology(dag)
+        for op in topology:
+            op.start(self._options)
         output_node: OpState = topology[dag]
 
         # Run scheduling loop until complete.
