@@ -64,7 +64,6 @@ class MapOperatorState:
 
         # Execution state.
         self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
-        self._next_task_index: int = 0
         self._obj_store_mem_alloc: int = 0
         self._obj_store_mem_freed: int = 0
         self._obj_store_mem_cur: int = 0
@@ -77,7 +76,6 @@ class MapOperatorState:
             self._output_queue = _OrderedOutputQueue()
         else:
             self._output_queue = _UnorderedOutputQueue()
-        super().start(options)
 
     def add_input(self, bundle: RefBundle) -> None:
         if self._min_rows_per_bundle is None:
@@ -245,6 +243,7 @@ class _OrderedOutputQueue(_OutputQueue):
 
     def __init__(self):
         self._tasks_by_output_order: Dict[int, _TaskState] = {}
+        self._next_task_index: int = 0
         self._next_output_index: int = 0
 
     def add_pending_task(self, task: "_TaskState"):

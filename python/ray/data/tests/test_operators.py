@@ -5,7 +5,11 @@ import time
 import ray
 from ray.data.block import Block
 from ray.data._internal.compute import TaskPoolStrategy, ActorPoolStrategy
-from ray.data._internal.execution.interfaces import RefBundle, PhysicalOperator
+from ray.data._internal.execution.interfaces import (
+    RefBundle,
+    PhysicalOperator,
+    ExecutionOptions,
+)
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -54,6 +58,7 @@ def test_all_to_all_operator():
     )
 
     # Feed data.
+    op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.inputs_done()
@@ -79,6 +84,7 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     )
 
     # Feed data and block on exec.
+    op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.inputs_done()
@@ -117,6 +123,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 
     # Feed data and implement streaming exec.
     output = []
+    op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
         for work in op.get_work_refs():
@@ -158,6 +165,7 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     )
 
     # Feed data and block on exec.
+    op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.inputs_done()
@@ -186,6 +194,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     )
 
     # Feed data and block on exec.
+    op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.inputs_done()
@@ -218,6 +227,7 @@ def test_map_operator_shutdown(use_actors):
     )
 
     # Start one task and then cancel.
+    op.start(ExecutionOptions())
     op.add_input(input_op.get_next(), 0)
     assert len(op.get_work_refs()) == 1
     op.shutdown()

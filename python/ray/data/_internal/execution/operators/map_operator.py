@@ -10,6 +10,7 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.execution.interfaces import (
     RefBundle,
+    ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
 )
@@ -108,8 +109,9 @@ class MapOperator(PhysicalOperator):
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
 
-    def start(self) -> None:
-        self._execution_state.start()
+    def start(self, options: ExecutionOptions) -> None:
+        self._execution_state.start(options)
+        super().start(options)
 
     def shutdown(self) -> None:
         self._execution_state.shutdown()

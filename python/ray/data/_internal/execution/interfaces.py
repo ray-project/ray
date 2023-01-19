@@ -248,7 +248,7 @@ class PhysicalOperator:
             return self.input_dependencies[0].num_outputs_total()
         return None
 
-    def start(self, options: ExecutionOptions):
+    def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
 
         Args:
