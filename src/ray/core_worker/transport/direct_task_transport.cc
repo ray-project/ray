@@ -659,6 +659,7 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
           get_task_failure_cause_reply.failure_cause());
       // TODO(clarng): track and append task retry history to the error message.
     }
+    fail_immediately = get_task_failure_cause_reply.fail_task_immediately();
   } else {
     RAY_LOG(DEBUG) << "Failed to fetch task result with status "
                    << get_task_failure_cause_reply_status.ToString()

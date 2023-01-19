@@ -491,5 +491,33 @@ def test_legacy_memory_monitor_disabled_by_oom_killer():
         ray.get(leaker.allocate.remote(allocate_bytes=bytes_to_alloc, sleep_time_s=10))
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_infinite_retry_fail_immediately(ray_with_memory_monitor):
+    addr = ray_with_memory_monitor
+    
+    with ray.init():
+        @ray.remote
+        def mem_leaker():
+            chunks = []
+            bytes_per_chunk = 1024 * 1024 * 1024
+            while True:
+                chunks.append([0] * bytes_per_chunk)
+                time.sleep(5)
+
+        with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+            ray.get(mem_leaker.remote())
+
+        wait_for_condition(
+            has_metric_tagged_with_value,
+            timeout=10,
+            retry_interval_ms=100,
+            addr=addr,
+            tag="MemoryManager.TaskEviction.Total",
+            value=1.0,
+        )
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

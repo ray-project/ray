@@ -802,6 +802,7 @@ void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest requ
     RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
                    << ray::gcs::RayErrorInfoToString(it->second.ray_error_info);
     reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
+    reply->set_fail_task_immediately(it->second.should_retry);
   } else {
     RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
   }
