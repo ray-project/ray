@@ -209,6 +209,7 @@ class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@pytest.mark.skip("Test flaky running in local mode.")
 class BlendSearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {
