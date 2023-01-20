@@ -694,7 +694,7 @@ class ExecutionPlan:
         # Read-equivalent stage is handled with the legacy execution impl for now,
         # except it's read->randomize_block_order stage.
         context = DatasetContext.get_current()
-        traling_randomize_block_order_stage = (
+        trailing_randomize_block_order_stage = (
             self._stages_after_snapshot
             and len(self._stages_after_snapshot) == 1
             and isinstance(self._stages_after_snapshot[0], RandomizeBlocksStage)
@@ -703,7 +703,7 @@ class ExecutionPlan:
             context.new_execution_backend
             and (
                 not self.is_read_stage_equivalent()
-                or traling_randomize_block_order_stage
+                or trailing_randomize_block_order_stage
             )
             and self._stages_after_snapshot
         )
