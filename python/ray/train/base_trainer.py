@@ -372,12 +372,14 @@ class BaseTrainer(abc.ABC):
         This is needed to leverage the full logging/integration offerings from Tune.
         For example, `param_space` is logged automatically to wandb integration.
 
+        Currently only done for `train_loop_config`.
+
         Returns:
             A dictionary that should be passed to Tuner.param_space.
         """
         result = {}
-        for key in self._param_dict.keys():
-            if key in ["train_loop_config"]:
+        for key in ["train_loop_config"]:
+            if key in self._param_dict.keys():
                 result[key] = copy.deepcopy(self._param_dict[key])
         return result
 
