@@ -2225,7 +2225,7 @@ def test_parent_task_id(shutdown_only):
     ray.get(parent.remote())
 
     def verify():
-        tasks = list_tasks()
+        tasks = list_tasks(detail=True)
         assert len(tasks) == 2, "Expect 2 tasks to finished"
         parent_task_id = None
         child_parent_task_id = None
@@ -2307,9 +2307,9 @@ def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
     def verify(task_attempts):
         assert len(task_attempts) == 3
         for task_attempt in task_attempts[:-1]:
-            assert task_attempt["scheduling_state"] == "FAILED"
+            assert task_attempt["state"] == "FAILED"
 
-        task_attempts[-1]["scheduling_state"] == "FINISHED"
+        task_attempts[-1]["state"] == "FINISHED"
 
         assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
             0,

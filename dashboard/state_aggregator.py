@@ -380,14 +380,14 @@ class StateAPIManager:
             task_state = {}
             task_info = task_attempt.get("task_info", {})
             state_updates = task_attempt.get("state_updates", [])
-            profile_events = task_attempt.get("profile_events", {})
-            if profile_events:
-                for event in profile_events["events"]:
+            profiling_data = task_attempt.get("profiling_data", {})
+            if profiling_data:
+                for event in profiling_data["events"]:
                     # End/start times are recorded in ns. We convert them to ms.
                     event["end_time"] = int(event["end_time"]) / 1e6
                     event["start_time"] = int(event["start_time"]) / 1e6
                     event["extra_data"] = json.loads(event["extra_data"])
-            task_state["profile_events"] = profile_events
+            task_state["profiling_data"] = profiling_data
 
             # Convert those settable fields
             mappings = [
