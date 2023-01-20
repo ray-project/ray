@@ -88,8 +88,6 @@ class PPOTfPolicyWithRLModule(
         dist_class = curr_action_dist.__class__
         value_fn_out = fwd_out[SampleBatch.VF_PREDS]
 
-        reduce_mean_valid = tf.reduce_mean
-
         prev_action_dist = dist_class(
             train_batch[SampleBatch.ACTION_DIST_INPUTS], model
         )
@@ -102,13 +100,13 @@ class PPOTfPolicyWithRLModule(
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
         if self.config["kl_coeff"] > 0.0:
             action_kl = prev_action_dist.kl(curr_action_dist)
-            mean_kl_loss = reduce_mean_valid(action_kl)
+            mean_kl_loss = tf.reduce_mean(action_kl)
             warn_if_infinite_kl_divergence(self, mean_kl_loss)
         else:
             mean_kl_loss = tf.constant(0.0)
 
         curr_entropy = curr_action_dist.entropy()
-        mean_entropy = reduce_mean_valid(curr_entropy)
+        mean_entropy = tf.reduce_mean(curr_entropy)
 
         surrogate_loss = tf.minimum(
             train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
@@ -130,13 +128,13 @@ class PPOTfPolicyWithRLModule(
                 0,
                 self.config["vf_clip_param"],
             )
-            mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
-            mean_vf_unclipped_loss = reduce_mean_valid(vf_loss)
+            mean_vf_loss = tf.reduce_mean(vf_loss_clipped)
+            mean_vf_unclipped_loss = tf.reduce_mean(vf_loss)
         # Ignore the value function.
         else:
             vf_loss_clipped = mean_vf_loss = tf.constant(0.0)
 
-        total_loss = reduce_mean_valid(
+        total_loss = tf.reduce_mean(
             -surrogate_loss
             + self.config["vf_loss_coeff"] * vf_loss_clipped
             - self.entropy_coeff * curr_entropy
@@ -148,14 +146,14 @@ class PPOTfPolicyWithRLModule(
 
         # Store stats in policy for stats_fn.
         self._total_loss = total_loss
-        self._mean_policy_loss = reduce_mean_valid(-surrogate_loss)
+        self._mean_policy_loss = tf.reduce_mean(-surrogate_loss)
         self._mean_vf_loss = mean_vf_loss
         self._unclipped_mean_vf_loss = mean_vf_unclipped_loss
         self._mean_entropy = mean_entropy
         # Backward compatibility: Deprecate self._mean_kl.
         self._mean_kl_loss = self._mean_kl = mean_kl_loss
         self._value_fn_out = value_fn_out
-        self._value_mean = reduce_mean_valid(value_fn_out)
+        self._value_mean = tf.reduce_mean(value_fn_out)
 
         return total_loss
 
