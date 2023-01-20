@@ -1,14 +1,10 @@
-from typing import List, Optional
+from typing import Callable, List, Optional
 
-import ray
-import ray.cloudpickle as cloudpickle
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
 )
-from ray.data.block import BlockMetadata
-from ray.data.datasource.datasource import Reader
 
 
 class InputDataBuffer(PhysicalOperator):
@@ -21,25 +17,23 @@ class InputDataBuffer(PhysicalOperator):
     def __init__(
         self,
         input_data: Optional[List[RefBundle]] = None,
-        reader: Optional[Reader] = None,
-        read_parallelism: Optional[int] = None,
+        input_data_factory: Callable[[], List[RefBundle]] = None,
     ):
         """Create an InputDataBuffer.
 
         Args:
             input_data: The list of bundles to output from this operator.
-            reader: The reader to read input data, if input_data is None.
-            parallelism: The parallelism to read input data, if input_data is None.
+            input_data_factory: The factory to get input data, if input_data is None.
         """
         if input_data is not None:
-            assert reader is None and read_parallelism is None
+            assert input_data_factory is None
             self._input_data = input_data
             self._is_input_initialized = True
             self._initialize_metadata()
         else:
-            assert reader is not None and read_parallelism is not None
-            self._reader = reader
-            self._parallelism = read_parallelism
+            # Initialize input lazily when execution is started.
+            assert input_data_factory is not None
+            self._input_data_factory = input_data_factory
             self._is_input_initialized = False
         super().__init__("Input", [])
 
@@ -68,29 +62,7 @@ class InputDataBuffer(PhysicalOperator):
 
     def _initialize_input(self):
         assert not self._is_input_initialized
-
-        # TODO(chengsu): execute `Reader.get_read_tasks()` in a remote task.
-        read_tasks = self._reader.get_read_tasks(self._parallelism)
-        self._input_data = [
-            RefBundle(
-                [
-                    (
-                        # TODO(chengsu): figure out a better way to pass read
-                        # tasks other than ray.put().
-                        ray.put(read_task),
-                        BlockMetadata(
-                            num_rows=1,
-                            size_bytes=len(cloudpickle.dumps(read_task)),
-                            schema=None,
-                            input_files=[],
-                            exec_stats=None,
-                        ),
-                    )
-                ],
-                owns_blocks=True,
-            )
-            for read_task in read_tasks
-        ]
+        self._input_data = self._input_data_factory()
         self._is_input_initialized = True
         self._initialize_metadata()
 
