@@ -8,7 +8,6 @@ import ray
 from ray.util.client.ray_client_helpers import (
     ray_start_client_server_for_address,
 )
-from ray._private.client_mode_hook import enable_client_mode
 from ray.tests.conftest import call_ray_start_context
 
 
