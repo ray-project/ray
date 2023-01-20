@@ -54,14 +54,6 @@ class LogicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x
 
-    def get_physical_dag(self):
-        """Get the corresponding DAG of physical operators.
-
-        Returns:
-            DAG of physical operators as List[PhysicalOperator].
-        """
-        raise NotImplementedError
-
 
 class Rule:
     """Abstract class for optimization rule."""
