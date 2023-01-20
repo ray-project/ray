@@ -97,7 +97,7 @@ def test_actor_strategy():
     assert sorted(output) == sorted(expected), (output, expected)
 
 
-def test_new_execution_backend_invocation(ray_start_regular_shared):
+def test_new_execution_backend_invocation():
     DatasetContext.get_current().new_execution_backend = True
     # Read-only: will use legacy executor for now.
     ds = ray.data.range(10)
@@ -105,7 +105,7 @@ def test_new_execution_backend_invocation(ray_start_regular_shared):
     # read->randomize_block_order: will use new executor, although it's also
     # a read-equivalent once fused.
     ds = ray.data.range(10).randomize_block_order()
-    assert ds.take_all() == list(range(10))
+    assert set(ds.take_all()) == set(range(10))
 
 
 if __name__ == "__main__":
