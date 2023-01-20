@@ -24,7 +24,7 @@ from ray._private.ray_logging import setup_component_logger
 logger = logging.getLogger(__name__)
 
 # The groups are job id, and pid.
-JOB_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
+WORKER_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
@@ -218,13 +218,12 @@ class LogMonitor:
             + runtime_env_setup_paths
         ):
             if os.path.isfile(file_path) and file_path not in self.log_filenames:
-                job_match = JOB_LOG_PATTERN.match(file_path)
-                if job_match:
-                    job_id = job_match.group(1)
-                    worker_pid = int(job_match.group(2))
+                worker_match = WORKER_LOG_PATTERN.match(file_path)
+                if worker_match:
+                    worker_pid = int(worker_match.group(2))
                 else:
-                    job_id = None
                     worker_pid = None
+                job_id = None
 
                 # Perform existence check first because most file will not be
                 # including runtime_env. This saves some cpu cycle.
@@ -364,6 +363,10 @@ class LogMonitor:
                         flush()  # Possible change of task/actor name.
                         file_info.task_name = next_line.split(
                             ray_constants.LOG_PREFIX_TASK_NAME, 1
+                        )[1]
+                    elif next_line.startswith(ray_constants.LOG_PREFIX_JOB_ID):
+                        file_info.job_id = next_line.split(
+                            ray_constants.LOG_PREFIX_JOB_ID, 1
                         )[1]
                     elif next_line.startswith(
                         "Windows fatal exception: access violation"

@@ -30,7 +30,6 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.air.config import ScalingConfig
 
 tf1, tf, tfv = try_import_tf()
-tf1.enable_eager_execution()
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +98,14 @@ class TfRLTrainer(RLTrainer):
             scaling_config=scaling_config,
         )
 
+        # TODO (Kourosh): This is required to make sure tf computes the values in the
+        # end. Two question remains:
+        # 1. Why is it not eager by default. Do we do anything in try_import_tf() that
+        # changes this default?
+        # 2. What is the implication of this on the performance? The tf documentation
+        # does not mention this as a requirement?
+        tf1.enable_eager_execution()
+
         self._enable_tf_function = enable_tf_function
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn)
@@ -148,7 +155,7 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def compute_gradients(
-        self, loss: Union[TensorType, Mapping[str, Any]], tape: tf.GradientTape
+        self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
     ) -> ParamDictType:
         grads = tape.gradient(loss[self.TOTAL_LOSS_KEY], self._params)
         return grads

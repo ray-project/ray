@@ -2,8 +2,14 @@ import pytest
 import numpy as np
 import sys
 import time
+from unittest.mock import Mock
 
 import ray
+from ray.util.client.ray_client_helpers import (
+    ray_start_client_server_for_address,
+)
+from ray._private.client_mode_hook import enable_client_mode
+from ray.tests.conftest import call_ray_start_context
 
 
 def test_generator_oom(ray_start_regular):
@@ -540,6 +546,65 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(ray_start_clust
 
     # We should never reconstruct an empty generator.
     assert ray.get(exec_counter.get_count.remote()) == 1
+
+
+# Client server port of the shared Ray instance
+SHARED_CLIENT_SERVER_PORT = 25555
+
+
+@pytest.fixture(scope="module")
+def call_ray_start_shared(request):
+    request = Mock()
+    request.param = (
+        "ray start --head --min-worker-port=0 --max-worker-port=0 --port 0 "
+        f"--ray-client-server-port={SHARED_CLIENT_SERVER_PORT}"
+    )
+    with call_ray_start_context(request) as address:
+        yield address
+
+
+@pytest.mark.parametrize("store_in_plasma", [False, True])
+def test_ray_client(call_ray_start_shared, store_in_plasma):
+    with ray_start_client_server_for_address(call_ray_start_shared):
+        enable_client_mode()
+
+        @ray.remote(max_retries=0)
+        def generator(num_returns, store_in_plasma):
+            for i in range(num_returns):
+                if store_in_plasma:
+                    yield np.ones(1_000_000, dtype=np.int8) * i
+                else:
+                    yield [i]
+
+        # TODO(swang): When generators return more values than expected, we log an
+        # error but the exception is not thrown to the application.
+        # https://github.com/ray-project/ray/issues/28689.
+        num_returns = 3
+        ray.get(
+            generator.options(num_returns=num_returns).remote(
+                num_returns + 1, store_in_plasma
+            )
+        )
+
+        # Check return values.
+        [
+            x[0]
+            for x in ray.get(
+                generator.options(num_returns=num_returns).remote(
+                    num_returns, store_in_plasma
+                )
+            )
+        ] == list(range(num_returns))
+        # Works for num_returns=1 if generator returns a single value.
+        assert (
+            ray.get(generator.options(num_returns=1).remote(1, store_in_plasma))[0] == 0
+        )
+
+        gen = ray.get(
+            generator.options(num_returns="dynamic").remote(3, store_in_plasma)
+        )
+        for i, ref in enumerate(gen):
+            assert ray.get(ref)[0] == i
 
 
 if __name__ == "__main__":

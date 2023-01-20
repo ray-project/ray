@@ -1,5 +1,5 @@
 import math
-from typing import Any, List, Mapping, Type, Optional, Callable
+from typing import Any, List, Mapping, Type, Optional, Callable, Dict
 
 import ray
 
@@ -220,6 +220,15 @@ class TrainerRunner:
             ray.get(refs)
         else:
             self._trainer.remove_module(module_id)
+
+    def get_weight(self) -> Dict:
+        """Get the weights of the MARLModule.
+
+        Returns:
+            The weights of the neural networks that can be exchanged with the policy.
+        """
+        # TODO (Avnish): implement this.
+        pass
 
     def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
         """Get the states of the RLTrainers"""
