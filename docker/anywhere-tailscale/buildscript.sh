@@ -31,7 +31,9 @@ if [ -x /usr/bin/docker ]; then
 fi
 
 
-
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 
+sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 
+sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
 
 if [ -d /sys/class/power_supply/BAT0 ]; then
     echo "Script is running on a laptop"
@@ -39,7 +41,10 @@ if [ -d /sys/class/power_supply/BAT0 ]; then
     sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 fi
 
-echo "vm.max_map_count = 262144" | sudo tee /etc/sysctl.conf
+echo -e "vm.max_map_count = 262144\n" | sudo tee /etc/sysctl.conf
+echo -e "net.ipv6.conf.all.disable_ipv6=1\n" | sudo tee /etc/sysctl.conf
+echo -e "net.ipv6.conf.default.disable_ipv6=1\n" | sudo tee /etc/sysctl.conf
+echo -e "net.ipv6.conf.lo.disable_ipv6=1\n" | sudo tee /etc/sysctl.conf
 
 # Get the total amount of memory in kB
 memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
@@ -104,14 +109,14 @@ fi
 wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/Dockerfile -O Dockerfile && wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh -O $builddir/startup.sh && sudo chmod 777 $builddir/Dockerfile && sudo chmod 777 $builddir/startup.sh
 
 if [[ -n $cuda_version ]] && [ $cuda_version != "gpu" ]; then
-  sudo $exec build --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-cu$cuda_version $builddir -t docker.io/jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
+  sudo $exec build --cache-from=index.docker.io/rayproject/ray-ml:2.2.0-py38-cu$cuda_version $builddir -t docker.io/jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
   sudo $exec push  docker.io/jcoffi/cluster-anywhere:cu$cuda_version 
 elif [[ -n $cuda_version ]] && [ $cuda_version == "gpu" ]; then
-  sudo $exec build --cache-from=index.docker.io/rayproject/ray-ml:2.1.0-py38-gpu $builddir -t docker.io/jcoffi/cluster-anywhere:gpu -t docker.io/jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
+  sudo $exec build --cache-from=index.docker.io/rayproject/ray-ml:2.2.0-py38-gpu $builddir -t docker.io/jcoffi/cluster-anywhere:gpu -t docker.io/jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
   sudo $exec push docker.io/jcoffi/cluster-anywhere:gpu
 else
-  sudo $exec build --cache-from=index.docker.io/rayproject/ray:2.1.0-py38-cpu $builddir -t docker.io/jcoffi/cluster-anywhere:cpu -t docker.io/jcoffi/cluster-anywhere:latest -t docker.io/jcoffi/cluster-anywhere:cpu-latest --build-arg IMAGETYPE=cpu
-  sudo $exec push docker.io/jcoffi/cluster-anywhere:latest
+  sudo $exec build --cache-from=index.docker.io/rayproject/ray:2.2.0-py38-cpu $builddir -t docker.io/jcoffi/cluster-anywhere:cpu -t docker.io/jcoffi/cluster-anywhere:latest -t docker.io/jcoffi/cluster-anywhere:cpu-latest --build-arg IMAGETYPE=cpu
+  sudo $exec push docker.io/jcoffi/cluster-anywhere:$cuda_version
 fi 
 
 if [ -f /root/.docker/config.json ]; then

@@ -18,7 +18,8 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         PATH=/crate/bin/:$PATH \
         CRATE_HEAP_SIZE=4G \
         CRATE_HOME=/crate/bin/ \
-        CRATE_USE_IPV4=true
+        CRATE_USE_IPV4=true \
+        DISABLE_IPV6=true
 #        TS_STATEDIR="/data/tailscale/" \
 #        TS_STATE="tailscaled.state" \
 
@@ -32,7 +33,6 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     modin[dask] \
     modin[ray] \
     'ray>=2.2.0'
-
 
 #installing tailscale
 
@@ -83,7 +83,7 @@ RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/rele
 
 
 COPY startup.sh /home/ray/startup.sh
-RUN sudo chmod +x /home/ray/startup.sh
+RUN sudo chmod +x /home/ray/startup.sh && sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 && sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 && sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
 HEALTHCHECK --interval=300s --timeout=5s --start-period=60s \
   CMD tailscale status -json | jq -r .BackendState | grep -q "Running" || exit 1
