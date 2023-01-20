@@ -537,7 +537,7 @@ The following highlights feature companies leveraging Ray Core's distributed API
     :img-top: /images/ray_logo.png
 
     +++
-    .. link-button:: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
+    .. link-button:: https://archive.ph/o/aNvFN/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
         :type: url
         :text: [Blog] How OpenAI Uses Ray to Train Tools like ChatGPT
         :classes: btn-link btn-block stretched-link chatgpt
