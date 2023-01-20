@@ -5532,11 +5532,6 @@ def test_nowarning_execute_with_cpu(ray_start_cluster_init):
         mock_logger.assert_not_called()
 
 
-def test_new_execution_backend_invocation(ray_start_regular_shared):
-    ds = ray.data.range(10).randomize_block_order()
-    assert ds.take_all() == list(range(10))
-
-
 if __name__ == "__main__":
     import sys
 

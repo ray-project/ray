@@ -691,8 +691,10 @@ class ExecutionPlan:
         """Whether this plan should run with new backend."""
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
-        # Read-equivalent stage is handled with the legacy execution impl for now,
-        # except it's read->randomize_block_order stage.
+        # The read-equivalent stage is handled in the following way:
+        # - Read only: handle with legacy backend
+        # - Read->randomize_block_order: handle with new backend
+        # Note that both are considered read equivalent, hence this extra check.
         context = DatasetContext.get_current()
         trailing_randomize_block_order_stage = (
             self._stages_after_snapshot
