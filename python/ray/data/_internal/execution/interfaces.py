@@ -116,7 +116,10 @@ class ExecutionResources:
         return total
 
     def satisfies_limit(self, limit: "ExecutionResources") -> bool:
-        """Return if this resource struct meets the specified limits."""
+        """Return if this resource struct meets the specified limits.
+
+        Note that None for a field means no limit.
+        """
 
         if self.cpu is not None and limit.cpu is not None and self.cpu > limit.cpu:
             return False
