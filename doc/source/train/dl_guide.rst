@@ -10,6 +10,7 @@ In this guide, we cover examples for the following use cases:
 * How do I :ref:`port my code <train-porting-code>` to use Ray Train?
 * How do I use Ray Train to :ref:`train with a large dataset <train-datasets>`?
 * How do I :ref:`monitor <train-monitoring>` my training?
+* How do I :ref:`checkpoint <train-checkpointing>` my model and :ref:`access it <train-result-object>` after training?
 * How do I run my training on pre-emptible instances
   (:ref:`fault tolerance <train-fault-tolerance>`)?
 * How do I :ref:`tune <train-tune>` my Ray Train model?
@@ -333,63 +334,6 @@ perform hyperparameter tuning with Ray Train, please refer to the
 
 .. TODO add support for with_parameters
 
-.. _train-result-object:
-
-Accessing Training Results
---------------------------
-
-.. TODO(ml-team) Flesh this section out.
-
-The return of a ``Trainer.fit`` is a :py:class:`~ray.air.result.Result` object, containing
-information about the training run. You can access it to obtain saved checkpoints,
-metrics and other relevant data.
-
-For example, you can:
-
-* Print the metrics for the last training iteration:
-
-.. code-block:: python
-
-    from pprint import pprint
-
-    pprint(result.metrics)
-    # {'_time_this_iter_s': 0.001016855239868164,
-    #  '_timestamp': 1657829125,
-    #  '_training_iteration': 2,
-    #  'config': {},
-    #  'date': '2022-07-14_20-05-25',
-    #  'done': True,
-    #  'episodes_total': None,
-    #  'epoch': 1,
-    #  'experiment_id': '5a3f8b9bf875437881a8ddc7e4dd3340',
-    #  'experiment_tag': '0',
-    #  'hostname': 'ip-172-31-43-110',
-    #  'iterations_since_restore': 2,
-    #  'node_ip': '172.31.43.110',
-    #  'pid': 654068,
-    #  'time_since_restore': 3.4353830814361572,
-    #  'time_this_iter_s': 0.00809168815612793,
-    #  'time_total_s': 3.4353830814361572,
-    #  'timestamp': 1657829125,
-    #  'timesteps_since_restore': 0,
-    #  'timesteps_total': None,
-    #  'training_iteration': 2,
-    #  'trial_id': '4913f_00000',
-    #  'warmup_time': 0.003167867660522461}
-
-* View the dataframe containing the metrics from all iterations:
-
-.. code-block:: python
-
-    print(result.metrics_dataframe)
-
-* Obtain the :py:class:`~ray.air.checkpoint.Checkpoint`, used for resuming training, prediction and serving.
-
-.. code-block:: python
-
-    result.checkpoint  # last saved checkpoint
-    result.best_checkpoints  # N best saved checkpoints, as configured in run_config
-
 .. _train-log-dir:
 
 Log Directory Structure
@@ -622,6 +566,63 @@ directory <train-log-dir>` of each run.
 
     print(result.checkpoint.get_internal_representation())
     # ('local_path', '/home/ubuntu/ray_results/TorchTrainer_2022-06-24_21-34-49/TorchTrainer_7988b_00000_0_2022-06-24_21-34-49/checkpoint_000003')
+
+.. _train-result-object:
+
+Accessing Training Results
+++++++++++++++++++++++++++
+
+.. TODO(ml-team) Flesh this section out.
+
+The return of a ``Trainer.fit`` is a :py:class:`~ray.air.result.Result` object, containing
+information about the training run. You can access it to obtain saved checkpoints,
+metrics and other relevant data.
+
+For example, you can:
+
+* Print the metrics for the last training iteration:
+
+.. code-block:: python
+
+    from pprint import pprint
+
+    pprint(result.metrics)
+    # {'_time_this_iter_s': 0.001016855239868164,
+    #  '_timestamp': 1657829125,
+    #  '_training_iteration': 2,
+    #  'config': {},
+    #  'date': '2022-07-14_20-05-25',
+    #  'done': True,
+    #  'episodes_total': None,
+    #  'epoch': 1,
+    #  'experiment_id': '5a3f8b9bf875437881a8ddc7e4dd3340',
+    #  'experiment_tag': '0',
+    #  'hostname': 'ip-172-31-43-110',
+    #  'iterations_since_restore': 2,
+    #  'node_ip': '172.31.43.110',
+    #  'pid': 654068,
+    #  'time_since_restore': 3.4353830814361572,
+    #  'time_this_iter_s': 0.00809168815612793,
+    #  'time_total_s': 3.4353830814361572,
+    #  'timestamp': 1657829125,
+    #  'timesteps_since_restore': 0,
+    #  'timesteps_total': None,
+    #  'training_iteration': 2,
+    #  'trial_id': '4913f_00000',
+    #  'warmup_time': 0.003167867660522461}
+
+* View the dataframe containing the metrics from all iterations:
+
+.. code-block:: python
+
+    print(result.metrics_dataframe)
+
+* Obtain the :py:class:`~ray.air.checkpoint.Checkpoint`, used for resuming training, prediction and serving.
+
+.. code-block:: python
+
+    result.checkpoint  # last saved checkpoint
+    result.best_checkpoints  # N best saved checkpoints, as configured in run_config
 
 Configuring checkpoints
 +++++++++++++++++++++++
