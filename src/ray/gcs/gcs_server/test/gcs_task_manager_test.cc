@@ -30,7 +30,8 @@ class GcsTaskManagerTest : public ::testing::Test {
     RayConfig::instance().initialize(
         R"(
 {
-  "task_events_max_num_task_in_gcs": 1000
+  "task_events_max_num_task_in_gcs": 1000,
+  "gcs_mark_task_failed_on_job_done_delay_ms": 100
 }
   )");
   }
@@ -64,13 +65,14 @@ class GcsTaskManagerTest : public ::testing::Test {
   void SyncAddTaskEvent(
       const std::vector<TaskID> &tasks,
       const std::vector<std::pair<rpc::TaskStatus, int64_t>> &status_timestamps,
-      const TaskID &parent_task_id = TaskID::Nil()) {
+      const TaskID &parent_task_id = TaskID::Nil(),
+      int job_id = 0) {
     auto events = GenTaskEvents(tasks,
                                 /* attempt_number */ 0,
-                                /* job_id */ 0,
+                                /* job_id */ job_id,
                                 /* profile event */ absl::nullopt,
                                 GenStateUpdate(status_timestamps),
-                                GenTaskInfo(JobID::FromInt(0), parent_task_id));
+                                GenTaskInfo(JobID::FromInt(job_id), parent_task_id));
     auto events_data = Mocker::GenTaskEventsData(events);
     SyncAddTaskEventData(events_data);
   }
@@ -579,6 +581,76 @@ TEST_F(GcsTaskManagerTest, TestFailedParentShouldFailGrandChildren) {
     EXPECT_EQ(reply.events_by_task_size(), 3);
     for (const auto &task_event : reply.events_by_task()) {
       EXPECT_EQ(task_event.state_updates().failed_ts(), 4);
+    }
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
+  auto tasks_running_job1 = GenTaskIDs(10);
+  auto tasks_finished_job1 = GenTaskIDs(10);
+  auto tasks_failed_job1 = GenTaskIDs(10);
+
+  auto tasks_running_job2 = GenTaskIDs(5);
+
+  SyncAddTaskEvent(tasks_running_job1, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 1);
+  SyncAddTaskEvent(
+      tasks_finished_job1, {{rpc::TaskStatus::FINISHED, 2}}, TaskID::Nil(), 1);
+  SyncAddTaskEvent(tasks_failed_job1, {{rpc::TaskStatus::FAILED, 3}}, TaskID::Nil(), 1);
+
+  SyncAddTaskEvent(tasks_running_job2, {{rpc::TaskStatus::RUNNING, 4}}, TaskID::Nil(), 2);
+
+  task_manager->OnJobFinished(JobID::FromInt(1), 5);  // in ms
+
+  // Wait for longer than the default timer
+  boost::asio::io_service io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
+  timer.wait();
+
+  // Running tasks from job1 failed at 5
+  {
+    absl::flat_hash_set<TaskID> tasks(tasks_running_job1.begin(),
+                                      tasks_running_job1.end());
+    auto reply = SyncGetTaskEvents(tasks);
+    EXPECT_EQ(reply.events_by_task_size(), 10);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().failed_ts(), 5000);
+    }
+  }
+
+  // Finished tasks from job1 remain finished
+  {
+    absl::flat_hash_set<TaskID> tasks(tasks_finished_job1.begin(),
+                                      tasks_finished_job1.end());
+    auto reply = SyncGetTaskEvents(tasks);
+    EXPECT_EQ(reply.events_by_task_size(), 10);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().finished_ts(), 2);
+      EXPECT_FALSE(task_event.state_updates().has_failed_ts());
+    }
+  }
+
+  // Failed tasks from job1 failed timestamp not overriden
+  {
+    absl::flat_hash_set<TaskID> tasks(tasks_failed_job1.begin(), tasks_failed_job1.end());
+    auto reply = SyncGetTaskEvents(tasks);
+    EXPECT_EQ(reply.events_by_task_size(), 10);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_EQ(task_event.state_updates().failed_ts(), 3);
+    }
+  }
+
+  // Tasks from job2 should not be affected.
+  {
+    absl::flat_hash_set<TaskID> tasks(tasks_running_job2.begin(),
+                                      tasks_running_job2.end());
+    auto reply = SyncGetTaskEvents(tasks);
+    EXPECT_EQ(reply.events_by_task_size(), 5);
+    for (const auto &task_event : reply.events_by_task()) {
+      EXPECT_FALSE(task_event.state_updates().has_failed_ts());
+      EXPECT_FALSE(task_event.state_updates().has_finished_ts());
     }
   }
 }

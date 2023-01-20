@@ -437,7 +437,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
         while finish_or_fail == WAIT_FAIL:
             to_fail = ray.get(killer.next_to_kill.remote())
             if to_fail == my_name:
-                killer.advance_next.remote()
+                ray.get(killer.advance_next.remote())
                 raise ValueError(f"{my_name} expected to fail")
 
     @ray.remote

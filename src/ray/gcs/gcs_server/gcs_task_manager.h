@@ -327,6 +327,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
+  FRIEND_TEST(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks);
 };
 
 }  // namespace gcs
