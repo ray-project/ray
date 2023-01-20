@@ -45,7 +45,6 @@ from ray.data.datasource import (
     TextDatasource,
     TFRecordDatasource,
 )
-from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
     _wrap_arrow_serialization_workaround,
@@ -294,12 +293,9 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        (
-            requested_parallelism,
-            min_safe_parallelism,
-            reader,
-            read_tasks,
-        ) = _get_read_tasks(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
+        requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
+            datasource, ctx, cur_pg, parallelism, local_uri, read_args
+        )
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
@@ -307,7 +303,7 @@ def read_datasource(
             _get_read_tasks, retry_exceptions=False, num_cpus=0
         )
 
-        requested_parallelism, min_safe_parallelism, reader, read_tasks = ray.get(
+        requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
             get_read_tasks.remote(
                 datasource,
                 ctx,
@@ -346,7 +342,7 @@ def read_datasource(
 
     # TODO(chengsu): avoid calling Reader.get_read_tasks() twice after removing
     # LazyBlockList code path.
-    read_op = Read(reader, requested_parallelism, ray_remote_args, read_args)
+    read_op = Read(datasource, requested_parallelism, ray_remote_args, read_args)
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(
@@ -1578,7 +1574,7 @@ def _get_read_tasks(
     parallelism: int,
     local_uri: bool,
     kwargs: dict,
-) -> Tuple[int, int, Reader, List[ReadTask]]:
+) -> Tuple[int, int, List[ReadTask]]:
     """Generates read tasks.
 
     Args:
@@ -1590,7 +1586,7 @@ def _get_read_tasks(
 
     Returns:
         Request parallelism from the datasource, the min safe parallelism to avoid
-        OOM, the reader, and the list of read tasks generated.
+        OOM, and the list of read tasks generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     if local_uri:
@@ -1603,7 +1599,6 @@ def _get_read_tasks(
     return (
         requested_parallelism,
         min_safe_parallelism,
-        reader,
         reader.get_read_tasks(requested_parallelism),
     )
 

@@ -7,7 +7,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data.block import Block, BlockMetadata
-from ray.data.datasource.datasource import Reader
+from ray.data.datasource.datasource import Datasource
 
 
 class Read(LogicalOperator):
@@ -15,13 +15,13 @@ class Read(LogicalOperator):
 
     def __init__(
         self,
-        reader: Reader,
+        datasource: Datasource,
         parallelism: int = -1,
         ray_remote_args: Dict[str, Any] = None,
         read_args: Dict[str, Any] = None,
     ):
         super().__init__("Read", [])
-        self._reader = reader
+        self._datasource = datasource
         self._parallelism = parallelism
         self._ray_remote_args = ray_remote_args
         self._read_args = read_args
@@ -31,7 +31,8 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read."""
 
     def get_input_data():
-        read_tasks = op._reader.get_read_tasks(op._parallelism)
+        reader = op._datasource.create_reader(**op._read_args)
+        read_tasks = reader.get_read_tasks(op._parallelism)
         return [
             RefBundle(
                 [
