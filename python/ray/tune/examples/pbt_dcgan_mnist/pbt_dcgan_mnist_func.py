@@ -18,14 +18,22 @@ import torch.optim as optim
 import torch.utils.data
 import numpy as np
 
-from common import beta1, MODEL_PATH
-from common import demo_gan, get_data_loader, plot_images, train, weights_init
-from common import Discriminator, Generator, Net
+from ray.tune.examples.pbt_dcgan_mnist.common import (
+    beta1,
+    MODEL_PATH,
+    demo_gan,
+    get_data_loader,
+    plot_images,
+    train,
+    weights_init,
+    Discriminator,
+    Generator,
+    Net,
+)
 
 
 # __Train_begin__
 def dcgan_train(config):
-    step = 0
     use_cuda = config.get("use_gpu") and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     netD = Discriminator().to(device)
@@ -39,20 +47,25 @@ def dcgan_train(config):
     optimizerG = optim.Adam(
         netG.parameters(), lr=config.get("lr", 0.01), betas=(beta1, 0.999)
     )
-    with FileLock(os.path.expanduser("~/.data.lock")):
+    with FileLock(os.path.expanduser("~/ray_results/.data.lock")):
         dataloader = get_data_loader()
 
+    step = 1
     if session.get_checkpoint():
-        loaded_checkpoint = session.get_checkpoint()
-        with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
-            path = os.path.join(loaded_checkpoint_dir, "checkpoint.pt")
-            checkpoint = torch.load(path)
-            netD.load_state_dict(checkpoint["netDmodel"])
-            netG.load_state_dict(checkpoint["netGmodel"])
-            optimizerD.load_state_dict(checkpoint["optimD"])
-            optimizerG.load_state_dict(checkpoint["optimG"])
-            step = checkpoint["step"]
+        checkpoint_dict = session.get_checkpoint().to_dict()
+        netD.load_state_dict(checkpoint_dict["netDmodel"])
+        netG.load_state_dict(checkpoint_dict["netGmodel"])
+        optimizerD.load_state_dict(checkpoint_dict["optimD"])
+        optimizerG.load_state_dict(checkpoint_dict["optimG"])
+        # Note: Make sure to increment the loaded step by 1 to get the
+        # current step.
+        last_step = checkpoint_dict["step"]
+        step = last_step + 1
 
+        # NOTE: It's important to set the optimizer learning rates
+        # again, since we want to explore the parameters passed in by PBT.
+        # Without this, we would continue using the exact same
+        # configuration as the trial whose checkpoint we are exploiting.
         if "netD_lr" in config:
             for param_group in optimizerD.param_groups:
                 param_group["lr"] = config["netD_lr"]
@@ -72,38 +85,28 @@ def dcgan_train(config):
             device,
             config["mnist_model_ref"],
         )
-        step += 1
-        os.makedirs("my_model", exist_ok=True)
-        torch.save(
-            {
-                "netDmodel": netD.state_dict(),
-                "netGmodel": netG.state_dict(),
-                "optimD": optimizerD.state_dict(),
-                "optimG": optimizerG.state_dict(),
-                "step": step,
-            },
-            "my_model/checkpoint.pt",
-        )
-
+        checkpoint = None
+        if step % config["checkpoint_interval"] == 0:
+            checkpoint = Checkpoint.from_dict(
+                {
+                    "netDmodel": netD.state_dict(),
+                    "netGmodel": netG.state_dict(),
+                    "optimD": optimizerD.state_dict(),
+                    "optimG": optimizerG.state_dict(),
+                    "step": step,
+                }
+            )
         session.report(
             {"lossg": lossG, "lossd": lossD, "is_score": is_score},
-            checkpoint=Checkpoint.from_directory("my_model"),
+            checkpoint=checkpoint,
         )
+        step += 1
 
 
 # __Train_end__
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing"
-    )
-    parser.add_argument(
-        "--data-dir", type=str, default="~/data/", help="Set the path of the dataset."
-    )
-    args, _ = parser.parse_known_args()
-    ray.init()
 
+def download_mnist_cnn():
     import urllib.request
 
     # Download a pre-trained MNIST model for inception score calculation.
@@ -116,6 +119,21 @@ if __name__ == "__main__":
             "examples/pbt_dcgan_mnist/mnist_cnn.pt",
             MODEL_PATH,
         )
+    return MODEL_PATH
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
+    parser.add_argument(
+        "--data-dir", type=str, default="~/data/", help="Set the path of the dataset."
+    )
+    args, _ = parser.parse_known_args()
+    ray.init()
+
+    download_mnist_cnn()
 
     dataloader = get_data_loader(args.data_dir)
     if not args.smoke_test:

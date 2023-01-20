@@ -8,7 +8,7 @@ from ray import workflow
 from ray.workflow.tests import utils
 
 
-SIZE = 2 ** 15
+SIZE = 2**15
 
 
 @ray.remote

@@ -1,6 +1,6 @@
 import unittest
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.connectors.action.clip import ClipActionsConnector
@@ -8,7 +8,8 @@ from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
 from ray.rllib.connectors.action.lambdas import ConvertToNumpyConnector
 from ray.rllib.connectors.action.normalize import NormalizeActionsConnector
 from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
-from ray.rllib.connectors.connector import ConnectorContext, get_connector
+from ray.rllib.connectors.connector import ConnectorContext
+from ray.rllib.connectors.registry import get_connector
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ActionConnectorDataType
 
@@ -21,9 +22,14 @@ class TestActionConnector(unittest.TestCase):
         connectors = [ConvertToNumpyConnector(ctx)]
         pipeline = ActionConnectorPipeline(ctx, connectors)
         name, params = pipeline.to_state()
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ActionConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ConvertToNumpyConnector))
+        # There should not be any timer yet
+        self.assertFalse(bool(pipeline.timers.values()))
+        pipeline(ActionConnectorDataType(0, 0, {}, ([1], [], None)))
+        # After a first input, there should be one timer
+        self.assertEquals(len(pipeline.timers.values()), 1)
 
     def test_convert_to_numpy_connector(self):
         ctx = ConnectorContext()
@@ -33,7 +39,7 @@ class TestActionConnector(unittest.TestCase):
 
         self.assertEqual(name, "ConvertToNumpyConnector")
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ConvertToNumpyConnector))
 
         action = torch.Tensor([8, 9])
@@ -53,7 +59,7 @@ class TestActionConnector(unittest.TestCase):
         name, params = c.to_state()
         self.assertEqual(name, "NormalizeActionsConnector")
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, NormalizeActionsConnector))
 
         ac_data = ActionConnectorDataType(0, 1, {}, (0.5, [], {}))
@@ -70,7 +76,7 @@ class TestActionConnector(unittest.TestCase):
         name, params = c.to_state()
         self.assertEqual(name, "ClipActionsConnector")
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ClipActionsConnector))
 
         ac_data = ActionConnectorDataType(0, 1, {}, (8.8, [], {}))
@@ -87,7 +93,7 @@ class TestActionConnector(unittest.TestCase):
         name, params = c.to_state()
         self.assertEqual(name, "ImmutableActionsConnector")
 
-        restored = get_connector(ctx, name, params)
+        restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ImmutableActionsConnector))
 
         ac_data = ActionConnectorDataType(0, 1, {}, (np.array([8.8]), [], {}))

@@ -63,7 +63,6 @@ const useEventTable = (props: EventTableProps) => {
   const [loading, setLoading] = useState(true);
   const { changeFilter: _changeFilter, filterFunc } = useFilter();
   const [events, setEvents] = useState<Event[]>([]);
-  const [jobOptions, setJobOp] = useState<string[]>([]);
   const [pagination, setPagination] = useState({
     pageNo: 1,
     pageSize: 10,
@@ -97,7 +96,6 @@ const useEventTable = (props: EventTableProps) => {
         } else {
           const rsp = await getGlobalEvents();
           if (rsp?.data?.data?.events) {
-            setJobOp(Object.keys(rsp.data.data.events).filter((e) => e !== ""));
             setEvents(
               Object.values(rsp.data.data.events)
                 .reduce((a, b) => a.concat(b))
@@ -130,8 +128,6 @@ const useEventTable = (props: EventTableProps) => {
   return {
     events: events.filter(filterFunc).slice(range[0], range[1]),
     changeFilter,
-    isJob: !!job_id,
-    jobOptions,
     pagination,
     changePage,
     labelOptions: Array.from(new Set(events.map((e) => e.label))),
@@ -153,8 +149,6 @@ const EventTable = (props: EventTableProps) => {
   const {
     events,
     changeFilter,
-    isJob,
-    jobOptions,
     pagination,
     changePage,
     labelOptions,
@@ -217,19 +211,6 @@ const EventTable = (props: EventTableProps) => {
             <TextField {...params} label="Severity" />
           )}
         />
-        {!isJob && (
-          <Autocomplete
-            className={classes.search}
-            style={{ width: 100 }}
-            options={jobOptions}
-            onInputChange={(_: any, value: string) => {
-              changeFilter("jobId", value.trim());
-            }}
-            renderInput={(params: TextFieldProps) => (
-              <TextField {...params} label="Job" />
-            )}
-          />
-        )}
         <TextField
           className={classes.search}
           label="Msg"
@@ -299,7 +280,7 @@ const EventTable = (props: EventTableProps) => {
                   <article className={classes.li} key={eventId}>
                     <Grid container spacing={4}>
                       <Grid item>
-                        <StatusChip status={label} type={severity} />
+                        <StatusChip status={severity} type={severity} />
                       </Grid>
                       <Grid item>{realTimestamp}</Grid>
                       {customFields && (

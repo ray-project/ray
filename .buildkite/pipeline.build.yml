@@ -84,26 +84,6 @@
 #     # Upload to latest directory.
 #     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
-- label: ":docker: Build Images: py36 (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: medium
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - ./ci/env/env_info.sh
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
-
-- label: ":docker: Build Images: py36 (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  instance_size: medium
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - ./ci/env/env_info.sh
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cu111 cu112 --build-type BUILDKITE --build-base
-
 - label: ":docker: Build Images: py37 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: medium
@@ -172,7 +152,7 @@
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cpu cu101 cu102 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py310 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -181,7 +161,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
@@ -220,7 +200,9 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci --config=ubsan $(./ci/run/bazel_export_options)
+    # Unset CC CXX vars set in Dockerfile. Clang currently runs into problems with ubsan builds, this will revert to
+    # using GCC instead.
+    - unset CC CXX && bazel test --config=ci --config=ubsan $(./ci/run/bazel_export_options)
       --build_tests_only
       --jobs=2
       -- //:all -//:core_worker_test -//:logging_test -//:ray_syncer_test
@@ -235,9 +217,8 @@
       --jobs=2
       -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
-      -//:gcs_server_rpc_test -//:gcs_client_test -//:gcs_heartbeat_manager_test
-      -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
-      -//:ray_syncer_test
+      -//:gcs_server_rpc_test -//:gcs_client_test -//:metric_exporter_client_test
+      -//:stats_test -//:worker_pool_test -//:ray_syncer_test
 
 - label: ":serverless: Dashboard Tests"
   conditions:
@@ -357,6 +338,14 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.10
     - ./ci/ci.sh test_latest_core_dependencies 3.10
+
+- label: ":python: Minimal install 3.11"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.11
+    - ./ci/ci.sh test_latest_core_dependencies 3.11
 
 - label: ":python: Default install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -504,6 +493,20 @@
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
 
+- label: ":python: Ray on Spark Test"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - pip uninstall -y ray
+    - RAY_DEBUG_BUILD=debug ./ci/ci.sh build
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci-debug $(./ci/run/bazel_export_options)
+      --test_env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
+      --test_env=RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
+      --test_tag_filters=-kubernetes,spark_plugin_tests
+      python/ray/tests/...
+
 # https://github.com/ray-project/ray/issues/22460
 #- label: ":python: (Privileged test)"
   #conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -570,11 +573,12 @@
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
     - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
     - bazel clean --expunge
+    - export WANDB_MODE=offline
     - ./ci/ci.sh build
 
 - label: ":octopus: Tune multinode tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: small
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - mkdir -p ~/.docker/cli-plugins/ && curl -SL https://github.com/docker/compose/releases/download/v2.0.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && chmod +x ~/.docker/cli-plugins/docker-compose
@@ -612,16 +616,43 @@
 - label: ":cold_face: :python: Ray Python 3.6 ML compatibility tests"
   conditions:
     ["ALWAYS", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED", ]
-  instance_size: medium
+  instance_size: large
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-minimal.sh 3.6
-    - pip install -r python/requirements/ml/requirements_py36_compat.txt
+    - pip install -r python/requirements/compat/requirements_py36_compat.txt
     - pip install -U typing-extensions
     - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat 
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat_py36
       python/ray/tests/horovod/...
       python/ray/tests/lightgbm/...
       python/ray/tests/ml_py36_compat/...
       python/ray/tests/xgboost/...
+
+
+- label: ":cold_face: :python: Ray Python legacy dependency ML compatibility tests"
+  conditions:
+    ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED"]
+  instance_size: large
+  parallelism: 2
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - DATA_PROCESSING_TESTING=1 TUNE_TESTING=1 TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -r python/requirements/compat/requirements_legacy_compat.txt
+    - pip install -U typing-extensions
+    - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
+    - ./ci/env/env_info.sh
+    # Combine shards from different files
+    - >-
+      set -x;
+      {
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py36_compat/... python/ray/tests/xgboost/... python/ray/tests/ray_lightning/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-needs_credentials python/ray/air/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-needs_credentials python/ray/train/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
+      } > test_shard.txt
+    - cat test_shard.txt
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      $(cat test_shard.txt)

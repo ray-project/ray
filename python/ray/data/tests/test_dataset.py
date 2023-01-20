@@ -4,6 +4,7 @@ import os
 import random
 import signal
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,8 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
+from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorType
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
@@ -44,13 +47,6 @@ def maybe_pipeline(ds, enabled):
         return ds
 
 
-def maybe_lazy(ds, enabled):
-    if enabled:
-        return ds.lazy()
-    else:
-        return ds
-
-
 class SlowCSVDatasource(CSVDatasource):
     def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
         for block in CSVDatasource._read_stream(self, f, path, **reader_args):
@@ -69,7 +65,9 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
         original = ctx.block_splitting_enabled
 
         ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
-        ctx.block_splitting_enabled = block_split
+        if not block_split:
+            # Setting infinite block size effectively disables block splitting.
+            ctx.target_max_block_size = float("inf")
         ds = ray.data.read_datasource(
             SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
         )
@@ -105,15 +103,12 @@ def test_basic_actors(shutdown_only, pipelined):
     # Test setting custom max inflight tasks.
     ds = ray.data.range(10, parallelism=5)
     ds = maybe_pipeline(ds, pipelined)
-    assert (
-        sorted(
-            ds.map(
-                lambda x: x + 1,
-                compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
-            ).take()
-        )
-        == list(range(1, 11))
-    )
+    assert sorted(
+        ds.map(
+            lambda x: x + 1,
+            compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
+        ).take()
+    ) == list(range(1, 11))
 
     # Test invalid max tasks inflight arg.
     with pytest.raises(ValueError):
@@ -236,18 +231,15 @@ def test_transform_failure(shutdown_only):
         ds.map(mapper)
 
 
-@pytest.mark.parametrize("lazy", [False, True])
-def test_dataset_lineage_serialization(shutdown_only, lazy):
+def test_dataset_lineage_serialization(shutdown_only):
     ray.init()
     ds = ray.data.range(10)
-    ds = maybe_lazy(ds, lazy)
     ds = ds.map(lambda x: x + 1)
     ds = ds.map(lambda x: x + 1)
     ds = ds.random_shuffle()
     epoch = ds._get_epoch()
     uuid = ds._get_uuid()
     plan_uuid = ds._plan._dataset_uuid
-    lazy = ds._lazy
 
     serialized_ds = ds.serialize_lineage()
     # Confirm that the original Dataset was properly copied before clearing/mutating.
@@ -255,10 +247,7 @@ def test_dataset_lineage_serialization(shutdown_only, lazy):
     # Should not raise.
     in_blocks._check_if_cleared()
     assert isinstance(in_blocks, LazyBlockList)
-    if lazy:
-        assert in_blocks._block_partition_refs[0] is not None
-    else:
-        assert ds._plan._snapshot_blocks is not None
+    assert in_blocks._block_partition_refs[0] is None
 
     ray.shutdown()
     ray.init()
@@ -268,18 +257,15 @@ def test_dataset_lineage_serialization(shutdown_only, lazy):
     assert ds._get_epoch() == epoch
     assert ds._get_uuid() == uuid
     assert ds._plan._dataset_uuid == plan_uuid
-    assert ds._lazy == lazy
     # Check Dataset content.
     assert ds.count() == 10
     assert sorted(ds.take()) == list(range(2, 12))
 
 
-@pytest.mark.parametrize("lazy", [False, True])
-def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
+def test_dataset_lineage_serialization_unsupported(shutdown_only):
     ray.init()
     # In-memory data sources not supported.
     ds = ray.data.from_items(list(range(10)))
-    ds = maybe_lazy(ds, lazy)
     ds = ds.map(lambda x: x + 1)
     ds = ds.map(lambda x: x + 1)
 
@@ -288,7 +274,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
 
     # In-memory data source unions not supported.
     ds = ray.data.from_items(list(range(10)))
-    ds = maybe_lazy(ds, lazy)
     ds1 = ray.data.from_items(list(range(10, 20)))
     ds2 = ds.union(ds1)
 
@@ -297,7 +282,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
 
     # Post-lazy-read unions not supported.
     ds = ray.data.range(10).map(lambda x: x + 1)
-    ds = maybe_lazy(ds, lazy)
     ds1 = ray.data.range(20).map(lambda x: 2 * x)
     ds2 = ds.union(ds1)
 
@@ -306,7 +290,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
 
     # Lazy read unions supported.
     ds = ray.data.range(10)
-    ds = maybe_lazy(ds, lazy)
     ds1 = ray.data.range(20)
     ds2 = ds.union(ds1)
 
@@ -316,7 +299,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
 
     # Zips not supported.
     ds = ray.data.from_items(list(range(10)))
-    ds = maybe_lazy(ds, lazy)
     ds1 = ray.data.from_items(list(range(10, 20)))
     ds2 = ds.zip(ds1)
 
@@ -342,7 +324,7 @@ def test_zip(ray_start_regular_shared):
     assert ds.schema() == tuple
     assert ds.take() == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
     with pytest.raises(ValueError):
-        ds.zip(ray.data.range(3))
+        ds.zip(ray.data.range(3)).fully_executed()
 
 
 def test_zip_pandas(ray_start_regular_shared):
@@ -368,8 +350,8 @@ def test_zip_arrow(ray_start_regular_shared):
         lambda r: {"a": r["value"] + 1, "b": r["value"] + 2}
     )
     ds = ds1.zip(ds2)
-    assert "{id: int64, a: int64, b: int64}" in str(ds)
     assert ds.count() == 5
+    assert "{id: int64, a: int64, b: int64}" in str(ds)
     result = [r.as_pydict() for r in ds.take()]
     assert result[0] == {"id": 0, "a": 1, "b": 2}
 
@@ -555,12 +537,13 @@ def test_tensors_basic(ray_start_regular_shared):
     np.testing.assert_equal(res, [np.array([2]), np.array([3])])
 
     # Arrow columns in NumPy format.
-    def mapper(col_arrs):
+    def multi_mapper(col_arrs):
         assert isinstance(col_arrs, dict)
         assert list(col_arrs.keys()) == ["a", "b", "c"]
         assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
         return {"a": col_arrs["a"] + 1, "b": col_arrs["b"] + 1, "c": col_arrs["c"] + 1}
 
+    # Multiple columns.
     t = pa.table(
         {
             "a": [1, 2, 3],
@@ -570,7 +553,7 @@ def test_tensors_basic(ray_start_regular_shared):
     )
     res = (
         ray.data.from_arrow(t)
-        .map_batches(mapper, batch_size=2, batch_format="numpy")
+        .map_batches(multi_mapper, batch_size=2, batch_format="numpy")
         .take()
     )
     np.testing.assert_equal(
@@ -582,8 +565,30 @@ def test_tensors_basic(ray_start_regular_shared):
         ],
     )
 
+    def single_mapper(col_arrs):
+        assert isinstance(col_arrs, dict)
+        assert list(col_arrs.keys()) == ["c"]
+        assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
+        return {"c": col_arrs["c"] + 1}
+
+    # Single column (should still yield ndarray dict batches).
+    t = t.select(["c"])
+    res = (
+        ray.data.from_arrow(t)
+        .map_batches(single_mapper, batch_size=2, batch_format="numpy")
+        .take()
+    )
+    np.testing.assert_equal(
+        [r.as_pydict() for r in res],
+        [
+            {"c": np.array([2, 3])},
+            {"c": np.array([4, 5])},
+            {"c": np.array([6, 7])},
+        ],
+    )
+
     # Pandas columns in NumPy format.
-    def mapper(col_arrs):
+    def multi_mapper(col_arrs):
         assert isinstance(col_arrs, dict)
         assert list(col_arrs.keys()) == ["a", "b", "c"]
         assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
@@ -595,6 +600,7 @@ def test_tensors_basic(ray_start_regular_shared):
             }
         )
 
+    # Multiple columns.
     df = pd.DataFrame(
         {
             "a": [1, 2, 3],
@@ -604,7 +610,7 @@ def test_tensors_basic(ray_start_regular_shared):
     )
     res = (
         ray.data.from_pandas(df)
-        .map_batches(mapper, batch_size=2, batch_format="numpy")
+        .map_batches(multi_mapper, batch_size=2, batch_format="numpy")
         .take()
     )
     np.testing.assert_equal(
@@ -613,6 +619,28 @@ def test_tensors_basic(ray_start_regular_shared):
             {"a": 2, "b": 5.0, "c": np.array([2, 3])},
             {"a": 3, "b": 6.0, "c": np.array([4, 5])},
             {"a": 4, "b": 7.0, "c": np.array([6, 7])},
+        ],
+    )
+
+    # Single column (should still yield ndarray dict batches).
+    def single_mapper(col_arrs):
+        assert isinstance(col_arrs, dict)
+        assert list(col_arrs.keys()) == ["c"]
+        assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs.values())
+        return pd.DataFrame({"c": TensorArray(col_arrs["c"] + 1)})
+
+    df = df[["c"]]
+    res = (
+        ray.data.from_pandas(df)
+        .map_batches(single_mapper, batch_size=2, batch_format="numpy")
+        .take()
+    )
+    np.testing.assert_equal(
+        [r.as_pydict() for r in res],
+        [
+            {"c": np.array([2, 3])},
+            {"c": np.array([4, 5])},
+            {"c": np.array([6, 7])},
         ],
     )
 
@@ -705,6 +733,7 @@ def test_tensors_sort(ray_start_regular_shared):
 def test_tensors_inferred_from_map(ray_start_regular_shared):
     # Test map.
     ds = ray.data.range(10, parallelism=10).map(lambda _: np.ones((4, 4)))
+    ds.fully_executed()
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=10, "
         "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
@@ -714,6 +743,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(16, parallelism=4).map_batches(
         lambda _: np.ones((3, 4, 4)), batch_size=2
     )
+    ds.fully_executed()
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=24, "
         "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
@@ -723,6 +753,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10).flat_map(
         lambda _: [np.ones((4, 4)), np.ones((4, 4))]
     )
+    ds.fully_executed()
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=20, "
         "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
@@ -732,6 +763,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(16, parallelism=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
     )
+    ds.fully_executed()
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=24, "
         "schema={a: TensorDtype(shape=(4, 4), dtype=float64)})"
@@ -741,9 +773,10 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
         batch_size=2,
     )
+    ds.fully_executed()
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=16, "
-        "schema={a: TensorDtype(shape=None, dtype=float64)})"
+        "schema={a: TensorDtype(shape=(None, None), dtype=float64)})"
     )
 
 
@@ -1412,16 +1445,19 @@ def test_empty_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x > 1)
+    ds.fully_executed()
     assert str(ds) == "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
 
     # Test map on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.map(lambda x: x)
+    ds.fully_executed()
     assert ds.count() == 0
 
     # Test filter on empty dataset.
     ds = ray.data.from_items([])
     ds = ds.filter(lambda: True)
+    ds.fully_executed()
     assert ds.count() == 0
 
 
@@ -1429,7 +1465,9 @@ def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
     ds2 = ray.data.range_table(10, parallelism=10)
     ds3 = ds2.repartition(5)
+    ds3.fully_executed()
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
+    ds4.fully_executed()
     assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
@@ -1440,17 +1478,28 @@ def test_schema(ray_start_regular_shared):
 
 def test_schema_lazy(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=10)
-    # We kick off the read task for the first block by default.
-    assert ds._plan._in_blocks._num_computed() == 1
+    # We do not kick off the read task by default.
+    assert ds._plan._in_blocks._num_computed() == 0
     schema = ds.schema()
     assert schema == int
+    assert ds._plan._in_blocks._num_computed() == 1
     # Fetching the schema should not trigger execution of extra read tasks.
     assert ds._plan.execute()._num_computed() == 1
 
 
+def test_count_lazy(ray_start_regular_shared):
+    ds = ray.data.range(100, parallelism=10)
+    # We do not kick off the read task by default.
+    assert ds._plan._in_blocks._num_computed() == 0
+    assert ds.count() == 100
+    # Getting number of rows should not trigger execution of any read tasks
+    # for ray.data.range(), as the number of rows is known beforehand.
+    assert ds._plan._in_blocks._num_computed() == 0
+
+
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
-    assert ds._plan.execute()._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 0
     assert ds.take(10) == list(range(10))
     assert ds._plan.execute()._num_computed() == 2
     assert ds.take(20) == list(range(20))
@@ -1461,6 +1510,49 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     assert ds._plan.execute()._num_computed() == 16
     assert ds.take(100) == list(range(100))
     assert ds._plan.execute()._num_computed() == 20
+
+
+def test_dataset_repr(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=10)
+    assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    ds = ds.map_batches(lambda x: x)
+    assert repr(ds) == (
+        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    )
+    ds = ds.filter(lambda x: x > 0)
+    assert repr(ds) == (
+        "Filter\n"
+        "+- MapBatches\n"
+        "   +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    )
+    ds = ds.random_shuffle()
+    assert repr(ds) == (
+        "RandomShuffle\n"
+        "+- Filter\n"
+        "   +- MapBatches\n"
+        "      +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    )
+    ds.fully_executed()
+    assert repr(ds) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    ds = ds.map_batches(lambda x: x)
+    assert repr(ds) == (
+        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    )
+    ds1, ds2 = ds.split(2)
+    assert (
+        repr(ds1)
+        == f"Dataset(num_blocks=5, num_rows={ds1.count()}, schema=<class 'int'>)"
+    )
+    assert (
+        repr(ds2)
+        == f"Dataset(num_blocks=5, num_rows={ds2.count()}, schema=<class 'int'>)"
+    )
+    ds3 = ds1.union(ds2)
+    assert repr(ds3) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    ds = ds.zip(ds3)
+    assert repr(ds) == (
+        "Zip\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    )
 
 
 @pytest.mark.parametrize("lazy", [False, True])
@@ -1765,6 +1857,14 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
+    # Numpy format (single column).
+    ds2 = ds.select_columns(["one"])
+    for batch, df in zip(ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs):
+        assert isinstance(batch, dict)
+        assert list(batch.keys()) == ["one"]
+        assert all(isinstance(col, np.ndarray) for col in batch.values())
+        pd.testing.assert_frame_equal(pd.DataFrame(batch), df[["one"]])
+
     # Test NumPy format on Arrow blocks.
     ds2 = ds.map_batches(lambda b: b, batch_size=None, batch_format="pyarrow")
     for batch, df in zip(ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs):
@@ -1772,6 +1872,14 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
+
+    # Test NumPy format on Arrow blocks (single column).
+    ds3 = ds2.select_columns(["one"])
+    for batch, df in zip(ds3.iter_batches(batch_size=None, batch_format="numpy"), dfs):
+        assert isinstance(batch, dict)
+        assert list(batch.keys()) == ["one"]
+        assert all(isinstance(col, np.ndarray) for col in batch.values())
+        pd.testing.assert_frame_equal(pd.DataFrame(batch), df[["one"]])
 
     # Native format (deprecated).
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="native"), dfs):
@@ -1871,14 +1979,24 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Prefetch with ray.wait.
     context = DatasetContext.get_current()
-    context.actor_prefetcher_enabled = False
-    batches = list(
-        ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
-    )
-    assert len(batches) == len(dfs)
-    for batch, df in zip(batches, dfs):
-        assert isinstance(batch, pd.DataFrame)
-        assert batch.equals(df)
+    old_config = context.actor_prefetcher_enabled
+    try:
+        context.actor_prefetcher_enabled = False
+        batches = list(
+            ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
+        )
+        assert len(batches) == len(dfs)
+        for batch, df in zip(batches, dfs):
+            assert isinstance(batch, pd.DataFrame)
+            assert batch.equals(df)
+    finally:
+        context.actor_prefetcher_enabled = old_config
+
+
+def test_iter_batches_empty_block(ray_start_regular_shared):
+    ds = ray.data.range(1).repartition(10)
+    assert list(ds.iter_batches(batch_size=None)) == [[0]]
+    assert list(ds.iter_batches(batch_size=1, local_shuffle_buffer_size=1)) == [[0]]
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -2214,7 +2332,44 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
         ]
         # Test dropping non-existent column
         with pytest.raises(KeyError):
-            ds.drop_columns(["dummy_col", "col1", "col2"])
+            ds.drop_columns(["dummy_col", "col1", "col2"]).fully_executed()
+
+
+def test_select_columns(ray_start_regular_shared):
+    # Test pandas and arrow
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds1 = ray.data.from_pandas(df)
+    assert ds1.dataset_format() == "pandas"
+
+    ds2 = ds1.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
+    assert ds2.dataset_format() == "arrow"
+
+    for each_ds in [ds1, ds2]:
+        assert each_ds.select_columns(cols=[]).take(1) == [{}]
+        assert each_ds.select_columns(cols=["col1", "col2", "col3"]).take(1) == [
+            {"col1": 1, "col2": 2, "col3": 3}
+        ]
+        assert each_ds.select_columns(cols=["col1", "col2"]).take(1) == [
+            {"col1": 1, "col2": 2}
+        ]
+        assert each_ds.select_columns(cols=["col2", "col1"]).take(1) == [
+            {"col1": 1, "col2": 2}
+        ]
+        # Test selecting columns with duplicates
+        assert each_ds.select_columns(cols=["col1", "col2", "col2"]).schema().names == [
+            "col1",
+            "col2",
+            "col2",
+        ]
+        # Test selecting a column that is not in the dataset schema
+        with pytest.raises(KeyError):
+            each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).fully_executed()
+
+    # Test simple
+    ds3 = ray.data.range(10)
+    assert ds3.dataset_format() == "simple"
+    with pytest.raises(ValueError):
+        ds3.select_columns(cols=[]).fully_executed()
 
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path):
@@ -2231,7 +2386,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     # Test pandas
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda df: df + 1, batch_size=1, batch_format="pandas")
-    assert ds2._dataset_format() == "pandas"
+    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
@@ -2241,7 +2396,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     # Test Pyarrow
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
-    assert ds2._dataset_format() == "arrow"
+    assert ds2.dataset_format() == "arrow"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [1, 2, 3]
@@ -2252,7 +2407,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     size = 300
     ds = ray.data.range(size)
     ds2 = ds.map_batches(lambda df: df + 1, batch_size=17, batch_format="pandas")
-    assert ds2._dataset_format() == "pandas"
+    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take_all()
     for i in range(size):
         # The pandas column is "value", and it originally has rows from 0~299.
@@ -2265,7 +2420,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     # pandas => list block
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda df: [1], batch_size=1)
-    assert ds2._dataset_format() == "simple"
+    assert ds2.dataset_format() == "simple"
     ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
@@ -2273,7 +2428,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     # pyarrow => list block
     ds = ray.data.read_parquet(str(tmp_path))
     ds2 = ds.map_batches(lambda df: [1], batch_size=1, batch_format="pyarrow")
-    assert ds2._dataset_format() == "simple"
+    assert ds2.dataset_format() == "simple"
     ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
@@ -2287,6 +2442,13 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
 
 
 def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
+    def put(x):
+        # We only support automatic deref in the legacy backend.
+        if DatasetContext.get_current().new_execution_backend:
+            return x
+        else:
+            return ray.put(x)
+
     # Test input validation
     ds = ray.data.range(5)
 
@@ -2338,9 +2500,9 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_args=(ray.put(1),),
+        fn_args=(put(1),),
     )
-    assert ds2._dataset_format() == "pandas"
+    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
@@ -2357,9 +2519,9 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_kwargs={"b": ray.put(2)},
+        fn_kwargs={"b": put(2)},
     )
-    assert ds2._dataset_format() == "pandas"
+    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 4, 6]
@@ -2377,10 +2539,10 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         udf,
         batch_size=1,
         batch_format="pandas",
-        fn_args=(ray.put(1),),
-        fn_kwargs={"b": ray.put(2)},
+        fn_args=(put(1),),
+        fn_kwargs={"b": put(2)},
     )
-    assert ds2._dataset_format() == "pandas"
+    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [3, 5, 7]
@@ -2403,9 +2565,9 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_args=(ray.put(1),),
+        fn_constructor_args=(put(1),),
     )
-    assert ds2._dataset_format() == "pandas"
+    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
@@ -2427,9 +2589,9 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_kwargs={"b": ray.put(2)},
+        fn_constructor_kwargs={"b": put(2)},
     )
-    assert ds2._dataset_format() == "pandas"
+    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 4, 6]
@@ -2453,10 +2615,10 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         batch_size=1,
         batch_format="pandas",
         compute="actors",
-        fn_constructor_args=(ray.put(1),),
-        fn_constructor_kwargs={"b": ray.put(2)},
+        fn_constructor_args=(put(1),),
+        fn_constructor_kwargs={"b": put(2)},
     )
-    assert ds2._dataset_format() == "pandas"
+    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [3, 5, 7]
@@ -2465,8 +2627,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
 
     # Test callable chain.
     ds = ray.data.read_parquet(str(tmp_path))
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     ds2 = (
         ds.lazy()
         .map_batches(
@@ -2486,7 +2648,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
             fn_constructor_kwargs=fn_constructor_kwargs,
         )
     )
-    assert ds2._dataset_format() == "pandas"
+    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [7, 11, 15]
@@ -2495,8 +2657,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
 
     # Test function + callable chain.
     ds = ray.data.read_parquet(str(tmp_path))
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     ds2 = (
         ds.lazy()
         .map_batches(
@@ -2504,8 +2666,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
             batch_size=1,
             batch_format="pandas",
             compute="actors",
-            fn_args=(ray.put(1),),
-            fn_kwargs={"b": ray.put(2)},
+            fn_args=(put(1),),
+            fn_kwargs={"b": put(2)},
         )
         .map_batches(
             CallableFn,
@@ -2516,7 +2678,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
             fn_constructor_kwargs=fn_constructor_kwargs,
         )
     )
-    assert ds2._dataset_format() == "pandas"
+    assert ds2.dataset_format() == "pandas"
     ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [7, 11, 15]
@@ -2556,6 +2718,36 @@ def test_map_batches_batch_mutation(
     assert [row["value"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
 
 
+@pytest.mark.parametrize(
+    "num_rows,num_blocks,batch_size",
+    [
+        (10, 5, 2),
+        (10, 1, 10),
+        (12, 3, 2),
+    ],
+)
+def test_map_batches_batch_zero_copy(
+    ray_start_regular_shared, num_rows, num_blocks, batch_size
+):
+    # Test that batches are zero-copy read-only views when zero_copy_batch=True.
+    def mutate(df):
+        # Check that batch is read-only.
+        assert not df.values.flags.writeable
+        df["value"] += 1
+        return df
+
+    ds = ray.data.range_table(num_rows, parallelism=num_blocks).repartition(num_blocks)
+    # Convert to Pandas blocks.
+    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
+    ds.fully_executed()
+
+    # Apply UDF that mutates the batches, which should fail since the batch is
+    # read-only.
+    with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
+        ds = ds.map_batches(mutate, batch_size=batch_size, zero_copy_batch=True)
+        ds.fully_executed()
+
+
 BLOCK_BUNDLING_TEST_CASES = [
     (block_size, batch_size)
     for batch_size in range(1, 8)
@@ -2572,9 +2764,16 @@ def test_map_batches_block_bundling_auto(
     ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks)
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
-    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+
     # Blocks should be bundled up to the batch size.
-    assert ds.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
+    ds1 = ds.map_batches(lambda x: x, batch_size=batch_size)
+    ds1.fully_executed()
+    assert ds1.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
+
+    # Blocks should not be bundled up when batch_size is not specified.
+    ds2 = ds.map_batches(lambda x: x)
+    ds2.fully_executed()
+    assert ds2.num_blocks() == num_blocks
 
 
 @pytest.mark.parametrize(
@@ -2656,7 +2855,7 @@ def test_map_with_mismatched_columns(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=1)
     error_message = "Current row has different columns compared to previous rows."
     with pytest.raises(ValueError) as e:
-        ds.map(bad_fn)
+        ds.map(bad_fn).fully_executed()
     assert error_message in str(e.value)
     ds_map = ds.map(good_fn)
     assert ds_map.take() == [{"a": "hello1", "b": "hello2"} for _ in range(10)]
@@ -2738,6 +2937,47 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     assert df.equals(ddf.compute(scheduler=ray_dask_get))
     # Implicit Dask-on-Ray.
     assert df.equals(ddf.compute())
+
+
+def test_to_dask_tensor_column_cast_pandas(ray_start_regular_shared):
+    # Check that tensor column casting occurs when converting a Dataset to a Dask
+    # DataFrame.
+    data = np.arange(12).reshape((3, 2, 2))
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.enable_tensor_extension_casting
+    try:
+        ctx.enable_tensor_extension_casting = True
+        in_df = pd.DataFrame({"a": TensorArray(data)})
+        ds = ray.data.from_pandas(in_df)
+        dtypes = ds.schema().types
+        assert len(dtypes) == 1
+        assert isinstance(dtypes[0], TensorDtype)
+        out_df = ds.to_dask().compute()
+        assert out_df["a"].dtype.type is np.object_
+        expected_df = pd.DataFrame({"a": list(data)})
+        pd.testing.assert_frame_equal(out_df, expected_df)
+    finally:
+        ctx.enable_tensor_extension_casting = original
+
+
+def test_to_dask_tensor_column_cast_arrow(ray_start_regular_shared):
+    # Check that tensor column casting occurs when converting a Dataset to a Dask
+    # DataFrame.
+    data = np.arange(12).reshape((3, 2, 2))
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.enable_tensor_extension_casting
+    try:
+        ctx.enable_tensor_extension_casting = True
+        in_table = pa.table({"a": ArrowTensorArray.from_numpy(data)})
+        ds = ray.data.from_arrow(in_table)
+        dtype = ds.schema().field(0).type
+        assert isinstance(dtype, ArrowTensorType)
+        out_df = ds.to_dask().compute()
+        assert out_df["a"].dtype.type is np.object_
+        expected_df = pd.DataFrame({"a": list(data)})
+        pd.testing.assert_frame_equal(out_df, expected_df)
+    finally:
+        ctx.enable_tensor_extension_casting = original
 
 
 def test_from_modin(ray_start_regular_shared):
@@ -3012,6 +3252,11 @@ def test_block_builder_for_block(ray_start_regular_shared):
     # wrong type
     with pytest.raises(TypeError):
         BlockBuilder.for_block(str())
+
+
+def test_grouped_dataset_repr(ray_start_regular_shared):
+    ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
+    assert repr(ds.groupby("key")) == f"GroupedDataset(dataset={ds!r}, key='key')"
 
 
 def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
@@ -3965,6 +4210,13 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=10)
+    ds = ds.map_batches(lambda x: [])
+    ds = ds.map_batches(lambda x: x)
+    assert ds.num_blocks() == 10, ds
+
+
 def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
     xs = [x % 3 for x in list(range(100))]
 
@@ -4106,6 +4358,26 @@ def test_groupby_map_groups_for_arrow(ray_start_regular_shared, num_parts):
         {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1], "C": [0.4, 0.6, 1]}
     )
     result = pa.Table.from_pandas(mapped.to_pandas())
+    assert result.equals(expected)
+
+
+def test_groupby_map_groups_for_numpy(ray_start_regular_shared):
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    def func(group):
+        # Test output type is NumPy format.
+        return {"group": group["group"] + 1, "value": group["value"] + 1}
+
+    ds = ds.groupby("group").map_groups(func, batch_format="numpy")
+    expected = pa.Table.from_pydict({"group": [2, 2, 3, 3], "value": [2, 3, 4, 5]})
+    result = pa.Table.from_pandas(ds.to_pandas())
     assert result.equals(expected)
 
 
@@ -4545,6 +4817,12 @@ def test_random_sample_checks(ray_start_regular_shared):
         ray.data.range(1).random_sample(10)
 
 
+def test_random_block_order_schema(ray_start_regular_shared):
+    df = pd.DataFrame({"a": np.random.rand(10), "b": np.random.rand(10)})
+    ds = ray.data.from_pandas(df).randomize_block_order()
+    ds.schema().names == ["a", "b"]
+
+
 def test_random_block_order(ray_start_regular_shared):
 
     # Test BlockList.randomize_block_order.
@@ -4568,6 +4846,10 @@ def test_random_block_order(ray_start_regular_shared):
         assert lazy_blocklist_results == lazy_blocklist_expected
     finally:
         context.optimize_fuse_read_stages = original_optimize_fuse_read_stages
+
+
+# NOTE: All tests above share a Ray cluster, while the tests below do not. These
+# tests should only be carefully reordered to retain this invariant!
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -4677,6 +4959,69 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
+def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
+    # Test that unsupported pyarrow versions cause an error to be raised upon the
+    # initial pyarrow use.
+    ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
+
+    # Test Arrow-native creation APIs.
+    # Test range_table.
+    with pytest.raises(ImportError):
+        ray.data.range_table(10).take_all()
+
+    # Test from_arrow.
+    with pytest.raises(ImportError):
+        ray.data.from_arrow(pa.table({"a": [1, 2]}))
+
+    # Test read_parquet.
+    with pytest.raises(ImportError):
+        ray.data.read_parquet("example://iris.parquet").take_all()
+
+    # Test from_numpy (we use Arrow for representing the tensors).
+    with pytest.raises(ImportError):
+        ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
+
+
+def test_unsupported_pyarrow_versions_check_disabled(
+    shutdown_only,
+    unsupported_pyarrow_version,
+    disable_pyarrow_version_check,
+):
+    # Test that unsupported pyarrow versions DO NOT cause an error to be raised upon the
+    # initial pyarrow use when the version check is disabled.
+    ray.init(
+        runtime_env={
+            "pip": [f"pyarrow=={unsupported_pyarrow_version}"],
+            "env_vars": {"RAY_DISABLE_PYARROW_VERSION_CHECK": "1"},
+        },
+    )
+
+    # Test Arrow-native creation APIs.
+    # Test range_table.
+    try:
+        ray.data.range_table(10).take_all()
+    except ImportError as e:
+        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
+
+    # Test from_arrow.
+    try:
+        ray.data.from_arrow(pa.table({"a": [1, 2]}))
+    except ImportError as e:
+        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
+
+    # Test read_parquet.
+    try:
+        ray.data.read_parquet("example://iris.parquet").take_all()
+    except ImportError as e:
+        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
+
+    # Test from_numpy (we use Arrow for representing the tensors).
+    try:
+        ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
+    except ImportError as e:
+        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
+
+
 def test_random_shuffle_with_custom_resource(ray_start_cluster):
     cluster = ray_start_cluster
     # Create two nodes which have different custom resources.
@@ -4699,6 +5044,102 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster):
     assert "2 nodes used" not in ds.stats()
 
 
+def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
+    cluster.add_node(num_cpus=4)
+    cluster.head_node._ray_params.ray_client_server_port = "10004"
+    cluster.head_node.start_ray_client_server()
+    address = "ray://localhost:10004"
+
+    import tempfile
+
+    data_path = tempfile.mkdtemp()
+    df = pd.DataFrame({"one": list(range(0, 10)), "two": list(range(10, 20))})
+    path = os.path.join(data_path, "test.parquet")
+    df.to_parquet(path)
+
+    # Read/write from Ray Client will result in error.
+    ray.init(address)
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet("local://" + path).fully_executed()
+    ds = ray.data.from_pandas(df)
+    with pytest.raises(ValueError):
+        ds.write_parquet("local://" + data_path).fully_executed()
+
+
+def test_read_write_local_node(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:3": 100}, num_cpus=10)
+
+    ray.init(cluster.address)
+
+    import os
+    import tempfile
+
+    data_path = tempfile.mkdtemp()
+    num_files = 5
+    for idx in range(num_files):
+        df = pd.DataFrame(
+            {"one": list(range(idx, idx + 10)), "two": list(range(idx + 10, idx + 20))}
+        )
+        path = os.path.join(data_path, f"test{idx}.parquet")
+        df.to_parquet(path)
+
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.read_write_local_node = True
+
+    def check_dataset_is_local(ds):
+        blocks = ds.get_internal_block_refs()
+        assert len(blocks) == num_files
+        ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+        location_data = ray.experimental.get_object_locations(blocks)
+        locations = []
+        for block in blocks:
+            locations.extend(location_data[block]["node_ids"])
+        assert set(locations) == {ray.get_runtime_context().get_node_id()}
+
+    local_path = "local://" + data_path
+    # Plain read.
+    ds = ray.data.read_parquet(local_path).fully_executed()
+    check_dataset_is_local(ds)
+
+    # SPREAD scheduling got overridden when read local scheme.
+    ds = ray.data.read_parquet(
+        local_path, ray_remote_args={"scheduling_strategy": "SPREAD"}
+    ).fully_executed()
+    check_dataset_is_local(ds)
+
+    # With fusion.
+    ds = ray.data.read_parquet(local_path).map(lambda x: x).fully_executed()
+    check_dataset_is_local(ds)
+
+    # Write back to local scheme.
+    output = os.path.join(local_path, "test_read_write_local_node")
+    ds.write_parquet(output)
+    assert "1 nodes used" in ds.stats(), ds.stats()
+    ray.data.read_parquet(output).take_all() == ds.take_all()
+
+    # Mixing paths of local and non-local scheme is invalid.
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet(
+            [local_path + "/test1.parquet", data_path + "/test2.parquet"]
+        ).fully_executed()
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet(
+            [local_path + "/test1.parquet", "example://iris.parquet"]
+        ).fully_executed()
+    with pytest.raises(ValueError):
+        ds = ray.data.read_parquet(
+            ["example://iris.parquet", local_path + "/test1.parquet"]
+        ).fully_executed()
+
+
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
     cluster = ray_start_cluster
     cluster.add_node(
@@ -4713,7 +5154,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
@@ -4747,7 +5188,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
@@ -4982,7 +5423,7 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     compute_strategy = ray.data.ActorPoolStrategy()
     ray.data.range(10, parallelism=10).map_batches(
         f, batch_size=1, compute=compute_strategy
-    )
+    ).fully_executed()
     expected_max_num_workers = math.ceil(
         num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
     )
@@ -5002,6 +5443,85 @@ def test_default_batch_format(shutdown_only):
     df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
     ds = ray.data.from_pandas(df)
     assert ds.default_batch_format() == pd.DataFrame
+
+
+def test_dataset_schema_after_read_stats(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(cluster.address)
+    cluster.add_node(num_cpus=1, resources={"foo": 1})
+    ds = ray.data.read_csv(
+        "example://iris.csv", ray_remote_args={"resources": {"foo": 1}}
+    )
+    schema = ds.schema()
+    ds.stats()
+    assert schema == ds.schema()
+
+
+def test_ragged_tensors(ray_start_regular_shared):
+    """Test Arrow type promotion between ArrowTensorType and
+    ArrowVariableShapedTensorType when a column contains ragged tensors."""
+    import numpy as np
+
+    ds = ray.data.from_items(
+        [
+            {"spam": np.zeros((32, 32, 5))},
+            {"spam": np.zeros((64, 64, 5))},
+        ]
+    )
+    new_type = ds.schema().types[0].scalar_type
+    assert ds.schema().types == [
+        ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
+    ]
+
+
+class LoggerWarningCalled(Exception):
+    """Custom exception used in test_warning_execute_with_no_cpu() and
+    test_nowarning_execute_with_cpu(). Raised when the `logger.warning` method
+    is called, so that we can kick out of `plan.execute()` by catching this Exception
+    and check logging was done properly."""
+
+    pass
+
+
+def test_warning_execute_with_no_cpu(ray_start_cluster):
+    """Tests ExecutionPlan.execute() to ensure a warning is logged
+    when no CPU resources are available."""
+    # Create one node with no CPUs to trigger the Dataset warning
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+
+    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    with patch.object(
+        logger,
+        "warning",
+        side_effect=LoggerWarningCalled,
+    ) as mock_logger:
+        try:
+            ds = ray.data.range(10)
+            ds = ds.map_batches(lambda x: x)
+            ds.take()
+        except LoggerWarningCalled:
+            logger_args, logger_kwargs = mock_logger.call_args
+            assert "Warning: The Ray cluster currently does not have " in logger_args[0]
+
+
+def test_nowarning_execute_with_cpu(ray_start_cluster_init):
+    """Tests ExecutionPlan.execute() to ensure no warning is logged
+    when there are available CPU resources."""
+    # Create one node with CPUs to avoid triggering the Dataset warning
+    ray.init(ray_start_cluster_init.address)
+
+    logger = DatasetLogger("ray.data._internal.plan").get_logger()
+    with patch.object(
+        logger,
+        "warning",
+        side_effect=LoggerWarningCalled,
+    ) as mock_logger:
+        ds = ray.data.range(10)
+        ds = ds.map_batches(lambda x: x)
+        ds.take()
+        mock_logger.assert_not_called()
 
 
 if __name__ == "__main__":

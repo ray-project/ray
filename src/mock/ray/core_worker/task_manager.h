@@ -39,7 +39,8 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
                rpc::ErrorType error_type,
                const Status *status,
                const rpc::RayErrorInfo *ray_error_info,
-               bool mark_task_object_failed),
+               bool mark_task_object_failed,
+               bool fail_immediately),
               (override));
   MOCK_METHOD(void,
               OnTaskDependenciesInlined,
@@ -56,7 +57,10 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               (const TaskID &task_id, bool task_failed_due_to_oom),
               (override));
   MOCK_METHOD(void, MarkDependenciesResolved, (const TaskID &task_id), (override));
-  MOCK_METHOD(void, MarkTaskWaitingForExecution, (const TaskID &task_id), (override));
+  MOCK_METHOD(void,
+              MarkTaskWaitingForExecution,
+              (const TaskID &task_id, const NodeID &node_id),
+              (override));
 };
 
 }  // namespace core

@@ -239,7 +239,7 @@ def get_variable(
         A framework-specific variable (tf.Variable, torch.tensor, or
         python primitive).
     """
-    if framework in ["tf2", "tf", "tfe"]:
+    if framework in ["tf2", "tf"]:
         import tensorflow as tf
 
         dtype = dtype or getattr(

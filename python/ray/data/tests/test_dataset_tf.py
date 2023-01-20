@@ -1,13 +1,15 @@
+import pandas as pd
 import pytest
 import tensorflow as tf
 import numpy as np
 
 import ray
-from ray.data.preprocessors import Concatenator
 from ray.air import session
-from ray.train.tensorflow import TensorflowTrainer
 from ray.air.config import ScalingConfig
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data.extensions import TensorArray
+from ray.data.preprocessors import Concatenator
+from ray.train.tensorflow import TensorflowTrainer
 
 
 class TestToTF:
@@ -43,6 +45,27 @@ class TestToTF:
             isinstance(value, tf.TypeSpec)
             for value in feature_output_signature.values()
         )
+
+        df = pd.DataFrame(
+            {"feature1": [0, 1, 2], "feature2": [3, 4, 5], "label": [0, 1, 1]}
+        )
+        ds = ray.data.from_pandas(df)
+        dataset = ds.to_tf(
+            feature_columns=["feature1", "feature2"],
+            label_columns="label",
+            batch_size=3,
+        )
+        feature_output_signature, _ = dataset.element_spec
+        assert isinstance(feature_output_signature, dict)
+        assert feature_output_signature.keys() == {"feature1", "feature2"}
+        assert all(
+            isinstance(value, tf.TypeSpec)
+            for value in feature_output_signature.values()
+        )
+        features, labels = next(iter(dataset))
+        assert (labels.numpy() == df["label"].values).all()
+        assert (features["feature1"].numpy() == df["feature1"].values).all()
+        assert (features["feature2"].numpy() == df["feature2"].values).all()
 
     def test_element_spec_name(self):
         ds = ray.data.from_items([{"spam": 0, "ham": 0}])
@@ -96,6 +119,27 @@ class TestToTF:
         features, labels = next(iter(dataset))
         assert tuple(features.shape) == (4, 3, 32, 32)
         assert tuple(labels.shape) == (4,)
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_element_spec_shape_with_ragged_tensors(self, batch_size):
+        df = pd.DataFrame(
+            {
+                "spam": TensorArray([np.zeros([32, 32, 3]), np.zeros([64, 64, 3])]),
+                "ham": [0, 0],
+            }
+        )
+        ds = ray.data.from_pandas(df)
+
+        dataset = ds.to_tf(
+            feature_columns="spam", label_columns="ham", batch_size=batch_size
+        )
+
+        feature_spec, _ = dataset.element_spec
+        assert tuple(feature_spec.shape) == (None, None, None, None)
+
+        features, labels = next(iter(dataset))
+        assert tuple(features.shape) == (batch_size, None, None, None)
+        assert tuple(labels.shape) == (batch_size,)
 
     def test_training(self):
         def build_model() -> tf.keras.Model:

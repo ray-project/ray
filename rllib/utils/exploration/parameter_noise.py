@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 from typing import Optional, TYPE_CHECKING, Union
 
@@ -308,7 +308,7 @@ class ParameterNoise(Exploration):
         """Samples new noise and stores it in `self.noise`."""
         if self.framework == "tf":
             tf_sess.run(self.tf_sample_new_noise_op)
-        elif self.framework in ["tfe", "tf2"]:
+        elif self.framework == "tf2":
             self._tf_sample_new_noise_op()
         else:
             for i in range(len(self.noise)):
@@ -359,7 +359,7 @@ class ParameterNoise(Exploration):
         # Add stored noise to the model's parameters.
         if self.framework == "tf":
             tf_sess.run(self.tf_add_stored_noise_op)
-        elif self.framework in ["tf2", "tfe"]:
+        elif self.framework == "tf2":
             self._tf_add_stored_noise_op()
         else:
             for var, noise in zip(self.model_variables, self.noise):
@@ -399,7 +399,7 @@ class ParameterNoise(Exploration):
         # Removes the stored noise from the model's parameters.
         if self.framework == "tf":
             tf_sess.run(self.tf_remove_noise_op)
-        elif self.framework in ["tf2", "tfe"]:
+        elif self.framework == "tf2":
             self._tf_remove_noise_op()
         else:
             for var, noise in zip(self.model_variables, self.noise):

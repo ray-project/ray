@@ -99,6 +99,12 @@ class ListApiOptions:
         assert isinstance(self.limit, int)
         assert isinstance(self.timeout, int)
         assert isinstance(self.detail, bool)
+        assert isinstance(self.filters, list) or self.filters is None, (
+            "filters must be a list type. Given filters: "
+            f"{self.filters} type: {type(self.filters)}. "
+            "Provide a list of tuples instead. "
+            "e.g., list_actors(filters=[('name', '=', 'ABC')])"
+        )
         # To return the data to users, when there's a partial failure
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
@@ -126,6 +132,15 @@ class GetApiOptions:
 class SummaryApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
+
+    # Filters. Each tuple pair (key, predicate, value) means key predicate value.
+    # If there's more than 1 filter, it means AND.
+    # E.g., [(key, "=", val), (key2, "!=" val2)] means (key=val) AND (key2!=val2)
+    # For summary endpoints that call list under the hood, we'll pass
+    # these filters directly into the list call.
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
+        default_factory=list
+    )
 
 
 def state_column(*, filterable: bool, detail: bool = False, **kwargs):
@@ -269,6 +284,8 @@ class GetLogOptions:
     # The interval where new logs are streamed to.
     # Should be used only when media_type == stream.
     interval: Optional[float] = None
+    # The suffix of the log file if file resolution not through filename directly.
+    suffix: Optional[str] = None
 
     def __post_init__(self):
         if self.pid:
@@ -286,8 +303,8 @@ class GetLogOptions:
             raise ValueError(f"Invalid media type: {self.media_type}")
         if not (self.node_id or self.node_ip) and not (self.actor_id or self.task_id):
             raise ValueError(
-                "node_id or node_ip should be provided."
-                "Please provide at least one of them."
+                "node_id or node_ip must be provided as constructor arguments when no "
+                "actor or task_id is supplied as arguments."
             )
         if self.node_id and self.node_ip:
             raise ValueError(
@@ -299,6 +316,8 @@ class GetLogOptions:
                 "None of actor_id, task_id, pid, or filename is provided. "
                 "At least one of them is required to fetch logs."
             )
+        if self.filename and self.suffix:
+            raise ValueError("suffix should not be provided together with filename.")
 
 
 # See the ActorTableData message in gcs.proto for all potential options that
@@ -328,8 +347,15 @@ class ActorState(StateSchema):
     #:   but means the actor was dead more than once.
     #: - DEAD: The actor is permanatly dead.
     state: TypeActorStatus = state_column(filterable=True)
+    #: The job id of this actor.
+    job_id: str = state_column(filterable=True)
     #: The name of the actor given by the `name` argument.
     name: Optional[str] = state_column(filterable=True)
+    #: The node id of this actor.
+    #: If the actor is restarting, it could be the node id
+    #: of the dead actor (and it will be re-updated when
+    #: the actor is successfully restarted).
+    node_id: str = state_column(filterable=True)
     #: The pid of the actor. 0 if it is not created yet.
     pid: int = state_column(filterable=True)
     #: The namespace of the actor.
@@ -337,7 +363,7 @@ class ActorState(StateSchema):
     #: The runtime environment information of the actor.
     serialized_runtime_env: str = state_column(filterable=False, detail=True)
     #: The resource requirement of the actor.
-    resource_mapping: dict = state_column(filterable=False, detail=True)
+    required_resources: dict = state_column(filterable=False, detail=True)
     #: Actor's death information in detail. None if the actor is not dead yet.
     death_cause: Optional[dict] = state_column(filterable=False, detail=True)
     #: True if the actor is detached. False otherwise.
@@ -352,6 +378,8 @@ class PlacementGroupState(StateSchema):
     placement_group_id: str = state_column(filterable=True)
     #: The name of the placement group if it is given by the name argument.
     name: str = state_column(filterable=True)
+    #: The job id of the placement group.
+    creator_job_id: str = state_column(filterable=True)
     #: The state of the placement group.
     #:
     #: - PENDING: The placement group creation is pending scheduling.
@@ -448,6 +476,7 @@ class ClusterEventState(StateSchema):
     source_type: str = state_column(filterable=True)
     message: str = state_column(filterable=False)
     event_id: int = state_column(filterable=True)
+    custom_fields: dict = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=True)
@@ -456,6 +485,8 @@ class TaskState(StateSchema):
 
     #: The id of the task.
     task_id: str = state_column(filterable=True)
+    #: The attempt (retry) number of the task.
+    attempt_number: int = state_column(filterable=True)
     #: The name of the task if it is given by the name argument.
     name: str = state_column(filterable=True)
     #: The state of the task.
@@ -464,6 +495,15 @@ class TaskState(StateSchema):
     #: breakdowns and typical state transition flow.
     #:
     scheduling_state: TypeTaskStatus = state_column(filterable=True)
+    #: The job id of this task.
+    job_id: str = state_column(filterable=True)
+    #: Id of the node that runs the task. If the task is retried, it could
+    #: contain the node id of the previous executed task.
+    #: If empty, it means the task hasn't been scheduled yet.
+    node_id: str = state_column(filterable=True)
+    #: The actor id that's associated with this task.
+    #: It is empty if there's no relevant actors.
+    actor_id: str = state_column(filterable=True)
     #: The type of the task.
     #:
     #: - NORMAL_TASK: Tasks created by `func.remote()``
@@ -481,6 +521,8 @@ class TaskState(StateSchema):
     required_resources: dict = state_column(detail=True, filterable=False)
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
+    #: The parent task id.
+    parent_task_id: str = state_column(filterable=True)
 
 
 @dataclass(init=True)
@@ -837,8 +879,8 @@ class ObjectSummaries:
             # object_size's unit is byte by default. It is -1, if the size is
             # unknown.
             if size_bytes != -1:
-                object_summary.total_size_mb += size_bytes / 1024 ** 2
-                total_size_mb += size_bytes / 1024 ** 2
+                object_summary.total_size_mb += size_bytes / 1024**2
+                total_size_mb += size_bytes / 1024**2
 
             key_to_workers[key].add(object["pid"])
             key_to_nodes[key].add(object["ip"])

@@ -6,6 +6,7 @@ import pickle
 import socket
 import time
 from typing import Callable, List, Dict, Optional, Tuple
+from ray._private.utils import get_or_create_event_loop
 
 import uvicorn
 import starlette.responses
@@ -36,6 +37,9 @@ DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
+SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0)) or None
+)
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -51,14 +55,16 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
 
     retries = 0
     backoff_time_s = 0.05
-    loop = asyncio.get_event_loop()
+    backoff = False
+    loop = get_or_create_event_loop()
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
     while retries < MAX_REPLICA_FAILURE_RETRIES:
         assignment_task: asyncio.Task = handle.remote(request)
         done, _ = await asyncio.wait(
-            [assignment_task, client_disconnection_task], return_when=FIRST_COMPLETED
+            [assignment_task, client_disconnection_task],
+            return_when=FIRST_COMPLETED,
         )
         if client_disconnection_task in done:
             message = await client_disconnection_task
@@ -66,7 +72,6 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                 "Received additional request payload that's not disconnect. "
                 "This is an invalid HTTP state."
             )
-
             logger.warning(
                 f"Client from {scope['client']} disconnected, cancelling the "
                 "request."
@@ -75,9 +80,30 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             assignment_task.cancel()
         try:
             object_ref = await assignment_task
-            result = await object_ref
-            client_disconnection_task.cancel()
-            break
+
+            # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
+            # some replicas crash simultaneously (e.g. if the head node crashes),
+            # requests to the dead replicas hang until the gcs recovers.
+            # This asyncio.wait can kill those hanging requests and retry them
+            # at another replica. Release tests should kill the head node and
+            # check if latency drops significantly. See
+            # https://github.com/ray-project/ray/pull/29534 for more info.
+
+            _, request_timed_out = await asyncio.wait(
+                [object_ref], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
+            )
+            if request_timed_out:
+                logger.info(
+                    "Request didn't finish within "
+                    f"{SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
+                    "with another replica. You can modify this timeout by "
+                    'setting the "SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                )
+                backoff = True
+            else:
+                result = await object_ref
+                client_disconnection_task.cancel()
+                break
         except asyncio.CancelledError:
             # Here because the client disconnected, we will return a custom
             # error code for metric tracking.
@@ -92,14 +118,17 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
                 f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                 "remaining."
             )
+            backoff = True
+        if backoff:
             await asyncio.sleep(backoff_time_s)
             # Be careful about the expotential backoff scaling here.
             # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
             # initial backoff time, while 2x scaling means 512x the initial.
             backoff_time_s *= 1.5
             retries += 1
+            backoff = False
     else:
-        error_message = "Task failed with " f"{MAX_REPLICA_FAILURE_RETRIES} retries."
+        error_message = f"Task failed with {MAX_REPLICA_FAILURE_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
 
@@ -218,18 +247,25 @@ class HTTPProxy:
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
-            call_in_event_loop=asyncio.get_event_loop(),
+            call_in_event_loop=get_or_create_event_loop(),
         )
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
-            tag_keys=("route",),
+            tag_keys=(
+                "route",
+                "method",
+            ),
         )
 
         self.request_error_counter = metrics.Counter(
             "serve_num_http_error_requests",
             description="The number of non-200 HTTP responses.",
-            tag_keys=("route", "error_code"),
+            tag_keys=(
+                "route",
+                "error_code",
+                "method",
+            ),
         )
 
         self.deployment_request_error_counter = metrics.Counter(
@@ -237,7 +273,11 @@ class HTTPProxy:
             description=(
                 "The number of non-200 HTTP responses returned by each deployment."
             ),
-            tag_keys=("deployment",),
+            tag_keys=(
+                "deployment",
+                "error_code",
+                "method",
+            ),
         )
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
@@ -282,7 +322,9 @@ class HTTPProxy:
         root_path = scope["root_path"]
         route_path = scope["path"][len(root_path) :]
 
-        self.request_counter.inc(tags={"route": route_path})
+        self.request_counter.inc(
+            tags={"route": route_path, "method": scope["method"].upper()}
+        )
 
         if route_path == "/-/routes":
             return await starlette.responses.JSONResponse(self.route_info)(
@@ -297,7 +339,11 @@ class HTTPProxy:
         route_prefix, handle = self.prefix_router.match_route(route_path)
         if route_prefix is None:
             self.request_error_counter.inc(
-                tags={"route": route_path, "error_code": "404"}
+                tags={
+                    "route": route_path,
+                    "error_code": "404",
+                    "method": scope["method"].upper(),
+                }
             )
             return await self._not_found(scope, receive, send)
 
@@ -322,10 +368,18 @@ class HTTPProxy:
         )
         if status_code != "200":
             self.request_error_counter.inc(
-                tags={"route": route_path, "error_code": status_code}
+                tags={
+                    "route": route_path,
+                    "error_code": status_code,
+                    "method": scope["method"].upper(),
+                }
             )
             self.deployment_request_error_counter.inc(
-                tags={"deployment": handle.deployment_name}
+                tags={
+                    "deployment": handle.deployment_name,
+                    "error_code": status_code,
+                    "method": scope["method"].upper(),
+                }
             )
 
 
@@ -361,7 +415,7 @@ class HTTPProxyActor:
 
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
-        self.running_task = asyncio.get_event_loop().create_task(self.run())
+        self.running_task = get_or_create_event_loop().create_task(self.run())
 
     async def ready(self):
         """Returns when HTTP proxy is ready to serve traffic.

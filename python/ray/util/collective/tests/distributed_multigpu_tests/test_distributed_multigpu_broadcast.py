@@ -34,7 +34,7 @@ def test_broadcast_different_name(
             assert (results[i][j] == cp.ones([10], dtype=cp.float32) * val).all()
 
 
-@pytest.mark.parametrize("array_size", [2, 2 ** 5, 2 ** 10, 2 ** 15, 2 ** 20])
+@pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 @pytest.mark.parametrize("src_rank", [0, 1])
 @pytest.mark.parametrize("src_gpu_index", [0, 1])
 def test_broadcast_different_array_size(

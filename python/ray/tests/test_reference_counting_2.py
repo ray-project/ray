@@ -360,7 +360,12 @@ def test_object_unpin(ray_start_cluster):
     head_node = cluster.add_node(
         num_cpus=0,
         object_store_memory=100 * 1024 * 1024,
-        _system_config={"num_heartbeats_timeout": 10, "subscriber_timeout_ms": 100},
+        _system_config={
+            "subscriber_timeout_ms": 100,
+            "health_check_initial_delay_ms": 0,
+            "health_check_period_ms": 1000,
+            "health_check_failure_threshold": 5,
+        },
     )
     ray.init(address=cluster.address)
 
@@ -770,6 +775,27 @@ def test_generators(one_worker_100MiB):
 
     for r_oid in refs_oids:
         _fill_object_store_and_get(r_oid, succeed=False)
+
+
+def test_lineage_leak(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    def process(data):
+        return b"\0" * 100_000_000
+
+    data = ray.put(b"\0" * 100_000_000)
+    ref = process.remote(data)
+    ray.get(ref)
+    del data
+    del ref
+
+    def check_usage():
+        from ray._private.internal_api import memory_summary
+
+        return "Plasma memory usage 0 MiB" in memory_summary(stats_only=True)
+
+    wait_for_condition(check_usage)
 
 
 if __name__ == "__main__":

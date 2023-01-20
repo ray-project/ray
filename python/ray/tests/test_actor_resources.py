@@ -251,7 +251,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
         cluster.add_node(
             num_cpus=4 * num_gpus_per_raylet,
             num_gpus=num_gpus_per_raylet,
-            _system_config={"num_heartbeats_timeout": 100} if i == 0 else {},
+            _system_config={"health_check_failure_threshold": 100} if i == 0 else {},
         )
     ray.init(address=cluster.address)
 
@@ -320,7 +320,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     assert ready_ids == []
 
 
-def test_actors_and_tasks_with_gpus(ray_start_cluster):
+def test_actors_and_tasks_with_gpus(enable_syncer_test, ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
     num_gpus_per_raylet = 2
@@ -349,9 +349,9 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
     @ray.remote(num_gpus=1)
     def f1():
-        t1 = time.monotonic()
+        t1 = time.time()
         time.sleep(0.1)
-        t2 = time.monotonic()
+        t2 = time.time()
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
         assert gpu_ids[0] in range(num_gpus_per_raylet)
@@ -363,9 +363,9 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
     @ray.remote(num_gpus=2)
     def f2():
-        t1 = time.monotonic()
+        t1 = time.time()
         time.sleep(0.1)
-        t2 = time.monotonic()
+        t2 = time.time()
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 2
         assert gpu_ids[0] in range(num_gpus_per_raylet)

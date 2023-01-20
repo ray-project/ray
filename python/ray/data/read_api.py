@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Uni
 import numpy as np
 
 import ray
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -16,6 +17,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
+    _is_local_scheme,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
@@ -36,18 +38,20 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
+    MongoDatasource,
     ReadTask,
     TextDatasource,
     TFRecordDatasource,
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
-    _wrap_and_register_arrow_serialization_workaround,
+    _wrap_arrow_serialization_workaround,
 )
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import dask
@@ -57,6 +61,9 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     import pyspark
+    import pymongoarrow.api
+    import tensorflow as tf
+    import torch
 
 
 T = TypeVar("T")
@@ -203,7 +210,8 @@ def range_tensor(
                 [2, 2]])]
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
+    type. The dataset elements take the form
+    {"__value__": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -246,6 +254,29 @@ def read_datasource(
         Dataset holding the data read from the datasource.
     """
     ctx = DatasetContext.get_current()
+
+    if ray_remote_args is None:
+        ray_remote_args = {}
+
+    local_uri = False
+    paths = read_args.get("paths", None)
+    if paths and _is_local_scheme(paths):
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                f"The local scheme paths {paths} are not supported in Ray Client."
+            )
+        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+        local_uri = True
+
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
+    ):
+        ray_remote_args["scheduling_strategy"] = "SPREAD"
+
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
     cur_pg = ray.util.get_current_placement_group()
@@ -261,7 +292,7 @@ def read_datasource(
 
     if force_local:
         requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
-            datasource, ctx, cur_pg, parallelism, read_args
+            datasource, ctx, cur_pg, parallelism, local_uri, read_args
         )
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
@@ -276,7 +307,8 @@ def read_datasource(
                 ctx,
                 cur_pg,
                 parallelism,
-                _wrap_and_register_arrow_serialization_workaround(read_args),
+                local_uri,
+                _wrap_arrow_serialization_workaround(read_args),
             )
         )
 
@@ -302,24 +334,94 @@ def read_datasource(
             "dataset blocks."
         )
 
-    if ray_remote_args is None:
-        ray_remote_args = {}
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
-    ):
-        ray_remote_args["scheduling_strategy"] = "SPREAD"
-
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
     )
-    block_list.compute_first_block()
-    block_list.ensure_metadata_for_first_block()
 
     return Dataset(
-        ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
-        0,
-        False,
+        plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
+        epoch=0,
+        lazy=True,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_mongo(
+    uri: str,
+    database: str,
+    collection: str,
+    *,
+    pipeline: Optional[List[Dict]] = None,
+    schema: Optional["pymongoarrow.api.Schema"] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    **mongo_args,
+) -> Dataset[ArrowRow]:
+    """Create an Arrow dataset from MongoDB.
+
+    The data to read from is specified via the ``uri``, ``database`` and ``collection``
+    of the MongoDB. The dataset is created from the results of executing ``pipeline``
+    against the ``collection``. If ``pipeline`` is None, the entire ``collection`` will
+    be read.
+
+    You can check out more details here about these MongoDB concepts:
+    - URI: https://www.mongodb.com/docs/manual/reference/connection-string/
+    - Database and Collection: https://www.mongodb.com/docs/manual/core/databases-and-collections/
+    - Pipeline: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
+
+    To read the MongoDB in parallel, the execution of the pipeline is run on partitions
+    of the collection, with a Ray read task to handle a partition. Partitions are
+    created in an attempt to evenly distribute the documents into the specified number
+    of partitions. The number of partitions is determined by ``parallelism`` which can
+    be requested from this interface or automatically chosen if unspecified (see the
+    ``parallelism`` arg below).
+
+    Examples:
+        >>> import ray
+        >>> from pymongoarrow.api import Schema # doctest: +SKIP
+        >>> ds = ray.data.read_mongo( # doctest: +SKIP
+        ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
+        ...     database="my_db",
+        ...     collection="my_collection",
+        ...     pipeline=[{"$match": {"col2": {"$gte": 0, "$lt": 100}}}, {"$sort": "sort_field"}], # noqa: E501
+        ...     schema=Schema({"col1": pa.string(), "col2": pa.int64()}),
+        ...     parallelism=10,
+        ... )
+
+    Args:
+        uri: The URI of the source MongoDB where the dataset will be
+            read from. For the URI format, see details in
+            https://www.mongodb.com/docs/manual/reference/connection-string/.
+        database: The name of the database hosted in the MongoDB. This database
+            must exist otherwise ValueError will be raised.
+        collection: The name of the collection in the database. This collection
+            must exist otherwise ValueError will be raised.
+        pipeline: A MongoDB pipeline, which will be executed on the given collection
+            with results used to create Dataset. If None, the entire collection will
+            be read.
+        schema: The schema used to read the collection. If None, it'll be inferred from
+            the results of pipeline.
+        parallelism: The requested parallelism of the read. If -1, it will be
+            automatically chosen based on the available cluster resources and estimated
+            in-memory data size.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        mong_args: kwargs passed to aggregate_arrow_all() in pymongoarrow in producing
+            Arrow-formatted results.
+
+    Returns:
+        Dataset holding Arrow records from the results of executing the pipeline on the
+        specified MongoDB collection.
+    """
+    return read_datasource(
+        MongoDatasource(),
+        parallelism=parallelism,
+        uri=uri,
+        database=database,
+        collection=collection,
+        pipeline=pipeline,
+        schema=schema,
+        ray_remote_args=ray_remote_args,
+        **mongo_args,
     )
 
 
@@ -357,7 +459,7 @@ def read_parquet(
         Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, ...})
 
         For further arguments you can pass to pyarrow as a keyword argument, see
-        https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
+        https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
 
     Args:
         paths: A single file path or directory, or a list of file paths. Multiple
@@ -377,7 +479,7 @@ def read_parquet(
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         arrow_parquet_args: Other parquet read options to pass to pyarrow, see
-            https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
+            https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -398,7 +500,7 @@ def read_parquet(
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def read_images(
     paths: Union[str, List[str]],
     *,
@@ -410,6 +512,7 @@ def read_images(
     partitioning: Partitioning = None,
     size: Optional[Tuple[int, int]] = None,
     mode: Optional[str] = None,
+    include_paths: bool = False,
 ):
     """Read images from the specified paths.
 
@@ -418,7 +521,15 @@ def read_images(
         >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={__value__: ArrowTensorType(shape=(386, 256, 3), dtype=uint8)})
+        Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
+
+        If you need image file paths, set ``include_paths=True``.
+
+        >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
+        Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string})
+        >>> ds.take(1)[0]["path"]  # doctest: +SKIP
+        'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
 
         If your images are arranged like:
 
@@ -461,6 +572,8 @@ def read_images(
             describing the desired type and depth of pixels. If unspecified, image
             modes are inferred by
             `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
+        include_paths: If ``True``, include the path to each image. File paths are
+            stored in the ``'path'`` column.
 
     Returns:
         A :class:`~ray.data.Dataset` containing tensors that represent the images at
@@ -480,6 +593,7 @@ def read_images(
         partitioning=partitioning,
         size=size,
         mode=mode,
+        include_paths=include_paths,
     )
 
 
@@ -499,7 +613,8 @@ def read_parquet_bulk(
     ),
     **arrow_parquet_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from a large number (e.g. >1K) of parquet files quickly.
+    """Create an Arrow dataset from a large number (such as >1K) of parquet files
+    quickly.
 
     By default, ONLY file paths should be provided as input (i.e. no directory paths),
     and an OSError will be raised if one or more paths point to directories. If your
@@ -1326,6 +1441,95 @@ def from_huggingface(
         )
 
 
+@PublicAPI
+def from_tf(
+    dataset: "tf.data.Dataset",
+) -> Dataset:
+    """Create a dataset from a TensorFlow dataset.
+
+    This function is inefficient. Use it to read small datasets or prototype.
+
+    .. warning::
+        If your dataset is large, this function may execute slowly or raise an
+        out-of-memory error. To avoid issues, read the underyling data with a function
+        like :meth:`~ray.data.read_images`.
+
+    .. note::
+        This function isn't paralellized. It loads the entire dataset into the head
+        node's memory before moving the data to the distributed object store.
+
+    Examples:
+        >>> import ray
+        >>> import tensorflow_datasets as tfds
+        >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
+        >>> dataset = ray.data.from_tf(dataset)  # doctest: +SKIP
+        >>> dataset  # doctest: +SKIP
+        Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
+        >>> dataset.take(1)  # doctest: +SKIP
+        [{'id': b'train_16399', 'image': array([[[143,  96,  70],
+        [141,  96,  72],
+        [135,  93,  72],
+        ...,
+        [ 96,  37,  19],
+        [105,  42,  18],
+        [104,  38,  20]],
+
+       ...,
+
+       [[195, 161, 126],
+        [187, 153, 123],
+        [186, 151, 128],
+        ...,
+        [212, 177, 147],
+        [219, 185, 155],
+        [221, 187, 157]]], dtype=uint8), 'label': 7}]
+
+    Args:
+        dataset: A TensorFlow dataset.
+
+    Returns:
+        A :class:`Dataset` that contains the samples stored in the TensorFlow dataset.
+    """  # noqa: E501
+    # FIXME: `as_numpy_iterator` errors if `dataset` contains ragged tensors.
+    return from_items(list(dataset.as_numpy_iterator()))
+
+
+@PublicAPI
+def from_torch(
+    dataset: "torch.utils.data.Dataset",
+) -> Dataset:
+    """Create a dataset from a Torch dataset.
+
+    This function is inefficient. Use it to read small datasets or prototype.
+
+    .. warning::
+        If your dataset is large, this function may execute slowly or raise an
+        out-of-memory error. To avoid issues, read the underyling data with a function
+        like :meth:`~ray.data.read_images`.
+
+    .. note::
+        This function isn't paralellized. It loads the entire dataset into the head
+        node's memory before moving the data to the distributed object store.
+
+    Examples:
+        >>> import ray
+        >>> from torchvision import datasets
+        >>> dataset = datasets.MNIST("data", download=True)  # doctest: +SKIP
+        >>> dataset = ray.data.from_torch(dataset)  # doctest: +SKIP
+        >>> dataset  # doctest: +SKIP
+        Dataset(num_blocks=200, num_rows=60000, schema=<class 'tuple'>)
+        >>> dataset.take(1)  # doctest: +SKIP
+        [(<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)]
+
+    Args:
+        dataset: A Torch dataset.
+
+    Returns:
+        A :class:`Dataset` that contains the samples stored in the Torch dataset.
+    """
+    return from_items(list(dataset))
+
+
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
     stats = BlockExecStats.builder()
     import pyarrow as pa
@@ -1360,6 +1564,7 @@ def _get_read_tasks(
     ctx: DatasetContext,
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
+    local_uri: bool,
     kwargs: dict,
 ) -> Tuple[int, int, List[ReadTask]]:
     """Generates read tasks.
@@ -1376,6 +1581,8 @@ def _get_read_tasks(
         OOM, and the list of read tasks generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
+    if local_uri:
+        kwargs["local_uri"] = local_uri
     DatasetContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
     requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
@@ -1402,7 +1609,7 @@ def _resolve_parquet_args(
                 # NOTE(Clark): We use NumPy to consolidate these potentially
                 # non-contiguous buffers, and to do buffer bookkeeping in
                 # general.
-                np_col = np.array(
+                np_col = _create_possibly_ragged_ndarray(
                     [
                         np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
                         for buf in block.column(tensor_col_name)

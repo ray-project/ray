@@ -1,7 +1,7 @@
 # Code in this file is copied and adapted from
 # https://github.com/openai/evolution-strategies-starter.
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -11,6 +11,7 @@ from ray.rllib.algorithms.es.es_tf_policy import make_session
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
@@ -29,9 +30,10 @@ class ARSTFPolicy(Policy):
             self.config["observation_filter"], self.preprocessor.shape
         )
 
-        self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
-            self.sess = make_session(single_threaded=self.single_threaded)
+            self.sess = make_session(
+                single_threaded=self.config.get("tf_single_threaded", True)
+            )
 
             # Set graph-level seed.
             if config.get("seed") is not None:
@@ -46,12 +48,13 @@ class ARSTFPolicy(Policy):
                 tf1.enable_eager_execution()
             self.sess = self.inputs = None
             if config.get("seed") is not None:
-                # Tf2.x.
+                # Non-static-graph TF.
                 if config.get("framework") == "tf2":
-                    tf.random.set_seed(config["seed"])
-                # Tf-eager.
-                elif tf1 and config.get("framework") == "tfe":
-                    tf1.set_random_seed(config["seed"])
+                    # Tf1.x.
+                    if tf1:
+                        tf1.set_random_seed(config["seed"])
+                    else:
+                        tf.random.set_seed(config["seed"])
 
         # Policy network.
         self.dist_class, dist_dim = ModelCatalog.get_action_dist(
@@ -84,10 +87,23 @@ class ARSTFPolicy(Policy):
             for _, variable in self.variables.variables.items()
         )
 
-    def compute_actions(self, observation, add_noise=False, update=True, **kwargs):
+    def compute_actions(self, obs_batch=None, add_noise=False, update=True, **kwargs):
+        if "observation" in kwargs:
+            assert obs_batch is None, (
+                "You can not use both arguments, "
+                "`observation` and `obs_batch`. `observation` "
+                "is deprecated."
+            )
+            deprecation_warning(
+                old="ARSTFPolicy.compute_actions(observation=...)`",
+                new="ARSTFPolicy.compute_actions(obs_batch=...)",
+            )
+            obs_batch = kwargs["observation"]
+        else:
+            assert obs_batch is not None
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
-        observation = observation[0]
+        observation = obs_batch[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
 

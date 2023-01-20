@@ -273,8 +273,9 @@ def test_named_actor_max_task_retries(ray_init_with_task_retry_delay):
 
 def test_actor_restart_on_node_failure(ray_start_cluster):
     config = {
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
         "object_timeout_milliseconds": 1000,
         "task_retry_delay_ms": 100,
     }
@@ -405,7 +406,10 @@ def test_caller_task_reconstruction(ray_start_regular):
     "ray_start_cluster_head",
     [
         generate_system_config_map(
-            object_timeout_milliseconds=1000, num_heartbeats_timeout=10
+            object_timeout_milliseconds=1000,
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=10,
         )
     ],
     indirect=True,
@@ -450,7 +454,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
         for j in range(len(actors)):
             actor = actors[j]
             for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j ** 2 * 0.000001))
+                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
         # Kill a node.
         cluster.remove_node(node)
 
@@ -458,7 +462,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
         for j in range(len(actors)):
             actor = actors[j]
             for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j ** 2 * 0.000001))
+                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
 
     # Get the results and check that they have the correct values.
     for _, result_id_list in result_ids.items():

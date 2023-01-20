@@ -115,6 +115,23 @@ There is also a convenient button to open the grafana UI from the dashboard. The
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/metrics.png
     :align: center
 
+Event View
+~~~~~~~~~~
+
+.. note:: 
+
+  The event view feature is experimental.
+
+The event view lets you see a list of events associated with a specific type (e.g., autoscaler or job) in a chronological order. The equivalent information is also accessible via CLI commands ``ray list cluster-events`` :ref:`(Ray state APIs)<state-api-overview-ref>`.
+
+There are 2 types of events that are available.
+
+- **Job**: Events related to :ref:`Ray job submission APIs <jobs-quickstart>`.
+- **Autoscaler**: Events related to :ref:`Ray autoscaler <cluster-autoscaler>`
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/event.png
+    :align: center
+
 Advanced Usage
 --------------
 
@@ -123,15 +140,15 @@ Viewing built-in dashboard API metrics
 The dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints.
 There are basic prometheus metrics that are emitted for each of these API endpoints:
 
-`dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
+`ray_dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
 
-`dashboard_api_requests_duration_seconds_bucket`: Collects the duration of requests. This is tagged by endpoint and method.
+`ray_dashboard_api_requests_duration_seconds_bucket`: Collects the duration of requests. This is tagged by endpoint and method.
 
 For example, you can view the p95 duration of all requests with this query:
 
 .. code-block:: text
 
-  histogram_quantile(0.95, sum(rate(dashboard_api_requests_duration_seconds_bucket[5m])) by (le))
+  histogram_quantile(0.95, sum(rate(ray_dashboard_api_requests_duration_seconds_bucket[5m])) by (le))
 
 These metrics can be queried via prometheus or grafana UI. Instructions on how to set these tools up can be found :ref:`here <ray-metrics>`.
 
@@ -235,6 +252,10 @@ You can also click the node id to go into a node detail page where you can see m
     - Network bytes received for each node and worker.
   * - **Log**
     - Logs messages at each node and worker. You can see log files relevant to a node or worker by clicking this link.
+  * - **Stack Trace**
+    - Get the Python stack trace for the specified worker. Refer to :ref:`dashboard-profiling` for more information.
+  * - **CPU Flame Graph**
+    - Get a CPU flame graph for the specified worker. Refer to :ref:`dashboard-profiling` for more information.
 
 
 Jobs View
@@ -298,6 +319,10 @@ Actors
     - Either one of "ALIVE" or "DEAD".
   * - **Log**
     - A link to the logs that are relevant to this actor.
+  * - **Stack Trace**
+    - Get the Python stack trace for the specified actor. Refer to :ref:`dashboard-profiling` for more information.
+  * - **CPU Flame Graph**
+    - Get a CPU flame graph for the specified actor. Refer to :ref:`dashboard-profiling` for more information.
 
 Logs
 ~~~~

@@ -1,5 +1,5 @@
-Syncing
-=======
+Syncing in Tune (tune.SyncConfig, tune.Syncer)
+==============================================
 
 .. _tune-syncconfig:
 

@@ -1,5 +1,6 @@
 import logging
 import os
+from packaging import version
 from copy import deepcopy
 from typing import TYPE_CHECKING, Dict, Optional
 
@@ -40,7 +41,7 @@ class _MLflowLoggerUtil:
         registry_uri: Optional[str] = None,
         experiment_id: Optional[str] = None,
         experiment_name: Optional[str] = None,
-        tracking_token=None,
+        tracking_token: Optional[str] = None,
         create_experiment_if_not_exists: bool = True,
     ):
         """
@@ -61,13 +62,13 @@ class _MLflowLoggerUtil:
                 ``experiment_name`` will be used instead. This argument takes
                 precedence over ``experiment_name`` if both are passed in.
             experiment_name: The experiment name to use for logging.
-                If None is passed in here, the
-                the MLFLOW_EXPERIMENT_NAME environment variables is used to
-                determine the experiment name.
+                If None is passed in here, the MLFLOW_EXPERIMENT_NAME environment
+                variable is used to determine the experiment name.
                 If the experiment with the name already exists with MLflow,
                 it will be reused. If not, a new experiment will be created
                 with the provided name if
                 ``create_experiment_if_not_exists`` is set to True.
+            tracking_token: Tracking token used to authenticate with MLflow.
             create_experiment_if_not_exists: Whether to create an
                 experiment with the provided name if it does not already
                 exist. Defaults to True.
@@ -181,23 +182,32 @@ class _MLflowLoggerUtil:
         """Starts a new run and possibly sets it as the active run.
 
         Args:
-            tags (Optional[Dict]): Tags to set for the new run.
+            tags: Tags to set for the new run.
             set_active: Whether to set the new run as the active run.
                 If an active run already exists, then that run is returned.
 
         Returns:
             The newly created MLflow run.
         """
+        import mlflow
+        from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
+
+        if tags is None:
+            tags = {}
 
         if set_active:
             return self._start_active_run(run_name=run_name, tags=tags)
 
-        from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
-
         client = self._get_client()
-        tags = tags or {}
-        tags[MLFLOW_RUN_NAME] = run_name
-        run = client.create_run(experiment_id=self.experiment_id, tags=tags)
+        # If `mlflow==1.30.0` and we don't use `run_name`, then MLflow might error. For
+        # more information, see #29749.
+        if version.parse(mlflow.__version__) >= version.parse("1.30.0"):
+            run = client.create_run(
+                run_name=run_name, experiment_id=self.experiment_id, tags=tags
+            )
+        else:
+            tags[MLFLOW_RUN_NAME] = run_name
+            run = client.create_run(experiment_id=self.experiment_id, tags=tags)
 
         return run
 

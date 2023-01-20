@@ -3,6 +3,7 @@ from datetime import datetime
 import fnmatch
 import functools
 import io
+import json
 import logging
 import math
 import os
@@ -16,8 +17,10 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import uuid
+
+import requests
 from ray._raylet import Config
 
 import grpc
@@ -39,10 +42,15 @@ from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
-from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
+from ray.core.generated import (
+    gcs_pb2,
+    node_manager_pb2,
+    node_manager_pb2_grpc,
+    gcs_service_pb2,
+    gcs_service_pb2_grpc,
+)
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
-from ray.experimental.state.state_manager import StateDataSourceClient
 
 
 logger = logging.getLogger(__name__)
@@ -82,6 +90,12 @@ def enable_external_redis():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
+def redis_replicas():
+    import os
+
+    return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
+
+
 def start_redis_instance(
     session_dir_path: str,
     port: int,
@@ -95,6 +109,9 @@ def start_redis_instance(
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
     enable_tls: bool = False,
+    replica_of=None,
+    leader_id=None,
+    db_dir=None,
 ):
     """Start a single Redis server.
 
@@ -144,7 +161,8 @@ def start_redis_instance(
         if " " in password:
             raise ValueError("Spaces not permitted in redis password.")
         command += ["--requirepass", password]
-
+    if redis_replicas() > 1:
+        command += ["--cluster-enabled", "yes", "--cluster-config-file", f"node-{port}"]
     if enable_tls:
         import socket
 
@@ -176,6 +194,8 @@ def start_redis_instance(
         command += ["--tls-replication", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
+    if db_dir is not None:
+        command += ["--dir", str(db_dir)]
     process_info = ray._private.services.start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -183,8 +203,32 @@ def start_redis_instance(
         stderr_file=stderr_file,
         fate_share=fate_share,
     )
-    port = ray._private.services.new_port(denylist=port_denylist)
-    return port, process_info
+    node_id = None
+    if redis_replicas() > 1:
+        # Setup redis cluster
+        import redis
+
+        while True:
+            try:
+                redis_cli = redis.Redis("localhost", str(port))
+                if replica_of is None:
+                    slots = [str(i) for i in range(16384)]
+                    redis_cli.cluster("addslots", *slots)
+                else:
+                    redis_cli.cluster("meet", "127.0.0.1", str(replica_of))
+                    redis_cli.cluster("replicate", leader_id)
+                node_id = redis_cli.cluster("myid")
+                break
+            except (
+                redis.exceptions.ConnectionError,
+                redis.exceptions.ResponseError,
+            ) as e:
+                from time import sleep
+
+                print(f"Waiting for redis to be up {e}")
+                sleep(0.1)
+
+    return node_id, process_info
 
 
 def _pid_alive(pid):
@@ -198,7 +242,9 @@ def _pid_alive(pid):
     """
     alive = True
     try:
-        psutil.Process(pid)
+        proc = psutil.Process(pid)
+        if proc.status() == psutil.STATUS_ZOMBIE:
+            alive = False
     except psutil.NoSuchProcess:
         alive = False
     return alive
@@ -542,10 +588,59 @@ async def async_wait_for_condition_async_predicate(
     raise RuntimeError(message)
 
 
+def get_metric_check_condition(
+    metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
+) -> Callable[[], bool]:
+    """A condition to check if a prometheus metrics reach a certain value.
+    This is a blocking check that can be passed into a `wait_for_condition`
+    style function.
+
+    Args:
+      metrics_to_check: A map of metric lable to values to check, to ensure
+        that certain conditions have been reached. If a value is None, just check
+        that the metric was emitted with any value.
+
+    Returns:
+      A function that returns True if all the metrics are emitted.
+    """
+    node_info = ray.nodes()[0]
+    metrics_export_port = node_info["MetricsExportPort"]
+    addr = node_info["NodeManagerAddress"]
+    prom_addr = export_addr or f"{addr}:{metrics_export_port}"
+
+    def f():
+        for metric_name, metric_value in metrics_to_check.items():
+            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            found_metric = False
+            if metric_name in metric_names:
+                for sample in metric_samples:
+                    if sample.name != metric_name:
+                        continue
+
+                    if metric_value is None:
+                        found_metric = True
+                    elif metric_value == sample.value:
+                        found_metric = True
+            if not found_metric:
+                print(
+                    "Didn't find metric, all metric names: ",
+                    metric_names,
+                    "all values",
+                    metric_samples,
+                )
+                return False
+        return True
+
+    return f
+
+
 def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
     """Returns a decorator which waits until the stdout emitted
     by a function contains the provided list of strings.
     Raises an exception if the stdout doesn't have the expected output in time.
+
+    Note: The decorated function should not block!
+    (It should return soon after being called.)
 
     Args:
         strings_to_match: Wait until stdout contains all of these string.
@@ -560,7 +655,7 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # Redirect stdout to an in-memory stream.
                 out_stream = io.StringIO()
                 sys.stdout = out_stream
-                # Execute the func.
+                # Execute the func. (Make sure the function doesn't block!)
                 out = func(*args, **kwargs)
                 # Check out_stream once a second until the timeout.
                 # Raise a RuntimeError if we timeout.
@@ -575,6 +670,7 @@ def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
                 # out_stream has the expected strings
                 success = True
                 return out
+            # Exception raised on failure.
             finally:
                 sys.stdout = sys.__stdout__
                 if success:
@@ -1259,7 +1355,7 @@ def get_and_run_node_killer(
             self.is_running = False
             self.head_node_id = head_node_id
             self.killed_nodes = set()
-            self.done = asyncio.get_event_loop().create_future()
+            self.done = ray._private.utils.get_or_create_event_loop().create_future()
             self.max_nodes_to_kill = max_nodes_to_kill
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
@@ -1558,6 +1654,34 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
     return reply
 
 
+# Gets resource usage assuming gcs is local.
+def get_resource_usage(gcs_address, timeout=10):
+    if not gcs_address:
+        gcs_address = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
+    )
+
+    gcs_node_resources_stub = gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(
+        gcs_channel
+    )
+
+    request = gcs_service_pb2.GetAllResourceUsageRequest()
+    response = gcs_node_resources_stub.GetAllResourceUsage(request, timeout=timeout)
+    resources_batch_data = response.resource_usage_data
+
+    return resources_batch_data
+
+
+# Gets the load metrics report assuming gcs is local.
+def get_load_metrics_report(webui_url):
+    webui_url = format_web_url(webui_url)
+    response = requests.get(f"{webui_url}/api/cluster_status")
+    response.raise_for_status()
+    return response.json()["data"]["clusterStatus"]["loadMetricsReport"]
+
+
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
@@ -1567,26 +1691,6 @@ def kill_raylet(raylet, graceful=False):
         stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
     except _InactiveRpcError:
         assert not graceful
-
-
-# Creates a state api client assuming the head node (gcs) is local.
-def get_local_state_client():
-    hostname = ray.worker._global_node.gcs_address
-
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
-    )
-
-    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
-        client.register_agent_client(node_id, ip, port)
-
-    return client
 
 
 # Global counter to test different return values
@@ -1687,3 +1791,30 @@ def get_gcs_memory_used():
     }
     assert "gcs_server" in m
     return sum(m.values())
+
+
+def wandb_populate_run_location_hook():
+    """
+    Example external hook to populate W&B project and group env vars in
+    WandbIntegrationTest.testWandbLoggerConfig
+    """
+    from ray.air.integrations.wandb import WANDB_GROUP_ENV_VAR, WANDB_PROJECT_ENV_VAR
+
+    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
+    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
+
+
+def safe_write_to_results_json(
+    result: str,
+    default_file_name: str = "/tmp/release_test_output.json",
+    env_var: Optional[str] = "TEST_OUTPUT_JSON",
+):
+    """
+    Safe (atomic) write to file to guard against malforming the json
+    if the job gets interrupted in the middle of writing.
+    """
+    test_output_json = os.environ.get(env_var, default_file_name)
+    test_output_json_tmp = test_output_json + ".tmp"
+    with open(test_output_json_tmp, "wt") as f:
+        json.dump(result, f)
+    os.replace(test_output_json_tmp, test_output_json)

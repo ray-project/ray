@@ -1,8 +1,9 @@
 
 .. _tune-env-vars:
 
-Environment variables
----------------------
+Environment variables used by Ray Tune
+--------------------------------------
+
 Some of Ray Tune's behavior can be configured using environment variables.
 These are the environment variables Ray Tune currently considers:
 
@@ -48,11 +49,6 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
   to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1``
   for any other search algorithms.
-* **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
-  with the ``_tune__`` prefix in their name before starting a run. This is used to make sure
-  that scheduled placement groups are removed when multiple calls to ``Tuner.fit()`` are
-  done in the same script. You might want to disable this if you run multiple Tune runs in
-  parallel from different scripts. Set to 1 to disable.
 * **TUNE_PLACEMENT_GROUP_PREFIX**: Prefix for placement groups created by Ray Tune. This prefix is used
   e.g. to identify placement groups that should be cleaned up on start/stop of the tuning run. This is
   initialized to a unique name at the start of the first run.
@@ -79,17 +75,22 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
   for this amount of seconds. If the Ray Tune job is stuck in this state (most likely due to insufficient resources),
   the warning message is printed repeatedly every this amount of seconds. Defaults to 60 (seconds).
-* **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning, when the autoscaler is enabled,
+* **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning when the autoscaler is enabled and
   if no active trials are in ``RUNNING`` state for this amount of seconds.
   If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
+* **TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S**: Threshold for throwing a warning if the experiment state is synced
+  multiple times in that many seconds. Defaults to 30 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 * **TUNE_SYNC_DISABLE_BOOTSTRAP**: Disable bootstrapping the autoscaler config for Docker syncing.
 * **TUNE_RESTORE_RETRY_NUM**: The number of retries that are done before a particular trial's restore is determined
   unsuccessful. After that, the trial is not restored to its previous checkpoint but rather from scratch.
   Default is ``0``. While this retry counter is taking effect, per trial failure number will not be incremented, which
   is compared against ``max_failures``.
-
+* **TUNE_CHECKPOINT_CLOUD_RETRY_NUM**: The number of retries that are done if a cloud checkpoint operation (uploading, downloading, removing)
+  fails. Default is ``3``.
+* **TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S**: The amount of time in seconds spent on waiting between cloud checkpoint operation retries. Default is
+  ``1``.
 
 There are some environment variables that are mostly relevant for integrated libraries:
 

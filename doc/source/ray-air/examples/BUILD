@@ -30,6 +30,8 @@ py_test_run_all_notebooks(
     size = "large",
     include = ["*.ipynb"],
     exclude = [
+        "automl_with_ray_air.ipynb",  # Requires timeseries_libs
+        "batch_forecasting.ipynb",  # Requires timeseries_libs
         "huggingface_text_classification.ipynb",
         "feast_example.ipynb",  # REGRESSION
         "upload_to_comet_ml.ipynb",  # Needs credentials
@@ -47,6 +49,16 @@ py_test_run_all_notebooks(
     tags = ["exclusive", "team:ml", "ray_air", "needs_credentials"],
 )
 
+py_test_run_all_notebooks(
+    size = "medium",
+    include = [
+        "automl_with_ray_air.ipynb",
+        "batch_forecasting.ipynb",
+    ],
+    exclude = [],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml", "ray_air", "timeseries_libs"],
+)
 
 # GPU Tests
 

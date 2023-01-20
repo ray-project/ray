@@ -1,4 +1,5 @@
 import abc
+from copy import deepcopy
 from typing import Any, Optional, Dict, List, Tuple, Union, Type
 
 from ray.rllib.utils.annotations import DeveloperAPI, override
@@ -9,11 +10,11 @@ _INVALID_INPUT_UNKNOWN_DIM = "Unknown dimension name {} in shape ({})"
 _INVALID_INPUT_POSITIVE = "Dimension {} in ({}) must be positive, got {}"
 _INVALID_INPUT_INT_DIM = "Dimension {} in ({}) must be integer, got {}"
 _INVALID_SHAPE = "Expected shape {} but found {}"
-_INVALID_TYPE = "Expected tensor type {} but found {}"
+_INVALID_TYPE = "Expected data type {} but found {}"
 
 
 @DeveloperAPI
-class SpecsAbstract(abc.ABC):
+class Spec(abc.ABC):
     @DeveloperAPI
     @abc.abstractstaticmethod
     def validate(self, data: Any) -> None:
@@ -28,7 +29,37 @@ class SpecsAbstract(abc.ABC):
 
 
 @DeveloperAPI
-class TensorSpecs(SpecsAbstract):
+class TypeSpec(Spec):
+    """A base class that checks the type of the input data.
+
+    Args:
+        dtype: The type of the object.
+
+    Examples:
+        >>> spec = TypeSpec(tf.Tensor)
+        >>> spec.validate(tf.ones((2, 3))) # passes
+        >>> spec.validate(torch.ones((2, 3))) # ValueError
+    """
+
+    def __init__(self, dtype: Type) -> None:
+        self.dtype = dtype
+
+    @override(Spec)
+    def validate(self, data: Any) -> None:
+        if not isinstance(data, self.dtype):
+            raise ValueError(_INVALID_TYPE.format(self.dtype, type(data)))
+
+    def __eq__(self, other: "TypeSpec") -> bool:
+        if not isinstance(other, TypeSpec):
+            return False
+        return self.dtype == other.dtype
+
+    def __ne__(self, other: "TypeSpec") -> bool:
+        return not self == other
+
+
+@DeveloperAPI
+class TensorSpec(Spec):
     """A base class that specifies the shape and dtype of a tensor.
 
     Args:
@@ -82,12 +113,49 @@ class TensorSpecs(SpecsAbstract):
         """Returns a `tuple` specifying the concrete tensor shape (only ints)."""
         return self._full_shape
 
+    def rdrop(self, n: int) -> "TensorSpec":
+        """Drops the last n dimensions.
+
+        Returns of copy of TensorSpec with the rightmost
+        n dimensions removed.
+
+        Args:
+            n: A positive number of dimensions to remove from the right
+
+        Returns:
+            A copy of the tensor spec with the last n dims removed
+
+        Raises:
+            IndexError: If n is greater than the number of indices in self
+            AssertionError: If n is negative or not an int
+        """
+        assert isinstance(n, int) and n >= 0, "n must be a positive integer or zero"
+        self = deepcopy(self)
+        self._expected_shape = self.shape[:-n]
+        self._full_shape = self._get_full_shape()
+        return self
+
+    def append(self, spec: "TensorSpec") -> "TensorSpec":
+        """Appends the given TensorSpec to the self TensorSpec.
+
+        Args:
+            spec: The TensorSpec to append to the current TensorSpec
+
+        Returns:
+            A new tensor spec resulting from the concatenation of self and spec
+
+        """
+        self = deepcopy(self)
+        self._expected_shape = (*self.shape, *spec.shape)
+        self._full_shape = self._get_full_shape()
+        return self
+
     @property
     def dtype(self) -> Any:
         """Returns a dtype specifying the tensor dtype."""
         return self._dtype
 
-    @override(SpecsAbstract)
+    @override(Spec)
     def validate(self, tensor: TensorType) -> None:
         """Checks if the shape and dtype of the tensor matches the specification.
 
@@ -230,11 +298,11 @@ class TensorSpecs(SpecsAbstract):
     def __repr__(self) -> str:
         return f"TensorSpec(shape={tuple(self.shape)}, dtype={self.dtype})"
 
-    def __eq__(self, other: "TensorSpecs") -> bool:
+    def __eq__(self, other: "TensorSpec") -> bool:
         """Checks if the shape and dtype of two specs are equal."""
-        if not isinstance(other, TensorSpecs):
+        if not isinstance(other, TensorSpec):
             return False
         return self.shape == other.shape and self.dtype == other.dtype
 
-    def __ne__(self, other: "TensorSpecs") -> bool:
+    def __ne__(self, other: "TensorSpec") -> bool:
         return not self == other

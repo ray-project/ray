@@ -18,6 +18,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/util/process.h"
 
 namespace ray {
 
@@ -28,6 +29,9 @@ struct MemorySnapshot {
 
   /// The total memory that can be used. >= used_bytes;
   int64_t total_bytes;
+
+  /// The per-process memory used;
+  absl::flat_hash_map<pid_t, int64_t> process_used_bytes;
 
   friend std::ostream &operator<<(std::ostream &os,
                                   const MemorySnapshot &memory_snapshot);
@@ -64,9 +68,22 @@ class MemoryMonitor {
                 MemoryUsageRefreshCallback monitor_callback);
 
  public:
-  /// \param process_id the process id
-  /// \return the used memory in bytes for the process
-  int64_t GetProcessMemoryBytes(int64_t process_id) const;
+  /// \param top_n the number of top memory-using processes
+  /// \param system_memory the snapshot of memory usage
+  /// \param proc_dir the directory to scan for the processes
+  ///
+  /// \return the debug string that contains up to the top N memory-using processes,
+  /// empty if process directory is invalid
+  static const std::string TopNMemoryDebugString(
+      uint32_t top_n,
+      const MemorySnapshot system_memory,
+      const std::string proc_dir = kProcDirectory);
+
+  /// \param proc_dir the directory to scan for the processes
+  ///
+  /// \return the pid to memory usage map for all the processes
+  static const absl::flat_hash_map<pid_t, int64_t> GetProcessMemoryUsage(
+      const std::string proc_dir = kProcDirectory);
 
  private:
   static constexpr char kCgroupsV1MemoryMaxPath[] =
@@ -76,6 +93,10 @@ class MemoryMonitor {
   static constexpr char kCgroupsV1MemoryStatPath[] = "/sys/fs/cgroup/memory/memory.stat";
   static constexpr char kCgroupsV2MemoryMaxPath[] = "/sys/fs/cgroup/memory.max";
   static constexpr char kCgroupsV2MemoryUsagePath[] = "/sys/fs/cgroup/memory.current";
+  static constexpr char kCgroupsV2MemoryStatPath[] = "/sys/fs/cgroup/memory.stat";
+  static constexpr char kCgroupsV2MemoryStatInactiveKey[] = "inactive_file";
+  static constexpr char kProcDirectory[] = "/proc";
+  static constexpr char kCommandlinePath[] = "cmdline";
   /// The logging frequency. Decoupled from how often the monitor runs.
   static constexpr uint32_t kLogIntervalMs = 5000;
   static constexpr int64_t kNull = -1;
@@ -97,6 +118,13 @@ class MemoryMonitor {
   /// \return the used memory for cgroup v1.
   static int64_t GetCGroupV1MemoryUsedBytes(const char *path);
 
+  /// \param stat_path file path to the memory.stat file.
+  /// \param usage_path file path to the memory.current file
+  /// \return the used memory for cgroup v2. May return negative value, which should be
+  /// discarded.
+  static int64_t GetCGroupV2MemoryUsedBytes(const char *stat_path,
+                                            const char *usage_path);
+
   /// \return the used and total memory in bytes for linux OS.
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
 
@@ -105,6 +133,29 @@ class MemoryMonitor {
   /// \return the used memory in bytes from the given smap file or kNull if the file does
   /// not exist or if it fails to read a valid value.
   static int64_t GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path);
+
+  /// \param proc_dir directory to scan for the process ids
+  ///
+  /// \return list of process ids found in the directory,
+  /// or empty list if the directory doesn't exist
+  static const std::vector<pid_t> GetPidsFromDir(
+      const std::string proc_dir = kProcDirectory);
+
+  /// \param pid the process id
+  /// \param proc_dir directory to scan for the process ids
+  ///
+  /// \return the command line for the executing process,
+  /// or empty string if the processs doesn't exist
+  static const std::string GetCommandLineForPid(
+      pid_t pid, const std::string proc_dir = kProcDirectory);
+
+  /// Truncates string if it is too long and append '...'
+  ///
+  /// \param value the string to truncate
+  /// \param max_length the max length of the string value to preserve
+  ///
+  /// \return the debug string that contains the top N memory using process
+  static const std::string TruncateString(const std::string value, uint32_t max_length);
 
   /// \return the smaller of the two integers, kNull if both are kNull,
   /// or one of the values if the other is kNull.
@@ -124,6 +175,21 @@ class MemoryMonitor {
                                     float usage_threshold,
                                     int64_t min_memory_free_bytes);
 
+  /// \param pid the process id
+  /// \param proc_dir the process directory
+  ///
+  /// \return the used memory in bytes for the process,
+  /// kNull if the file doesn't exist or it fails to find the fields
+  static int64_t GetProcessMemoryBytes(pid_t pid,
+                                       const std::string proc_dir = kProcDirectory);
+
+  /// \param top_n the number of top memory-using processes
+  /// \param all_usage process to memory usage map
+  ///
+  /// \return the top N memory-using processes
+  static const std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
+      uint32_t top_n, const absl::flat_hash_map<pid_t, int64_t> all_usage);
+
  private:
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold);
@@ -133,8 +199,23 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet);
   FRIEND_TEST(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull);
   FRIEND_TEST(MemoryMonitorTest, TestCgroupV1NonexistentMemFileReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidKeyLastReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidNegativeWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidMissingFieldReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2NonexistentStatFileReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2NonexistentUsageFileReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted);
+  FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted);
   FRIEND_TEST(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
+  FRIEND_TEST(MemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames);
+  FRIEND_TEST(MemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty);
+  FRIEND_TEST(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid);
+  FRIEND_TEST(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty);
+  FRIEND_TEST(MemoryMonitorTest, TestShortStringNotTruncated);
+  FRIEND_TEST(MemoryMonitorTest, TestLongStringTruncated);
+  FRIEND_TEST(MemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc);
+  FRIEND_TEST(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc);
 
   /// Memory usage fraction between [0, 1]
   const float usage_threshold_;

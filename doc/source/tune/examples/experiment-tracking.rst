@@ -1,5 +1,5 @@
-Experiment Tracking Examples
-----------------------------
+Tune Experiment Tracking Examples
+---------------------------------
 
 Ray Tune integrates with some popular Experiment tracking and management tools,
 such as CometML, or Weights & Biases. If you're interested in learning how
@@ -27,4 +27,13 @@ to use Ray Tune with Tensorboard, you can find more information in our
     .. link-button:: tune-wandb-ref
         :type: ref
         :text: Tracking Your Experiment Process Weights & Biases
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/mlflow.png
+
+    +++
+    .. link-button:: tune-mlflow-ref
+        :type: ref
+        :text: Using MLflow Tracking & AutoLogging with Tune
         :classes: btn-link btn-block stretched-link

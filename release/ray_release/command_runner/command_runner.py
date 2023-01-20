@@ -17,10 +17,14 @@ class CommandRunner(abc.ABC):
         self.working_dir = working_dir
 
         self.result_output_json = "/tmp/release_test_out.json"
+        self.metrics_output_json = "/tmp/metrics_test_out.json"
 
     @property
     def command_env(self):
-        return {"TEST_OUTPUT_JSON": self.result_output_json}
+        return {
+            "TEST_OUTPUT_JSON": self.result_output_json,
+            "METRICS_OUTPUT_JSON": self.metrics_output_json,
+        }
 
     def get_full_command_env(self, env: Optional[Dict] = None):
         full_env = self.command_env.copy()
@@ -54,6 +58,19 @@ class CommandRunner(abc.ABC):
         """
         raise NotImplementedError
 
+    def save_metrics(self, start_time: float, timeout: float = 900.0):
+        """Obtains Prometheus metrics from head node and saves them
+        to ``self.metrics_output_json``.
+
+        Args:
+            start_time: From which UNIX timestamp to start the query.
+            timeout: Timeout in seconds.
+
+        Returns:
+            None
+        """
+        raise NotImplementedError
+
     def run_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
     ) -> float:
@@ -74,4 +91,7 @@ class CommandRunner(abc.ABC):
         raise NotImplementedError
 
     def fetch_results(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def fetch_metrics(self) -> Dict[str, Any]:
         raise NotImplementedError

@@ -4,6 +4,7 @@ from enum import Enum
 import os.path
 import tempfile
 import typer
+from typing import Optional
 import requests
 
 
@@ -23,8 +24,21 @@ class SupportedFileType(str, Enum):
     """Supported file types for RLlib, used for CLI argument validation."""
 
     yaml = "yaml"
-    json = "json"
-    py = "py"
+    python = "python"
+
+
+def get_file_type(config_file: str) -> SupportedFileType:
+    if config_file.endswith(".py"):
+        file_type = SupportedFileType.python
+    elif config_file.endswith(".yaml") or config_file.endswith(".yml"):
+        file_type = SupportedFileType.yaml
+    else:
+        raise ValueError(
+            "Unknown file type for config "
+            "file: {}. Supported extensions: .py, "
+            ".yml, .yaml".format(config_file)
+        )
+    return file_type
 
 
 def _create_tune_parser_help():
@@ -41,7 +55,8 @@ PARSER_HELP = _create_tune_parser_help()
 
 def download_example_file(
     example_file: str,
-    base_url: str = "https://raw.githubusercontent.com/ray-project/ray/master/rllib/",
+    base_url: Optional[str] = "https://raw.githubusercontent.com/"
+    + "ray-project/ray/master/rllib/",
 ):
     """Download the example file (e.g. from GitHub) if it doesn't exist locally.
     If the provided example file exists locally, we return it directly.
@@ -62,7 +77,14 @@ def download_example_file(
         example_url = base_url + example_file if base_url else example_file
         print(f">>> Attempting to download example file {example_url}...")
 
-        temp_file = tempfile.NamedTemporaryFile()
+        file_type = get_file_type(example_url)
+        if file_type == SupportedFileType.yaml:
+            temp_file = tempfile.NamedTemporaryFile(suffix=".yaml")
+        else:
+            assert (
+                file_type == SupportedFileType.python
+            ), f"`example_url` ({example_url}) must be a python or yaml file!"
+            temp_file = tempfile.NamedTemporaryFile(suffix=".py")
 
         r = requests.get(example_url)
         with open(temp_file.name, "wb") as f:
@@ -99,9 +121,11 @@ example_help = dict(
 
 train_help = dict(
     env="The environment specifier to use. This could be an openAI gym "
-    "specifier (e.g. `CartPole-v0`) or a full class-path (e.g. "
+    "specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
     "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
     config_file="Use the algorithm configuration from this file.",
+    filetype="The file type of the config file. Defaults to 'yaml' and can also be "
+    "'python'.",
     experiment_name="Name of the subdirectory under `local_dir` to put results in.",
     framework="The identifier of the deep learning framework you want to use."
     "Choose between TensorFlow 1.x ('tf'), TensorFlow 2.x ('tf2'), "
@@ -169,6 +193,7 @@ class CLIArguments:
     of common arguments, like "run" or "env" that would otherwise be duplicated."""
 
     # Common arguments
+    # __cli_common_start__
     Algo = typer.Option(None, "--algo", "--run", "-a", "-r", help=get_help("run"))
     AlgoRequired = typer.Option(
         ..., "--algo", "--run", "-a", "-r", help=get_help("run")
@@ -177,11 +202,20 @@ class CLIArguments:
     EnvRequired = typer.Option(..., "--env", "-e", help=train_help.get("env"))
     Config = typer.Option("{}", "--config", "-c", help=get_help("config"))
     ConfigRequired = typer.Option(..., "--config", "-c", help=get_help("config"))
+    # __cli_common_end__
 
-    # Train arguments
+    # Train file arguments
+    # __cli_file_start__
     ConfigFile = typer.Argument(  # config file is now mandatory for "file" subcommand
         ..., help=train_help.get("config_file")
     )
+    FileType = typer.Option(
+        SupportedFileType.yaml, "--type", "-t", help=train_help.get("filetype")
+    )
+    # __cli_file_end__
+
+    # Train arguments
+    # __cli_train_start__
     Stop = typer.Option("{}", "--stop", "-s", help=get_help("stop"))
     ExperimentName = typer.Option(
         "default", "--experiment-name", "-n", help=train_help.get("experiment_name")
@@ -191,7 +225,7 @@ class CLIArguments:
     Resume = typer.Option(False, help=train_help.get("resume"))
     NumSamples = typer.Option(1, help=get_help("num_samples"))
     CheckpointFreq = typer.Option(0, help=get_help("checkpoint_freq"))
-    CheckpointAtEnd = typer.Option(False, help=get_help("checkpoint_at_end"))
+    CheckpointAtEnd = typer.Option(True, help=get_help("checkpoint_at_end"))
     LocalDir = typer.Option(DEFAULT_RESULTS_DIR, help=train_help.get("local_dir"))
     Restore = typer.Option(None, help=get_help("restore"))
     Framework = typer.Option(None, help=train_help.get("framework"))
@@ -213,8 +247,10 @@ class CLIArguments:
     RayObjectStoreMemory = typer.Option(
         None, help=train_help.get("ray_object_store_memory")
     )
+    # __cli_train_end__
 
     # Eval arguments
+    # __cli_eval_start__
     Checkpoint = typer.Argument(None, help=eval_help.get("checkpoint"))
     Render = typer.Option(False, help=eval_help.get("render"))
     Steps = typer.Option(10000, help=eval_help.get("steps"))
@@ -223,6 +259,7 @@ class CLIArguments:
     SaveInfo = typer.Option(False, help=eval_help.get("save_info"))
     UseShelve = typer.Option(False, help=eval_help.get("use_shelve"))
     TrackProgress = typer.Option(False, help=eval_help.get("track_progress"))
+    # __cli_eval_end__
 
 
 # Note that the IDs of these examples are lexicographically sorted by environment,
@@ -234,21 +271,23 @@ EXAMPLES = {
         "description": "Runs grid search over several Atari games on A2C.",
     },
     "cartpole-a2c": {
-        "file": "tuned_examples/a2c/cartpole-a2c.yaml",
-        "description": "Runs A2C on the CartPole-v0 environment.",
+        "file": "tuned_examples/a2c/cartpole_a2c.py",
+        "stop": "{'timesteps_total': 50000, 'episode_reward_mean': 200}",
+        "description": "Runs A2C on the CartPole-v1 environment.",
     },
     "cartpole-a2c-micro": {
         "file": "tuned_examples/a2c/cartpole-a2c-microbatch.yaml",
-        "description": "Runs A2C on the CartPole-v0 environment, using micro-batches.",
+        "description": "Runs A2C on the CartPole-v1 environment, using micro-batches.",
     },
     # A3C
     "cartpole-a3c": {
-        "file": "tuned_examples/a3c/cartpole-a3c.yaml",
-        "description": "Runs A3C on the CartPole-v0 environment.",
+        "file": "tuned_examples/a3c/cartpole_a3c.py",
+        "stop": "{'timesteps_total': 20000, 'episode_reward_mean': 150}",
+        "description": "Runs A3C on the CartPole-v1 environment.",
     },
     "pong-a3c": {
         "file": "tuned_examples/a3c/pong-a3c.yaml",
-        "description": "Runs A3C on the PongDeterministic-v4 environment.",
+        "description": "Runs A3C on the ALE/Pong-v5 (deterministic) environment.",
     },
     # AlphaStar
     "multi-agent-cartpole-alpha-star": {
@@ -272,20 +311,20 @@ EXAMPLES = {
     # Apex DQN
     "breakout-apex-dqn": {
         "file": "tuned_examples/apex_dqn/atari-apex-dqn.yaml",
-        "description": "Runs Apex DQN on BreakoutNoFrameskip-v4.",
+        "description": "Runs Apex DQN on ALE/Breakout-v5 (no frameskip).",
     },
     "cartpole-apex-dqn": {
         "file": "tuned_examples/apex_dqn/cartpole-apex-dqn.yaml",
-        "description": "Runs Apex DQN on CartPole-v0.",
+        "description": "Runs Apex DQN on CartPole-v1.",
     },
     "pong-apex-dqn": {
         "file": "tuned_examples/apex_dqn/pong-apex-dqn.yaml",
-        "description": "Runs Apex DQN on PongNoFrameskip-v4.",
+        "description": "Runs Apex DQN on ALE/Pong-v5 (no frameskip).",
     },
     # APPO
     "cartpole-appo": {
         "file": "tuned_examples/appo/cartpole-appo.yaml",
-        "description": "Runs APPO on CartPole-v0.",
+        "description": "Runs APPO on CartPole-v1.",
     },
     "frozenlake-appo": {
         "file": "tuned_examples/appo/frozenlake-appo-vtrace.yaml",
@@ -305,12 +344,12 @@ EXAMPLES = {
     },
     "pong-appo": {
         "file": "tuned_examples/appo/pong-appo.yaml",
-        "description": "Runs APPO on PongNoFrameskip-v4.",
+        "description": "Runs APPO on ALE/Pong-v5 (no frameskip).",
     },
     # ARS
     "cartpole-ars": {
         "file": "tuned_examples/ars/cartpole-ars.yaml",
-        "description": "Runs ARS on CartPole-v0.",
+        "description": "Runs ARS on CartPole-v1.",
     },
     "swimmer-ars": {
         "file": "tuned_examples/ars/swimmer-ars.yaml",
@@ -325,7 +364,7 @@ EXAMPLES = {
     # BC
     "cartpole-bc": {
         "file": "tuned_examples/bc/cartpole-bc.yaml",
-        "description": "Runs BC on CartPole-v0.",
+        "description": "Runs BC on CartPole-v1.",
     },
     # CQL
     "halfcheetah-cql": {
@@ -342,8 +381,8 @@ EXAMPLES = {
     },
     # CRR
     "cartpole-crr": {
-        "file": "tuned_examples/crr/cartpole-v0-crr.yaml",
-        "description": "Run CRR on CartPole-v0.",
+        "file": "tuned_examples/crr/CartPole-v1-crr.yaml",
+        "description": "Run CRR on CartPole-v1.",
     },
     "pendulum-crr": {
         "file": "tuned_examples/crr/pendulum-v1-crr.yaml",
@@ -373,11 +412,11 @@ EXAMPLES = {
     # DDPPO
     "breakout-ddppo": {
         "file": "tuned_examples/ddppo/atari-ddppo.yaml",
-        "description": "Runs DDPPO on BreakoutNoFrameskip-v4.",
+        "description": "Runs DDPPO on ALE/Breakout-v5 (no frameskip).",
     },
     "cartpole-ddppo": {
         "file": "tuned_examples/ddppo/cartpole-ddppo.yaml",
-        "description": "Runs DDPPO on CartPole-v0",
+        "description": "Runs DDPPO on CartPole-v1",
     },
     "pendulum-ddppo": {
         "file": "tuned_examples/ddppo/pendulum-ddppo.yaml",
@@ -395,15 +434,15 @@ EXAMPLES = {
     },
     "cartpole-dqn": {
         "file": "tuned_examples/dqn/cartpole-dqn.yaml",
-        "description": "Run DQN on CartPole-v0.",
+        "description": "Run DQN on CartPole-v1.",
     },
     "pong-dqn": {
         "file": "tuned_examples/dqn/pong-dqn.yaml",
-        "description": "Run DQN on PongDeterministic-v4.",
+        "description": "Run DQN on ALE/Pong-v5 (deterministic).",
     },
     "pong-rainbow": {
         "file": "tuned_examples/dqn/pong-rainbow.yaml",
-        "description": "Run Rainbow on PongDeterministic-v4.",
+        "description": "Run Rainbow on ALE/Pong-v5 (deterministic).",
     },
     # DREAMER
     "dm-control-dreamer": {
@@ -412,8 +451,8 @@ EXAMPLES = {
     },
     # DT
     "cartpole-dt": {
-        "file": "tuned_examples/dt/cartpole-v0-dt.yaml",
-        "description": "Run DT on CartPole-v0.",
+        "file": "tuned_examples/dt/CartPole-v1-dt.yaml",
+        "description": "Run DT on CartPole-v1.",
     },
     "pendulum-dt": {
         "file": "tuned_examples/dt/pendulum-v1-dt.yaml",
@@ -422,7 +461,7 @@ EXAMPLES = {
     # ES
     "cartpole-es": {
         "file": "tuned_examples/es/cartpole-es.yaml",
-        "description": "Run ES on CartPole-v0.",
+        "description": "Run ES on CartPole-v1.",
     },
     "humanoid-es": {
         "file": "tuned_examples/es/humanoid-es.yaml",
@@ -435,7 +474,7 @@ EXAMPLES = {
     },
     "cartpole-impala": {
         "file": "tuned_examples/impala/cartpole-impala.yaml",
-        "description": "Run IMPALA on CartPole-v0.",
+        "description": "Run IMPALA on CartPole-v1.",
     },
     "multi-agent-cartpole-impala": {
         "file": "tuned_examples/impala/multi-agent-cartpole-impala.yaml",
@@ -447,7 +486,7 @@ EXAMPLES = {
     },
     "pong-impala": {
         "file": "tuned_examples/impala/pong-impala-fast.yaml",
-        "description": "Run IMPALA on PongNoFrameskip-v4.",
+        "description": "Run IMPALA on ALE/Pong-v5 (no frameskip).",
     },
     # MADDPG
     "two-step-game-maddpg": {
@@ -457,7 +496,7 @@ EXAMPLES = {
     # MAML
     "cartpole-maml": {
         "file": "tuned_examples/maml/cartpole-maml.yaml",
-        "description": "Run MAML on CartPole-v0.",
+        "description": "Run MAML on CartPole-v1.",
     },
     "halfcheetah-maml": {
         "file": "tuned_examples/maml/halfcheetah-rand-direc-maml.yaml",
@@ -470,7 +509,7 @@ EXAMPLES = {
     # MARWIL
     "cartpole-marwil": {
         "file": "tuned_examples/marwil/cartpole-marwil.yaml",
-        "description": "Run MARWIL on CartPole-v0.",
+        "description": "Run MARWIL on CartPole-v1.",
     },
     # MBMPO
     "cartpole-mbmpo": {
@@ -492,7 +531,7 @@ EXAMPLES = {
     # PG
     "cartpole-pg": {
         "file": "tuned_examples/pg/cartpole-pg.yaml",
-        "description": "Run PG on CartPole-v0",
+        "description": "Run PG on CartPole-v1",
     },
     # PPO
     "atari-ppo": {
@@ -501,7 +540,7 @@ EXAMPLES = {
     },
     "cartpole-ppo": {
         "file": "tuned_examples/ppo/cartpole-ppo.yaml",
-        "description": "Run PPO on CartPole-v0.",
+        "description": "Run PPO on CartPole-v1.",
     },
     "halfcheetah-ppo": {
         "file": "tuned_examples/ppo/halfcheetah-ppo.yaml",
@@ -521,7 +560,7 @@ EXAMPLES = {
     },
     "pong-ppo": {
         "file": "tuned_examples/ppo/pong-ppo.yaml",
-        "description": "Run PPO on PongNoFrameskip-v4.",
+        "description": "Run PPO on ALE/Pong-v5 (no frameskip).",
     },
     "recsys-ppo": {
         "file": "tuned_examples/ppo/recomm-sys001-ppo.yaml",
@@ -552,7 +591,7 @@ EXAMPLES = {
     },
     "cartpole-sac": {
         "file": "tuned_examples/sac/cartpole-sac.yaml",
-        "description": "Run SAC on CartPole-v0",
+        "description": "Run SAC on CartPole-v1",
     },
     "halfcheetah-sac": {
         "file": "tuned_examples/sac/halfcheetah-sac.yaml",
@@ -560,7 +599,7 @@ EXAMPLES = {
     },
     "pacman-sac": {
         "file": "tuned_examples/sac/mspacman-sac.yaml",
-        "description": "Run SAC on MsPacmanNoFrameskip-v4.",
+        "description": "Run SAC on ALE/MsPacman-v5 (no frameskip).",
     },
     "pendulum-sac": {
         "file": "tuned_examples/sac/pendulum-sac.yaml",
@@ -569,7 +608,7 @@ EXAMPLES = {
     # SimpleQ
     "cartpole-simpleq": {
         "file": "tuned_examples/simple_q/cartpole-simpleq.yaml",
-        "description": "Run SimpleQ on CartPole-v0",
+        "description": "Run SimpleQ on CartPole-v1",
     },
     # SlateQ
     "recsys-long-term-slateq": {

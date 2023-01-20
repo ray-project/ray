@@ -15,19 +15,13 @@ from ray.rllib.algorithms.dqn.dqn import DQNConfig
 
 
 # __sphinx_doc_replay_buffer_type_specification__begin__
-config = DQNConfig().training(replay_buffer_config={"type": ReplayBuffer}).to_dict()
+config = DQNConfig().training(replay_buffer_config={"type": ReplayBuffer})
 
-another_config = (
-    DQNConfig().training(replay_buffer_config={"type": "ReplayBuffer"}).to_dict()
-)
+another_config = DQNConfig().training(replay_buffer_config={"type": "ReplayBuffer"})
 
 
-yet_another_config = (
-    DQNConfig()
-    .training(
-        replay_buffer_config={"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}
-    )
-    .to_dict()
+yet_another_config = DQNConfig().training(
+    replay_buffer_config={"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}
 )
 
 validate_buffer_config(config)
@@ -35,7 +29,12 @@ validate_buffer_config(another_config)
 validate_buffer_config(yet_another_config)
 
 # After validation, all three configs yield the same effective config
-assert config == another_config == yet_another_config
+assert (
+    config.replay_buffer_config
+    == another_config.replay_buffer_config
+    == yet_another_config.replay_buffer_config
+)
+
 # __sphinx_doc_replay_buffer_type_specification__end__
 
 
@@ -77,7 +76,7 @@ class LessSampledReplayBuffer(ReplayBuffer):
 config = (
     DQNConfig()
     .training(replay_buffer_config={"type": LessSampledReplayBuffer})
-    .environment(env="CartPole-v0")
+    .environment(env="CartPole-v1")
 )
 
 tune.Tuner(
@@ -97,15 +96,21 @@ less_sampled_buffer = LessSampledReplayBuffer(**config.replay_buffer_config)
 
 # Gather some random experiences
 env = RandomEnv()
-done = False
+terminated = truncated = False
 batch = SampleBatch({})
 t = 0
-while not done:
-    obs, reward, done, info = env.step([0, 0])
+while not terminated and not truncated:
+    obs, reward, terminated, truncated, info = env.step([0, 0])
     # Note that in order for RLlib to find out about start and end of an episode,
-    # "t" and "dones" have to properly mark an episode's trajectory
+    # "t" and "terminateds" have to properly mark an episode's trajectory
     one_step_batch = SampleBatch(
-        {"obs": [obs], "t": [t], "reward": [reward], "dones": [done]}
+        {
+            "obs": [obs],
+            "t": [t],
+            "reward": [reward],
+            "terminateds": [terminated],
+            "truncateds": [truncated],
+        }
     )
     batch = concat_samples([batch, one_step_batch])
     t += 1
@@ -120,23 +125,25 @@ assert len(less_sampled_buffer._storage) == 0
 
 
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
-config = {
-    "env": "CartPole-v1",
-    "replay_buffer_config": {
-        "type": "MultiAgentReplayBuffer",
-        "underlying_replay_buffer_config": {
-            "type": LessSampledReplayBuffer,
-            "evict_sampled_more_then": 20  # We can specify the default call argument
-            # for the sample method of the underlying buffer method here
-        },
-    },
-}
+config = (
+    DQNConfig()
+    .training(
+        replay_buffer_config={
+            "type": "MultiAgentReplayBuffer",
+            "underlying_replay_buffer_config": {
+                "type": LessSampledReplayBuffer,
+                # We can specify the default call argument
+                # for the sample method of the underlying buffer method here.
+                "evict_sampled_more_then": 20,
+            },
+        }
+    )
+    .environment(env="CartPole-v1")
+)
 
 tune.Tuner(
     "DQN",
-    param_space=config,
-    run_config=air.RunConfig(
-        stop={"episode_reward_mean": 50, "training_iteration": 10}
-    ),
+    param_space=config.to_dict(),
+    run_config=air.RunConfig(stop={"episode_reward_mean": 40, "training_iteration": 7}),
 ).fit()
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__

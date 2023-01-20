@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict, Discrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import unittest
 
@@ -40,9 +40,8 @@ class TestPG(unittest.TestCase):
         # Test with filter to see whether they work w/o preprocessing.
         config.rollouts(
             num_rollout_workers=1,
-            rollout_fragment_length=500,
             observation_filter="MeanStdFilter",
-        )
+        ).training(train_batch_size=500)
         num_iterations = 1
 
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
@@ -80,18 +79,20 @@ class TestPG(unittest.TestCase):
             for env in [
                 "random_dict_env",
                 "random_tuple_env",
-                "MsPacmanNoFrameskip-v4",
-                "CartPole-v0",
+                "ALE/MsPacman-v5",
+                "CartPole-v1",
                 "FrozenLake-v1",
             ]:
                 print(f"env={env}")
-                trainer = config.build(env=env)
+                config.environment(env)
+
+                algo = config.build()
                 for i in range(num_iterations):
-                    results = trainer.train()
+                    results = algo.train()
                     check_train_results(results)
                     print(results)
 
-                check_compute_single_action(trainer, include_prev_action_reward=True)
+                check_compute_single_action(algo, include_prev_action_reward=True)
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""
@@ -115,7 +116,7 @@ class TestPG(unittest.TestCase):
                 ),
                 SampleBatch.ACTIONS: np.array([0, 1, 1]),
                 SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),
-                SampleBatch.DONES: np.array([False, False, True]),
+                SampleBatch.TERMINATEDS: np.array([False, False, True]),
                 SampleBatch.EPS_ID: np.array([1234, 1234, 1234]),
                 SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
             }
@@ -123,8 +124,8 @@ class TestPG(unittest.TestCase):
 
         for fw, sess in framework_iterator(config, session=True):
             dist_cls = Categorical if fw != "torch" else TorchCategorical
-            trainer = config.build(env="CartPole-v0")
-            policy = trainer.get_policy()
+            algo = config.build(env="CartPole-v1")
+            policy = algo.get_policy()
             vars = policy.model.trainable_variables()
             if sess:
                 vars = policy.get_session().run(vars)
@@ -194,9 +195,12 @@ class TestPG(unittest.TestCase):
         )
         config.rollouts(
             num_rollout_workers=1,
-            rollout_fragment_length=50,
         )
-        config.training(lr=0.2, lr_schedule=[[0, 0.2], [500, 0.001]])
+        config.training(
+            lr=0.2,
+            lr_schedule=[[0, 0.2], [500, 0.001]],
+            train_batch_size=50,
+        )
 
         def _step_n_times(algo, n: int):
             """Step trainer n times.
@@ -211,7 +215,7 @@ class TestPG(unittest.TestCase):
             ]
 
         for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v1")
 
             lr = _step_n_times(algo, 1)  # 50 timesteps
             # Close to 0.2

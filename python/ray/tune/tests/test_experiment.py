@@ -1,18 +1,26 @@
-import unittest
 import threading
+import unittest
 
 import ray
-from ray.rllib import _register_all
-from ray.tune import register_trainable
+from ray.air import CheckpointConfig
+from ray.tune import register_trainable, SyncConfig
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.error import TuneError
 from ray.tune.utils import diagnose_serialization
 
 
+def test_remote_checkpoint_dir_with_query_string():
+    experiment = Experiment(
+        name="spam",
+        run=lambda config: config,
+        sync_config=SyncConfig(syncer="auto", upload_dir="s3://bucket?scheme=http"),
+    )
+    assert experiment.remote_checkpoint_dir == "s3://bucket/spam?scheme=http"
+
+
 class ExperimentTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def setUp(self):
         def train(config, reporter):
@@ -53,6 +61,28 @@ class ExperimentTest(unittest.TestCase):
 
     def testConvertExperimentIncorrect(self):
         self.assertRaises(TuneError, lambda: _convert_to_experiment_list("hi"))
+
+    def testFuncTrainableCheckpointConfigValidation(self):
+        """Raise an error when trying to specify checkpoint_at_end/checkpoint_frequency
+        with a function trainable."""
+        with self.assertRaises(ValueError):
+            Experiment(
+                name="foo",
+                run="f1",  # Will point to a wrapped function trainable
+                checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
+            )
+        with self.assertRaises(ValueError):
+            Experiment(
+                name="foo",
+                run="f1",
+                checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            )
+        with self.assertRaises(ValueError):
+            Experiment(
+                name="foo",
+                run=lambda config: 1,
+                checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
+            )
 
 
 class ValidateUtilTest(unittest.TestCase):

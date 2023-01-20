@@ -26,7 +26,7 @@ from ray._private.test_utils import object_memory_usage
 # Import psutil after ray so the packaged version is used.
 import psutil
 
-MB = 1024 ** 2
+MB = 1024**2
 
 
 class MockParam(object):

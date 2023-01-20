@@ -1,29 +1,31 @@
-from typing import Union, Type, Mapping, Any
+from typing import Union, Mapping, Any
 
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.specs.specs_base import TensorSpecs
+from ray.rllib.models.specs.specs_base import Spec
 
 
 _MISSING_KEYS_FROM_SPEC = (
     "The data dict does not match the model specs. Keys {} are "
-    "in the data dict but not on the given spec dict, and exact_match is set to True."
+    "in the data dict but not on the given spec dict, and exact_match is set to True"
 )
 _MISSING_KEYS_FROM_DATA = (
     "The data dict does not match the model specs. Keys {} are "
-    "in the spec dict but not on the data dict."
+    "in the spec dict but not on the data dict. Data keys are {}"
 )
 _TYPE_MISMATCH = (
     "The data does not match the spec. The data element "
     "{} has type {} (expected type {})."
 )
 
-SPEC_LEAF_TYPE = Union[Type, TensorSpecs]
 DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
 
+IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
 
-class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
-    """A NestedDict containing `TensorSpecs` and `Types`.
+
+@ExperimentalAPI
+class SpecDict(NestedDict[Spec], Spec):
+    """A NestedDict containing `TensorSpec` and `Types`.
 
     It can be used to validate an incoming data against a nested dictionary of specs.
 
@@ -31,12 +33,12 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
 
         Basic validation:
         -----------------
-        >>> spec_dict = ModelSpecDict({
+        >>> spec_dict = SpecDict({
         ...     "obs": {
-        ...         "arm":      TensorSpecs("b, d_a", d_a=64),
-        ...         "gripper":  TensorSpecs("b, d_g", d_g=12)
+        ...         "arm":      TensorSpec("b, dim_arm", dim_arm=64),
+        ...         "gripper":  TensorSpec("b, dim_grip", dim_grip=12)
         ...     },
-        ...     "action": TensorSpecs("b, d_a", h=12),
+        ...     "action": TensorSpec("b, dim_action", dim_action=12),
         ...     "action_dist": torch.distributions.Categorical
         ... })
 
@@ -88,10 +90,11 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
         super().__init__(*args, **kwargs)
         self._keys_set = set(self.keys())
 
+    @override(Spec)
     def validate(
         self,
         data: DATA_TYPE,
-        exact_match: bool = True,
+        exact_match: bool = False,
     ) -> None:
         """Checks whether the data matches the spec.
 
@@ -107,7 +110,9 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
         data_keys_set = set(data.keys())
         missing_keys = self._keys_set.difference(data_keys_set)
         if missing_keys:
-            raise ValueError(_MISSING_KEYS_FROM_DATA.format(missing_keys))
+            raise ValueError(
+                _MISSING_KEYS_FROM_DATA.format(missing_keys, data_keys_set)
+            )
         if exact_match:
             data_spec_missing_keys = data_keys_set.difference(self._keys_set)
             if data_spec_missing_keys:
@@ -115,16 +120,30 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
 
         for spec_name, spec in self.items():
             data_to_validate = data[spec_name]
-            if isinstance(spec, TensorSpecs):
-                spec.validate(data_to_validate)
-            elif isinstance(spec, Type):
+            if spec is None:
+                continue
+
+            if isinstance(spec, Spec):
+                try:
+                    spec.validate(data_to_validate)
+                except ValueError as e:
+                    raise ValueError(
+                        f"Mismatch found in data element {spec_name}, "
+                        f"which is a TensorSpec: {e}"
+                    )
+            elif isinstance(spec, (type, tuple)):
                 if not isinstance(data_to_validate, spec):
                     raise ValueError(
                         _TYPE_MISMATCH.format(
                             spec_name, type(data_to_validate).__name__, spec.__name__
                         )
                     )
+            else:
+                raise ValueError(
+                    f"The spec type has to be either TensorSpec or Type. "
+                    f"got {type(spec)}"
+                )
 
     @override(NestedDict)
     def __repr__(self) -> str:
-        return f"ModelSpecDict({repr(self._data)})"
+        return f"SpecDict({repr(self._data)})"

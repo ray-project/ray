@@ -54,7 +54,6 @@ namespace raylet {
 
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
-using rpc::HeartbeatTableData;
 using rpc::JobTableData;
 using rpc::ResourceUsageBatchData;
 
@@ -112,35 +111,6 @@ struct NodeManagerConfig {
   int64_t min_spilling_size;
 };
 
-class HeartbeatSender {
- public:
-  /// Create a heartbeat sender.
-  ///
-  /// \param self_node_id ID of this node.
-  /// \param gcs_client GCS client to send heartbeat.
-  HeartbeatSender(NodeID self_node_id, std::shared_ptr<gcs::GcsClient> gcs_client);
-
-  ~HeartbeatSender();
-
- private:
-  /// Send heartbeats to the GCS.
-  void Heartbeat();
-
-  /// ID of this node.
-  NodeID self_node_id_;
-  /// A client connection to the GCS.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The io service used in heartbeat loop in case of it being
-  /// blocked by main thread.
-  instrumented_io_context heartbeat_io_service_;
-  /// Heartbeat thread, using with heartbeat_io_service_.
-  std::unique_ptr<std::thread> heartbeat_thread_;
-  std::unique_ptr<PeriodicalRunner> heartbeat_runner_;
-  /// The time that the last heartbeat was sent at. Used to make sure we are
-  /// keeping up with heartbeats.
-  uint64_t last_heartbeat_at_ms_;
-};
-
 class NodeManager : public rpc::NodeManagerServiceHandler,
                     public syncer::ReporterInterface,
                     public syncer::ReceiverInterface {
@@ -189,6 +159,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Record metrics.
   void RecordMetrics();
+
+  /// Report worker OOM kill stats
+  void ReportWorkerOOMKillStats();
 
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
@@ -675,10 +648,24 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Creates the callback used in the memory monitor.
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
 
+  /// Creates the detail message for the worker that is killed due to memory running low.
+  const std::string CreateOomKillMessageDetails(
+      const std::shared_ptr<WorkerInterface> &worker,
+      const NodeID &node_id,
+      const MemorySnapshot &system_memory,
+      float usage_threshold,
+      bool should_retry) const;
+
+  /// Creates the suggestion message for the worker that is killed due to memory running
+  /// low.
+  const std::string CreateOomKillMessageSuggestions(
+      const std::shared_ptr<WorkerInterface> &worker) const;
+
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
   void SetTaskFailureReason(const TaskID &task_id,
-                            const rpc::RayErrorInfo &failure_reason);
+                            const rpc::RayErrorInfo &failure_reason,
+                            bool should_retry);
 
   /// Checks the expiry time of the task failures and garbage collect them.
   void GCTaskFailureReason();
@@ -690,8 +677,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// Class to send heartbeat to GCS.
-  std::unique_ptr<HeartbeatSender> heartbeat_sender_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
@@ -715,9 +700,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
   uint64_t report_resources_period_ms_;
-  /// The time that the last resource report was sent at. Used to make sure we are
-  /// keeping up with resource reports.
-  uint64_t last_resource_report_at_ms_;
   /// Incremented each time we encounter a potential resource deadlock condition.
   /// This is reset to zero when the condition is cleared.
   int resource_deadlock_warned_ = 0;
@@ -817,6 +799,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Last time metrics are recorded.
   uint64_t last_metrics_recorded_at_ms_;
 
+  /// The number of workers killed due to memory above threshold since last report.
+  uint64_t number_workers_killed_by_oom_ = 0;
+
+  /// The number of workers killed not by memory above threshold since last report.
+  uint64_t number_workers_killed_ = 0;
+
   /// Number of tasks that are received and scheduled.
   uint64_t metrics_num_task_scheduled_;
 
@@ -838,6 +826,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
+
+  /// Resource message updated
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> resource_message_udpated_;
 
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;

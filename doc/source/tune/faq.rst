@@ -280,22 +280,22 @@ on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
 
-You can also allocate specific resources to a trial based on a custom rule via lambda functions.
-For instance, if you want to allocate GPU resources to trials based on a setting in your config:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __resources_lambda_start__
-    :end-before: __resources_lambda_end__
-
-You can also use the :ref:`ScalingConfig <train-config>` to specify your lambda function:
+You can also use the :ref:`ScalingConfig <train-config>` to achieve the same results:
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
     :language: python
     :start-after: __resources_scalingconfig_start__
     :end-before: __resources_scalingconfig_end__
+
+You can also allocate specific resources to a trial based on a custom rule via lambda functions.
+For instance, if you want to allocate GPU resources to trials based on a setting in your param space:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_lambda_start__
+    :end-before: __resources_lambda_end__
 
 
 Why is my training stuck and Ray reporting that pending actor or tasks cannot be scheduled?
@@ -587,6 +587,8 @@ be automatically fetched and passed to your trainable as a parameter.
     :end-before: __large_data_end__
 
 
+.. _tune-cloud-syncing:
+
 How can I upload my Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -610,16 +612,23 @@ You can customize synchronization behavior by implementing your own Syncer:
     :start-after: __log_2_start__
     :end-before: __log_2_end__
 
-By default, syncing occurs every 300 seconds.
+By default, syncing occurs whenever one of the following conditions are met:
+
+* if you have used a :py:class:`~ray.air.config.CheckpointConfig` with ``num_to_keep`` and a trial has checkpointed more than ``num_to_keep`` times since last sync,
+* a ``sync_period`` of seconds (default 300) has passed since last sync.
+
 To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is
-determined by the sync period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
+determined by the experiment checkpoint period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
 
 Make sure that worker nodes have the write access to the cloud storage.
 Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
 For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes.
 Please :ref:`see here for more tips <aws-cluster-s3>`.
+
+
+.. _tune-cloud-syncing-command-line-example:
 
 How can I use the awscli or gsutil command line commands for syncing?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

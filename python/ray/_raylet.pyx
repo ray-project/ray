@@ -14,6 +14,7 @@ import msgpack
 import os
 import pickle
 import setproctitle
+import signal
 import sys
 import threading
 import time
@@ -138,7 +139,7 @@ from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
-from ray._private.utils import decode
+from ray._private.utils import decode, DeferSigint
 
 cimport cpython
 
@@ -158,6 +159,13 @@ include "includes/metric.pxi"
 OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
+
+# The currently executing task, if any. These are used to synchronize task
+# interruption for ray.cancel.
+current_task_id = None
+current_task_id_lock = threading.Lock()
+
+job_config_initialized = False
 
 
 class ObjectRefGenerator:
@@ -191,6 +199,10 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsTimedOut():
         raise GetTimeoutError(message)
     elif status.IsNotFound():
+        raise ValueError(message)
+    elif status.IsObjectNotFound():
+        raise ValueError(message)
+    elif status.IsObjectUnknownOwner():
         raise ValueError(message)
     else:
         raise RaySystemError(message)
@@ -251,9 +263,19 @@ cdef increase_recursion_limit():
     """Double the recusion limit if current depth is close to the limit"""
     cdef:
         CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
-        int current_depth = s.recursion_depth
         int current_limit = Py_GetRecursionLimit()
         int new_limit = current_limit * 2
+        cdef extern from *:
+            """
+#if PY_VERSION_HEX >= 0x30B00A4
+    #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
+#else
+    #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
+#endif
+            """
+            int CURRENT_DEPTH(CPyThreadState *x)
+
+        int current_depth = CURRENT_DEPTH(s)
 
     if current_limit - current_depth < 500:
         Py_SetRecursionLimit(new_limit)
@@ -415,6 +437,8 @@ cdef prepare_args_internal(
         c_vector[CObjectID] inlined_ids
         c_string put_arg_call_site
         c_vector[CObjectReference] inlined_refs
+        CAddress c_owner_address
+        CRayStatus op_status
 
     worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -423,11 +447,13 @@ cdef prepare_args_internal(
     for arg in args:
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
+            op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                    c_arg, &c_owner_address)
+            check_status(op_status)
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
-                    CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                        c_arg),
+                    c_owner_address,
                     arg.call_site())))
 
         else:
@@ -559,11 +585,12 @@ cdef store_task_errors(
         CoreWorker core_worker = worker.core_worker
 
     # If the debugger is enabled, drop into the remote pdb here.
-    if "RAY_PDB" in os.environ:
-        ray.util.pdb.post_mortem()
+    if ray.util.pdb._is_ray_debugger_enabled():
+        ray.util.pdb._post_mortem()
 
     backtrace = ray._private.utils.format_error_message(
-        traceback.format_exc(), task_exception=task_exception)
+        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        task_exception=task_exception)
 
     # Generate the actor repr from the actor class.
     actor_repr = repr(actor) if actor else None
@@ -669,7 +696,8 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                     "by the first execution.\n"
                     "See https://github.com/ray-project/ray/issues/28688.")
 
-cdef execute_task(
+
+cdef void execute_task(
         const CAddress &caller_address,
         CTaskType task_type,
         const c_string name,
@@ -687,24 +715,19 @@ cdef execute_task(
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
         const c_string c_name_of_concurrency_group_to_execute,
-        c_bool is_reattempt):
-
-    is_application_error[0] = False
-    is_retryable_error[0] = False
-
+        c_bool is_reattempt,
+        execution_info,
+        title,
+        task_name) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
     cdef:
-        dict execution_infos = manager.execution_infos
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
         CFiberEvent task_done_event
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
-
-    # Automatically restrict the GPUs available to this task.
-    ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
     # Helper method used to exit current asyncio actor.
     # This is called when a KeyboardInterrupt is received by the main thread.
@@ -721,43 +744,12 @@ cdef execute_task(
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
-
-    if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-        actor_class = manager.load_actor_class(job_id, function_descriptor)
-        actor_id = core_worker.get_actor_id()
-        actor = actor_class.__new__(actor_class)
-        worker.actors[actor_id] = actor
-        # Record the actor class via :actor_name: magic token in the log.
-        #
-        # (Phase 1): this covers code run before __init__ finishes.
-        # We need to handle this separately because `__repr__` may not be
-        # runnable until after `__init__` (e.g., if it accesses fields
-        # defined in the constructor).
-        actor_magic_token = "{}{}\n".format(
-            ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
-        # Flush to both .out and .err
-        print(actor_magic_token, end="")
-        print(actor_magic_token, file=sys.stderr, end="")
-
-        # Initial eventloops for asyncio for this actor.
-        if core_worker.current_actor_is_asyncio():
-            core_worker.initialize_eventloops_for_actor_concurrency_group(
-                c_defined_concurrency_groups)
-
-    execution_info = execution_infos.get(function_descriptor)
-    if not execution_info:
-        execution_info = manager.get_execution_info(
-            job_id, function_descriptor)
-        execution_infos[function_descriptor] = execution_info
-
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
                   b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
-    task_name = name.decode("utf-8")
     name_of_concurrency_group_to_execute = \
         c_name_of_concurrency_group_to_execute.decode("ascii")
-    title = f"ray::{task_name}()"
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         next_title = "ray::IDLE"
@@ -811,9 +803,9 @@ cdef execute_task(
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
-            task_exception = False
-            if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                    and function_name == "__ray_terminate__"):
+            if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
+                     and function_name == "__ray_terminate__") and
+                    ray._config.memory_monitor_refresh_ms() == 0):
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -824,7 +816,6 @@ cdef execute_task(
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
-
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
@@ -836,8 +827,19 @@ cdef execute_task(
                             deserialize_args, function_descriptor,
                             name_of_concurrency_group_to_execute)
                     else:
-                        args = ray._private.worker.global_worker.deserialize_objects(
-                            metadata_pairs, object_refs)
+                        # Defer task cancellation (SIGINT) until after the task argument
+                        # deserialization context has been left.
+                        # NOTE (Clark): We defer SIGINT until after task argument
+                        # deserialization completes to keep from interrupting
+                        # non-reentrant imports that may be re-entered during error
+                        # serialization or storage.
+                        # See https://github.com/ray-project/ray/issues/30453.
+                        # NOTE (Clark): Signal handlers can only be registered on the
+                        # main thread.
+                        with DeferSigint.create_if_main_thread():
+                            args = (ray._private.worker.global_worker
+                                    .deserialize_objects(
+                                        metadata_pairs, object_refs))
 
                     for arg in args:
                         raise_if_dependency_failed(arg)
@@ -876,13 +878,11 @@ cdef execute_task(
                                 "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
                                 namespace=ray_constants.KV_NAMESPACE_PDB
                             )
-                            ray._private.worker.global_worker.debugger_breakpoint = b""
+                            (ray._private.worker.global_worker
+                             .debugger_breakpoint) = b""
                     task_exception = False
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
-                except KeyboardInterrupt as e:
-                    raise TaskCancelledError(
-                            core_worker.get_current_task_id())
                 except Exception as e:
                     is_application_error[0] = True
                     is_retryable_error[0] = determine_if_retryable(
@@ -901,7 +901,7 @@ cdef execute_task(
                     else:
                         logger.debug("Task failed with unretryable exception:"
                                      " {}.".format(
-                                         core_worker.get_current_task_id()),
+                                        core_worker.get_current_task_id()),
                                      exc_info=True)
                     raise e
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
@@ -914,20 +914,15 @@ cdef execute_task(
                 # (Phase 2): after `__init__` finishes, we override the
                 # log prefix with the full repr of the actor. The log monitor
                 # will pick up the updated token.
+                actor_class = manager.load_actor_class(job_id, function_descriptor)
                 if (hasattr(actor_class, "__ray_actor_class__") and
-                        "__repr__" in
-                        actor_class.__ray_actor_class__.__dict__):
+                        (actor_class.__ray_actor_class__.__repr__
+                         != object.__repr__)):
                     actor_magic_token = "{}{}\n".format(
                         ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
                     # Flush on both stdout and stderr.
                     print(actor_magic_token, end="")
                     print(actor_magic_token, file=sys.stderr, end="")
-            # Check for a cancellation that was called when the function
-            # was exiting and was raised after the except block.
-            if not check_signals().ok():
-                task_exception = True
-                raise TaskCancelledError(
-                            core_worker.get_current_task_id())
 
             if (returns[0].size() > 0 and
                     not inspect.isgenerator(outputs) and
@@ -942,8 +937,9 @@ cdef execute_task(
                 if dynamic_returns != NULL:
                     if not inspect.isgenerator(outputs):
                         raise ValueError(
-                                "Functions with @ray.remote(num_returns=\"dynamic\" "
-                                "must return a generator")
+                                "Functions with "
+                                "@ray.remote(num_returns=\"dynamic\" must return a "
+                                "generator")
                     task_exception = True
 
                     execute_dynamic_generator_and_store_task_outputs(
@@ -976,9 +972,9 @@ cdef execute_task(
                 core_worker.store_task_outputs(
                     worker, outputs,
                     returns)
-        except Exception as error:
+        except Exception as e:
             num_errors_stored = store_task_errors(
-                    worker, error, task_exception, actor, function_name,
+                    worker, e, task_exception, actor, function_name,
                     task_type, title, returns)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
@@ -986,6 +982,142 @@ cdef execute_task(
                         f"{returns[0].size()} return values already created. "
                         "This should only occur when using generator tasks.\n"
                         "See https://github.com/ray-project/ray/issues/28689.")
+
+
+cdef execute_task_with_cancellation_handler(
+        const CAddress &caller_address,
+        CTaskType task_type,
+        const c_string name,
+        const CRayFunction &ray_function,
+        const unordered_map[c_string, double] &c_resources,
+        const c_vector[shared_ptr[CRayObject]] &c_args,
+        const c_vector[CObjectReference] &c_arg_refs,
+        const c_string debugger_breakpoint,
+        const c_string serialized_retry_exception_allowlist,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        c_bool *is_retryable_error,
+        c_bool *is_application_error,
+        # This parameter is only used for actor creation task to define
+        # the concurrency groups of this actor.
+        const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
+        const c_string c_name_of_concurrency_group_to_execute,
+        c_bool is_reattempt):
+
+    is_application_error[0] = False
+    is_retryable_error[0] = False
+
+    worker = ray._private.worker.global_worker
+    manager = worker.function_actor_manager
+    cdef:
+        dict execution_infos = manager.execution_infos
+        CoreWorker core_worker = worker.core_worker
+        JobID job_id = core_worker.get_current_job_id()
+        TaskID task_id = core_worker.get_current_task_id()
+        CFiberEvent task_done_event
+        c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
+
+    task_name = name.decode("utf-8")
+    title = f"ray::{task_name}"
+
+    # Automatically restrict the GPUs available to this task.
+    ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+
+    # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
+    # It will be unset after the task execution if it was overwridden here.
+    # No-op if already set.
+    omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
+
+    # Initialize the actor if this is an actor creation task. We do this here
+    # before setting the current task ID so that we can get the execution info,
+    # in case executing the main task throws an exception.
+    function_descriptor = CFunctionDescriptorToPython(
+        ray_function.GetFunctionDescriptor())
+    if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+        actor_class = manager.load_actor_class(job_id, function_descriptor)
+        actor_id = core_worker.get_actor_id()
+        actor = actor_class.__new__(actor_class)
+        worker.actors[actor_id] = actor
+        # Record the actor class via :actor_name: magic token in the log.
+        #
+        # (Phase 1): this covers code run before __init__ finishes.
+        # We need to handle this separately because `__repr__` may not be
+        # runnable until after `__init__` (e.g., if it accesses fields
+        # defined in the constructor).
+        actor_magic_token = "{}{}\n".format(
+            ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
+        # Flush to both .out and .err
+        print(actor_magic_token, end="")
+        print(actor_magic_token, file=sys.stderr, end="")
+
+        # Initial eventloops for asyncio for this actor.
+        if core_worker.current_actor_is_asyncio():
+            core_worker.initialize_eventloops_for_actor_concurrency_group(
+                c_defined_concurrency_groups)
+
+    execution_info = execution_infos.get(function_descriptor)
+    if not execution_info:
+        execution_info = manager.get_execution_info(
+            job_id, function_descriptor)
+        execution_infos[function_descriptor] = execution_info
+
+    global current_task_id
+
+    try:
+        task_id = (ray._private.worker.
+                   global_worker.core_worker.get_current_task_id())
+        # Set the current task ID, which is checked by a separate thread during
+        # task cancellation. We must do this inside the try block so that, if
+        # the task is interrupted because of cancellation, we will catch the
+        # interrupt error here.
+        with current_task_id_lock:
+            current_task_id = task_id
+
+        execute_task(caller_address,
+                     task_type,
+                     name,
+                     ray_function,
+                     c_resources,
+                     c_args,
+                     c_arg_refs,
+                     debugger_breakpoint,
+                     serialized_retry_exception_allowlist,
+                     returns,
+                     dynamic_returns,
+                     is_retryable_error,
+                     is_application_error,
+                     c_defined_concurrency_groups,
+                     c_name_of_concurrency_group_to_execute,
+                     is_reattempt, execution_info, title, task_name)
+
+        # Check for cancellation.
+        PyErr_CheckSignals()
+
+    except KeyboardInterrupt as e:
+        # Catch and handle task cancellation, which will result in an interrupt being
+        # raised.
+        e = TaskCancelledError(
+            core_worker.get_current_task_id()).with_traceback(e.__traceback__)
+
+        actor = None
+        actor_id = core_worker.get_actor_id()
+        if not actor_id.is_nil():
+            actor = core_worker.actors[actor_id]
+
+        store_task_errors(
+                worker, e,
+                # Task cancellation can happen anytime so we don't really need
+                # to differentiate between mid-task or not.
+                False,  # task_exception
+                actor, execution_info.function_name,
+                task_type, title, returns)
+    finally:
+        with current_task_id_lock:
+            current_task_id = None
+
+        if omp_num_threads_overriden:
+            # Reset the OMP_NUM_THREADS environ if it was set.
+            os.environ.pop("OMP_NUM_THREADS", None)
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
@@ -1024,23 +1156,31 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
+
     with gil, disable_client_hook():
+        # Initialize job_config if it hasn't already.
+        # Setup system paths configured in job_config.
+        maybe_initialize_job_config()
+
         try:
             try:
-                # The call to execute_task should never raise an exception. If
-                # it does, that indicates that there was an internal error.
-                execute_task(caller_address, task_type, task_name,
-                             ray_function, c_resources,
-                             c_args, c_arg_refs,
-                             debugger_breakpoint,
-                             serialized_retry_exception_allowlist,
-                             returns,
-                             dynamic_returns,
-                             is_retryable_error,
-                             is_application_error,
-                             defined_concurrency_groups,
-                             name_of_concurrency_group_to_execute,
-                             is_reattempt)
+                # Exceptions, including task cancellation, should be handled
+                # internal to this call. If it does raise an exception, that
+                # indicates that there was an internal error.
+                execute_task_with_cancellation_handler(
+                        caller_address,
+                        task_type, task_name,
+                        ray_function, c_resources,
+                        c_args, c_arg_refs,
+                        debugger_breakpoint,
+                        serialized_retry_exception_allowlist,
+                        returns,
+                        dynamic_returns,
+                        is_retryable_error,
+                        is_application_error,
+                        defined_concurrency_groups,
+                        name_of_concurrency_group_to_execute,
+                        is_reattempt)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -1096,12 +1236,14 @@ cdef CRayStatus task_execution_handler(
 
     return CRayStatus.OK()
 
-cdef c_bool kill_main_task() nogil:
+cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
     with gil:
-        if setproctitle.getproctitle() != "ray::IDLE":
+        task_id_to_kill = TaskID(task_id.Binary())
+        with current_task_id_lock:
+            if current_task_id != task_id_to_kill:
+                return False
             _thread.interrupt_main()
             return True
-        return False
 
 
 cdef CRayStatus check_signals() nogil:
@@ -1246,6 +1388,38 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
         worker.raise_errors([(data, metadata)], object_ids)
 
 
+def maybe_initialize_job_config():
+    global job_config_initialized
+    if job_config_initialized:
+        return
+    # Add code search path to sys.path, set load_code_from_local.
+    core_worker = ray._private.worker.global_worker.core_worker
+    code_search_path = core_worker.get_job_config().code_search_path
+    load_code_from_local = False
+    if code_search_path:
+        load_code_from_local = True
+        for p in code_search_path:
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.insert(0, p)
+    ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
+    # Add driver's system path to sys.path
+    py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+    if py_driver_sys_path:
+        for p in py_driver_sys_path:
+            sys.path.insert(0, p)
+    job_config_initialized = True
+
+    # Record the task name via :task_name: magic token in the log file.
+    # This is used for the prefix in driver logs `(task_name pid=123) ...`
+    job_id_magic_token = "{}{}\n".format(
+        ray_constants.LOG_PREFIX_JOB_ID, core_worker.get_current_job_id().hex())
+    # Print on both .out and .err
+    print(job_id_magic_token, end="")
+    print(job_id_magic_token, file=sys.stderr, end="")
+
+
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
 # up to hundreds of thousands of times per second).
 cdef void get_py_stack(c_string* stack_out) nogil:
@@ -1319,7 +1493,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token):
+                  startup_token, session_name, entrypoint):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1369,6 +1543,8 @@ cdef class CoreWorker:
         options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
         options.startup_token = startup_token
+        options.session_name = session_name
+        options.entrypoint = entrypoint
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
@@ -1400,6 +1576,9 @@ cdef class CoreWorker:
     def get_current_task_id(self):
         return TaskID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
+
+    def get_task_depth(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetTaskDepth()
 
     def get_current_job_id(self):
         return JobID(
@@ -1442,8 +1621,9 @@ cdef class CoreWorker:
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Get(
+                c_object_ids, timeout_ms, &results)
+        check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1647,8 +1827,9 @@ cdef class CoreWorker:
 
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Wait(
-                wait_ids, num_returns, timeout_ms, &results, fetch_local))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
+                wait_ids, num_returns, timeout_ms, &results, fetch_local)
+        check_status(op_status)
 
         assert len(results) == len(object_refs)
 
@@ -2199,16 +2380,20 @@ cdef class CoreWorker:
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
-        return CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                c_object_id).SerializeAsString()
+            CAddress c_owner_address
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                c_object_id, &c_owner_address)
+        check_status(op_status)
+        return c_owner_address.SerializeAsString()
 
     def serialize_object_ref(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
             c_string serialized_object_status
-        CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
+        check_status(op_status)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 serialized_object_status)

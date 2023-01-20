@@ -115,7 +115,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             shape=[self.action_space.low.size], stddev=self.stddev
         )
         ou_new = self.ou_theta * -self.ou_state + self.ou_sigma * gaussian_sample
-        if self.framework in ["tf2", "tfe"]:
+        if self.framework == "tf2":
             self.ou_state.assign_add(ou_new)
             ou_state_new = self.ou_state
         else:
@@ -153,7 +153,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         logp = zero_logps_from_actions(deterministic_actions)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
-        if self.framework in ["tf2", "tfe"]:
+        if self.framework == "tf2":
             if timestep is None:
                 self.last_timestep.assign_add(1)
             else:

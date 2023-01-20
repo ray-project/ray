@@ -4,7 +4,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.pg import PG
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
@@ -75,17 +75,15 @@ class TestCallbacks(unittest.TestCase):
         ray.shutdown()
 
     def test_episode_and_sample_callbacks(self):
-        for fw in framework_iterator(frameworks=("tf", "torch")):
-            pg = PG(
-                env="CartPole-v0",
-                config={
-                    "num_workers": 0,
-                    "rollout_fragment_length": 50,
-                    "train_batch_size": 50,
-                    "callbacks": EpisodeAndSampleCallbacks,
-                    "framework": fw,
-                },
-            )
+        config = (
+            PGConfig()
+            .environment("CartPole-v1")
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
+            .callbacks(EpisodeAndSampleCallbacks)
+            .training(train_batch_size=50)
+        )
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            pg = config.build()
             pg.train()
             pg.train()
             callback_obj = pg.workers.local_worker().callbacks
@@ -96,22 +94,22 @@ class TestCallbacks(unittest.TestCase):
             pg.stop()
 
     def test_on_sub_environment_created(self):
-        base_config = {
-            "env": "CartPole-v1",
+
+        config = (
+            dqn.DQNConfig().environment("CartPole-v1")
             # Create 4 sub-environments per remote worker.
-            "num_envs_per_worker": 4,
             # Create 2 remote workers.
-            "num_workers": 2,
-        }
+            .rollouts(num_envs_per_worker=4, num_rollout_workers=2)
+        )
 
         for callbacks in (
             OnSubEnvironmentCreatedCallback,
             MultiCallbacks([OnSubEnvironmentCreatedCallback]),
         ):
-            config = dict(base_config, callbacks=callbacks)
+            config.callbacks(callbacks)
 
             for _ in framework_iterator(config, frameworks=("tf", "torch")):
-                algo = dqn.DQN(config=config)
+                algo = config.build()
                 # Fake the counter on the local worker (doesn't have an env) and
                 # set it to -1 so the below `foreach_worker()` won't fail.
                 algo.workers.local_worker().sum_sub_env_vector_indices = -1
@@ -130,25 +128,28 @@ class TestCallbacks(unittest.TestCase):
                 algo.stop()
 
     def test_on_sub_environment_created_with_remote_envs(self):
-        base_config = {
-            "env": "CartPole-v1",
-            # Make each sub-environment a ray actor.
-            "remote_worker_envs": True,
-            # Create 4 sub-environments (ray remote actors) per remote
-            # worker.
-            "num_envs_per_worker": 4,
-            # Create 2 remote workers.
-            "num_workers": 2,
-        }
+        config = (
+            dqn.DQNConfig()
+            .environment("CartPole-v1")
+            .rollouts(
+                # Make each sub-environment a ray actor.
+                remote_worker_envs=True,
+                # Create 2 remote workers.
+                num_rollout_workers=2,
+                # Create 4 sub-environments (ray remote actors) per remote
+                # worker.
+                num_envs_per_worker=4,
+            )
+        )
 
         for callbacks in (
             OnSubEnvironmentCreatedCallback,
             MultiCallbacks([OnSubEnvironmentCreatedCallback]),
         ):
-            config = dict(base_config, callbacks=callbacks)
+            config.callbacks(callbacks)
 
             for _ in framework_iterator(config, frameworks=("tf", "torch")):
-                algo = dqn.DQN(config=config)
+                algo = config.build()
                 # Fake the counter on the local worker (doesn't have an env) and
                 # set it to -1 so the below `foreach_worker()` won't fail.
                 algo.workers.local_worker().sum_sub_env_vector_indices = -1
@@ -175,7 +176,7 @@ class TestCallbacks(unittest.TestCase):
                 RandomEnv,
                 env_config={
                     "max_episode_len": 200,
-                    "p_done": 0.0,
+                    "p_terminated": 0.0,
                 },
             )
             .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
@@ -193,13 +194,12 @@ class TestCallbacks(unittest.TestCase):
             # -> 1 episode = 200 timesteps
             # -> 2.5 episodes per sub-env
             # -> 3 episodes created [per sub-env] = 6 episodes total
-            self.assertTrue(
-                6
-                == ray.get(
-                    algo.workers.remote_workers()[0].apply.remote(
-                        lambda w: w.callbacks._reset_counter
-                    )
-                )
+            self.assertEqual(
+                6,
+                algo.workers.foreach_worker(
+                    lambda w: w.callbacks._reset_counter,
+                    local_worker=False,
+                )[0],
             )
             algo.stop()
 

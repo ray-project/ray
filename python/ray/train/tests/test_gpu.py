@@ -1,5 +1,6 @@
 import os
 from collections import Counter
+import time
 
 from unittest.mock import patch
 import pytest
@@ -9,13 +10,14 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
+from ray.exceptions import RayTaskError
 from ray.air import session
 from ray import tune
 
 import ray.train as train
 from ray.air.config import ScalingConfig
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
-from ray.train.examples.torch_linear_example import LinearDataset
+from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.torch.config import TorchConfig, _TorchBackend
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.train._internal.worker_group import WorkerGroup
@@ -174,12 +176,12 @@ def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
     @patch.object(
         ray.train.torch.train_loop_utils._TorchAccelerator,
         "get_device",
-        lambda self: torch.device(f"cuda:{1 - train.local_rank()}"),
+        lambda self: torch.device(f"cuda:{1 - session.get_local_rank()}"),
     )
     def train_func():
         # These assert statements must hold for prepare_model to wrap with DDP.
         assert torch.cuda.is_available()
-        assert train.world_size() > 1
+        assert session.get_world_size() > 1
         model = torch.nn.Linear(1, 1)
         data = torch.ones(1)
         data = data.to(train.torch.get_device())
@@ -232,8 +234,8 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
     trainer.fit()
 
 
-@pytest.mark.parametrize("use_gpu", (False, True))
-def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
+@pytest.mark.parametrize("data_loader_num_workers", (0, 2))
+def test_enable_reproducibility(ray_start_4_cpus_2_gpus, data_loader_num_workers):
     # NOTE: Reproducible results aren't guaranteed between seeded executions, even with
     # identical hardware and software dependencies. This test should be okay given that
     # it only runs for two epochs on a small dataset.
@@ -251,7 +253,11 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
             torch.randn(dataset_length, 3, 32, 32),
             torch.randint(low=0, high=1000, size=(dataset_length,)),
         )
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+
+        # num_workers > 0 tests for https://github.com/ray-project/ray/issues/30247
+        dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=64, num_workers=data_loader_num_workers
+        )
         dataloader = train.torch.prepare_data_loader(dataloader)
 
         optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
@@ -301,6 +307,32 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
     torch_backend.on_start(worker_group, backend_config=TorchConfig(backend="nccl"))
 
     worker_group.execute(assert_env_var_set)
+
+
+def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
+    """Tests that TorchTrainer raises exception on NCCL timeouts."""
+
+    def train_fn():
+        model = torch.nn.Linear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Rank 0 worker will never reach the collective operation.
+        # NCCL should timeout.
+        if session.get_world_rank() == 0:
+            while True:
+                time.sleep(100)
+
+        torch.distributed.barrier()
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+        torch_config=TorchConfig(timeout_s=5),
+    )
+
+    # Training should fail and not hang.
+    with pytest.raises(RayTaskError):
+        trainer.fit()
 
 
 if __name__ == "__main__":

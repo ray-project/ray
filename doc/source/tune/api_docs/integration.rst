@@ -1,7 +1,7 @@
 .. _tune-integration:
 
-External library integrations (tune.integration)
-================================================
+External library integrations for Ray Tune (tune.integration)
+=============================================================
 
 .. contents::
     :local:
@@ -13,7 +13,7 @@ Comet (tune.integration.comet)
 
 :ref:`See also here <tune-comet-ref>`.
 
-.. autoclass:: ray.air.callbacks.comet.CometLoggerCallback
+.. autoclass:: ray.air.integrations.comet.CometLoggerCallback
     :noindex:
 
 .. _tune-integration-keras:
@@ -33,10 +33,10 @@ MLflow (tune.integration.mlflow)
 
 :ref:`See also here <tune-mlflow-ref>`.
 
-.. autoclass:: ray.air.callbacks.mlflow.MLflowLoggerCallback
+.. autoclass:: ray.air.integrations.mlflow.MLflowLoggerCallback
     :noindex:
 
-.. autofunction:: ray.tune.integration.mlflow.mlflow_mixin
+.. autofunction:: ray.air.integrations.mlflow.setup_mlflow
 
 
 .. _tune-integration-mxnet:
@@ -65,10 +65,10 @@ Weights and Biases (tune.integration.wandb)
 
 :ref:`See also here <tune-wandb-ref>`.
 
-.. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
+.. autoclass:: ray.air.integrations.wandb.WandbLoggerCallback
     :noindex:
 
-.. autofunction:: ray.tune.integration.wandb.wandb_mixin
+.. autofunction:: ray.air.integrations.wandb.setup_wandb
 
 
 .. _tune-integration-xgboost:

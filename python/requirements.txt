@@ -8,12 +8,11 @@
 
 ## setup.py install_requires
 attrs
-click<=8.0.4,>=7.0
+click>=7.0
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
-protobuf<4.0.0,>=3.15.35; platform_system != "Windows"
-protobuf>= 3.15.3, != 3.19.55; platform_system == "Windows"
+protobuf>= 3.15.3, != 3.19.55
 pyyaml
 aiosignal
 frozenlist
@@ -22,8 +21,11 @@ virtualenv>=20.0.24
 
 # Python version-specific requirements
 dataclasses; python_version < '3.7'
-grpcio>=1.32.0; python_version < '3.10'
-grpcio>=1.42.0; python_version >= '3.10'
+# Tracking issue: https://github.com/ray-project/ray/issues/30984
+grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'
+grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'
+grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'
+grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'
 numpy>=1.16; python_version < '3.9'
 numpy>=1.19.3; python_version >= '3.9'
 packaging; python_version >= '3.10'
@@ -36,11 +38,10 @@ rich
 urllib3
 tabulate
 scikit-image
-kopf; python_version >= '3.7'
 scipy
 aiohttp>=3.7
 fastapi
-gym<0.24.1,>=0.21.0
+gymnasium==0.26.3
 opencensus
 fsspec
 dm_tree
@@ -58,11 +59,13 @@ aiorwlock
 opentelemetry-exporter-otlp==1.1.0
 starlette
 typer
-pyarrow<7.0.0,>=6.0.1
+pyarrow >= 6.0.1; python_version >= '3.7' and platform_system != "Windows"
+pyarrow >= 6.0.1, < 7.0.0; python_version < '3.7' or platform_system == "Windows"
 aiohttp_cors
 opentelemetry-api==1.1.0
 pyyaml
 gpustat>=1.0.0
-pydantic
+pydantic; python_version < '3.11'
+pydantic==1.10.2; python_version >= '3.11'
 prometheus_client<0.14.0,>=0.7.1
 opentelemetry-sdk==1.1.0

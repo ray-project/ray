@@ -127,10 +127,17 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
     )
     tuner.fit()
 
+.. tip::
+
+    Avoid passing large objects as values in the search space, as that will incur a performance overhead.
+    Use :ref:`tune-with-parameters` to pass large objects in or load them inside your trainable
+    from disk (making sure that all nodes have access to the files) or cloud storage.
+    See :ref:`tune-bottlenecks` for more information.
+
 .. _tune_custom-search:
 
-How to use Custom and Conditional Search Spaces?
-------------------------------------------------
+How to use Custom and Conditional Search Spaces in Tune?
+--------------------------------------------------------
 
 You'll often run into awkward search spaces (i.e., when one hyperparameter depends on another).
 Use ``tune.sample_from(func)`` to provide a **custom** callable function for generating a search space.

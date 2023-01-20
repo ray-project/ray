@@ -82,7 +82,7 @@ handle any checkpoints created with Ray 2.0 or any version up to ``V``.
 
 .. code-block:: shell
 
-    $ mode rllib_checkpoint.json
+    $ more rllib_checkpoint.json
     {"type": "Algorithm", "checkpoint_version": "1.0"}
 
 Now, let's check out the `policies/` sub-directory:

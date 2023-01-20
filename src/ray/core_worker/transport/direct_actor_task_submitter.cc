@@ -468,7 +468,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         reply_callback(status, reply);
       };
 
-  task_finisher_.MarkTaskWaitingForExecution(task_id);
+  task_finisher_.MarkTaskWaitingForExecution(task_id,
+                                             NodeID::FromBinary(addr.raylet_id()));
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 
@@ -521,7 +522,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         error_type,
         &status,
         &error_info,
-        /*mark_task_object_failed*/ is_actor_dead);
+        /*mark_task_object_failed*/ is_actor_dead,
+        /*fail_immediatedly*/ false);
 
     if (!is_actor_dead && !will_retry) {
       // No retry == actor is dead.

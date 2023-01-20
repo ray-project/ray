@@ -3,16 +3,14 @@ import ray
 
 ray.init(
     _system_config={
-        "memory_monitor_interval_ms": 100,
-        "memory_usage_threshold_fraction": 0.4,
-        "min_memory_free_bytes": -1,
+        "memory_usage_threshold": 0.4,
     },
 )
 # fmt: off
 # __oom_start__
 import ray
 
-@ray.remote
+@ray.remote(max_retries=0)
 def allocate_memory():
     chunks = []
     bits_to_allocate = 8 * 100 * 1024 * 1024  # ~0.1 GiB

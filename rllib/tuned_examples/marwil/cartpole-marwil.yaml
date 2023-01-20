@@ -1,9 +1,9 @@
 # To generate training data, first run:
-# $ ./train.py --run=PPO --env=CartPole-v0 \
+# $ ./train.py --run=PPO --env=CartPole-v1 \
 #      --stop='{"timesteps_total": 50000}' \
 #      --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
 cartpole-marwil:
-    env: CartPole-v0
+    env: CartPole-v1
     run: MARWIL
     stop:
         timesteps_total: 500000

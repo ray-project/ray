@@ -3,286 +3,150 @@
 Dataset API
 ===========
 
-.. autoclass:: ray.data.Dataset
+.. currentmodule:: ray.data
 
-**Basic Transformations**
-
-.. autosummary::
-    :nosignatures:
-
-    ray.data.Dataset.map
-    ray.data.Dataset.map_batches
-    ray.data.Dataset.flat_map
-    ray.data.Dataset.filter
-    ray.data.Dataset.add_column
-    ray.data.Dataset.drop_columns
-    ray.data.Dataset.random_sample
-    ray.data.Dataset.limit
-
-**Sorting, Shuffling, Repartitioning**
+Constructor
+-----------
 
 .. autosummary::
-    :nosignatures:
+   :toctree: doc/
 
-    ray.data.Dataset.sort
-    ray.data.Dataset.random_shuffle
-    ray.data.Dataset.randomize_block_order
-    ray.data.Dataset.repartition
-
-**Splitting and Merging Datasets**
-
-.. autosummary::
-    :nosignatures:
-
-    ray.data.Dataset.split
-    ray.data.Dataset.split_at_indices
-    ray.data.Dataset.split_proportionately
-    ray.data.Dataset.train_test_split
-    ray.data.Dataset.union
-    ray.data.Dataset.zip
-
-**Grouped and Global Aggregations**
-
-.. autosummary::
-    :nosignatures:
-
-    ray.data.Dataset.groupby
-    ray.data.Dataset.aggregate
-    ray.data.Dataset.sum
-    ray.data.Dataset.min
-    ray.data.Dataset.max
-    ray.data.Dataset.mean
-    ray.data.Dataset.std
-
-**Converting to Pipelines**
-
-.. autosummary::
-    :nosignatures:
-
-    ray.data.Dataset.repeat
-    ray.data.Dataset.window
-
-**Consuming Datasets**
-
-.. autosummary::
-    :nosignatures:
-
-    ray.data.Dataset.show
-    ray.data.Dataset.take
-    ray.data.Dataset.take_all
-    ray.data.Dataset.iter_rows
-    ray.data.Dataset.iter_batches
-    ray.data.Dataset.iter_torch_batches
-    ray.data.Dataset.iter_tf_batches
-
-**I/O and Conversion**
-
-.. autosummary::
-    :nosignatures:
-
-    ray.data.Dataset.write_parquet
-    ray.data.Dataset.write_json
-    ray.data.Dataset.write_csv
-    ray.data.Dataset.write_numpy
-    ray.data.Dataset.write_datasource
-    ray.data.Dataset.to_torch
-    ray.data.Dataset.to_tf
-    ray.data.Dataset.to_dask
-    ray.data.Dataset.to_mars
-    ray.data.Dataset.to_modin
-    ray.data.Dataset.to_spark
-    ray.data.Dataset.to_pandas
-    ray.data.Dataset.to_pandas_refs
-    ray.data.Dataset.to_numpy_refs
-    ray.data.Dataset.to_arrow_refs
-    ray.data.Dataset.to_random_access_dataset
-
-**Inspecting Metadata**
-
-.. autosummary::
-    :nosignatures:
-
-    ray.data.Dataset.count
-    ray.data.Dataset.schema
-    ray.data.Dataset.default_batch_format
-    ray.data.Dataset.num_blocks
-    ray.data.Dataset.size_bytes
-    ray.data.Dataset.input_files
-    ray.data.Dataset.stats
-    ray.data.Dataset.get_internal_block_refs
-
-**Execution**
-
-.. autosummary::
-    :nosignatures:
-
-    ray.data.Dataset.fully_executed
-    ray.data.Dataset.is_fully_executed
-    ray.data.Dataset.lazy
-
-**Serialization**
-
-.. autosummary::
-    :nosignatures:
-
-    ray.data.Dataset.has_serializable_lineage
-    ray.data.Dataset.serialize_lineage
-    ray.data.Dataset.deserialize_lineage
+   Dataset
 
 Basic Transformations
 ---------------------
 
-.. automethod:: ray.data.Dataset.map
+.. autosummary::
+   :toctree: doc/
 
-.. automethod:: ray.data.Dataset.map_batches
-
-.. automethod:: ray.data.Dataset.flat_map
-
-.. automethod:: ray.data.Dataset.filter
-
-.. automethod:: ray.data.Dataset.add_column
-
-.. automethod:: ray.data.Dataset.drop_columns
-
-.. automethod:: ray.data.Dataset.random_sample
-
-.. automethod:: ray.data.Dataset.limit
+   Dataset.map
+   Dataset.map_batches
+   Dataset.flat_map
+   Dataset.filter
+   Dataset.add_column
+   Dataset.drop_columns
+   Dataset.select_columns
+   Dataset.random_sample
+   Dataset.limit
 
 Sorting, Shuffling, Repartitioning
 ----------------------------------
 
-.. automethod:: ray.data.Dataset.sort
+.. autosummary::
+   :toctree: doc/
 
-.. automethod:: ray.data.Dataset.random_shuffle
-
-.. automethod:: ray.data.Dataset.randomize_block_order
-
-.. automethod:: ray.data.Dataset.repartition
+   Dataset.sort
+   Dataset.random_shuffle
+   Dataset.randomize_block_order
+   Dataset.repartition
 
 Splitting and Merging Datasets
 ------------------------------
 
-.. automethod:: ray.data.Dataset.split
+.. autosummary::
+   :toctree: doc/
 
-.. automethod:: ray.data.Dataset.split_at_indices
-
-.. automethod:: ray.data.Dataset.split_proportionately
-
-.. automethod:: ray.data.Dataset.train_test_split
-
-.. automethod:: ray.data.Dataset.union
-
-.. automethod:: ray.data.Dataset.zip
+   Dataset.split
+   Dataset.split_at_indices
+   Dataset.split_proportionately
+   Dataset.train_test_split
+   Dataset.union
+   Dataset.zip
 
 Grouped and Global Aggregations
 -------------------------------
 
-.. automethod:: ray.data.Dataset.groupby
+.. autosummary::
+   :toctree: doc/
 
-.. automethod:: ray.data.Dataset.aggregate
-
-.. automethod:: ray.data.Dataset.sum
-
-.. automethod:: ray.data.Dataset.min
-
-.. automethod:: ray.data.Dataset.max
-
-.. automethod:: ray.data.Dataset.mean
-
-.. automethod:: ray.data.Dataset.std
+   Dataset.groupby
+   Dataset.aggregate
+   Dataset.sum
+   Dataset.min
+   Dataset.max
+   Dataset.mean
+   Dataset.std
 
 Converting to Pipeline
 ----------------------
 
-.. automethod:: ray.data.Dataset.repeat
+.. autosummary::
+   :toctree: doc/
 
-.. automethod:: ray.data.Dataset.window
+   Dataset.repeat
+   Dataset.window
 
 Consuming Datasets
 ------------------
 
-.. automethod:: ray.data.Dataset.show
+.. autosummary::
+   :toctree: doc/
 
-.. automethod:: ray.data.Dataset.take
-
-.. automethod:: ray.data.Dataset.take_all
-
-.. automethod:: ray.data.Dataset.iter_rows
-
-.. automethod:: ray.data.Dataset.iter_batches
-
-.. automethod:: ray.data.Dataset.iter_torch_batches
-
-.. automethod:: ray.data.Dataset.iter_tf_batches
+   Dataset.show
+   Dataset.take
+   Dataset.take_all
+   Dataset.iterator
+   Dataset.iter_rows
+   Dataset.iter_batches
+   Dataset.iter_torch_batches
+   Dataset.iter_tf_batches
 
 I/O and Conversion
 ------------------
 
-.. automethod:: ray.data.Dataset.write_parquet
+.. autosummary::
+   :toctree: doc/
 
-.. automethod:: ray.data.Dataset.write_json
-
-.. automethod:: ray.data.Dataset.write_csv
-
-.. automethod:: ray.data.Dataset.write_numpy
-
-.. automethod:: ray.data.Dataset.write_datasource
-
-.. automethod:: ray.data.Dataset.to_torch
-
-.. automethod:: ray.data.Dataset.to_tf
-
-.. automethod:: ray.data.Dataset.to_dask
-
-.. automethod:: ray.data.Dataset.to_mars
-
-.. automethod:: ray.data.Dataset.to_modin
-
-.. automethod:: ray.data.Dataset.to_spark
-
-.. automethod:: ray.data.Dataset.to_pandas
-
-.. automethod:: ray.data.Dataset.to_pandas_refs
-
-.. automethod:: ray.data.Dataset.to_numpy_refs
-
-.. automethod:: ray.data.Dataset.to_arrow_refs
-
-.. automethod:: ray.data.Dataset.to_random_access_dataset
+   Dataset.write_parquet
+   Dataset.write_json
+   Dataset.write_csv
+   Dataset.write_numpy
+   Dataset.write_tfrecords
+   Dataset.write_mongo
+   Dataset.write_datasource
+   Dataset.to_torch
+   Dataset.to_tf
+   Dataset.to_dask
+   Dataset.to_mars
+   Dataset.to_modin
+   Dataset.to_spark
+   Dataset.to_pandas
+   Dataset.to_pandas_refs
+   Dataset.to_numpy_refs
+   Dataset.to_arrow_refs
+   Dataset.to_random_access_dataset
 
 Inspecting Metadata
 -------------------
 
-.. automethod:: ray.data.Dataset.count
+.. autosummary::
+   :toctree: doc/
 
-.. automethod:: ray.data.Dataset.schema
-
-.. automethod:: ray.data.Dataset.default_batch_format
-
-.. automethod:: ray.data.Dataset.num_blocks
-
-.. automethod:: ray.data.Dataset.size_bytes
-
-.. automethod:: ray.data.Dataset.input_files
-
-.. automethod:: ray.data.Dataset.stats
-
-.. automethod:: ray.data.Dataset.get_internal_block_refs
+   Dataset.count
+   Dataset.schema
+   Dataset.default_batch_format
+   Dataset.num_blocks
+   Dataset.size_bytes
+   Dataset.input_files
+   Dataset.stats
+   Dataset.get_internal_block_refs
 
 Execution
 ---------
 
-.. automethod:: ray.data.Dataset.fully_executed
+.. autosummary::
+   :toctree: doc/
 
-.. automethod:: ray.data.Dataset.is_fully_executed
-
-.. automethod:: ray.data.Dataset.lazy
+   Dataset.fully_executed
+   Dataset.is_fully_executed
+   Dataset.lazy
 
 Serialization
 -------------
 
-.. automethod:: ray.data.Dataset.has_serializable_lineage
+.. autosummary::
+   :toctree: doc/
 
-.. automethod:: ray.data.Dataset.serialize_lineage
-
-.. automethod:: ray.data.Dataset.deserialize_lineage
+   Dataset.has_serializable_lineage
+   Dataset.serialize_lineage
+   Dataset.deserialize_lineage

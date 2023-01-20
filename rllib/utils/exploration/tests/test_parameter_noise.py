@@ -10,7 +10,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 class TestParameterNoise(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -19,38 +19,40 @@ class TestParameterNoise(unittest.TestCase):
     def test_ddpg_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
             ddpg.DDPG,
-            ddpg.DEFAULT_CONFIG,
-            "Pendulum-v1",
-            {},
-            np.array([1.0, 0.0, -1.0]),
+            # Switch on complete_episodes mode b/c we are using ParameterNoise.
+            core_config=ddpg.DDPGConfig().rollouts(batch_mode="complete_episodes"),
+            env="Pendulum-v1",
+            env_config={},
+            obs=np.array([1.0, 0.0, -1.0]),
         )
 
     def test_dqn_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
             dqn.DQN,
-            dqn.DEFAULT_CONFIG,
-            "FrozenLake-v1",
-            {"is_slippery": False, "map_name": "4x4"},
-            np.array(0),
+            # Switch on complete_episodes mode b/c we are using ParameterNoise.
+            core_config=dqn.DQNConfig().rollouts(batch_mode="complete_episodes"),
+            env="FrozenLake-v1",
+            env_config={"is_slippery": False, "map_name": "4x4"},
+            obs=np.array(0),
         )
 
     def do_test_parameter_noise_exploration(
-        self, algo_cls, config, env, env_config, obs
+        self, algo_cls, *, core_config, env, env_config, obs
     ):
         """Tests, whether an Agent works with ParameterNoise."""
-        core_config = config.copy()
-        core_config["num_workers"] = 0  # Run locally.
-        core_config["env_config"] = env_config
+        core_config.rollouts(num_rollout_workers=0)  # Run locally.
+        core_config.environment(env, env_config=env_config)
 
         for fw in framework_iterator(core_config):
             config = core_config.copy()
 
             # Algo with ParameterNoise exploration (config["explore"]=True).
             # ----
-            config["exploration_config"] = {"type": "ParameterNoise"}
-            config["explore"] = True
+            config.exploration(
+                exploration_config={"type": "ParameterNoise"}, explore=True
+            )
 
-            algo = algo_cls(config=config, env=env)
+            algo = config.build()
             policy = algo.get_policy()
             pol_sess = policy.get_session()
             # Remove noise that has been added during policy initialization
@@ -112,9 +114,10 @@ class TestParameterNoise(unittest.TestCase):
             # DQN with ParameterNoise exploration (config["explore"]=False).
             # ----
             config = core_config.copy()
-            config["exploration_config"] = {"type": "ParameterNoise"}
-            config["explore"] = False
-            algo = algo_cls(config=config, env=env)
+            config.exploration(
+                exploration_config={"type": "ParameterNoise"}, explore=False
+            )
+            algo = config.build()
             policy = algo.get_policy()
             pol_sess = policy.get_session()
             # Remove noise that has been added during policy initialization
@@ -181,12 +184,14 @@ class TestParameterNoise(unittest.TestCase):
                     "final_scale": 0.0,
                     "random_timesteps": 0,
                 }
-            config["exploration_config"] = {
-                "type": "ParameterNoise",
-                "sub_exploration": sub_config,
-            }
-            config["explore"] = True
-            algo = algo_cls(config=config, env=env)
+            config.exploration(
+                exploration_config={
+                    "type": "ParameterNoise",
+                    "sub_exploration": sub_config,
+                },
+                explore=True,
+            )
+            algo = config.build()
             # Now, when we act - even with explore=True - we would expect
             # the same action for the same input (parameter noise is
             # deterministic).
@@ -221,7 +226,7 @@ class TestParameterNoise(unittest.TestCase):
             # DDPG model.
             else:
                 return weights["policy_model.action_0._model.0.weight"][0][0]
-        key = 0 if fw in ["tf2", "tfe"] else list(weights.keys())[0]
+        key = 0 if fw == "tf2" else list(weights.keys())[0]
         return weights[key][0][0]
 
 

@@ -356,6 +356,10 @@ struct GcsServerMocker {
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
 
     size_t GetWaitingRemovedBundlesSize() { return waiting_removed_bundles_.size(); }
+
+   protected:
+    friend class GcsPlacementGroupSchedulerTest;
+    FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
@@ -433,11 +437,6 @@ struct GcsServerMocker {
     }
 
     bool IsRemoved(const NodeID &node_id) const override { return false; }
-
-    Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-                                const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
 
     void AsyncResubscribe() override {}
   };

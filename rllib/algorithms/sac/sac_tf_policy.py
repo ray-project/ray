@@ -3,8 +3,8 @@ TensorFlow policy class used for SAC.
 """
 
 import copy
-import gym
-from gym.spaces import Box, Discrete
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete
 from functools import partial
 import logging
 from typing import Dict, List, Optional, Tuple, Type, Union
@@ -305,7 +305,7 @@ def sac_actor_critic_loss(
         # Discrete case: "Best" means weighted by the policy (prob) outputs.
         q_tp1_best = tf.reduce_sum(tf.multiply(policy_tp1, q_tp1), axis=-1)
         q_tp1_best_masked = (
-            1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+            1.0 - tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
         ) * q_tp1_best
     # Continuous actions case.
     else:
@@ -362,7 +362,7 @@ def sac_actor_critic_loss(
 
         q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
         q_tp1_best_masked = (
-            1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+            1.0 - tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
         ) * q_tp1_best
 
     # Compute RHS of bellman equation for the Q-loss (critic(s)).
@@ -457,7 +457,7 @@ def compute_and_clip_gradients(
     """
     # Eager: Use GradientTape (which is a property of the `optimizer` object
     # (an OptimizerWrapper): see rllib/policy/eager_tf_policy.py).
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
         actor_grads_and_vars = list(
@@ -563,7 +563,7 @@ def apply_gradients(
         critic_apply_ops = [policy._critic_optimizer[0].apply_gradients(cgrads)]
 
     # Eager mode -> Just apply and return None.
-    if policy.config["framework"] in ["tf2", "tfe"]:
+    if policy.config["framework"] == "tf2":
         policy._alpha_optimizer.apply_gradients(policy._alpha_grads_and_vars)
         return
     # Tf static graph -> Return op.
@@ -607,7 +607,7 @@ class ActorCriticOptimizerMixin:
 
     def __init__(self, config):
         # Eager mode.
-        if config["framework"] in ["tf2", "tfe"]:
+        if config["framework"] == "tf2":
             self.global_step = get_variable(0, tf_name="global_step")
             self._actor_optimizer = tf.keras.optimizers.Adam(
                 learning_rate=config["optimization"]["actor_learning_rate"]
@@ -672,7 +672,7 @@ class ComputeTDErrorMixin:
     def __init__(self, loss_fn):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             # Do forward pass on loss to update td errors attribute
             # (one TD-error value per item in batch to update PR weights).
@@ -685,7 +685,7 @@ class ComputeTDErrorMixin:
                     SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
                     SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
                     SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
-                    SampleBatch.DONES: tf.convert_to_tensor(done_mask),
+                    SampleBatch.TERMINATEDS: tf.convert_to_tensor(terminateds_mask),
                     PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
                 },
             )

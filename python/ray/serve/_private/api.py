@@ -170,8 +170,8 @@ def serve_start(
     try:
         client = get_global_client(_health_check_controller=True)
         logger.info(
-            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".',
-            " New http options will not be applied.",
+            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
+            " New http options will not be applied."
         )
         if http_options:
             _check_http_options(client, http_options)
@@ -186,7 +186,7 @@ def serve_start(
 
     # Used for scheduling things to the head node explicitly.
     # Assumes that `serve.start` runs on the head node.
-    head_node_id = ray.get_runtime_context().node_id.hex()
+    head_node_id = ray.get_runtime_context().get_node_id()
     controller_actor_options = {
         "num_cpus": 1 if dedicated_cpu else 0,
         "name": controller_name,

@@ -4,13 +4,12 @@ PyTorch policy class used for PG.
 import logging
 from typing import Dict, List, Type, Union, Optional, Tuple
 
-import ray
-
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.utils.typing import AgentID
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.algorithms.pg.pg import PGConfig
 from ray.rllib.algorithms.pg.utils import post_process_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -29,19 +28,21 @@ logger = logging.getLogger(__name__)
 class PGTorchPolicy(LearningRateSchedule, TorchPolicyV2):
     """PyTorch policy class used with PGTrainer."""
 
-    def __init__(self, observation_space, action_space, config):
+    def __init__(self, observation_space, action_space, config: PGConfig):
 
-        config = dict(ray.rllib.algorithms.pg.PGConfig().to_dict(), **config)
+        # Enforce AlgorithmConfig for PG Policies.
+        if isinstance(config, dict):
+            config = PGConfig.from_dict(config)
 
         TorchPolicyV2.__init__(
             self,
             observation_space,
             action_space,
             config,
-            max_seq_len=config["model"]["max_seq_len"],
+            max_seq_len=config.model["max_seq_len"],
         )
 
-        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+        LearningRateSchedule.__init__(self, config.lr, config.lr_schedule)
 
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()

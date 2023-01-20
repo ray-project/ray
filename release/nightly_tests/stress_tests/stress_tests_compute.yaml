@@ -1,7 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-max_workers: 900
+max_workers: 100
 
 aws:
     BlockDeviceMappings:
@@ -19,8 +19,8 @@ head_node_type:
 worker_node_types:
    - name: worker_node
      instance_type: m4.large
-     min_workers: 110
-     max_workers: 110
+     min_workers: 100
+     max_workers: 100
      use_spot: false
      resources:
       cpu: 2

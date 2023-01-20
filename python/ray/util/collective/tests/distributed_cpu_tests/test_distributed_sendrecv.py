@@ -12,7 +12,7 @@ from ray.util.collective.tests.cpu_util import create_collective_workers
 @pytest.mark.parametrize("dst_rank", [0, 1, 3, 6])
 @pytest.mark.parametrize("src_rank", [0, 2, 4, 7])
 @pytest.mark.parametrize(
-    "array_size", [2 ** 10, 2 ** 15, 2 ** 20, [2, 2], [5, 9, 10, 85]]
+    "array_size", [2**10, 2**15, 2**20, [2, 2], [5, 9, 10, 85]]
 )
 def test_sendrecv(
     ray_start_distributed_2_nodes, group_name, array_size, src_rank, dst_rank, backend

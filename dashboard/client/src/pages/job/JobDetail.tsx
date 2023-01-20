@@ -1,49 +1,35 @@
 import { makeStyles } from "@material-ui/core";
+import { Alert } from "@material-ui/lab";
 import dayjs from "dayjs";
 import React from "react";
-import { RouteComponentProps } from "react-router-dom";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import ActorList from "../actor/ActorList";
+import PlacementGroupList from "../state/PlacementGroup";
+import TaskList from "../state/task";
 
 import { useJobDetail } from "./hook/useJobDetail";
 import { useJobProgress } from "./hook/useJobProgress";
+import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
 import { TaskProgressBar } from "./TaskProgressBar";
 
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
   },
-  paper: {
-    padding: theme.spacing(2),
+  taskProgressTable: {
     marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(2),
-  },
-  label: {
-    fontWeight: "bold",
-  },
-  pageMeta: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-  },
-  tab: {
-    marginBottom: theme.spacing(2),
-  },
-  dependenciesChip: {
-    margin: theme.spacing(0.5),
-    wordBreak: "break-all",
-  },
-  alert: {
-    color: theme.palette.error.main,
   },
 }));
 
-const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
+export const JobDetailChartsPage = () => {
   const classes = useStyle();
-  const { job, msg, params } = useJobDetail(props);
-  const { progress } = useJobProgress(props.match.params.id);
+  const { job, msg, params } = useJobDetail();
+  const jobId = params.id;
+  const { progress, error, driverExists } = useJobProgress(jobId);
 
   if (!job) {
     return (
@@ -58,11 +44,68 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
     );
   }
 
+  const tasksSectionContents = (() => {
+    if (!driverExists) {
+      return <TaskProgressBar />;
+    }
+    const { status } = job;
+    if (!progress || error) {
+      return (
+        <Alert severity="warning">
+          No tasks visualizations because prometheus is not detected. Please
+          make sure prometheus is running and refresh this page. See:{" "}
+          <a
+            href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
+          </a>
+          .
+          <br />
+          If you are hosting prometheus on a separate machine or using a
+          non-default port, please set the RAY_PROMETHEUS_HOST env var to point
+          to your prometheus server when launching ray.
+        </Alert>
+      );
+    }
+    if (status === "SUCCEEDED" || status === "FAILED") {
+      return (
+        <React.Fragment>
+          <TaskProgressBar {...progress} showAsComplete />
+          <JobTaskNameProgressTable
+            className={classes.taskProgressTable}
+            jobId={jobId}
+          />
+        </React.Fragment>
+      );
+    } else {
+      return (
+        <React.Fragment>
+          <TaskProgressBar {...progress} />
+          <JobTaskNameProgressTable
+            className={classes.taskProgressTable}
+            jobId={jobId}
+          />
+        </React.Fragment>
+      );
+    }
+  })();
+
   return (
     <div className={classes.root}>
       <TitleCard title={`JOB - ${params.id}`}>
         <MetadataSection
           metadataList={[
+            {
+              label: "Entrypoint",
+              content: job.entrypoint
+                ? {
+                    value: job.entrypoint,
+                    copyableValue: job.entrypoint,
+                  }
+                : { value: "-" },
+            },
             {
               label: "Status",
               content: <StatusChip type="job" status={job.status} />,
@@ -88,6 +131,17 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   },
             },
             {
+              label: "Duration",
+              content: job.start_time ? (
+                <DurationText
+                  startTime={job.start_time}
+                  endTime={job.end_time}
+                />
+              ) : (
+                <React.Fragment>-</React.Fragment>
+              ),
+            },
+            {
               label: "Started at",
               content: {
                 value: job.start_time
@@ -103,28 +157,17 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   : "-",
               },
             },
-            {
-              label: "Duration",
-              content: job.start_time ? (
-                <DurationText
-                  startTime={job.start_time}
-                  endTime={job.end_time}
-                />
-              ) : (
-                <React.Fragment>-</React.Fragment>
-              ),
-            },
           ]}
         />
       </TitleCard>
-      <TitleCard title="Tasks">
-        <TaskProgressBar
-          {...progress}
-          showAsComplete={job.status === "SUCCEEDED" || job.status === "FAILED"}
-        />
+      <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
+      <TitleCard title="Task Table">
+        <TaskList jobId={jobId} />
+      </TitleCard>
+      <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
+      <TitleCard title="Placement Groups">
+        <PlacementGroupList jobId={jobId} />
       </TitleCard>
     </div>
   );
 };
-
-export default JobDetailPage;

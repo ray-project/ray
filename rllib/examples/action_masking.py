@@ -39,7 +39,7 @@ Other options for running this example:
 import argparse
 import os
 
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import ray
 from ray import air, tune
 from ray.rllib.algorithms import ppo
@@ -69,7 +69,7 @@ def get_cli_args():
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
         "--framework",
-        choices=["tf", "tf2", "tfe", "torch"],
+        choices=["tf", "tf2", "torch"],
         default="tf",
         help="The DL framework specifier.",
     )
@@ -112,28 +112,33 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # main part: configure the ActionMaskEnv and ActionMaskModel
-    config = {
-        # random env with 100 discrete actions and 5x [-1,1] observations
-        # some actions are declared invalid and lead to errors
-        "env": ActionMaskEnv,
-        "env_config": {
-            "action_space": Discrete(100),
-            "observation_space": Box(-1.0, 1.0, (5,)),
-        },
-        # the ActionMaskModel retrieves the invalid actions and avoids them
-        "model": {
-            "custom_model": ActionMaskModel
-            if args.framework != "torch"
-            else TorchActionMaskModel,
-            # disable action masking according to CLI
-            "custom_model_config": {"no_masking": args.no_masking},
-        },
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
-        # Run with tracing enabled for tfe/tf2?
-        "eager_tracing": args.eager_tracing,
-    }
+    config = (
+        ppo.PPOConfig()
+        .environment(
+            # random env with 100 discrete actions and 5x [-1,1] observations
+            # some actions are declared invalid and lead to errors
+            ActionMaskEnv,
+            env_config={
+                "action_space": Discrete(100),
+                "observation_space": Box(-1.0, 1.0, (5,)),
+            },
+        )
+        .training(
+            # the ActionMaskModel retrieves the invalid actions and avoids them
+            model={
+                "custom_model": ActionMaskModel
+                if args.framework != "torch"
+                else TorchActionMaskModel,
+                # disable action masking according to CLI
+                "custom_model_config": {"no_masking": args.no_masking},
+            },
+        )
+        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .resources(
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+        )
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -145,12 +150,12 @@ if __name__ == "__main__":
     if args.no_tune:
         if args.run not in {"APPO", "PPO"}:
             raise ValueError("This example only supports APPO and PPO.")
-        ppo_config = ppo.DEFAULT_CONFIG.copy()
-        ppo_config.update(config)
-        trainer = ppo.PPO(config=ppo_config, env=ActionMaskEnv)
+
+        algo = config.build()
+
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
-            result = trainer.train()
+            result = algo.train()
             print(pretty_print(result))
             # stop training if the target train steps or reward are reached
             if (
@@ -164,13 +169,13 @@ if __name__ == "__main__":
         # prepare environment with max 10 steps
         config["env_config"]["max_episode_len"] = 10
         env = ActionMaskEnv(config["env_config"])
-        obs = env.reset()
+        obs, info = env.reset()
         done = False
         # run one iteration until done
         print(f"ActionMaskEnv with {config['env_config']}")
         while not done:
-            action = trainer.compute_single_action(obs)
-            next_obs, reward, done, _ = env.step(action)
+            action = algo.compute_single_action(obs)
+            next_obs, reward, done, truncated, _ = env.step(action)
             # observations contain original observations and the action mask
             # reward is random and irrelevant here and therefore not printed
             print(f"Obs: {obs}, Action: {action}")
@@ -179,7 +184,9 @@ if __name__ == "__main__":
     # run with tune for auto trainer creation, stopping, TensorBoard, etc.
     else:
         tuner = tune.Tuner(
-            args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+            args.run,
+            param_space=config.to_dict(),
+            run_config=air.RunConfig(stop=stop, verbose=2),
         )
         tuner.fit()
 

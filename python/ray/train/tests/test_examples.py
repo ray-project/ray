@@ -6,19 +6,21 @@ from ray.train.constants import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
-from ray.train.examples.tensorflow_mnist_example import (
+from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.tensorflow_quick_start import (
+from ray.train.examples.tf.tensorflow_quick_start import (
     train_func as tf_quick_start_train_func,
 )
-from ray.train.examples.torch_quick_start import (
+from ray.train.examples.pytorch.torch_quick_start import (
     train_func as torch_quick_start_train_func,
 )
-from ray.train.examples.torch_fashion_mnist_example import (
+from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train.examples.torch_linear_example import train_func as linear_train_func
+from ray.train.examples.pytorch.torch_linear_example import (
+    train_func as linear_train_func,
+)
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer

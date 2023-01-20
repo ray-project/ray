@@ -143,7 +143,7 @@ class RelativeMultiHeadAttention(nn.Module):
         score = torch.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
         pos_score = torch.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
-        score = score / d ** 0.5
+        score = score / d**0.5
 
         # causal mask of the same length as the sequence
         mask = sequence_mask(torch.arange(Tau + 1, Tau + T + 1), dtype=score.dtype).to(

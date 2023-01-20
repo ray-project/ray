@@ -109,9 +109,8 @@ def main(
     )
     dag_handle = serve.run(serve_dag)
     assert ray.get(dag_handle.predict.remote(0)) == chain_length
-    loop = asyncio.get_event_loop()
 
-    throughput_mean_tps, throughput_std_tps = loop.run_until_complete(
+    throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(
             dag_handle,
             chain_length,
@@ -119,7 +118,7 @@ def main(
             num_clients=num_clients,
         )
     )
-    latency_mean_ms, latency_std_ms = loop.run_until_complete(
+    latency_mean_ms, latency_std_ms = asyncio.run(
         benchmark_latency_ms(
             dag_handle,
             chain_length,

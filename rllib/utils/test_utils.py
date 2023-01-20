@@ -1,10 +1,15 @@
 from collections import Counter
 import copy
+import gymnasium as gym
+from gymnasium.spaces import Box
 import logging
+import numpy as np
+import os
+import pprint
 import random
 import re
 import time
-import os
+import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -16,23 +21,24 @@ from typing import (
     Type,
     Union,
 )
-
-import numpy as np
-import tree  # pip install dm_tree
 import yaml
-import pprint
-from gym.spaces import Box
 
 import ray
 from ray import air, tune
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict
+from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+)
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
 from ray.tune import CLIReporter, run_experiments
 
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms import Algorithm, AlgorithmConfig
+    from ray.rllib.offline.dataset_reader import DatasetReader
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -49,8 +55,8 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(
-    config: Optional[Union["AlgorithmConfig", PartialAlgorithmConfigDict]] = None,
-    frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
+    config: Optional["AlgorithmConfig"] = None,
+    frameworks: Sequence[str] = ("tf2", "tf", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,
     time_iterations: Optional[dict] = None,
@@ -58,34 +64,30 @@ def framework_iterator(
     """An generator that allows for looping through n frameworks for testing.
 
     Provides the correct config entries ("framework") as well
-    as the correct eager/non-eager contexts for tfe/tf.
+    as the correct eager/non-eager contexts for tf/tf2.
 
     Args:
         config: An optional config dict or AlgorithmConfig object. This will be modified
             (value for "framework" changed) depending on the iteration.
         frameworks: A list/tuple of the frameworks to be tested.
-            Allowed are: "tf2", "tf", "tfe", "torch", and None.
+            Allowed are: "tf2", "tf", "torch", and None.
         session: If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
         with_eager_tracing: Include `eager_tracing=True` in the returned
-            configs, when framework=[tfe|tf2].
+            configs, when framework=tf2.
         time_iterations: If provided, will write to the given dict (by
             framework key) the times in seconds that each (framework's)
             iteration takes.
 
     Yields:
-        If `session` is False: The current framework [tf2|tf|tfe|torch] used.
+        If `session` is False: The current framework [tf2|tf|torch] used.
         If `session` is True: A tuple consisting of the current framework
         string and the tf1.Session (if fw="tf", otherwise None).
     """
     config = config or {}
     frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
-
-    # Both tf2 and tfe present -> remove "tfe" or "tf2" depending on version.
-    if "tf2" in frameworks and "tfe" in frameworks:
-        frameworks.remove("tfe" if tfv == 2 else "tf2")
 
     for fw in frameworks:
         # Skip non-installed frameworks.
@@ -97,19 +99,13 @@ def framework_iterator(
                 "framework_iterator skipping {} (tf not installed)!".format(fw)
             )
             continue
-        elif fw == "tfe" and not eager_mode:
-            logger.warning(
-                "framework_iterator skipping tf-eager (could not "
-                "import `eager_mode` from tensorflow.python)!"
-            )
-            continue
         elif fw == "tf2" and tfv != 2:
             logger.warning("framework_iterator skipping tf2.x (tf version is < 2.0)!")
             continue
         elif fw == "jax" and not jax:
             logger.warning("framework_iterator skipping JAX (not installed)!")
             continue
-        assert fw in ["tf2", "tf", "tfe", "torch", "jax", None]
+        assert fw in ["tf2", "tf", "torch", "jax", None]
 
         # Do we need a test session?
         sess = None
@@ -124,8 +120,8 @@ def framework_iterator(
             config.framework(fw)
 
         eager_ctx = None
-        # Enable eager mode for tf2 and tfe.
-        if fw in ["tf2", "tfe"]:
+        # Enable eager mode for tf2.
+        if fw == "tf2":
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
             assert tf1.executing_eagerly()
@@ -134,7 +130,7 @@ def framework_iterator(
             assert not tf1.executing_eagerly()
 
         # Additionally loop through eager_tracing=True + False, if necessary.
-        if fw in ["tf2", "tfe"] and with_eager_tracing:
+        if fw == "tf2" and with_eager_tracing:
             for tracing in [True, False]:
                 if isinstance(config, dict):
                     config["eager_tracing"] = tracing
@@ -179,7 +175,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         x: The value to be compared (to the expectation: `y`). This
             may be a Tensor.
         y: The expected value to be compared to `x`. This must not
-            be a tf-Tensor, but may be a tfe/torch-Tensor.
+            be a tf-Tensor, but may be a tf/torch-Tensor.
         decimals: The number of digits after the floating point up to
             which all numeric values have to match.
         atol: Absolute tolerance of the difference between x and y
@@ -224,7 +220,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         else:
             assert x == y, f"ERROR: x ({x}) is not the same as y ({y})!"
     # String/byte comparisons.
-    elif hasattr(x, "dtype") and (x.dtype == object or str(x.dtype).startswith("<U")):
+    elif (
+        hasattr(x, "dtype") and (x.dtype == object or str(x.dtype).startswith("<U"))
+    ) or isinstance(x, bytes):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
@@ -449,7 +447,7 @@ def check_compute_single_action(
             # pre-processor up front.
             worker_set = getattr(algorithm, "workers", None)
             assert worker_set
-            if isinstance(worker_set, list):
+            if not worker_set.local_worker():
                 obs_space = algorithm.get_policy(pid).observation_space
             else:
                 obs_space = worker_set.local_worker().for_policy(
@@ -465,6 +463,13 @@ def check_compute_single_action(
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False, None]:
                         for clip in [False] if unsquash else [True, False, None]:
+                            print("-" * 80)
+                            print(f"what={what}")
+                            print(f"method_to_test={method_to_test}")
+                            print(f"explore={explore}")
+                            print(f"full_fetch={full_fetch}")
+                            print(f"unsquash={unsquash}")
+                            print(f"clip={clip}")
                             _test(
                                 what,
                                 method_to_test,
@@ -475,6 +480,53 @@ def check_compute_single_action(
                                 unsquash,
                                 clip,
                             )
+
+
+def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
+    """Checks whether the given policy can infer actions from an env with connectors.
+
+    Args:
+        policy: The policy to check.
+        env_name: Name of the environment to check
+        max_steps: The maximum number of steps to run the environment for.
+
+    Raises:
+        ValueError: If the policy cannot infer actions from the environment.
+    """
+    # Avoids circular import
+    from ray.rllib.utils.policy import local_policy_inference
+
+    # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
+    if env_name.startswith("ALE/"):
+        env = gym.make("GymV26Environment-v0", env_id=env_name)
+    else:
+        env = gym.make(env_name)
+
+    # Potentially wrap the env like we do in RolloutWorker
+    if is_atari(env):
+        env = wrap_deepmind(
+            env,
+            dim=policy.config["model"]["dim"],
+            framestack=policy.config["model"].get("framestack"),
+        )
+
+    obs, info = env.reset()
+    reward, terminated, truncated = 0.0, False, False
+    ts = 0
+    while not terminated and not truncated and ts < max_steps:
+        action_out = local_policy_inference(
+            policy,
+            env_id=0,
+            agent_id=0,
+            obs=obs,
+            reward=reward,
+            terminated=terminated,
+            truncated=truncated,
+            info=info,
+        )
+        obs, reward, terminated, truncated, info = env.step(action_out[0][0])
+
+        ts += 1
 
 
 def check_learning_achieved(
@@ -508,7 +560,58 @@ def check_learning_achieved(
     print(f"`stop-reward` of {min_reward} reached! ok")
 
 
-def check_train_results(train_results):
+def check_off_policyness(
+    results: ResultDict,
+    upper_limit: float,
+    lower_limit: float = 0.0,
+) -> Optional[float]:
+    """Verifies that the off-policy'ness of some update is within some range.
+
+    Off-policy'ness is defined as the average (across n workers) diff
+    between the number of gradient updates performed on the policy used
+    for sampling vs the number of gradient updates that have been performed
+    on the trained policy (usually the one on the local worker).
+
+    Uses the published DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY metric inside
+    a training results dict and compares to the given bounds.
+
+    Note: Only works with single-agent results thus far.
+
+    Args:
+        results: The training results dict.
+        upper_limit: The upper limit to for the off_policy_ness value.
+        lower_limit: The lower limit to for the off_policy_ness value.
+
+    Returns:
+        The off-policy'ness value (described above).
+
+    Raises:
+        AssertionError: If the value is out of bounds.
+    """
+
+    # Have to import this here to avoid circular dependency.
+    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+    from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+
+    # Assert that the off-policy'ness is within the given bounds.
+    learner_info = results["info"][LEARNER_INFO]
+    if DEFAULT_POLICY_ID not in learner_info:
+        return None
+    off_policy_ness = learner_info[DEFAULT_POLICY_ID][
+        DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY
+    ]
+    # Roughly: Reaches up to 0.4 for 2 rollout workers and up to 0.2 for
+    # 1 rollout worker.
+    if not (lower_limit <= off_policy_ness <= upper_limit):
+        raise AssertionError(
+            f"`off_policy_ness` ({off_policy_ness}) is outside the given bounds "
+            f"({lower_limit} - {upper_limit})!"
+        )
+
+    return off_policy_ness
+
+
+def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict:
     """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
@@ -521,7 +624,6 @@ def check_train_results(train_results):
     # Import these here to avoid circular dependencies.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-    from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 
     # Assert that some keys are where we would expect them.
     for key in [
@@ -554,7 +656,18 @@ def check_train_results(train_results):
             key in train_results
         ), f"'{key}' not found in `train_results` ({train_results})!"
 
-    _, is_multi_agent = check_multi_agent(train_results["config"])
+    # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
+    assert isinstance(
+        train_results["config"], dict
+    ), "`config` in results not a python dict!"
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    is_multi_agent = (
+        AlgorithmConfig()
+        .update_from_dict(train_results["config"]["multiagent"])
+        .is_multi_agent()
+    )
 
     # Check in particular the "info" dict.
     info = train_results["info"]
@@ -593,6 +706,7 @@ def check_train_results(train_results):
 def run_learning_tests_from_yaml(
     yaml_files: List[str],
     *,
+    framework: Optional[str] = None,
     max_num_repeats: int = 2,
     use_pass_criteria_as_stop: bool = True,
     smoke_test: bool = False,
@@ -600,6 +714,8 @@ def run_learning_tests_from_yaml(
     """Runs the given experiments in yaml_files and returns results dict.
 
     Args:
+        framework: The framework to use for running this test. If None,
+            run the test on all frameworks.
         yaml_files: List of yaml file names.
         max_num_repeats: How many times should we repeat a failed
             experiment?
@@ -635,15 +751,18 @@ def run_learning_tests_from_yaml(
         return experiment["config"].get("evaluation_interval", None) is not None
 
     # Loop through all collected files and gather experiments.
-    # Augment all by `torch` framework.
+    # Set correct framework(s).
     for yaml_file in yaml_files:
         tf_experiments = yaml.safe_load(open(yaml_file).read())
 
         # Add torch version of all experiments to the list.
         for k, e in tf_experiments.items():
-            # If framework explicitly given, only test for that framework.
+            # If framework given as arg, use that framework.
+            if framework is not None:
+                frameworks = [framework]
+            # If framework given in config, only test for that framework.
             # Some algos do not have both versions available.
-            if "frameworks" in e:
+            elif "frameworks" in e:
                 frameworks = e["frameworks"]
             else:
                 # By default we don't run tf2, because tf2's multi-gpu support
@@ -850,6 +969,7 @@ def run_learning_tests_from_yaml(
         "last_update": float(time.time()),
         "stats": stats,
         "passed": [k for k, exp in checks.items() if exp["passed"]],
+        "not_passed": [k for k, exp in checks.items() if not exp["passed"]],
         "failures": {
             k: exp["failures"] for k, exp in checks.items() if exp["failures"] > 0
         },
@@ -1010,3 +1130,34 @@ def check_reproducibilty(
                 results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
                 results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
             )
+
+
+def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
+    """Returns a DatasetReader for the cartpole dataset.
+    Args:
+        batch_size: The batch size to use for the reader.
+    Returns:
+        A rllib DatasetReader for the cartpole dataset.
+    """
+    from ray.rllib.algorithms import AlgorithmConfig
+    from ray.rllib.offline import IOContext
+    from ray.rllib.offline.dataset_reader import (
+        DatasetReader,
+        get_dataset_and_shards,
+    )
+
+    path = "tests/data/cartpole/large.json"
+    input_config = {"format": "json", "paths": path}
+    dataset, _ = get_dataset_and_shards(
+        AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
+    )
+    ioctx = IOContext(
+        config=(
+            AlgorithmConfig()
+            .training(train_batch_size=batch_size)
+            .offline_data(actions_in_input_normalized=True)
+        ),
+        worker_index=0,
+    )
+    reader = DatasetReader(dataset, ioctx)
+    return reader

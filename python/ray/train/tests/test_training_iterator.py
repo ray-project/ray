@@ -16,10 +16,12 @@ from ray.train.backend import BackendConfig
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.utils import ActorWrapper, construct_train_func
 from ray.train._internal.checkpoint import CheckpointManager
-from ray.train.examples.tensorflow_mnist_example import (
+from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.torch_linear_example import train_func as linear_train_func
+from ray.train.examples.pytorch.torch_linear_example import (
+    train_func as linear_train_func,
+)
 
 
 @pytest.fixture
@@ -83,7 +85,11 @@ def create_iterator(
     backend_executor = ActorWrapper(backend_executor_actor)
     backend_executor.start(init_hook)
 
-    checkpoint_strategy = CheckpointConfig(num_to_keep=0)
+    class _CheckpointConfig(CheckpointConfig):
+        def __post_init__(self):
+            pass
+
+    checkpoint_strategy = _CheckpointConfig(num_to_keep=0)
 
     return TrainingIterator(
         backend_executor=backend_executor,
@@ -381,7 +387,7 @@ def test_worker_kill_checkpoint(ray_start_4_cpus):
         kill_callback.handle_result()
     iterator.get_final_results()
     assert kill_callback.counter == 2
-    assert iterator._checkpoint_manager.latest_checkpoint["epoch"] == 2
+    assert iterator._checkpoint_manager.latest_checkpoint.to_dict()["epoch"] == 2
 
 
 def test_tensorflow_mnist_fail(ray_start_4_cpus):

@@ -471,6 +471,24 @@ def test_schema_peek(ray_start_regular_shared):
     assert pipe.schema() is None
 
 
+def test_schema_after_repeat(ray_start_regular_shared):
+    pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2).repeat(2)
+    assert pipe.schema() == int
+    output = []
+    for ds in pipe.iter_datasets():
+        output.extend(ds.take())
+    assert sorted(output) == sorted(list(range(6)) * 2)
+
+    pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2).repeat(2)
+    assert pipe.schema() == int
+    # Test that operations still work after peek.
+    pipe = pipe.map_batches(lambda batch: batch)
+    output = []
+    for ds in pipe.iter_datasets():
+        output.extend(ds.take())
+    assert sorted(output) == sorted(list(range(6)) * 2)
+
+
 def test_split(ray_start_regular_shared):
     pipe = ray.data.range(3).map(lambda x: x + 1).repeat(10)
 
@@ -627,6 +645,22 @@ def test_randomize_block_order_each_window(ray_start_regular_shared):
     assert pipe.take() == [0, 1, 4, 5, 2, 3, 6, 7, 10, 11, 8, 9]
 
 
+def test_add_column(ray_start_regular_shared):
+    df = pd.DataFrame({"col1": [1, 2, 3]})
+    ds = ray.data.from_pandas(df)
+    pipe = ds.repeat()
+    assert pipe.add_column("col2", lambda x: x["col1"] + 1).take(1) == [
+        {"col1": 1, "col2": 2}
+    ]
+
+
+def test_select_columns(ray_start_regular_shared):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds = ray.data.from_pandas(df)
+    pipe = ds.repeat()
+    assert pipe.select_columns(["col2", "col3"]).take(1) == [{"col2": 2, "col3": 3}]
+
+
 def test_drop_columns(ray_start_regular_shared):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds = ray.data.from_pandas(df)
@@ -741,7 +775,11 @@ def test_pipeline_executor_cannot_serialize_once_started(ray_start_regular_share
             return lambda: ds
 
     p1 = ray.data.range(10).repeat()
-    p2 = DatasetPipeline.from_iterable(Iterable(p1.iter_datasets()))
+    # Start the pipeline.
+    data_iter = p1.iter_datasets()
+    next(data_iter)
+
+    p2 = DatasetPipeline.from_iterable(Iterable(data_iter))
     with pytest.raises(RuntimeError) as error:
         p2.split(2)
     assert "PipelineExecutor is not serializable once it has started" in str(error)

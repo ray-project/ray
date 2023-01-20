@@ -4,7 +4,6 @@ import time
 import pytest
 
 import ray
-import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
     SignalActor,
     generate_system_config_map,
@@ -43,8 +42,11 @@ def test_shutdown():
     "ray_start_cluster_head",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=3, object_timeout_milliseconds=12345
-        )
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=3,
+            object_timeout_milliseconds=12345,
+        ),
     ],
     indirect=True,
 )
@@ -63,7 +65,9 @@ def test_system_config(ray_start_cluster_head):
     @ray.remote
     def f():
         assert ray._config.object_timeout_milliseconds() == 12345
-        assert ray._config.num_heartbeats_timeout() == 3
+        assert ray._config.health_check_initial_delay_ms() == 0
+        assert ray._config.health_check_failure_threshold() == 3
+        assert ray._config.health_check_period_ms() == 1000
 
     ray.get([f.remote() for _ in range(5)])
 
@@ -78,9 +82,7 @@ def test_system_config(ray_start_cluster_head):
 
 
 def setup_monitor(address):
-    monitor = Monitor(
-        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD
-    )
+    monitor = Monitor(address, None)
     return monitor
 
 
