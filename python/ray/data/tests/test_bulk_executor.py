@@ -1,5 +1,6 @@
 import pytest
 
+import time
 from typing import List, Any
 
 import ray
@@ -34,7 +35,15 @@ def test_multi_stage_execution(preserve_order):
     executor = BulkExecutor(ExecutionOptions(preserve_order=preserve_order))
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+
+    def delay_first(block):
+        if block[0] == 0:
+            print("Delaying first block to force de-ordering")
+            time.sleep(2)
+        result = [b * -1 for b in block]
+        return result
+
+    o2 = MapOperator(make_transform(delay_first), o1)
     o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
 
     def reverse_sort(inputs: List[RefBundle]):
