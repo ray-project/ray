@@ -94,9 +94,9 @@ fi
 term_handler(){
    echo "***Stopping"
    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
-   /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION $HOSTNAME;"
-   tailscale down
+#   /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION $HOSTNAME;"
    curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY:
+   tailscale down
    exit 0
 }
 
