@@ -903,7 +903,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
-def test_agent_port_conflict():
+def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
     # start ray and test agent works.
@@ -992,6 +992,7 @@ def test_dashboard_module_load(tmpdir):
         str(tmpdir),
         str(tmpdir),
         False,
+        True,
     )
 
     # Test basic.
