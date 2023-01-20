@@ -38,7 +38,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         self, *, fwd_out: MultiAgentBatch, batch: MultiAgentBatch
     ) -> Union[TensorType, Mapping[str, Any]]:
 
-        # TODO (Kourosh): This is boiler plate code. Can we minimize this?
+        # TODO (Kourosh): This is boiler plate code. Move it to the base class?
 
         loss_total = None
         results_all_modules = {}
@@ -132,6 +132,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         }
 
     def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
+        # TODO (Kourosh): This is boiler plate code. Move it to the base class?
 
         results_all_modules = {}
         for module_id in self._module.keys():
