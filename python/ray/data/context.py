@@ -2,7 +2,6 @@ import os
 import threading
 from typing import Optional
 
-import ray
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -207,10 +206,6 @@ class DatasetContext:
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                 )
-
-            # Check if using Ray client and disable dynamic block splitting.
-            if ray.util.client.ray.is_connected():
-                _default_context.block_splitting_enabled = False
 
             return _default_context
 
