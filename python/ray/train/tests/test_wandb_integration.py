@@ -24,22 +24,33 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-def test_trainer_wandb_integration(ray_start_4_cpus):
-    def train_func(config):
+CONFIG = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
+
+
+@pytest.mark.parametrize("with_train_loop_config", (True, False))
+def test_trainer_wandb_integration(ray_start_4_cpus, with_train_loop_config):
+    def train_func(config=None):
+        config = config or CONFIG
         result = linear_train_func(config)
-        assert len(result) == epochs
+        assert len(result) == config["epochs"]
         assert result[-1]["loss"] < result[0]["loss"]
 
-    epochs = 3
     scaling_config = ScalingConfig(num_workers=2)
-    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
+
     logger = WandbTestExperimentLogger(project="test_project")
-    trainer = TorchTrainer(
-        train_loop_per_worker=train_func,
-        train_loop_config=config,
-        scaling_config=scaling_config,
-        run_config=RunConfig(callbacks=[logger]),
-    )
+    if with_train_loop_config:
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_func,
+            train_loop_config=CONFIG,
+            scaling_config=scaling_config,
+            run_config=RunConfig(callbacks=[logger]),
+        )
+    else:
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_func,
+            scaling_config=scaling_config,
+            run_config=RunConfig(callbacks=[logger]),
+        )
     trainer.fit()
     # We use local actor for mocked logger.
     # As a result, `._wandb`, `.config` and `.queue` are
@@ -50,4 +61,7 @@ def test_trainer_wandb_integration(ray_start_4_cpus):
         timeout=10
     )
 
-    assert "train_loop_config" in config
+    if with_train_loop_config:
+        assert "train_loop_config" in config
+    else:
+        assert "train_loop_config" not in config
