@@ -44,8 +44,6 @@ type LogsProps = {
 const useLogs = ({ theme, newIA }: LogsProps) => {
   const { search: urlSearch } = useLocation();
   const { host, path } = useParams();
-  console.log("Host: " + host);
-  console.log("Path: " + path);
   const searchMap = new URLSearchParams(urlSearch);
   const urlFileName = searchMap.get("fileName");
   const el = useRef<HTMLDivElement>(null);
