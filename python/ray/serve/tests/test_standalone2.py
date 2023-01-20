@@ -748,7 +748,7 @@ def test_controller_recover_and_delete(shutdown_ray):
 
 class TestServeRequestProcessingTimeoutS:
     @pytest.mark.parametrize(
-        "ray_instance", [{"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
+        "ray_instance", [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
     )
     def test_normal_operation(self, ray_instance):
         """Checks that a moderate timeout doesn't affect normal operation."""
@@ -765,7 +765,9 @@ class TestServeRequestProcessingTimeoutS:
         serve.shutdown()
 
     @pytest.mark.parametrize(
-        "ray_instance", [{"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"}], indirect=True
+        "ray_instance",
+        [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"}],
+        indirect=True,
     )
     def test_hanging_request(self, ray_instance):
         """Checks that the env var mitigates the hang."""
