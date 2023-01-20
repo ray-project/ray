@@ -77,7 +77,7 @@ As a last step, we `evaluate` the trained Algorithm:
     :start-after: __rllib-in-60s-begin__
     :end-before: __rllib-in-60s-end__
 
-Note that you can use any OpenAI gym as `env`.
+Note that you can use any OpenAI gym environment as `env`.
 In `rollouts` you can for instance specify the number of parallel workers to collect samples from the environment.
 The `framework` config lets you choose between "tf2", "tf" and "torch" for execution.
 You can also tweak RLlib's default `model` config,and set up a separate config for `evaluation`.
