@@ -515,10 +515,8 @@ def test_split_at_indices(ray_start_regular_shared):
     refs = [consume.remote(s, i) for i, s in enumerate(shards)]
     outs = ray.get(refs)
     np.testing.assert_equal(
-        np.array(outs, dtype=np.object),
-        np.array(
-            [[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]], dtype=np.object
-        ),
+        np.array(outs, dtype=object),
+        np.array([[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]], dtype=object),
     )
 
 
