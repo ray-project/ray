@@ -10,10 +10,11 @@ memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
 shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
-export shm_memory=$shm_memory"G"
-# I this might have to be a lowercase g
-export CRATE_HEAP_SIZE=$shm_memory
 
+# I this might have to be a lowercase g
+CRATE_HEAP_SIZE=$(echo $shm_memory | awk '{print int($0+0.5)}')
+export CRATE_HEAP_SIZE=$CRATE_HEAP_SIZE"G"
+export shm_memory=$shm_memory"G"
 
 set -ae
 
@@ -81,7 +82,7 @@ ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-hos
 
 else
 
-ray start --address='nexus.chimp-beta.ts.net:6379' --node-ip-address ${HOSTNAME}.chimp-beta.ts.net
+ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address ${HOSTNAME}.chimp-beta.ts.net
 
 /crate/bin/crate -Cnetwork.host=_tailscale0_ \
             -Cnode.data=true \
@@ -104,9 +105,9 @@ fi
 term_handler(){
    echo "***Stopping"
    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
-   /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION '$HOSTNAME';"
+   /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION $HOSTNAME;"
    tailscale down
-   curl -X DELETE https://api.tailscale.com/api/v2/device/${deviceid} -u ${TSAPIKEY}:
+   curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY:
    exit 0
 }
 
