@@ -480,7 +480,7 @@ The following highlights feature companies leveraging Ray Core's distributed API
     +++
     .. link-button:: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
         :type: url
-        :text: [Blog] How Ray, a Distributed AI Framework, Helps Power ChatGPT
+        :text: [Blog] How OpenAI Uses Ray to Train Tools like ChatGPT
         :classes: btn-link btn-block stretched-link chatgpt
     ---
     :img-top: /images/ray_logo.png
@@ -497,7 +497,7 @@ The following highlights feature companies leveraging Ray Core's distributed API
     +++
     .. link-button:: https://www.anyscale.com/blog/ray-forward-2022
         :type: url
-        :text: [Blog] Ray Forward 2022: Hyper-scale Ray Application Use Cases
+        :text: [Blog] Ray Forward 2022 Conference: Hyper-scale Ray Application Use Cases
         :classes: btn-link btn-block stretched-link rayForward
 
 End-to-End ML Workflows
