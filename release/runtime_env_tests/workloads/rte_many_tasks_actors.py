@@ -11,17 +11,13 @@ Acceptance criteria: Should run through and print "PASSED"
 import ray
 import random
 import os
-import json
 import time
+from ray._private.test_utils import safe_write_to_results_json
 
 
 def update_progress(result):
     result["last_update"] = time.time()
-    test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/release_test_output.json"
-    )
-    with open(test_output_json, "wt") as f:
-        json.dump(result, f)
+    safe_write_to_results_json(result)
 
 
 if __name__ == "__main__":
