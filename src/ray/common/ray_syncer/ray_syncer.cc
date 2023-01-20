@@ -104,7 +104,9 @@ RayServerBidiReactor::RayServerBidiReactor(
   StartPull();
 }
 
-void RayServerBidiReactor::Disconnect() { Finish(grpc::Status::OK); }
+void RayServerBidiReactor::Disconnect() {
+  io_context_.dispatch([this]() { Finish(grpc::Status::OK); }, "");
+}
 
 void RayServerBidiReactor::OnCancel() { Disconnect(); }
 
@@ -143,7 +145,9 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
       "");
 }
 
-void RayClientBidiReactor::Disconnect() { StartWritesDone(); }
+void RayClientBidiReactor::Disconnect() {
+  io_context_.dispatch([this]() { StartWritesDone(); }, "");
+}
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
                      const std::string &local_node_id)
@@ -185,10 +189,11 @@ void RaySyncer::Connect(const std::string &node_id,
       [=]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
         auto reactor = std::make_unique<RayClientBidiReactor>(
-            node_id,
-            GetLocalNodeID(),
-            io_context_,
-            [this](auto msg) { BroadcastRaySyncMessage(msg); },
+            /* remote_node_id */ node_id,
+            /* local_node_id */ GetLocalNodeID(),
+            /* io_context */ io_context_,
+            /* message_processor */ [this](auto msg) { BroadcastRaySyncMessage(msg); },
+            /* cleanup_cb */
             [this, channel](const std::string &node_id, bool restart) {
               sync_reactors_.erase(node_id);
               if (restart) {
@@ -197,7 +202,7 @@ void RaySyncer::Connect(const std::string &node_id,
                 Connect(node_id, channel);
               }
             },
-            std::move(stub));
+            /* stub */ std::move(stub));
         Connect(reactor.release());
       },
       "");
@@ -311,7 +316,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
 }
 
 ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
-  auto reactor = std::make_unique<RayServerBidiReactor>(
+  auto reactor = new RayServerBidiReactor(
       context,
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
@@ -324,8 +329,8 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
   RAY_LOG(DEBUG) << "Get connection from "
                  << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " to "
                  << NodeID::FromBinary(syncer_.GetLocalNodeID());
-  syncer_.Connect(reactor.get());
-  return reactor.release();
+  syncer_.Connect(reactor);
+  return reactor;
 }
 
 RaySyncerService::~RaySyncerService() {}

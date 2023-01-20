@@ -84,6 +84,9 @@ class NodeState {
 /// disconnect from the remote node.
 /// For the implementation, in the constructor, it needs to connect to the remote
 /// node and it needs to implement the communication between the two nodes.
+///
+/// Please refer to https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md
+/// for the callback API
 class RaySyncerBidiReactor {
  public:
   RaySyncerBidiReactor(const std::string &remote_node_id)
@@ -104,6 +107,8 @@ class RaySyncerBidiReactor {
   /// Return the remote node id of this connection.
   const std::string &GetRemoteNodeID() const { return remote_node_id_; }
 
+  /// Disconnect will terminate the communication between local and remote node.
+  /// It also needs to do proper cleanup.
   virtual void Disconnect() = 0;
 
  private:
@@ -136,6 +141,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     // Try to filter out the messages the target node already has.
     // Usually it'll be the case when the message is generated from the
     // target node or it's sent from the target node.
+    // No need to resend the message sent from a node back.
     if (message->node_id() == GetRemoteNodeID()) {
       // Skip the message when it's about the node of this connection.
       return false;
@@ -155,9 +161,13 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   virtual ~RaySyncerBidiReactorBase() {}
 
   void StartPull() {
-    receiving_message_ = std::make_shared<RaySyncMessage>();
-    RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
-    StartRead(receiving_message_.get());
+    io_context_.dispatch(
+        [this]() {
+          receiving_message_ = std::make_shared<RaySyncMessage>();
+          RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
+          StartRead(receiving_message_.get());
+        },
+        "");
   }
 
  protected:
@@ -191,6 +201,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     sending_ = false;
     StartSend();
   }
+
   void StartSend() {
     if (sending_) {
       return;
@@ -233,23 +244,29 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       io_context_.dispatch([this]() { SendNext(); }, "");
     } else {
       // No need to resent the message since if ok=false, it's the end
-      // of gRPC call and we'll reconnect in case of a failure.
+      // of gRPC call and client will reconnect in case of a failure.
+      // In gRPC, OnDone will be called after.
       RAY_LOG_EVERY_N(ERROR, 100)
           << "Failed to send the message to: " << NodeID::FromBinary(GetRemoteNodeID());
     }
   }
 
   void OnReadDone(bool ok) override {
-    if (!ok) {
-      return;
+    if (ok) {
+      io_context_.dispatch(
+          [this, msg = std::move(receiving_message_)]() mutable {
+            RAY_CHECK(!msg->node_id().empty());
+            ReceiveUpdate(std::move(msg));
+            StartPull();
+          },
+          "");
+    } else {
+      // No need to resent the message since if ok=false, it's the end
+      // of gRPC call and client will reconnect in case of a failure.
+      // In gRPC, OnDone will be called after.
+      RAY_LOG_EVERY_N(ERROR, 100)
+          << "Failed to read the message from: " << NodeID::FromBinary(GetRemoteNodeID());
     }
-    io_context_.dispatch(
-        [this, msg = std::move(receiving_message_)]() mutable {
-          RAY_CHECK(!msg->node_id().empty());
-          ReceiveUpdate(std::move(msg));
-          StartPull();
-        },
-        "");
   }
 
   /// grpc requests for sending and receiving
