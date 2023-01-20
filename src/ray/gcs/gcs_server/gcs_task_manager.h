@@ -213,20 +213,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \return True if the task has finished or failed timestamp sets, false otherwise.
     bool IsTaskTerminated(const TaskID &task_id) const;
 
-    ///  Return task's fail time or the ancestor's fail time.
-    ///
-    /// \param task_id Task Id.
-    /// \return If the task itself has fail time, that will be return; if not, the
-    /// ancestor fail time will be returned if available. If neither is available,
-    /// absl::nullopt will be returned.
-    absl::optional<int64_t> GetItselfOrAncestorFailTime(const TaskID &task_id) const;
-
-    ///  Add ancestor failure timestamp to the task.
-    ///
-    /// \param task_id Task Id.
-    /// \param ancestor_failed_ts Ancestor failed timestamp.
-    void AddAncestorFailTime(const TaskID &task_id, int64_t ancestor_failed_ts);
-
     /// Mark the task as failure with the failed timestamp.
     ///
     /// This also overwrites the finished state of the task if the task has finished by

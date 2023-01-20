@@ -120,39 +120,6 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailed(
   task_event.mutable_state_updates()->set_failed_ts(failed_ts);
 }
 
-absl::optional<int64_t>
-GcsTaskManager::GcsTaskManagerStorage::GetItselfOrAncestorFailTime(
-    const TaskID &task_id) const {
-  const auto &latest_task_attempt = GetLatestTaskAttempt(task_id);
-  if (!latest_task_attempt.has_value()) {
-    return absl::nullopt;
-  }
-  const auto &task_event = GetTaskEvent(*latest_task_attempt);
-  if (!task_event.has_state_updates()) {
-    return absl::nullopt;
-  }
-  const auto &state_updates = task_event.state_updates();
-  if (state_updates.has_failed_ts()) {
-    return state_updates.failed_ts();
-  }
-
-  if (state_updates.has_ancestor_failed_ts()) {
-    return state_updates.ancestor_failed_ts();
-  }
-
-  return absl::nullopt;
-}
-
-void GcsTaskManager::GcsTaskManagerStorage::AddAncestorFailTime(
-    const TaskID &task_id, int64_t ancestor_failed_ts) {
-  const auto &latest_task_attempt = GetLatestTaskAttempt(task_id);
-  if (!latest_task_attempt.has_value()) {
-    return;
-  }
-  auto &task_event = GetTaskEvent(*latest_task_attempt);
-  task_event.mutable_state_updates()->set_ancestor_failed_ts(ancestor_failed_ts);
-}
-
 bool GcsTaskManager::GcsTaskManagerStorage::IsTaskTerminated(
     const TaskID &task_id) const {
   auto failed_ts = GetTaskStatusUpdateTime(task_id, rpc::TaskStatus::FAILED);
@@ -200,49 +167,34 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskFailed(const TaskID &task_id
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskTreeFailedIfNeeded(
     const TaskID &task_id, const TaskID &parent_task_id) {
-  absl::optional<int64_t> ancestor_failed_ts = absl::nullopt;
-  // If the task ancestor has failed.
   if (!parent_task_id.IsNil()) {
-    ancestor_failed_ts = GetItselfOrAncestorFailTime(parent_task_id);
+    // If parent has failed, mark itself as failed
+    auto parent_failed_ts =
+        GetTaskStatusUpdateTime(parent_task_id, rpc::TaskStatus::FAILED);
+    if (parent_failed_ts.has_value()) {
+      // Mark current task as failed.
+      MarkTaskFailed(task_id, *parent_failed_ts);
+    }
   }
 
-  // If task itself failed.
+  // BFS traverse the task tree to mark all non terminal children as failure
+  std::vector<TaskID> failed_tasks;
   auto task_failed_ts = GetTaskStatusUpdateTime(task_id, rpc::TaskStatus::FAILED);
   if (task_failed_ts.has_value()) {
-    ancestor_failed_ts = *task_failed_ts;
+    failed_tasks.push_back(task_id);
   }
 
-  // If ancestor(or the task itself) has failed, relay the info to the children.
-  // BFS traverse the task tree to mark all non terminal children as failure, and add
-  // the ancestor failed timestamp for those finished tasks that don't have it.
-  std::vector<TaskID> tasks_to_add_failure_info;
-  if (ancestor_failed_ts.has_value()) {
-    tasks_to_add_failure_info.push_back(task_id);
-  }
-
-  for (size_t i = 0; i < tasks_to_add_failure_info.size(); ++i) {
-    auto task_to_mark = tasks_to_add_failure_info[i];
-    if (!GetItselfOrAncestorFailTime(task_to_mark).has_value()) {
-      AddAncestorFailTime(task_to_mark, *ancestor_failed_ts);
-    }
-
-    if (!IsTaskTerminated(task_to_mark)) {
-      MarkTaskFailed(task_to_mark, *ancestor_failed_ts);
-    }
-
-    // Traverse the children.
-    auto children_tasks_itr = parent_to_children_task_index_.find(task_to_mark);
+  for (size_t i = 0; i < failed_tasks.size(); ++i) {
+    auto failed_task_id = failed_tasks[i];
+    auto children_tasks_itr = parent_to_children_task_index_.find(failed_task_id);
     if (children_tasks_itr == parent_to_children_task_index_.end()) {
       continue;
     }
     for (const auto &child_task_id : children_tasks_itr->second) {
-      // Only traverse if failure info has not been relayed to the children (e.g. no fail
-      // time set). If a child already has ancestor failure timestamp or itself is a
-      // failure, all its reachable grandchildren will have the info as well when the
-      // failure timestamp was first set on the child, and all its reachable
-      // non-terminated children will be marked as failure.
-      if (!GetItselfOrAncestorFailTime(child_task_id).has_value()) {
-        tasks_to_add_failure_info.push_back(child_task_id);
+      // Mark any non-terminated child as failed with parent's failure timestamp.
+      if (!IsTaskTerminated(child_task_id)) {
+        MarkTaskFailed(child_task_id, task_failed_ts.value());
+        failed_tasks.push_back(child_task_id);
       }
     }
   }
