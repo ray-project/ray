@@ -128,6 +128,17 @@ class PPOConfig(PGConfig):
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
     @override(AlgorithmConfig)
+    def get_default_rl_trainer_class(self) -> Union[Type["RLTrainer"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_trainer import (
+                PPOTorchRLTrainer
+            )
+
+            return PPOTorchRLTrainer
+        else:
+            raise ValueError(f"The framework {self.framework_str} is not supported.")
+
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
