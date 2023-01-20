@@ -26,6 +26,9 @@ namespace ray {
 
 namespace raylet {
 
+constexpr char kLifoPolicy[] = "retriable_lifo";
+constexpr char kGroupByOwner[] = "group_by_owner";
+
 /// Provides the policy on which worker to prioritize killing.
 class WorkerKillingPolicy {
  public:
@@ -64,6 +67,9 @@ class RetriableLIFOWorkerKillingPolicy : public WorkerKillingPolicy {
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const;
 };
+
+std::shared_ptr<WorkerKillingPolicy> CreateWorkerKillingPolicy(
+    std::string killing_policy_str);
 
 }  // namespace raylet
 

@@ -18,6 +18,8 @@ import { NewIALogsPage } from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
 import { getMetricsInfo } from "./pages/metrics/utils";
 import Nodes, { NewIAClusterPage } from "./pages/node";
+import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
+import { ClusterLayout } from "./pages/node/ClusterLayout";
 import NodeDetailPage from "./pages/node/NodeDetail";
 import { OverviewPage } from "./pages/overview/OverviewPage";
 import { getNodeList } from "./service/node";
@@ -170,8 +172,25 @@ const App = () => {
                   <Route element={<Navigate replace to="overview" />} path="" />
                   <Route element={<OverviewPage />} path="overview" />
                   <Route element={<NewIAClusterPage />} path="cluster">
-                    <Route element={<Nodes newIA />} path="" />
-                    <Route element={<NodeDetailPage />} path="nodes/:id" />
+                    <Route element={<ClusterLayout />} path="">
+                      <Route
+                        element={
+                          <SideTabPage tabId="info">
+                            <ClusterDetailInfoPage />
+                          </SideTabPage>
+                        }
+                        path="info"
+                      />
+                      <Route
+                        element={
+                          <SideTabPage tabId="table">
+                            <Nodes newIA />
+                          </SideTabPage>
+                        }
+                        path=""
+                      />
+                      <Route element={<NodeDetailPage />} path="nodes/:id" />
+                    </Route>
                   </Route>
                   <Route element={<NewIAJobsPage />} path="jobs">
                     <Route element={<JobList newIA />} path="" />

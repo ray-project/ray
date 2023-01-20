@@ -63,9 +63,9 @@ Tune Feature Guides
     ---
     :img-top: /images/tune.png
 
-    .. link-button:: tune-checkpoints
+    .. link-button:: tune-storage
         :type: ref
-        :text: Working with Checkpoints
+        :text: How to Configure Storage Options for a Distributed Tune Experiment?
         :classes: btn-link btn-block stretched-link
 
     ---

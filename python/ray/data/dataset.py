@@ -167,7 +167,7 @@ class Dataset(Generic[T]):
         >>> # Create dataset from external storage system.
         >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
         >>> # Save dataset back to external storage system.
-        >>> ds.write_csv("s3//bucket/output") # doctest: +SKIP
+        >>> ds.write_csv("s3://bucket/output") # doctest: +SKIP
 
     Datasets has two kinds of operations: tranformation, which takes in Datasets and
     outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption, which
@@ -2680,19 +2680,24 @@ class Dataset(Generic[T]):
         # During row-based ops, we also choose a batch format that lines up with the
         # current dataset format in order to eliminate unnecessary copies and type
         # conversions.
-        try:
-            dataset_format = self.dataset_format()
-        except ValueError:
-            # Dataset is empty or cleared, so fall back to "default".
+        ctx = DatasetContext.get_current()
+        if ctx.use_streaming_executor:
+            # TODO: calling dataset_format() triggers bulk execution.
             batch_format = "default"
         else:
-            batch_format = (
-                "pyarrow"
-                if dataset_format == BlockFormat.ARROW
-                else "pandas"
-                if dataset_format == BlockFormat.PANDAS
-                else "default"
-            )
+            try:
+                dataset_format = self.dataset_format()
+            except ValueError:
+                # Dataset is empty or cleared, so fall back to "default".
+                batch_format = "default"
+            else:
+                batch_format = (
+                    "pyarrow"
+                    if dataset_format == BlockFormat.ARROW
+                    else "pandas"
+                    if dataset_format == BlockFormat.PANDAS
+                    else "default"
+                )
         for batch in self.iter_batches(
             batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
@@ -2749,13 +2754,11 @@ class Dataset(Generic[T]):
                 DeprecationWarning,
             )
 
-        blocks = self._plan.execute()
-        stats = self._plan.stats()
-
+        block_iterator, stats = self._plan.execute_to_iterator()
         time_start = time.perf_counter()
 
         yield from batch_block_refs(
-            blocks.iter_blocks(),
+            block_iterator,
             stats=stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
@@ -3619,7 +3622,7 @@ class Dataset(Generic[T]):
                 self._blocks = blocks
                 self._i = 0
 
-            def __next__(self) -> "Dataset[T]":
+            def __next__(self) -> Callable[[], "Dataset[T]"]:
                 if times and self._i >= times:
                     raise StopIteration
                 epoch = self._i
