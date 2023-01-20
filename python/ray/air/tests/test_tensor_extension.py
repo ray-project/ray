@@ -50,7 +50,7 @@ def test_arrow_scalar_tensor_array_roundtrip_boolean():
 
 
 def test_arrow_scalar_tensor_array_roundtrip_string():
-    arr = np.array([["Phillip", "Turanga", "Hubert"], ["Fry", "Leela", "Farnsworth"]])
+    arr = np.array([["Philip", "Turanga", "Hubert"], ["Fry", "Leela", "Farnsworth"]])
     ata = ArrowTensorArray.from_numpy(arr)
     assert isinstance(ata.type, pa.DataType)
     assert len(ata) == len(arr)
