@@ -490,12 +490,7 @@ class ExecutionPlan:
                 "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
             )
         if not self.has_computed_output():
-            # Read stage is handled with the legacy execution impl for now.
-            if (
-                context.new_execution_backend
-                and not self.is_read_stage_equivalent()
-                and self._stages_after_snapshot
-            ):
+            if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
                 from ray.data._internal.execution.interfaces import ExecutionOptions
                 from ray.data._internal.execution.legacy_compat import (
@@ -690,6 +685,27 @@ class ExecutionPlan:
             self._snapshot_blocks is not None
             and not self._stages_after_snapshot
             and not self._snapshot_blocks.is_cleared()
+        )
+
+    def _run_with_new_execution_backend(self) -> bool:
+        """Whether this plan should run with new backend."""
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
+        # Read-equivalent stage is handled with the legacy execution impl for now,
+        # except it's read->randomize_block_order stage.
+        context = DatasetContext.get_current()
+        traling_randomize_block_order_stage = (
+            self._stages_after_snapshot
+            and len(self._stages_after_snapshot) == 1
+            and isinstance(self._stages_after_snapshot[0], RandomizeBlocksStage)
+        )
+        return (
+            context.new_execution_backend
+            and (
+                not self.is_read_stage_equivalent()
+                or traling_randomize_block_order_stage
+            )
+            and self._stages_after_snapshot
         )
 
 
