@@ -190,6 +190,11 @@ def _make_async_gen(
         # Indicate done adding items.
         fetch_queue.put(sentinel, block=True)
 
+    # Start a background thread which iterates through the base iterator,
+    # triggering execution and adding results to the queue until it is full.
+    # Iterating through the iterator returned by this function pulls
+    # ready items from the queue, allowing the background thread to continue execution.
+
     fetch_thread = threading.Thread(target=_async_fetch)
     fetch_thread.start()
 
