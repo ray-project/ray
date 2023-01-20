@@ -3,29 +3,50 @@
 GroupedDataset API
 ==================
 
-.. autoclass:: ray.data.grouped_dataset.GroupedDataset
-    :members:
+.. currentmodule:: ray.data
 
-Aggregations
-------------
+GroupedDataset objects are returned by groupby call: Dataset.groupby().
 
-.. autoclass:: ray.data.aggregate.AggregateFn
-    :members:
+Constructor
+-----------
 
-.. autoclass:: ray.data.aggregate.Count
-    :members:
+.. autosummary::
+   :toctree: doc/
 
-.. autoclass:: ray.data.aggregate.Sum
-    :members:
+   grouped_dataset.GroupedDataset
 
-.. autoclass:: ray.data.aggregate.Max
-    :members:
+Computations / Descriptive Stats
+--------------------------------
 
-.. autoclass:: ray.data.aggregate.Mean
-    :members:
+.. autosummary::
+   :toctree: doc/
 
-.. autoclass:: ray.data.aggregate.Std
-    :members:
+   grouped_dataset.GroupedDataset.count
+   grouped_dataset.GroupedDataset.sum
+   grouped_dataset.GroupedDataset.min
+   grouped_dataset.GroupedDataset.max
+   grouped_dataset.GroupedDataset.mean
+   grouped_dataset.GroupedDataset.std
 
-.. autoclass:: ray.data.aggregate.AbsMax
-    :members:
+Function Application
+--------------------
+
+.. autosummary::
+   :toctree: doc/
+
+   grouped_dataset.GroupedDataset.aggregate
+   grouped_dataset.GroupedDataset.map_groups
+
+Aggregate Function
+------------------
+
+.. autosummary::
+   :toctree: doc/
+
+   aggregate.AggregateFn
+   aggregate.Count
+   aggregate.Sum
+   aggregate.Max
+   aggregate.Mean
+   aggregate.Std
+   aggregate.AbsMax

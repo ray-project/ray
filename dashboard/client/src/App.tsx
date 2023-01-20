@@ -7,13 +7,18 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import JobList, { NewIAJobsPage } from "./pages/job";
-import JobDetailPage from "./pages/job/JobDetail";
+import { JobDetailChartsPage } from "./pages/job/JobDetail";
+import { JobDetailInfoPage } from "./pages/job/JobDetailInfoPage";
+import { JobDetailLayout } from "./pages/job/JobDetailLayout";
 import { DEFAULT_VALUE, MainNavContext } from "./pages/layout/mainNavContext";
 import { MainNavLayout } from "./pages/layout/MainNavLayout";
+import { SideTabPage } from "./pages/layout/SideTabLayout";
 import { NewIALogsPage } from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
 import { getMetricsInfo } from "./pages/metrics/utils";
 import Nodes, { NewIAClusterPage } from "./pages/node";
+import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
+import { ClusterLayout } from "./pages/node/ClusterLayout";
 import NodeDetailPage from "./pages/node/NodeDetail";
 import { OverviewPage } from "./pages/overview/OverviewPage";
 import { getNodeList } from "./service/node";
@@ -27,7 +32,6 @@ const Actors = React.lazy(() => import("./pages/actor"));
 const CMDResult = React.lazy(() => import("./pages/cmd/CMDResult"));
 const Index = React.lazy(() => import("./pages/index/Index"));
 const Job = React.lazy(() => import("./pages/job"));
-const JobDetail = React.lazy(() => import("./pages/job/JobDetail"));
 const BasicLayout = React.lazy(() => import("./pages/layout"));
 const Logs = React.lazy(() => import("./pages/log/Logs"));
 const Node = React.lazy(() => import("./pages/node"));
@@ -158,7 +162,7 @@ const App = () => {
                     path="/log/:host/:path"
                   />
                   <Route element={<NodeDetail />} path="/node/:id" />
-                  <Route element={<JobDetail />} path="/job/:id" />
+                  <Route element={<JobDetailChartsPage />} path="/job/:id" />
                   <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
                   <Route element={<Loading />} path="/loading" />
                 </Route>
@@ -167,12 +171,46 @@ const App = () => {
                   <Route element={<Navigate replace to="overview" />} path="" />
                   <Route element={<OverviewPage />} path="overview" />
                   <Route element={<NewIAClusterPage />} path="cluster">
-                    <Route element={<Nodes newIA />} path="" />
-                    <Route element={<NodeDetailPage />} path="nodes/:id" />
+                    <Route element={<ClusterLayout />} path="">
+                      <Route
+                        element={
+                          <SideTabPage tabId="info">
+                            <ClusterDetailInfoPage />
+                          </SideTabPage>
+                        }
+                        path="info"
+                      />
+                      <Route
+                        element={
+                          <SideTabPage tabId="table">
+                            <Nodes newIA />
+                          </SideTabPage>
+                        }
+                        path=""
+                      />
+                      <Route element={<NodeDetailPage />} path="nodes/:id" />
+                    </Route>
                   </Route>
                   <Route element={<NewIAJobsPage />} path="jobs">
                     <Route element={<JobList newIA />} path="" />
-                    <Route element={<JobDetailPage />} path=":id" />
+                    <Route element={<JobDetailLayout />} path=":id">
+                      <Route
+                        element={
+                          <SideTabPage tabId="info">
+                            <JobDetailInfoPage />
+                          </SideTabPage>
+                        }
+                        path="info"
+                      />
+                      <Route
+                        element={
+                          <SideTabPage tabId="charts">
+                            <JobDetailChartsPage />
+                          </SideTabPage>
+                        }
+                        path=""
+                      />
+                    </Route>
                   </Route>
                   <Route element={<NewIALogsPage />} path="logs">
                     {/* TODO(aguo): Refactor Logs component to use optional query

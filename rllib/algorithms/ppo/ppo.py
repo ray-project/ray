@@ -10,7 +10,7 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging
-from typing import List, Optional, Type, Union
+from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -39,6 +39,9 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
+
+if TYPE_CHECKING:
+    from ray.rllib.core.rl_module import RLModule
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,17 @@ class PPOConfig(PGConfig):
 
         # Deprecated keys.
         self.vf_share_layers = DEPRECATED_VALUE
+
+    @override(AlgorithmConfig)
+    def get_default_rl_module_class(self) -> Union[Type["RLModule"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
+            )
+
+            return PPOTorchRLModule
+        else:
+            raise ValueError(f"The framework {self.framework_str} is not supported.")
 
     @override(AlgorithmConfig)
     def training(
@@ -198,10 +212,6 @@ class PPOConfig(PGConfig):
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
-            if isinstance(entropy_coeff, int):
-                entropy_coeff = float(entropy_coeff)
-            if entropy_coeff < 0.0:
-                raise ValueError("`entropy_coeff` must be >= 0.0")
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
@@ -250,6 +260,10 @@ class PPOConfig(PGConfig):
                 " trajectory). Consider setting "
                 "batch_mode=complete_episodes."
             )
+
+        # Check `entropy_coeff` for correctness.
+        if self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0")
 
 
 class UpdateKL:
@@ -333,7 +347,9 @@ class PPO(Algorithm):
         # Standardize advantages
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config.simple_optimizer:
+        if self.config._enable_rl_trainer_api:
+            train_results = self.trainer_runner.update(train_batch)
+        elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
@@ -352,10 +368,24 @@ class PPO(Algorithm):
         # workers.
         if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                from_worker = None
+                if self.config._enable_rl_trainer_api:
+                    from_worker = self.trainer_runner
                 self.workers.sync_weights(
-                    policies=policies_to_update,
+                    from_worker=from_worker,
+                    policies=list(train_results.keys()),
                     global_vars=global_vars,
                 )
+
+        if self.config._enable_rl_trainer_api:
+            kl_dict = {
+                pid: pinfo[LEARNER_STATS_KEY].get("kl")
+                for pid, pinfo in train_results.items()
+            }
+            # triggers a special update method on RLOptimizer to update the KL values.
+            self.trainer_runner.additional_update(kl_values=kl_dict)
+
+            return train_results
 
         # For each policy: Update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():

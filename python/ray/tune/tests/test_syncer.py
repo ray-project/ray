@@ -13,10 +13,11 @@ from freezegun import freeze_time
 import ray
 import ray.cloudpickle as pickle
 from ray import tune
-from ray.air import Checkpoint
+from ray.air import session, Checkpoint, RunConfig
 from ray.tune import TuneError
 from ray.tune.syncer import Syncer, _DefaultSyncer
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
+from ray.air._internal.remote_storage import upload_to_uri, download_from_uri
 
 
 @pytest.fixture
@@ -200,6 +201,16 @@ def test_sync_config_validate_custom_syncer():
 
     sync_config = tune.SyncConfig(upload_dir="/invalid/dir", syncer=CustomSyncer())
     sync_config.validate_upload_dir()
+
+
+def test_sync_config_upload_dir_custom_syncer_mismatch():
+    # Shouldn't be able to disable syncing if upload dir is specified
+    with pytest.raises(ValueError):
+        tune.SyncConfig(upload_dir="s3://valid/bucket", syncer=None)
+
+    # Shouldn't be able to use a custom cloud syncer without specifying cloud dir
+    with pytest.raises(ValueError):
+        tune.SyncConfig(upload_dir=None, syncer=_DefaultSyncer())
 
 
 def test_syncer_sync_up_down(temp_data_dirs):
@@ -604,6 +615,62 @@ def test_syncer_serialize(temp_data_dirs):
     )
 
     pickle.dumps(syncer)
+
+
+def test_final_experiment_checkpoint_sync(tmpdir):
+    class SlowSyncer(_DefaultSyncer):
+        def __init__(self, **kwargs):
+            super(_DefaultSyncer, self).__init__(**kwargs)
+            self._num_syncs = 0
+
+        def _sync_up_command(self, local_path, uri, exclude):
+            def slow_upload(local_path, uri, exclude):
+                # Sleep to check that experiment doesn't exit without waiting
+                time.sleep(2)
+                upload_to_uri(local_path, uri, exclude)
+                self._num_syncs += 1
+
+            return (
+                slow_upload,
+                dict(local_path=local_path, uri=uri, exclude=exclude),
+            )
+
+    # Long sync period so there will only be 2 experiment checkpoints:
+    # One at the beginning which always happens, then a forced checkpoint at the
+    # end of the experiment.
+    syncer = SlowSyncer(sync_period=60)
+
+    def train_func(config):
+        for i in range(8):
+            session.report({"score": i})
+            time.sleep(0.5)
+
+    tuner = tune.Tuner(
+        train_func,
+        run_config=RunConfig(
+            name="exp_name",
+            sync_config=tune.SyncConfig(
+                upload_dir="memory:///test_upload_dir", syncer=syncer
+            ),
+        ),
+    )
+    results = tuner.fit()
+    assert not results.errors
+
+    # Check the contents of the upload_dir immediately after the experiment
+    # This won't be up to date if we don't wait on the last sync
+    download_from_uri("memory:///test_upload_dir/exp_name", tmpdir)
+    cloud_results = tune.Tuner.restore(str(tmpdir)).get_results()
+    last_reported_iter = cloud_results[0].metrics.get("training_iteration", None)
+    assert last_reported_iter == 8, (
+        "Experiment did not wait to finish the final experiment sync before exiting. "
+        "The last reported training iteration synced to the remote dir was "
+        f"{last_reported_iter}. (None if no results are synced.)"
+    )
+    assert syncer._num_syncs == 2, (
+        "Should have seen 2 syncs, once at the beginning of the experiment, and one "
+        f"forced sync at the end. Got {syncer._num_syncs} syncs instead."
+    )
 
 
 if __name__ == "__main__":

@@ -431,6 +431,7 @@ class FaultTolerantActorManager:
         remote_calls: List[ray.ObjectRef],
         timeout_seconds: int = None,
         return_obj_refs: bool = False,
+        mark_healthy: bool = False,
     ) -> Tuple[List[ray.ObjectRef], RemoteCallResults]:
         """Try fetching results from remote actor calls.
 
@@ -442,6 +443,9 @@ class FaultTolerantActorManager:
             remote_calls: list of remote calls to fetch.
             timeout_seconds: timeout for the ray.wait() call. Default is None.
             return_obj_refs: whether to return ObjectRef instead of actual results.
+            mark_healthy: whether to mark certain actors healthy based on the results
+                of these remote calls. Useful, for example, to make sure actors
+                do not come back without proper state restoration.
 
         Returns:
             A list of ready ObjectRefs mapping to the results of those calls.
@@ -472,6 +476,12 @@ class FaultTolerantActorManager:
             try:
                 result = ray.get(r)
                 remote_results.add_result(actor_id, ResultOrError(result=result))
+
+                if mark_healthy and not self.is_actor_healthy(actor_id):
+                    # Yay, mark this actor as healthy.
+                    logger.info(f"brining actor {actor_id} back into service.")
+                    self.set_actor_state(actor_id, healthy=True)
+                    self._num_actor_restarts += 1
             except Exception as e:
                 # Return error to the user.
                 remote_results.add_result(actor_id, ResultOrError(error=e))
@@ -537,6 +547,7 @@ class FaultTolerantActorManager:
         remote_actor_ids: List[int] = None,
         timeout_seconds=None,
         return_obj_refs: bool = False,
+        mark_healthy: bool = False,
     ) -> RemoteCallResults:
         """Calls the given function with each actor instance as arg.
 
@@ -554,6 +565,9 @@ class FaultTolerantActorManager:
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of the context of this manager.
+            mark_healthy: whether to mark certain actors healthy based on the results
+                of these remote calls. Useful, for example, to make sure actors
+                do not come back without proper state restoration.
 
         Returns:
             The list of return values of all calls to `func(actor)`. The values may be
@@ -576,6 +590,7 @@ class FaultTolerantActorManager:
             remote_calls=remote_calls,
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         return remote_results
@@ -662,6 +677,7 @@ class FaultTolerantActorManager:
         *,
         timeout_seconds: Union[None, int] = 0,
         return_obj_refs: bool = False,
+        mark_healthy: bool = False,
     ) -> RemoteCallResults:
         """Get results from outstanding async requests that are ready.
 
@@ -671,6 +687,9 @@ class FaultTolerantActorManager:
             timeout_seconds: Ray.get() timeout. Default is 0 (only those that are
                 already ready).
             return_obj_refs: whether to return ObjectRef instead of actual results.
+            mark_healthy: whether to mark certain actors healthy based on the results
+                of these remote calls. Useful, for example, to make sure actors
+                do not come back without proper state restoration.
 
         Returns:
             A list of return values of all calls to `func(actor)` that are ready.
@@ -683,6 +702,7 @@ class FaultTolerantActorManager:
             remote_calls=list(self.__in_flight_req_to_actor_id.keys()),
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         for obj_ref, result in zip(ready, remote_results):
@@ -698,11 +718,17 @@ class FaultTolerantActorManager:
         return remote_results
 
     @DeveloperAPI
-    def probe_unhealthy_actors(self) -> List[int]:
+    def probe_unhealthy_actors(
+        self,
+        timeout_seconds: Optional[int] = None,
+        mark_healthy: bool = False,
+    ) -> List[int]:
         """Ping all unhealthy actors to try bringing them back.
 
         Returns:
             A list of actor ids that are restored.
+            timeout_seconds: Timeout to avoid pinging hanging workers indefinitely.
+            mark_healthy: Whether to mark actors healthy if they respond to the ping.
         """
         unhealthy_actor_ids = [
             actor_id
@@ -717,20 +743,8 @@ class FaultTolerantActorManager:
             func=lambda actor: actor.ping(),
             remote_actor_ids=unhealthy_actor_ids,
             healthy_only=False,  # We specifically want to ping unhealthy actors.
+            timeout_seconds=timeout_seconds,
+            mark_healthy=mark_healthy,
         )
 
-        restored = []
-        for result in remote_results:
-            actor_id = result.actor_id
-            if result.ok:
-                # Yay, mark this actor as healthy.
-                logger.info(f"brining actor {actor_id} back into service.")
-                restored.append(actor_id)
-                self.set_actor_state(actor_id, healthy=True)
-                self._num_actor_restarts += 1
-            else:
-                # foreach_actor() already marked actors that failed to respond
-                # as unhealthy. Do not have to do anything here.
-                pass
-
-        return restored
+        return [result.actor_id for result in remote_results if result.ok]
