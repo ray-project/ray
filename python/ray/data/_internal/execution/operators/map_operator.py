@@ -94,6 +94,7 @@ class MapOperator(PhysicalOperator):
         return self._execution_state.has_next()
 
     def get_next(self) -> RefBundle:
+        assert self._started
         bundle = self._execution_state.get_next()
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
