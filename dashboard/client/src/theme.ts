@@ -47,6 +47,13 @@ const basicTheme: ThemeOptions = {
     },
   },
   overrides: {
+    MuiCssBaseline: {
+      "@global": {
+        a: {
+          color: "#036DCF",
+        },
+      },
+    },
     MuiTooltip: {
       tooltip: {
         fontSize: "0.75rem",
