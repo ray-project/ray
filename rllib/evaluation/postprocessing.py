@@ -205,7 +205,7 @@ def compute_gae_for_sample_batch(
             # will not be needed but takes time to compute.
             input_dict = policy._lazy_tensor_dict(input_dict)
             fwd_out = policy.model.forward_exploration(input_dict)
-            last_r = fwd_out[SampleBatch.VF_PREDS]
+            last_r = fwd_out[SampleBatch.VF_PREDS][-1]
         else:
             last_r = policy._value(**input_dict)
 
