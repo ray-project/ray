@@ -34,14 +34,15 @@ class LogicalPlan:
         """Get the DAG of logical operators."""
         return self._dag
 
-    def get_execution_dag(self) -> PhysicalOperator:
-        """Get the DAG of physical operators to execute.
 
-        This process has 3 steps:
-        (1) logical optimization: optimize logical operators.
-        (2) planning: convert logical to physical operators.
-        (3) physical optimization: optimize physical operators.
-        """
-        optimized_logical_dag = LogicalOptimizer().optimize(self.dag)
-        physical_dag = Planner().plan(optimized_logical_dag)
-        return PhysicalOptimizer().optimize(physical_dag)
+def get_execution_dag(logical_dag: LogicalOperator) -> PhysicalOperator:
+    """Get the DAG of physical operators to execute.
+
+    This process has 3 steps:
+    (1) logical optimization: optimize logical operators.
+    (2) planning: convert logical to physical operators.
+    (3) physical optimization: optimize physical operators.
+    """
+    optimized_logical_dag = LogicalOptimizer().optimize(logical_dag)
+    physical_dag = Planner().plan(optimized_logical_dag)
+    return PhysicalOptimizer().optimize(physical_dag)

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterator
+from typing import Any, Dict, Iterator, List
 
 import ray
 import ray.cloudpickle as cloudpickle
@@ -7,6 +7,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data.block import Block, BlockMetadata
+from ray.data.datasource import ReadTask
 from ray.data.datasource.datasource import Datasource
 
 
@@ -30,7 +31,7 @@ class Read(LogicalOperator):
 def plan_read_op(op: Read) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read."""
 
-    def get_input_data():
+    def get_input_data() -> List[RefBundle]:
         reader = op._datasource.create_reader(**op._read_args)
         read_tasks = reader.get_read_tasks(op._parallelism)
         return [
@@ -56,7 +57,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
 
     inputs = InputDataBuffer(input_data_factory=get_input_data)
 
-    def do_read(blocks: Iterator[Block]) -> Iterator[Block]:
+    def do_read(blocks: Iterator[ReadTask]) -> Iterator[Block]:
         for read_task in blocks:
             yield from read_task()
 
