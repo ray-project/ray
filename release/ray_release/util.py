@@ -2,6 +2,8 @@ import collections
 import hashlib
 import json
 import os
+import random
+import string
 import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -157,3 +159,28 @@ def get_pip_packages() -> List[str]:
 def python_version_str(python_version: Tuple[int, int]) -> str:
     """From (X, Y) to XY"""
     return "".join([str(x) for x in python_version])
+
+
+def generate_tmp_s3_path() -> str:
+    return "".join(random.choice(string.ascii_lowercase) for i in range(10))
+
+
+def join_s3_paths(*paths: str):
+    paths = list(paths)
+    if len(paths) == 1:
+        return paths[0]
+    for i in range(1, len(paths)):
+        left = paths[i - 1]
+        right = paths[i]
+        if left.endswith("/") and right.startswith("/"):
+            ret = f"{left}{right[1:]}"
+        elif left.endswith("/") or right.startswith("/"):
+            ret = f"{left}{right}"
+        else:
+            ret = f"{left}/{right}"
+        paths[i] = ret
+
+    ret = paths[-1]
+    if ret.endswith("/"):
+        ret = ret[:-1]
+    return ret

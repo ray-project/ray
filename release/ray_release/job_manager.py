@@ -2,6 +2,13 @@ import os
 import time
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
+
+from anyscale.sdk.anyscale_client.models import (
+    CreateProductionJob,
+    HaJobStates,
+)
+
+from ray_release.anyscale_util import get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import CommandTimeout
 from ray_release.logger import logger
@@ -13,14 +20,7 @@ from ray_release.util import (
 )
 
 if TYPE_CHECKING:
-    from ray.job_submission import JobStatus, JobSubmissionClient  # noqa: F401
-
-from anyscale.sdk.anyscale_client.models import (
-    CreateProductionJob,
-    CreateProductionJobConfig,
-    ProductionJobStateTransition,
-    HaJobStates,
-)
+    from ray.job_submission import JobSubmissionClient  # noqa: F401
 
 
 class JobManager:
@@ -150,7 +150,7 @@ class AnyscaleJobManager:
         full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
         logger.info(f"Executing {cmd_to_run} with {env_vars} via Anyscale job submit")
 
-        anyscale_client = self.cluster_manager.sdk
+        anyscale_client = self.sdk
 
         runtime_env = None
         if working_dir:
@@ -172,18 +172,41 @@ class AnyscaleJobManager:
                 ),
             ),
         )
-        self.job_result = job_response.result
+        self.last_job_result = job_response.result
+        self.cluster_manager.cluster_id = self.last_job_result.state.cluster_id
         self.start_time = time.time()
 
         logger.info(
-            f"Link to job: " f"{format_link(anyscale_job_url(self.job_result.id))}"
+            f"Link to job: " f"{format_link(anyscale_job_url(self.last_job_result.id))}"
         )
 
         return
 
     @property
     def job_id(self):
-        return self.job_result.id
+        return self.last_job_result.id
+
+    @property
+    def sdk(self):
+        return self.cluster_manager.sdk
+
+    @property
+    def last_job_result(self):
+        return self._last_job_result
+
+    @last_job_result.setter
+    def last_job_result(self, value):
+        self._last_job_result = value
+        cluster_id = value.state.cluster_id
+        if cluster_id:
+            self.cluster_manager.cluster_id = value.state.cluster_id
+            self.cluster_manager.cluster_name = get_cluster_name(
+                value.state.cluster_id, self.sdk
+            )
+
+    @property
+    def last_job_status(self):
+        return self._last_job_result.state.current_state
 
     def _get_job_status_with_retry(self):
         anyscale_client = self.cluster_manager.sdk
@@ -194,6 +217,16 @@ class AnyscaleJobManager:
             max_retries=3,
         ).result
 
+    def __del__(self):
+        self._terminate_job()
+
+    def _terminate_job(self, raise_exceptions: bool = False):
+        try:
+            self.sdk.terminate_job(self.job_id)
+        except Exception:
+            if raise_exceptions:
+                raise
+
     def _wait_job(self, timeout: int):
         start_time = time.monotonic()
         timeout_at = start_time + timeout
@@ -202,6 +235,7 @@ class AnyscaleJobManager:
         while True:
             now = time.monotonic()
             if now >= timeout_at:
+                self._terminate_job()
                 raise CommandTimeout(f"Job timed out after {timeout} seconds.")
 
             if now >= next_status:
@@ -211,7 +245,8 @@ class AnyscaleJobManager:
                 )
                 next_status += 30
             result = self._get_job_status_with_retry()
-            status = result.state.current_state
+            self.last_job_result = result
+            status = self.last_job_status
             if status in {
                 HaJobStates.SUCCESS,
                 HaJobStates.TERMINATED,
@@ -221,7 +256,8 @@ class AnyscaleJobManager:
                 break
             time.sleep(1)
         result = self._get_job_status_with_retry()
-        status = result.state.current_state
+        self.last_job_result = result
+        status = self.last_job_status
         if status == HaJobStates.SUCCESS:
             retcode = 0
         elif status == HaJobStates.BROKEN:

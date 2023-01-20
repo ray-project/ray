@@ -34,10 +34,7 @@ from ray_release.exception import (
     LocalEnvSetupError,
     ClusterEnvCreateError,
 )
-from ray_release.file_manager.job_file_manager import (
-    JobFileManager,
-    AnyscaleJobFileManager,
-)
+from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
@@ -68,14 +65,14 @@ file_manager_str_to_file_manager = {
     "sdk": SessionControllerFileManager,
     "client": RemoteTaskFileManager,
     "job": JobFileManager,
-    "anyscale_job": AnyscaleJobFileManager,
+    "anyscale_job": JobFileManager,
 }
 
 command_runner_to_file_manager = {
     SDKRunner: JobFileManager,  # Use job file manager per default
     ClientRunner: RemoteTaskFileManager,
     JobRunner: JobFileManager,
-    AnyscaleJobRunner: AnyscaleJobFileManager,
+    AnyscaleJobRunner: JobFileManager,
 }
 
 
@@ -372,7 +369,7 @@ def run_release_test(
 
     result.last_logs = last_logs
 
-    if not no_terminate or not isinstance(cluster_manager, FullClusterManager):
+    if not no_terminate and isinstance(cluster_manager, FullClusterManager):
         buildkite_group(":earth_africa: Terminating cluster")
         try:
             cluster_manager.terminate_cluster(wait=False)
