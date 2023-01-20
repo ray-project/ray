@@ -8,7 +8,8 @@ class Barrier:
     a certain count or a timeout is reached.
 
     For instance, if ``max_results=N``, the :meth:`on_completion` callback will be
-    invoked once :meth:`arrive` or :meth:`error` has been called ``N`` times (in sum).
+    invoked once :meth:`arrive` or :meth:`error` have been called ``N`` times
+    (in total).
 
     The :meth:`on_first_error` callback will be
     invoked once :meth:`error` has been called ``1`` time.
@@ -27,14 +28,17 @@ class Barrier:
     def __init__(self, max_results: Optional[int] = None):
         self._max_results = max_results
 
+        # on_completion callback
         self._completed = False
         self._on_completion = None
 
-        self._first_error = False
+        # on_first_error_callback
+        self._has_error = False
         self._on_first_error = None
 
-        self._results = []
-        self._errors = []
+        # Collect received results + errors
+        self._results: List[Tuple[Any]] = []
+        self._errors: List[Tuple[Any]] = []
 
     def arrive(self, *data):
         """Notify barrier that a result successfully arrived.
@@ -66,14 +70,14 @@ class Barrier:
         self._check_completion()
 
     def _check_first_error(self):
-        if self._first_error:
+        if self._has_error:
             # Already fired callback
             return
 
         num_errors = self.num_errors
         if num_errors:
             # First error arrived
-            self._first_error = True
+            self._has_error = True
 
             # Invoke callback
             if self._on_first_error:
@@ -151,7 +155,7 @@ class Barrier:
     @property
     def has_error(self) -> bool:
         """Returns True if the barrier had an error arrive."""
-        return self._first_error
+        return self._has_error
 
     @property
     def num_results(self) -> int:
@@ -183,6 +187,6 @@ class Barrier:
         :meth:`on_completion` callback will be invoked again.
         """
         self._completed = False
-        self._first_error = False
+        self._has_error = False
         self._results = []
         self._errors = []
