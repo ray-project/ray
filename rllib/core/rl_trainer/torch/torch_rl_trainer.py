@@ -9,10 +9,6 @@ from typing import (
     Optional,
     Callable,
 )
-import torch
-
-from ray.air.config import ScalingConfig
-from ray.train.torch.train_loop_utils import _TorchAccelerator
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_trainer.rl_trainer import (
@@ -28,6 +24,13 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.framework import try_import_torch
+
+torch, nn = try_import_torch()
+
+if torch:
+    from ray.air.config import ScalingConfig
+    from ray.train.torch.train_loop_utils import _TorchAccelerator
 
 logger = logging.getLogger(__name__)
 
