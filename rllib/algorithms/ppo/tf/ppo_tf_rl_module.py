@@ -34,7 +34,7 @@ class PPOTfModuleConfig(RLModuleConfig):
     shared_encoder: bool = True
 
 
-class PPOTfModule(TfRLModule):
+class PPOTfRLModule(TfRLModule):
     def __init__(self, config: PPOTfModuleConfig):
         super().__init__()
         self.config = config
@@ -162,8 +162,8 @@ class PPOTfModule(TfRLModule):
         action_space: gym.Space,
         *,
         model_config: Mapping[str, Any],
-    ) -> "PPOTfModule":
-        """Create a PPOTfModule"""
+    ) -> "PPOTfRLModule":
+        """Create a PPOTfRLModule"""
         activation = model_config["fcnet_activation"]
         if activation == "tanh":
             activation = "Tanh"
