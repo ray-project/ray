@@ -50,6 +50,7 @@ RUN sudo groupadd crate \
         && export PLATFORM="$( case $(uname --m) in x86_64) echo x64_linux ;; aarch64) echo aarch64_linux ;; esac)" \
         && sudo mkdir -p /crate \
         && sudo adduser ray crate \
+        && sudo chown -R ray /crate \
         && sudo chgrp -R crate /crate \
         && export CRATE_URL=https://cdn.crate.io/downloads/releases/cratedb/${PLATFORM}/crate-5.1.2.tar.gz \
         && curl -fSL -O ${CRATE_URL} \
