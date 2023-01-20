@@ -18,7 +18,7 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         CRATE_HEAP_DUMP_PATH="/data/crate/data" \
         CRATE_JAVA_OPTS="-XX:+IgnoreUnrecognizedVMOptions -XX:+UseContainerSupport -XX:+IdleTuningCompactOnIdle -XX:+IdleTuningGcOnIdle -Xtune:virtualized -Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS" \
         PATH=/crate/bin/:$PATH \
-        CRATE_HEAP_SIZE=512M \
+        CRATE_HEAP_SIZE=4G \
         CRATE_HOME=/crate/bin/ \
         CRATE_USE_IPV4=true
 
