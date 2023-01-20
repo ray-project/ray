@@ -1312,6 +1312,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 }
 
 void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
+  // default workers uses 1 cpu and doesn't support actor.
   static const WorkerCacheKey kDefaultCpuWorkerCacheKey{/*serialized_runtime_env*/ "",
                                                         {{"CPU", 1}},
                                                         /*is_actor*/ false,
