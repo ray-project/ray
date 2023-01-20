@@ -45,7 +45,7 @@ class RandomBytesReader(Reader):
         ]
 
 
-def test_disable_in_ray_client(ray_start_cluster_enabled):
+def test_enable_in_ray_client(ray_start_cluster_enabled):
     cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4)
     cluster.head_node._ray_params.ray_client_server_port = "10004"
@@ -58,9 +58,9 @@ def test_disable_in_ray_client(ray_start_cluster_enabled):
 
     assert DatasetContext.get_current().block_splitting_enabled
 
-    # Verify Ray client disabling dynamic block splitting.
+    # Verify Ray client also has dynamic block splitting enabled.
     ray.init(address)
-    assert not DatasetContext.get_current().block_splitting_enabled
+    assert DatasetContext.get_current().block_splitting_enabled
 
 
 @pytest.mark.parametrize(

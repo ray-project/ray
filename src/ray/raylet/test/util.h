@@ -24,7 +24,8 @@ class MockWorker : public WorkerInterface {
       : worker_id_(worker_id),
         port_(port),
         is_detached_actor_(false),
-        runtime_env_hash_(runtime_env_hash) {}
+        runtime_env_hash_(runtime_env_hash),
+        job_id_(JobID::FromInt(859)) {}
 
   WorkerID WorkerId() const override { return worker_id_; }
 
@@ -34,16 +35,14 @@ class MockWorker : public WorkerInterface {
 
   void SetOwnerAddress(const rpc::Address &address) override { address_ = address; }
 
-  void AssignTaskId(const TaskID &task_id) override {}
+  void AssignTaskId(const TaskID &task_id) override { task_id_ = task_id; }
 
   void SetAssignedTask(const RayTask &assigned_task) override {
     task_ = assigned_task;
-    task_assign_time_ = std::chrono::steady_clock::now();
+    task_assign_time_ = absl::Now();
   };
 
-  const std::chrono::steady_clock::time_point GetAssignedTaskTime() const override {
-    return task_assign_time_;
-  };
+  absl::Time GetAssignedTaskTime() const override { return task_assign_time_; };
 
   const std::string IpAddress() const override { return address_.ip_address(); }
 
@@ -95,10 +94,7 @@ class MockWorker : public WorkerInterface {
     return -1;
   }
   void SetAssignedPort(int port) override { RAY_CHECK(false) << "Method unused"; }
-  const TaskID &GetAssignedTaskId() const override {
-    RAY_CHECK(false) << "Method unused";
-    return TaskID::Nil();
-  }
+  const TaskID &GetAssignedTaskId() const override { return task_id_; }
   bool AddBlockedTaskId(const TaskID &task_id) override {
     RAY_CHECK(false) << "Method unused";
     return false;
@@ -112,10 +108,7 @@ class MockWorker : public WorkerInterface {
     auto *t = new std::unordered_set<TaskID>();
     return *t;
   }
-  const JobID &GetAssignedJobId() const override {
-    RAY_CHECK(false) << "Method unused";
-    return JobID::Nil();
-  }
+  const JobID &GetAssignedJobId() const override { return job_id_; }
   int GetRuntimeEnvHash() const override { return runtime_env_hash_; }
   void AssignActorId(const ActorID &actor_id) override {
     RAY_CHECK(false) << "Method unused";
@@ -191,8 +184,9 @@ class MockWorker : public WorkerInterface {
   BundleID bundle_id_;
   bool blocked_ = false;
   RayTask task_;
-  std::chrono::steady_clock::time_point task_assign_time_;
+  absl::Time task_assign_time_;
   int runtime_env_hash_;
+  TaskID task_id_;
   JobID job_id_;
 };
 
