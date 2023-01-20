@@ -1,19 +1,19 @@
 from typing import Type, Union, TYPE_CHECKING
 
-import torch
-import tensorflow as tf
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 
 if TYPE_CHECKING:
     import gymnasium as gym
+    import torch
+    import tensorflow as tf
 
     from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
     from ray.rllib.core.rl_module import RLModule
 
 
-Optimizer = Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer]
+Optimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
 
 
 @DeveloperAPI
@@ -47,8 +47,12 @@ def get_module_class(framework: str) -> Type["RLModule"]:
 @DeveloperAPI
 def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
     if framework == "tf":
+        import tensorflow as tf
+
         return tf.keras.optimizers.Adam
     elif framework == "torch":
+        import torch
+
         return torch.optim.Adam
     else:
         raise ValueError(f"Unsupported framework: {framework}")
