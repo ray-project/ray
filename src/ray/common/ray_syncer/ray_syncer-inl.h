@@ -154,13 +154,13 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   virtual ~RaySyncerBidiReactorBase() {}
 
- protected:
   void StartPull() {
     receiving_message_ = std::make_shared<RaySyncMessage>();
     RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
     StartRead(receiving_message_.get());
   }
 
+ protected:
   /// The io context
   instrumented_io_context &io_context_;
 
@@ -178,6 +178,12 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     if (node_versions[message->message_type()] < message->version()) {
       node_versions[message->message_type()] = message->version();
       message_processor_(message);
+    } else {
+      RAY_LOG_EVERY_N(WARNING, 100)
+          << "Drop message received from " << NodeID::FromBinary(message->node_id())
+          << " because the message version " << message->version()
+          << " is older than the local version " << node_versions[message->message_type()]
+          << ". Message type: " << message->message_type();
     }
   }
 
@@ -269,8 +275,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
 
  private:
-  /// The remote node id.
-  const std::string remote_node_id_;
 
   /// Buffering all the updates. Sending will be done in an async way.
   absl::flat_hash_map<std::pair<std::string, MessageType>,
@@ -301,7 +305,7 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
 
   void Disconnect() override;
 
- protected:
+ private:
   void OnCancel() override;
   void OnDone() override;
 
@@ -328,7 +332,7 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
 
   void Disconnect() override;
 
- protected:
+ private:
   /// Callback from gRPC
   void OnDone(const grpc::Status &status) override;
 
