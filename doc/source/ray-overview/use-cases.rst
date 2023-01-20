@@ -464,6 +464,42 @@ The following highlights feature companies leveraging Ray's unified API to build
         :text: [Talk] Ray Summit Panel - ML Platform on Ray
         :classes: btn-link btn-block stretched-link summitMLPlatform
 
+Large Scale Workload Orchestration
+----------------------------------
+
+The following highlights feature companies leveraging Ray Core's distributed APIs to simplify the orchestration of large scale workloads.
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
+        :type: url
+        :text: [Blog] How Ray, a Distributed AI Framework, Helps Power ChatGPT
+        :classes: btn-link btn-block stretched-link chatgpt
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog/building-highly-available-and-scalable-online-applications-on-ray-at-ant
+        :type: url
+        :text: [Blog] Highly Available and Scalable Online Applications on Ray at Ant Group
+        :classes: btn-link btn-block stretched-link antServing
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: https://www.anyscale.com/blog/ray-forward-2022
+        :type: url
+        :text: [Blog] Ray Forward 2022: Hyper-scale Ray Application Use Cases
+        :classes: btn-link btn-block stretched-link rayForward
+
 End-to-End ML Workflows
 -----------------------
 
