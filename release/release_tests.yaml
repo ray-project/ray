@@ -4340,7 +4340,7 @@
     file_manager: sdk
 
 - name: iter_tensor_batches_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
