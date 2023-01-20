@@ -21,17 +21,23 @@ class TrackedActor:
 
     def __init__(self, actor_id: int):
         self.actor_id = actor_id
+        self._on_start = None
+        self._on_stop = None
+        self._on_error = None
 
     def on_start(self, callback: Callable[["TrackedActor"], None]) -> "TrackedActor":
         """Set callback to invoke when actor started."""
-        raise NotImplementedError
+        self._on_start = callback
+        return self
 
     def on_stop(self, callback: Callable[["TrackedActor"], None]) -> "TrackedActor":
         """Set callback to invoke when actor stopped gracefully."""
-        raise NotImplementedError
+        self._on_stop = callback
+        return self
 
     def on_error(
         self, callback: Callable[["TrackedActor", Exception], None]
     ) -> "TrackedActor":
         """Set callback to invoke when actor died."""
-        raise NotImplementedError
+        self._on_error = callback
+        return self

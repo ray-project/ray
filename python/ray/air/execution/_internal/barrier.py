@@ -24,7 +24,14 @@ class Barrier:
     def __init__(
         self, max_results: Optional[int] = None, complete_on_first_error: bool = False
     ):
-        raise NotImplementedError
+        self._max_results = max_results
+        self._complete_on_first_error = complete_on_first_error
+
+        self._completed = False
+        self._on_completion = None
+
+        self._results = []
+        self._errors = []
 
     def arrive(self, *data):
         """Notify barrier that a result successfully arrived.
@@ -36,7 +43,8 @@ class Barrier:
             *data: Result data to be cached. Can be obtained via :meth:`get_results`.
 
         """
-        raise NotImplementedError
+        self._results.append(data)
+        self._check_completion()
 
     def error(self, *data):
         """Notify barrier that an error arrived.
@@ -50,7 +58,31 @@ class Barrier:
         Args:
             *data: Error data to be cached. Can be obtained via :meth:`get_errors`.
         """
-        raise NotImplementedError
+        self._errors.append(data)
+        self._check_completion()
+
+    def _check_completion(self):
+        if self._completed:
+            # Already fired completion callback
+            return
+
+        num_results = self.num_results
+        num_errors = self.num_errors
+
+        if (
+            # max_results is set and number of received results exceeds it
+            self._max_results is not None
+            and num_results + num_errors >= self._max_results
+        ) or (
+            # complete_on_first_error is set and at least one error arrived
+            self._complete_on_first_error
+            and num_errors > 0
+        ):
+            # Barrier is complete
+            self._completed = True
+
+            if self._on_completion:
+                self._on_completion(self)
 
     def on_completion(self, callback: Callable[["Barrier"], None]) -> "Barrier":
         """Define callback to be invoked when the barrier is full.
@@ -73,7 +105,8 @@ class Barrier:
             arrived at the barrier.
 
         """
-        raise NotImplementedError
+        self._on_completion = callback
+        return self
 
     def on_first_error(self, callback: Callable[["Barrier"], None]) -> "Barrier":
         """Define callback to be invoked when the first error arrived.
@@ -98,25 +131,25 @@ class Barrier:
     @property
     def completed(self) -> bool:
         """Returns True if the barrier is completed."""
-        raise NotImplementedError
+        return self._completed
 
     @property
     def num_results(self) -> int:
         """Number of received (successful) results."""
-        raise NotImplementedError
+        return len(self._results)
 
     @property
     def num_errors(self) -> int:
         """Number of received errors."""
-        raise NotImplementedError
+        return len(self._errors)
 
     def get_results(self) -> List[Tuple[Any]]:
         """Return list of received results."""
-        raise NotImplementedError
+        return self._results
 
     def get_errors(self) -> List[Tuple[Any]]:
         """Return list of received errors."""
-        raise NotImplementedError
+        return self._errors
 
     def flush(self) -> None:
         """Reset barrier, removing all received results and errors.
@@ -129,4 +162,6 @@ class Barrier:
         is set and enough new events arrive after flushing, the
         :meth:`on_completion` callback will be invoked again.
         """
-        raise NotImplementedError
+        self._completed = False
+        self._results = []
+        self._errors = []

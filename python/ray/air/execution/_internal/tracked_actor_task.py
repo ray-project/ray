@@ -1,4 +1,4 @@
-from typing import Callable, Any
+from typing import Callable, Any, List
 
 from ray.air.execution._internal.tracked_actor import TrackedActor
 
@@ -24,6 +24,12 @@ class TrackedActorTask:
 
     """
 
+    def __init__(self, tracked_actor: TrackedActor):
+        self._tracked_actor = tracked_actor
+
+        self._on_result = None
+        self._on_error = None
+
     def on_result(
         self, callback: Callable[[TrackedActor, Any], None]
     ) -> "TrackedActorTask":
@@ -35,7 +41,8 @@ class TrackedActorTask:
         Args:
             callback: Callback to invoke when the task resolves.
         """
-        raise NotImplementedError
+        self._on_result = callback
+        return self
 
     def on_error(
         self, callback: Callable[[TrackedActor, Exception], None]
@@ -48,7 +55,8 @@ class TrackedActorTask:
         Args:
             callback: Callback to invoke when the task errors.
         """
-        raise NotImplementedError
+        self._on_error = callback
+        return self
 
 
 class TrackedActorTaskCollection:
@@ -74,6 +82,9 @@ class TrackedActorTaskCollection:
 
     """
 
+    def __init__(self, actor_tasks: List[TrackedActorTask]):
+        self._actors_tasks = actor_tasks
+
     def on_result(
         self, callback: Callable[[TrackedActor, Any], None]
     ) -> "TrackedActorTaskCollection":
@@ -85,7 +96,9 @@ class TrackedActorTaskCollection:
         Args:
             callback: Callback to invoke when a task resolves.
         """
-        raise NotImplementedError
+        for actor_task in self._actors_tasks:
+            actor_task.on_result(callback=callback)
+        return self
 
     def on_error(
         self, callback: Callable[[TrackedActor, Exception], None]
@@ -98,4 +111,6 @@ class TrackedActorTaskCollection:
         Args:
             callback: Callback to invoke when a task errors.
         """
-        raise NotImplementedError
+        for actor_task in self._actors_tasks:
+            actor_task.on_result(callback=callback)
+        return self
