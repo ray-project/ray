@@ -20,7 +20,7 @@ set -ae
 # Make sure directories exist as they are not automatically created
 # This needs to happen at runtime, as the directory could be mounted.
 sudo mkdir -pv $CRATE_GC_LOG_DIR $CRATE_HEAP_DUMP_PATH $TS_STATE
-
+sudo chmod -R 777 /data
 
 if [ -c /dev/net/tun ]; then
     sudo tailscaled &
