@@ -11,7 +11,6 @@ gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
 shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
 
-# I this might have to be a lowercase g
 CRATE_HEAP_SIZE=$(echo $shm_memory | awk '{print int($0+0.5)}')
 export CRATE_HEAP_SIZE=$CRATE_HEAP_SIZE"G"
 export shm_memory=$shm_memory"G"
