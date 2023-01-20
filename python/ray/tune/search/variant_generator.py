@@ -73,16 +73,15 @@ def grid_search(values: Iterable) -> Dict[str, Iterable]:
         >>> from ray import tune
         >>> param_space={
         ...   "x": tune.grid_search([10, 20]),
-        ...   "y": tune.grid_search["a", "b", "c"])
+        ...   "y": tune.grid_search(["a", "b", "c"])
         ... }
 
         This will create a grid of 6 samples:
         ``{"x": 10, "y": "a"}, {"x": 10, "y": "b"}, `` etc.
 
     When specifying ``num_samples`` in the
-    :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` in addition to
-    grid search parameters, the number of samples will be drawn for each grid
-    parameter.
+    :class:`TuneConfig <ray.tune.tune_config.TuneConfig>`, this will specify
+    the number of random samples _per grid search combination_.
 
     For instance, in the example above, if ``num_samples=4``,
     a total of 24 trials will be started -
