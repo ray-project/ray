@@ -5,11 +5,11 @@ from ray.rllib.utils.framework import try_import_tf
 import ray
 
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.tests.test_trainer_runner import add_module_helper
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+from ray.rllib.core.testing.utils import add_module_to_runner_or_trainer
 
 
 tf1, tf, tfv = try_import_tf()
@@ -40,7 +40,6 @@ class TestTrainerRunnerLocal(unittest.TestCase):
                 "model_config": {"hidden_dim": 32},
             },
             optimizer_config={"lr": 1e-3},
-            in_test=True,
         )
         runner = TrainerRunner(
             trainer_class, trainer_cfg, compute_config=dict(num_gpus=0)
@@ -59,9 +58,8 @@ class TestTrainerRunnerLocal(unittest.TestCase):
 
         new_module_id = "test_module"
 
-        # add a test_module
-        add_module_helper(env, new_module_id, runner)
-        add_module_helper(env, new_module_id, local_trainer)
+        add_module_to_runner_or_trainer("tf", env, new_module_id, runner)
+        add_module_to_runner_or_trainer("tf", env, new_module_id, local_trainer)
 
         # make the state of the trainer and the local runner identical
         local_trainer.set_state(runner.get_state()[0])

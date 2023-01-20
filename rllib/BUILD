@@ -1863,6 +1863,14 @@ py_test(
     srcs = ["core/rl_trainer/tests/test_rl_trainer.py"]
 )
 
+# TODO (Kourosh): to be removed in favor of test_rl_trainer.py
+py_test(
+    name = "test_torch_rl_trainer",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_trainer/torch/tests/test_torch_rl_trainer.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/

@@ -157,13 +157,20 @@ class _NNStub:
     def __init__(self, *a, **kw):
         # Fake nn.functional module within torch.nn.
         self.functional = None
-        self.Module = _ModuleStub
+        self.Module = _FakeClassStub
+        self.parallel = _ParallelStub()
 
 
-# Fake class for torch.nn.Module to allow it to be inherited from.
-class _ModuleStub:
+# Fake class for e.g. torch.nn.Module to allow it to be inherited from.
+class _FakeClassStub:
     def __init__(self, *a, **kw):
-        raise ImportError("Could not import `torch`.")
+        raise ImportError("Could not import `torch`. Try pip install torch.")
+
+
+class _ParallelStub:
+    def __init__(self, *a, **kw):
+        self.DataParallel = _FakeClassStub
+        self.DistributedDataParallel = _FakeClassStub
 
 
 @PublicAPI
