@@ -14,6 +14,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    TYPE_CHECKING,
 )
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -24,7 +25,9 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
 
-from ray.air.config import ScalingConfig
+if TYPE_CHECKING:
+    from ray.air.config import ScalingConfig
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -106,13 +109,16 @@ class RLTrainer:
         module_kwargs: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
-        scaling_config: Optional[ScalingConfig] = None,
+        scaling_config: Optional["ScalingConfig"] = None,
+        algorithm_config: Optional["AlgorithmConfig"] = None,
     ):
-        # TODO (Kourosh): convert scaling and optimizer configs to dataclasses
+        # TODO (Kourosh): convert optimizer configs to dataclasses
         self.module_class = module_class
         self.module_kwargs = module_kwargs
         self.optimizer_config = optimizer_config
         self.distributed = distributed
+        self.scaling_config = scaling_config
+        self.config = algorithm_config
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
