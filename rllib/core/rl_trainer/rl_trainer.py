@@ -19,7 +19,7 @@ from typing import (
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
@@ -145,7 +145,6 @@ class RLTrainer:
 
         """
 
-    @abc.abstractmethod
     def compute_loss(
         self,
         *,
@@ -177,6 +176,48 @@ class RLTrainer:
         # possible to write single-agent losses, it may become confusing to users. We
         # should find a way to allow them to specify single-agent losses as well,
         # without having to think about one extra layer of hierarchy for module ids.
+
+        loss_total = None
+        results_all_modules = {}
+        for module_id in fwd_out:
+            module_batch = batch[module_id]
+            module_fwd_out = fwd_out[module_id]
+
+            module_results = self._compute_loss_per_module(
+                module_id, module_batch, module_fwd_out
+            )
+            results_all_modules[module_id] = module_results
+            loss = module_results[self.TOTAL_LOSS_KEY]
+
+            if loss_total is None:
+                loss_total = loss
+            else:
+                loss_total += loss
+
+        results_all_modules[self.TOTAL_LOSS_KEY] = loss_total
+
+        return results_all_modules
+
+    def _compute_loss_per_module(
+        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    ) -> Mapping[str, Any]:
+        """Computes the loss for a single module.
+
+        Think of this as computing loss for a
+        single agent. For multi-agent use-cases that require more complicated
+        computation for loss, consider overriding the `compute_loss` method instead.
+
+        Args:
+            module_id: The id of the module.
+            batch: The sample batch for this particular module.
+            fwd_out: The output of the forward pass for this particular module.
+
+        Returns:
+            A dictionary of losses. NOTE that the dictionary
+            must contain one protected key "total_loss" which will be used for
+            computing gradients through.
+        """
+        raise NotImplementedError
 
     def postprocess_gradients(
         self, gradients_dict: Mapping[str, Any]
@@ -288,6 +329,29 @@ class RLTrainer:
         Returns:
             A dictionary of results from the update
         """
+        results_all_modules = {}
+        for module_id in self._module.keys():
+            module_results = self._additional_update_per_module(
+                module_id, *args, **kwargs
+            )
+            results_all_modules[module_id] = module_results
+
+        return results_all_modules
+
+    def _additional_update_per_module(
+        self, module_id: str, *args, **kwargs
+    ) -> Mapping[str, Any]:
+        """Apply additional non-gradient based updates for a single module.
+
+        Args:
+            module_id: The id of the module to update.
+            *args: Arguments to use for the update.
+            **kwargs: Keyword arguments to use for the additional update.
+
+        Returns:
+            A dictionary of results from the update
+        """
+
         raise NotImplementedError
 
     @abc.abstractmethod
