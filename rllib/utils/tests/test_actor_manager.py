@@ -359,6 +359,57 @@ class TestActorManager(unittest.TestCase):
         # Both actors are now healthy.
         self.assertEqual(len(manager.healthy_actor_ids()), 4)
 
+    def test_tags(self):
+        """Test that tags work for async calls."""
+        actors = [Actor.remote(i, maybe_crash=False) for i in range(4)]
+        manager = FaultTolerantActorManager(actors=actors)
+
+        manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
+        manager.foreach_actor_async(lambda w: w.call(), tag="call")
+        time.sleep(1)
+        results_ping_pong = manager.fetch_ready_async_reqs(
+            tags="pingpong", timeout_seconds=5
+        )
+        results_call = manager.fetch_ready_async_reqs(tags="call", timeout_seconds=5)
+        self.assertEquals(len(list(results_ping_pong)), 4)
+        self.assertEquals(len(list(results_call)), 4)
+        for result in results_ping_pong:
+            result = result.get()
+            self.assertEqual(result, "pong")
+        for result in results_call:
+            result = result.get()
+            self.assertEqual(result, 1)
+        # test with default tag
+        manager.foreach_actor_async(lambda w: w.ping())
+        manager.foreach_actor_async(lambda w: w.call())
+        time.sleep(1)
+        results = manager.fetch_ready_async_reqs(timeout_seconds=5)
+        self.assertEquals(len(list(results)), 8)
+        for result in results:
+            result = result.get()
+            if isinstance(result, str):
+                self.assertEqual(result, "pong")
+            elif isinstance(result, int):
+                self.assertEqual(result, 2)
+            else:
+                raise ValueError("result is not str or int")
+        # test with default tag
+        manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
+        manager.foreach_actor_async(lambda w: w.call(), tag="call")
+        time.sleep(1)
+        results = manager.fetch_ready_async_reqs(
+            timeout_seconds=5, tags=["pingpong", "call"]
+        )
+        self.assertEquals(len(list(results)), 8)
+        for result in results:
+            result = result.get()
+            if isinstance(result, str):
+                self.assertEqual(result, "pong")
+            elif isinstance(result, int):
+                self.assertEqual(result, 3)
+            else:
+                raise ValueError("result is not str or int")
+
 
 if __name__ == "__main__":
     import pytest
