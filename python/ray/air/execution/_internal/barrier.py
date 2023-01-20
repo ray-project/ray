@@ -8,7 +8,10 @@ class Barrier:
     a certain count or a timeout is reached.
 
     For instance, if ``max_results=N``, the :meth:`on_completion` callback will be
-    invoked once :meth:`arrive` has been called ``N`` times.
+    invoked once :meth:`arrive` or :meth:`error` has been called ``N`` times (in sum).
+
+    The :meth:`on_first_error` callback will be
+    invoked once :meth:`error` has been called ``1`` time.
 
     ``max_results`` can be ``None``, in which case an infinite amount of results
     will be collected. In this case, the :meth:`on_completion` callback
