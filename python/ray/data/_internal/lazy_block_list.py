@@ -98,6 +98,9 @@ class LazyBlockList(BlockList):
         self._owned_by_consumer = owned_by_consumer
         self._stats_actor = _get_or_create_stats_actor()
 
+    def __repr__(self):
+        return f"LazyBlockList(owned_by_consumer={self._owned_by_consumer})"
+
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
         if all(meta is not None for meta in self._cached_metadata):
