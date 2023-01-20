@@ -91,7 +91,7 @@ class TaskPoolStrategy(ComputeStrategy):
         # Bin blocks by target block size.
         if target_block_size is not None:
             _check_batch_size(blocks, target_block_size, name)
-            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size, name)
+            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size)
         else:
             block_bundles = [((b,), (m,)) for b, m in blocks]
         del blocks
@@ -254,45 +254,24 @@ class ActorPoolStrategy(ComputeStrategy):
 
         if name is None:
             name = "map"
-        blocks_in = block_list.get_blocks_with_metadata()
-        # Bin blocks by target block size.
+        blocks_in: List[
+            Tuple[ObjectRef[Block], BlockMetadata]
+        ] = block_list.get_blocks_with_metadata()
+
+        # We bin blocks according to the following rules:
+        # 1. Attempt to bin up to the target block size.
+        # 2. If the max concurrency of the ActorPool is set, then
+        #    cap the number of bundles to match the size of the ActorPool.
+        #    This avoids additional overhead in submitting new actor tasks and allows
+        #    the actor task to do optimizations such as batch prefetching.
+        total_size = sum(metadata.num_rows for _, metadata in blocks_in)
         if target_block_size is not None:
             _check_batch_size(blocks_in, target_block_size, name)
-            block_bundles: List[
-                Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]
-            ] = _bundle_blocks_up_to_size(blocks_in, target_block_size, name)
-        else:
-            block_bundles: List[
-                Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]
-            ] = [((b,), (m,)) for b, m in blocks_in]
-
-        # If the max number of the actor pool is set, the number of bundles should
-        # always be less than this max_size.
-        # Otherwise, it leads to inefficiencies with creating extra actor tasks and
-        # prevents the actor task from doing optimizations
-        # such as batch or block prefetching.
-        if len(block_bundles) > self.max_size:
-
-            def chunkify(bundles: List, num_chunks: int):
-                return [bundles[i::num_chunks] for i in range(num_chunks)]
-
-            bundle_groups: List[
-                List[Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]]
-            ] = chunkify(block_bundles, num_chunks=self.max_size)
-
-            final_bundles = []
-            for bundle_group in bundle_groups:
-                # bundle_group is a list of tuples of lists.
-                blocks = []
-                metadata = []
-                for bundle in bundle_group:
-                    blocks.extend(list(bundle[0]))
-                    metadata.extend(list(bundle[1]))
-
-                consolidated_bundle = (tuple(blocks), tuple(metadata))
-
-                final_bundles.append(consolidated_bundle)
-            block_bundles = final_bundles
+        target_num_bundles = min(self.max_size, total_size / target_block_size)
+        target_block_size = total_size // target_num_bundles
+        block_bundles: List[
+            Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]
+        ] = _bundle_blocks_up_to_size(blocks_in, target_block_size)
 
         del blocks_in
         owned_by_consumer = block_list._owned_by_consumer
@@ -533,13 +512,12 @@ def _map_block_nosplit(
 def _bundle_blocks_up_to_size(
     blocks: List[Tuple[ObjectRef[Block], BlockMetadata]],
     target_size: int,
-    name: str,
-) -> List[Tuple[List[ObjectRef[Block]], List[BlockMetadata]]]:
+) -> List[Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]]:
     """Group blocks into bundles that are up to (but not exceeding) the provided target
     size.
     """
-    block_bundles = []
-    curr_bundle = []
+    block_bundles: List[List[Tuple[ObjectRef[Block], BlockMetadata]]] = []
+    curr_bundle: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
     curr_bundle_size = 0
     for b, m in blocks:
         num_rows = m.num_rows
