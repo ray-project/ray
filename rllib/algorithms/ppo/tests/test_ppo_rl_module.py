@@ -13,7 +13,7 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOModuleConfig,
 )
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
-    PPOTfModule,
+    PPOTfRLModule,
     PPOTfModuleConfig,
 )
 from ray.rllib.core.rl_module.encoder import (
@@ -117,7 +117,7 @@ def get_expected_model_config_tf(
             will be identity.
 
     Returns:
-         A PPOTfModuleConfig containing the relevant configs to build PPOTfModule.
+         A PPOTfModuleConfig containing the relevant configs to build PPOTfRLModule.
     """
     assert len(env.observation_space.shape) == 1, (
         "No multidimensional obs space " "supported."
@@ -213,7 +213,7 @@ class TestPPO(unittest.TestCase):
             module = PPOTorchRLModule(config)
         else:
             config = get_expected_model_config_tf(env, shared_encoder)
-            module = PPOTfModule(config)
+            module = PPOTfRLModule(config)
         return module
 
     def get_input_batch_from_obs(self, framework, obs):
