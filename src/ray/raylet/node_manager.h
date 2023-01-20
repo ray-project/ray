@@ -46,6 +46,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
+#include "ray/raylet/worker_killing_policy.h"
 // clang-format on
 
 namespace ray {
@@ -832,6 +833,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;
+
+  /// The Policy for selecting the worker to kill when the node runs out of memory.
+  std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
