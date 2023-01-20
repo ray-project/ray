@@ -11,7 +11,6 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-    @override(nn.Module)
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
         """forward pass of the module.
 
