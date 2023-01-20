@@ -261,105 +261,105 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           },
           "");
     } else {
-        // No need to resent the message since if ok=false, it's the end
-        // of gRPC call and client will reconnect in case of a failure.
-        // In gRPC, OnDone will be called after.
-        RAY_LOG_EVERY_N(ERROR, 100) << "Failed to read the message from: "
-                                    << NodeID::FromBinary(GetRemoteNodeID());
-      }
+      // No need to resent the message since if ok=false, it's the end
+      // of gRPC call and client will reconnect in case of a failure.
+      // In gRPC, OnDone will be called after.
+      RAY_LOG_EVERY_N(ERROR, 100)
+          << "Failed to read the message from: " << NodeID::FromBinary(GetRemoteNodeID());
     }
+  }
 
-    /// grpc requests for sending and receiving
-    std::shared_ptr<const RaySyncMessage> sending_message_;
-    std::shared_ptr<RaySyncMessage> receiving_message_;
+  /// grpc requests for sending and receiving
+  std::shared_ptr<const RaySyncMessage> sending_message_;
+  std::shared_ptr<RaySyncMessage> receiving_message_;
 
-    // For testing
-    FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
-    friend struct SyncerServerTest;
+  // For testing
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
+  friend struct SyncerServerTest;
 
-    std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
-        const std::string &node_id) {
-      auto iter = node_versions_.find(node_id);
-      if (iter == node_versions_.end()) {
-        iter = node_versions_.emplace(node_id, std::array<int64_t, kComponentArraySize>())
-                   .first;
-        iter->second.fill(-1);
-      }
-      return iter->second;
+  std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
+      const std::string &node_id) {
+    auto iter = node_versions_.find(node_id);
+    if (iter == node_versions_.end()) {
+      iter = node_versions_.emplace(node_id, std::array<int64_t, kComponentArraySize>())
+                 .first;
+      iter->second.fill(-1);
     }
+    return iter->second;
+  }
 
-    /// Handler of a message update.
-    const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
+  /// Handler of a message update.
+  const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
 
-   private:
-    /// Buffering all the updates. Sending will be done in an async way.
-    absl::flat_hash_map<std::pair<std::string, MessageType>,
-                        std::shared_ptr<const RaySyncMessage>>
-        sending_buffer_;
+ private:
+  /// Buffering all the updates. Sending will be done in an async way.
+  absl::flat_hash_map<std::pair<std::string, MessageType>,
+                      std::shared_ptr<const RaySyncMessage>>
+      sending_buffer_;
 
-    /// Keep track of the versions of components in the remote node.
-    /// This field will be udpated when messages are received or sent.
-    /// We'll filter the received or sent messages when the message is stale.
-    absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>
-        node_versions_;
+  /// Keep track of the versions of components in the remote node.
+  /// This field will be udpated when messages are received or sent.
+  /// We'll filter the received or sent messages when the message is stale.
+  absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>
+      node_versions_;
 
-    bool sending_ = false;
-  };
+  bool sending_ = false;
+};
 
-  /// Reactor for gRPC server side. It defines the server's specific behavior for a
-  /// streaming call.
-  class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> {
-   public:
-    RayServerBidiReactor(
-        grpc::CallbackServerContext *server_context,
-        instrumented_io_context &io_context,
-        const std::string &local_node_id,
-        std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-        std::function<void(const std::string &, bool)> cleanup_cb);
+/// Reactor for gRPC server side. It defines the server's specific behavior for a
+/// streaming call.
+class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> {
+ public:
+  RayServerBidiReactor(
+      grpc::CallbackServerContext *server_context,
+      instrumented_io_context &io_context,
+      const std::string &local_node_id,
+      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+      std::function<void(const std::string &, bool)> cleanup_cb);
 
-    ~RayServerBidiReactor() override = default;
+  ~RayServerBidiReactor() override = default;
 
-    void Disconnect() override;
+  void Disconnect() override;
 
-   private:
-    void OnCancel() override;
-    void OnDone() override;
+ private:
+  void OnCancel() override;
+  void OnDone() override;
 
-    /// Cleanup callback when the call ends.
-    const std::function<void(const std::string &, bool)> cleanup_cb_;
+  /// Cleanup callback when the call ends.
+  const std::function<void(const std::string &, bool)> cleanup_cb_;
 
-    /// grpc callback context
-    grpc::CallbackServerContext *server_context_;
-  };
+  /// grpc callback context
+  grpc::CallbackServerContext *server_context_;
+};
 
-  /// Reactor for gRPC client side. It defines the client's specific behavior for a
-  /// streaming call.
-  class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> {
-   public:
-    RayClientBidiReactor(
-        const std::string &remote_node_id,
-        const std::string &local_node_id,
-        instrumented_io_context &io_context,
-        std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-        std::function<void(const std::string &, bool)> cleanup_cb,
-        std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
+/// Reactor for gRPC client side. It defines the client's specific behavior for a
+/// streaming call.
+class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> {
+ public:
+  RayClientBidiReactor(
+      const std::string &remote_node_id,
+      const std::string &local_node_id,
+      instrumented_io_context &io_context,
+      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+      std::function<void(const std::string &, bool)> cleanup_cb,
+      std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
 
-    ~RayClientBidiReactor() override = default;
+  ~RayClientBidiReactor() override = default;
 
-    void Disconnect() override;
+  void Disconnect() override;
 
-   private:
-    /// Callback from gRPC
-    void OnDone(const grpc::Status &status) override;
+ private:
+  /// Callback from gRPC
+  void OnDone(const grpc::Status &status) override;
 
-    /// Cleanup callback when the call ends.
-    const std::function<void(const std::string &, bool)> cleanup_cb_;
+  /// Cleanup callback when the call ends.
+  const std::function<void(const std::string &, bool)> cleanup_cb_;
 
-    /// grpc callback context
-    grpc::ClientContext client_context_;
+  /// grpc callback context
+  grpc::ClientContext client_context_;
 
-    std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
-  };
+  std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
+};
 
 }  // namespace syncer
 }  // namespace ray
