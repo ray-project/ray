@@ -264,17 +264,20 @@ class ActorPoolStrategy(ComputeStrategy):
         #    cap the number of bundles to match the size of the ActorPool.
         #    This avoids additional overhead in submitting new actor tasks and allows
         #    the actor task to do optimizations such as batch prefetching.
-        target_num_bundles = float("inf")
+        target_size = -1
+        # First bundle up to the provided target block size.
         if target_block_size is not None:
             _check_batch_size(blocks_in, target_block_size, name)
+            target_size = max(target_block_size, target_size)
+        # If the max size of the actor pool is set, then we bundle up even more
+        # if necessary.
+        if not math.isinf(self.max_size):
             total_size = sum(
                 metadata.num_rows if metadata.num_rows is not None else float("inf")
                 for _, metadata in blocks_in
             )
-            target_num_bundles = min(target_num_bundles, total_size / target_block_size)
-        target_num_bundles = min(target_num_bundles, self.max_size)
-        if not math.isinf(target_num_bundles):
-            target_block_size = total_size // target_num_bundles
+            target_size = max(target_size, total_size // self.max_size)
+        if target_size >= 0:
             block_bundles: List[
                 Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]
             ] = _bundle_blocks_up_to_size(blocks_in, target_block_size)
