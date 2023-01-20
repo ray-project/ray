@@ -98,7 +98,7 @@ class GcsHealthCheckManager {
       stub_ = grpc::health::v1::Health::NewStub(channel);
       timer_.expires_from_now(
           boost::posix_time::milliseconds(manager_->initial_delay_ms_));
-      timer_.async_wait([this, stopped = stopped_](auto ec) {
+      timer_.async_wait([stopped = stopped_, this](auto ec) {
         if (!*stopped && ec != boost::asio::error::operation_aborted) {
           StartHealthCheck();
         }

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdlib>
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
@@ -22,6 +23,9 @@
 #include <unordered_map>
 
 using namespace boost;
+using namespace boost::asio;
+using namespace boost::asio::ip;
+
 #include <ray/rpc/grpc_server.h>
 
 #include <chrono>
@@ -29,6 +33,20 @@ using namespace boost;
 
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
+
+int GetFreePort() {
+  io_service io_service;
+  tcp::acceptor acceptor(io_service);
+  tcp::endpoint endpoint;
+
+  // try to bind to port 0 to find a free port
+  acceptor.open(tcp::v4());
+  acceptor.bind(tcp::endpoint(tcp::v4(), 0));
+  endpoint = acceptor.local_endpoint();
+  auto port = endpoint.port();
+  acceptor.close();
+  return port;
+}
 
 using namespace ray;
 using namespace std::literals::chrono_literals;
@@ -46,7 +64,6 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
         timeout_ms,
         period_ms,
         failure_threshold);
-    port = 10000;
   }
 
   void TearDown() override {
@@ -65,7 +82,8 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   NodeID AddServer(bool alive = true) {
     std::promise<int> port_promise;
     auto node_id = NodeID::FromRandom();
-
+    auto port = GetFreePort();
+    RAY_LOG(INFO) << "Get port " << port;
     auto server = std::make_shared<rpc::GrpcServer>(node_id.Hex(), port, true);
 
     auto channel = grpc::CreateChannel("localhost:" + std::to_string(port),
@@ -76,7 +94,6 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     }
     servers.emplace(node_id, server);
     health_check->AddNode(node_id, channel);
-    ++port;
     return node_id;
   }
 
@@ -115,14 +132,13 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     }
   }
 
-  int port;
   instrumented_io_context io_service;
   std::unique_ptr<gcs::GcsHealthCheckManager> health_check;
   std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;
-  const int64_t initial_delay_ms = 1000;
-  const int64_t timeout_ms = 1000;
-  const int64_t period_ms = 1000;
+  const int64_t initial_delay_ms = 100;
+  const int64_t timeout_ms = 10;
+  const int64_t period_ms = 10;
   const int64_t failure_threshold = 5;
 };
 
@@ -235,7 +251,41 @@ TEST_F(GcsHealthCheckManagerTest, NoRegister) {
   ASSERT_TRUE(dead_nodes.count(node_id));
 }
 
+TEST_F(GcsHealthCheckManagerTest, StressTest) {
+  boost::asio::io_service::work work(io_service);
+  std::srand(std::time(nullptr));
+  auto t = std::make_unique<std::thread>([this]() {
+    io_service.run();
+  });
+
+  std::vector<NodeID> alive_nodes;
+
+  for(int i = 0; i < 200; ++i) {
+    alive_nodes.emplace_back(AddServer(true));
+    std::this_thread::sleep_for(10ms);
+  }
+
+  for(size_t i = 0; i < 200000000UL; ++i) {
+    auto iter = alive_nodes.begin() + std::rand() % alive_nodes.size();
+    DeleteServer(*iter);
+    alive_nodes.erase(iter);
+    alive_nodes.emplace_back(AddServer(true));
+  }
+  RAY_LOG(INFO) << "Finished!";
+  io_service.stop();
+  t->join();
+}
+
 int main(int argc, char **argv) {
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
+
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
+  ray::RayLog::InstallTerminateHandler();
+
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
