@@ -1,5 +1,4 @@
 import logging
-import numpy as np
 from typing import (
     Any,
     Mapping,
@@ -10,25 +9,28 @@ from typing import (
     Dict,
     Sequence,
     Hashable,
+    TYPE_CHECKING,
 )
 
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
+    MultiAgentRLModule,
     ParamOptimizerPairs,
     ParamRef,
     Optimizer,
     ParamType,
     ParamDictType,
 )
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
-import tree  # pip install dm-tree
+
+if TYPE_CHECKING:
+    from ray.air.config import ScalingConfig
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 tf1, tf, tfv = try_import_tf()
 
@@ -43,7 +45,6 @@ class TfRLTrainer(RLTrainer):
         module_kwargs: The kwargs for the (MA)RLModule.
         optimizer_config: The config for the optimizer.
         distributed: Whether this trainer is distributed or not.
-        in_test: Whether to enable additional logging behavior for testing purposes.
         enable_tf_function: Whether to enable tf.function tracing for the update
             function.
 
@@ -81,7 +82,7 @@ class TfRLTrainer(RLTrainer):
 
     """
 
-    TOTAL_LOSS_KEY = "total_loss"
+    framework: str = "tf"
 
     def __init__(
         self,
@@ -89,15 +90,17 @@ class TfRLTrainer(RLTrainer):
         module_kwargs: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
-        in_test: bool = False,
         enable_tf_function: bool = True,
+        scaling_config: Optional["ScalingConfig"] = None,
+        algorithm_config: Optional["AlgorithmConfig"] = None,
     ):
         super().__init__(
             module_class=module_class,
             module_kwargs=module_kwargs,
             optimizer_config=optimizer_config,
             distributed=distributed,
-            in_test=in_test,
+            scaling_config=scaling_config,
+            algorithm_config=algorithm_config,
         )
 
         # TODO (Kourosh): This is required to make sure tf computes the values in the
@@ -121,13 +124,14 @@ class TfRLTrainer(RLTrainer):
             if isinstance(loss, tf.Tensor):
                 loss = {"total_loss": loss}
         gradients = self.compute_gradients(loss, tape)
-        gradients = self.on_after_compute_gradients(gradients)
+        gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(gradients)
-        return {"loss": loss, "fwd_out": fwd_out, "post_processed_gradients": gradients}
+        return {"loss": loss, "fwd_out": fwd_out, "postprocessed_gradients": gradients}
 
     @override(RLTrainer)
     def configure_optimizers(self) -> ParamOptimizerPairs:
-        lr = self.optimizer_config.get("lr", 1e-3)
+        # TODO (Kourosh): convert optimizer_config to dataclass later.
+        lr = self.optimizer_config["lr"]
         return [
             (
                 self._module[key].trainable_variables,
@@ -150,15 +154,15 @@ class TfRLTrainer(RLTrainer):
             update_outs = self._update_fn(batch)
         loss = update_outs["loss"]
         fwd_out = update_outs["fwd_out"]
-        post_processed_gradients = update_outs["post_processed_gradients"]
-        results = self.compile_results(batch, fwd_out, loss, post_processed_gradients)
+        postprocessed_gradients = update_outs["postprocessed_gradients"]
+        results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
         return results
 
     @override(RLTrainer)
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
     ) -> ParamDictType:
-        grads = tape.gradient(loss["total_loss"], self._params)
+        grads = tape.gradient(loss[self.TOTAL_LOSS_KEY], self._params)
         return grads
 
     @override(RLTrainer)
@@ -174,9 +178,9 @@ class TfRLTrainer(RLTrainer):
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(RLTrainer)
-    def _make_distributed(self) -> RLModule:
-        # TODO: Does strategy has to be an attribute here? if so it's very hidden to
-        # the user of this class that there is such an attribute.
+    def _make_distributed_module(self) -> MultiAgentRLModule:
+        # TODO (Kourosh): Does strategy has to be an attribute here? if so it's very
+        # hidden to the user of this class that there is such an attribute.
 
         # TODO (Kourosh, Avnish): The optimizers still need to be created within
         # strategy.scope. Otherwise parameters of optimizers won't be properly
@@ -185,33 +189,6 @@ class TfRLTrainer(RLTrainer):
         with self.strategy.scope():
             module = self._make_module()
         return module
-
-    @override(RLTrainer)
-    def compile_results(
-        self,
-        batch: NestedDict,
-        fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
-        post_processed_gradients: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        loss_numpy = convert_to_numpy(postprocessed_loss)
-        batch = convert_to_numpy(batch)
-        post_processed_gradients = convert_to_numpy(post_processed_gradients)
-        mean_grads = [grad.mean() for grad in tree.flatten(post_processed_gradients)]
-        ret = {
-            "loss": loss_numpy,
-            "mean_gradient": np.mean(mean_grads),
-        }
-
-        if self.in_test:
-            # this is to check if in the multi-gpu case, the weights across workers are
-            # the same. It is really only needed during testing.
-            mean_ws = {}
-            for module_id in self._module.keys():
-                m = self._module[module_id]
-                mean_ws[module_id] = np.mean([w.mean() for w in m.get_weights()])
-            ret["mean_weight"] = mean_ws
-        return ret
 
     @override(RLTrainer)
     def add_module(
