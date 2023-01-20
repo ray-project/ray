@@ -258,8 +258,8 @@ class ActorPoolStrategy(ComputeStrategy):
             Tuple[ObjectRef[Block], BlockMetadata]
         ] = block_list.get_blocks_with_metadata()
 
-        # We bin blocks according to the following rules:
-        # 1. Attempt to bin up to the target block size.
+        # We bundle blocks according to the following rules:
+        # 1. Attempt to bundle up to the target block size.
         # 2. If the max concurrency of the ActorPool is set, then
         #    cap the number of bundles to match the size of the ActorPool.
         #    This avoids additional overhead in submitting new actor tasks and allows
