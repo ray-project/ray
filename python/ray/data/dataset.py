@@ -673,7 +673,7 @@ class Dataset(Generic[T]):
         logical_plan = self._logical_plan
         if logical_plan is not None:
             map_batches_op = MapBatches(
-                logical_plan._dag,
+                logical_plan.dag,
                 transform,
                 fn,
                 batch_size,
