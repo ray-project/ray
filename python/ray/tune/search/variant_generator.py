@@ -77,7 +77,7 @@ def grid_search(values: Iterable) -> Dict[str, Iterable]:
         ... }
 
     This will create a grid of 6 samples:
-    ``{"x": 10, "y": "a"}, {"x": 10, "y": "b"}, `` etc.
+    ``{"x": 10, "y": "a"}``, ``{"x": 10, "y": "b"}``, etc.
 
     When specifying ``num_samples`` in the
     :class:`TuneConfig <ray.tune.tune_config.TuneConfig>`, this will specify
