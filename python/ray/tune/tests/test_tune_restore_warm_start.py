@@ -1,6 +1,5 @@
 # coding: utf-8
 import os
-import pytest
 import shutil
 import tempfile
 import unittest
@@ -210,7 +209,6 @@ class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
-@pytest.mark.skip("Test flaky running in local mode.")
 class BlendSearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {
@@ -220,13 +218,16 @@ class BlendSearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         }
 
         def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3), cost=1)
 
         search_alg = BlendSearch(
             space=space,
             metric="loss",
             mode="min",
             seed=20,
+            # Mocked to be a constant to ensure reproductibility,
+            # as runtime (default) can fluctuate
+            cost_attr="cost",
         )
 
         return search_alg, cost
