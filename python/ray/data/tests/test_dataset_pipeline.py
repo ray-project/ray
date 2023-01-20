@@ -134,20 +134,6 @@ def test_pipeline_actors(shutdown_only):
     assert sorted(pipe.take(999)) == sorted([2, 3, 4] * 10)
 
 
-def test_incremental_take(shutdown_only):
-    ray.init(num_cpus=2)
-
-    # Can read incrementally even if future results are delayed.
-    def block_on_ones(x: int) -> int:
-        if x == 1:
-            time.sleep(999999)
-        return x
-
-    pipe = ray.data.range(2).window(blocks_per_window=1)
-    pipe = pipe.map(block_on_ones)
-    assert pipe.take(1) == [0]
-
-
 def test_pipeline_is_parallel(shutdown_only):
     ray.init(num_cpus=4)
     ds = ray.data.range(10)
@@ -471,6 +457,24 @@ def test_schema_peek(ray_start_regular_shared):
     assert pipe.schema() is None
 
 
+def test_schema_after_repeat(ray_start_regular_shared):
+    pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2).repeat(2)
+    assert pipe.schema() == int
+    output = []
+    for ds in pipe.iter_datasets():
+        output.extend(ds.take())
+    assert sorted(output) == sorted(list(range(6)) * 2)
+
+    pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2).repeat(2)
+    assert pipe.schema() == int
+    # Test that operations still work after peek.
+    pipe = pipe.map_batches(lambda batch: batch)
+    output = []
+    for ds in pipe.iter_datasets():
+        output.extend(ds.take())
+    assert sorted(output) == sorted(list(range(6)) * 2)
+
+
 def test_split(ray_start_regular_shared):
     pipe = ray.data.range(3).map(lambda x: x + 1).repeat(10)
 
@@ -511,10 +515,8 @@ def test_split_at_indices(ray_start_regular_shared):
     refs = [consume.remote(s, i) for i, s in enumerate(shards)]
     outs = ray.get(refs)
     np.testing.assert_equal(
-        np.array(outs, dtype=np.object),
-        np.array(
-            [[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]], dtype=np.object
-        ),
+        np.array(outs, dtype=object),
+        np.array([[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]], dtype=object),
     )
 
 
@@ -757,7 +759,11 @@ def test_pipeline_executor_cannot_serialize_once_started(ray_start_regular_share
             return lambda: ds
 
     p1 = ray.data.range(10).repeat()
-    p2 = DatasetPipeline.from_iterable(Iterable(p1.iter_datasets()))
+    # Start the pipeline.
+    data_iter = p1.iter_datasets()
+    next(data_iter)
+
+    p2 = DatasetPipeline.from_iterable(Iterable(data_iter))
     with pytest.raises(RuntimeError) as error:
         p2.split(2)
     assert "PipelineExecutor is not serializable once it has started" in str(error)
@@ -806,6 +812,22 @@ def test_if_blocks_owned_by_consumer(ray_start_regular_shared):
 
     splits = ds.repeat(1).map_batches(lambda x: x).split(2)
     ray.get([consume.remote(splits[0], True), consume.remote(splits[1], True)])
+
+
+# Run at end of file to avoid segfault https://github.com/ray-project/ray/issues/31145
+def test_incremental_take(shutdown_only):
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    # Can read incrementally even if future results are delayed.
+    def block_on_ones(x: int) -> int:
+        if x == 1:
+            time.sleep(999999)
+        return x
+
+    pipe = ray.data.range(2).window(blocks_per_window=1)
+    pipe = pipe.map(block_on_ones)
+    assert pipe.take(1) == [0]
 
 
 if __name__ == "__main__":
