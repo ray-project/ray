@@ -8,6 +8,7 @@ from typing import (
     Hashable,
     Optional,
     Callable,
+    TYPE_CHECKING,
 )
 
 from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
@@ -32,6 +33,9 @@ if torch:
     from ray.air.config import ScalingConfig
     from ray.train.torch.train_loop_utils import _TorchAccelerator
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +49,8 @@ class TorchRLTrainer(RLTrainer):
         module_kwargs: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
-        scaling_config: Optional[Mapping[str, Any]] = None,
+        scaling_config: Optional["ScalingConfig"] = None,
+        algorithm_config: Optional["AlgorithmConfig"] = None,
     ):
         super().__init__(
             module_class=module_class,
@@ -53,6 +58,7 @@ class TorchRLTrainer(RLTrainer):
             optimizer_config=optimizer_config,
             distributed=distributed,
             scaling_config=scaling_config,
+            algorithm_config=algorithm_config,
         )
 
         # TODO (Kourosh): Scaling config is required for torch trainer to do proper DDP

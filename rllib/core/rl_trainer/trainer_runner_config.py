@@ -3,6 +3,7 @@ from ray.rllib.utils.from_config import NotProvided
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.core.rl_module import RLModule
     from ray.rllib.core.rl_trainer import RLTrainer
     import gymnasium as gym
@@ -33,6 +34,9 @@ class TrainerRunnerConfig:
         # `self.resources()`
         self.num_gpus = 0
         self.fake_gpus = False
+
+        # `self.algorithm()`
+        self.algorithm_config = None
 
     def validate(self) -> None:
 
@@ -66,6 +70,12 @@ class TrainerRunnerConfig:
                 "the RLTrainer class with .trainer(trainer_class=MyTrainerClass)."
             )
 
+        if self.algorithm_config is None:
+            raise ValueError(
+                "Must provide algorithm_config for RLTrainer. Use "
+                ".algorithm(algorithm_config=MyConfig)."
+            )
+
         if self.optimizer_config is None:
             # get the default optimizer config if it's not provided
             # TODO (Kourosh): Change the optimizer config to a dataclass object.
@@ -92,6 +102,7 @@ class TrainerRunnerConfig:
                 # TODO (Avnish): add this
                 # "enable_tf_function": self.eager_tracing,
                 "optimizer_config": self.optimizer_config,
+                "algorithm_config": self.algorithm_config,
             },
             compute_config={
                 "num_gpus": self.num_gpus,
@@ -99,6 +110,13 @@ class TrainerRunnerConfig:
                 # "fake_gpus": self.fake_gpus,
             },
         )
+
+    def algorithm(
+        self, algorithm_config: Optional["AlgorithmConfig"] = NotProvided
+    ) -> "TrainerRunnerConfig":
+        if algorithm_config is not NotProvided:
+            self.algorithm_config = algorithm_config
+        return self
 
     def module(
         self,

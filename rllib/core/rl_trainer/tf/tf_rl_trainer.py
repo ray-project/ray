@@ -9,6 +9,7 @@ from typing import (
     Dict,
     Sequence,
     Hashable,
+    TYPE_CHECKING,
 )
 
 from ray.rllib.core.rl_trainer.rl_trainer import (
@@ -27,7 +28,9 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 
-from ray.air.config import ScalingConfig
+if TYPE_CHECKING:
+    from ray.air.config import ScalingConfig
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 tf1, tf, tfv = try_import_tf()
 
@@ -87,8 +90,9 @@ class TfRLTrainer(RLTrainer):
         module_kwargs: Mapping[str, Any],
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
-        scaling_config: Optional[ScalingConfig] = None,
         enable_tf_function: bool = True,
+        scaling_config: Optional["ScalingConfig"] = None,
+        algorithm_config: Optional["AlgorithmConfig"] = None,
     ):
         super().__init__(
             module_class=module_class,
@@ -96,6 +100,7 @@ class TfRLTrainer(RLTrainer):
             optimizer_config=optimizer_config,
             distributed=distributed,
             scaling_config=scaling_config,
+            algorithm_config=algorithm_config,
         )
 
         # TODO (Kourosh): This is required to make sure tf computes the values in the
