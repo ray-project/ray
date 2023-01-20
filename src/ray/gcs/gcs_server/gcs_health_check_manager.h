@@ -98,8 +98,8 @@ class GcsHealthCheckManager {
       stub_ = grpc::health::v1::Health::NewStub(channel);
       timer_.expires_from_now(
           boost::posix_time::milliseconds(manager_->initial_delay_ms_));
-      timer_.async_wait([this](auto ec) {
-        if (ec != boost::asio::error::operation_aborted) {
+      timer_.async_wait([this, stopped = stopped_](auto ec) {
+        if (!*stopped && ec != boost::asio::error::operation_aborted) {
           StartHealthCheck();
         }
       });
@@ -124,7 +124,7 @@ class GcsHealthCheckManager {
     std::shared_ptr<bool> stopped_;
 
     /// gRPC related fields
-    std::unique_ptr<::grpc::health::v1::Health::Stub> stub_;
+    std::shared_ptr<::grpc::health::v1::Health::Stub> stub_;
 
     // The context is used in the gRPC callback which is in another
     // thread, so we need it to be a shared_ptr.
