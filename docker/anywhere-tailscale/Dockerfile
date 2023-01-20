@@ -8,7 +8,7 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         TSKEY="" \
         TSAPIKEY="" \
         TS_STATEDIR="/data/tailscale/" \
-        TS_STATE="/data/tailscale/tailscaled.state" \
+        TS_STATE="tailscaled.state" \
         CFLAGS="-O3" \
         AWS_ACCESS_KEY_ID="" \
         AWS_SECRET_ACCESS_KEY="" \
@@ -22,10 +22,6 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         CRATE_HOME=/crate/bin/ \
         CRATE_USE_IPV4=true
 
-# Special VM options for Java in Docker
-
-#the $RANDOMSTRING variable is defined in the startup script
-#ENV N2N_KEY=$RANDOMSTRING
 
 RUN sudo apt update \
         && sudo apt install -y --no-install-recommends ca-certificates curl bc wget jq lsb-release \ 
