@@ -1323,10 +1323,10 @@ class Dataset(Generic[T]):
                 Dataset(
                     ExecutionPlan(
                         BlockList(
-                            bs, ms, owned_by_consumer=block_list._owned_by_consumer
+                            bs, ms, owned_by_consumer=False
                         ),
                         stats,
-                        run_by_consumer=block_list._owned_by_consumer,
+                        run_by_consumer=True,
                     ),
                     self._epoch,
                     self._lazy,
