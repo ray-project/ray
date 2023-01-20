@@ -275,7 +275,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
 
  private:
-
   /// Buffering all the updates. Sending will be done in an async way.
   absl::flat_hash_map<std::pair<std::string, MessageType>,
                       std::shared_ptr<const RaySyncMessage>>
