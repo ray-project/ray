@@ -84,8 +84,11 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       context_.get(),
       &request_,
       &response_,
-      [this, stub = stub_, stopped = this->stopped_, context = this->context_, now = absl::Now()](
-          ::grpc::Status status) {
+      [this,
+       stub = stub_,
+       stopped = this->stopped_,
+       context = this->context_,
+       now = absl::Now()](::grpc::Status status) {
         // This callback is done in gRPC's thread pool.
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - now));
