@@ -7,8 +7,6 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         NODETYPE=edge \
         TSKEY="" \
         TSAPIKEY="" \
-        TS_STATEDIR="/data/tailscale/" \
-        TS_STATE="tailscaled.state" \
         CFLAGS="-O3" \
         AWS_ACCESS_KEY_ID="" \
         AWS_SECRET_ACCESS_KEY="" \
@@ -21,7 +19,8 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         CRATE_HEAP_SIZE=4G \
         CRATE_HOME=/crate/bin/ \
         CRATE_USE_IPV4=true
-
+#        TS_STATEDIR="/data/tailscale/" \
+#        TS_STATE="tailscaled.state" \
 
 RUN sudo apt update \
         && sudo apt install -y --no-install-recommends ca-certificates curl bc wget jq lsb-release \ 
