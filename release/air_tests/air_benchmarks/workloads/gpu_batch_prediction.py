@@ -61,7 +61,7 @@ def main(data_size_gb: int, smoke_test: bool = False):
         dataset,
         num_gpus_per_worker=int(not smoke_test),
         min_scoring_workers=1,
-        max_scoring_workers=int(ray.cluster_resources()["GPU"]),
+        max_scoring_workers=1 if smoke_test else int(ray.cluster_resources()["GPU"]),
         batch_size=512,
     )
     total_time_s = round(time.time() - start, 2)
