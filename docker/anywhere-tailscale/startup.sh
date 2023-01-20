@@ -54,22 +54,12 @@ fi
 deviceid=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname=="'$HOSTNAME'")' | jq -r .id)
 
 
-##begin shutdown script injection
-#shutting down crate gracefully
-echo -e "#! /bin/bash\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null && sudo chmod +x /etc/rc6.d/K00shutdownscript
-echo -e "/usr/local/bin/crash -c \"SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';\"\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null
-echo -e "/usr/local/bin/crash -c \"ALTER CLUSTER DECOMMISSION '$HOSTNAME';\"\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null
-
-#making sure we delete our machine from tailscale on shutdown
-#echo -e "curl -X DELETE https://api.tailscale.com/api/v2/device/${deviceid} -u ${TSAPIKEY}:\n" | sudo tee /etc/rc6.d/K00shutdownscript >/dev/null
-
-
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
 
 ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address nexus.chimp-beta.ts.net
 
-/crate/bin/crate -Cnetwork.host=_tailscale0_ \
+/crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
             -Cnode.name=nexus \
             -Cnode.master=true \
             -Cnode.data=true \
@@ -84,7 +74,7 @@ else
 
 ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address ${HOSTNAME}.chimp-beta.ts.net
 
-/crate/bin/crate -Cnetwork.host=_tailscale0_ \
+/crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
             -Cnode.data=true \
             -Cnode.store.allow_mmap=false \
             -Cdiscovery.seed_hosts=nexus:4300 \
