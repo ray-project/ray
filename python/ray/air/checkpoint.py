@@ -27,7 +27,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
 )
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -414,42 +414,6 @@ class Checkpoint:
         if self._override_preprocessor:
             checkpoint_data[PREPROCESSOR_KEY] = self._override_preprocessor
         return checkpoint_data
-
-    @classmethod
-    @Deprecated(
-        message="To restore a checkpoint from a remote object ref, call "
-        "`ray.get(obj_ref)` instead."
-    )
-    def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
-        """Create checkpoint object from object reference.
-
-        Args:
-            obj_ref: ObjectRef pointing to checkpoint data.
-
-        Returns:
-            Checkpoint: checkpoint object.
-        """
-        raise DeprecationWarning(
-            "`from_object_ref` is deprecated and will be removed in a future Ray "
-            "version. To restore a Checkpoint from a remote object ref, call "
-            "`ray.get(obj_ref)` instead.",
-        )
-
-    @Deprecated(
-        message="To store the checkpoint in the Ray object store, call `ray.put(ckpt)` "
-        "instead of `ckpt.to_object_ref()`."
-    )
-    def to_object_ref(self) -> ray.ObjectRef:
-        """Return checkpoint data as object reference.
-
-        Returns:
-            ray.ObjectRef: ObjectRef pointing to checkpoint data.
-        """
-        raise DeprecationWarning(
-            "`to_object_ref` is deprecated and will be removed in a future Ray "
-            "version. To store the checkpoint in the Ray object store, call "
-            "`ray.put(ckpt)` instead of `ckpt.to_object_ref()`.",
-        )
 
     @classmethod
     def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
