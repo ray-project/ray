@@ -267,7 +267,10 @@ class ActorPoolStrategy(ComputeStrategy):
         target_num_bundles = float("inf")
         if target_block_size is not None:
             _check_batch_size(blocks_in, target_block_size, name)
-            total_size = sum(metadata.num_rows for _, metadata in blocks_in)
+            total_size = sum(
+                metadata.num_rows if metadata.num_rows is not None else float("inf")
+                for _, metadata in blocks_in
+            )
             target_num_bundles = min(target_num_bundles, total_size / target_block_size)
         target_num_bundles = min(target_num_bundles, self.max_size)
         if not math.isinf(target_num_bundles):
