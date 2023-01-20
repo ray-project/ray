@@ -34,12 +34,12 @@ def test_resource_utils():
 
     # Test limit.
     for r in [r1, r2, r3, r4, r5]:
-        assert r.satisfies_limits(r)
-        assert r.satisfies_limits(ExecutionResources())
-    assert r2.satisfies_limits(r3)
-    assert r3.satisfies_limits(r2)
-    assert r4.satisfies_limits(r5)
-    assert not r5.satisfies_limits(r4)
+        assert r.satisfies_limit(r)
+        assert r.satisfies_limit(ExecutionResources())
+    assert r2.satisfies_limit(r3)
+    assert r3.satisfies_limit(r2)
+    assert r4.satisfies_limit(r5)
+    assert not r5.satisfies_limit(r4)
 
 
 def test_resource_canonicalization():
