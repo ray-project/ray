@@ -47,6 +47,19 @@ class AnyscaleJobRunner(JobRunner):
             f"s3://{self.file_manager.bucket}", self.path_in_bucket
         )
 
+    def prepare_remote_env(self):
+        # Copy prometheus metrics script to working dir
+        metrics_script = os.path.join(
+            os.path.dirname(__file__), "_prometheus_metrics.py"
+        )
+        # Copy prometheus metrics script to working dir
+        if os.path.exists("prometheus_metrics.py"):
+            os.unlink("prometheus_metrics.py")
+        os.link(metrics_script, "prometheus_metrics.py")
+
+        # Do not upload the files here. Instead, we use the job runtime environment
+        # to automatically upload the local working dir.
+
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Handled by Anyscale
         return
