@@ -5457,6 +5457,15 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
 
     assert f"{max_size}/{max_size} blocks" in ds.stats()
 
+    # Check batch size is still respected.
+    ds = (
+        ray.data.range(10, parallelism=10)
+        .map_batches(f, batch_size=10, compute=compute_strategy)
+        .fully_executed()
+    )
+
+    assert "1/1 blocks" in ds.stats()
+
 
 def test_default_batch_format(shutdown_only):
     ds = ray.data.range(100)
