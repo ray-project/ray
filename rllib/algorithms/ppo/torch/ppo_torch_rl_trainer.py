@@ -34,33 +34,6 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         self.kl_coeff = self.config.kl_coeff
         self.kl_target = self.config.kl_target
 
-    def compute_loss(
-        self, *, fwd_out: MultiAgentBatch, batch: MultiAgentBatch
-    ) -> Union[TensorType, Mapping[str, Any]]:
-
-        # TODO (Kourosh): This is boiler plate code. Move it to the base class?
-
-        loss_total = None
-        results_all_modules = {}
-        for module_id in fwd_out:
-            module_batch = batch[module_id]
-            module_fwd_out = fwd_out[module_id]
-
-            module_results = self._compute_loss_per_module(
-                module_id, module_batch, module_fwd_out
-            )
-            results_all_modules[module_id] = module_results
-            loss = module_results[self.TOTAL_LOSS_KEY]
-
-            if loss_total is None:
-                loss_total = loss
-            else:
-                loss_total += loss
-
-        results_all_modules[self.TOTAL_LOSS_KEY] = loss_total
-
-        return results_all_modules
-
     def _compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
@@ -130,18 +103,6 @@ class PPOTorchRLTrainer(TorchRLTrainer):
             "mean_entropy": mean_entropy,
             "mean_kl_loss": mean_kl_loss,
         }
-
-    def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
-        # TODO (Kourosh): This is boiler plate code. Move it to the base class?
-
-        results_all_modules = {}
-        for module_id in self._module.keys():
-            module_results = self._additional_update_per_module(
-                module_id, *args, **kwargs
-            )
-            results_all_modules[module_id] = module_results
-
-        return results_all_modules
 
     def _additional_update_per_module(
         self, module_id: str, sampled_kl_values: dict, timestep: int
