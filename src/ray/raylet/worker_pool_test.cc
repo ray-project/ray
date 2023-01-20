@@ -396,12 +396,13 @@ class WorkerPoolMock : public WorkerPool {
 
 class WorkerPoolTest : public ::testing::Test {
  public:
-  WorkerPoolTest() {
+  void SetUp() override {
     RayConfig::instance().initialize(
         R"({"worker_register_timeout_seconds": )" +
         std::to_string(WORKER_REGISTER_TIMEOUT_SECONDS) +
         R"(, "object_spilling_config": "dummy", "max_io_workers": )" +
-        std::to_string(MAX_IO_WORKER_SIZE) + "}");
+        std::to_string(MAX_IO_WORKER_SIZE) + R"(, "kill_idle_workers_interval_ms": 0)" +
+        "}");
     SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                        {Language::JAVA,
                         {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
@@ -416,18 +417,15 @@ class WorkerPoolTest : public ::testing::Test {
     StartMockAgent();
   }
 
-  virtual void TearDown() {
+  void TearDown() override {
+    io_service_.stop();
+    thread_io_service_->join();
     AssertNoLeaks();
     runtime_env_reference.clear();
     worker_pool_->all_jobs_.clear();
   }
 
   void AssertNoLeaks() { ASSERT_EQ(worker_pool_->pending_exit_idle_workers_.size(), 0); }
-
-  ~WorkerPoolTest() {
-    io_service_.stop();
-    thread_io_service_->join();
-  }
 
   std::shared_ptr<WorkerInterface> CreateSpillWorker(Process proc) {
     return worker_pool_->CreateWorker(

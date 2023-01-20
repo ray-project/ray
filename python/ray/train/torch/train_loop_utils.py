@@ -53,9 +53,6 @@ def prepare_model(
     move_to_device: bool = True,
     parallel_strategy: Optional[str] = "ddp",
     parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
-    # Deprecated args.
-    wrap_ddp: bool = False,
-    ddp_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
 
@@ -75,18 +72,6 @@ def prepare_model(
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
     """
-
-    if wrap_ddp:
-        raise DeprecationWarning(
-            "The `wrap_ddp` argument is deprecated as of Ray 2.1. Use the "
-            "`parallel_strategy` argument instead."
-        )
-
-    if ddp_kwargs:
-        raise DeprecationWarning(
-            "The `ddp_kwargs` argument is deprecated as of Ray 2.1. Use the "
-            "`parallel_strategy_kwargs` arg instead."
-        )
 
     if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
         raise ImportError(

@@ -86,6 +86,7 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     ActorState,
     ListApiOptions,
+    SummaryApiOptions,
     NodeState,
     ObjectState,
     PlacementGroupState,
@@ -859,6 +860,97 @@ async def test_api_manager_list_tasks(state_api_manager):
         option=create_api_options(filters=[("task_id", "=", bytearray(id).hex())])
     )
     assert len(result.result) == 1
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 8, 0),
+    reason=("Not passing in CI although it works locally. Will handle it later."),
+)
+@pytest.mark.asyncio
+async def test_api_manager_summarize_tasks(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+
+    node_id = NodeID.from_random()
+    first_task_name = "1"
+    second_task_name = "2"
+    data_source_client.get_all_task_info = AsyncMock()
+    id = b"1234"
+    data_source_client.get_all_task_info.side_effect = [
+        generate_task_data(
+            [
+                generate_task_event(
+                    id, first_task_name, func_or_class=first_task_name, node_id=node_id
+                ),
+                generate_task_event(
+                    b"2345",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                ),
+                generate_task_event(
+                    b"3456",
+                    second_task_name,
+                    func_or_class=second_task_name,
+                    node_id=None,
+                ),
+                generate_task_event(
+                    b"4567",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                    job_id=b"0002",
+                ),
+            ]
+        )
+    ]
+    result = await state_api_manager.summarize_tasks(option=SummaryApiOptions())
+    data = result.result.node_id_to_summary["cluster"].summary
+    assert len(data) == 2  # 2 task names
+    assert result.total == 4  # 4 total tasks
+
+    assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 3
+    assert data[second_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
+
+    """
+    With job_id filter
+    """
+    data_source_client.get_all_task_info.side_effect = [
+        generate_task_data(
+            [
+                generate_task_event(
+                    id, first_task_name, func_or_class=first_task_name, node_id=node_id
+                ),
+                generate_task_event(
+                    b"2345",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                ),
+                generate_task_event(
+                    b"3456",
+                    second_task_name,
+                    func_or_class=second_task_name,
+                    node_id=None,
+                ),
+                generate_task_event(
+                    b"4567",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                    job_id=b"0002",
+                ),
+            ]
+        )
+    ]
+    result = await state_api_manager.summarize_tasks(
+        option=SummaryApiOptions(filters=[("job_id", "=", b"0002".hex())])
+    )
+    data = result.result.node_id_to_summary["cluster"].summary
+    assert len(data) == 1  # 1 task name
+    assert result.total == 4  # 4 total task (across all jobs)
+    assert result.num_filtered == 1  # 1 total task (for single job)
+
+    assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
 
 
 @pytest.mark.skipif(
@@ -2002,6 +2094,39 @@ def test_list_get_tasks(shutdown_only):
 
     wait_for_condition(verify)
     print(list_tasks())
+
+
+def test_parent_task_id(shutdown_only):
+    """Test parent task id set up properly"""
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def child():
+        pass
+
+    @ray.remote
+    def parent():
+        ray.get(child.remote())
+
+    ray.get(parent.remote())
+
+    def verify():
+        tasks = list_tasks()
+        assert len(tasks) == 2, "Expect 2 tasks to finished"
+        parent_task_id = None
+        child_parent_task_id = None
+        for task in tasks:
+            if task["func_or_class_name"] == "parent":
+                parent_task_id = task["task_id"]
+            elif task["func_or_class_name"] == "child":
+                child_parent_task_id = task["parent_task_id"]
+
+        assert (
+            parent_task_id == child_parent_task_id
+        ), "Child should have the parent task id"
+        return True
+
+    wait_for_condition(verify)
 
 
 def test_list_get_task_multiple_attempt_all_failed(shutdown_only):

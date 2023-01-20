@@ -64,7 +64,7 @@ file_manager_str_to_file_manager = {
 }
 
 command_runner_to_file_manager = {
-    SDKRunner: SessionControllerFileManager,
+    SDKRunner: JobFileManager,  # Use job file manager per default
     ClientRunner: RemoteTaskFileManager,
     JobRunner: JobFileManager,
 }
@@ -73,7 +73,7 @@ command_runner_to_file_manager = {
 DEFAULT_RUN_TYPE = "sdk_command"
 
 
-def _get_extra_tags() -> dict:
+def _get_extra_tags_from_env() -> dict:
     env_vars = (
         "BUILDKITE_JOB_ID",
         "BUILDKITE_PULL_REQUEST",
@@ -148,7 +148,10 @@ def run_release_test(
     logger.info(f"Got file manager cls: {file_manager_cls}")
 
     # Extra tags to be set on resources on cloud provider's side
-    extra_tags = _get_extra_tags()
+    extra_tags = _get_extra_tags_from_env()
+    # We don't need other attributes as they can be derived from the name
+    extra_tags["test_name"] = str(test["name"])
+    extra_tags["test_smoke_test"] = str(result.smoke_test)
     result.extra_tags = extra_tags
 
     # Instantiate managers and command runner

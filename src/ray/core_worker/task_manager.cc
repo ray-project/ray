@@ -17,6 +17,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
 
@@ -61,9 +62,6 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
-  if (spec.IsActorTask()) {
-    num_returns--;
-  }
   std::vector<rpc::ObjectReference> returned_refs;
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < num_returns; i++) {
@@ -438,6 +436,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       if (num_oom_retries_left > 0) {
         will_retry = true;
         it->second.num_oom_retries_left--;
+      } else if (num_oom_retries_left == -1) {
+        will_retry = true;
+      } else {
+        RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
       if (num_retries_left > 0) {
@@ -613,9 +615,6 @@ void TaskManager::RemoveFinishedTaskReferences(
 
   std::vector<ObjectID> return_ids;
   size_t num_returns = spec.NumReturns();
-  if (spec.IsActorTask()) {
-    num_returns--;
-  }
   for (size_t i = 0; i < num_returns; i++) {
     return_ids.push_back(spec.ReturnId(i));
   }
@@ -938,39 +937,12 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
     task_event.mutable_task_info()->Swap(&task_info);
   }
 
-  switch (status) {
-  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
-    state_updates->set_pending_args_avail_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
-    RAY_CHECK(node_id.has_value())
+  if (node_id.has_value()) {
+    RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "Node ID should be included when task status changes to SUBMITTED_TO_WORKER.";
     state_updates->set_node_id(node_id->Binary());
-    state_updates->set_submitted_to_worker_ts(absl::GetCurrentTimeNanos());
-    break;
   }
-  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
-    state_updates->set_pending_node_assignment_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  case rpc::TaskStatus::FINISHED: {
-    state_updates->set_finished_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  case rpc::TaskStatus::FAILED: {
-    state_updates->set_failed_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  case rpc::TaskStatus::RUNNING: {
-    state_updates->set_running_ts(absl::GetCurrentTimeNanos());
-    break;
-  }
-  default: {
-    // NOTE: Other task status should not be set by the TaskManager.
-    UNREACHABLE;
-  }
-  }
+  gcs::FillTaskStatusUpdateTime(status, absl::GetCurrentTimeNanos(), state_updates);
   task_event_buffer_.AddTaskEvent(std::move(task_event));
 }
 

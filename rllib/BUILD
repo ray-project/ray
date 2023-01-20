@@ -898,6 +898,13 @@ py_test(
     srcs = ["algorithms/appo/tests/test_appo.py"]
 )
 
+py_test(
+    name = "test_appo_off_policyness",
+    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["algorithms/appo/tests/test_appo_off_policyness.py"]
+)
+
 # ARS
 py_test(
     name = "test_ars",
@@ -1032,6 +1039,12 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace.py"]
+)
+py_test(
+    name = "test_impala_off_policyness",
+    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
 )
 
 # MARWIL
@@ -1478,7 +1491,7 @@ py_test(
 
 
 py_test(
-    name = "test_pg_tf_pong_v0",
+    name = "test_pg_tf_pong_v5",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:rllib", "quick_train"],
     args = [
@@ -1813,24 +1826,31 @@ py_test(
 )
 
 py_test(
-    name = "test_rl_optimizer_torch",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/optim/tests/test_rl_optimizer_torch.py"]
-)
-
-py_test(
-    name = "test_rl_optimizer_tf",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/optim/tests/test_rl_optimizer_tf.py"]
-)
-
-py_test(
-    name = "test_tf_rl_trainer",
+    name = "test_trainer_runner",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "medium",
-    srcs = ["core/rl_trainer/tests/tf/test_tf_rl_trainer.py"]
+    srcs = ["core/rl_trainer/tests/test_trainer_runner.py"]
+)
+
+py_test(
+    name = "test_trainer_runner_local",
+    tags = ["team:rllib", "core", "exclusive"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/test_trainer_runner_local.py"]
+)
+
+py_test(
+    name = "test_trainer_runner_config",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/test_trainer_runner_config.py"]
+)
+
+py_test(
+    name = "test_rl_trainer",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/test_rl_trainer.py"]
 )
 
 # --------------------------------------------------------------------
@@ -2560,7 +2580,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "multi_gpu"],
+     tags = ["team:rllib", "tests_dir", "multi_gpu", "exclusive"],
      size = "medium",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPPONoPreprocessorGPU"]

@@ -2,7 +2,6 @@ import os
 import threading
 from typing import Optional
 
-import ray
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -29,7 +28,7 @@ DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
 # Whether dynamic block splitting is enabled.
 # NOTE: disable dynamic block splitting when using Ray client.
-DEFAULT_BLOCK_SPLITTING_ENABLED = not ray.util.client.ray.is_connected()
+DEFAULT_BLOCK_SPLITTING_ENABLED = True
 
 # Whether pandas block format is enabled.
 # TODO (kfstorm): Remove this once stable.
@@ -68,7 +67,13 @@ DEFAULT_USE_POLARS = False
 
 # Whether to use the new executor backend.
 DEFAULT_NEW_EXECUTION_BACKEND = bool(
-    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "1"))
+    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "0"))
+)
+
+# Whether to use the streaming executor. This only has an effect if the new execution
+# backend is enabled.
+DEFAULT_USE_STREAMING_EXECUTOR = bool(
+    int(os.environ.get("RAY_DATASET_USE_STREAMING_EXECUTOR", "0"))
 )
 
 # Whether to eagerly free memory (new backend only).
@@ -126,6 +131,7 @@ class DatasetContext:
         scheduling_strategy: SchedulingStrategyT,
         use_polars: bool,
         new_execution_backend: bool,
+        use_streaming_executor: bool,
         eager_free: bool,
         decoding_size_estimation: bool,
         min_parallelism: bool,
@@ -151,6 +157,7 @@ class DatasetContext:
         self.scheduling_strategy = scheduling_strategy
         self.use_polars = use_polars
         self.new_execution_backend = new_execution_backend
+        self.use_streaming_executor = use_streaming_executor
         self.eager_free = eager_free
         self.decoding_size_estimation = decoding_size_estimation
         self.min_parallelism = min_parallelism
@@ -189,6 +196,7 @@ class DatasetContext:
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
                     use_polars=DEFAULT_USE_POLARS,
                     new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
+                    use_streaming_executor=DEFAULT_USE_STREAMING_EXECUTOR,
                     eager_free=DEFAULT_EAGER_FREE,
                     decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
                     min_parallelism=DEFAULT_MIN_PARALLELISM,
@@ -198,10 +206,6 @@ class DatasetContext:
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                 )
-
-            # Check if using Ray client and disable dynamic block splitting.
-            if ray.util.client.ray.is_connected():
-                _default_context.block_splitting_enabled = False
 
             return _default_context
 

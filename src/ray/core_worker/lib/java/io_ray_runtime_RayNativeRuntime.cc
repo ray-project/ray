@@ -361,10 +361,11 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env,
                                                                   jstring actor_name,
                                                                   jstring ray_namespace) {
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
+  std::string job_config_namespace =
+      CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace();
   const char *native_ray_namespace =
-      ray_namespace == nullptr
-          ? CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace().c_str()
-          : env->GetStringUTFChars(ray_namespace, JNI_FALSE);
+      ray_namespace == nullptr ? job_config_namespace.c_str()
+                               : env->GetStringUTFChars(ray_namespace, JNI_FALSE);
   const auto pair = CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
       native_actor_name, /*ray_namespace=*/native_ray_namespace);
   const auto status = pair.second;
