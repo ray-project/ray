@@ -246,7 +246,7 @@ class PPOTorchRLModule(TorchRLModule):
         specs = {SampleBatch.ACTION_DIST: self.__get_action_dist_type()}
         if self._is_discrete:
             specs[SampleBatch.ACTION_DIST_INPUTS] = {
-                "logits": TorchTensorSpec("b, h", h=self.config.action_space.n)
+                "logits": TorchTensorSpec("b, h", h=int(self.config.action_space.n))
             }
         else:
             specs[SampleBatch.ACTION_DIST_INPUTS] = {
