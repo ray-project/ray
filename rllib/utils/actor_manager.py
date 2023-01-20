@@ -599,6 +599,7 @@ class FaultTolerantActorManager:
     def foreach_actor_async(
         self,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        tag: str = "default",
         *,
         healthy_only=True,
         remote_actor_ids: List[int] = None,
@@ -608,6 +609,7 @@ class FaultTolerantActorManager:
         Args:
             func: A single, or a list of Callables, that get applied on the list
                 of specified remote actors.
+            tag: A tag to identify the results from this async call.
             healthy_only: If True, applies func on known healthy actors only.
             remote_actor_ids: Apply func on a selected set of remote actors.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
@@ -667,7 +669,7 @@ class FaultTolerantActorManager:
         # Save these as outstanding requests.
         for id, call in zip(limited_remote_actor_ids, remote_calls):
             self.__remote_actor_states[id].num_in_flight_async_requests += 1
-            self.__in_flight_req_to_actor_id[call] = id
+            self.__in_flight_req_to_actor_id[call] = (tag, id)
 
         return len(remote_calls)
 
@@ -675,6 +677,7 @@ class FaultTolerantActorManager:
     def fetch_ready_async_reqs(
         self,
         *,
+        tags: Union[str, List[str]] = "default",
         timeout_seconds: Union[None, int] = 0,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
@@ -686,6 +689,7 @@ class FaultTolerantActorManager:
         Args:
             timeout_seconds: Ray.get() timeout. Default is 0 (only those that are
                 already ready).
+            tags: A tag or a list of tags to identify the results from this async call.
             return_obj_refs: whether to return ObjectRef instead of actual results.
             mark_healthy: whether to mark certain actors healthy based on the results
                 of these remote calls. Useful, for example, to make sure actors
@@ -696,10 +700,24 @@ class FaultTolerantActorManager:
             The values may be actual data returned or exceptions raised during the
             remote call in the format of RemoteCallResults.
         """
+        if isinstance(tags, str):
+            tags = {tags}
+        elif isinstance(tags, list):
+            tags = set(tags)
+        else:
+            raise ValueError(
+                f"tags must be either a str or a list of str, got {type(tags)}."
+            )
+        remote_calls = []
+        remote_actor_ids = []
+        for call, (tag, actor_id) in self.__in_flight_req_to_actor_id.items():
+            if tag in tags:
+                remote_calls.append(call)
+                remote_actor_ids.append(actor_id)
         # Construct the list of in-flight requests.
         ready, remote_results = self.__fetch_result(
-            remote_actor_ids=list(self.__in_flight_req_to_actor_id.values()),
-            remote_calls=list(self.__in_flight_req_to_actor_id.keys()),
+            remote_actor_ids=remote_actor_ids,
+            remote_calls=remote_calls,
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
             mark_healthy=mark_healthy,
