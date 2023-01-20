@@ -19,7 +19,7 @@ def configure_component_logger(
     component_name: str,
     component_id: str,
     component_type: Optional[str] = None,
-    log_level: int = logging.INFO,
+    log_level: int = None,
     log_to_stream: bool = True,
     log_to_file: bool = True,
 ):
@@ -32,6 +32,8 @@ def configure_component_logger(
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
+    if log_level is None:
+        log_level = logging.getLogger("ray").getEffectiveLevel()
     logger.setLevel(log_level)
     if os.environ.get(DEBUG_LOG_ENV_VAR, "0") != "0":
         logger.setLevel(logging.DEBUG)
@@ -49,14 +51,20 @@ def configure_component_logger(
     if log_to_file:
         logs_dir = os.path.join(
             ray._private.worker._global_node.get_logs_dir_path(), "serve"
-        )
+        )        
         os.makedirs(logs_dir, exist_ok=True)
+        max_bytes = ray._private.worker._global_node.max_bytes
+        backup_count = ray._private.worker._global_node.backup_count
         if component_type is not None:
             component_name = f"{component_type}_{component_name}"
         log_file_name = LOG_FILE_FMT.format(
             component_name=component_name, component_id=component_id
         )
-        file_handler = logging.FileHandler(os.path.join(logs_dir, log_file_name))
+        file_handler = logging.handlers.RotatingFileHandler(
+            os.path.join(logs_dir, log_file_name),
+            maxBytes=max_bytes,
+            backupCount=backup_count
+        )
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
