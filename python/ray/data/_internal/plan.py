@@ -511,7 +511,6 @@ class ExecutionPlan:
                     self,
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
-                    optimizer_enabled=context.optimizer_enabled,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
                 # to a fully lazy execution model, unless .cache() is used. The reason

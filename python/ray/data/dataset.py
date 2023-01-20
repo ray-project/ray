@@ -673,6 +673,7 @@ class Dataset(Generic[T]):
         logical_plan = self._logical_plan
         if logical_plan is not None:
             map_batches_op = MapBatches(
+                logical_plan._dag,
                 transform,
                 fn,
                 batch_size,
@@ -686,7 +687,7 @@ class Dataset(Generic[T]):
                 fn_constructor_kwargs,
                 ray_remote_args,
             )
-            logical_plan = self._logical_plan.get_new_plan(map_batches_op)
+            logical_plan = LogicalPlan(map_batches_op)
 
         return Dataset(plan, self._epoch, self._lazy, logical_plan)
 

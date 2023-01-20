@@ -2,6 +2,7 @@ from typing import List
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.logical.interfaces import Rule, Optimizer, LogicalOperator
+from ray.data._internal.logical.planner import Planner
 
 
 class LogicalOptimizer(Optimizer):
@@ -28,12 +29,6 @@ class LogicalPlan:
     def __init__(self, dag: LogicalOperator):
         self._dag = dag
 
-    def get_new_plan(self, operator: LogicalOperator) -> "LogicalPlan":
-        """Get a new logical plan with the given operator to add."""
-        assert self._dag is not None
-        operator.set_input_dependencies([self._dag])
-        return LogicalPlan(operator)
-
     def get_execution_dag(self) -> PhysicalOperator:
         """Get the DAG of physical operators to execute.
 
@@ -42,7 +37,6 @@ class LogicalPlan:
         (2).convert logical to physical operators.
         (3).physical optimization: optimize physical operators.
         """
-        logical_optimizer = LogicalOptimizer()
-        optimized_logical_dag = logical_optimizer.optimize(self._dag)
-        physical_dag = optimized_logical_dag.get_physical_dag()
+        optimized_logical_dag = LogicalOptimizer().optimize(self._dag)
+        physical_dag = Planner().plan(optimized_logical_dag)
         return PhysicalOptimizer().optimize(physical_dag)

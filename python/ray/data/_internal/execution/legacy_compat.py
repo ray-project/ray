@@ -7,6 +7,7 @@ import ray.cloudpickle as cloudpickle
 from typing import Iterator, Tuple, Any
 
 import ray
+from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
 from ray.data.datasource import ReadTask
@@ -62,7 +63,6 @@ def execute_to_legacy_block_list(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
-    optimizer_enabled: bool,
 ) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
 
@@ -71,12 +71,11 @@ def execute_to_legacy_block_list(
         plan: The legacy plan to execute.
         allow_clear_input_blocks: Whether the executor may consider clearing blocks.
         dataset_uuid: UUID of the dataset for this execution.
-        optimizer_enabled: Whether the execution optimizer is enabled.
 
     Returns:
         The output as a legacy block list.
     """
-    if optimizer_enabled:
+    if DatasetContext.get_current().optimizer_enabled:
         dag, stats = plan._logical_plan.get_execution_dag(), None
     else:
         dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)

@@ -97,7 +97,9 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 DEFAULT_AUTO_LOG_STATS = False
 
 # Whether to enable optimizer.
-DEFAULT_OPTIMIZER_ENABLED = False
+DEFAULT_OPTIMIZER_ENABLED = bool(
+    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_OPTIMIZER", "0"))
+)
 
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "

@@ -26,6 +26,9 @@ class Operator:
         ), "Operator.__init__() was not called."
         return self._input_dependencies
 
+    def __reduce__(self):
+        raise ValueError("Operator is not serializable.")
+
     def __repr__(self) -> str:
         if self.input_dependencies:
             out_str = ", ".join([str(x) for x in self.input_dependencies])
@@ -50,9 +53,6 @@ class LogicalOperator(Operator):
         super().__init__(name, input_dependencies)
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x
-
-    def set_input_dependencies(self, input_dependencies: List["LogicalOperator"]):
-        self._input_dependencies = input_dependencies
 
     def get_physical_dag(self):
         """Get the corresponding DAG of physical operators.
