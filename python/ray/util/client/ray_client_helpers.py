@@ -21,7 +21,11 @@ def ray_start_client_server(metadata=None, ray_connect_handler=None, **kwargs):
 @contextmanager
 def ray_start_client_server_for_address(address):
     """
-    Starts a Ray client server that initializes drivers at the specified address.
+    Starts a Ray client server that initializes drivers at the specified
+    address.
+
+    NOTE: The returned ray context should be used in place of the normal
+    imported ray.
     """
 
     def connect_handler(

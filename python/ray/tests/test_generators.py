@@ -565,9 +565,7 @@ def call_ray_start_shared(request):
 
 @pytest.mark.parametrize("store_in_plasma", [False, True])
 def test_ray_client(call_ray_start_shared, store_in_plasma):
-    with ray_start_client_server_for_address(call_ray_start_shared):
-        enable_client_mode()
-
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
         @ray.remote(max_retries=0)
         def generator(num_returns, store_in_plasma):
             for i in range(num_returns):
