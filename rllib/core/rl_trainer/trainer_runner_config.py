@@ -34,9 +34,6 @@ class TrainerRunnerConfig:
         self.num_gpus = 0
         self.fake_gpus = False
 
-        # `self.testing()`
-        self._in_test = False
-
     def validate(self) -> None:
 
         if self.module_class is None and self.module_obj is None:
@@ -95,7 +92,6 @@ class TrainerRunnerConfig:
                 # TODO (Avnish): add this
                 # "enable_tf_function": self.eager_tracing,
                 "optimizer_config": self.optimizer_config,
-                "in_test": self._in_test,
             },
             compute_config={
                 "num_gpus": self.num_gpus,
@@ -161,11 +157,5 @@ class TrainerRunnerConfig:
             self.num_gpus = num_gpus
         if fake_gpus is not NotProvided:
             self.fake_gpus = fake_gpus
-
-        return self
-
-    def testing(self, _in_test: Optional[bool] = NotProvided) -> "TrainerRunnerConfig":
-        if _in_test is not NotProvided:
-            self._in_test = _in_test
 
         return self
