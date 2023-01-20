@@ -22,11 +22,16 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         if self.config.entropy_coeff_schedule:
             raise ValueError("entropy_coeff_schedule is not supported in RLTrainer yet")
 
+        # TODO (Kourosh): Create a way on the base class for users to define arbitrary 
+        # schedulers for learning rates.
+        self.lr_scheduler = None
         if self.config.lr_schedule:
             raise ValueError("lr_schedule is not supported in RLTrainer yet")
 
         # TODO (Kourosh): We can still use mix-ins in the new design. Do we want that?
-        # Most likely not.
+        # Most likely not. I rather be specific about everything. kl_coeff is a 
+        # none-gradient based update which we can define here and add as update with 
+        # additional_update() method.
         self.kl_coeff = self.config.kl_coeff
         self.kl_target = self.config.kl_target
 
@@ -42,7 +47,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
             module_batch = batch[module_id]
             module_fwd_out = fwd_out[module_id]
 
-            module_results = self._compute_loss(module_batch, module_fwd_out)
+            module_results = self._compute_loss(module_id, module_batch, module_fwd_out)
             results_all_agents[module_id] = module_results
             loss = module_results[self.TOTAL_LOSS_KEY]
 
@@ -56,8 +61,11 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         return results_all_agents
 
     def _compute_loss(
-        self, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
+        # TODO (Kourosh): We may or may not user module_id. For example if we have an 
+        # agent based learning rate scheduler, we may want to use module_id to get the 
+        # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
@@ -122,7 +130,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
             "mean_kl_loss": mean_kl_loss,
         }
 
-    def additional_update(self, *, sampled_kl_values) -> Mapping[str, Any]:
+    def additional_update(self, *, sampled_kl_values, timestep: int) -> Mapping[str, Any]:
 
         results = {}
         for module_id in sampled_kl_values:
@@ -134,5 +142,12 @@ class PPOTorchRLTrainer(TorchRLTrainer):
                 self.kl_coeff *= 0.5
 
             results[module_id] = {"kl_coeff": self.kl_coeff}
+
+
+        if self.entropy_coeff_scheduler is not None:
+            self.entropy_coeff_scheduleler.update(timestep)
+
+        if self.lr_scheduler is not None:
+            self.lr_scheduleler.update(timestep)
 
         return results
