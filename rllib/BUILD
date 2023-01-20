@@ -815,7 +815,7 @@ py_test(
     name = "test_memory_leaks_generic",
     main = "algorithms/tests/test_memory_leaks.py",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
+    size = "medium",
     srcs = ["algorithms/tests/test_memory_leaks.py"]
 )
 
