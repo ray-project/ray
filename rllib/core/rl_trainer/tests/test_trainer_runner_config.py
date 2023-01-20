@@ -34,7 +34,6 @@ class TestAlgorithmConfig(unittest.TestCase):
                 trainer_class=BCTfRLTrainer,
             )
         )
-        config = config.testing(True)
         config.build()
 
     def test_trainer_runner_build_from_algorithm_config(self):
