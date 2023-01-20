@@ -1858,7 +1858,7 @@ py_test(
     name = "test_torch_rl_trainer",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/rl_trainer/tests/torch/test_torch_rl_trainer.py"]
+    srcs = ["core/rl_trainer/torch/tests/test_torch_rl_trainer.py"]
 )
 
 # --------------------------------------------------------------------
