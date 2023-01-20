@@ -167,7 +167,7 @@ class Dataset(Generic[T]):
         >>> # Create dataset from external storage system.
         >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
         >>> # Save dataset back to external storage system.
-        >>> ds.write_csv("s3//bucket/output") # doctest: +SKIP
+        >>> ds.write_csv("s3://bucket/output") # doctest: +SKIP
 
     Datasets has two kinds of operations: tranformation, which takes in Datasets and
     outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption, which
