@@ -21,14 +21,14 @@ class Barrier:
 
     """
 
-    def __init__(
-        self, max_results: Optional[int] = None, complete_on_first_error: bool = False
-    ):
+    def __init__(self, max_results: Optional[int] = None):
         self._max_results = max_results
-        self._complete_on_first_error = complete_on_first_error
 
         self._completed = False
         self._on_completion = None
+
+        self._first_error = False
+        self._on_first_error = None
 
         self._results = []
         self._errors = []
@@ -59,7 +59,22 @@ class Barrier:
             *data: Error data to be cached. Can be obtained via :meth:`get_errors`.
         """
         self._errors.append(data)
+        self._check_first_error()
         self._check_completion()
+
+    def _check_first_error(self):
+        if self._first_error:
+            # Already fired callback
+            return
+
+        num_errors = self.num_errors
+        if num_errors:
+            # First error arrived
+            self._first_error = True
+
+            # Invoke callback
+            if self._on_first_error:
+                self._on_first_error(self)
 
     def _check_completion(self):
         if self._completed:
@@ -73,10 +88,6 @@ class Barrier:
             # max_results is set and number of received results exceeds it
             self._max_results is not None
             and num_results + num_errors >= self._max_results
-        ) or (
-            # complete_on_first_error is set and at least one error arrived
-            self._complete_on_first_error
-            and num_errors > 0
         ):
             # Barrier is complete
             self._completed = True
@@ -126,12 +137,18 @@ class Barrier:
                 first time.
 
         """
-        raise NotImplementedError
+        self._on_first_error = callback
+        return self
 
     @property
     def completed(self) -> bool:
         """Returns True if the barrier is completed."""
         return self._completed
+
+    @property
+    def has_error(self) -> bool:
+        """Returns True if the barrier had an error arrive."""
+        return self._first_error
 
     @property
     def num_results(self) -> int:
@@ -163,5 +180,6 @@ class Barrier:
         :meth:`on_completion` callback will be invoked again.
         """
         self._completed = False
+        self._first_error = False
         self._results = []
         self._errors = []

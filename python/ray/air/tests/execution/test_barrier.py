@@ -80,24 +80,24 @@ def test_barrier_max_results():
     assert barrier.num_results == 1
 
 
-def test_barrier_complete_on_first_error():
-    """Test the `complete_on_first_error` attribute.
+def test_barrier_on_first_error():
+    """Test the `on_first_error` attribute.
 
-    - Set complete_on_first_error=True and max_results=3
+    - Set on_first_error and max_results=3
     - Assert that Barrier.error() triggers the callback
     - Assert that barrier is set to completed
     - Assert that subsequent errors do not trigger the callback again
     - Assert that subsequent arrivals do not trigger the callback again
     """
-    barrier = Barrier(max_results=3, complete_on_first_error=True)
-    barrier.on_completion(_raise(AssertionError))
+    barrier = Barrier(max_results=3)
+    barrier.on_first_error(_raise(AssertionError))
 
     barrier.arrive(1)
 
-    assert not barrier.completed
+    assert not barrier.has_error
     with pytest.raises(AssertionError):
         barrier.error(2)
-    assert barrier.completed
+    assert barrier.has_error
 
     assert barrier.num_results == 1
     assert barrier.num_errors == 1
