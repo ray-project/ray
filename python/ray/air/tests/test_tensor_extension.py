@@ -49,6 +49,15 @@ def test_arrow_scalar_tensor_array_roundtrip_boolean():
     np.testing.assert_array_equal(out, arr)
 
 
+def test_arrow_scalar_tensor_array_roundtrip_string():
+    arr = np.array([["Phillip", "Turanga", "Hubert"], ["Fry", "Leela", "Farnsworth"]])
+    ata = ArrowTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, pa.DataType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    np.testing.assert_array_equal(out, arr)
+
+
 def test_scalar_tensor_array_roundtrip():
     arr = np.arange(10)
     ta = TensorArray(arr)

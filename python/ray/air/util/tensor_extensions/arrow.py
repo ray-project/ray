@@ -321,6 +321,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                 # NOTE: Arrow expects LSB bit-packed ordering.
                 # NOTE: This creates a copy.
                 arr = np.packbits(arr, bitorder="little")
+            if pa.types.is_string(pa_dtype):
+                pa_dtype = pa.binary(arr.dtype.itemsize)
             data_buffer = pa.py_buffer(arr)
             data_array = pa.Array.from_buffers(
                 pa_dtype, total_num_items, [None, data_buffer]
@@ -425,6 +427,12 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             arr = np.unpackbits(arr, bitorder="little")
             # Interpret buffer as boolean array.
             return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
+        # Special handling of binary/string types
+        if pa.types.is_fixed_size_binary(value_type):
+            NUM_BYTES_PER_UNICODE_CHAR = 4
+            ext_dtype = np.dtype(
+                f"<U{value_type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}"
+            )
         return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
 
     def to_numpy(self, zero_copy_only: bool = True):
