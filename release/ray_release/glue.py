@@ -255,7 +255,7 @@ def run_release_test(
         # if a cluster is already created.
         def signal_terminate(*args, **kwargs):
             logger.exception("Caught job cancellation! Terminating cluster if running.")
-            cluster_manager.terminate_cluster()
+            cluster_manager.terminate_cluster(wait=False)
 
         signal.signal(signal.SIGINT, signal_terminate)
         signal.signal(signal.SIGTERM, signal_terminate)

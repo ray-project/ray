@@ -104,7 +104,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   fi
 
   _term() {
-    echo "Caught SIGTERM signal, sending SIGTERM to release test script"
+    echo "[SCRIPT $(date +'%Y-%m-%d %H:%M:%S'),...] Caught SIGTERM signal, sending SIGTERM to release test script"
     kill -TERM "$proc" 2>/dev/null
   }
 
