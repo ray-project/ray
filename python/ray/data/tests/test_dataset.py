@@ -5447,14 +5447,15 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
     def f(x):
         return x
 
-    compute_strategy = ray.data.ActorPoolStrategy(max_size=1)
+    max_size = 2
+    compute_strategy = ray.data.ActorPoolStrategy(max_size=max_size)
     ds = (
         ray.data.range(10, parallelism=10)
         .map_batches(f, batch_size=None, compute=compute_strategy)
         .fully_executed()
     )
 
-    assert "1/1 blocks" in ds.stats()
+    assert f"{max_size}/{max_size} blocks" in ds.stats()
 
 
 def test_default_batch_format(shutdown_only):
