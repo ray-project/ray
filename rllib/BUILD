@@ -1850,6 +1850,13 @@ py_test(
 )
 
 py_test(
+    name = "test_trainer_runner_config",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/test_trainer_runner_config.py"]
+)
+
+py_test(
     name = "test_rl_trainer",
     tags = ["team:rllib", "core"],
     size = "medium",

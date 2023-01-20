@@ -365,7 +365,9 @@ class PPO(Algorithm):
         # Standardize advantages
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config.simple_optimizer:
+        if self.config._enable_rl_trainer_api:
+            train_results = self.trainer_runner.update(train_batch)
+        elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
@@ -384,10 +386,24 @@ class PPO(Algorithm):
         # workers.
         if self.workers.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                from_worker = None
+                if self.config._enable_rl_trainer_api:
+                    from_worker = self.trainer_runner
                 self.workers.sync_weights(
-                    policies=policies_to_update,
+                    from_worker=from_worker,
+                    policies=list(train_results.keys()),
                     global_vars=global_vars,
                 )
+
+        if self.config._enable_rl_trainer_api:
+            kl_dict = {
+                pid: pinfo[LEARNER_STATS_KEY].get("kl")
+                for pid, pinfo in train_results.items()
+            }
+            # triggers a special update method on RLOptimizer to update the KL values.
+            self.trainer_runner.additional_update(kl_values=kl_dict)
+
+            return train_results
 
         # For each policy: Update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():

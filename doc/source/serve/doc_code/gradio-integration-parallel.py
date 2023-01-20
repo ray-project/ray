@@ -1,3 +1,5 @@
+import requests
+
 # __doc_import_begin__
 import ray
 from ray import serve
@@ -5,6 +7,7 @@ from ray.serve.gradio_integrations import GradioIngress
 
 import gradio as gr
 
+import asyncio
 from transformers import pipeline
 
 # __doc_import_end__
@@ -36,17 +39,30 @@ class MyGradioServer(GradioIngress):
         self._d1 = downstream_model_1
         self._d2 = downstream_model_2
 
-        io = gr.Interface(self.fanout, "textbox", "textbox")
-        super().__init__(io)
+        super().__init__(lambda: gr.Interface(self.fanout, "textbox", "textbox"))
 
-    def fanout(self, text):
-        [result1, result2] = ray.get([self._d1.remote(text), self._d2.remote(text)])
-        return f"{result1}\n------------\n{result2}"
-
-
-# __doc_gradio_server_end__
+    async def fanout(self, text):
+        refs = await asyncio.gather(self._d1.remote(text), self._d2.remote(text))
+        [result1, result2] = ray.get(refs)
+        return (
+            f"[Generated text version 1]\n{result1}\n\n"
+            f"[Generated text version 2]\n{result2}"
+        )
+        # __doc_gradio_server_end__
 
 
 # __doc_app_begin__
 app = MyGradioServer.bind(app1, app2)
 # __doc_app_end__
+
+# Test example code
+serve.run(app)
+response = requests.post(
+    "http://127.0.0.1:8000/api/predict/", json={"data": ["My name is Lewis"]}
+)
+assert response.status_code == 200
+print(
+    "gradio-integration-parallel.py: Response from example code is",
+    response.json()["data"],
+)
+serve.shutdown()
