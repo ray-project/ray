@@ -30,7 +30,7 @@ class TestLeelaChessZero(unittest.TestCase):
                 sgd_minibatch_size=256,
                 train_batch_size=256,
                 num_sgd_iter=1,
-                model={"custom_model": LeelaChessZeroModel},
+                model={"custom_model": LeelaChessZeroModel,"max_seq_len": 200},
                 mcts_config={"num_simulations": 2},
             )
             .resources(num_gpus=0)
