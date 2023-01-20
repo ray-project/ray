@@ -61,6 +61,7 @@ class InputDataBuffer(PhysicalOperator):
         raise ValueError("Inputs are not allowed for this operator.")
 
     def _initialize_input(self):
+        # TODO: call _initialize_input() from start() only.
         assert not self._is_input_initialized
         self._input_data = self._input_data_factory()
         self._is_input_initialized = True

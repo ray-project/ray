@@ -4,8 +4,7 @@ from typing import List
 class Operator:
     """Abstract class for operators.
 
-    Operators are stateful and non-serializable; they live on the driver side of the
-    Dataset only.
+    Operators live on the driver side of the Dataset only.
     """
 
     def __init__(self, name: str, input_dependencies: List["Operator"]):
@@ -25,9 +24,6 @@ class Operator:
             self, "_input_dependencies"
         ), "Operator.__init__() was not called."
         return self._input_dependencies
-
-    def __reduce__(self):
-        raise ValueError("Operator is not serializable.")
 
     def __repr__(self) -> str:
         if self.input_dependencies:

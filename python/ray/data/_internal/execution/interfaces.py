@@ -161,6 +161,9 @@ class PhysicalOperator(Operator):
     An operator transforms one or more input streams of RefBundles into a single
     output stream of RefBundles.
 
+    Physical operators are stateful and non-serializable; they live on the driver side
+    of the Dataset only.
+
     Here's a simple example of implementing a basic "Map" operator:
 
         class MapOperator(PhysicalOperator):
@@ -191,6 +194,9 @@ class PhysicalOperator(Operator):
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
         self._started = False
+
+    def __reduce__(self):
+        raise ValueError("Operator is not serializable.")
 
     def completed(self) -> bool:
         """Return True when this operator is done and all outputs are taken."""
