@@ -670,6 +670,9 @@ class Algorithm(Trainable):
                     "either a class path or a sub-class of ray.rllib."
                     "offline.offline_evaluator::OfflineEvaluator"
                 )
+            # TODO (Rohan138): Refactor this and remove deprecated methods
+            # Need to add back method_type in case Algorithm is restored from checkpoint
+            method_config["type"] = method_type
 
         self.trainer_runner = None
         if self.config._enable_rl_trainer_api:
