@@ -30,6 +30,8 @@ import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
+from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs, batch_blocks
 from ray.data._internal.block_list import BlockList
@@ -214,6 +216,7 @@ class Dataset(Generic[T]):
         plan: ExecutionPlan,
         epoch: int,
         lazy: bool = True,
+        logical_plan: Optional[LogicalPlan] = None,
     ):
         """Construct a Dataset (internal API).
 
@@ -227,6 +230,9 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
+        self._logical_plan = logical_plan
+        if logical_plan is not None:
+            self._plan.link_logical_plan(logical_plan)
 
         if not lazy:
             self._plan.execute(allow_clear_input_blocks=False)
@@ -649,22 +655,41 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "map_batches",
-                transform,
-                compute,
-                ray_remote_args,
-                # TODO(Clark): Add a strict cap here.
-                target_block_size=target_block_size,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-            )
+        stage = OneToOneStage(
+            "map_batches",
+            transform,
+            compute,
+            ray_remote_args,
+            # TODO(Clark): Add a strict cap here.
+            target_block_size=target_block_size,
+            fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
         )
-        return Dataset(plan, self._epoch, self._lazy)
+        plan = self._plan.with_stage(stage)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            map_batches_op = MapBatches(
+                logical_plan.dag,
+                transform,
+                fn,
+                batch_size,
+                compute,
+                batch_format,
+                zero_copy_batch,
+                target_block_size,
+                fn_args,
+                fn_kwargs,
+                fn_constructor_args,
+                fn_constructor_kwargs,
+                ray_remote_args,
+            )
+            logical_plan = LogicalPlan(map_batches_op)
+
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def add_column(
         self,
