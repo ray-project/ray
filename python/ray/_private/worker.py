@@ -2194,10 +2194,14 @@ def disconnect(exiting_interpreter=False):
         ray_actor._ActorClassMethodMetadata.reset_cache()
 
 
-def start_import_thread(worker=global_worker):
-    worker.function_actor_manager = FunctionActorManager(worker)
-    if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
-        worker.import_thread.start()
+def start_import_thread():
+    """Start the import thread if running in worker mode."""
+    assert global_worker, "worker is not initialized"
+    if (
+        global_worker.import_thread
+        and ray._raylet.Config.start_python_importer_thread()
+    ):
+        global_worker.import_thread.start()
 
 
 @contextmanager
