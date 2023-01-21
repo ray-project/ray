@@ -11,9 +11,7 @@ def monitor_stub(ray_start_regular_shared):
     return monitor_pb2_grpc.MonitorServiceStub(channel)
 
 
-def test_ray_version(ray_start_regular_shared, monitor_stub):
-    print(ray_start_regular_shared)
-
+def test_ray_version(monitor_stub):
     request = monitor_pb2.GetRayVersionRequest()
     response = monitor_stub.GetRayVersion(request)
     assert response.version == ray.__version__
