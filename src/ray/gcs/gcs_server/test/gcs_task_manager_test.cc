@@ -83,7 +83,8 @@ class GcsTaskManagerTest : public ::testing::Test {
 
   rpc::GetTaskEventsReply SyncGetTaskEvents(absl::flat_hash_set<TaskID> task_ids,
                                             absl::optional<JobID> job_id = absl::nullopt,
-                                            int64_t limit = -1) {
+                                            int64_t limit = -1,
+                                            bool exclude_driver = true) {
     rpc::GetTaskEventsRequest request;
     rpc::GetTaskEventsReply reply;
     std::promise<bool> promise;
@@ -102,6 +103,8 @@ class GcsTaskManagerTest : public ::testing::Test {
       request.set_limit(limit);
     }
 
+    request.set_exclude_driver(exclude_driver);
+
     task_manager->HandleGetTaskEvents(
         request,
         &reply,
@@ -115,11 +118,14 @@ class GcsTaskManagerTest : public ::testing::Test {
     return reply;
   }
 
-  static rpc::TaskInfoEntry GenTaskInfo(JobID job_id,
-                                        TaskID parent_task_id = TaskID::Nil()) {
+  static rpc::TaskInfoEntry GenTaskInfo(
+      JobID job_id,
+      TaskID parent_task_id = TaskID::Nil(),
+      rpc::TaskType task_type = rpc::TaskType::NORMAL_TASK) {
     rpc::TaskInfoEntry task_info;
     task_info.set_job_id(job_id.Binary());
     task_info.set_parent_task_id(parent_task_id.Binary());
+    task_info.set_type(task_type);
     return task_info;
   }
 
@@ -172,6 +178,8 @@ class GcsTaskManagerTest : public ::testing::Test {
 
       if (task_info.has_value()) {
         events.mutable_task_info()->CopyFrom(*task_info);
+      } else {
+        events.mutable_task_info()->CopyFrom(GenTaskInfo(JobID::FromInt(job_id)));
       }
 
       result.push_back(events);
@@ -702,6 +710,43 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
               num_status_events_to_drop + num_status_events_dropped_on_worker);
     EXPECT_EQ(task_manager->total_num_profile_task_events_dropped_,
               num_profile_events_to_drop + num_profile_events_dropped_on_worker);
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestGetTaskEventsWithDriver) {
+  // Add task events
+  auto task_ids = GenTaskIDs(1);
+  auto driver_task = task_ids[0];
+
+  // Add Driver
+  {
+    auto events = GenTaskEvents(
+        {driver_task},
+        /* attempt_number */ 0,
+        /* job_id */ 0,
+        /* profile event */ absl::nullopt,
+        /* status_update*/ absl::nullopt,
+        GenTaskInfo(
+            /* job_id */ JobID::FromInt(0), TaskID::Nil(), rpc::TaskType::DRIVER_TASK));
+    auto events_data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(events_data);
+  }
+
+  // Should get the event when including driver
+  {
+    auto reply = SyncGetTaskEvents(/* task_ids */ {},
+                                   /* job_id */ absl::nullopt,
+                                   /* limit */ -1,
+                                   /* exclude_driver*/ false);
+    EXPECT_EQ(reply.events_by_task_size(), 1);
+  }
+
+  // Default exclude driver
+  {
+    auto reply = SyncGetTaskEvents(/* task_ids */ {},
+                                   /* job_id */ absl::nullopt,
+                                   /* limit */ -1);
+    EXPECT_EQ(reply.events_by_task_size(), 0);
   }
 }
 

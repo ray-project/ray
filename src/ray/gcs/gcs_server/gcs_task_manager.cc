@@ -319,8 +319,13 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   int32_t num_profile_event_limit = 0;
   int32_t num_status_event_limit = 0;
   for (auto &task_event : task_events) {
-    if (request.exclude_driver_task() && !task_event.has_state_updates()) {
-      // Driver related profile events will generate TaskEvent w/o any task state updates.
+    if (!task_event.has_task_info()) {
+      // Skip task events w/o task info.
+      continue;
+    }
+
+    if (request.exclude_driver() &&
+        task_event.task_info().type() == rpc::TaskType::DRIVER_TASK) {
       continue;
     }
 

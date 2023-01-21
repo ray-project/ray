@@ -174,7 +174,7 @@ class StateApiClient(SubmissionClient):
                 continue
 
             option_val = getattr(options, field.name)
-            if option_val:
+            if option_val is not None:
                 options_dict[field.name] = option_val
 
         return options_dict

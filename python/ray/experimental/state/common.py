@@ -88,6 +88,8 @@ class ListApiOptions:
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
         default_factory=list
     )
+    # [only tasks] If driver tasks should be excluded. 
+    exclude_driver: bool = True
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,
@@ -99,6 +101,7 @@ class ListApiOptions:
         assert isinstance(self.limit, int)
         assert isinstance(self.timeout, int)
         assert isinstance(self.detail, bool)
+        assert isinstance(self.exclude_driver, bool)
         assert isinstance(self.filters, list) or self.filters is None, (
             "filters must be a list type. Given filters: "
             f"{self.filters} type: {type(self.filters)}. "
