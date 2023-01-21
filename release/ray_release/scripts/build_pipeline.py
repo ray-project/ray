@@ -57,7 +57,9 @@ def main(test_collection_file: Optional[str] = None):
             raise ReleaseTestCLIError(
                 f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
             ) from e
-        release_path = os.path.join(os.path.dirname(__file__), "..", "..")
+        release_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..")
+        )
         shutil.rmtree(release_path)
         shutil.copytree(
             os.path.join(tmpdir, "release"),
