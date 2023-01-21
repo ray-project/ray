@@ -805,7 +805,9 @@ async def test_api_manager_list_tasks(state_api_manager):
         )
     ]
     result = await state_api_manager.list_tasks(option=create_api_options())
-    data_source_client.get_all_task_info.assert_any_await(timeout=DEFAULT_RPC_TIMEOUT)
+    data_source_client.get_all_task_info.assert_any_await(
+        timeout=DEFAULT_RPC_TIMEOUT, exclude_driver=True
+    )
     data = result.result
     data = data
     assert len(data) == 2

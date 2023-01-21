@@ -88,7 +88,7 @@ class ListApiOptions:
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
         default_factory=list
     )
-    # [only tasks] If driver tasks should be excluded. 
+    # [only tasks] If driver tasks should be excluded.
     exclude_driver: bool = True
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
