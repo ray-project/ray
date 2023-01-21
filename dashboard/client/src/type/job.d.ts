@@ -135,36 +135,36 @@ export type StateApiJobProgressByTaskNameRsp = {
   result: boolean;
 };
 
-export type LineageSummary = {
-  lineage: string[];
+export type NestedJobProgress = {
+  name: string;
+  key: string;
   state_counts: {
     [stateName: string]: number;
   };
-  children: LineageSummary[];
+  children: NestedJobProgress[];
 };
 
-export type JobProgressByLineage = {
+export type JobProgressGroup = {
   name: string;
   key: string;
-  lineage: string[];
   progress: TaskProgress;
-  children: JobProgressByLineage[];
+  children: JobProgressGroup[];
 };
 
-export type StateApiJobProgressByLineage = {
+export type StateApiNestedJobProgress = {
   node_id_to_summary: {
     cluster: {
       summary: {
-        [taskName: string]: LineageSummary;
+        [taskName: string]: NestedJobProgress;
       };
     };
   };
 };
 
-export type StateApiJobProgressByLineageRsp = {
+export type StateApiNestedJobProgressRsp = {
   data: {
     result: {
-      result: StateApiJobProgressByLineage;
+      result: StateApiNestedJobProgress;
     };
   };
   msg: string;

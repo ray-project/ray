@@ -2,8 +2,8 @@ import {
   JobListRsp,
   JobProgressByTaskNameRsp,
   JobProgressRsp,
-  StateApiJobProgressByLineageRsp,
   StateApiJobProgressByTaskNameRsp,
+  StateApiNestedJobProgressRsp,
   UnifiedJob,
 } from "../type/job";
 import { get } from "./requestHandlers";
@@ -33,8 +33,8 @@ export const getStateApiJobProgressByTaskName = (jobId: string) => {
   );
 };
 
-export const getStateApiJobProgressByLineage = (jobId: string) => {
-  return get<StateApiJobProgressByLineageRsp>(
-    `api/v0/tasks/summarize?filter_keys=job_id&filter_predicates=%3D&filter_values=${jobId}&summary_by=lineage`,
+export const getStateApiJobProgressByLineageAndName = (jobId: string) => {
+  return get<StateApiNestedJobProgressRsp>(
+    `api/v0/tasks/summarize?filter_keys=job_id&filter_predicates=%3D&filter_values=${jobId}&summary_by=lineage_and_name`,
   );
 };

@@ -9,7 +9,7 @@ import classNames from "classnames";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { ClassNameProps } from "../../../common/props";
-import { JobProgressByLineage } from "../../../type/job";
+import { JobProgressGroup } from "../../../type/job";
 import { useJobProgressByLineage } from "../hook/useJobProgress";
 import { MiniTaskProgressBar } from "../TaskProgressBar";
 
@@ -25,10 +25,10 @@ export const AdvancedProgressBar = ({
   return (
     <Table className={className}>
       {progress ? (
-        progress.map((lineageProgress) => (
+        progress.map((group) => (
           <AdvancedProgressBarSegment
-            key={lineageProgress.key}
-            lineageProgress={lineageProgress}
+            key={group.key}
+            jobProgressGroup={group}
             // By default expand the entire top level
             startExpanded
           />
@@ -63,17 +63,23 @@ const useAdvancedProgressBarSegmentStyles = makeStyles((theme) =>
 );
 
 export type AdvancedProgressBarSegmentProps = {
-  lineageProgress: JobProgressByLineage;
+  jobProgressGroup: JobProgressGroup;
   /**
    * Whether the segment should be expanded or not.
    * Only applies to this segment and not it's children.
    */
   startExpanded?: boolean;
+  /**
+   * How nested this segment is.
+   * By default, we assume this is a top level segment.
+   */
+  nestedIndex?: number;
 };
 
 const AdvancedProgressBarSegment = ({
-  lineageProgress: { name, lineage, progress, children },
+  jobProgressGroup: { name, progress, children },
   startExpanded = false,
+  nestedIndex = 1,
 }: AdvancedProgressBarSegmentProps) => {
   const classes = useAdvancedProgressBarSegmentStyles();
 
@@ -93,14 +99,14 @@ const AdvancedProgressBarSegment = ({
               className={classNames(classes.icon, {
                 [classes.iconHidden]: children.length === 0,
               })}
-              style={{ marginLeft: 24 * lineage.length }}
+              style={{ marginLeft: 24 * nestedIndex }}
             />
           ) : (
             <RiArrowRightSLine
               className={classNames(classes.icon, {
                 [classes.iconHidden]: children.length === 0,
               })}
-              style={{ marginLeft: 24 * lineage.length }}
+              style={{ marginLeft: 24 * nestedIndex }}
             />
           )}
           {name}
@@ -111,7 +117,11 @@ const AdvancedProgressBarSegment = ({
       </TableRow>
       {expanded &&
         children.map((child) => (
-          <AdvancedProgressBarSegment key={child.key} lineageProgress={child} />
+          <AdvancedProgressBarSegment
+            key={child.key}
+            jobProgressGroup={child}
+            nestedIndex={nestedIndex + 1}
+          />
         ))}
     </React.Fragment>
   );

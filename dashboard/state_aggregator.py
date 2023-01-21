@@ -643,8 +643,10 @@ class StateAPIManager:
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
         summary_by = option.summary_by or "func_name"
-        if summary_by not in ["func_name", "lineage"]:
-            raise ValueError('summary_by must be one of "func_name" or "lineage".')
+        if summary_by not in ["func_name", "lineage_and_name", "lineage"]:
+            raise ValueError(
+                'summary_by must be one of "func_name", "lineage_and_name", "lineage".'
+            )
 
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
@@ -654,11 +656,14 @@ class StateAPIManager:
                 filters=option.filters,
             )
         )
-        summary_results = (
-            TaskSummaries.to_summary_by_func_name(tasks=result.result)
-            if summary_by == "func_name"
-            else TaskSummaries.to_summary_by_lineage(tasks=result.result)
-        )
+        if summary_by == "func_name":
+            summary_results = TaskSummaries.to_summary_by_func_name(tasks=result.result)
+        elif summary_by == "lineage_and_name":
+            summary_results = TaskSummaries.to_summary_by_lineage_and_name(
+                tasks=result.result
+            )
+        else:
+            summary_results = TaskSummaries.to_summary_by_lineage(tasks=result.result)
         summary = StateSummary(node_id_to_summary={"cluster": summary_results})
         return SummaryApiResponse(
             total=result.total,

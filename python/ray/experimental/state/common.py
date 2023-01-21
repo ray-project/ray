@@ -1,3 +1,4 @@
+import functools
 import logging
 from abc import ABC
 from dataclasses import dataclass, field, fields
@@ -717,17 +718,19 @@ class TaskSummaryPerFuncOrClassName:
 
 
 @dataclass(init=True)
-class TaskSummaryPerLineage:
+class NestedTaskSummary:
     #: The list of function names where the last item is the current function name
     #  and each item immediately before it is it's parent
-    lineage: List[str]
+    name: str
+    #: A unique identifier for this group
+    key: str
     #: The type of the class. Equivalent to protobuf TaskType.
     type: str
     #: State name to the count dict. State name is equivalent to
     #: the protobuf TaskStatus.
     state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
     #: The child
-    children: List["TaskSummaryPerLineage"] = field(default_factory=list)
+    children: List["NestedTaskSummary"] = field(default_factory=list)
 
 
 @dataclass
@@ -784,13 +787,18 @@ class TaskSummaries:
         )
 
     @classmethod
-    def to_summary_by_lineage(cls, *, tasks: List[Dict]):
+    def to_summary_by_lineage_and_name(cls, *, tasks: List[Dict]):
+        """
+        This summarizes tasks by both lineage and name. By default a task's name
+        is its func_name.
+        i.e. A task will be grouped with another task if they have the same name
+        and all their parents have the same name.
+        """
         # NOTE: The argument tasks contains a list of dictionary
         # that have the same k/v as TaskState.
 
         tasks_by_id = {}
-        lineage_by_task_id: Dict[str, TaskSummaryPerLineage] = {}
-        lineage_by_key = {}
+        task_group_by_key = {}
         summary = {}
         total_tasks = 0
         total_actor_tasks = 0
@@ -802,6 +810,7 @@ class TaskSummaries:
         for task in tasks:
             tasks_by_id[task["task_id"]] = task
 
+        @functools.lru_cache
         def find_lineage(task) -> List[str]:
             # Use name first which allows users to customize the name of
             # their remote function call using the name option.
@@ -809,46 +818,42 @@ class TaskSummaries:
             parent_task_id = task["parent_task_id"]
             if parent_task_id.startswith(DRIVER_TASK_ID_PREFIX):
                 return [func_name]
-            elif parent_task_id in lineage_by_task_id:
-                parent_lineage_summary = lineage_by_task_id[parent_task_id]
-                return [*(parent_lineage_summary.lineage), func_name]
             else:
                 parent_lineage = find_lineage(tasks_by_id[parent_task_id])
                 return [*parent_lineage, func_name]
 
         def create_empty_summary(lineage, key, task):
-            lineage_by_key[key] = TaskSummaryPerLineage(
-                lineage=lineage,
+            task_group_by_key[key] = NestedTaskSummary(
+                name=lineage[-1],
+                key=key,
                 type=task["type"],
             )
             # Set summary in right place under parent
             if len(lineage) == 1:
-                summary[key] = lineage_by_key[key]
+                summary[key] = task_group_by_key[key]
             else:
                 parent_lineage = lineage[0:-1]
                 parent_key = ",".join(parent_lineage)
-                if parent_key not in lineage_by_key:
+                if parent_key not in task_group_by_key:
                     parent_task = tasks_by_id[task["parent_task_id"]]
                     create_empty_summary(parent_lineage, parent_key, parent_task)
 
-                parent_lineage_summary = lineage_by_key[parent_key]
-                parent_lineage_summary.children.append(lineage_by_key[key])
+                parent_task_group = task_group_by_key[parent_key]
+                parent_task_group.children.append(task_group_by_key[key])
 
         for task in tasks:
             lineage = find_lineage(task)
             key = ",".join(lineage)
 
-            if key not in lineage_by_key:
+            if key not in task_group_by_key:
                 create_empty_summary(lineage, key, task)
 
-            lineage_summary = lineage_by_key[key]
+            task_group = task_group_by_key[key]
 
             state = task["scheduling_state"]
-            if state not in lineage_summary.state_counts:
-                lineage_summary.state_counts[state] = 0
-            lineage_summary.state_counts[state] += 1
-
-            lineage_by_task_id[task["task_id"]] = lineage_summary
+            if state not in task_group.state_counts:
+                task_group.state_counts[state] = 0
+            task_group.state_counts[state] += 1
 
             type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
             if type_enum == TaskType.NORMAL_TASK:
@@ -858,19 +863,20 @@ class TaskSummaries:
             elif type_enum == TaskType.ACTOR_TASK:
                 total_actor_tasks += 1
 
-        def calc_total_for_lineage(
-            lineage_summary: TaskSummaryPerLineage,
-        ) -> TaskSummaryPerLineage:
-            for child in lineage_summary.children:
-                totaled = calc_total_for_lineage(child)
+        def calc_total_for_task_group(
+            task_group: NestedTaskSummary,
+        ) -> NestedTaskSummary:
+            for child in task_group.children:
+                totaled = calc_total_for_task_group(child)
                 for state, count in totaled.state_counts.items():
-                    lineage_summary.state_counts[state] = (
-                        lineage_summary.state_counts.get(state, 0) + count
+                    task_group.state_counts[state] = (
+                        task_group.state_counts.get(state, 0) + count
                     )
-            return lineage_summary
+            return task_group
 
         totaled_summary = {
-            key: calc_total_for_lineage(lineage) for key, lineage in summary.items()
+            key: calc_total_for_task_group(task_group)
+            for key, task_group in summary.items()
         }
 
         return TaskSummaries(
@@ -880,6 +886,90 @@ class TaskSummaries:
             total_actor_scheduled=total_actor_scheduled,
             summary_by="lineage",
         )
+
+    # @classmethod
+    # def to_summary_by_lineage(cls, *, tasks: List[Dict]):
+    #     """
+    #     This summarizes tasks by both lineage and name. By default a task's name
+    #     is its func_name.
+    #     i.e. A task will be grouped with another task if they have the same name
+    #     and all their parents have the same name.
+    #     """
+    #     # NOTE: The argument tasks contains a list of dictionary
+    #     # that have the same k/v as TaskState.
+
+    #     tasks_by_id = {}
+    #     task_summaries_by_id: Dict[str, NestedTaskSummary] = {}
+    #     lineage_by_key = {}
+    #     summary = {}
+    #     total_tasks = 0
+    #     total_actor_tasks = 0
+    #     total_actor_scheduled = 0
+
+    #     # We cannot assume that a parent task always comes before the child task
+    #     # So we need to keep track of all tasks by ids so we can quickly find the
+    #     # parent.
+    #     for task in tasks:
+    #         tasks_by_id[task["task_id"]] = task
+
+    #     def create_empty_summary(name, key, task):
+    #         task_summaries_by_id[key] = NestedTaskSummary(
+    #             name=name,
+    #             type=task["type"],
+    #         )
+    #         parent_task_id= task["parent_task_id"]
+    #         parent_task = tasks_by_id[parent_task_id]
+    #         if parent_task_id.startswith(DRIVER_TASK_ID_PREFIX):
+    #             summary[key] = lineage_by_key[key]
+    #         else:
+    #             if parent_task_id not in task_summaries_by_id:
+    #                 parent_task = tasks_by_id[parent_task_id]
+    #                 create_empty_summary(parent_task["name"], parent_key,
+    #                                      parent_task)
+
+    #             parent_summary = task_summaries_by_id[parent_task_id]
+    #             parent_summary.children.append(lineage_by_key[key])
+
+    #     for task in tasks:
+    #         create_empty_summary(task["name"], key, task)
+
+    #         lineage_summary = lineage_by_key[key]
+
+    #         state = task["scheduling_state"]
+    #         if state not in lineage_summary.state_counts:
+    #             lineage_summary.state_counts[state] = 0
+    #         lineage_summary.state_counts[state] += 1
+
+    #         lineage_by_task_id[task["task_id"]] = lineage_summary
+
+    #         type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
+    #         if type_enum == TaskType.NORMAL_TASK:
+    #             total_tasks += 1
+    #         elif type_enum == TaskType.ACTOR_CREATION_TASK:
+    #             total_actor_scheduled += 1
+    #         elif type_enum == TaskType.ACTOR_TASK:
+    #             total_actor_tasks += 1
+
+    #     def calc_total_for_lineage(lineage_summary: NestedTaskSummary) -> NestedTaskSummary:
+    #         for child in lineage_summary.children:
+    #             totaled = calc_total_for_lineage(child)
+    #             for state, count in totaled.state_counts.items():
+    #                 lineage_summary.state_counts[state] = (
+    #                     lineage_summary.state_counts.get(state, 0) + count)
+    #         return lineage_summary
+
+    #     totaled_summary = {
+    #         key: calc_total_for_lineage(lineage)
+    #         for key, lineage in summary.items()
+    #     }
+
+    #     return TaskSummaries(
+    #         summary=totaled_summary,
+    #         total_tasks=total_tasks,
+    #         total_actor_tasks=total_actor_tasks,
+    #         total_actor_scheduled=total_actor_scheduled,
+    #         summary_by="lineage",
+    #     )
 
 
 @dataclass(init=True)

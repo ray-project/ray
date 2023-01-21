@@ -3,14 +3,14 @@ import { useState } from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import {
-  getStateApiJobProgressByLineage,
+  getStateApiJobProgressByLineageAndName,
   getStateApiJobProgressByTaskName,
 } from "../../../service/job";
 import {
-  JobProgressByLineage,
-  LineageSummary,
-  StateApiJobProgressByLineage,
+  JobProgressGroup,
+  NestedJobProgress,
   StateApiJobProgressByTaskName,
+  StateApiNestedJobProgress,
   TaskProgress,
 } from "../../../type/job";
 import { TypeTaskStatus } from "../../../type/task";
@@ -186,32 +186,26 @@ export const formatSummaryToTaskProgress = (
   return formattedTasks;
 };
 
-const formatLineageSummaryToTaskProgress = (
-  lineageSummary: LineageSummary,
-): JobProgressByLineage => {
+const formatToJobProgressGroup = (
+  nestedJobProgress: NestedJobProgress,
+): JobProgressGroup => {
   const formattedProgress = formatStateCountsToProgress(
-    lineageSummary.state_counts,
+    nestedJobProgress.state_counts,
   );
-  const name = lineageSummary.lineage.at(-1);
-  if (name === undefined) {
-    throw new Error("Unexpected empty lineage from API");
-  }
+
   return {
-    name,
-    key: lineageSummary.lineage.join(","),
-    lineage: lineageSummary.lineage,
+    name: nestedJobProgress.name,
+    key: nestedJobProgress.key,
     progress: formattedProgress,
-    children: lineageSummary.children.map(formatLineageSummaryToTaskProgress),
+    children: nestedJobProgress.children.map(formatToJobProgressGroup),
   };
 };
 
-export const formatLineageSummariesToTaskProgress = (
-  summary: StateApiJobProgressByLineage,
+export const formatNestedJobProgressToJobProgressGroup = (
+  summary: StateApiNestedJobProgress,
 ) => {
   const tasks = summary.node_id_to_summary.cluster.summary;
-  const formattedTasks = Object.values(tasks).map(
-    formatLineageSummaryToTaskProgress,
-  );
+  const formattedTasks = Object.values(tasks).map(formatToJobProgressGroup);
 
   return formattedTasks;
 };
@@ -235,11 +229,11 @@ export const useJobProgressByLineage = (jobId: string) => {
   const { data: tasks } = useSWR(
     jobId ? ["useJobProgressByLineage", jobId] : null,
     async (_, jobId) => {
-      const rsp = await getStateApiJobProgressByLineage(jobId);
+      const rsp = await getStateApiJobProgressByLineageAndName(jobId);
       setMsg(rsp.data.msg);
 
       if (rsp.data.result) {
-        return formatLineageSummariesToTaskProgress(
+        return formatNestedJobProgressToJobProgressGroup(
           rsp.data.data.result.result,
         );
       } else {
