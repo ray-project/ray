@@ -125,7 +125,6 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     ray.get(signal2.send.remote())
 
 
-@pytest.mark.skipif(True, reason="run_function_on_all_workers doesn't work")
 def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
     p = error_pubsub
 
