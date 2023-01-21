@@ -327,6 +327,8 @@
     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
     type: job
 
+    wait_for_nodes:
+        num_nodes: 4
 
   alert: default
 
