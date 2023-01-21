@@ -38,7 +38,7 @@ fi
 
 
 while [ not $status = "Running" ]
-    do 
+    do
         echo "Waiting for tailscale to start..."
         status="$(tailscale status -json | jq -r .BackendState)"
 done
@@ -63,11 +63,11 @@ ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-hos
             -Cnode.master=true \
             -Cnode.data=true \
             -Cnode.store.allow_mmap=false \
-            -Cdiscovery.seed_hosts=nexus:4300 \
+            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 \
             -Ccluster.initial_master_nodes=nexus \
             -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false &
-            
+
 
 else
 
@@ -76,11 +76,11 @@ ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-
 /crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
             -Cnode.data=true \
             -Cnode.store.allow_mmap=false \
-            -Cdiscovery.seed_hosts=nexus:4300 \
+            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 \
             -Ccluster.initial_master_nodes=nexus \
             -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false &
-            
+
 fi
 
 
@@ -112,4 +112,3 @@ do
    #sleep 1000 - Doesn't work with sleep. Not sure why.
    tail -f /dev/null & wait ${!}
 done
-
