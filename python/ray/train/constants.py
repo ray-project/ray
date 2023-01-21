@@ -72,7 +72,7 @@ DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
 # Use ethernet when possible.
 # NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
 # "en".
-DEFAULT_NCCL_SOCKET_IFNAME = "en,eth,bond"
+DEFAULT_NCCL_SOCKET_IFNAME = "^lo,docker,vethc"
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata
 CHECKPOINT_METADATA_KEY = "checkpoint_metadata"
