@@ -293,7 +293,7 @@ def run_release_test(
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
 
         if isinstance(command_runner, AnyscaleJobRunner):
-            command_runner.wait_for_nodes(num_nodes, cluster_timeout)
+            command_runner.wait_for_nodes(0, cluster_timeout)
 
         prepare_cmd = test["run"].get("prepare", None)
         if prepare_cmd:
