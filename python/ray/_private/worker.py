@@ -2097,7 +2097,7 @@ def connect(
             " and will be removed in the future."
         )
 
-    # Setup import thread, but defer the start up of 
+    # Setup import thread, but defer the start up of
     # import thread until job_config is initialized.
     # (python/ray/_raylet.pyx maybe_initialize_job_config)
     if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
