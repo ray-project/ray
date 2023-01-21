@@ -57,10 +57,11 @@ def main(test_collection_file: Optional[str] = None):
             raise ReleaseTestCLIError(
                 f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
             ) from e
+        release_path = os.path.join(os.path.dirname(__file__), "..", "..")
+        shutil.rmtree(release_path)
         shutil.copytree(
             os.path.join(tmpdir, "release"),
-            os.path.join(os.path.dirname(__file__), "..", ".."),
-            dirs_exist_ok=True,
+            release_path,
         )
         for module in sys.modules.values():
             if module.startswith("ray_release"):
