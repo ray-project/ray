@@ -135,8 +135,7 @@
 					"enum": [
 						"sdk",
 						"client",
-						"job",
-						"anyscale_job"
+						"job"
 					]
 				},
 				"wait_for_nodes": {
