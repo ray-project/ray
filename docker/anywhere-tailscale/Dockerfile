@@ -19,12 +19,13 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         CRATE_HEAP_SIZE=4G \
         CRATE_HOME=/crate/bin/ \
         CRATE_USE_IPV4=true \
-        DISABLE_IPV6=true
+        DISABLE_IPV6=true \
+        IPv6=false
 #        TS_STATEDIR="/data/tailscale/" \
 #        TS_STATE="tailscaled.state" \
 
 RUN sudo apt update \
-        && sudo apt install -y --no-install-recommends ca-certificates curl bc wget jq lsb-release \ 
+        && sudo apt install -y --no-install-recommends ca-certificates curl bc wget jq lsb-release \
         && sudo apt clean \
         && sudo rm -rf /var/lib/apt/lists/*
 
