@@ -322,6 +322,7 @@ class BatchPredictor:
             if override_prep is not None
             else predict_stage_batch_format,
             batch_size=batch_size,
+            prefetch_batches=int(num_gpus_per_worker > 0),
             fn_constructor_kwargs={"override_prep": override_prep},
             **ray_remote_args,
         )
