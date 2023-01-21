@@ -282,6 +282,7 @@ def run_release_test(
         command_runner.prepare_remote_env()
 
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
+
         if wait_for_nodes:
             buildkite_group(":stopwatch: Waiting for nodes to come up")
             # Overwrite wait_timeout from above to account for better default
@@ -290,6 +291,9 @@ def run_release_test(
             )
             num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
+
+        if isinstance(command_runner, AnyscaleJobRunner):
+            command_runner.wait_for_nodes(num_nodes, cluster_timeout)
 
         prepare_cmd = test["run"].get("prepare", None)
         if prepare_cmd:

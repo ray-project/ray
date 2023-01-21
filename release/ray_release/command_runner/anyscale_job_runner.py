@@ -70,7 +70,7 @@ class AnyscaleJobRunner(JobRunner):
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Handled by Anyscale
-        self.job_manager.wait_for_nodes_timeout = timeout
+        self.job_manager.wait_for_nodes_timeout += timeout
         return
 
     def save_metrics(self, start_time: float, timeout: float = 900):

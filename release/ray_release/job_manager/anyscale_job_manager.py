@@ -151,6 +151,7 @@ class AnyscaleJobManager:
                 HaJobStates.RUNNING,
                 HaJobStates.ERRORED,
             }:
+                logger.info(f"... job started ...({int(now - start_time)} seconds) ...")
                 job_running = True
                 if self.wait_for_nodes_timeout > 0:
                     timeout_at = now + timeout
