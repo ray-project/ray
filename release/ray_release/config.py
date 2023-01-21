@@ -25,7 +25,7 @@ DEFAULT_WAIT_FOR_NODES_TIMEOUT = 3000
 
 DEFAULT_CLOUD_ID = DeferredEnvVar(
     "RELEASE_DEFAULT_CLOUD_ID",
-    "cld_4F7k8814aZzGG8TNUGPKnc",
+    "cld_kvedZWag2qA8i5BjxUevf5i7",  # anyscale_v2_default_cloud
 )
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
@@ -67,12 +67,12 @@ def validate_release_test_collection(test_collection: List[Test]):
 
     num_errors = 0
     for test in test_collection:
-        # error = validate_test(test, schema)
-        # if error:
-        #     logger.error(
-        #         f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
-        #     )
-        #     num_errors += 1
+        error = validate_test(test, schema)
+        if error:
+            logger.error(
+                f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
+            )
+            num_errors += 1
 
         error = validate_test_cluster_compute(test)
         if error:
