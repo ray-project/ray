@@ -55,8 +55,6 @@ class TorchConfig(BackendConfig):
 def _set_nccl_network_interface() -> str:
     """Set the appropriate NCCL network interface to use."""
 
-    os.environ["NCCL_DEBUG"] = "INFO"
-
     if "NCCL_SOCKET_IFNAME" not in os.environ:
         logger.debug(
             f"Setting NCCL_SOCKET_IFNAME to {DEFAULT_NCCL_SOCKET_IFNAME} "
