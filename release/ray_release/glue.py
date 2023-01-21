@@ -6,8 +6,10 @@ from ray_release.alerts.handle import handle_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
+from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.client_runner import ClientRunner
 from ray_release.command_runner.job_runner import JobRunner
+from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner
 from ray_release.config import (
     Test,
@@ -48,6 +50,7 @@ type_str_to_command_runner = {
     "command": SDKRunner,
     "sdk_command": SDKRunner,
     "job": JobRunner,
+    "anyscale_job": AnyscaleJobRunner,
     "client": ClientRunner,
 }
 
@@ -55,22 +58,25 @@ command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
     ClientRunner: FullClusterManager,
     JobRunner: FullClusterManager,
+    AnyscaleJobRunner: MinimalClusterManager,
 }
 
 file_manager_str_to_file_manager = {
     "sdk": SessionControllerFileManager,
     "client": RemoteTaskFileManager,
     "job": JobFileManager,
+    "anyscale_job": JobFileManager,
 }
 
 command_runner_to_file_manager = {
     SDKRunner: JobFileManager,  # Use job file manager per default
     ClientRunner: RemoteTaskFileManager,
     JobRunner: JobFileManager,
+    AnyscaleJobRunner: JobFileManager,
 }
 
 
-DEFAULT_RUN_TYPE = "sdk_command"
+DEFAULT_RUN_TYPE = "anyscale_job"
 
 
 def _get_extra_tags_from_env() -> dict:
@@ -264,8 +270,9 @@ def run_release_test(
 
             cluster_manager.build_configs(timeout=build_timeout)
 
-            buildkite_group(":rocket: Starting up cluster")
-            cluster_manager.start_cluster(timeout=cluster_timeout)
+            if isinstance(cluster_manager, FullClusterManager):
+                buildkite_group(":rocket: Starting up cluster")
+                cluster_manager.start_cluster(timeout=cluster_timeout)
 
         result.cluster_url = cluster_manager.get_cluster_url()
         result.cluster_id = cluster_manager.cluster_id
@@ -275,6 +282,7 @@ def run_release_test(
         command_runner.prepare_remote_env()
 
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
+
         if wait_for_nodes:
             buildkite_group(":stopwatch: Waiting for nodes to come up")
             # Overwrite wait_timeout from above to account for better default
@@ -283,6 +291,9 @@ def run_release_test(
             )
             num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
+
+        if isinstance(command_runner, AnyscaleJobRunner):
+            command_runner.wait_for_nodes(0, cluster_timeout)
 
         prepare_cmd = test["run"].get("prepare", None)
         if prepare_cmd:
@@ -332,6 +343,7 @@ def run_release_test(
             )
 
         try:
+            # Logic duplicated in ray_release/command_runner/_anyscale_job_wrapper.sh
             # Timeout is the time the test took divided by 200
             # (~7 minutes for a 24h test) but no less than 30s
             # and no more than 900s
@@ -362,12 +374,15 @@ def run_release_test(
 
     result.last_logs = last_logs
 
-    if not no_terminate:
+    if not no_terminate and isinstance(cluster_manager, FullClusterManager):
         buildkite_group(":earth_africa: Terminating cluster")
         try:
             cluster_manager.terminate_cluster(wait=False)
         except Exception as e:
             logger.error(f"Could not terminate cluster: {e}")
+
+    if hasattr(command_runner, "cleanup"):
+        command_runner.cleanup()
 
     time_taken = time.monotonic() - start_time
     result.runtime = time_taken

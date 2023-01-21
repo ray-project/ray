@@ -126,7 +126,8 @@
 						"command",
 						"sdk_command",
 						"job",
-						"client"
+						"client",
+						"anyscale_job"
 					]
 				},
 				"file_manager": {

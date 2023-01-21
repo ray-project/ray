@@ -139,3 +139,11 @@ class LogsError(CommandError):
 
 class ResultsAlert(CommandError):
     exit_code = ExitCode.COMMAND_ALERT
+
+
+class JobBrokenError(ReleaseTestError):
+    exit_code = ExitCode.JOB_BROKEN_ERROR
+
+
+class JobTerminatedError(ReleaseTestError):
+    exit_code = ExitCode.CLUSTER_WAIT_TIMEOUT

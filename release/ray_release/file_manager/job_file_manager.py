@@ -1,8 +1,5 @@
 import os
-import random
 import shutil
-import string
-import sys
 import tempfile
 from typing import Optional
 
@@ -13,21 +10,17 @@ from ray_release.exception import FileDownloadError, FileUploadError
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
 from ray_release.logger import logger
-from ray_release.util import exponential_backoff_retry
+from ray_release.util import exponential_backoff_retry, generate_tmp_s3_path
 
 
 class JobFileManager(FileManager):
     def __init__(self, cluster_manager: ClusterManager):
-        import anyscale
-
         super(JobFileManager, self).__init__(cluster_manager=cluster_manager)
 
         self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client("s3")
         self.bucket = str(RELEASE_AWS_BUCKET)
         self.job_manager = JobManager(cluster_manager)
-
-        sys.path.insert(0, f"{anyscale.ANYSCALE_RAY_DIR}/bin")
 
     def _run_with_retry(self, f, initial_retry_delay_s: int = 10):
         assert callable(f)
@@ -39,9 +32,23 @@ class JobFileManager(FileManager):
         )
 
     def _generate_tmp_s3_path(self):
-        fn = "".join(random.choice(string.ascii_lowercase) for i in range(10))
-        location = f"tmp/{fn}"
+        location = f"tmp/{generate_tmp_s3_path()}"
         return location
+
+    def download_from_s3(
+        self, key: str, target: str, delete_after_download: bool = False
+    ):
+        # s3 -> local target
+        self._run_with_retry(
+            lambda: self.s3_client.download_file(
+                Bucket=self.bucket,
+                Key=key,
+                Filename=target,
+            )
+        )
+
+        if delete_after_download:
+            self.delete(target)
 
     def download(self, source: str, target: str):
         # Attention: Only works for single files at the moment
@@ -62,21 +69,7 @@ class JobFileManager(FileManager):
         if retcode != 0:
             raise FileDownloadError(f"Error downloading file {source} to {target}")
 
-        # s3 -> local target
-        self._run_with_retry(
-            lambda: self.s3_client.download_file(
-                Bucket=self.bucket,
-                Key=remote_upload_to,
-                Filename=target,
-            )
-        )
-
-        self._run_with_retry(
-            lambda: self.s3_client.delete_object(
-                Bucket=self.bucket, Key=remote_upload_to
-            ),
-            initial_retry_delay_s=2,
-        )
+        self.download_from_s3(remote_upload_to, target, delete_after_download=True)
 
     def _push_local_dir(self):
         remote_upload_to = self._generate_tmp_s3_path()
@@ -146,11 +139,12 @@ class JobFileManager(FileManager):
         if retcode != 0:
             raise FileUploadError(f"Error uploading file {source} to {target}")
 
+        self.delete(remote_upload_to)
+
+    def delete(self, target: str):
         try:
             self._run_with_retry(
-                lambda: self.s3_client.delete_object(
-                    Bucket=self.bucket, Key=remote_upload_to
-                ),
+                lambda: self.s3_client.delete_object(Bucket=self.bucket, Key=target),
                 initial_retry_delay_s=2,
             )
         except Exception as e:

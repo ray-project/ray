@@ -49,7 +49,7 @@
 #    # Type of test. Can be job, sdk_command or client.
 #    # Uses either Ray jobs, anyscale SDK commands or the Ray client to run the actual
 #    # release test.
-#    type: job
+#    type: anyscale_job
 #
 #    # File manager to use to transfer files to and from the cluster.
 #    # Can be any of [sdk, client, job].
@@ -114,7 +114,7 @@
     script: python workloads/tune_scale_up_down.py
     wait_for_nodes:
       num_nodes: 0
-    type: job
+    type: anyscale_job
 
   alert: default
 
@@ -140,7 +140,7 @@
     long_running: true
     wait_for_nodes:
       num_nodes: 2
-    type: job
+    type: anyscale_job
 
 
   smoke_test:
@@ -170,7 +170,7 @@
 
     wait_for_nodes:
       num_nodes: 20
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -194,7 +194,7 @@
 
     wait_for_nodes:
       num_nodes: 11
-    type: job
+    type: anyscale_job
 
 
   smoke_test:
@@ -224,7 +224,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -248,7 +248,7 @@
     wait_for_nodes:
       num_nodes: 4
 
-    type: job
+    type: anyscale_job
 
   smoke_test:
     frequency: nightly
@@ -281,7 +281,7 @@
   run:
     timeout: 3600
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -302,7 +302,7 @@
   run:
     timeout: 3600
     script: python workloads/gpu_batch_prediction.py --data-size-gb 20
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -325,7 +325,7 @@
   run:
     timeout: 10800
     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
-    type: job
+    type: anyscale_job
 
     wait_for_nodes:
         num_nodes: 4
@@ -351,7 +351,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -375,7 +375,7 @@
 
     wait_for_nodes:
       num_nodes: 8
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -398,7 +398,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -422,7 +422,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -443,7 +443,7 @@
   run:
     timeout: 5400
     script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -466,7 +466,7 @@
   run:
     timeout: 5400
     script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
-    type: job
+    type: anyscale_job
 
     wait_for_nodes:
       num_nodes: 4
@@ -495,7 +495,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   smoke_test:
@@ -528,7 +528,7 @@
   run:
     timeout: 3600
     script: python workloads/pytorch_training_e2e.py --data-size-gb 20
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -554,7 +554,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -668,7 +668,7 @@
 
     wait_for_nodes:
       num_nodes: 32
-    type: job
+    type: anyscale_job
 
 
   alert: xgboost_tests
@@ -695,7 +695,7 @@
 
     wait_for_nodes:
       num_nodes: 5
-    type: job
+    type: anyscale_job
 
 
   alert: xgboost_tests
@@ -721,7 +721,7 @@
     script: python workloads/distributed_api_test.py
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   alert: xgboost_tests
@@ -748,7 +748,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   alert: xgboost_tests
@@ -775,7 +775,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   alert: xgboost_tests
@@ -802,7 +802,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   alert: xgboost_tests
@@ -829,7 +829,7 @@
 
     wait_for_nodes:
       num_nodes: 32
-    type: job
+    type: anyscale_job
 
 
   alert: xgboost_tests
@@ -856,7 +856,7 @@
 
     wait_for_nodes:
       num_nodes: 32
-    type: job
+    type: anyscale_job
 
 
   alert: xgboost_tests
@@ -911,7 +911,7 @@
     script: python workloads/train_moderate.py
     wait_for_nodes:
       num_nodes: 32
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -938,7 +938,7 @@
 
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -962,7 +962,7 @@
   run:
     timeout: 900
     script: python workloads/ft_small_non_elastic.py
-    type: job
+    type: anyscale_job
 
     wait_for_nodes:
       num_nodes: 4
@@ -991,7 +991,7 @@
     script: python workloads/tune_small.py
     wait_for_nodes:
       num_nodes: 4
-    type: job
+    type: anyscale_job
 
   alert: default
 
@@ -1016,7 +1016,7 @@
     script: python workloads/tune_16x4.py
     wait_for_nodes:
       num_nodes: 32
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -1042,7 +1042,7 @@
     script: python workloads/tune_4x16.py
     wait_for_nodes:
       num_nodes: 32
-    type: job
+    type: anyscale_job
 
 
   alert: default
@@ -1543,7 +1543,7 @@
   run:
     timeout: 1200
     script: python workloads/test_bookkeeping_overhead.py
-    type: job
+    type: anyscale_job
 
   alert: tune_tests
 
@@ -1568,7 +1568,7 @@
     script: python workloads/test_durable_trainable.py --bucket tune-cloud-tests
     wait_for_nodes:
       num_nodes: 16
-    type: job
+    type: anyscale_job
 
 
   alert: tune_tests
@@ -1593,7 +1593,7 @@
     timeout: 86400
     script: python workloads/test_long_running_large_checkpoints.py
     long_running: true
-    type: job
+    type: anyscale_job
 
   smoke_test:
     frequency: nightly
@@ -1624,7 +1624,7 @@
     script: python workloads/test_network_overhead.py
     wait_for_nodes:
       num_nodes: 100
-    type: job
+    type: anyscale_job
 
   smoke_test:
     frequency: nightly
@@ -1663,7 +1663,7 @@
     wait_for_nodes:
       num_nodes: 16
 
-    type: job
+    type: anyscale_job
 
   alert: tune_tests
 
@@ -1686,7 +1686,7 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
-    type: job
+    type: anyscale_job
 
   alert: tune_tests
 
@@ -1713,7 +1713,7 @@
     wait_for_nodes:
       num_nodes: 16
 
-    type: job
+    type: anyscale_job
 
 
   alert: tune_tests
@@ -2168,6 +2168,7 @@
     script: python workloads/jobs_basic.py --working-dir "workloads"
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: default
@@ -2192,6 +2193,7 @@
     script: python workloads/jobs_basic.py --working-dir "https://github.com/anyscale/job-services-cuj-examples/archive/refs/heads/main.zip"
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: default
@@ -2249,6 +2251,7 @@
     script: python workloads/jobs_specify_num_gpus.py --working-dir "workloads"
     wait_for_nodes:
       num_nodes: 2
+    type: job
 
 
 ########################
