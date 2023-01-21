@@ -26,6 +26,7 @@ class AnyscaleJobManager:
         self.counter = 0
         self.cluster_manager = cluster_manager
         self._last_logs = None
+        self.wait_for_nodes_timeout = 0
 
     def _run_job(
         self,
@@ -120,8 +121,12 @@ class AnyscaleJobManager:
 
     def _wait_job(self, timeout: int):
         start_time = time.monotonic()
-        timeout_at = start_time + timeout
+        if self.wait_for_nodes_timeout > 0:
+            timeout_at = start_time + self.wait_for_nodes_timeout
+        else:
+            timeout_at = start_time + timeout
         next_status = start_time + 30
+        job_running = False
 
         while True:
             now = time.monotonic()
@@ -131,14 +136,28 @@ class AnyscaleJobManager:
                 raise CommandTimeout(f"Job timed out after {timeout} seconds.")
 
             if now >= next_status:
-                logger.info(
-                    f"... job still running ..."
-                    f"({int(now - start_time)} seconds) ..."
-                )
+                if job_running:
+                    msg = "... job still running ..."
+                else:
+                    msg = "... job not yet running ..."
+                logger.info(f"{msg}({int(now - start_time)} seconds) ...")
                 next_status += 30
+
             result = self._get_job_status_with_retry()
             self.last_job_result = result
             status = self.last_job_status
+
+            if not job_running and status in {
+                HaJobStates.RUNNING,
+                HaJobStates.ERRORED,
+            }:
+                job_running = True
+                if self.wait_for_nodes_timeout > 0:
+                    timeout_at = now + timeout
+
+            if status == HaJobStates.ERRORED:
+                self._get_last_logs()
+
             if status in {
                 HaJobStates.SUCCESS,
                 HaJobStates.TERMINATED,
@@ -148,6 +167,7 @@ class AnyscaleJobManager:
                 self._get_last_logs()
                 break
             time.sleep(1)
+
         result = self._get_job_status_with_retry()
         self.last_job_result = result
         status = self.last_job_status
@@ -155,6 +175,8 @@ class AnyscaleJobManager:
             retcode = 0
         elif status == HaJobStates.BROKEN:
             retcode = -2
+        elif status == HaJobStates.TERMINATED:
+            retcode = -3
         else:
             retcode = -1
         error = result.state.error
@@ -182,7 +204,8 @@ class AnyscaleJobManager:
                 ]
             )
         except Exception as e:
-            self._last_logs = e
+            if not self._last_logs:
+                self._last_logs = e
         return self._last_logs
 
     def get_last_logs(self):

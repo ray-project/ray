@@ -10,6 +10,7 @@ from ray_release.exception import (
     JobBrokenError,
     LogsError,
     ResultsError,
+    JobTerminatedError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager import AnyscaleJobManager
@@ -69,6 +70,7 @@ class AnyscaleJobRunner(JobRunner):
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Handled by Anyscale
+        self.job_manager.wait_for_nodes_timeout = timeout
         return
 
     def save_metrics(self, start_time: float, timeout: float = 900):
@@ -99,6 +101,12 @@ class AnyscaleJobRunner(JobRunner):
 
         if status_code == -2:
             raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
+
+        if status_code == -3:
+            raise JobTerminatedError(
+                "Job entered terminated state (terminated manually or nodes "
+                "could not have been provisioned):\n{error}\n"
+            )
 
         if status_code != 0:
             raise CommandError(

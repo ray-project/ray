@@ -143,3 +143,7 @@ class ResultsAlert(CommandError):
 
 class JobBrokenError(ReleaseTestError):
     exit_code = ExitCode.JOB_BROKEN_ERROR
+
+
+class JobTerminatedError(ReleaseTestError):
+    exit_code = ExitCode.CLUSTER_WAIT_TIMEOUT
