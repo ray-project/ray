@@ -65,8 +65,6 @@ def validate_release_test_collection(test_collection: List[Test]):
             f"Could not load release test validation schema: {e}"
         ) from e
 
-    schema["definitions"]["Run"]["properties"]["type"]["enum"].append("anyscale_job")
-
     num_errors = 0
     for test in test_collection:
         error = validate_test(test, schema)
