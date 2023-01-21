@@ -765,7 +765,7 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
   // This is a workaround to finish driver registration after all initial workers are
   // registered to Raylet if and only if Raylet is started by a Python driver and the
   // job config is not set in `ray.init(...)`.
-  if (worker->GetAssignedJobId().IsNil() && worker_type == rpc::WorkerType::WORKER &&
+  if (worker_type == rpc::WorkerType::WORKER &&
       worker->GetLanguage() == Language::PYTHON) {
     if (++first_job_registered_python_worker_count_ ==
         first_job_driver_wait_num_python_workers_) {
