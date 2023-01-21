@@ -8,7 +8,7 @@ set -x
 start_time=$(date +%s)
 
 # 1. Run the test workload
-$1
+eval "$1"
 return_code=$?
 
 end_time=$(date +%s)
