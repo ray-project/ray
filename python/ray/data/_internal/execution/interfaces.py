@@ -217,7 +217,7 @@ class PhysicalOperator(Operator):
         obj_store_mem_allocated, obj_store_mem_freed.
         """
         return {}
-    
+
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
         For example, `<N> actors` to show current number of actors in an actor pool.

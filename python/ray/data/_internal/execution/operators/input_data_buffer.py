@@ -2,6 +2,7 @@ from typing import Callable, List, Optional
 
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
     RefBundle,
     PhysicalOperator,
 )
@@ -37,35 +38,27 @@ class InputDataBuffer(PhysicalOperator):
             self._is_input_initialized = False
         super().__init__("Input", [])
 
-    def has_next(self) -> bool:
+    def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:
-            self._initialize_input()
+            self._input_data = self._input_data_factory()
+            self._is_input_initialized = True
+            self._initialize_metadata()
+        super().start(options)
+
+    def has_next(self) -> bool:
         return len(self._input_data) > 0
 
     def get_next(self) -> RefBundle:
-        if not self._is_input_initialized:
-            self._initialize_input()
         return self._input_data.pop(0)
 
     def num_outputs_total(self) -> Optional[int]:
-        if not self._is_input_initialized:
-            self._initialize_input()
         return self._num_outputs
 
     def get_stats(self) -> StatsDict:
-        if not self._is_input_initialized:
-            self._initialize_input()
         return {}
 
     def add_input(self, refs, input_index) -> None:
         raise ValueError("Inputs are not allowed for this operator.")
-
-    def _initialize_input(self):
-        # TODO: call _initialize_input() from start() only.
-        assert not self._is_input_initialized
-        self._input_data = self._input_data_factory()
-        self._is_input_initialized = True
-        self._initialize_metadata()
 
     def _initialize_metadata(self):
         assert self._input_data is not None and self._is_input_initialized
