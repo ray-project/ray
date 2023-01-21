@@ -25,6 +25,7 @@ class AnyscaleJobManager:
         self.start_time = None
         self.counter = 0
         self.cluster_manager = cluster_manager
+        self._last_logs = None
 
     def _run_job(
         self,
@@ -125,6 +126,7 @@ class AnyscaleJobManager:
         while True:
             now = time.monotonic()
             if now >= timeout_at:
+                self._get_last_logs()
                 self._terminate_job()
                 raise CommandTimeout(f"Job timed out after {timeout} seconds.")
 
@@ -143,6 +145,7 @@ class AnyscaleJobManager:
                 HaJobStates.BROKEN,
                 HaJobStates.OUT_OF_RETRIES,
             }:
+                self._get_last_logs()
                 break
             time.sleep(1)
         result = self._get_job_status_with_retry()
@@ -171,10 +174,16 @@ class AnyscaleJobManager:
         )
         return self._wait_job(timeout)
 
+    def _get_last_logs(self):
+        try:
+            self._last_logs = "\n".join(
+                self.sdk.fetch_production_job_logs(job_id=self.job_id).split("\n")[
+                    -LAST_LOGS_LENGTH:
+                ]
+            )
+        except Exception as e:
+            self._last_logs = e
+        return self._last_logs
+
     def get_last_logs(self):
-        return
-        return "\n".join(
-            self.sdk.fetch_production_job_logs(job_id=self.job_id).split("\n")[
-                -LAST_LOGS_LENGTH:
-            ]
-        )
+        return self._last_logs

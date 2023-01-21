@@ -2166,6 +2166,7 @@
     script: python workloads/jobs_basic.py --working-dir "workloads"
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: default
@@ -2190,6 +2191,7 @@
     script: python workloads/jobs_basic.py --working-dir "https://github.com/anyscale/job-services-cuj-examples/archive/refs/heads/main.zip"
     wait_for_nodes:
       num_nodes: 4
+    type: job
 
 
   alert: default
@@ -2211,7 +2213,7 @@
     wait_for_nodes:
       num_nodes: 4
 
-    type: anyscale_job
+    type: job
 
 - name: jobs_check_cuda_available
   group: Jobs tests
@@ -2229,7 +2231,7 @@
     script: python workloads/jobs_check_cuda_available.py
     wait_for_nodes:
       num_nodes: 2
-    type: anyscale_job
+    type: job
 
 - name: jobs_specify_num_gpus
   group: Jobs tests
@@ -2247,6 +2249,7 @@
     script: python workloads/jobs_specify_num_gpus.py --working-dir "workloads"
     wait_for_nodes:
       num_nodes: 2
+    type: job
 
 
 ########################

@@ -109,10 +109,12 @@ class AnyscaleJobRunner(JobRunner):
         return time_taken
 
     def get_last_logs(self, scd_id: Optional[str] = None):
-        try:
-            return self.job_manager.get_last_logs()
-        except Exception as e:
-            raise LogsError(f"Could not get last logs: {e}") from e
+        ret = self.job_manager.get_last_logs()
+        if isinstance(ret, Exception):
+            raise LogsError(f"Could not get last logs: {ret}") from ret
+        elif ret is None:
+            raise LogsError("Could not get last logs")
+        return ret
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:
