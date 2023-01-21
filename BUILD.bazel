@@ -272,6 +272,23 @@ cc_library(
     ],
 )
 
+# monitor/autoscaler service
+cc_grpc_library(
+    name = "monitor_cc_grpc",
+    srcs = ["//src/ray/protobuf:monitor_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:monitor_cc_proto"],
+)
+
+cc_library(
+    name = "monitor_rpc",
+    copts = COPTS,
+    deps = [
+         ":monitor_cc_grpc",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 # === End of rpc definitions ===
 
 # === Begin of plasma definitions ===
@@ -541,6 +558,7 @@ cc_library(
         ":gcs_service_cc_grpc",
         ":gcs_service_rpc",
         ":gcs_table_storage_lib",
+        ":monitor_rpc",
         ":node_manager_rpc",
         ":observable_store_client",
         ":pubsub_lib",
@@ -2826,6 +2844,7 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:job_agent_py_proto",
+        "//src/ray/protobuf:monitor_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",

@@ -29,6 +29,7 @@
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
+#include "ray/gcs/gcs_server/gcs_monitor_server.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -151,6 +152,9 @@ class GcsServer {
   /// Install event listeners.
   void InstallEventListeners();
 
+  /// Initialize monitor service.
+  void InitMonitorServer();
+
  private:
   /// Gets the type of KV storage to use from config.
   std::string StorageType() const;
@@ -218,6 +222,10 @@ class GcsServer {
   std::unique_ptr<GcsFunctionManager> function_manager_;
   /// Node resource info handler and service.
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
+  /// Monitor server supports monitor.py
+  std::unique_ptr<GcsMonitorServer> monitor_server_;
+  /// Monitor service for monitor server
+  std::unique_ptr<rpc::MonitorGrpcService> monitor_grpc_service_;
 
   /// Synchronization service for ray.
   /// TODO(iycheng): Deprecate this gcs_ray_syncer_ one once we roll out
