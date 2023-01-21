@@ -14,7 +14,7 @@ worker_node_types:
       max_workers: 3
       use_spot: false
 
-aws:
-  IamInstanceProfile:
+# aws:
+  # IamInstanceProfile:
     # Arn: arn:aws:iam::959243851260:instance-profile/ray-autoscaler-v1
-    Arn: arn:aws:iam::188439194153:instance-profile/ray-autoscaler-v1
+    # Arn: arn:aws:iam::188439194153:instance-profile/ray-autoscaler-v1

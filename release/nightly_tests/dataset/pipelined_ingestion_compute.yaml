@@ -4,7 +4,7 @@ region: us-west-2
 max_workers: 999
 
 aws:
-    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+    # IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:

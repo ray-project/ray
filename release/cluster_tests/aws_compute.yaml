@@ -1,8 +1,8 @@
 cloud_id: cld_17WvYIBBkdgLwEUNcLeRAE
 region: us-west-2
 
-aws:
-    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+# aws:
+#     IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
 
 head_node_type:
     name: head_node
