@@ -1,7 +1,8 @@
 from typing import Dict, Any, Iterator, Callable, List, Union
 import ray
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.data.context import DatasetContext
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.execution.operators.map_task_submitter import (
     MapTaskSubmitter,
     _map_task,
@@ -27,6 +28,8 @@ class ActorPoolSubmitter(MapTaskSubmitter):
             ray_remote_args: Remote arguments for the Ray actors to be created.
             pool_size: The size of the actor pool.
         """
+        if "num_cpus" not in ray_remote_args:
+            raise ValueError("Remote args should have explicit CPU spec.")
         self._transform_fn_ref = transform_fn_ref
         self._ray_remote_args = ray_remote_args
         self._pool_size = pool_size
@@ -34,6 +37,9 @@ class ActorPoolSubmitter(MapTaskSubmitter):
         self._active_actors: Dict[ObjectRef[Block], ray.actor.ActorHandle] = {}
         # The actor pool on which we are running map tasks.
         self._actor_pool = ActorPool()
+
+    def progress_str(self) -> str:
+        return f"{self._actor_pool.size()} actors"
 
     def start(self):
         # Create the actor workers and add them to the pool.
@@ -71,8 +77,6 @@ class ActorPoolSubmitter(MapTaskSubmitter):
     def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
         """Apply defaults to the actor creation remote args."""
         ray_remote_args = ray_remote_args.copy()
-        if "num_cpus" not in ray_remote_args:
-            ray_remote_args["num_cpus"] = 1
         if "scheduling_strategy" not in ray_remote_args:
             ctx = DatasetContext.get_current()
             if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
@@ -108,6 +112,10 @@ class ActorPool:
         # Whether actors that become idle should be eagerly killed. This is False until
         # the first call to kill_idle_actors().
         self._should_kill_idle_actors = False
+
+    def size(self) -> int:
+        """Return the current actor pool size."""
+        return len(self._num_tasks_in_flight)
 
     def add_actor(self, actor: ray.actor.ActorHandle):
         """Adds an actor to the pool."""

@@ -51,7 +51,7 @@ def test_build_streaming_topology():
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
-    topo, _ = build_streaming_topology(o3)
+    topo, _ = build_streaming_topology(o3, ExecutionOptions())
     assert len(topo) == 3, topo
     assert o1 in topo, topo
     assert not topo[o1].inqueues, topo
@@ -68,14 +68,14 @@ def test_disallow_non_unique_operators():
     o3 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
     o4 = PhysicalOperator("test_combine", [o2, o3])
     with pytest.raises(ValueError):
-        build_streaming_topology(o4)
+        build_streaming_topology(o4, ExecutionOptions())
 
 
 def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    topo, _ = build_streaming_topology(o2)
+    topo, _ = build_streaming_topology(o2, ExecutionOptions())
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
@@ -108,7 +108,7 @@ def test_select_operator_to_run():
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
-    topo, _ = build_streaming_topology(o3)
+    topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
     # Test empty.
     assert select_operator_to_run(topo) is None
