@@ -16,16 +16,14 @@ syntax = "proto3";
 option cc_enable_arenas = true;
 package ray.rpc;
 
-
-message GetRayVersionRequest {
-  
-}
+message GetRayVersionRequest {}
 
 message GetRayVersionReply {
   string version = 1;
 }
 
-// This service provides a stable interface for a monitor/autoscaler prococess to interact with Ray.
+// This service provides a stable interface for a monitor/autoscaler prococess to interact
+// with Ray.
 service MonitorService {
   // Get the ray version of the service.
   rpc GetRayVersion(GetRayVersionRequest) returns (GetRayVersionReply);
