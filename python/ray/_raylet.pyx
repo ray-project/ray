@@ -1419,6 +1419,9 @@ def maybe_initialize_job_config():
     print(job_id_magic_token, end="")
     print(job_id_magic_token, file=sys.stderr, end="")
 
+    # Only start import thread after job_config is initialized
+    ray._private.worker.start_import_thread()
+
 
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
 # up to hundreds of thousands of times per second).

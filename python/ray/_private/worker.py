@@ -2097,13 +2097,13 @@ def connect(
             " and will be removed in the future."
         )
 
-    # Start the import thread
+    # Setup import thread, but defer the start up of 
+    # import thread until job_config is initialized.
+    # (python/ray/_raylet.pyx maybe_initialize_job_config)
     if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped
         )
-        if ray._raylet.Config.start_python_importer_thread():
-            worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -2192,6 +2192,12 @@ def disconnect(exiting_interpreter=False):
         ray_actor = None  # This can occur during program termination
     if ray_actor is not None:
         ray_actor._ActorClassMethodMetadata.reset_cache()
+
+
+def start_import_thread(worker=global_worker):
+    worker.function_actor_manager = FunctionActorManager(worker)
+    if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
+        worker.import_thread.start()
 
 
 @contextmanager

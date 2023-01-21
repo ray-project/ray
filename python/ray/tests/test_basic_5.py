@@ -142,7 +142,6 @@ ray.get(a.pid.remote())
     assert "Traceback" not in log
 
 
-@pytest.mark.skipif(True, reason="run_function_on_all_workers doesn't work")
 def test_run_on_all_workers(call_ray_start, tmp_path):
     # This test is to ensure run_function_on_all_workers are executed
     # on all workers.

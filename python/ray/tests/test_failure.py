@@ -125,7 +125,6 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     ray.get(signal2.send.remote())
 
 
-@pytest.mark.skipif(True, reason="run_function_on_all_workers doesn't work")
 def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
     p = error_pubsub
 
@@ -133,7 +132,16 @@ def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
         if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
             raise Exception("Function to run failed.")
 
+    @ray.remote
+    class Actor:
+        def foo(self):
+            pass
+
     ray._private.worker.global_worker.run_function_on_all_workers(f)
+
+    actors = [Actor.remote() for _ in range(2)]
+    ray.get([actor.foo.remote() for actor in actors])
+
     # Check that the error message is in the task info.
     errors = get_error_message(p, 2, ray_constants.FUNCTION_TO_RUN_PUSH_ERROR)
     assert len(errors) == 2
