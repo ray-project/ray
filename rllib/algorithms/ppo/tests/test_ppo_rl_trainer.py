@@ -8,6 +8,8 @@ import tree # pip install dm-tree
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_trainer import PPOTorchRLTrainer
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.test_utils import check
 
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -89,8 +91,17 @@ class TestPPO(unittest.TestCase):
             policy.observation_space, policy.action_space
         )
         trainer_runner = trainer_runner_config.build()
+
+        # load the policy weights into the trainer runner
+        state_dict = {"module_state": {"default_policy": policy.get_weights()}}
+        state_dict = convert_to_torch_tensor(state_dict)
+        trainer_runner.set_state(state_dict)
         results = trainer_runner.update(train_batch.as_multi_agent())
-        breakpoint()
+
+        trainer_runner_loss = results[0]["loss"]["total_loss"]
+
+        check(trainer_runner_loss, policy_loss)
+
 
 
 if __name__ == "__main__":

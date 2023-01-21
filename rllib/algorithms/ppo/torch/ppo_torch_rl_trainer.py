@@ -1,3 +1,4 @@
+import logging
 from typing import Mapping, Any, Union
 
 from ray.rllib.core.rl_trainer.torch.torch_rl_trainer import TorchRLTrainer
@@ -5,13 +6,13 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
-    warn_if_infinite_kl_divergence,
     explained_variance,
 )
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
+logger = logging.getLogger(__name__)
 
 class PPOTorchRLTrainer(TorchRLTrainer):
     def __init__(self, *args, **kwargs):
@@ -37,6 +38,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
     def _compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
+        # TODO (Kourosh): batch type is NestedDict.
         # TODO (Kourosh): We may or may not user module_id. For example if we have an
         # agent based learning rate scheduler, we may want to use module_id to get the
         # learning rate for that agent.
@@ -44,7 +46,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
 
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
-        prev_action_dist = action_dist_class(**batch[SampleBatch.ACTION_DIST_INPUTS])
+        prev_action_dist = action_dist_class(**batch[SampleBatch.ACTION_DIST_INPUTS].asdict())
 
         logp_ratio = torch.exp(
             fwd_out[SampleBatch.ACTION_LOGP] - batch[SampleBatch.ACTION_LOGP]
@@ -54,9 +56,10 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         if self.config.kl_coeff > 0.0:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = torch.mean(action_kl)
-            # TODO smorad: should we do anything besides warn? Could discard KL term
-            # for this update
-            warn_if_infinite_kl_divergence(self, mean_kl_loss)
+            if mean_kl_loss.isinf():
+                logger.warning(
+                    "KL divergence is non-finite, this will likely destabilize your model and the training process. Action(s) in a specific state have near-zero probability. This can happen naturally in deterministic environments where the optimal policy has zero mass for a specific action. To fix this issue, consider setting the coefficient for the KL loss term to zero or increasing policy entropy."
+                )
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
