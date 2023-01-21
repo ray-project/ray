@@ -407,7 +407,7 @@ def debug(address):
     default="localhost",
     help="the host to bind the dashboard server to, either localhost "
     "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this"
-    "is localhost.",
+    " is localhost.",
 )
 @click.option(
     "--dashboard-port",
