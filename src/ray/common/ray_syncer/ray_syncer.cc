@@ -324,7 +324,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
       [this](const std::string &node_id, bool reconnect) mutable {
         // No need to reconnect for server side.
         RAY_CHECK(!reconnect);
-        syncer_.Disconnect(node_id);
+        syncer_.sync_reactors_.erase(node_id);
       });
   RAY_LOG(DEBUG) << "Get connection from "
                  << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " to "
