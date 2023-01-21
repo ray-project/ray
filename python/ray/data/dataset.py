@@ -337,6 +337,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -481,6 +482,9 @@ class Dataset(Generic[T]):
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to process. If set to greater than 0, a separate thread will be used
+                to fetch the specified amount of formatted batches from blocks. This improves performance for non-CPU bound UDFs, allowing batch fetching compute and formatting to be overlapped with the UDF. Defaults to 0 (no prefetching enabled.) Increasing the number of batches to prefetch can result in higher throughput, at the expense of requiring more heap memory to buffer the batches.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch will be a zero-copy, read-only
@@ -634,6 +638,7 @@ class Dataset(Generic[T]):
                 batch_size=batch_size,
                 batch_format=batch_format,
                 ensure_copy=not zero_copy_batch and batch_size is not None,
+                prefetch_batches=prefetch_batches,
             )
 
             for batch in formatted_batch_iter:

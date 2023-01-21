@@ -124,6 +124,10 @@ class PPOConfig(PGConfig):
             )
 
             return PPOTorchRLModule
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
+
+            return PPOTfRLModule
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
@@ -336,16 +340,30 @@ class PPO(Algorithm):
 
             return PPOTF1Policy
         else:
-            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
+            if config._enable_rl_module_api:
+                if config.eager_tracing:
+                    raise ValueError(
+                        "The TensorFlow PPO with RLModule does not support "
+                        "eager tracing yet."
+                    )
+                from ray.rllib.algorithms.ppo.tf.ppo_tf_policy_rlm import (
+                    PPOTfPolicyWithRLModule,
+                )
 
-            return PPOTF2Policy
+                return PPOTfPolicyWithRLModule
+            else:
+
+                from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
+
+                return PPOTF2Policy
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config.train_batch_size
+                worker_set=self.workers,
+                max_agent_steps=self.config.train_batch_size,
             )
         else:
             train_batch = synchronous_parallel_sample(

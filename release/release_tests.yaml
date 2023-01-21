@@ -327,6 +327,8 @@
     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
     type: job
 
+    wait_for_nodes:
+        num_nodes: 4
 
   alert: default
 
@@ -4351,6 +4353,24 @@
     script: python map_batches_benchmark.py
 
     type: sdk_command
+
+- name: iter_tensor_batches_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py
+
+    type: sdk_command
+    file_manager: sdk
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
