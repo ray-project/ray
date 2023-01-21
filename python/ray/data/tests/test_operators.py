@@ -4,6 +4,7 @@ import time
 
 import ray
 from ray.data.block import Block
+from ray.data.context import DatasetContext
 from ray.data._internal.compute import TaskPoolStrategy, ActorPoolStrategy
 from ray.data._internal.execution.interfaces import RefBundle, PhysicalOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
@@ -224,6 +225,14 @@ def test_map_operator_shutdown(use_actors):
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
+
+
+def test_prograss_bar():
+    DatasetContext.get_current().new_execution_backend = True
+    ds = ray.data.read_csv("example://iris.csv").random_shuffle()
+    ds = ds.map_batches(lambda x: x)
+    agg_ds = ds.groupby("variety").mean("sepal.length")
+    assert agg_ds.count() == 3
 
 
 if __name__ == "__main__":
