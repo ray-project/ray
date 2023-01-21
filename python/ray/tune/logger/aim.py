@@ -126,15 +126,8 @@ class AimCallback(LoggerCallback):
             if k in tmp_result:
                 del tmp_result[k]  # not useful to log these
 
-        context = {}
-        if "context" in tmp_result:
-            context.update(tmp_result["context"])
-            del tmp_result["context"]
-
-        epoch = None
-        if "epoch" in tmp_result:
-            epoch = tmp_result["epoch"]
-            del tmp_result["epoch"]
+        context = tmp_result.pop("context", None)
+        epoch = tmp_result.pop("epoch", None)
 
         trial_run = self._get_trial_run(trial)
         if not self._as_multirun:
@@ -143,20 +136,31 @@ class AimCallback(LoggerCallback):
         path = ["ray", "tune"]
 
         if self._metrics:
+            flat_result = flatten_dict(tmp_result, delimiter="/")
+            valid_result = {}
             for metric in self._metrics:
                 full_attr = "/".join(path + [metric])
-                try:
-                    trial_run.track(
-                        value=tmp_result[metric],
-                        epoch=epoch,
-                        name=full_attr,
-                        step=step,
-                        context=context,
-                    )
-                except KeyError:
-                    logger.warning(
-                        f"The metric {metric} is specified but not reported."
-                    )
+                value = flat_result[metric]
+                if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(
+                    value
+                ):
+                    valid_result[metric] = value
+                    try:
+                        trial_run.track(
+                            value=tmp_result[metric],
+                            epoch=epoch,
+                            name=full_attr,
+                            step=step,
+                            context=context,
+                        )
+                    except KeyError:
+                        logger.warning(
+                            f"The metric {metric} is specified but not reported."
+                        )
+                elif (isinstance(value, list) and len(value) > 0) or (
+                    isinstance(value, np.ndarray) and value.size > 0
+                ):
+                    valid_result[metric] = value
         else:
             # if no metric is specified log everything that is reported
             flat_result = flatten_dict(tmp_result, delimiter="/")
