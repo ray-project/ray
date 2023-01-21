@@ -1,4 +1,5 @@
 import json
+import importlib
 import os
 import shutil
 import subprocess
@@ -56,15 +57,21 @@ def main(test_collection_file: Optional[str] = None):
             raise ReleaseTestCLIError(
                 f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
             ) from e
-        test_collection_file = os.path.join(tmpdir, "release", "release_tests.yaml")
+        shutil.copytree(
+            os.path.join(tmpdir, "release"),
+            os.path.join(os.path.dirname(__file__), "..", ".."),
+            dirs_exist_ok=True,
+        )
+        for module in sys.modules.values():
+            if module.startswith("ray_release"):
+                importlib.reload(module)
         env = {
             "RAY_TEST_REPO": repo,
             "RAY_TEST_BRANCH": branch,
         }
-    else:
-        test_collection_file = test_collection_file or os.path.join(
-            os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-        )
+    test_collection_file = test_collection_file or os.path.join(
+        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
+    )
     test_collection = read_and_validate_release_test_collection(test_collection_file)
 
     if tmpdir:
