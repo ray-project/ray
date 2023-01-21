@@ -664,14 +664,16 @@ def test_actor_task_fast_fail(ray_start_cluster):
 
 def test_task_crash_after_raylet_dead_throws_node_died_error():
     @ray.remote(max_retries=0)
-    def sleeper():
+    def sleeper(kill):
         import os
 
-        time.sleep(5)
-        os.kill(os.getpid(), 9)
+        if kill:
+            time.sleep(5)
+            os.kill(os.getpid(), 9)
 
     with ray.init():
-        ref = sleeper.remote()
+        ray.get(sleeper.remote(kill=False))
+        ref = sleeper.remote(kill=True)
 
         time.sleep(2)
         raylet = ray.nodes()[0]
