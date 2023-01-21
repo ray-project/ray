@@ -13,20 +13,20 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_monitor_server.h"
+
 #include "ray/common/constants.h"
 
 namespace ray {
 namespace gcs {
 
-GcsMonitorServer::GcsMonitorServer(){}
+GcsMonitorServer::GcsMonitorServer() {}
 
 void GcsMonitorServer::HandleGetRayVersion(rpc::GetRayVersionRequest request,
-                          rpc::GetRayVersionReply *reply,
-                                              rpc::SendReplyCallback send_reply_callback) {
+                                           rpc::GetRayVersionReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
   reply->set_version(kRayVersion);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-}
-}
-
+}  // namespace gcs
+}  // namespace ray
