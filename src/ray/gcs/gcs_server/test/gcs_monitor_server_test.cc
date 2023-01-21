@@ -25,10 +25,10 @@
 
 namespace ray {
 class GcsMonitorServerTest : public ::testing::Test {
-public:
-  GcsMonitorServerTest() : monitor_server_(){
-  }
-protected:
+ public:
+  GcsMonitorServerTest() : monitor_server_() {}
+
+ protected:
   gcs::GcsMonitorServer monitor_server_;
 };
 
@@ -36,11 +36,11 @@ TEST_F(GcsMonitorServerTest, TestRayVersion) {
   rpc::GetRayVersionRequest request;
   rpc::GetRayVersionReply reply;
   auto send_reply_callback =
-    [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
 
   monitor_server_.HandleGetRayVersion(request, &reply, send_reply_callback);
 
   ASSERT_EQ(reply.version(), kRayVersion);
 }
 
-}
+}  // namespace ray
