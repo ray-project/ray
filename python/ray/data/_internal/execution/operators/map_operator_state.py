@@ -49,6 +49,7 @@ class MapOperatorState:
         self._ray_remote_args = ray_remote_args
         if isinstance(compute_strategy, TaskPoolStrategy):
             task_submitter = TaskPoolSubmitter(transform_fn_ref, ray_remote_args)
+            self._base_resource_usage = ExecutionResources()
         elif isinstance(compute_strategy, ActorPoolStrategy):
             # TODO(Clark): Better mapping from configured min/max pool size to static
             # pool size?
@@ -58,6 +59,10 @@ class MapOperatorState:
                 pool_size = compute_strategy.min_size
             task_submitter = ActorPoolSubmitter(
                 transform_fn_ref, ray_remote_args, pool_size
+            )
+            self._base_resource_usage = ExecutionResources(
+                cpu=ray_remote_args.get("num_cpus", 0) * compute_strategy.min_size,
+                gpu=ray_remote_args.get("num_gpus", 0) * compute_strategy.min_size,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -185,10 +190,13 @@ class MapOperatorState:
         ref: ObjectRef[ObjectRefGenerator] = self._task_submitter.submit(input_blocks)
         task = _TaskState(bundle)
         self._tasks[ref] = task
-        self._output_queue.add_pending_task(task)
+        self._output_queue.notify_pending_task(task)
         self._obj_store_mem_cur += bundle.size_bytes()
         if self._obj_store_mem_cur > self._obj_store_mem_peak:
             self._obj_store_mem_peak = self._obj_store_mem_cur
+
+    def base_resource_usage(self) -> ExecutionResources:
+        return self._base_resource_usage
 
     def current_resource_usage(self) -> ExecutionResources:
         if isinstance(self._task_submitter, ActorPoolSubmitter):
@@ -228,12 +236,12 @@ class _TaskState:
 class _OutputQueue:
     """Interface for swapping between different output order modes."""
 
-    def add_pending_task(self, task: "_TaskState"):
-        """Track the addition of a new task."""
+    def notify_pending_task(self, task: "_TaskState"):
+        """Called when a new task becomes pending."""
         pass
 
     def notify_task_completed(self, task: "_TaskState"):
-        """Called when a previously added task completes."""
+        """Called when a previously pending task completes."""
         pass
 
     def has_next(self) -> bool:
@@ -251,7 +259,7 @@ class _OrderedOutputQueue(_OutputQueue):
         self._next_task_index: int = 0
         self._next_output_index: int = 0
 
-    def add_pending_task(self, task: "_TaskState"):
+    def notify_pending_task(self, task: "_TaskState"):
         self._tasks_by_output_order[self._next_task_index] = task
         self._next_task_index += 1
 

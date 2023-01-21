@@ -108,6 +108,9 @@ def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
             while op.has_next():
                 bar.update(1)
                 output.append(op.get_next())
+                progress_str = op.progress_str()
+                if progress_str:
+                    bar.set_description(op.name + ", " + progress_str)
         bar.close()
     else:
         while op.has_next():

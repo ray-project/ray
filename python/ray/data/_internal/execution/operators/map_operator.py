@@ -6,7 +6,6 @@ from ray.data._internal.stats import StatsDict
 from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
-    ActorPoolStrategy,
 )
 from ray.data._internal.execution.interfaces import (
     RefBundle,
@@ -52,15 +51,7 @@ class MapOperator(PhysicalOperator):
         """
         ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         compute_strategy = compute_strategy or TaskPoolStrategy()
-        if isinstance(compute_strategy, TaskPoolStrategy):
-            self._base_resource_usage = ExecutionResources()
-        elif isinstance(compute_strategy, ActorPoolStrategy):
-            self._base_resource_usage = ExecutionResources(
-                cpu=ray_remote_args.get("num_cpus", 0) * compute_strategy.min_size,
-                gpu=ray_remote_args.get("num_gpus", 0) * compute_strategy.min_size,
-            )
-        else:
-            raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        self._ray_remote_args = ray_remote_args
         self._execution_state = MapOperatorState(
             transform_fn,
             compute_strategy,
@@ -93,6 +84,7 @@ class MapOperator(PhysicalOperator):
         return self._execution_state.has_next()
 
     def get_next(self) -> RefBundle:
+        assert self._started
         bundle = self._execution_state.get_next()
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
@@ -119,7 +111,7 @@ class MapOperator(PhysicalOperator):
         super().shutdown()
 
     def base_resource_usage(self) -> ExecutionResources:
-        return self._base_resource_usage
+        return self._execution_state.base_resource_usage()
 
     def incremental_resource_usage(self) -> ExecutionResources:
         return self._execution_state.incremental_resource_usage()
@@ -131,7 +123,9 @@ class MapOperator(PhysicalOperator):
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
     """Enforce rules on ray remote args for map tasks.
 
-    Namely, args must explicitly specify either CPU or GPU, not both.
+    Namely, args must explicitly specify either CPU or GPU, not both. Disallowing
+    mixed resources avoids potential starvation and deadlock issues during scheduling,
+    and should not be a serious limitation for users.
     """
     ray_remote_args = ray_remote_args.copy()
     if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
