@@ -22,7 +22,7 @@ message GetRayVersionReply {
   string version = 1;
 }
 
-// This service provides a stable interface for a monitor/autoscaler prococess to interact
+// This service provides a stable interface for a monitor/autoscaler process to interact
 // with Ray.
 service MonitorService {
   // Get the ray version of the service.
