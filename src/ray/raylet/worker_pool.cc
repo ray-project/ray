@@ -412,8 +412,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info) {
   rpc::JobConfig *job_config = nullptr;
-  if (!IsIOWorkerType(worker_type)) {
-    RAY_CHECK(!job_id.IsNil());
+  if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
@@ -804,12 +803,8 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     first_job_ = job_id;
     // If the number of Python workers we need to wait is positive.
     if (num_initial_python_workers_for_first_job_ > 0) {
-      delay_callback = true;
-      // Start initial Python workers for the first job.
-      for (int i = 0; i < num_initial_python_workers_for_first_job_; i++) {
-        PopWorkerStatus status;
-        StartWorkerProcess(Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
-      }
+      PrestartDefaultCpuWorkers(Language::PYTHON,
+                                num_initial_python_workers_for_first_job_);
     }
   }
 
@@ -1203,8 +1198,13 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
        it++) {
     if (task_spec.GetLanguage() != it->first->GetLanguage() ||
-        it->first->GetAssignedJobId() != task_spec.JobId() ||
         state.pending_disconnection_workers.count(it->first) > 0 || it->first->IsDead()) {
+      continue;
+    }
+
+    // Don't allow worker reuse across jobs. Reuse worker with unassigned job_id is OK.
+    if (!it->first->GetAssignedJobId().IsNil() &&
+        it->first->GetAssignedJobId() != task_spec.JobId()) {
       continue;
     }
 
@@ -1276,7 +1276,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   }
 
   if (worker) {
-    RAY_CHECK(worker->GetAssignedJobId() == task_spec.JobId());
+    RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
+              worker->GetAssignedJobId() == task_spec.JobId());
     PopWorkerCallbackAsync(callback, worker);
   }
 }
@@ -1286,7 +1287,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                                  int64_t num_available_cpus) {
   // Code path of task that needs a dedicated worker.
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.HasRuntimeEnv()) {
+      task_spec.HasRuntimeEnv() || task_spec.GetLanguage() != ray::Language::PYTHON) {
     return;  // Not handled.
     // TODO(architkulkarni): We'd eventually like to prestart workers with the same
     // runtime env to improve initial startup performance.
@@ -1306,11 +1307,24 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
                    << backlog_size << " and available CPUs " << num_available_cpus;
-    for (int i = 0; i < num_needed; i++) {
-      PopWorkerStatus status;
-      StartWorkerProcess(
-          task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status);
-    }
+    PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
+  }
+}
+
+void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
+  // default workers uses 1 cpu and doesn't support actor.
+  static const WorkerCacheKey kDefaultCpuWorkerCacheKey{/*serialized_runtime_env*/ "",
+                                                        {{"CPU", 1}},
+                                                        /*is_actor*/ false,
+                                                        /*is_gpu*/ false};
+  for (int i = 0; i < num_needed; i++) {
+    PopWorkerStatus status;
+    StartWorkerProcess(language,
+                       rpc::WorkerType::WORKER,
+                       JobID::Nil(),
+                       &status,
+                       /*dynamic_options*/ {},
+                       kDefaultCpuWorkerCacheKey.IntHash());
   }
 }
 

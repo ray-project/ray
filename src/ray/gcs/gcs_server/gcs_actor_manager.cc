@@ -233,7 +233,8 @@ GcsActorManager::GcsActorManager(
             num_actors,
             {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
              {"Name", key.second},
-             {"Source", "gcs"}});
+             {"Source", "gcs"},
+             {"JobId", ""}});
       });
 }
 

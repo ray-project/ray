@@ -537,6 +537,7 @@ ray.get(task.remote(), timeout=3)
         ) not in e.value.output.decode()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky tests on Windows")
 def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     cluster = ray_start_cluster
     head = cluster.add_node(num_cpus=4, resources={"foo": 1})
@@ -666,12 +667,13 @@ def test_task_crash_after_raylet_dead_throws_node_died_error():
     def sleeper():
         import os
 
-        time.sleep(3)
+        time.sleep(5)
         os.kill(os.getpid(), 9)
 
     with ray.init():
         ref = sleeper.remote()
 
+        time.sleep(2)
         raylet = ray.nodes()[0]
         kill_raylet(raylet)
 

@@ -48,7 +48,7 @@ DEFINE_stats(
     // Name: the name of the function called.
     // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
     // IsRetry: whether this task is a retry.
-    ("State", "Name", "Source", "IsRetry"),
+    ("State", "Name", "Source", "IsRetry", "JobId"),
     (),
     ray::stats::GAUGE);
 
@@ -62,7 +62,7 @@ DEFINE_stats(actors,
              // but can also be RUNNING_TASK, RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
              // Name: the name of actor class.
              // Source: component reporting, e.g., "gcs" or "executor".
-             ("State", "Name", "Source"),
+             ("State", "Name", "Source", "JobId"),
              (),
              ray::stats::GAUGE);
 

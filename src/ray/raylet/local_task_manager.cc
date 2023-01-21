@@ -846,6 +846,7 @@ void LocalTaskManager::Dispatch(
     std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
+  worker->SetJobId(task_spec.JobId());
   worker->SetBundleId(task_spec.PlacementGroupBundleId());
   worker->SetOwnerAddress(task_spec.CallerAddress());
   if (task_spec.IsActorCreationTask()) {
