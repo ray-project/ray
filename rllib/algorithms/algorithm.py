@@ -674,14 +674,26 @@ class Algorithm(Trainable):
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
 
+
+        local_worker = self.workers.local_worker()
+        marl_config = {"modules": {}}
+
+        breakpoint()
+        for pid, policy in local_worker.policy_map:
+            marl_config["modules"][pid] = {
+                "module_class": policy.config["rl_module_class"],
+                "observation_space": policy.observation_space,
+                "action_space": policy.action_space,
+                "model_config": policy.config["model"]
+            }
+
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+        marl = MultiAgentRLModule.from_multi_agent_config(marl_config)
+        breakpoint()
+
         self.trainer_runner = None
         if self.config._enable_rl_trainer_api:
-            policy = self.get_policy()
-            observation_space = policy.observation_space
-            action_space = policy.action_space
-            trainer_runner_config = self.config.get_trainer_runner_config(
-                observation_space, action_space
-            )
+            trainer_runner_config = self.config.get_trainer_runner_config()
             self.trainer_runner = trainer_runner_config.build()
 
         # Run `on_algorithm_init` callback after initialization is done.
