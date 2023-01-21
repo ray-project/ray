@@ -2195,13 +2195,13 @@ def disconnect(exiting_interpreter=False):
 
 
 def start_import_thread():
-    """Start the import thread if running in worker mode."""
-    assert global_worker, "worker is not initialized"
-    if (
-        global_worker.import_thread
-        and ray._raylet.Config.start_python_importer_thread()
-    ):
-        global_worker.import_thread.start()
+    """Start the import thread if the worker is connected."""
+    worker = global_worker
+    worker.check_connected()
+
+    assert _mode() is WORKER_MODE, "can only start import_thread in WORKER_MODE"
+    if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
+        worker.import_thread.start()
 
 
 @contextmanager
