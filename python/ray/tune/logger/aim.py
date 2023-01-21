@@ -136,20 +136,31 @@ class AimCallback(LoggerCallback):
         path = ["ray", "tune"]
 
         if self._metrics:
+            flat_result = flatten_dict(tmp_result, delimiter="/")
+            valid_result = {}
             for metric in self._metrics:
                 full_attr = "/".join(path + [metric])
-                try:
-                    trial_run.track(
-                        value=tmp_result[metric],
-                        epoch=epoch,
-                        name=full_attr,
-                        step=step,
-                        context=context,
-                    )
-                except KeyError:
-                    logger.warning(
-                        f"The metric {metric} is specified but not reported."
-                    )
+                value = flat_result[metric]
+                if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(
+                    value
+                ):
+                    valid_result[metric] = value
+                    try:
+                        trial_run.track(
+                            value=tmp_result[metric],
+                            epoch=epoch,
+                            name=full_attr,
+                            step=step,
+                            context=context,
+                        )
+                    except KeyError:
+                        logger.warning(
+                            f"The metric {metric} is specified but not reported."
+                        )
+                elif (isinstance(value, list) and len(value) > 0) or (
+                    isinstance(value, np.ndarray) and value.size > 0
+                ):
+                    valid_result[metric] = value
         else:
             # if no metric is specified log everything that is reported
             flat_result = flatten_dict(tmp_result, delimiter="/")
