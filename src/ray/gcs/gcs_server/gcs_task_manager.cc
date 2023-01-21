@@ -30,7 +30,24 @@ void GcsTaskManager::Stop() {
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents()
     const {
-  return task_events_;
+  std::vector<rpc::TaskEvents> ret;
+  // NOTE(rickyx): This could be done better if we expose an iterator - which we
+  // probably have to do if we are supporting pagination in the future.
+  // As for now, this will make sure data is returned w.r.t insertion order, so we could
+  // return the more recent entries when limit applies.
+  RAY_CHECK(next_idx_to_overwrite_ < task_events_.size())
+      << "next_idx_to_overwrite should be in bound.";
+  // Copy from the next insertion index
+  std::copy(task_events_.begin() + next_idx_to_overwrite_,
+            task_events_.end(),
+            std::back_inserter(ret));
+  // Copy the wrapped around if any
+  if (next_idx_to_overwrite_ > 0) {
+    std::copy(task_events_.begin(),
+              task_events_.begin() + next_idx_to_overwrite_,
+              std::back_inserter(ret));
+  }
+  return ret;
 }
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
@@ -318,7 +335,9 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   auto count = 0;
   int32_t num_profile_event_limit = 0;
   int32_t num_status_event_limit = 0;
-  for (auto &task_event : task_events) {
+
+  for (auto itr = task_events.rbegin(); itr != task_events.rend(); ++itr) {
+    auto &task_event = *itr;
     if (request.exclude_driver_task() && !task_event.has_state_updates()) {
       // Driver related profile events will generate TaskEvent w/o any task state updates.
       continue;

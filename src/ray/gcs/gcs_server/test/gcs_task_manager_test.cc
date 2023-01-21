@@ -705,5 +705,45 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
   }
 }
 
+TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitReturnRecentTasksWhenGetAll) {
+  // Keep adding tasks and make sure even with eviction, the returned tasks are
+  // the mo
+  size_t num_to_insert = 200;
+  size_t num_query = 10;
+  size_t inserted = 0;
+
+  auto task_ids = GenTaskIDs(num_to_insert);
+
+  for (size_t i = 0; i < num_to_insert; ++i) {
+    // Add a task event
+    {
+      inserted++;
+      auto events = GenTaskEvents({task_ids[i]},
+                                  /* attempt_number */ 0,
+                                  /* job_id */ 0,
+                                  /* profile event */ absl::nullopt,
+                                  GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}));
+      auto events_data = Mocker::GenTaskEventsData(events);
+      SyncAddTaskEventData(events_data);
+    }
+
+    if (inserted < num_query || inserted % num_query != 0) {
+      continue;
+    }
+
+    // Expect returned tasks with limit are the most recently added ones.
+    {
+      absl::flat_hash_set<TaskID> query_ids(task_ids.begin() + (inserted - num_query),
+                                            task_ids.begin() + inserted);
+      auto reply = SyncGetTaskEvents(
+          /* task_ids */ {}, /* job_id */ absl::nullopt, /* limit */ num_query);
+      for (const auto &task_event : reply.events_by_task()) {
+        EXPECT_EQ(query_ids.count(TaskID::FromBinary(task_event.task_id())), 1)
+            << TaskID::FromBinary(task_event.task_id()).Hex() << "not there, at " << i;
+      }
+    }
+  }
+}
+
 }  // namespace gcs
 }  // namespace ray
