@@ -281,8 +281,10 @@ class LoggerSuite(unittest.TestCase):
         # Test that aim repo is saved to the experiment directory
         # (one up from the trial directory) as the default
         trial_logdir = os.path.join(self.test_dir, "trial_logdir")
-        t = Trial(evaluated_params=config, trial_id="aim", logdir=self.test_dir)
-        logger = AimCallback()
+        t = Trial(evaluated_params=config,
+                  trial_id="aim", logdir=self.test_dir)
+        logger = AimCallback(repo=self.test_dir, experiment="aim_test")
+        logger.log_trial_start(t)
         logger.on_trial_result(0, [], t, result(0, 4))
         logger.on_trial_result(1, [], t, result(1, 5))
         logger.on_trial_result(
@@ -298,39 +300,30 @@ class LoggerSuite(unittest.TestCase):
 
     def _validate_aimresults(self, params=None, excluded_params=None):
         try:
-            import aim
+            from aim import Repo
         except ImportError:
             print("Skipping rest of test as aim is not installed.")
             return
 
-        print(f"{aim} aim tests here")
-        # ToDo: proper test here
-        """
-        events_file = list(glob.glob(f"{self.test_dir}/events*"))[0]
+        # Check result logs
+        aim_repo = Repo(self.test_dir)
+        aim_run = list(aim_repo.iter_runs())[0]
+
         results = []
         excluded_params = excluded_params or []
-        for event in summary_iterator(events_file):
-            for v in event.summary.value:
-                if v.tag == "ray/tune/episode_reward_mean":
-                    results.append(v.simple_value)
-                elif v.tag == "_hparams_/experiment" and params:
-                    for key in params:
-                        self.assertIn(key, v.metadata.plugin_data.content)
-                    for key in excluded_params:
-                        self.assertNotIn(key, v.metadata.plugin_data.content)
-                elif v.tag == "_hparams_/session_start_info" and params:
-                    for key in params:
-                        self.assertIn(key, v.metadata.plugin_data.content)
-                    for key in excluded_params:
-                        self.assertNotIn(key, v.metadata.plugin_data.content)
+        for metric in aim_run.metrics():
+            if metric.name == "ray/tune/episode_reward_mean":
+                results = metric.values.values_list()
+
         self.assertEqual(len(results), 3)
         self.assertSequenceEqual([int(res) for res in results], [4, 5, 6])
-        """
 
     def testBadAim(self):
         config = {"b": (1, 2, 3)}
-        t = Trial(evaluated_params=config, trial_id="aim", logdir=self.test_dir)
-        logger = AimCallback()
+        t = Trial(evaluated_params=config,
+                  trial_id="aim", logdir=self.test_dir)
+        logger = AimCallback(repo=self.test_dir, experiment="aim_test")
+        logger.log_trial_start(t)
         logger.on_trial_result(0, [], t, result(0, 4))
         logger.on_trial_result(1, [], t, result(1, 5))
         logger.on_trial_result(
