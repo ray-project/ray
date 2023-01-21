@@ -42,26 +42,31 @@ class ImportThread:
         self.num_imported = 0
         # Protect writes to self.num_imported.
         self._lock = threading.Lock()
+        # Protect start and join of import thread.
+        self._thread_spawn_lock = threading.Lock()
         # Try to load all FunctionsToRun so that these functions will be
         # run before accepting tasks.
         self._do_importing()
 
     def start(self):
         """Start the import thread."""
-        self.t = threading.Thread(target=self._run, name="ray_import_thread")
-        # Making the thread a daemon causes it to exit
-        # when the main thread exits.
-        self.t.daemon = True
-        self.t.start()
+        with self._thread_spawn_lock:
+            self.t = threading.Thread(target=self._run, name="ray_import_thread")
+            # Making the thread a daemon causes it to exit
+            # when the main thread exits.
+            self.t.daemon = True
+            self.t.start()
 
     def join_import_thread(self):
         """Wait for the thread to exit."""
-        if self.t:
-            self.t.join()
+        with self._thread_spawn_lock:
+            if self.t:
+                self.t.join()
 
     def _run(self):
         try:
-            self._do_importing()
+            if not self.threads_stopped.is_set():
+                self._do_importing()
             while True:
                 # Exit if we received a signal that we should stop.
                 if self.threads_stopped.is_set():
