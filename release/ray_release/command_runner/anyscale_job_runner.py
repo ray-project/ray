@@ -48,6 +48,13 @@ class AnyscaleJobRunner(JobRunner):
         )
 
     def prepare_remote_env(self):
+        # Copy anyscale job script to working dir
+        job_script = os.path.join(os.path.dirname(__file__), "_anyscale_job_wrapper.sh")
+        # Copy prometheus metrics script to working dir
+        if os.path.exists("anyscale_job_wrapper.sh"):
+            os.unlink("anyscale_job_wrapper.sh")
+        os.link(job_script, "anyscale_job_wrapper.sh")
+
         # Copy prometheus metrics script to working dir
         metrics_script = os.path.join(
             os.path.dirname(__file__), "_prometheus_metrics.py"
@@ -77,20 +84,17 @@ class AnyscaleJobRunner(JobRunner):
         else:
             env_str = ""
 
-        results_file_uri = join_s3_paths(self.upload_path, self.result_output_json)
         full_command = (
-            f"{env_str}{command}; "
-            "pip install -q awscli && "
-            f"aws s3 cp {self.result_output_json} {results_file_uri} "
-            "--acl bucket-owner-full-control"
+            f"{env_str}bash anyscale_job_wrapper.sh '{command}' "
+            f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
+            f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}'"
         )
-
         status_code, time_taken, error = self.job_manager.run_and_wait(
             full_command,
             full_env,
             working_dir=".",
             upload_path=self.upload_path,
-            timeout=int(timeout),
+            timeout=int(timeout) + 900,
         )
 
         if status_code == -2:
@@ -132,4 +136,9 @@ class AnyscaleJobRunner(JobRunner):
         )
 
     def fetch_metrics(self) -> Dict[str, Any]:
-        return self._fetch_json(self.metrics_output_json)
+        return self._fetch_json(
+            join_s3_paths(self.path_in_bucket, self.metrics_output_json)
+        )
+
+    def cleanup(self):
+        self.file_manager.delete(self.path_in_bucket)

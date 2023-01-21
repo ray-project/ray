@@ -8,7 +8,7 @@ from anyscale.sdk.anyscale_client.models import (
     HaJobStates,
 )
 
-from ray_release.anyscale_util import get_cluster_name
+from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import CommandTimeout
 from ray_release.logger import logger
@@ -172,4 +172,9 @@ class AnyscaleJobManager:
         return self._wait_job(timeout)
 
     def get_last_logs(self):
-        return None
+        return
+        return "\n".join(
+            self.sdk.fetch_production_job_logs(job_id=self.job_id).split("\n")[
+                -LAST_LOGS_LENGTH:
+            ]
+        )

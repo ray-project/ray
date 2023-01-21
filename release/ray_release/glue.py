@@ -339,6 +339,7 @@ def run_release_test(
             )
 
         try:
+            # Logic duplicated in ray_release/command_runner/_anyscale_job_wrapper.sh
             # Timeout is the time the test took divided by 200
             # (~7 minutes for a 24h test) but no less than 30s
             # and no more than 900s
@@ -375,6 +376,9 @@ def run_release_test(
             cluster_manager.terminate_cluster(wait=False)
         except Exception as e:
             logger.error(f"Could not terminate cluster: {e}")
+
+    if hasattr(command_runner, "cleanup"):
+        command_runner.cleanup()
 
     time_taken = time.monotonic() - start_time
     result.runtime = time_taken

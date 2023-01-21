@@ -48,10 +48,7 @@ class JobFileManager(FileManager):
         )
 
         if delete_after_download:
-            self._run_with_retry(
-                lambda: self.s3_client.delete_object(Bucket=self.bucket, Key=target),
-                initial_retry_delay_s=2,
-            )
+            self.delete(target)
 
     def download(self, source: str, target: str):
         # Attention: Only works for single files at the moment
@@ -142,11 +139,12 @@ class JobFileManager(FileManager):
         if retcode != 0:
             raise FileUploadError(f"Error uploading file {source} to {target}")
 
+        self.delete(remote_upload_to)
+
+    def delete(self, target: str):
         try:
             self._run_with_retry(
-                lambda: self.s3_client.delete_object(
-                    Bucket=self.bucket, Key=remote_upload_to
-                ),
+                lambda: self.s3_client.delete_object(Bucket=self.bucket, Key=target),
                 initial_retry_delay_s=2,
             )
         except Exception as e:
