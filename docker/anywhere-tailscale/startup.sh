@@ -58,7 +58,7 @@ if [ "$NODETYPE" = "head" ]; then
 
 ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address nexus.chimp-beta.ts.net
 
-/crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
+/crate/bin/crate -Cnetwork.host=_tailscale0_ \
             -Cnode.name=nexus \
             -Cnode.master=true \
             -Cnode.data=true \
@@ -73,7 +73,7 @@ else
 
 ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address ${HOSTNAME}.chimp-beta.ts.net
 
-/crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
+/crate/bin/crate -Cnetwork.host=_tailscale0_ \
             -Cnode.data=true \
             -Cnode.store.allow_mmap=false \
             -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 \
@@ -94,7 +94,7 @@ fi
 term_handler(){
    echo "***Stopping"
    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
-   /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION $HOSTNAME;"
+   /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION "$HOSTNAME";"
    curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY:
    tailscale down
    exit 0
