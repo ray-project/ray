@@ -34,14 +34,14 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
             res = {}
             for handler in handlers:
                 if isinstance(handler, logging.handlers.RotatingFileHandler):
-                    res['max_bytes'] = handler.maxBytes
-                    res['backup_count'] = handler.backupCount
+                    res["max_bytes"] = handler.maxBytes
+                    res["backup_count"] = handler.backupCount
             return res
-        
+
     handle = serve.run(Handle.bind())
     rotation_config = ray.get(handle.remote())
-    assert rotation_config['max_bytes'] == max_bytes
-    assert rotation_config['backup_count'] == backup_count
+    assert rotation_config["max_bytes"] == max_bytes
+    assert rotation_config["backup_count"] == backup_count
 
 
 def test_handle_access_log(serve_instance):
