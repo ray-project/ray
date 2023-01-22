@@ -83,6 +83,22 @@ ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-
 
 fi
 
+# Function to gracefully stop a CrateDB cluster
+#graceful_stop_cratedb() {
+#    curl -XPOST "http://localhost:4200/_cluster/graceful_stop"
+#}
+
+# Function to check if the graceful stop process has completed
+#graceful_stop_complete_cratedb() {
+#    response=$(curl -XGET "http://localhost:4200/_cluster/graceful_stop_complete")
+#    if [[ $response == *"graceful_stop_complete"* ]]; then
+#        echo "Graceful stop process has completed"
+#    else
+#        echo "Graceful stop process is still in progress"
+#    fi
+#}
+
+
 
 #CREATE REPOSITORY s3backup TYPE s3
 #[ WITH (parameter_name [= value], [, ...]) ]
@@ -93,10 +109,10 @@ fi
 # SIGTERM-handler this funciton will be executed when the container receives the SIGTERM signal (when stopping)
 term_handler(){
    echo "***Stopping"
-   /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
-   /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION "$HOSTNAME";"
-   curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY:
-   tailscale down
+   /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';" \
+   && /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';" \
+   && tailscale down \
+   && curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY:
    exit 0
 }
 
