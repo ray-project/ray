@@ -9,8 +9,6 @@ import shutil
 import numpy as np
 from ray.cloudpickle import cloudpickle
 
-# import logging
-
 from ray.tune.logger import (
     CSVLoggerCallback,
     JsonLoggerCallback,
