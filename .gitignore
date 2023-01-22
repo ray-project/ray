@@ -191,6 +191,7 @@ venv
 tags
 tags.lock
 tags.temp
+*.vim
 
 # Emacs
 .#*

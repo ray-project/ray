@@ -101,7 +101,7 @@ At a minimum, your ``Tuner`` call takes in a trainable as first argument, and a 
 to define your search space.
 
 The ``Tuner.fit()`` function also provides many features such as :ref:`logging <tune-logging>`,
-:ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping-ref>`.
+:ref:`checkpointing <tune-function-checkpointing>`, and :ref:`early stopping <tune-stopping-ref>`.
 Continuing with the example defined earlier (minimizing ``a (x ** 2) + b``), a simple Tune run with a simplistic
 search space for ``a`` and ``b`` would look like this:
 
@@ -306,7 +306,7 @@ and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
 
 When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix.
 Certain schedulers cannot be used with search algorithms,
-and certain schedulers require :ref:`checkpointing to be implemented <tune-checkpoint-syncing>`.
+and certain schedulers require :ref:`checkpointing to be implemented <tune-function-checkpointing>`.
 
 Schedulers can dynamically change trial resource requirements during tuning.
 This is currently implemented in :ref:`ResourceChangingScheduler<tune-resource-changing-scheduler>`,

@@ -55,10 +55,11 @@ class BulkExecutor(Executor):
             logger.get_logger().debug("Executing op %s", op.name)
             builder = self._stats.child_builder(op.name)
             try:
+                op.start(self._options)
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
                         op.add_input(r, input_index=i)
-                    op.inputs_done(i)
+                op.inputs_done()
                 output = _naive_run_until_complete(op)
             finally:
                 op.shutdown()
@@ -70,7 +71,8 @@ class BulkExecutor(Executor):
             if op_stats:
                 self._stats = builder.build_multistage(op_stats)
                 self._stats.extra_metrics = op_metrics
-            stats_summary_string = self._stats.summary_string(include_parent=False)
+            stats_summary = self._stats.to_summary()
+            stats_summary_string = stats_summary.to_string(include_parent=False)
             context = DatasetContext.get_current()
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
@@ -106,10 +108,12 @@ def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
             while op.has_next():
                 bar.update(1)
                 output.append(op.get_next())
+                progress_str = op.progress_str()
+                if progress_str:
+                    bar.set_description(op.name + ", " + progress_str)
         bar.close()
-    # An operator is finished only after it has no remaining work as well as no
-    # remaining outputs.
-    while op.has_next():
-        output.append(op.get_next())
-    assert not op.get_work_refs(), "Should not have any remaining work"
+    else:
+        while op.has_next():
+            output.append(op.get_next())
+    assert op.completed(), "Should have finished execution of the op."
     return output

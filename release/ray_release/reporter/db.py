@@ -16,6 +16,9 @@ class DBReporter(Reporter):
     def report_result(self, test: Test, result: Result):
         logger.info("Persisting result to the databricks delta lake...")
 
+        # Prometheus metrics are saved as buildkite artifacts
+        # and can be obtained using buildkite API.
+
         result_json = {
             "_table": "release_test_result",
             "report_timestamp_ms": int(time.time() * 1000),
@@ -34,7 +37,6 @@ class DBReporter(Reporter):
             "stable": result.stable,
             "return_code": result.return_code,
             "smoke_test": result.smoke_test,
-            "prometheus_metrics": result.prometheus_metrics or {},
             "extra_tags": result.extra_tags or {},
         }
 
@@ -46,20 +48,6 @@ class DBReporter(Reporter):
                 Record={"Data": json.dumps(result_json)},
             )
         except Exception:
-            try:
-                # This may happen if metrics are too big.
-                # TODO persist big metrics in an alternative fashion
-                logger.warning(
-                    "Couldn't persist with prometheus_metrics, trying without them"
-                )
-                result_json.pop("prometheus_metrics", None)
-                self.firehose.put_record(
-                    DeliveryStreamName="ray-ci-results",
-                    Record={"Data": json.dumps(result_json)},
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to persist result to the databricks delta lake"
-                )
+            logger.exception("Failed to persist result to the databricks delta lake")
         else:
             logger.info("Result has been persisted to the databricks delta lake")
