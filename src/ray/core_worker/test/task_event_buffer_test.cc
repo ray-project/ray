@@ -38,7 +38,8 @@ class TaskEventBufferTest : public ::testing::Test {
         R"(
 {
   "task_events_report_interval_ms": 1000,
-  "task_events_max_num_task_events_in_buffer": 100
+  "task_events_max_num_task_events_in_buffer": 100,
+  "task_events_send_batch_size": 100
 }
   )");
 
@@ -89,6 +90,20 @@ class TaskEventBufferTest : public ::testing::Test {
 
 class TaskEventBufferTestManualStart : public TaskEventBufferTest {
   void SetUp() override {}
+};
+
+class TaskEventBufferTestBatchSend : public TaskEventBufferTest {
+ public:
+  TaskEventBufferTestBatchSend() : TaskEventBufferTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_task_events_in_buffer": 100,
+  "task_events_send_batch_size": 10
+}
+  )");
+  }
 };
 
 TEST_F(TaskEventBufferTestManualStart, TestGcsClientFail) {
@@ -268,6 +283,38 @@ TEST_F(TaskEventBufferTest, TestForcedFlush) {
   auto task_id_2 = RandomTaskId();
   task_event_buffer_->AddTaskEvent(GenStatusTaskEvents(task_id_2, 0));
   task_event_buffer_->FlushEvents(true);
+}
+
+TEST_F(TaskEventBufferTestBatchSend, TestBatchedSend) {
+  size_t num_events = 100;
+  size_t batch_size = 10;  // Sync with constructor.
+  // Adding some events
+  for (size_t i = 0; i < num_events; ++i) {
+    auto task_id = RandomTaskId();
+    task_event_buffer_->AddTaskEvent(GenStatusTaskEvents(task_id, 0));
+  }
+
+  auto task_gcs_accessor =
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
+          ->mock_task_accessor;
+
+  // With batch size = 10, there should be 10 flush calls
+  EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
+      .Times(10)
+      .WillRepeatedly([&](std::unique_ptr<rpc::TaskEventData> actual_data,
+                          ray::gcs::StatusCallback callback) {
+        callback(Status::OK());
+        return Status::OK();
+      });
+
+  for (int i = 0; i * batch_size < num_events; i++) {
+    task_event_buffer_->FlushEvents(false);
+    EXPECT_EQ(task_event_buffer_->send_buffer_.size(), num_events - (i + 1) * batch_size);
+  }
+
+  // With last flush, there should be no more events in the buffer and as data.
+  EXPECT_EQ(task_event_buffer_->send_buffer_.size(), 0);
+  EXPECT_EQ(task_event_buffer_->buffer_.size(), 0);
 }
 
 TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {

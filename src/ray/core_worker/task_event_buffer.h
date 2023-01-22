@@ -92,6 +92,9 @@ class TaskEventBuffer {
   ///
   /// The TaskEventBuffer will be disabled if Start() returns not ok.
   virtual bool Enabled() const = 0;
+
+  /// Return a string that describes the task event buffer stats.
+  virtual const std::string DebugString() = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -116,6 +119,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   void Stop() LOCKS_EXCLUDED(mutex_) override;
 
   bool Enabled() const override;
+
+  const std::string DebugString() LOCKS_EXCLUDED(mutex_) override;
 
  private:
   /// Test only functions.
@@ -181,6 +186,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// process them quick enough.
   bool grpc_in_progress_ GUARDED_BY(mutex_) = false;
 
+  /// A buffer to store task events to be sent to GCS in batches.
+  std::vector<rpc::TaskEvents> send_buffer_ GUARDED_BY(mutex_);
+
   /// Debug stats: total number of bytes of task events sent so far to GCS.
   uint64_t total_events_bytes_ GUARDED_BY(mutex_) = 0;
 
@@ -188,6 +196,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   uint64_t total_num_events_ GUARDED_BY(mutex_) = 0;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
+  FRIEND_TEST(TaskEventBufferTestBatchSend, TestBatchedSend);
   FRIEND_TEST(TaskEventBufferTest, TestAddEvent);
   FRIEND_TEST(TaskEventBufferTest, TestFlushEvents);
   FRIEND_TEST(TaskEventBufferTest, TestFailedFlush);
