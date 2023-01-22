@@ -6,7 +6,7 @@ import pickle
 import time
 import traceback
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import ray
 from ray._private.utils import (
@@ -271,7 +271,7 @@ class ServeController:
             entry = dict()
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
-            entry["ray_job_id"] = deployment_info.deployer_job_id.hex()
+            entry["ray_job_id"] = deployment_info.deployer_job_id
             entry["class_name"] = deployment_info.replica_config.deployment_def_name
             entry["version"] = deployment_info.version
             entry["http_route"] = route_prefix
@@ -351,7 +351,7 @@ class ServeController:
         deployment_config_proto_bytes: bytes,
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
-        deployer_job_id: Union["ray._raylet.JobID", bytes],
+        deployer_job_id: str,
         is_driver_deployment: Optional[bool] = False,
     ) -> bool:
         if route_prefix is not None:
@@ -381,10 +381,7 @@ class ServeController:
             autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
         else:
             autoscaling_policy = None
-        if isinstance(deployer_job_id, bytes):
-            deployer_job_id = ray.JobID.from_int(
-                int.from_bytes(deployer_job_id, "little")
-            )
+
         deployment_info = DeploymentInfo(
             actor_name=name,
             version=version,

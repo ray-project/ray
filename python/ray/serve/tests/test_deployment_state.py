@@ -180,7 +180,7 @@ def deployment_info(
             num_replicas=num_replicas, user_config=user_config, **config_opts
         ),
         replica_config=ReplicaConfig.create(lambda x: x),
-        deployer_job_id=ray.JobID.nil(),
+        deployer_job_id="",
         is_driver_deployment=is_driver_deployment,
     )
 

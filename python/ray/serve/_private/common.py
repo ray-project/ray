@@ -162,7 +162,7 @@ class DeploymentInfo:
         deployment_config: DeploymentConfig,
         replica_config: ReplicaConfig,
         start_time_ms: int,
-        deployer_job_id: "ray._raylet.JobID",
+        deployer_job_id: str,
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
@@ -225,7 +225,7 @@ class DeploymentInfo:
             "actor_name": proto.actor_name if proto.actor_name != "" else None,
             "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
-            "deployer_job_id": ray.get_runtime_context().job_id,
+            "deployer_job_id": ray.get_runtime_context().get_job_id(),
         }
 
         return cls(**data)
