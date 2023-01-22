@@ -7,6 +7,7 @@ import grpc
 
 import ray
 import ray._private.profiling as profiling
+from ray import JobID
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
 
@@ -84,10 +85,14 @@ class ImportThread:
             self.subscriber.close()
 
     def _do_importing(self):
+        job_id = self.worker.current_job_id
+        if job_id == JobID.nil():
+            return
+
         while True:
             with self._lock:
                 export_key = ray._private.function_manager.make_export_key(
-                    self.num_imported + 1, self.worker.current_job_id
+                    self.num_imported + 1, job_id
                 )
                 key = self.gcs_client.internal_kv_get(
                     export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
