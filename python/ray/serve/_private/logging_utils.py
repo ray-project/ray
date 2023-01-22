@@ -51,12 +51,18 @@ def configure_component_logger(
             ray._private.worker._global_node.get_logs_dir_path(), "serve"
         )
         os.makedirs(logs_dir, exist_ok=True)
+        max_bytes = ray._private.worker._global_node.max_bytes
+        backup_count = ray._private.worker._global_node.backup_count
         if component_type is not None:
             component_name = f"{component_type}_{component_name}"
         log_file_name = LOG_FILE_FMT.format(
             component_name=component_name, component_id=component_id
         )
-        file_handler = logging.FileHandler(os.path.join(logs_dir, log_file_name))
+        file_handler = logging.handlers.RotatingFileHandler(
+            os.path.join(logs_dir, log_file_name),
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+        )
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
