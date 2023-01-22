@@ -2199,7 +2199,10 @@ def start_import_thread():
     worker = global_worker
     worker.check_connected()
 
-    assert _mode() is WORKER_MODE, "can only start import_thread in WORKER_MODE"
+    assert _mode() not in (
+        RESTORE_WORKER_MODE,
+        SPILL_WORKER_MODE,
+    ), "import thread can not be used in IO workers."
     if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
         worker.import_thread.start()
 
