@@ -212,7 +212,7 @@ def create_replica_wrapper(name: str):
 
             Return the NodeID of this replica
             """
-            return ray.get_runtime_context().node_id
+            return ray.get_runtime_context().node_id()
 
         async def is_initialized(
             self, user_config: Optional[Any] = None, _after: Optional[Any] = None
