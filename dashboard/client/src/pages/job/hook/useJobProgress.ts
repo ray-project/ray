@@ -38,6 +38,8 @@ const useFetchStateApiProgressByTaskName = (
   setMsg: (msg: string) => void,
   setError: (error: boolean) => void,
   setRefresh: (refresh: boolean) => void,
+  disableRefresh: boolean,
+  setLatestFetchTimestamp?: (time: number) => void,
 ) => {
   return useSWR(
     jobId ? ["useJobProgressByTaskName", jobId] : null,
@@ -46,13 +48,17 @@ const useFetchStateApiProgressByTaskName = (
       setMsg(rsp.data.msg);
 
       if (rsp.data.result) {
+        setLatestFetchTimestamp?.(new Date().getTime());
         return formatSummaryToTaskProgress(rsp.data.data.result.result);
       } else {
         setError(true);
         setRefresh(false);
       }
     },
-    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
+    {
+      refreshInterval:
+        isRefreshing && !disableRefresh ? API_REFRESH_INTERVAL_MS : 0,
+    },
   );
 };
 
@@ -60,23 +66,26 @@ const useFetchStateApiProgressByTaskName = (
  * Hook for fetching a job's task progress.
  * Refetches every 4 seconds unless refresh switch is toggled off.
  *
- * If jobId is not provided, will fetch the task progress across all jobs.
+ * If jobId is undefined, we will not fetch the job progress.
  * @param jobId The id of the job whose task progress to fetch or undefined
  *              to fetch all progress for all jobs
  */
-export const useJobProgress = (jobId?: string) => {
+export const useJobProgress = (
+  jobId: string | undefined,
+  disableRefresh = false,
+) => {
   const [msg, setMsg] = useState("Loading progress...");
   const [error, setError] = useState(false);
   const [isRefreshing, setRefresh] = useState(true);
-  const onSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setRefresh(event.target.checked);
-  };
+  const [latestFetchTimestamp, setLatestFetchTimestamp] = useState(0);
   const { data: tasks } = useFetchStateApiProgressByTaskName(
     jobId,
     isRefreshing,
     setMsg,
     setError,
     setRefresh,
+    disableRefresh,
+    setLatestFetchTimestamp,
   );
 
   const summed = (tasks ?? []).reduce((acc, task) => {
@@ -92,9 +101,8 @@ export const useJobProgress = (jobId?: string) => {
     progress: summed,
     msg,
     error,
-    isRefreshing,
-    onSwitchChange,
     driverExists,
+    latestFetchTimestamp,
   };
 };
 
@@ -121,6 +129,7 @@ export const useJobProgressByTaskName = (jobId: string) => {
     setMsg,
     setError,
     setRefresh,
+    false,
   );
 
   const formattedTasks = (tasks ?? []).map((task) => {
@@ -155,7 +164,6 @@ export const useJobProgressByTaskName = (jobId: string) => {
     setPage,
     msg,
     error,
-    isRefreshing,
     onSwitchChange,
   };
 };
@@ -205,9 +213,16 @@ export const formatNestedJobProgressToJobProgressGroup = (
   summary: StateApiNestedJobProgress,
 ) => {
   const tasks = summary.node_id_to_summary.cluster.summary;
-  const formattedTasks = Object.values(tasks).map(formatToJobProgressGroup);
+  const progressGroups = Object.values(tasks).map(formatToJobProgressGroup);
+  const total = progressGroups.reduce<TaskProgress>((acc, group) => {
+    Object.entries(group.progress).forEach(([key, count]) => {
+      const progressKey = key as keyof TaskProgress;
+      acc[progressKey] = (acc[progressKey] ?? 0) + count;
+    });
+    return acc;
+  }, {});
 
-  return formattedTasks;
+  return { progressGroups, total };
 };
 
 /**
@@ -217,22 +232,25 @@ export const formatNestedJobProgressToJobProgressGroup = (
  *
  * @param jobId The id of the job whose task progress to fetch or undefined
  *              to fetch all progress for all jobs
+ *              If null, we will avoid fetching.
  */
-export const useJobProgressByLineage = (jobId: string) => {
+export const useJobProgressByLineage = (
+  jobId: string | undefined,
+  disableRefresh = false,
+) => {
   const [msg, setMsg] = useState("Loading progress...");
   const [error, setError] = useState(false);
   const [isRefreshing, setRefresh] = useState(true);
-  const onSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setRefresh(event.target.checked);
-  };
+  const [latestFetchTimestamp, setLatestFetchTimestamp] = useState(0);
 
-  const { data: tasks } = useSWR(
+  const { data } = useSWR(
     jobId ? ["useJobProgressByLineage", jobId] : null,
     async (_, jobId) => {
       const rsp = await getStateApiJobProgressByLineageAndName(jobId);
       setMsg(rsp.data.msg);
 
       if (rsp.data.result) {
+        setLatestFetchTimestamp(new Date().getTime());
         return formatNestedJobProgressToJobProgressGroup(
           rsp.data.data.result.result,
         );
@@ -241,14 +259,17 @@ export const useJobProgressByLineage = (jobId: string) => {
         setRefresh(false);
       }
     },
-    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
+    {
+      refreshInterval:
+        isRefreshing && !disableRefresh ? API_REFRESH_INTERVAL_MS : 0,
+    },
   );
 
   return {
-    progress: tasks,
+    progressGroups: data?.progressGroups,
+    total: data?.total,
     msg,
     error,
-    isRefreshing,
-    onSwitchChange,
+    latestFetchTimestamp,
   };
 };

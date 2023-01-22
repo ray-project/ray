@@ -10,22 +10,20 @@ import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { ClassNameProps } from "../../../common/props";
 import { JobProgressGroup } from "../../../type/job";
-import { useJobProgressByLineage } from "../hook/useJobProgress";
 import { MiniTaskProgressBar } from "../TaskProgressBar";
 
 export type AdvancedProgressBarProps = {
-  jobId: string;
+  progressGroups: JobProgressGroup[] | undefined;
 } & ClassNameProps;
 
 export const AdvancedProgressBar = ({
-  jobId,
+  progressGroups,
   className,
 }: AdvancedProgressBarProps) => {
-  const { progress } = useJobProgressByLineage(jobId);
   return (
     <Table className={className}>
-      {progress ? (
-        progress.map((group) => (
+      {progressGroups !== undefined ? (
+        progressGroups.map((group) => (
           <AdvancedProgressBarSegment
             key={group.key}
             jobProgressGroup={group}
@@ -46,8 +44,10 @@ const useAdvancedProgressBarSegmentStyles = makeStyles((theme) =>
   createStyles({
     nameContainer: {
       paddingLeft: 0,
+      whiteSpace: "nowrap",
     },
     progressBarContainer: {
+      width: "100%",
       paddingRight: 0,
     },
     icon: {

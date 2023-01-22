@@ -810,8 +810,9 @@ class TaskSummaries:
         for task in tasks:
             tasks_by_id[task["task_id"]] = task
 
-        @functools.lru_cache
-        def find_lineage(task) -> List[str]:
+        @functools.lru_cache(None)
+        def find_lineage(task_id: str) -> List[str]:
+            task = tasks_by_id[task_id]
             # Use name first which allows users to customize the name of
             # their remote function call using the name option.
             func_name = task["name"] or task["func_or_class_name"]
@@ -819,7 +820,7 @@ class TaskSummaries:
             if parent_task_id.startswith(DRIVER_TASK_ID_PREFIX):
                 return [func_name]
             else:
-                parent_lineage = find_lineage(tasks_by_id[parent_task_id])
+                parent_lineage = find_lineage(parent_task_id)
                 return [*parent_lineage, func_name]
 
         def create_empty_summary(lineage, key, task):
@@ -842,7 +843,7 @@ class TaskSummaries:
                 parent_task_group.children.append(task_group_by_key[key])
 
         for task in tasks:
-            lineage = find_lineage(task)
+            lineage = find_lineage(task["task_id"])
             key = ",".join(lineage)
 
             if key not in task_group_by_key:

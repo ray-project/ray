@@ -147,7 +147,7 @@ const TaskTable = ({
               type,
               required_resources,
             }) => (
-              <TableRow>
+              <TableRow key={task_id}>
                 <TableCell align="center">
                   <Tooltip
                     className={classes.idCol}

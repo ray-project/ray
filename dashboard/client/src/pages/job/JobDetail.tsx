@@ -1,7 +1,6 @@
 import { makeStyles } from "@material-ui/core";
-import { Alert } from "@material-ui/lab";
 import dayjs from "dayjs";
-import React, { useState } from "react";
+import React from "react";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -10,21 +9,13 @@ import TitleCard from "../../components/TitleCard";
 import ActorList from "../actor/ActorList";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
-import { AdvancedProgressBar } from "./AdvancedProgressBar";
 
 import { useJobDetail } from "./hook/useJobDetail";
-import { useJobProgress } from "./hook/useJobProgress";
-import { TaskProgressBar } from "./TaskProgressBar";
+import { JobProgressBar } from "./JobProgressBar";
 
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
-  },
-  advancedProgressBar: {
-    marginTop: theme.spacing(0.5),
-  },
-  taskProgressTable: {
-    marginTop: theme.spacing(2),
   },
 }));
 
@@ -32,9 +23,6 @@ export const JobDetailChartsPage = () => {
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
-  const { progress, error, driverExists } = useJobProgress(jobId);
-  const [advancedProgressBarExpanded, setAdvancedProgressBarExpanded] =
-    useState(false);
 
   if (!job) {
     return (
@@ -48,53 +36,6 @@ export const JobDetailChartsPage = () => {
       </div>
     );
   }
-
-  const tasksSectionContents = (() => {
-    if (!driverExists) {
-      return <TaskProgressBar />;
-    }
-    const { status } = job;
-    if (!progress || error) {
-      return (
-        <Alert severity="warning">
-          No tasks visualizations because prometheus is not detected. Please
-          make sure prometheus is running and refresh this page. See:{" "}
-          <a
-            href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
-            target="_blank"
-            rel="noreferrer"
-          >
-            https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
-          </a>
-          .
-          <br />
-          If you are hosting prometheus on a separate machine or using a
-          non-default port, please set the RAY_PROMETHEUS_HOST env var to point
-          to your prometheus server when launching ray.
-        </Alert>
-      );
-    }
-
-    return (
-      <React.Fragment>
-        <TaskProgressBar
-          {...progress}
-          showAsComplete={status === "SUCCEEDED" || status === "FAILED"}
-          showTooltip={false}
-          expanded={advancedProgressBarExpanded}
-          onClick={() =>
-            setAdvancedProgressBarExpanded(!advancedProgressBarExpanded)
-          }
-        />
-        {advancedProgressBarExpanded && (
-          <AdvancedProgressBar
-            className={classes.advancedProgressBar}
-            jobId={jobId}
-          />
-        )}
-      </React.Fragment>
-    );
-  })();
 
   return (
     <div className={classes.root}>
@@ -164,7 +105,9 @@ export const JobDetailChartsPage = () => {
           ]}
         />
       </TitleCard>
-      <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
+      <TitleCard title="Tasks">
+        <JobProgressBar jobId={jobId} job={job} />
+      </TitleCard>
       <TitleCard title="Task Table">
         <TaskList jobId={jobId} />
       </TitleCard>

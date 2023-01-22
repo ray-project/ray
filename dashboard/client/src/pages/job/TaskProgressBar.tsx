@@ -51,6 +51,7 @@ export const TaskProgressBar = ({
         showTooltip={showTooltip}
         expanded={expanded}
         onClick={onClick}
+        showTotalProgress={numFinished}
       />
     );
   } else {
@@ -92,6 +93,7 @@ export const TaskProgressBar = ({
         expanded={expanded}
         showTooltip={showTooltip}
         onClick={onClick}
+        showTotalProgress={numFinished}
       />
     );
   }
