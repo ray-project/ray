@@ -193,7 +193,7 @@ def test_caching_functions_to_run(shutdown_only):
     ray._private.worker.global_worker.run_function_on_all_workers(f)
 
 
-@pytest.mark.skip(reason="Flaky tests")
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_running_function_on_all_workers(ray_start_regular):
     def f(worker_info):
         sys.path.append("fake_directory")
