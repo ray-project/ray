@@ -12,6 +12,38 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 
 
+def set_logging_config(monkeypatch, max_bytes, backup_count):
+    monkeypatch.setenv("RAY_ROTATION_MAX_BYTES", str(max_bytes))
+    monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
+
+
+def test_log_rotation_config(monkeypatch, ray_shutdown):
+    # This test should be executed before any test that uses
+    # the shared serve_instance, as environment variables
+    # for log rotation need to be set before ray.init
+    logger = logging.getLogger("ray.serve")
+    max_bytes = 100
+    backup_count = 3
+    set_logging_config(monkeypatch, max_bytes, backup_count)
+    ray.init(num_cpus=1)
+
+    @serve.deployment
+    class Handle:
+        def __call__(self):
+            handlers = logger.handlers
+            res = {}
+            for handler in handlers:
+                if isinstance(handler, logging.handlers.RotatingFileHandler):
+                    res["max_bytes"] = handler.maxBytes
+                    res["backup_count"] = handler.backupCount
+            return res
+
+    handle = serve.run(Handle.bind())
+    rotation_config = ray.get(handle.remote())
+    assert rotation_config["max_bytes"] == max_bytes
+    assert rotation_config["backup_count"] == backup_count
+
+
 def test_handle_access_log(serve_instance):
     name = "handler"
 
