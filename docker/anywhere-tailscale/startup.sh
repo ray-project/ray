@@ -24,13 +24,13 @@ sudo chmod -R 777 /data
 
 if [ -c /dev/net/tun ]; then
     sudo tailscaled &
-    sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
+    sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns=true
 else
     echo "tun doesn't exist"
     sudo tailscaled --tun=userspace-networking --state=mem: --socks5-server=localhost:1080 &
     export ALL_PROXY=socks5h://localhost:1080
     export http_proxy=socks5h://localhost:1080
-    sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns
+    sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns=true
 fi
 
 # TS_STATE environment variable would specify where the tailscaled.state file is stored, if that is being set.
@@ -109,10 +109,15 @@ fi
 # SIGTERM-handler this funciton will be executed when the container receives the SIGTERM signal (when stopping)
 term_handler(){
    echo "***Stopping"
+   echo "Running Cluster Election"
    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';" \
-   && /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';" \
-   && tailscale down \
-   && curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY:
+   && echo "Running Decomission" \
+   && /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
+
+   echo "Deleting the device from Tailscale"
+   curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Deleting the device from Tailscale didn't work for $deviceid"
+   echo "Shutting Tailscale Down"
+   tailscale down
    exit 0
 }
 
