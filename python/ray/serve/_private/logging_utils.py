@@ -19,7 +19,7 @@ def configure_component_logger(
     component_name: str,
     component_id: str,
     component_type: Optional[str] = None,
-    log_level: int = None,
+    log_level: int = logging.INFO,
     log_to_stream: bool = True,
     log_to_file: bool = True,
 ):
@@ -32,8 +32,6 @@ def configure_component_logger(
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
-    if log_level is None:
-        log_level = logging.getLogger("ray").getEffectiveLevel()
     logger.setLevel(log_level)
     if os.environ.get(DEBUG_LOG_ENV_VAR, "0") != "0":
         logger.setLevel(logging.DEBUG)
