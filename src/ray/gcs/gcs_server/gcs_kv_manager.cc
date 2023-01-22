@@ -118,6 +118,7 @@ void GcsInternalKVManager::HandleInternalKVKeys(
 }
 
 Status GcsInternalKVManager::ValidateKey(const std::string &key) const {
+  constexpr std::string_view kNamespacePrefix = "@namespace_";
   if (absl::StartsWith(key, kNamespacePrefix)) {
     return Status::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
   }
