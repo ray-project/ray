@@ -6,9 +6,7 @@
 namespace ray {
 namespace gcs {
 
-/// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
-/// node and resource related rpc requests.
-/// This class is not thread-safe.
+/// GcsMonitorServer is a shim responsible for providing a compatible interface between GCS and `monitor.py`
 class GcsMonitorServer : public rpc::MonitorServiceHandler {
  public:
   explicit GcsMonitorServer();
