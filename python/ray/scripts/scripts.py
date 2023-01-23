@@ -466,9 +466,9 @@ def debug(address):
 )
 @click.option(
     "--temp-dir",
-    hidden=True,
     default=None,
-    help="manually specify the root temporary dir of the Ray process",
+    help="manually specify the root temporary dir of the Ray process, only works"
+    "when --head is specified",
 )
 @click.option(
     "--storage",
@@ -600,6 +600,14 @@ def start(
             DeprecationWarning,
             stacklevel=2,
         )
+    if temp_dir and not head:
+        cli_logger.warning(
+            f"`--temp-dir={temp_dir}` option will be ignored. "
+            "`--head` is a required flag to use `--temp-dir`. "
+            "temp_dir is only configurable from a head node. "
+            "All the worker nodes will use the same temp_dir as a head node. "
+        )
+        temp_dir = None
 
     redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(

@@ -1,5 +1,5 @@
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 
 ACTION_UP = 0
 ACTION_RIGHT = 1
@@ -41,9 +41,9 @@ class CliffWalkingWallEnv(gym.Env):
         self.observation_space.seed(seed)
         self.action_space.seed(seed)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.position = 36
-        return self.position
+        return self.position, {}
 
     def step(self, action):
         x = self.position // 12
@@ -68,4 +68,4 @@ class CliffWalkingWallEnv(gym.Env):
         self.position = x * 12 + y
         done = self.position == 47
         reward = -1 if not done else 10
-        return self.position, reward, done, {}
+        return self.position, reward, done, False, {}

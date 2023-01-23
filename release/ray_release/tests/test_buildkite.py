@@ -370,6 +370,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": "nightly",
                     "smoke_test": {"frequency": "nightly"},
                     "team": "team_1",
+                    "run": {"type": "job"},
                 }
             ),
             Test(
@@ -378,6 +379,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": "weekly",
                     "smoke_test": {"frequency": "nightly"},
                     "team": "team_2",
+                    "run": {"type": "client"},
                 }
             ),
             Test({"name": "other_1", "frequency": "weekly", "team": "team_2"}),
@@ -387,6 +389,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "frequency": "nightly",
                     "smoke_test": {"frequency": "multi"},
                     "team": "team_2",
+                    "run": {"type": "job"},
                 }
             ),
             Test({"name": "other_3", "frequency": "disabled", "team": "team_2"}),
@@ -489,6 +492,28 @@ class BuildkiteSettingsTest(unittest.TestCase):
             test_attr_regex_filters={"name": "test_1|test_2"},
         )
         self.assertSequenceEqual(filtered, [("test_1", False), ("test_2", True)])
+
+        # Filter by nested properties
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            test_attr_regex_filters={"run/type": "job"},
+        )
+        self.assertSequenceEqual(filtered, [("test_1", False), ("other_2", False)])
+
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            test_attr_regex_filters={"run/type": "client"},
+        )
+        self.assertSequenceEqual(filtered, [("test_2", False)])
+
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            test_attr_regex_filters={"run/invalid": "xxx"},
+        )
+        self.assertSequenceEqual(filtered, [])
 
     def testGroupTests(self):
         tests = [

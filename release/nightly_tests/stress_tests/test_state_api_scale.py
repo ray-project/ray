@@ -44,22 +44,28 @@ class SignalActor:
 
 
 def invoke_state_api_n(*args, **kwargs):
-    NUM_API_CALL_SAMPLES = 10
-    for _ in range(NUM_API_CALL_SAMPLES):
-        invoke_state_api(*args, **kwargs)
+    def verify():
+        NUM_API_CALL_SAMPLES = 10
+        for _ in range(NUM_API_CALL_SAMPLES):
+            invoke_state_api(*args, **kwargs)
+        return True
+
+    test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=30)
 
 
 def test_many_tasks(num_tasks: int):
     if num_tasks == 0:
         print("Skipping test with no tasks")
         return
+
     # No running tasks
-    invoke_state_api(
+    invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
+        err_msg="Expect 0 running tasks.",
     )
 
     # Task definition adopted from:
@@ -68,7 +74,11 @@ def test_many_tasks(num_tasks: int):
 
     SAMPLES = 100
 
-    @ray.remote
+    # `num_cpus` required obtained from 1 / (num_tasks /num_total_cpus)
+    #  where num_total_cpus obtained from cluster_compute in `release_tests.yaml`
+    # 1 / (10k/45 * 7) ~= 0.03, taking a smaller value to make sure all tasks could be
+    # running at the same time.
+    @ray.remote(num_cpus=0.02)
     def pi4_sample(signal):
         in_count = 0
         for _ in range(SAMPLES):
@@ -87,9 +97,10 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == num_tasks,
         list_tasks,
-        filters=[("name", "=", "pi4_sample")],
+        filters=[("name", "=", "pi4_sample"), ("state", "!=", "FINISHED")],
         key_suffix=f"{num_tasks}",
         limit=STATE_LIST_LIMIT,
+        err_msg=f"Expect {num_tasks} non finished tasks.",
     )
 
     print("Waiting for tasks to finish...")
@@ -98,12 +109,13 @@ def test_many_tasks(num_tasks: int):
 
     # Clean up
     # All compute tasks done other than the signal actor
-    invoke_state_api(
+    invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
+        err_msg="Expect 0 running tasks",
     )
 
     del signal

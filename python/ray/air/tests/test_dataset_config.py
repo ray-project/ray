@@ -1,12 +1,14 @@
 import random
 from typing import Optional
 
+import numpy as np
 import pytest
 
 import ray
 from ray.air import session
 from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import Dataset, DatasetPipeline
+from ray.air.util.check_ingest import make_local_dataset_iterator
+from ray.data import DatasetIterator
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
@@ -30,19 +32,16 @@ class TestBasic(DataParallelTrainer):
     ):
         def train_loop_per_worker():
             data_shard = session.get_dataset_shard("train")
-            if expect_ds:
-                assert isinstance(data_shard, Dataset), data_shard
-            else:
-                assert isinstance(data_shard, DatasetPipeline), data_shard
+            assert isinstance(data_shard, DatasetIterator), data_shard
             for k, v in expect_sizes.items():
                 shard = session.get_dataset_shard(k)
                 if v == -1:
                     assert shard is None, shard
                 else:
-                    if isinstance(shard, DatasetPipeline):
-                        assert next(shard.iter_epochs()).count() == v, shard
-                    else:
-                        assert shard.count() == v, shard
+                    count = 0
+                    for batch in shard.iter_batches():
+                        count += len(batch)
+                    assert count == v, shard
 
         kwargs.pop("scaling_config", None)
         super().__init__(
@@ -143,7 +142,7 @@ def test_use_stream_api_config(ray_start_4_cpus):
         1,
         False,
         {"train": 10, "test": 10},
-        dataset_config={"train": DatasetConfig(use_stream_api=True)},
+        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=1)},
         datasets={"train": ds, "test": ds},
     )
     test.fit()
@@ -153,7 +152,7 @@ def test_use_stream_api_config(ray_start_4_cpus):
         2,
         False,
         {"train": 5, "test": 10},
-        dataset_config={"train": DatasetConfig(use_stream_api=True)},
+        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=1)},
         datasets={"train": ds, "test": ds},
     )
     test.fit()
@@ -208,57 +207,55 @@ def test_fit_transform_config(ray_start_4_cpus):
 
 class TestStream(DataParallelTrainer):
     _dataset_config = {
-        "train": DatasetConfig(split=True, required=True, use_stream_api=True),
+        "train": DatasetConfig(
+            split=True,
+            required=True,
+            # Use 30% of object store memory.
+            max_object_store_memory_fraction=0.3,
+        ),
     }
 
     def __init__(self, check_results_fn, **kwargs):
-        def train_loop_per_worker():
-            data_shard = session.get_dataset_shard("train")
-            assert isinstance(data_shard, DatasetPipeline), data_shard
-            results = []
-            for epoch in data_shard.iter_epochs(2):
-                results.append(epoch.take())
-            check_results_fn(data_shard, results)
-
         kwargs.pop("scaling_config", None)
         super().__init__(
-            train_loop_per_worker=train_loop_per_worker,
+            train_loop_per_worker=lambda: self.train_loop_per_worker(
+                session.get_dataset_shard("train"), check_results_fn
+            ),
             scaling_config=ScalingConfig(num_workers=1),
             **kwargs,
         )
 
+    @staticmethod
+    def train_loop_per_worker(data_shard, check_results_fn):
+        results = []
+        for _ in range(2):
+            result = []
+            for batch in data_shard.iter_batches():
+                for row in batch["value"]:
+                    result.append(row)
+            results.append(result)
+        check_results_fn(data_shard, results)
 
-class TestBatch(DataParallelTrainer):
+
+class TestBatch(TestStream):
     _dataset_config = {
-        "train": DatasetConfig(split=True, required=True, use_stream_api=False),
+        "train": DatasetConfig(split=True, required=True),
     }
-
-    def __init__(self, check_results_fn, **kwargs):
-        def train_loop_per_worker():
-            data_shard = session.get_dataset_shard("train")
-            assert isinstance(data_shard, Dataset), data_shard
-            results = data_shard.take()
-            check_results_fn(data_shard, results)
-
-        kwargs.pop("scaling_config", None)
-        super().__init__(
-            train_loop_per_worker=train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=1),
-            **kwargs,
-        )
 
 
 def test_stream_inf_window_cache_prep(ray_start_4_cpus):
     def checker(shard, results):
         results = [sorted(r) for r in results]
         assert len(results[0]) == 5, results
+        # TODO(swang): Should modify the check to make sure that we are
+        # applying the preprocessor on each epoch.
         assert results[0] == results[1], results
         stats = shard.stats()
-        assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
         assert "Stage 1 read->map_batches: 1/1 blocks executed " in stats, stats
 
     def rand(x):
-        return [random.random() for _ in range(len(x))]
+        x["value"] = [random.random() for _ in range(len(x))]
+        return x
 
     prep = BatchMapper(rand, batch_format="pandas")
     ds = ray.data.range_table(5, parallelism=1)
@@ -266,26 +263,26 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         checker,
         preprocessor=prep,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(stream_window_size=-1)},
+        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=-1)},
     )
     test.fit()
 
 
 def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
     def rand(x):
-        return [random.random() for _ in range(len(x))]
+        x["value"] = [random.random() for _ in range(len(x))]
+        return x
 
     prep = BatchMapper(rand, batch_format="pandas")
-    ds = ray.data.range_table(5)
+    ds = ray.data.range_table(5, parallelism=1)
 
-    # Test the default 1GiB window size.
+    # Test 50% object store memory..
     def checker(shard, results):
         results = [sorted(r) for r in results]
         assert int(results[0][0]) != results[0][0]
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
         assert (
             "Stage 1 read->randomize_block_order->map_batches: 1/1 blocks executed "
             in stats
@@ -295,28 +292,29 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         checker,
         preprocessor=prep,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig()},
+        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=0.5)},
     )
     test.fit()
 
-    # Test a smaller window size.
-    def checker(shard, results):
-        results = [sorted(r) for r in results]
-        assert int(results[0][0]) != results[0][0]
-        assert len(results[0]) == 5, results
-        assert results[0] != results[1], results
-        stats = shard.stats()
-        assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
-        assert (
-            "Stage 1 read->randomize_block_order->map_batches: 1/1 blocks executed "
-            in stats
-        ), stats
+
+def test_stream_transform_config(ray_start_4_cpus):
+    """Tests that the preprocessor's transform config is
+    respected when using the stream API."""
+    batch_size = 2
+
+    def check_batch(batch):
+        assert isinstance(batch, dict)
+        assert isinstance(batch["value"], np.ndarray)
+        assert len(batch["value"]) == batch_size
+        return batch
+
+    prep = BatchMapper(check_batch, batch_format="numpy", batch_size=2)
+    ds = ray.data.range_table(6, parallelism=1)
 
     test = TestStream(
-        checker,
+        lambda *args: None,
         preprocessor=prep,
         datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(stream_window_size=10)},
     )
     test.fit()
 
@@ -326,8 +324,7 @@ def test_global_shuffle(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
-        assert "Stage 1 read->randomize_block_order->random_shuffle" in stats, stats
+        assert "randomize_block_order->random_shuffle" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestStream(
@@ -338,7 +335,8 @@ def test_global_shuffle(ray_start_4_cpus):
     test.fit()
 
     def checker(shard, results):
-        assert len(results) == 5, results
+        assert len(results[0]) == 5, results
+        assert results[0] != results[1], results
         stats = shard.stats()
         assert "Stage 1 read->random_shuffle" in stats, stats
 
@@ -353,6 +351,8 @@ def test_global_shuffle(ray_start_4_cpus):
 
 def test_randomize_block_order(ray_start_4_cpus):
     def checker(shard, results):
+        assert len(results[0]) == 5, results
+        assert results[0] != results[1], results
         stats = shard.stats()
         assert "randomize_block_order: 5/5 blocks executed in 0s" in stats, stats
 
@@ -376,13 +376,46 @@ def test_randomize_block_order(ray_start_4_cpus):
     test.fit()
 
     def checker(shard, results):
-        assert len(results) == 5, results
+        assert len(results[0]) == 5, results
+        # Randomize block order for bulk ingest only executes once at the
+        # beginning, not once per epoch.
+        assert results[0] == results[1], results
         stats = shard.stats()
         assert "randomize_block_order: 5/5 blocks executed" in stats, stats
 
     ds = ray.data.range_table(5)
     test = TestBatch(
         checker,
+        datasets={"train": ds},
+    )
+    test.fit()
+
+
+def test_make_local_dataset_iterator(ray_start_4_cpus):
+    def checker(shard, results):
+        assert len(results[0]) == 5, results
+        assert results[0] != results[1], results
+        stats = shard.stats()
+        assert "randomize_block_order: 5/5 blocks executed in 0s" in stats, stats
+
+    ds = ray.data.range_table(5)
+    test = TestStream(
+        checker,
+        datasets={"train": ds},
+    )
+    test.fit()
+
+    it = make_local_dataset_iterator(ds, None, TestStream._dataset_config["train"])
+    TestStream.train_loop_per_worker(it, checker)
+
+    # Check that make_local_dataset_iterator throws an error when called by a
+    # worker.
+    def check_error(shard, results):
+        with pytest.raises(RuntimeError):
+            make_local_dataset_iterator(ds, None, TestStream._dataset_config["train"])
+
+    test = TestStream(
+        check_error,
         datasets={"train": ds},
     )
     test.fit()
