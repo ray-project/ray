@@ -38,7 +38,11 @@ class AllToAllOperator(PhysicalOperator):
         super().__init__(name, [input_op])
 
     def num_outputs_total(self) -> Optional[int]:
-        return self._num_outputs
+        return (
+            self._num_outputs
+            if self._num_outputs
+            else self.input_dependencies[0].num_outputs_total()
+        )
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
