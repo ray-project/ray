@@ -50,8 +50,11 @@ class NevergradSearch(Searcher):
         $ pip install nevergrad
 
     Parameters:
-        optimizer: Optimizer provided
-            from Nevergrad. Alter
+        optimizer: Optimizer class provided from Nevergrad.
+            See here for available optimizers:
+            https://facebookresearch.github.io/nevergrad/optimizers_ref.html#optimizers
+            This can also be an instance of a `ConfiguredOptimizer`. See the
+            section on configured optimizers in the above link.
         optimizer_configs: Kwargs passed in when instantiating the `optimizer`
         space: Nevergrad parametrization
             to be passed to optimizer on instantiation, or list of parameter
