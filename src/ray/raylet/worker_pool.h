@@ -735,7 +735,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int ray_debugger_external;
 
   /// If the first job has already been registered.
-  bool first_job_registered_;
+  bool first_job_registered_ = false;
 
   /// The callback to send RegisterClientReply to the driver of the first job.
   std::function<void()> first_job_send_register_client_reply_to_driver_;
