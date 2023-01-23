@@ -3892,6 +3892,27 @@
       num_nodes: 251
 
 
+#- name: many_nodes_multi_master_test
+#  group: core-daily-test
+#  working_dir: nightly_tests
+#  legacy:
+#    test_name: many_nodes_multi_master_test
+#    test_suite: nightly_tests
+#
+#  frequency: nightly-3x
+#  team: core
+#  cluster:
+#    cluster_env: many_nodes_tests/app_config.yaml
+#    cluster_compute: many_nodes_tests/compute_config.yaml
+#
+#  run:
+#    timeout: 7200
+#    script: python many_nodes_tests/multi_master_test.py
+#    wait_for_nodes:
+#      num_nodes: 251
+#
+#    type: sdk_command
+#    file_manager: sdk
 
 - name: pg_autoscaling_regression_test
   group: core-daily-test
@@ -4370,7 +4391,6 @@
     script: python iter_tensor_batches_benchmark.py
 
     type: sdk_command
-    file_manager: sdk
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
