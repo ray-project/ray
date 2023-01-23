@@ -9,7 +9,7 @@ namespace gcs {
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
-class GcsMonitorServer : public ray::rpc::MonitorServiceHandler {
+class GcsMonitorServer : public rpc::MonitorServiceHandler {
  public:
   explicit GcsMonitorServer();
 

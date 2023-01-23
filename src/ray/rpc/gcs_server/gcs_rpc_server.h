@@ -222,7 +222,7 @@ class MonitorServiceHandler {
                                    SendReplyCallback send_reply_callback) = 0;
 };
 
-/// The `GrpcService` for `NodeInfoGcsService`.
+/// The `GrpcService` for `MonitorService`.
 class MonitorGrpcService : public GrpcService {
  public:
   /// Constructor.
