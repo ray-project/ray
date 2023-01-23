@@ -88,13 +88,14 @@ const useMainNavBarStyles = makeStyles((theme) =>
       boxShadow: "0px 1px 0px #D2DCE6",
     },
     logo: {
-      width: 60,
       display: "flex",
       justifyContent: "center",
+      marginLeft: theme.spacing(2),
+      marginRight: theme.spacing(3),
     },
     navItem: {
-      marginRight: theme.spacing(2),
-      fontSize: "1em",
+      marginRight: theme.spacing(6),
+      fontSize: "1rem",
       fontWeight: 500,
       color: "black",
       textDecoration: "none",
@@ -211,15 +212,21 @@ const MainNavBreadcrumbs = () => {
         );
         if (index === 0) {
           return (
-            <Typography key={id} className={classes.breadcrumbItem}>
+            <Typography
+              key={id}
+              className={classes.breadcrumbItem}
+              variant="body2"
+            >
               {linkOrText}
             </Typography>
           );
         } else {
           return (
             <React.Fragment key={id}>
-              <Typography className={classes.breadcrumbItem}>{"/"}</Typography>
-              <Typography className={classes.breadcrumbItem}>
+              <Typography className={classes.breadcrumbItem} variant="body2">
+                {"/"}
+              </Typography>
+              <Typography className={classes.breadcrumbItem} variant="body2">
                 {linkOrText}
               </Typography>
             </React.Fragment>
