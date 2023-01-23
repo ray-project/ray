@@ -230,7 +230,7 @@ class InvalidValuesTest(unittest.TestCase):
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
-    def testNevergradWithConfigs(self):
+    def testNevergradWithRequiredOptimizerKwargs(self):
         from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
 
