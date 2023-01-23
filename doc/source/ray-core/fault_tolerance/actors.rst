@@ -45,10 +45,10 @@ infinity with ``max_task_retries = -1``.
 
 You can experiment with this behavior by running the following code.
 
-.. literalinclude:: ../doc_code/actor_creator_failure.py
+.. literalinclude:: ../doc_code/actor_restart.py
   :language: python
-  :start-after: __actor_creator_failure_begin__
-  :end-before: __actor_creator_failure_end__
+  :start-after: __actor_restart_begin__
+  :end-before: __actor_restart_end__
 
 For at-least-once actors, the system will still guarantee execution ordering
 according to the initial submission order. For example, any tasks submitted
