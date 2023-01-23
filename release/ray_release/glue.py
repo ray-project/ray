@@ -319,7 +319,10 @@ def run_release_test(
 
         try:
             command_runner.run_command(
-                command, env=command_env, timeout=command_timeout
+                command,
+                env=command_env,
+                timeout=command_timeout,
+                is_long_running=is_long_running,
             )
         except CommandError as e:
             raise TestCommandError(e)

@@ -91,7 +91,11 @@ class JobRunner(CommandRunner):
         )
 
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        is_long_running: bool = False,
     ) -> float:
         full_env = self.get_full_command_env(env)
 

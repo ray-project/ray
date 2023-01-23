@@ -47,7 +47,7 @@ class AnyscaleJobRunner(JobRunner):
         self.upload_path = join_s3_paths(
             f"s3://{self.file_manager.bucket}", self.path_in_bucket
         )
-        self.prepare_command = None
+        self.prepare_commands = []
 
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
@@ -57,43 +57,37 @@ class AnyscaleJobRunner(JobRunner):
             os.unlink("anyscale_job_wrapper.sh")
         os.link(job_script, "anyscale_job_wrapper.sh")
 
-        # Copy prometheus metrics script to working dir
-        metrics_script = os.path.join(
-            os.path.dirname(__file__), "_prometheus_metrics.py"
-        )
-        # Copy prometheus metrics script to working dir
-        if os.path.exists("prometheus_metrics.py"):
-            os.unlink("prometheus_metrics.py")
-        os.link(metrics_script, "prometheus_metrics.py")
-
-        # Do not upload the files here. Instead, we use the job runtime environment
-        # to automatically upload the local working dir.
+        super().prepare_remote_env()
 
     def run_prepare_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
     ):
-        self.prepare_command = (command, env, timeout)
+        self.prepare_commands.append((command, env, timeout))
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Handled by Anyscale
         self.job_manager.wait_for_nodes_timeout += timeout
+        super().wait_for_nodes(num_nodes, timeout)
 
     def save_metrics(self, start_time: float, timeout: float = 900):
         return
 
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        is_long_running: bool = False,
     ) -> float:
         prepare_command_str = ""
-        if self.prepare_command:
-            prepare_command, env, timeout = self.prepare_command
+        for prepare_command, env, timeout in self.prepare_commands:
             prepare_env = self.get_full_command_env(env)
 
             if prepare_env:
                 env_str = " ".join(f"{k}={v}" for k, v in prepare_env.items()) + " "
             else:
                 env_str = ""
-            prepare_command_str = f"{env_str}timeout '{timeout}' {prepare_command}; "
+            prepare_command_str += f"{env_str}timeout '{timeout}' {prepare_command}; "
 
         full_env = self.get_full_command_env(env)
 
@@ -102,9 +96,11 @@ class AnyscaleJobRunner(JobRunner):
         else:
             env_str = ""
 
+        is_long_running_str = "true" if is_long_running else "false"
         full_command = (
             f"{prepare_command_str}{env_str}bash anyscale_job_wrapper.sh '{command}' "
-            f"'{timeout}' '{join_s3_paths(self.upload_path, self.result_output_json)}' "
+            f"'{timeout}' '{is_long_running_str}' "
+            f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}'"
         )
         status_code, time_taken, error = self.job_manager.run_and_wait(

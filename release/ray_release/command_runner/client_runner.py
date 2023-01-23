@@ -132,7 +132,11 @@ class ClientRunner(CommandRunner):
         return self._fetch_json(self.metrics_output_json)
 
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        is_long_running: bool = False,
     ) -> float:
         logger.info(
             f"Running command using Ray client on cluster "
