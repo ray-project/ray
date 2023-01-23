@@ -5,6 +5,7 @@ import pickle
 import unittest
 
 import ray
+from ray import tune
 from ray.rllib.algorithms.a2c import A2CConfig
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.env import MultiAgentEnv
@@ -388,9 +389,18 @@ class TestNestedObservationSpaces(unittest.TestCase):
             lambda: config.build(),
         )
 
-    def do_test_nested_dict(self, make_env, test_lstm=False, disable_connectors=False):
+    def do_test_nested_dict(
+        self,
+        make_env,
+        test_lstm=False,
+        disable_connectors=False,
+        use_tune_register_env=False,
+    ):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
-        gym.register("nested", make_env)
+        if use_tune_register_env:
+            tune.register_env("nested", make_env)
+        else:
+            gym.register("nested", make_env)
         config = (
             PGConfig()
             .environment("nested", disable_env_checking=True)
@@ -423,9 +433,17 @@ class TestNestedObservationSpaces(unittest.TestCase):
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
 
-    def do_test_nested_tuple(self, make_env, disable_connectors=False):
+    def do_test_nested_tuple(
+        self,
+        make_env,
+        disable_connectors=False,
+        use_tune_register_env=False,
+    ):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
-        gym.register("nested2", make_env)
+        if use_tune_register_env:
+            tune.register_env("nested2", make_env)
+        else:
+            gym.register("nested2", make_env)
         config = (
             PGConfig()
             .environment("nested2", disable_env_checking=True)
@@ -464,7 +482,8 @@ class TestNestedObservationSpaces(unittest.TestCase):
 
     def test_nested_dict_vector(self):
         self.do_test_nested_dict(
-            lambda: VectorEnv.vectorize_gym_envs(lambda i: NestedDictEnv())
+            lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedDictEnv()),
+            use_tune_register_env=True,
         )
 
     def test_nested_dict_serving(self):
@@ -474,14 +493,18 @@ class TestNestedObservationSpaces(unittest.TestCase):
             self.do_test_nested_dict(lambda: SimpleServing(NestedDictEnv()))
 
     def test_nested_dict_async(self):
-        self.do_test_nested_dict(lambda: convert_to_base_env(NestedDictEnv()))
+        self.do_test_nested_dict(
+            lambda: convert_to_base_env(NestedDictEnv()),
+            use_tune_register_env=True,
+        )
 
     def test_nested_tuple_gym(self):
         self.do_test_nested_tuple(lambda: NestedTupleEnv())
 
     def test_nested_tuple_vector(self):
         self.do_test_nested_tuple(
-            lambda: VectorEnv.vectorize_gym_envs(lambda i: NestedTupleEnv())
+            lambda: VectorEnv.vectorize_gym_envs(lambda i: NestedTupleEnv()),
+            use_tune_register_env=True,
         )
 
     def test_nested_tuple_serving(self):

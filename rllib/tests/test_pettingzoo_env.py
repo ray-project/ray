@@ -19,7 +19,7 @@ class TestPettingZooEnv(unittest.TestCase):
         ray.shutdown()
 
     def test_pettingzoo_pistonball_v6_policies_are_dict_env(self):
-        def env_creator(config):
+        def env_creator():
             env = pistonball_v6.env()
             env = dtype_v0(env, dtype=float32)
             env = color_reduction_v0(env, mode="R")
@@ -27,11 +27,11 @@ class TestPettingZooEnv(unittest.TestCase):
             return env
 
         # Register env
-        gym.register("pistonball", lambda config: PettingZooEnv(env_creator(config)))
+        gym.register("pistonball", lambda: PettingZooEnv(env_creator()))
 
         config = (
             PPOConfig()
-            .environment("pistonball", env_config={"local_ratio": 0.5})
+            .environment("pistonball")
             .multi_agent(
                 # Set of policy IDs (by default, will use Algorithms's
                 # default policy class, the env's/agent's obs/act spaces and config={}).

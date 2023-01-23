@@ -135,7 +135,7 @@ class TestBackwardCompatibility(unittest.TestCase):
 
         gym.register(
             "test",
-            lambda ctx: MultiAgentCartPole(config={"num_agents": ctx["num_agents"]}),
+            lambda num_agents: MultiAgentCartPole(config={"num_agents": num_agents}),
         )
 
         config = {

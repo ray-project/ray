@@ -24,7 +24,7 @@ class TestReproducibility(unittest.TestCase):
                 reward = self.obs[action]
                 return self.obs, reward, True, False, {}
 
-        def env_creator(env_config):
+        def env_creator():
             return PickLargest()
 
         for fw in framework_iterator(frameworks=("tf", "torch")):
