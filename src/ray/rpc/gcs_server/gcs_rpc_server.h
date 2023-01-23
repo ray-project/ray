@@ -41,9 +41,6 @@ namespace rpc {
                       HANDLER,                 \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define HEARTBEAT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(HeartbeatInfoGcsService, HANDLER, -1)
-
 #define NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(NodeResourceInfoGcsService,       \
                       HANDLER,                          \
@@ -53,10 +50,6 @@ namespace rpc {
   RPC_SERVICE_HANDLER(ObjectInfoGcsService,      \
                       HANDLER,                   \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
-#define STATS_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(                     \
-      StatsGcsService, HANDLER, RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
 #define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(WorkerInfoGcsService,      \
@@ -321,78 +314,6 @@ class NodeResourceInfoGrpcService : public GrpcService {
   NodeResourceInfoGcsServiceHandler &service_handler_;
 };
 
-class HeartbeatInfoGcsServiceHandler {
- public:
-  virtual ~HeartbeatInfoGcsServiceHandler() = default;
-  virtual void HandleReportHeartbeat(ReportHeartbeatRequest request,
-                                     ReportHeartbeatReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-};
-/// The `GrpcService` for `HeartbeatInfoGcsService`.
-class HeartbeatInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit HeartbeatInfoGrpcService(instrumented_io_context &io_service,
-                                    HeartbeatInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    HEARTBEAT_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
-  }
-
- private:
-  /// The grpc async service object.
-  HeartbeatInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  HeartbeatInfoGcsServiceHandler &service_handler_;
-};
-
-class StatsGcsServiceHandler {
- public:
-  virtual ~StatsGcsServiceHandler() = default;
-
-  virtual void HandleAddProfileData(AddProfileDataRequest request,
-                                    AddProfileDataReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllProfileInfo(GetAllProfileInfoRequest request,
-                                       GetAllProfileInfoReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `StatsGcsService`.
-class StatsGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit StatsGrpcService(instrumented_io_context &io_service,
-                            StatsGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    STATS_SERVICE_RPC_HANDLER(AddProfileData);
-    STATS_SERVICE_RPC_HANDLER(GetAllProfileInfo);
-  }
-
- private:
-  /// The grpc async service object.
-  StatsGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  StatsGcsServiceHandler &service_handler_;
-};
-
 class WorkerInfoGcsServiceHandler {
  public:
   virtual ~WorkerInfoGcsServiceHandler() = default;
@@ -585,6 +506,10 @@ class TaskInfoGcsServiceHandler {
   virtual void HandleAddTaskEventData(AddTaskEventDataRequest request,
                                       AddTaskEventDataReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
+                                   rpc::GetTaskEventsReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `TaskInfoGcsService`.
@@ -605,6 +530,7 @@ class TaskInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskEventData);
+    TASK_INFO_SERVICE_RPC_HANDLER(GetTaskEvents);
   }
 
  private:
@@ -656,13 +582,12 @@ using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
-using HeartbeatInfoHandler = HeartbeatInfoGcsServiceHandler;
-using StatsHandler = StatsGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 using InternalKVHandler = InternalKVGcsServiceHandler;
 using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
 using RuntimeEnvHandler = RuntimeEnvGcsServiceHandler;
+using TaskInfoHandler = TaskInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

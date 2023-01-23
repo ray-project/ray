@@ -8,6 +8,7 @@ import sys
 import numpy as np
 
 import ray
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DatasetContext
 from ray._private.utils import _get_pyarrow_version
 
@@ -239,3 +240,7 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
             f"but found mixed {paths}"
         )
     return num == len(paths)
+
+
+def _is_tensor_schema(column_names: List[str]):
+    return column_names == [TENSOR_COLUMN_NAME]

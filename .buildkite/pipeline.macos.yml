@@ -14,7 +14,7 @@ prelude_commands: &prelude_commands |-
   rm -rf /tmp/bazel_event_logs
   cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
   (which bazel && bazel clean) || true;
-  . ./ci/ci.sh init && source ~/.zshrc
+  . ./ci/ci.sh init && source ~/.zshenv
   ./ci/ci.sh build
   ./ci/env/install-dependencies.sh
   ./ci/env/env_info.sh
@@ -46,8 +46,7 @@ steps:
     - export MAC_WHEELS=1
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1
-    - . ./ci/ci.sh init 
-    - source ~/.zshrc
+    - . ./ci/ci.sh init && source ~/.zshenv
     - ./ci/ci.sh build
     # Test wheels
     - ./ci/ci.sh test_wheels

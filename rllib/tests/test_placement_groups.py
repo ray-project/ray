@@ -63,7 +63,6 @@ class TestPlacementGroups(unittest.TestCase):
                 verbose=2,
                 callbacks=[_TestCallback()],
             ),
-            tune_config=tune.TuneConfig(reuse_actors=True),
         ).fit()
 
     def test_default_resource_request(self):

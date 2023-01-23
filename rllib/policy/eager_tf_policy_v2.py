@@ -3,7 +3,7 @@
 It supports both traced and non-traced eager execution modes.
 """
 
-import gym
+import gymnasium as gym
 import logging
 import os
 import threading
@@ -108,8 +108,12 @@ class EagerTFPolicyV2(Policy):
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
-        self.dist_class = self._init_dist_class()
-        self.model = self.make_model()
+        if self.config.get("_enable_rl_module_api", False):
+            self.model = self.make_rl_module()
+            self.dist_class = None
+        else:
+            self.dist_class = self._init_dist_class()
+            self.model = self.make_model()
 
         self._init_view_requirements()
 
@@ -816,13 +820,26 @@ class EagerTFPolicyV2(Policy):
                         for i, s in enumerate(state_batches):
                             input_dict[f"state_in_{i}"] = s
                     self._lazy_tensor_dict(input_dict)
-                    dist_inputs, state_out, extra_fetches = self.model(input_dict)
+                    if self.config["_enable_rl_module_api"]:
+                        if explore:
+                            fwd_out = self.model.forward_exploration(input_dict)
+                        else:
+                            fwd_out = self.model.forward_inference(input_dict)
+                    else:
+                        dist_inputs, state_out, extra_fetches = self.model(input_dict)
                 else:
                     dist_inputs, state_out = self.model(
                         input_dict, state_batches, seq_lens
                     )
-
-                action_dist = self.dist_class(dist_inputs, self.model)
+                if self.config["_enable_rl_module_api"]:
+                    action_dist = fwd_out[SampleBatch.ACTION_DIST]
+                    dist_inputs = None
+                    state_out = fwd_out.get("state_out", {})
+                    for k, v in fwd_out.items():
+                        if k not in [SampleBatch.ACTION_DIST, "state_out"]:
+                            extra_fetches[k] = v
+                else:
+                    action_dist = self.dist_class(dist_inputs, self.model)
 
                 # Get the exploration action from the forward results.
                 actions, logp = self.exploration.get_exploration_action(

@@ -70,6 +70,9 @@ class TaskPoolStrategy(ComputeStrategy):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
+        assert (
+            not DatasetContext.get_current().new_execution_backend
+        ), "Legacy backend off"
         assert fn_constructor_args is None and fn_constructor_kwargs is None
         if fn_args is None:
             fn_args = tuple()
@@ -88,7 +91,7 @@ class TaskPoolStrategy(ComputeStrategy):
         # Bin blocks by target block size.
         if target_block_size is not None:
             _check_batch_size(blocks, target_block_size, name)
-            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size, name)
+            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size)
         else:
             block_bundles = [((b,), (m,)) for b, m in blocks]
         del blocks
@@ -237,6 +240,9 @@ class ActorPoolStrategy(ComputeStrategy):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
         """Note: this is not part of the Dataset public API."""
+        assert (
+            not DatasetContext.get_current().new_execution_backend
+        ), "Legacy backend off"
         if fn_args is None:
             fn_args = tuple()
         if fn_kwargs is None:
@@ -248,15 +254,33 @@ class ActorPoolStrategy(ComputeStrategy):
 
         if name is None:
             name = "map"
-        blocks_in = block_list.get_blocks_with_metadata()
-        # Bin blocks by target block size.
-        if target_block_size is not None:
-            _check_batch_size(blocks_in, target_block_size, name)
-            block_bundles = _bundle_blocks_up_to_size(
-                blocks_in, target_block_size, name
+        blocks_in: List[
+            Tuple[ObjectRef[Block], BlockMetadata]
+        ] = block_list.get_blocks_with_metadata()
+
+        # We bundle blocks according to the following rules:
+        # 1. Attempt to bundle up to the target block size.
+        # 2. If the max concurrency of the ActorPool is set, then
+        #    cap the number of bundles to match the size of the ActorPool.
+        #    This avoids additional overhead in submitting new actor tasks and allows
+        #    the actor task to do optimizations such as batch prefetching.
+        if target_block_size is None:
+            target_block_size = 0
+        if not math.isinf(self.max_size):
+            total_size = sum(
+                meta.num_rows if meta.num_rows is not None else 0
+                for _, meta in blocks_in
             )
+            pool_max_block_size = total_size // self.max_size
+            target_block_size = max(target_block_size, pool_max_block_size)
+        if target_block_size > 0:
+            _check_batch_size(blocks_in, target_block_size, name)
+            block_bundles: List[
+                Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]
+            ] = _bundle_blocks_up_to_size(blocks_in, target_block_size)
         else:
             block_bundles = [((b,), (m,)) for b, m in blocks_in]
+
         del blocks_in
         owned_by_consumer = block_list._owned_by_consumer
 
@@ -496,13 +520,12 @@ def _map_block_nosplit(
 def _bundle_blocks_up_to_size(
     blocks: List[Tuple[ObjectRef[Block], BlockMetadata]],
     target_size: int,
-    name: str,
-) -> List[Tuple[List[ObjectRef[Block]], List[BlockMetadata]]]:
+) -> List[Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]]:
     """Group blocks into bundles that are up to (but not exceeding) the provided target
     size.
     """
-    block_bundles = []
-    curr_bundle = []
+    block_bundles: List[List[Tuple[ObjectRef[Block], BlockMetadata]]] = []
+    curr_bundle: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
     curr_bundle_size = 0
     for b, m in blocks:
         num_rows = m.num_rows

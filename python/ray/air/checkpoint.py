@@ -14,7 +14,10 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Tuple, Type, Un
 
 import ray
 from ray import cloudpickle as pickle
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
+from ray.air._internal.checkpointing import (
+    load_preprocessor_from_dir,
+    save_preprocessor_to_dir,
+)
 from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.remote_storage import (
     download_from_uri,
@@ -23,8 +26,8 @@ from ray.air._internal.remote_storage import (
     read_file_from_uri,
     upload_to_uri,
 )
-from ray.air.constants import PREPROCESSOR_KEY
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -151,12 +154,15 @@ class Checkpoint:
     # `_SERIALIZED_ATTRS = ("spam",)`, then the value of `"spam"` is serialized with
     # the checkpoint data. When a user constructs a checkpoint from the serialized data,
     # the value of `"spam"` is restored.
-    _SERIALIZED_ATTRS = ()
+    # In subclasses, do _SERIALIZED_ATTRS = Checkpoint._SERIALIZED_ATTRS + ("spam",)
+    # `"_checkpoint_id` is used to track checkpoints in TuneCheckpointManager
+    # and is unset otherwise
+    _SERIALIZED_ATTRS = (CHECKPOINT_ID_ATTR,)
 
     @DeveloperAPI
     def __init__(
         self,
-        local_path: Optional[str] = None,
+        local_path: Optional[Union[str, os.PathLike]] = None,
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
         obj_ref: Optional[ray.ObjectRef] = None,
@@ -210,10 +216,13 @@ class Checkpoint:
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
-        self._local_path: Optional[str] = local_path
+        self._local_path: Optional[str] = (
+            str(Path(local_path).resolve()) if local_path else local_path
+        )
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
         self._obj_ref: Optional[ray.ObjectRef] = obj_ref
+        self._override_preprocessor: Optional["Preprocessor"] = None
 
         self._uuid = uuid.uuid4()
 
@@ -226,9 +235,27 @@ class Checkpoint:
         return _CheckpointMetadata(
             checkpoint_type=self.__class__,
             checkpoint_state={
-                attr: getattr(self, attr) for attr in self._SERIALIZED_ATTRS
+                attr: getattr(self, attr)
+                for attr in self._SERIALIZED_ATTRS
+                if hasattr(self, attr)
             },
         )
+
+    def _copy_metadata_attrs_from(self, source: "Checkpoint") -> None:
+        """Copy in-place metadata attributes from ``source`` to self."""
+        for attr, value in source._metadata.checkpoint_state.items():
+            if attr in self._SERIALIZED_ATTRS:
+                setattr(self, attr, value)
+
+    @_metadata.setter
+    def _metadata(self, metadata: _CheckpointMetadata):
+        if metadata.checkpoint_type is not self.__class__:
+            raise ValueError(
+                f"Checkpoint type in metadata must match {self.__class__}, "
+                f"got {metadata.checkpoint_type}"
+            )
+        for attr, value in metadata.checkpoint_state.items():
+            setattr(self, attr, value)
 
     @property
     def uri(self) -> Optional[str]:
@@ -259,7 +286,7 @@ class Checkpoint:
             return self._uri
 
         if self._local_path and Path(self._local_path).exists():
-            return "file://" + self._local_path
+            return f"file://{self._local_path}"
 
         return None
 
@@ -290,7 +317,7 @@ class Checkpoint:
         data_dict = self.to_dict()
         if "bytes_data" in data_dict:
             return data_dict["bytes_data"]
-        return pickle.dumps(self.to_dict())
+        return pickle.dumps(data_dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> "Checkpoint":
@@ -382,46 +409,14 @@ class Checkpoint:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
         checkpoint_data[_METADATA_KEY] = self._metadata
+
+        # If override_preprocessor is specified, then set that in the output dict.
+        if self._override_preprocessor:
+            checkpoint_data[PREPROCESSOR_KEY] = self._override_preprocessor
         return checkpoint_data
 
     @classmethod
-    @Deprecated(
-        message="To restore a checkpoint from a remote object ref, call "
-        "`ray.get(obj_ref)` instead."
-    )
-    def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
-        """Create checkpoint object from object reference.
-
-        Args:
-            obj_ref: ObjectRef pointing to checkpoint data.
-
-        Returns:
-            Checkpoint: checkpoint object.
-        """
-        raise DeprecationWarning(
-            "`from_object_ref` is deprecated and will be removed in a future Ray "
-            "version. To restore a Checkpoint from a remote object ref, call "
-            "`ray.get(obj_ref)` instead.",
-        )
-
-    @Deprecated(
-        message="To store the checkpoint in the Ray object store, call `ray.put(ckpt)` "
-        "instead of `ckpt.to_object_ref()`."
-    )
-    def to_object_ref(self) -> ray.ObjectRef:
-        """Return checkpoint data as object reference.
-
-        Returns:
-            ray.ObjectRef: ObjectRef pointing to checkpoint data.
-        """
-        raise DeprecationWarning(
-            "`to_object_ref` is deprecated and will be removed in a future Ray "
-            "version. To store the checkpoint in the Ray object store, call "
-            "`ray.put(ckpt)` instead of `ckpt.to_object_ref()`.",
-        )
-
-    @classmethod
-    def from_directory(cls, path: str) -> "Checkpoint":
+    def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
         """Create checkpoint object from directory.
 
         Args:
@@ -463,12 +458,14 @@ class Checkpoint:
         if type(other) is cls:
             return other
 
-        return cls(
+        new_checkpoint = cls(
             local_path=other._local_path,
             data_dict=other._data_dict,
             uri=other._uri,
             obj_ref=other._obj_ref,
         )
+        new_checkpoint._copy_metadata_attrs_from(other)
+        return new_checkpoint
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
@@ -499,7 +496,7 @@ class Checkpoint:
         with open(checkpoint_metadata_path, "wb") as file:
             pickle.dump(self._metadata, file)
 
-    def _to_directory(self, path: str) -> None:
+    def _to_directory(self, path: str, move_instead_of_copy: bool = False) -> None:
         if self._data_dict or self._obj_ref:
             # This is a object ref or dict
             data_dict = self.to_dict()
@@ -530,13 +527,26 @@ class Checkpoint:
         else:
             # This is either a local fs, remote node fs, or external fs
             local_path = self._local_path
+            path_pathlib = Path(path).resolve()
             external_path = _get_external_path(self._uri)
             if local_path:
-                if local_path != path:
+                local_path_pathlib = Path(local_path).resolve()
+                if local_path_pathlib != path_pathlib:
+                    if path_pathlib.exists():
+                        shutil.rmtree(str(path_pathlib.absolute()))
                     # If this exists on the local path, just copy over
-                    if path and os.path.exists(path):
-                        shutil.rmtree(path)
-                    shutil.copytree(local_path, path)
+                    if move_instead_of_copy:
+                        os.makedirs(str(path_pathlib.absolute()), exist_ok=True)
+                        self._local_path = str(path_pathlib.absolute())
+                        for inner in local_path_pathlib.iterdir():
+                            shutil.move(
+                                str(inner.absolute()), str(path_pathlib.absolute())
+                            )
+                    else:
+                        shutil.copytree(
+                            str(local_path_pathlib.absolute()),
+                            str(path_pathlib.absolute()),
+                        )
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
                 download_from_uri(uri=external_path, local_path=path, filelock=False)
@@ -546,6 +556,43 @@ class Checkpoint:
                 )
 
         self._save_checkpoint_metadata_in_directory(path)
+
+        if self._override_preprocessor:
+            save_preprocessor_to_dir(self._override_preprocessor, path)
+
+    def _to_directory_safe(self, path: str, move_instead_of_copy: bool = False) -> None:
+        try:
+            # Timeout 0 means there will be only one attempt to acquire
+            # the file lock. If it cannot be aquired, a TimeoutError
+            # will be thrown.
+            with TempFileLock(f"{path}.lock", timeout=0):
+                self._to_directory(path, move_instead_of_copy=move_instead_of_copy)
+        except TimeoutError:
+            # if the directory is already locked, then wait but do not do anything.
+            with TempFileLock(f"{path}.lock", timeout=-1):
+                pass
+            if not os.path.exists(path):
+                raise RuntimeError(
+                    f"Checkpoint directory {path} does not exist, "
+                    "even though it should have been created by "
+                    "another process. Please raise an issue on GitHub: "
+                    "https://github.com/ray-project/ray/issues"
+                )
+        return path
+
+    def _move_directory(self, path: str) -> str:
+        """Move to a new directory, changing state.
+
+        Only for local directory backed checkpoints."""
+        if not self._local_path:
+            raise RuntimeError(
+                "_move_directory requires the checkpoint to be backed by"
+                " a local directory"
+            )
+        path = os.path.normpath(str(path))
+        _make_dir(path, acquire_del_lock=True)
+        self._local_path = self._to_directory_safe(path, move_instead_of_copy=True)
+        return self._local_path
 
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.
@@ -559,29 +606,11 @@ class Checkpoint:
         """
         user_provided_path = path is not None
         path = path if user_provided_path else self._get_temporary_checkpoint_dir()
-        path = os.path.normpath(path)
+        path = os.path.normpath(str(path))
 
         _make_dir(path, acquire_del_lock=not user_provided_path)
 
-        try:
-            # Timeout 0 means there will be only one attempt to acquire
-            # the file lock. If it cannot be aquired, a TimeoutError
-            # will be thrown.
-            with TempFileLock(f"{path}.lock", timeout=0):
-                self._to_directory(path)
-        except TimeoutError:
-            # if the directory is already locked, then wait but do not do anything.
-            with TempFileLock(f"{path}.lock", timeout=-1):
-                pass
-            if not os.path.exists(path):
-                raise RuntimeError(
-                    f"Checkpoint directory {path} does not exist, "
-                    "even though it should have been created by "
-                    "another process. Please raise an issue on GitHub: "
-                    "https://github.com/ray-project/ray/issues"
-                )
-
-        return path
+        return self._to_directory_safe(path)
 
     @contextlib.contextmanager
     def as_directory(self) -> Iterator[str]:
@@ -766,6 +795,11 @@ class Checkpoint:
                 preprocessor = load_preprocessor_from_dir(checkpoint_path)
 
         return preprocessor
+
+    def set_preprocessor(self, preprocessor: "Preprocessor"):
+        """Saves the provided preprocessor to this Checkpoint."""
+
+        self._override_preprocessor = preprocessor
 
     @classmethod
     def _get_checkpoint_type(
