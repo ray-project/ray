@@ -284,10 +284,7 @@ class RLModule(abc.ABC):
 
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
-    def forward_train(
-        self,
-        batch: SampleBatchType,
-    ) -> Mapping[str, Any]:
+    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training called from the trainer. This method should
         not be overriden. Instead, override the _forward_train method.
 
@@ -300,7 +297,7 @@ class RLModule(abc.ABC):
             The output of the forward pass. This output should comply with the
             ouptut_specs_train().
         """
-        return self._forward_train(batch)
+        return self._forward_train(batch, **kwargs)
 
     @abc.abstractmethod
     def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
