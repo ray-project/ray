@@ -6,7 +6,8 @@
 namespace ray {
 namespace gcs {
 
-/// GcsMonitorServer is a shim responsible for providing a compatible interface between GCS and `monitor.py`
+/// GcsMonitorServer is a shim responsible for providing a compatible interface between
+/// GCS and `monitor.py`
 class GcsMonitorServer : public rpc::MonitorServiceHandler {
  public:
   explicit GcsMonitorServer();
