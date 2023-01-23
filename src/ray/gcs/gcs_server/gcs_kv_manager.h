@@ -87,54 +87,6 @@ class InternalKVInterface {
   virtual ~InternalKVInterface(){};
 };
 
-class RedisInternalKV : public InternalKVInterface {
- public:
-  explicit RedisInternalKV(const RedisClientOptions &redis_options);
-
-  ~RedisInternalKV() {
-    io_service_.stop();
-    io_thread_->join();
-    redis_client_.reset();
-    io_thread_.reset();
-  }
-
-  void Get(const std::string &ns,
-           const std::string &key,
-           std::function<void(std::optional<std::string>)> callback) override;
-
-  void Put(const std::string &ns,
-           const std::string &key,
-           const std::string &value,
-           bool overwrite,
-           std::function<void(bool)> callback) override;
-
-  void Del(const std::string &ns,
-           const std::string &key,
-           bool del_by_prefix,
-           std::function<void(int64_t)> callback) override;
-
-  void Exists(const std::string &ns,
-              const std::string &key,
-              std::function<void(bool)> callback) override;
-
-  void Keys(const std::string &ns,
-            const std::string &prefix,
-            std::function<void(std::vector<std::string>)> callback) override;
-
- private:
-  std::string MakeKey(const std::string &ns, const std::string &key) const;
-  Status ValidateKey(const std::string &key) const;
-  std::string ExtractKey(const std::string &key) const;
-
-  RedisClientOptions redis_options_;
-  std::string external_storage_namespace_;
-  std::unique_ptr<RedisClient> redis_client_;
-  // The io service used by internal kv.
-  instrumented_io_context io_service_;
-  std::unique_ptr<std::thread> io_thread_;
-  boost::asio::io_service::work work_;
-};
-
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
