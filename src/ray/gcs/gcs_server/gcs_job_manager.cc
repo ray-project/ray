@@ -82,7 +82,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     } else {
       RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, job_table_data, nullptr));
       runtime_env_manager_.RemoveURIReference(job_id.Hex());
-      ClearJobInfos(job_id);
+      ClearJobInfos(job_table_data);
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
     function_manager_.RemoveJobReference(job_id);
@@ -121,10 +121,10 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
   }
 }
 
-void GcsJobManager::ClearJobInfos(const JobID &job_id) {
+void GcsJobManager::ClearJobInfos(const rpc::JobTableData &job_data) {
   // Notify all listeners.
   for (auto &listener : job_finished_listeners_) {
-    listener(std::make_shared<JobID>(job_id));
+    listener(job_data);
   }
   // Clear cache.
   // TODO(qwang): This line will cause `test_actor_advanced.py::test_detached_actor`
@@ -137,8 +137,7 @@ void GcsJobManager::ClearJobInfos(const JobID &job_id) {
 /// Add listener to monitor the add action of nodes.
 ///
 /// \param listener The handler which process the add of nodes.
-void GcsJobManager::AddJobFinishedListener(
-    std::function<void(std::shared_ptr<JobID>)> listener) {
+void GcsJobManager::AddJobFinishedListener(JobFinishListenerCallback listener) {
   RAY_CHECK(listener);
   job_finished_listeners_.emplace_back(std::move(listener));
 }
