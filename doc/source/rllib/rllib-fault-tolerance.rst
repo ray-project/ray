@@ -8,14 +8,14 @@ Fault Tolerance And Elastic Training
 RLlib handles common failures modes, such as machine failures, spot instance preemption,
 network outages, or Ray cluster failures.
 
-There are three main areas:
+There are three main areas for RLlib fault tolerance support:
 
 * Worker recovery
+* Environment fault tolerance
 * Experiment level fault tolerance with Ray Tune
-* Environment fault tolerance.
 
 
-Elastic Workers
+Worker Recovery
 ---------------
 
 RLlib supports self-recovering and elastic WorkerSets for both
