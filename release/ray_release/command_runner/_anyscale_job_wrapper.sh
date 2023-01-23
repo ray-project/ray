@@ -17,13 +17,14 @@ start_time=$(date +%s)
 
 # 1. Run the test workload
 
-echo "#!/bin/bash\n$test_workload" > "workload.sh"
+echo "$test_workload" > "workload.sh"
 chmod +x workload.sh
+cat workload.sh
 
 if (( test_workload_timeout < 0 )); then
-    bash ./workload.sh
+    bash -x ./workload.sh
 else
-    timeout --verbose "$test_workload_timeout" bash ./workload.sh
+    timeout --verbose "$test_workload_timeout" bash -x ./workload.sh
 fi
 return_code=$?
 exit_return_code="$return_code"
