@@ -1,3 +1,4 @@
+import os
 import time
 import json
 import sys
@@ -2106,6 +2107,11 @@ def test_pg_worker_id_tasks(shutdown_only):
     def f():
         pass
 
+    @ray.remote
+    class A:
+        def ready(self):
+            return os.getpid()
+
     ray.get(
         f.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
@@ -2114,19 +2120,34 @@ def test_pg_worker_id_tasks(shutdown_only):
 
     def verify():
         tasks = list_tasks(detail=True)
-        workers = list_workers(filters=["worker_type", "=", "WORKER"])
+        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
         assert len(tasks) == 1
         assert len(workers) == 1
 
-        print(tasks)
-        print(workers)
         assert tasks[0]["placement_group_id"] == pg.id.hex()
         assert tasks[0]["worker_id"] == workers[0]["worker_id"]
 
         return True
 
     wait_for_condition(verify)
-    print(list_tasks())
+    print(list_tasks(detail=True))
+
+    a = A.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote()
+    pid = ray.get(a.ready.remote())
+
+    def verify():
+        actors = list_actors(detail=True)
+        workers = list_workers(detail=True, filters=[("pid", "=", pid)])
+        assert len(actors) == 1
+        assert len(workers) == 1
+
+        assert actors[0]["placement_group_id"] == pg.id.hex()
+        return True
+
+    wait_for_condition(verify)
+    print(list_actors(detail=True))
 
 
 def test_parent_task_id(shutdown_only):
@@ -3167,7 +3188,6 @@ def test_core_state_api_usage_tags(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

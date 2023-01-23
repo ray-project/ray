@@ -154,6 +154,8 @@ message ActorTableData {
   // so we have a separate field to track this.
   // If the actor is restarting, the node id could be incorrect.
   optional bytes node_id = 29;
+  // Placement group ID if the actor requires a placement group.
+  optional bytes placement_group_id = 30;
 }
 
 message ErrorTableData {
@@ -287,14 +289,16 @@ message GcsNodeInfo {
 
   // The port at which the node will expose metrics to.
   int32 metrics_export_port = 9;
-  // Timestamp that the node is dead.
-  int64 timestamp = 10;
 
   // The total resources of this node.
   map<string, double> resources_total = 11;
 
   // The user-provided identifier or name for this node.
   string node_name = 12;
+  // The unix ms timestamp the node was started at.
+  uint64 start_time_ms = 23;
+  // The unix ms timestamp the node was ended at.
+  uint64 end_time_ms = 24;
 }
 
 message JobTableData {
@@ -338,6 +342,10 @@ message WorkerTableData {
   optional string exit_detail = 20;
   // pid of the worker process.
   uint32 pid = 21;
+  // The unix ms timestamp the worker was started at.
+  uint64 start_time_ms = 23;
+  // The unix ms timestamp the worker was ended at.
+  uint64 end_time_ms = 24;
 }
 
 // Fields to publish when worker fails.

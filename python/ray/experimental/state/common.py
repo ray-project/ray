@@ -418,6 +418,12 @@ class NodeState(StateSchema):
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
     resources_total: dict = state_column(filterable=False)
+    #: The time when the node (raylet) starts.
+    start_time_ms: int = state_column(filterable=False, detail=True)
+    #: The time when the node exits. The timestamp could be delayed
+    #: if the node is dead unexpectedly (could be delayed
+    # up to 30 seconds).
+    end_time_ms: int = state_column(filterable=False, detail=True)
 
 
 class JobState(JobInfo, StateSchema):
@@ -466,9 +472,14 @@ class WorkerState(StateSchema):
     #: The ip address of the worker.
     ip: str = state_column(filterable=True)
     #: The pid of the worker.
-    pid: str = state_column(filterable=True)
+    pid: int = state_column(filterable=True)
     #: The exit detail of the worker if the worker is dead.
     exit_detail: Optional[str] = state_column(detail=True, filterable=False)
+    #: The time when the worker is started and initialized.
+    start_time_ms: int = state_column(filterable=False, detail=True)
+    #: The time when the worker exits. The timestamp could be delayed
+    #: if the worker is dead unexpectedly.
+    end_time_ms: int = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=True)
