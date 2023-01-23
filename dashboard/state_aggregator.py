@@ -368,7 +368,9 @@ class StateAPIManager:
 
         try:
             reply = await self._client.get_all_task_info(
-                timeout=option.timeout, exclude_driver=option.exclude_driver, job_id=job_id
+                timeout=option.timeout,
+                job_id=job_id,
+                exclude_driver=option.exclude_driver,
             )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)

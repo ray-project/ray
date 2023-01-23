@@ -234,7 +234,11 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_task_info(
-        self, timeout: int = None, limit: int = None, job_id: Optional[str]=None, exclude_driver: bool = True
+        self,
+        timeout: int = None,
+        limit: int = None,
+        job_id: Optional[str] = None,
+        exclude_driver: bool = True,
     ) -> Optional[GetTaskEventsReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
