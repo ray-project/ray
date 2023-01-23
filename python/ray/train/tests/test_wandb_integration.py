@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray.air import RunConfig, ScalingConfig
+from ray.air.integrations.wandb import WANDB_ENV_VAR
 from ray.air.tests.mocked_wandb_integration import WandbTestExperimentLogger
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
@@ -28,7 +29,11 @@ CONFIG = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
 
 
 @pytest.mark.parametrize("with_train_loop_config", (True, False))
-def test_trainer_wandb_integration(ray_start_4_cpus, with_train_loop_config):
+def test_trainer_wandb_integration(
+    ray_start_4_cpus, with_train_loop_config, monkeypatch
+):
+    monkeypatch.setenv(WANDB_ENV_VAR, "9012")
+
     def train_func(config=None):
         config = config or CONFIG
         result = linear_train_func(config)
