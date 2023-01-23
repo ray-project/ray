@@ -521,6 +521,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         ):
             tf1.enable_eager_execution()
 
+        if self.config.log_level:
+            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
+
         if self.worker_index > 1:
             disable_log_once_globally()  # only need 1 worker to log
         elif self.config.log_level == "DEBUG":
