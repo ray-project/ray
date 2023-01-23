@@ -23,7 +23,7 @@ chmod +x workload.sh
 if (( test_workload_timeout < 0 )); then
     bash ./workload.sh
 else
-    eval timeout --verbose "$test_workload_timeout" bash ./workload.sh
+    timeout --verbose "$test_workload_timeout" bash ./workload.sh
 fi
 return_code=$?
 exit_return_code="$return_code"
