@@ -62,7 +62,7 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
         err_msg="Expect 0 running tasks.",
@@ -97,7 +97,7 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == num_tasks,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "!=", "FINISHED")],
+        filters=[("name", "=", "pi4_sample"), ("state", "!=", "FINISHED")],
         key_suffix=f"{num_tasks}",
         limit=STATE_LIST_LIMIT,
         err_msg=f"Expect {num_tasks} non finished tasks.",
@@ -112,7 +112,7 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
         err_msg="Expect 0 running tasks",

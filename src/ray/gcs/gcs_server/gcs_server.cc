@@ -524,7 +524,8 @@ void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance;
   // TODO (yic): Use a factory with configs
   if (storage_type_ == "redis") {
-    instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<RedisStoreClient>(GetOrConnectRedis()));
   } else if (storage_type_ == "memory") {
     instance =
         std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
