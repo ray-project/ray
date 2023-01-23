@@ -844,7 +844,9 @@ class Algorithm(Trainable):
                     self.config.custom_evaluation_function
                 )
             )
-            metrics = self.config.custom_evaluation_function(self, self.evaluation_workers)
+            metrics = self.config.custom_evaluation_function(
+                self, self.evaluation_workers
+            )
             if not metrics or not isinstance(metrics, dict):
                 raise ValueError(
                     "Custom eval function must return "
@@ -2870,7 +2872,7 @@ class Algorithm(Trainable):
         # needed.
         self._episode_history.extend(episodes_this_iter)
         self._episode_history = self._episode_history[
-            -self.config.metrics_num_episodes_for_smoothing:
+            -self.config.metrics_num_episodes_for_smoothing :
         ]
         results["sampler_results"] = summarize_episodes(
             episodes_for_metrics,
