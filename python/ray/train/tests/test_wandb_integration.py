@@ -65,3 +65,11 @@ def test_trainer_wandb_integration(ray_start_4_cpus, with_train_loop_config):
         assert "train_loop_config" in config
     else:
         assert "train_loop_config" not in config
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
