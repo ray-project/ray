@@ -112,7 +112,7 @@ class StreamingExecutor(Executor):
         self._report_current_usage(cur_usage, limits)
         op = select_operator_to_run(topology, cur_usage, limits)
         while op is not None:
-            _print_topology(topology)
+            _trace_scheduling(topology)
             topology[op].dispatch_next_task()
             cur_usage = self._get_current_usage(topology)
             op = select_operator_to_run(topology, cur_usage, limits)
@@ -189,7 +189,7 @@ class StreamingExecutor(Executor):
             )
 
 
-def _print_topology(topology: Topology) -> None:
+def _trace_scheduling(topology: Topology) -> None:
     if "RAY_DATASET_TRACE_SCHEDULING" in os.environ:
         print()
         print("vvv scheduling trace vvv")

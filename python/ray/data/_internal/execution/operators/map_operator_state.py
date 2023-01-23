@@ -25,9 +25,6 @@ from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
 
-preserve_order = False
-
-
 class MapOperatorState:
     def __init__(
         self,
@@ -35,8 +32,6 @@ class MapOperatorState:
         compute_strategy: ComputeStrategy,
         ray_remote_args: Dict[str, Any],
         min_rows_per_bundle: Optional[int],
-        incremental_cpu: int,
-        incremental_gpu: int,
     ):
         # Execution arguments.
         self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
