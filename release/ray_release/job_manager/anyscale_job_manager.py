@@ -201,7 +201,7 @@ class AnyscaleJobManager:
         try:
             self._last_logs = "\n".join(
                 self.sdk.fetch_production_job_logs(job_id=self.job_id).split("\n")[
-                    -LAST_LOGS_LENGTH:
+                    -LAST_LOGS_LENGTH*3:
                 ]
             )
         except Exception as e:
