@@ -51,7 +51,7 @@ if [ -z "$TSAPIKEY" ]; then
 fi
 
 deviceid=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname=="'$HOSTNAME'")' | jq -r .id)
-export deviceid = $deviceid
+export deviceid=$deviceid
 
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
