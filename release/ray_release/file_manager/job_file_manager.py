@@ -27,7 +27,7 @@ class JobFileManager(FileManager):
         self.bucket = str(RELEASE_AWS_BUCKET)
         self.job_manager = JobManager(cluster_manager)
         # Backward compatible
-        if ANYSCALE_RAY_DIR in anyscale.__dict__:
+        if "ANYSCALE_RAY_DIR" in anyscale.__dict__:
             sys.path.insert(0, f"{anyscale.ANYSCALE_RAY_DIR}/bin")
 
     def _run_with_retry(self, f, initial_retry_delay_s: int = 10):
