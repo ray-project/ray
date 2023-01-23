@@ -283,10 +283,10 @@ cc_grpc_library(
 cc_library(
     name = "monitor_rpc",
     copts = COPTS,
+    visibility = ["//visibility:public"],
     deps = [
          ":monitor_cc_grpc",
     ],
-    visibility = ["//visibility:public"],
 )
 
 # === End of rpc definitions ===
