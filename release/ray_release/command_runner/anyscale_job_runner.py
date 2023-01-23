@@ -47,6 +47,7 @@ class AnyscaleJobRunner(JobRunner):
         self.upload_path = join_s3_paths(
             f"s3://{self.file_manager.bucket}", self.path_in_bucket
         )
+        self.prepare_commands = []
 
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
@@ -68,10 +69,14 @@ class AnyscaleJobRunner(JobRunner):
         # Do not upload the files here. Instead, we use the job runtime environment
         # to automatically upload the local working dir.
 
+    def run_prepare_command(
+        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+    ):
+        self.prepare_commands.append((command, env, timeout))
+
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Handled by Anyscale
         self.job_manager.wait_for_nodes_timeout += timeout
-        return
 
     def save_metrics(self, start_time: float, timeout: float = 900):
         return
@@ -79,6 +84,16 @@ class AnyscaleJobRunner(JobRunner):
     def run_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
     ) -> float:
+        prepare_commands = ""
+        for command, env, timeout in self.prepare_commands:
+            prepare_env = self.get_full_command_env(env)
+
+            if prepare_env:
+                env_str = " ".join(f"{k}={v}" for k, v in prepare_env.items()) + " "
+            else:
+                env_str = ""
+            prepare_commands += f"{env_str}timeout '{timeout}' {command}; "
+
         full_env = self.get_full_command_env(env)
 
         if full_env:
@@ -87,8 +102,8 @@ class AnyscaleJobRunner(JobRunner):
             env_str = ""
 
         full_command = (
-            f"{env_str}bash anyscale_job_wrapper.sh '{command}' '{timeout}' "
-            f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
+            f"{prepare_commands}{env_str}bash anyscale_job_wrapper.sh '{command}' "
+            f"'{timeout}' '{join_s3_paths(self.upload_path, self.result_output_json)}' "
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}'"
         )
         status_code, time_taken, error = self.job_manager.run_and_wait(

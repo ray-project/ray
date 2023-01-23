@@ -17,7 +17,7 @@ start_time=$(date +%s)
 if (( test_workload_timeout < 0 )); then
     eval "$test_workload"
 else
-    timeout --verbose "$test_workload_timeout" eval "$test_workload"
+    eval timeout --verbose "$test_workload_timeout" "$test_workload"
 fi
 return_code=$?
 
