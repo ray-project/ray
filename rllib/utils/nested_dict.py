@@ -1,5 +1,5 @@
 """Custom NestedDict datatype."""
-
+from collections import abc
 import itertools
 from typing import (
     AbstractSet,
@@ -17,7 +17,7 @@ from typing import (
     Union,
 )
 
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 
 
 SeqStrType = Union[str, Sequence[str]]
@@ -38,7 +38,7 @@ def _flatten_index(index: SeqStrType) -> Sequence[str]:
         return tuple(itertools.chain.from_iterable([_flatten_index(y) for y in index]))
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class StrKey(str):
     """A string that can be compared to a string or sequence of strings representing a
     SeqStrType. This is needed for the tree functions to work.
@@ -57,7 +57,7 @@ class StrKey(str):
             return (self,) > tuple(other)
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
     """A nested dict type:
         * The nested dict gives access to nested elements as a sequence of
@@ -121,10 +121,10 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         x = x or {}
         if isinstance(x, NestedDict):
             self._data = x._data
-        elif isinstance(x, Mapping):
+        elif isinstance(x, abc.Mapping):
             for k in x:
                 self[k] = x[k]
-        elif isinstance(x, Iterable):
+        elif isinstance(x, abc.Iterable):
             for k, v in x:
                 self[k] = v
         else:

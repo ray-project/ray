@@ -2,7 +2,7 @@
 PyTorch policy class used for CQL.
 """
 import numpy as np
-import gym
+import gymnasium as gym
 import logging
 import tree
 from typing import Dict, List, Tuple, Type, Union
@@ -112,7 +112,7 @@ def cql_loss(
     actions = train_batch[SampleBatch.ACTIONS]
     rewards = train_batch[SampleBatch.REWARDS].float()
     next_obs = train_batch[SampleBatch.NEXT_OBS]
-    terminals = train_batch[SampleBatch.DONES]
+    terminals = train_batch[SampleBatch.TERMINATEDS]
 
     model_out_t, _ = model(SampleBatch(obs=obs, _is_training=True), [], None)
 

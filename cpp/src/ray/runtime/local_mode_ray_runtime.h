@@ -31,6 +31,7 @@ class LocalModeRayRuntime : public AbstractRayRuntime {
   bool IsLocalMode() { return true; }
 
  private:
+  JobID job_id_;
   WorkerContext worker_;
 };
 

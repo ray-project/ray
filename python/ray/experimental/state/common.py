@@ -133,6 +133,15 @@ class SummaryApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
 
+    # Filters. Each tuple pair (key, predicate, value) means key predicate value.
+    # If there's more than 1 filter, it means AND.
+    # E.g., [(key, "=", val), (key2, "!=" val2)] means (key=val) AND (key2!=val2)
+    # For summary endpoints that call list under the hood, we'll pass
+    # these filters directly into the list call.
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = field(
+        default_factory=list
+    )
+
 
 def state_column(*, filterable: bool, detail: bool = False, **kwargs):
     """A wrapper around dataclass.field to add additional metadata.
@@ -369,6 +378,8 @@ class PlacementGroupState(StateSchema):
     placement_group_id: str = state_column(filterable=True)
     #: The name of the placement group if it is given by the name argument.
     name: str = state_column(filterable=True)
+    #: The job id of the placement group.
+    creator_job_id: str = state_column(filterable=True)
     #: The state of the placement group.
     #:
     #: - PENDING: The placement group creation is pending scheduling.
@@ -474,6 +485,8 @@ class TaskState(StateSchema):
 
     #: The id of the task.
     task_id: str = state_column(filterable=True)
+    #: The attempt (retry) number of the task.
+    attempt_number: int = state_column(filterable=True)
     #: The name of the task if it is given by the name argument.
     name: str = state_column(filterable=True)
     #: The state of the task.
@@ -481,7 +494,7 @@ class TaskState(StateSchema):
     #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
     #: breakdowns and typical state transition flow.
     #:
-    scheduling_state: TypeTaskStatus = state_column(filterable=True)
+    state: TypeTaskStatus = state_column(filterable=True)
     #: The job id of this task.
     job_id: str = state_column(filterable=True)
     #: Id of the node that runs the task. If the task is retried, it could
@@ -508,6 +521,18 @@ class TaskState(StateSchema):
     required_resources: dict = state_column(detail=True, filterable=False)
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
+    #: The parent task id.
+    parent_task_id: str = state_column(detail=True, filterable=True)
+    #: The list of events of the given task.
+    #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
+    #: breakdowns and typical state transition flow.
+    events: List[dict] = state_column(detail=True, filterable=False)
+    #: The list of profile events of the given task.
+    profiling_data: List[dict] = state_column(detail=True, filterable=False)
+    #: The time when the task starts to run. A Unix timestamp in ms.
+    start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    #: The time when the task finishes or failed. A Unix timestamp in ms.
+    end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
@@ -725,7 +750,7 @@ class TaskSummaries:
                 )
             task_summary = summary[key]
 
-            state = task["scheduling_state"]
+            state = task["state"]
             if state not in task_summary.state_counts:
                 task_summary.state_counts[state] = 0
             task_summary.state_counts[state] += 1

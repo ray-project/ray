@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+import gymnasium as gym
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import unittest
 
@@ -84,10 +84,18 @@ class TestPreprocessors(unittest.TestCase):
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v1"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
-        p3 = ModelCatalog.get_preprocessor(gym.make("MsPacman-ram-v0"))
+        p3 = ModelCatalog.get_preprocessor(
+            gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-ram-v5")
+        )
         self.assertEqual(type(p3), AtariRamPreprocessor)
 
-        p4 = ModelCatalog.get_preprocessor(gym.make("MsPacmanNoFrameskip-v4"))
+        p4 = ModelCatalog.get_preprocessor(
+            gym.make(
+                "GymV26Environment-v0",
+                env_id="ALE/MsPacman-v5",
+                make_kwargs={"frameskip": 1},
+            )
+        )
         self.assertEqual(type(p4), GenericPixelPreprocessor)
 
     def test_tuple_preprocessor(self):

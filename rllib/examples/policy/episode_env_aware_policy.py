@@ -1,6 +1,6 @@
-from typing import List
-from gym.spaces import Box
+from gymnasium.spaces import Box
 import numpy as np
+from typing import List
 
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import Policy
@@ -53,7 +53,8 @@ class EpisodeEnvAwareLSTMPolicy(RandomPolicy):
                 ),
                 SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
                 SampleBatch.REWARDS: ViewRequirement(),
-                SampleBatch.DONES: ViewRequirement(),
+                SampleBatch.TERMINATEDS: ViewRequirement(),
+                SampleBatch.TRUNCATEDS: ViewRequirement(),
                 SampleBatch.UNROLL_ID: ViewRequirement(),
             },
             **self.model.view_requirements

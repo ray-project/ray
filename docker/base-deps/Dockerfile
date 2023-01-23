@@ -53,7 +53,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
-        cython==0.29.26 \
+        cython==0.29.32 \
         # Necessary for Dataset to work properly.
         numpy\>=1.20 \
         psutil \
@@ -75,7 +75,9 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     else sudo apt-get autoremove -y wget; \
     fi;) \
     && sudo rm -rf /var/lib/apt/lists/* \
-    && sudo apt-get clean
-
+    && sudo apt-get clean \
+    # Ensure all users are able to write to /home/ray because OpenShift uses a random UID when logging into
+    # pods. See #30959 for more context.
+    && chmod --recursive 777 /home/ray
 
 WORKDIR $HOME

@@ -1,15 +1,18 @@
 from typing import TYPE_CHECKING, Tuple
 
 import copy
-import gym
+import gymnasium as gym
 import numpy as np
 import os
+import shutil
+import tempfile
 import pandas as pd
 from pathlib import Path
 import unittest
 
 import ray
 from ray.data import read_json
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.examples.env.cliff_walking_wall_env import CliffWalkingWallEnv
 from ray.rllib.examples.policy.cliff_walking_wall_policy import CliffWalkingWallPolicy
@@ -274,6 +277,13 @@ class TestOPE(unittest.TestCase):
         # TODO (Kourosh): How can we unittest this without querying into the model?
         pass
 
+    def test_algo_with_ope_from_checkpoint(self):
+        algo = self.config_dqn_on_cartpole.build()
+        tmpdir = tempfile.mkdtemp()
+        checkpoint = algo.save_checkpoint(tmpdir)
+        algo = Algorithm.from_checkpoint(checkpoint)
+        shutil.rmtree(tmpdir)
+
 
 class TestFQE(unittest.TestCase):
     """Compilation and learning tests for the Fitted-Q Evaluation model"""
@@ -281,6 +291,7 @@ class TestFQE(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
+
         env = CliffWalkingWallEnv()
         cls.policy = CliffWalkingWallPolicy(
             observation_space=env.observation_space,
@@ -288,30 +299,37 @@ class TestFQE(unittest.TestCase):
             config={},
         )
         cls.gamma = 0.99
+
         # Collect single episode under optimal policy
         obs_batch = []
         new_obs = []
         actions = []
         action_prob = []
         rewards = []
-        dones = []
-        obs = env.reset()
-        done = False
-        while not done:
+        terminateds = []
+        truncateds = []
+
+        obs, info = env.reset()
+
+        terminated = truncated = False
+        while not terminated and not truncated:
             obs_batch.append(obs)
             act, _, extra = cls.policy.compute_single_action(obs)
             actions.append(act)
             action_prob.append(extra["action_prob"])
-            obs, rew, done, _ = env.step(act)
+            obs, rew, terminated, truncated, _ = env.step(act)
             new_obs.append(obs)
             rewards.append(rew)
-            dones.append(done)
+            terminateds.append(terminated)
+            truncateds.append(truncated)
+
         cls.batch = SampleBatch(
             obs=obs_batch,
             actions=actions,
             action_prob=action_prob,
             rewards=rewards,
-            dones=dones,
+            terminateds=terminateds,
+            truncateds=truncateds,
             new_obs=new_obs,
         )
 
