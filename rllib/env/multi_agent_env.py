@@ -84,7 +84,8 @@ class MultiAgentEnv(gym.Env):
                 "traffic_light_1": [0, 3, 5, 1],
             }
         """
-        raise NotImplementedError
+        # Call super's `reset()` method to (maybe) set the given `seed`.
+        super().reset(seed=seed, options=options)
 
     @PublicAPI
     def step(
