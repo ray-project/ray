@@ -49,7 +49,7 @@ This will be the graphical structure of our deployment graph:
 ![graph structure](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/gradio_visualization/graph_illustration.png)
 
 Open up a new file named `demo.py`. First, let's take care of imports:
-```{literalinclude} ../serve/doc_code/gradio_dag_visualize.py
+```{literalinclude} ../doc_code/gradio_dag_visualize.py
 :start-after: __doc_import_begin__
 :end-before: __doc_import_end__
 :language: python
@@ -58,21 +58,21 @@ Open up a new file named `demo.py`. First, let's take care of imports:
 ### Defining Nodes
 
 The `downloader` function takes an image's URL, downloads it, and returns the image in the form of an `ImageFile`.
-```{literalinclude} ../serve/doc_code/gradio_dag_visualize.py
+```{literalinclude} ../doc_code/gradio_dag_visualize.py
 :start-after: __doc_downloader_begin__
 :end-before: __doc_downloader_end__
 :language: python
 ```
 
 The `ImageClassifier` class, upon initialization, loads the `google/vit-base-patch16-224` image classification model using the Transformers pipeline. Its `classify` method takes in an `ImageFile`, runs the model on it, and outputs the classification labels and scores.
-```{literalinclude} ../serve/doc_code/gradio_dag_visualize.py
+```{literalinclude} ../doc_code/gradio_dag_visualize.py
 :start-after: __doc_classifier_begin__
 :end-before: __doc_classifier_end__
 :language: python
 ```
 
 The `Translator` class, upon initialization, loads the `t5-small` translation model that translates from English to German. Its `translate` method takes in a map from strings to floats, and translates each of its string keys to German.
-```{literalinclude} ../serve/doc_code/gradio_dag_visualize.py
+```{literalinclude} ../doc_code/gradio_dag_visualize.py
 :start-after: __doc_translator_begin__
 :end-before: __doc_translator_end__
 :language: python
@@ -81,7 +81,7 @@ The `Translator` class, upon initialization, loads the `t5-small` translation mo
 ### Building the Graph
 
 Finally, we can build our graph by defining dependencies between nodes.
-```{literalinclude} ../serve/doc_code/gradio_dag_visualize.py
+```{literalinclude} ../doc_code/gradio_dag_visualize.py
 :start-after: __doc_build_graph_begin__
 :end-before: __doc_build_graph_end__
 :language: python

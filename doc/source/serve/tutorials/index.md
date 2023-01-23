@@ -13,6 +13,6 @@ serve-ml-models
 batch
 rllib
 gradio-integration
-serve-gradio-dag-visualization
+gradio-dag-visualization
 java
 ```
