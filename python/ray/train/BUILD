@@ -537,6 +537,14 @@ py_test(
 )
 
 py_test(
+    name = "test_wandb_integration",
+    size = "small",
+    srcs = ["tests/test_wandb_integration.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_worker_group",
     size = "medium",
     srcs = ["tests/test_worker_group.py"],
