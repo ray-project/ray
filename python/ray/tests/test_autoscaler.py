@@ -3817,6 +3817,7 @@ class AutoscalingTest(unittest.TestCase):
             config_path = self.write_config(config)
             runner = MockProcessRunner()
             mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+            self.provider = MockProvider()
             autoscaler = MockAutoscaler(
                 config_path,
                 LoadMetrics(),
