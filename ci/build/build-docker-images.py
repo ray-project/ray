@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import sys
 from collections import defaultdict
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import docker
 
@@ -159,7 +159,11 @@ def _check_if_docker_files_modified():
 
 
 def _build_docker_image(
-    image_name: str, py_version: str, image_type: str, no_cache=True
+    image_name: str,
+    py_version: str,
+    image_type: str,
+    suffix: Optional[str] = None,
+    no_cache=True,
 ):
     """Builds Docker image with the provided info.
 
@@ -169,6 +173,7 @@ def _build_docker_image(
         Must be one of PY_MATRIX.keys()
     image_type: The image type to build. Must be one of
         BASE_IMAGES.keys()
+    suffix: Suffix to add to the tags (e.g. "aarch64" for "ray:sha256-aarch64")
     no_cache: If True, don't use caching when building the image.
     """
 
@@ -204,6 +209,9 @@ def _build_docker_image(
     else:
         base_image = f"-{py_version}-{device_tag}"
 
+        if suffix:
+            base_image += "-" + suffix
+
     if image_name != "ray-worker-container":
         build_args["BASE_IMAGE"] = base_image
 
@@ -215,6 +223,9 @@ def _build_docker_image(
         build_args["FIND_LINKS_PATH"] = ".whl"
 
     tagged_name = f"rayproject/{image_name}:nightly-{py_version}-{device_tag}"
+
+    if suffix:
+        tagged_name += "-" + suffix
 
     for i in range(2):
         cleanup = DOCKER_CLIENT.containers.prune().get("SpaceReclaimed")
@@ -305,22 +316,33 @@ def check_staleness(repository, tag):
     return is_stale
 
 
-def build_for_all_versions(image_name, py_versions, image_types, **kwargs):
+def build_for_all_versions(image_name, py_versions, image_types, suffix, **kwargs):
     """Builds the given Docker image for all Python & CUDA versions"""
     for py_version in py_versions:
         for image_type in image_types:
             _build_docker_image(
-                image_name, py_version=py_version, image_type=image_type, **kwargs
+                image_name,
+                py_version=py_version,
+                image_type=image_type,
+                suffix=suffix,
+                **kwargs,
             )
 
 
-def build_base_images(py_versions, image_types):
-    build_for_all_versions("base-deps", py_versions, image_types, no_cache=False)
-    build_for_all_versions("ray-deps", py_versions, image_types, no_cache=False)
+def build_base_images(py_versions, image_types, suffix):
+    build_for_all_versions(
+        "base-deps", py_versions, image_types, suffix=suffix, no_cache=False
+    )
+    build_for_all_versions(
+        "ray-deps", py_versions, image_types, suffix=suffix, no_cache=False
+    )
 
 
 def build_or_pull_base_images(
-    py_versions: List[str], image_types: List[str], rebuild_base_images: bool = True
+    py_versions: List[str],
+    image_types: List[str],
+    rebuild_base_images: bool = True,
+    suffix: Optional[str] = None,
 ) -> bool:
     """Returns images to tag and build."""
     repositories = ["rayproject/base-deps", "rayproject/ray-deps"]
@@ -342,7 +364,7 @@ def build_or_pull_base_images(
         is_stale = True
 
     if rebuild_base_images or _release_build() or is_stale:
-        build_base_images(py_versions, image_types)
+        build_base_images(py_versions, image_types, suffix=suffix)
         return True
     else:
         print("Just pulling images!")
@@ -637,6 +659,11 @@ if __name__ == "__main__":
         help="Whether to bypass checking if docker is affected",
     )
     parser.add_argument(
+        "--suffix",
+        required=False,
+        help="Suffix to append to the build tags",
+    )
+    parser.add_argument(
         "--build-base",
         dest="base",
         action="store_true",
@@ -718,15 +745,17 @@ if __name__ == "__main__":
             DOCKER_CLIENT.api.login(username=username, password=password)
         copy_wheels(build_type == HUMAN)
         is_base_images_built = build_or_pull_base_images(
-            py_versions, image_types, args.base
+            py_versions, image_types, args.base, suffix=args.suffix
         )
 
         if args.only_build_worker_container:
-            build_for_all_versions("ray-worker-container", py_versions, image_types)
+            build_for_all_versions(
+                "ray-worker-container", py_versions, image_types, suffix=args.suffix
+            )
             # TODO Currently don't push ray_worker_container
         else:
             # Build Ray Docker images.
-            build_for_all_versions("ray", py_versions, image_types)
+            build_for_all_versions("ray", py_versions, image_types, suffix=args.suffix)
 
             # Only build ML Docker images for ML_CUDA_VERSION or cpu.
             ml_image_types = [
@@ -738,7 +767,10 @@ if __name__ == "__main__":
             if len(ml_image_types) > 0:
                 prep_ray_ml()
                 build_for_all_versions(
-                    "ray-ml", py_versions, image_types=ml_image_types
+                    "ray-ml",
+                    py_versions,
+                    image_types=ml_image_types,
+                    suffix=args.suffix,
                 )
 
             if build_type in {MERGE, PR}:

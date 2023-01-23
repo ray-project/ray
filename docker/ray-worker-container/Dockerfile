@@ -30,7 +30,7 @@ RUN apt-get update -y && sudo apt-get upgrade -y \
         gnupg; fi) \
         unzip \
     && wget \
-        --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
+        --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${HOSTTYPE}.sh" \
         -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
     && $HOME/anaconda3/bin/conda init \
