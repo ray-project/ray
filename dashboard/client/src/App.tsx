@@ -8,6 +8,7 @@ import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import JobList, { NewIAJobsPage } from "./pages/job";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
+import { JobDetailActorsPage } from "./pages/job/JobDetailActorPage";
 import { JobDetailInfoPage } from "./pages/job/JobDetailInfoPage";
 import { JobDetailLayout } from "./pages/job/JobDetailLayout";
 import { DEFAULT_VALUE, MainNavContext } from "./pages/layout/mainNavContext";
@@ -205,10 +206,18 @@ const App = () => {
                       <Route
                         element={
                           <SideTabPage tabId="charts">
-                            <JobDetailChartsPage />
+                            <JobDetailChartsPage newIA />
                           </SideTabPage>
                         }
                         path=""
+                      />
+                      <Route
+                        element={
+                          <SideTabPage tabId="actors">
+                            <JobDetailActorsPage />
+                          </SideTabPage>
+                        }
+                        path="actors"
                       />
                     </Route>
                   </Route>

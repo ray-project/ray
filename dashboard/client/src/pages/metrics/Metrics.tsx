@@ -20,9 +20,21 @@ const useStyles = makeStyles((theme) =>
       display: "flex",
       flexDirection: "row",
       flexWrap: "wrap",
+      gap: theme.spacing(3),
+    },
+    chart: {
+      flex: "1 0 448px",
+      maxWidth: "100%",
+      height: 300,
+      overflow: "hidden",
+      [theme.breakpoints.up("md")]: {
+        // Calculate max width based on 1/3 of the total width minus padding between cards
+        maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+      },
     },
     grafanaEmbed: {
-      margin: theme.spacing(1),
+      width: "100%",
+      height: "100%",
     },
     topBar: {
       position: "sticky",
@@ -213,15 +225,15 @@ export const Metrics = () => {
           </Alert>
           <div className={classes.grafanaEmbedsContainer}>
             {METRICS_CONFIG.map(({ title, path }) => (
-              <iframe
-                key={title}
-                className={classes.grafanaEmbed}
-                title={title}
-                src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
-                width="450"
-                height="400"
-                frameBorder="0"
-              />
+              <Paper className={classes.chart} elevation={1} variant="outlined">
+                <iframe
+                  key={title}
+                  title={title}
+                  className={classes.grafanaEmbed}
+                  src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
+                  frameBorder="0"
+                />
+              </Paper>
             ))}
           </div>
         </div>

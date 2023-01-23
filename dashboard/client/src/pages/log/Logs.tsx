@@ -126,7 +126,7 @@ const Logs = (props: LogsProps) => {
     setEnd,
   } = useLogs(props);
   const { newIA } = props;
-  let href = newIA ? "#/new/log/" : "#/log/";
+  let href = newIA ? "#/new/logs/" : "#/log/";
 
   if (origin) {
     if (path) {
