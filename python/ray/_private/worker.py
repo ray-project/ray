@@ -1914,7 +1914,7 @@ def connect(
             it during startup as a command line argument.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
-        entrypoint: The name of the entrypoint script. Ignored unless the
+        entrypoint: The name of the entrypoint script. Ignored if the
             mode != SCRIPT_MODE
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
