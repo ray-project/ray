@@ -12,6 +12,7 @@ from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
@@ -2089,6 +2090,36 @@ def test_list_get_tasks(shutdown_only):
         tasks = list_tasks(filters=[("scheduling_state", "=", "RUNNING")])
         for task in tasks:
             assert task["node_id"] == node_id
+
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+def test_pg_worker_id_tasks(shutdown_only):
+    ray.init(num_cpus=1)
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    pg.wait()
+
+    @ray.remote
+    def f():
+        pass
+    
+    ray.get(f.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote())
+
+    def verify():
+        tasks = list_tasks(detail=True)
+        workers = list_workers(filters=["worker_type", "=", "WORKER"])
+        assert len(tasks) == 1
+        assert len(workers) == 1
+
+        print(tasks)
+        print(workers)
+        assert tasks[0]["placement_group_id"] == pg.id.hex()
+        assert tasks[0]["worker_id"] == workers[0]["worker_id"]
 
         return True
 

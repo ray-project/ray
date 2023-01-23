@@ -214,8 +214,6 @@ message TaskStateUpdate {
   optional int64 failed_ts = 7;
   // Worker that runs the task.
   optional bytes worker_id = 8;
-  // Pid of the worker that runs the task.
-  optional int64 worker_pid = 9;
 }
 
 // Represents events and state changes from a single task run.

@@ -368,6 +368,8 @@ class ActorState(StateSchema):
     death_cause: Optional[dict] = state_column(filterable=False, detail=True)
     #: True if the actor is detached. False otherwise.
     is_detached: bool = state_column(filterable=False, detail=True)
+    #: The placement group id that's associated with this actor.
+    placement_group_id: str = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=True)
@@ -523,6 +525,10 @@ class TaskState(StateSchema):
     runtime_env_info: str = state_column(detail=True, filterable=False)
     #: The parent task id.
     parent_task_id: str = state_column(filterable=True)
+    #: The placement group id that's associated with this task.
+    placement_group_id: str = state_column(detail=True, filterable=True)
+    #: The worker id that's associated with this task.
+    worker_id: str = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=True)

@@ -53,7 +53,8 @@ class TaskFinisherInterface {
                                       bool fail_immediately = false) = 0;
 
   virtual void MarkTaskWaitingForExecution(const TaskID &task_id,
-                                           const NodeID &node_id) = 0;
+                                           const NodeID &node_id,
+                                           const WorkerID &worker_id) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
@@ -288,7 +289,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id The task that is will be running.
   /// \param[in] node_id The node id that this task wil be running.
-  void MarkTaskWaitingForExecution(const TaskID &task_id, const NodeID &node_id) override;
+  /// \param[in] worker_id The worker id that this task wil be running.
+  void MarkTaskWaitingForExecution(const TaskID &task_id, const NodeID &node_id, const WorkerID &worker_id) override;
 
   /// Add debug information about the current task status for the ObjectRefs
   /// included in the given stats.
@@ -321,11 +323,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param include_task_info True if TaskInfoEntry will be added to the Task events.
   /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
   /// for SUBMITTED_TO_WORKER status change.
+  /// \param worker_id Worker ID of the worker for which the task's submitted. Only applicable
+  /// for SUBMITTED_TO_WORKER status change.
   void RecordTaskStatusEvent(int32_t attempt_number,
                              const TaskSpecification &spec,
                              rpc::TaskStatus status,
                              bool include_task_info = false,
-                             absl::optional<NodeID> node_id = absl::nullopt);
+                             absl::optional<NodeID> node_id = absl::nullopt,
+                             absl::optional<WorkerID> worker_id = absl::nullopt);
 
  private:
   struct TaskEntry {
