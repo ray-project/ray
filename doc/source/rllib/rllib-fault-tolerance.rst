@@ -5,50 +5,43 @@
 Fault Tolerance And Elastic Training
 ====================================
 
-RLlib handles common failures modes (e.g. machine failures, spot instance preemption,
-network outages, or Ray cluster failures) via logics at multiple system levels.
-This doc discusses them in details.
+RLlib handles common failures modes, such as machine failures, spot instance preemption,
+network outages, or Ray cluster failures.
 
-Fault Tolerance and Recovery Provided by Ray Tune
--------------------------------------------------
+There are three main areas:
 
-Ray Tune provides fault tolerance and recovery at the experiment trial level.
+* Worker recovery
+* Experiment level fault tolerance with Ray Tune
+* Environment fault tolerance.
 
-Majority of RLlib runs are launched with Ray Tune, these trials
-:ref:`periodically checkpoint <rllib-saving-and-loading-algos-and-policies-docs>`
-the entire training states to user specified persistent storage locations.
-If a trial fails, Ray Tune will automatically restart it from the latest
-:ref:`checkpointed <tune-two-types-of-ckpt>` state.
 
-This serves as our last line of defense, catching any unexpected errors that are not
-handled by RLlib.
+Elastic Workers
+---------------
 
-Elastic RolloutWorkers
-----------------------
-
-RLlib supports self-recovering and elastic workersets for both
+RLlib supports self-recovering and elastic WorkerSets for both
 :ref:`rollout and evaluation Workers <rolloutworker-reference-docs>`.
 This provides fault tolerance at worker level.
 
-Worker fault tolerance can be turned on by setting config ``recreate_failed_workers`` to True.
-Under the hood, RLlib relies on Ray Core :ref:`actor fault tolerance <actor-fault-tolerance>`
-to automatically recover failed worker actors. Whenever a worker actor is reconstructed,
-RLlib will make sure its latest state gets synced before new episodes can be sampled. 
+This means that if you have rollout workers sitting on different machines and a 
+machine is pre-empted, RLlib can continue training and evaluation with minimal interruption. 
 
-RLlib workers are also elastic meaning that they do not require the full set of workers to
-function. For example, if an RLlib trial uses spot instances, it is quite possible for the
-trial to only have partial resources at a given time, potentially resulting in a subset
-of workers not getting scheduled. In this case, RLlib will make sure training and
-evaluation carries on with whatever healthy workers left at a reduced speed.
+The two properties that RLlib supports here are self-recovery and elasticity:
+
+* **Elasticity**: RLlib continues training even when workers are removed. For example, if an RLlib trial uses spot instances, nodes may be removed from the cluster, potentially resulting in a subset of workers not getting scheduled. In this case, RLlib will continue with whatever healthy workers left at a reduced speed.
+* **Self-Recovery**: When possible, RLlib will attempt to restore workers that were previously removed. During restoration, RLlib sync the latest state before new episodes can be sampled. 
+
+
+Worker fault tolerance can be turned on by setting config ``recreate_failed_workers`` to True.
+
 RLlib achieves this by utilizing a
-`state-aware and fault tolerant actor manager <https://github.com/ray-project/ray/blob/master/rllib/utils/actor_manager.py>`__.
+`state-aware and fault tolerant actor manager <https://github.com/ray-project/ray/blob/master/rllib/utils/actor_manager.py>`__. Under the hood, RLlib relies on Ray Core :ref:`actor fault tolerance <actor-fault-tolerance>` to automatically recover failed worker actors.
 
 Env Fault Tolerance
 -------------------
 
 In addition to worker fault tolerance, RLlib offers fault tolerance at environment level as well.
 
-It's common for a rollout or evaluation workers to run multiple environments in parallel to take
+Rollout or evaluation workers will often run multiple environments in parallel to take
 advantage of, for example, the parallel computing power that GPU offers. This can be controlled with
 the ``num_envs_per_worker`` config. It may then be wasteful if the entire worker needs to be
 reconstructed because of errors from a single environment.
@@ -65,6 +58,19 @@ errors to higher level components. You can do that easily by turning on config
     training progresses with elastic worker set while the environments are being reconstructed.
     More specifically, use configs ``num_envs_per_worker=1``, ``restart_failed_sub_environments=False``,
     and ``recreate_failed_workers=True``.
+    
+
+Fault Tolerance and Recovery Provided by Ray Tune
+-------------------------------------------------
+
+Ray Tune provides fault tolerance and recovery at the experiment trial level.
+
+When using Ray Tune with RLlib, you can enable
+:ref:`periodic checkpointing <rllib-saving-and-loading-algos-and-policies-docs>`,
+which saves the state of the experiment to a user-specified persistent storage location.
+If a trial fails, Ray Tune will automatically restart it from the latest
+:ref:`checkpointed <tune-two-types-of-ckpt>` state.
+
 
 Other Miscellaneous Considerations 
 ----------------------------------
