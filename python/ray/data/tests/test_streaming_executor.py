@@ -13,7 +13,11 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
 )
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.data._internal.execution.streaming_executor import (
+    StreamingExecutor,
+    _debug_dump_topology,
+    _validate_topology,
+)
 from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     build_streaming_topology,
@@ -160,6 +164,39 @@ def test_dispatch_next_task():
     o2.add_input = MagicMock()
     op_state.dispatch_next_task()
     assert o2.add_input.called_once_with("dummy2")
+
+
+def test_debug_dump_topology():
+    opt = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
+    topo, _ = build_streaming_topology(o3, opt)
+    # Just a sanity check to ensure it doesn't crash.
+    _debug_dump_topology(topo)
+
+
+def test_validate_topology():
+    opt = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator(
+        make_transform(lambda block: [b * -1 for b in block]),
+        o1,
+        compute_strategy=ray.data.ActorPoolStrategy(8, 8),
+    )
+    o3 = MapOperator(
+        make_transform(lambda block: [b * 2 for b in block]),
+        o2,
+        compute_strategy=ray.data.ActorPoolStrategy(4, 4),
+    )
+    topo, _ = build_streaming_topology(o3, opt)
+    _validate_topology(topo, ExecutionResources())
+    _validate_topology(topo, ExecutionResources(cpu=20))
+    _validate_topology(topo, ExecutionResources(gpu=0))
+    with pytest.raises(ValueError):
+        _validate_topology(topo, ExecutionResources(cpu=10))
 
 
 def test_pipelined_execution():

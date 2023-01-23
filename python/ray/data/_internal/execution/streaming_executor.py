@@ -63,7 +63,7 @@ class StreamingExecutor(Executor):
         output_node: OpState = topology[dag]
 
         try:
-            self._validate_topology(topology)
+            _validate_topology(topology, self._get_or_refresh_resource_limits())
             output_node: OpState = topology[dag]
 
             # Run scheduling loop until complete.
@@ -124,34 +124,6 @@ class StreamingExecutor(Executor):
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
 
-    def _validate_topology(self, topology: Topology):
-        """Raises an exception on invalid topologies.
-
-        For example, a topology is invalid if its configuration would require more
-        resources than the cluster has to execute.
-        """
-
-        base_usage = ExecutionResources(cpu=1)
-        for op in topology:
-            base_usage = base_usage.add(op.base_resource_usage())
-            inc_usage = op.incremental_resource_usage()
-            if inc_usage.cpu and inc_usage.gpu:
-                raise NotImplementedError(
-                    "Operator incremental resource usage cannot specify both CPU "
-                    "and GPU at the same time, since it may cause deadlock."
-                )
-            elif inc_usage.object_store_memory:
-                raise NotImplementedError(
-                    "Operator incremental resource usage must not include memory."
-                )
-
-        limits = self._get_or_refresh_resource_limits()
-        if not base_usage.satisfies_limit(limits):
-            raise ValueError(
-                f"The base resource usage of this topology {base_usage} "
-                f"exceeds the execution limits {limits}!"
-            )
-
     def _get_or_refresh_resource_limits(self) -> ExecutionResources:
         """Return concrete limits for use at the current time.
 
@@ -162,10 +134,11 @@ class StreamingExecutor(Executor):
         base = self._options.resource_limits
         cluster = ray.cluster_resources()
         return ExecutionResources(
-            cpu=base.cpu or cluster.get("CPU", 0.0),
-            gpu=base.gpu or cluster.get("GPU", 0.0),
+            cpu=base.cpu if base.cpu is not None else cluster.get("CPU", 0.0),
+            gpu=base.gpu if base.gpu is not None else cluster.get("GPU", 0.0),
             object_store_memory=base.object_store_memory
-            or cluster.get("object_store_memory", 0.0) // 4,
+            if base.object_store_memory is not None
+            else cluster.get("object_store_memory", 0.0) // 4,
         )
 
     def _get_current_usage(self, topology: Topology) -> ExecutionResources:
@@ -191,8 +164,45 @@ class StreamingExecutor(Executor):
             )
 
 
+def _validate_topology(topology: Topology, limits: ExecutionResources) -> None:
+    """Raises an exception on invalid topologies.
+
+    For example, a topology is invalid if its configuration would require more
+    resources than the cluster has to execute.
+
+    Args:
+        topology: The topology to validate.
+        limits: The limits to validate against.
+    """
+
+    base_usage = ExecutionResources(cpu=1)
+    for op in topology:
+        base_usage = base_usage.add(op.base_resource_usage())
+        inc_usage = op.incremental_resource_usage()
+        if inc_usage.cpu and inc_usage.gpu:
+            raise NotImplementedError(
+                "Operator incremental resource usage cannot specify both CPU "
+                "and GPU at the same time, since it may cause deadlock."
+            )
+        elif inc_usage.object_store_memory:
+            raise NotImplementedError(
+                "Operator incremental resource usage must not include memory."
+            )
+
+    if not base_usage.satisfies_limit(limits):
+        raise ValueError(
+            f"The base resource usage of this topology {base_usage} "
+            f"exceeds the execution limits {limits}!"
+        )
+
+
 def _debug_dump_topology(topology: Topology) -> None:
+    """Print out current execution state for the topology for debugging.
+
+    Args:
+        topology: The topology to debug.
+    """
     logger.info("vvv scheduling trace vvv")
     for i, (op, state) in enumerate(topology.items()):
-        logger.info(i, op.name, state.summary_str())
+        logger.info(f"{i}: {state.summary_str()}")
     logger.info("^^^ scheduling trace ^^^")
