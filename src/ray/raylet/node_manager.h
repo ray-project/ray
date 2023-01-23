@@ -78,7 +78,7 @@ struct NodeManagerConfig {
   /// The soft limit of the number of workers.
   int num_workers_soft_limit;
   /// Number of initial Python workers for the first job.
-  int num_prestarted_workers;
+  int num_prestart_python_workers_;
   /// The maximum number of workers that can be started concurrently by a
   /// worker pool.
   int maximum_startup_concurrency;
