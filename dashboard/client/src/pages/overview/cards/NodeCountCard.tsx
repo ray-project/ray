@@ -18,6 +18,7 @@ const useStyles = makeStyles((theme) =>
       display: "flex",
       flexDirection: "row",
       flexWrap: "nowrap",
+      margin: theme.spacing(0, 3, 2),
     },
   }),
 );
