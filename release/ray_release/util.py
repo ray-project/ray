@@ -167,20 +167,11 @@ def generate_tmp_s3_path() -> str:
 
 def join_s3_paths(*paths: str):
     paths = list(paths)
-    if len(paths) == 1:
-        return paths[0]
-    for i in range(1, len(paths)):
-        left = paths[i - 1]
-        right = paths[i]
-        if left.endswith("/") and right.startswith("/"):
-            ret = f"{left}{right[1:]}"
-        elif left.endswith("/") or right.startswith("/"):
-            ret = f"{left}{right}"
-        else:
-            ret = f"{left}/{right}"
-        paths[i] = ret
-
-    ret = paths[-1]
-    if ret.endswith("/"):
-        ret = ret[:-1]
-    return ret
+    if len(paths) > 1:
+        for i in range(1, len(paths)):
+            while paths[i][0] == "/":
+                paths[i] = paths[i][1:]
+    joined_path = os.path.join(paths)
+    while joined_path[-1] == "/":
+        joined_path = joined_path[:-1]
+    return joined_path

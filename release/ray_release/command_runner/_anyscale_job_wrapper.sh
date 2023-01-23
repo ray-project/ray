@@ -16,15 +16,15 @@ set -x
 start_time=$(date +%s)
 
 # 1. Run the test workload
-
-echo "$test_workload" > "workload.sh"
-chmod +x workload.sh
-cat workload.sh
+current_pwd="$PWD"
+echo "$test_workload" > "$current_pwd/workload.sh"
+chmod +x "$current_pwd/workload.sh"
+cat "$current_pwd/workload.sh"
 
 if (( test_workload_timeout < 0 )); then
-    bash -x ./workload.sh
+    bash -x "$current_pwd/workload.sh"
 else
-    timeout "$test_workload_timeout" bash -x ./workload.sh
+    timeout "$test_workload_timeout" bash -x "$current_pwd/workload.sh"
 fi
 return_code=$?
 exit_return_code="$return_code"
@@ -37,6 +37,7 @@ end_time=$(date +%s)
 time_taken=$(( end_time - start_time ))
 
 echo "Finished with return code $return_code, time taken $time_taken"
+cd "$current_pwd" || echo "Couldn't cd to '$current_pwd'"
 
 # 2. Install awscli
 pip install -q awscli
