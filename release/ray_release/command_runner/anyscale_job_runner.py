@@ -87,7 +87,7 @@ class AnyscaleJobRunner(JobRunner):
             env_str = ""
 
         full_command = (
-            f"{env_str}bash anyscale_job_wrapper.sh '{command}' "
+            f"{env_str}bash anyscale_job_wrapper.sh '{command}' '{timeout}' "
             f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}'"
         )
@@ -96,7 +96,7 @@ class AnyscaleJobRunner(JobRunner):
             full_env,
             working_dir=".",
             upload_path=self.upload_path,
-            timeout=int(timeout) + 900,
+            timeout=int(timeout) + 1000,
         )
 
         if status_code == -2:
