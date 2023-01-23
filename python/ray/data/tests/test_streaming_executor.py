@@ -23,6 +23,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
+    _execution_allowed,
 )
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -200,11 +201,78 @@ def test_validate_topology():
 
 
 def test_execution_allowed():
-    assert False
+    op = InputDataBuffer([])
+
+    # CPU.
+    op.incremental_resource_usage = MagicMock(return_value=ExecutionResources(cpu=1))
+    assert _execution_allowed(op, ExecutionResources(cpu=1), ExecutionResources(cpu=2))
+    assert not _execution_allowed(
+        op, ExecutionResources(cpu=2), ExecutionResources(cpu=2)
+    )
+    assert _execution_allowed(op, ExecutionResources(cpu=2), ExecutionResources(gpu=2))
+
+    # GPU.
+    op.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=1, gpu=1)
+    )
+    assert _execution_allowed(op, ExecutionResources(gpu=1), ExecutionResources(gpu=2))
+    assert not _execution_allowed(
+        op, ExecutionResources(gpu=2), ExecutionResources(gpu=2)
+    )
+
+    # Test conversion to indicator (0/1).
+    op.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=100, gpu=100)
+    )
+    assert _execution_allowed(op, ExecutionResources(gpu=1), ExecutionResources(gpu=2))
+    assert _execution_allowed(
+        op, ExecutionResources(gpu=1.5), ExecutionResources(gpu=2)
+    )
+    assert not _execution_allowed(
+        op, ExecutionResources(gpu=2), ExecutionResources(gpu=2)
+    )
+
+    # Test conversion to indicator (0/1).
+    op.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=0.1, gpu=0.1)
+    )
+    assert _execution_allowed(op, ExecutionResources(gpu=1), ExecutionResources(gpu=2))
+    assert _execution_allowed(
+        op, ExecutionResources(gpu=1.5), ExecutionResources(gpu=2)
+    )
+    assert not _execution_allowed(
+        op, ExecutionResources(gpu=2), ExecutionResources(gpu=2)
+    )
 
 
-def test_select_ops_ensure_liveness():
-    assert False
+def test_select_ops_ensure_at_least_one_live_operator():
+    opt = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator(
+        make_transform(lambda block: [b * -1 for b in block]),
+        o1,
+    )
+    o3 = MapOperator(
+        make_transform(lambda block: [b * 2 for b in block]),
+        o2,
+    )
+    topo, _ = build_streaming_topology(o3, opt)
+    topo[o2].outqueue.append("dummy1")
+    o1.num_active_work_refs = MagicMock(return_value=2)
+    assert (
+        select_operator_to_run(
+            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1)
+        )
+        is None
+    )
+    o1.num_active_work_refs = MagicMock(return_value=0)
+    assert (
+        select_operator_to_run(
+            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1)
+        )
+        is o3
+    )
 
 
 def test_pipelined_execution():
