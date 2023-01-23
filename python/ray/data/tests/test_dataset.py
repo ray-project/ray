@@ -5455,7 +5455,10 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
         .fully_executed()
     )
 
-    assert f"{max_size}/{max_size} blocks" in ds.stats()
+    # The "max_size" parameter is taking effect in the legacy
+    # ActorPoolStrategy only.
+    if not DatasetContext.get_current().new_execution_backend:
+        assert f"{max_size}/{max_size} blocks" in ds.stats()
 
     # Check batch size is still respected.
     ds = (
