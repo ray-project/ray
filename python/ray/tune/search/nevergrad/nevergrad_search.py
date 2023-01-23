@@ -55,7 +55,7 @@ class NevergradSearch(Searcher):
             https://facebookresearch.github.io/nevergrad/optimizers_ref.html#optimizers
             This can also be an instance of a `ConfiguredOptimizer`. See the
             section on configured optimizers in the above link.
-        optimizer_configs: Kwargs passed in when instantiating the `optimizer`
+        optimizer_kwargs: Kwargs passed in when instantiating the `optimizer`
         space: Nevergrad parametrization
             to be passed to optimizer on instantiation, or list of parameter
             names if you passed an optimizer object.
@@ -172,7 +172,7 @@ class NevergradSearch(Searcher):
                     "pass a list of parameter names or None as the `space` "
                     "parameter."
                 )
-            if self._optimizer_configs:
+            if self._optimizer_kwargs:
                 raise ValueError(
                     "If you pass in optimizer kwargs, either pass "
                     "an `Optimizer` subclass or an instance of "
@@ -201,7 +201,7 @@ class NevergradSearch(Searcher):
     def _setup_nevergrad(self):
         if self._opt_factory:
             self._nevergrad_opt = self._opt_factory(
-                self._space, **self._optimizer_configs
+                self._space, **self._optimizer_kwargs
             )
 
         # nevergrad.tell internally minimizes, so "max" => -1

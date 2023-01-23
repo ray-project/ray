@@ -234,7 +234,7 @@ class InvalidValuesTest(unittest.TestCase):
         from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
 
-        NevergradSearch(optimizer=ng.optimizers.CM, optimizer_configs=dict(budget=16))
+        NevergradSearch(optimizer=ng.optimizers.CM, optimizer_kwargs=dict(budget=16))
 
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
