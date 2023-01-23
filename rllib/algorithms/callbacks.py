@@ -1,3 +1,4 @@
+import gc
 import os
 import tracemalloc
 from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
@@ -427,12 +428,14 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
+        gc.collect()
         snapshot = tracemalloc.take_snapshot()
         top_stats = snapshot.statistics("lineno")
 
         for stat in top_stats[:10]:
             count = stat.count
-            size = stat.size
+            # Convert total size from Bytes to KiB.
+            size = stat.size / 1024
 
             trace = str(stat.traceback)
 
