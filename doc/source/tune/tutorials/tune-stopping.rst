@@ -3,7 +3,13 @@
 Stopping and Resuming a Tune Run
 ================================
 
-Ray Tune periodically checkpoints the run state so that it can be restarted when it fails or stops.
+There are a few ways that Tune runs can be stopped:
+
+1. The script gets manually interrupted (Ctrl+C)
+2. The script errors out on the driver process (different from trial-level errors)
+3. All trials terminate based on some stopping criteria (e.g. programmatic stopping conditions, ``FailureConfig(fail_fast=True)``, ``TuneConfig(time_budget_s)``, etc.)
+
+Ray Tune periodically checkpoints the run state so that it can be restarted when it fails or is manually interrupted.
 
 If you send a SIGINT signal to the process running ``Tuner.fit()`` (which is
 usually what happens when you press Ctrl+C in the console), Ray Tune shuts
