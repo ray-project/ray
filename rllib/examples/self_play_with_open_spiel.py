@@ -20,7 +20,6 @@ be played by the user against the "main" agent on the command line.
 
 import argparse
 import gymnasium as gym
-import numpy as np
 import os
 import sys
 

@@ -1,5 +1,4 @@
 import gymnasium as gym
-import pyspiel
 import unittest
 
 import ray
