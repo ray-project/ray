@@ -8,6 +8,7 @@ import click
 import yaml
 
 import ray._private.services as services
+from ray._private.profiling import get_perfetto_output
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.state.api import (
     StateApiClient,
@@ -41,6 +42,7 @@ class AvailableFormat(Enum):
     JSON = "json"
     YAML = "yaml"
     TABLE = "table"
+    PERFETTO = "perfetto"
 
 
 def _parse_filter(filter: str) -> Tuple[str, PredicateType, SupportedFilterType]:
@@ -178,6 +180,8 @@ def output_with_format(
         return json.dumps(state_data)
     elif format == AvailableFormat.TABLE:
         return get_table_output(state_data, schema)
+    elif format == AvailableFormat.PERFETTO:
+        return get_perfetto_output(state_data)
     else:
         raise ValueError(
             f"Unexpected format: {format}. "
@@ -535,6 +539,11 @@ def ray_list(
         filters=filter,
         detail=detail,
     )
+
+    # Perfetto format requires detailed output.
+    if format == AvailableFormat.PERFETTO:
+        options.detail = True
+        options.limit = 10000
 
     # If errors occur, exceptions will be thrown. Empty data indicate successful query.
     try:

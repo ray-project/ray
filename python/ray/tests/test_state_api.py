@@ -807,6 +807,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     data = data
     assert len(data) == 2
     assert result.total == 2
+    print(data)
     verify_schema(TaskState, data[0])
     assert data[0]["node_id"] == node_id.hex()
     verify_schema(TaskState, data[1])
