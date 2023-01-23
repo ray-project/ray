@@ -866,7 +866,7 @@ rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
   task_info.mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   const auto &pg_id = task_spec.PlacementGroupBundleId().first;
   if (!pg_id.IsNil()) {
-    RAY_LOG(ERROR) << "SANG-TODO PG ID set"; 
+    RAY_LOG(ERROR) << "SANG-TODO PG ID set";
     task_info.set_placement_group_id(pg_id.Binary());
   }
 
@@ -952,8 +952,9 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
   }
   if (worker_id.has_value()) {
     RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
-        << "Worker ID should be included when task status changes to SUBMITTED_TO_WORKER.";
-    RAY_LOG(ERROR) << "SANG-TODO WORKER ID set "; 
+        << "Worker ID should be included when task status changes to "
+           "SUBMITTED_TO_WORKER.";
+    RAY_LOG(ERROR) << "SANG-TODO WORKER ID set ";
     state_updates->set_worker_id(worker_id->Binary());
   }
   gcs::FillTaskStatusUpdateTime(status, absl::GetCurrentTimeNanos(), state_updates);

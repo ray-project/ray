@@ -2105,10 +2105,12 @@ def test_pg_worker_id_tasks(shutdown_only):
     @ray.remote
     def f():
         pass
-    
-    ray.get(f.options(
-        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
-    ).remote())
+
+    ray.get(
+        f.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    )
 
     def verify():
         tasks = list_tasks(detail=True)

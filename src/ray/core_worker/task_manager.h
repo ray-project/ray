@@ -290,7 +290,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id The task that is will be running.
   /// \param[in] node_id The node id that this task wil be running.
   /// \param[in] worker_id The worker id that this task wil be running.
-  void MarkTaskWaitingForExecution(const TaskID &task_id, const NodeID &node_id, const WorkerID &worker_id) override;
+  void MarkTaskWaitingForExecution(const TaskID &task_id,
+                                   const NodeID &node_id,
+                                   const WorkerID &worker_id) override;
 
   /// Add debug information about the current task status for the ObjectRefs
   /// included in the given stats.
@@ -323,8 +325,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param include_task_info True if TaskInfoEntry will be added to the Task events.
   /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
   /// for SUBMITTED_TO_WORKER status change.
-  /// \param worker_id Worker ID of the worker for which the task's submitted. Only applicable
-  /// for SUBMITTED_TO_WORKER status change.
+  /// \param worker_id Worker ID of the worker for which the task's submitted. Only
+  /// applicable for SUBMITTED_TO_WORKER status change.
   void RecordTaskStatusEvent(int32_t attempt_number,
                              const TaskSpecification &spec,
                              rpc::TaskStatus status,
