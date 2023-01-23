@@ -67,6 +67,22 @@ def test_all_to_all_operator():
     assert op.completed()
 
 
+def test_num_outputs_total():
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    op1 = MapOperator(
+        _mul2_transform,
+        input_op=input_op,
+        name="TestMapper",
+    )
+    assert op1.num_outputs_total() == 100
+
+    def dummy_all_transform(bundles: List[RefBundle]):
+        return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
+
+    op2 = AllToAllOperator(dummy_all_transform, input_op=op1, name="TestAll")
+    assert op2.num_outputs_total() == 100
+
+
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     # Create with inputs.
@@ -225,14 +241,6 @@ def test_map_operator_shutdown(use_actors):
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
-
-
-def test_prograss_bar():
-    DatasetContext.get_current().new_execution_backend = True
-    ds = ray.data.read_csv("example://iris.csv").random_shuffle()
-    ds = ds.map_batches(lambda x: x)
-    agg_ds = ds.groupby("variety").mean("sepal.length")
-    assert agg_ds.count() == 3
 
 
 if __name__ == "__main__":
