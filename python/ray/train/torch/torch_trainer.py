@@ -119,12 +119,12 @@ class TorchTrainer(DataParallelTrainer):
                 model = train.torch.prepare_model(model)
                 for epoch in range(3):
                     ...
-                    ckpt = Checkpoint.from_dict(
+                    ckpt = Checkpoint.from_dict({
                         "epoch": epoch,
                         "model": model.state_dict(),
                         # "model": model.module.state_dict(),
                         # ** The above two are equivalent **
-                    )
+                    })
                     session.report({"foo": "bar"}, ckpt)
 
     Example:
