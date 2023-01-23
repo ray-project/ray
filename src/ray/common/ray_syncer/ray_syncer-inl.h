@@ -88,6 +88,7 @@ class NodeState {
 /// Please refer to https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md
 /// for the callback API
 ///
+// clang-format off
 /// For the server side:
 ///                                     grpc end (error or request)
 ///                       +---------------------------------------------------------------+
@@ -113,7 +114,7 @@ class NodeState {
 /// +------------+      +-------------+  gRPC error or disconnected                            |
 /// | StartWrite | <--> | OnWriteDone | -------------------------------------------------------+
 /// +------------+      +-------------+
-
+// clang-format on
 class RaySyncerBidiReactor {
  public:
   RaySyncerBidiReactor(const std::string &remote_node_id)
