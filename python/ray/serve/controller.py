@@ -435,11 +435,12 @@ class ServeController:
     ) -> None:
         """Kicks off a task that deploys a Serve application.
 
-        Cancels any previous in-progress task that is deploying a Serve
-        application.
+        Cancels in-progress task that is deploying a Serve
+        application with same name.
 
         Args:
             config: Contains the following:
+                app_name: Application name. If not provided, it is empty string.
                 import_path: Serve deployment graph's import path
                 runtime_env: runtime_env to run the deployment graph in
                 deployment_override_options: Dictionaries that

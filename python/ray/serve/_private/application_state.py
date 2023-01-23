@@ -192,6 +192,15 @@ class ApplicationStateManager:
         """Create application state
         This is used for holding the deploy_obj_ref which is created by run_graph method
         """
+        if (
+            name in self._application_states
+            and self._application_states[name].deploy_obj_ref
+        ):
+            logger.info(
+                f"Received new config deployment for {name} request. Cancelling "
+                "previous request."
+            )
+            ray.cancel(self._application_states[name].deploy_obj_ref)
         self._application_states[name] = ApplicationState(
             name,
             self.deployment_state_manager,
