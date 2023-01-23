@@ -231,8 +231,8 @@ def _execution_allowed(
     # convert all quantities to integer (0 or 1) for deciding admissibility. This
     # allows operators with non-integral requests to slightly overshoot the limit.
     global_floored = ExecutionResources(
-        cpu=math.floor(global_usage.cpu),
-        gpu=math.floor(global_usage.gpu),
+        cpu=math.floor(global_usage.cpu or 0),
+        gpu=math.floor(global_usage.gpu or 0),
         object_store_memory=global_usage.object_store_memory,
     )
     inc = op.incremental_resource_usage()
@@ -241,4 +241,4 @@ def _execution_allowed(
         gpu=1 if inc.gpu else 0,
         object_store_memory=1 if inc.object_store_memory else 0,
     )
-    return global_floored.add(inc_indicator).satisfies_limits(global_limits)
+    return global_floored.add(inc_indicator).satisfies_limit(global_limits)

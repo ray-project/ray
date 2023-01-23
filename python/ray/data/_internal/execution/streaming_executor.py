@@ -24,6 +24,7 @@ from ray.data._internal.stats import DatasetStats
 
 logger = logging.getLogger(__name__)
 
+# Set this environment variable for detailed scheduler debugging logs.
 DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
 
 
@@ -99,7 +100,7 @@ class StreamingExecutor(Executor):
             True if we should continue running the scheduling loop.
         """
 
-        if DEBUG_TRACE_SCHEDULING in os.environ:
+        if DEBUG_TRACE_SCHEDULING:
             logger.info("Scheduling loop step...")
 
         # Note: calling process_completed_tasks() is expensive since it incurs
@@ -145,7 +146,7 @@ class StreamingExecutor(Executor):
                 )
 
         limits = self._get_or_refresh_resource_limits()
-        if not base_usage.satisfies_limits(limits):
+        if not base_usage.satisfies_limit(limits):
             raise ValueError(
                 f"The base resource usage of this topology {base_usage} "
                 f"exceeds the execution limits {limits}!"
@@ -167,9 +168,7 @@ class StreamingExecutor(Executor):
             or cluster.get("object_store_memory", 0.0) // 4,
         )
 
-    def _get_current_usage(
-        self, topology: Topology, limits: ExecutionResources
-    ) -> ExecutionResources:
+    def _get_current_usage(self, topology: Topology) -> ExecutionResources:
         cur_usage = ExecutionResources()
         for op, state in topology.items():
             cur_usage = cur_usage.add(op.current_resource_usage())
