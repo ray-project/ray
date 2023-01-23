@@ -196,7 +196,6 @@ parts:
               - file: serve/http-guide
               - file: serve/scaling-and-resource-allocation
               - file: serve/model_composition
-              - file: serve/gradio-dag-visualization
               - file: serve/dev-workflow
               - file: serve/production-guide/index
                 sections:
