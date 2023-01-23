@@ -24,7 +24,7 @@ cat workload.sh
 if (( test_workload_timeout < 0 )); then
     bash -x ./workload.sh
 else
-    timeout --verbose "$test_workload_timeout" bash -x ./workload.sh
+    timeout "$test_workload_timeout" bash -x ./workload.sh
 fi
 return_code=$?
 exit_return_code="$return_code"
@@ -57,7 +57,7 @@ if (( timeout_time > 900 )); then
     elif (( timeout_time < 90 )); then
     timeout_time=90
 fi
-timeout --verbose "$timeout_time" python prometheus_metrics.py "$start_time" --path "$METRICS_OUTPUT_JSON"
+timeout "$timeout_time" python prometheus_metrics.py "$start_time" --path "$METRICS_OUTPUT_JSON"
 
 # 5. Upload metrics.json to s3
 aws s3 cp "$METRICS_OUTPUT_JSON" "$metrics_s3_path" --acl bucket-owner-full-control
