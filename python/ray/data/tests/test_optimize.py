@@ -502,6 +502,13 @@ def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
 
+    def put(x):
+        # We only support automatic deref in the legacy backend.
+        if DatasetContext.get_current().new_execution_backend:
+            return x
+        else:
+            return ray.put(x)
+
     # Set up.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
@@ -518,8 +525,8 @@ def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
             return self.b * x + self.a
 
     # Test callable chain.
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     pipe = (
         ray.data.read_parquet(str(tmp_path))
         .repeat(2)
@@ -554,8 +561,8 @@ def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
     )
 
     # Test function + callable chain.
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     pipe = (
         ray.data.read_parquet(str(tmp_path))
         .repeat(2)
@@ -564,8 +571,8 @@ def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
             batch_size=1,
             batch_format="pandas",
             compute="actors",
-            fn_args=(ray.put(1),),
-            fn_kwargs={"b": ray.put(2)},
+            fn_args=(put(1),),
+            fn_kwargs={"b": put(2)},
         )
         .map_batches(
             CallableFn,

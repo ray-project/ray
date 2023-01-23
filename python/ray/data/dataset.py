@@ -30,6 +30,8 @@ import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
+from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs, batch_blocks
 from ray.data._internal.block_list import BlockList
@@ -167,7 +169,7 @@ class Dataset(Generic[T]):
         >>> # Create dataset from external storage system.
         >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
         >>> # Save dataset back to external storage system.
-        >>> ds.write_csv("s3//bucket/output") # doctest: +SKIP
+        >>> ds.write_csv("s3://bucket/output") # doctest: +SKIP
 
     Datasets has two kinds of operations: tranformation, which takes in Datasets and
     outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption, which
@@ -214,6 +216,7 @@ class Dataset(Generic[T]):
         plan: ExecutionPlan,
         epoch: int,
         lazy: bool = True,
+        logical_plan: Optional[LogicalPlan] = None,
     ):
         """Construct a Dataset (internal API).
 
@@ -226,6 +229,9 @@ class Dataset(Generic[T]):
         self._plan = plan
         self._uuid = uuid4().hex
         self._epoch = epoch
+        self._logical_plan = logical_plan
+        if logical_plan is not None:
+            self._plan.link_logical_plan(logical_plan)
 
         if not lazy:
             logger.warning("Dataset is lazy-only, so `lazy=False` arg has no effect")
@@ -338,6 +344,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -482,6 +489,9 @@ class Dataset(Generic[T]):
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to process. If set to greater than 0, a separate thread will be used
+                to fetch the specified amount of formatted batches from blocks. This improves performance for non-CPU bound UDFs, allowing batch fetching compute and formatting to be overlapped with the UDF. Defaults to 0 (no prefetching enabled.) Increasing the number of batches to prefetch can result in higher throughput, at the expense of requiring more heap memory to buffer the batches.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch will be a zero-copy, read-only
@@ -635,6 +645,7 @@ class Dataset(Generic[T]):
                 batch_size=batch_size,
                 batch_format=batch_format,
                 ensure_copy=not zero_copy_batch and batch_size is not None,
+                prefetch_batches=prefetch_batches,
             )
 
             for batch in formatted_batch_iter:
@@ -645,22 +656,41 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "map_batches",
-                transform,
-                compute,
-                ray_remote_args,
-                # TODO(Clark): Add a strict cap here.
-                target_block_size=target_block_size,
-                fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-            )
+        stage = OneToOneStage(
+            "map_batches",
+            transform,
+            compute,
+            ray_remote_args,
+            # TODO(Clark): Add a strict cap here.
+            target_block_size=target_block_size,
+            fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
         )
-        return Dataset(plan, self._epoch, self._lazy)
+        plan = self._plan.with_stage(stage)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            map_batches_op = MapBatches(
+                logical_plan.dag,
+                transform,
+                fn,
+                batch_size,
+                compute,
+                batch_format,
+                zero_copy_batch,
+                target_block_size,
+                fn_args,
+                fn_kwargs,
+                fn_constructor_args,
+                fn_constructor_kwargs,
+                ray_remote_args,
+            )
+            logical_plan = LogicalPlan(map_batches_op)
+
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def add_column(
         self,
@@ -1322,9 +1352,7 @@ class Dataset(Generic[T]):
             splits.append(
                 Dataset(
                     ExecutionPlan(
-                        BlockList(
-                            bs, ms, owned_by_consumer=False
-                        ),
+                        BlockList(bs, ms, owned_by_consumer=False),
                         stats,
                         run_by_consumer=True,
                     ),
