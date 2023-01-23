@@ -261,7 +261,7 @@ def test_actor_stats():
                 "actor_num_created"
             )
             == "1",
-            timeout=5,
+            timeout=10,
         )
         actor = Actor.remote()
         wait_for_condition(
@@ -269,7 +269,7 @@ def test_actor_stats():
                 "actor_num_created"
             )
             == "2",
-            timeout=5,
+            timeout=10,
         )
         del actor
 

@@ -7,6 +7,8 @@ import ray.cloudpickle as cloudpickle
 from typing import Iterator, Tuple, Any
 
 import ray
+from ray.data._internal.logical.optimizers import get_execution_dag
+from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
 from ray.data.datasource import ReadTask
@@ -74,7 +76,10 @@ def execute_to_legacy_block_list(
     Returns:
         The output as a legacy block list.
     """
-    dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    if DatasetContext.get_current().optimizer_enabled:
+        dag, stats = get_execution_dag(plan._logical_plan.dag), None
+    else:
+        dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
     bundles = executor.execute(dag, initial_stats=stats)
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
     return _bundles_to_block_list(bundles)
