@@ -7,7 +7,6 @@ This user guide will help you navigate the Ray Serve project and show you how to
 - [HTTP Handling](http-guide)
 - [Scaling and Resource Allocation](scaling-and-resource-allocation)
 - [Model Composition](serve-model-composition)
-- [Visualize a DAG with Gradio](serve-gradio-dag-visualization)
 - [Development Workflow](dev-workflow)
 - [Production Guide](serve-in-production)
 - [Performance Tuning](performance)
