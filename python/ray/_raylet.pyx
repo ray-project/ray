@@ -746,8 +746,8 @@ cdef void execute_task(
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
     function_name = execution_info.function_name
-    extra_data = (b'{"name": ' + function_name.encode("ascii") +
-                  b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
+    extra_data = (b'{"name": "' + function_name.encode("ascii") +
+                  b'", "task_id": "' + task_id.hex().encode("ascii") + b'"}')
 
     name_of_concurrency_group_to_execute = \
         c_name_of_concurrency_group_to_execute.decode("ascii")

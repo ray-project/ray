@@ -7,7 +7,7 @@ import { Task } from "../../type/task";
 import { useStateApiList } from "./hook/useStateApi";
 
 /**
- * Represent the embedable actors page.
+ * Represent the embedable tasks page.
  */
 const TaskList = ({ jobId = null }: { jobId?: string | null }) => {
   const [timeStamp] = useState(dayjs());

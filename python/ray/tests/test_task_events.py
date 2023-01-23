@@ -109,7 +109,7 @@ def test_fault_tolerance_parent_failed(shutdown_only):
         )
         print(tasks)
         for task in tasks:
-            assert task["scheduling_state"] == "FAILED"
+            assert task["state"] == "FAILED"
 
         return True
 
