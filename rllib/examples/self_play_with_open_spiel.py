@@ -22,18 +22,25 @@ import argparse
 import gymnasium as gym
 import numpy as np
 import os
-import pyspiel
-from open_spiel.python.rl_environment import Environment
 import sys
+
+import numpy as np
 
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import CLIReporter
+
+open_spiel = try_import_open_spiel(error=True)
+pyspiel = try_import_pyspiel(error=True)
+
+# Import after try_import_open_spiel, so we can error out with hints
+from open_spiel.python.rl_environment import Environment  # noqa: E402
 
 
 def get_cli_args():

@@ -99,6 +99,9 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// that is not related to running out of memory. Retries indefinitely if the value is -1.
 RAY_CONFIG(uint64_t, task_oom_retries, 15)
 
+/// The worker killing policy to use, as defined in worker_killing_policy.h.
+RAY_CONFIG(std::string, worker_killing_policy, "retriable_lifo")
+
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
 
@@ -661,16 +664,22 @@ RAY_CONFIG(bool, isolate_workers_across_task_types, true)
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
 
-/// grpc keepalive sent interval
+/// grpc keepalive sent interval for server.
 /// This is only configured in GCS server now.
-/// NOTE: It is not ideal for other components because
+RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000)
+
+/// grpc keepalive timeout.
+RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
+
+/// NOTE: we set a loose client keep alive because
 /// they have a failure model that considers network failures as component failures
 /// and this configuration break that assumption. We should apply to every other component
 /// after we change this failure assumption from code.
-RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000)
+/// grpc keepalive timeout for client.
+RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
-/// grpc keepalive timeout
-RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
+/// grpc keepalive timeout for client.
+RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)

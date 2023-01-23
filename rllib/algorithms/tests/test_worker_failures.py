@@ -87,7 +87,16 @@ class FaultInjectEnv(gym.Env):
         else:
             self.counter = None
 
-        if config.get("init_delay", 0) > 0.0:
+        if (
+            config.get("init_delay", 0) > 0.0
+            and (
+                not config.get("init_delay_indices", [])
+                or self.config.worker_index in config.get("init_delay_indices", [])
+            )
+            and
+            # constructor delay can only happen for recreated actors.
+            self._get_count() > 0
+        ):
             # Simulate an initialization delay.
             time.sleep(config.get("init_delay"))
 
@@ -109,14 +118,6 @@ class FaultInjectEnv(gym.Env):
     def _maybe_raise_error(self):
         # Do not raise simulated error if this worker is not bad.
         if self.config.worker_index not in self.config.get("bad_indices", []):
-            return
-
-        # Do not raise simulated error if recreated worker can not fail,
-        # and this is a recreated worker.
-        if (
-            not self.config.get("recreated_worker_can_fail", False)
-            and self.config.recreated_worker
-        ):
             return
 
         if self.counter:
@@ -145,6 +146,14 @@ class FaultInjectEnv(gym.Env):
     def step(self, action):
         self._increment_count()
         self._maybe_raise_error()
+
+        if self.config.get("step_delay", 0) > 0.0 and (
+            not self.config.get("init_delay_indices", [])
+            or self.config.worker_index in self.config.get("step_delay_indices", [])
+        ):
+            # Simulate a step delay.
+            time.sleep(self.config.get("step_delay"))
+
         return self.env.step(action)
 
     def action_space_sample(self):
@@ -164,20 +173,36 @@ class ForwardHealthCheckToEnvWorker(RolloutWorker):
         return super().ping()
 
 
-def wait_for_restore():
-    """Wait for Ray actor fault tolerence to restore all failed workers."""
+def wait_for_restore(num_restarting_allowed=0):
+    """Wait for Ray actor fault tolerence to restore all failed workers.
+
+    Args:
+        num_restarting_allowed: Number of actors that are allowed to be
+            in "RESTARTING" state. This is because some actors may
+            hang in __init__().
+    """
     while True:
         states = [
-            # Wait till all actors are either "ALIVE" (retored),
-            # or "DEAD" (cancelled. these actors are from other
-            # finished test cases).
-            a["state"] == "ALIVE" or a["state"] == "DEAD"
+            a["state"]
             for a in list_actors(
                 filters=[("class_name", "=", "ForwardHealthCheckToEnvWorker")]
             )
         ]
+        finished = True
+        for s in states:
+            # Wait till all actors are either "ALIVE" (restored),
+            # or "DEAD" (cancelled. these actors are from other
+            # finished test cases) or "RESTARTING" (being restored).
+            if s not in ["ALIVE", "DEAD", "RESTARTING"]:
+                finished = False
+                break
+
+        restarting = [s for s in states if s == "RESTARTING"]
+        if len(restarting) > num_restarting_allowed:
+            finished = False
+
         print("waiting ... ", states)
-        if all(states):
+        if finished:
             break
         # Otherwise, wait a bit.
         time.sleep(0.5)
@@ -637,6 +662,80 @@ class TestWorkerFailures(unittest.TestCase):
             # Everything still healthy. And all workers are restarted.
             self.assertEqual(a.evaluation_workers.num_healthy_remote_workers(), 2)
             self.assertEqual(a.evaluation_workers.num_remote_worker_restarts(), 2)
+
+    def test_worker_recover_with_hanging_workers(self):
+        # Counter that will survive restarts.
+        COUNTER_NAME = "test_eval_workers_fault_but_recover"
+        counter = Counter.options(name=COUNTER_NAME).remote()
+
+        config = (
+            # Must use off-policy algorithm since we are gonna have hanging workers.
+            ImpalaConfig()
+            .resources(
+                num_gpus=0,
+            )
+            .rollouts(
+                num_rollout_workers=3,
+                rollout_fragment_length=16,
+                ignore_worker_failures=False,  # Not ignore failure.
+                recreate_failed_workers=True,  # And recover
+                worker_health_probe_timeout_s=0.01,
+                worker_restore_timeout_s=5,
+            )
+            .training(
+                train_batch_size=32,
+                model={"fcnet_hiddens": [4]},
+            )
+            .reporting(
+                # Make sure each iteration doesn't take too long.
+                min_time_s_per_iteration=0.5,
+                # Make sure metrics reporting doesn't hang for too long
+                # since we are gonna have a hanging worker.
+                metrics_episode_collection_timeout_s=1,
+            )
+            .environment(
+                env="fault_env",
+                env_config={
+                    "evaluation": True,
+                    "p_terminated": 0.0,
+                    "max_episode_len": 20,
+                    # Worker 1 and 2 will fail in step().
+                    "bad_indices": [1, 2],
+                    # Env throws error between steps 3 and 4.
+                    "failure_start_count": 3,
+                    "failure_stop_count": 4,
+                    "counter": COUNTER_NAME,
+                    # Worker 2 will hang for long time during init after restart.
+                    "init_delay": 3600,
+                    "init_delay_indices": [2],
+                    # Worker 3 will hang in env.step().
+                    "step_delay": 3600,
+                    "step_delay_indices": [3],
+                },
+            )
+            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
+        )
+
+        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+            # Reset interaciton counter.
+            ray.wait([counter.reset.remote()])
+
+            a = config.build()
+
+            # Before train loop, workers are fresh and not recreated.
+            self.assertEqual(a.workers.num_healthy_remote_workers(), 3)
+            self.assertEqual(a.workers.num_remote_worker_restarts(), 0)
+
+            a.train()
+            wait_for_restore(num_restarting_allowed=1)
+            # Most importantly, training progressed fine.
+            a.train()
+
+            # 2 healthy remote workers left, although worker 3 is stuck in rollout.
+            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
+            # Only 1 successful restore, since worker 2 is stuck in indefinite init
+            # and can not be properly restored.
+            self.assertEqual(a.workers.num_remote_worker_restarts(), 1)
 
     def test_eval_workers_fault_but_restore_env(self):
         # Counter that will survive restarts.

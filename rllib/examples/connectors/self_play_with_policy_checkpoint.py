@@ -6,15 +6,17 @@ The checkpointed policy may be trained with a different algorithm too.
 import argparse
 import gymnasium as gym
 from pathlib import Path
-import pyspiel
 
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.sac import SACConfig
+from ray.rllib.env.utils import try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import Policy
 from ray.tune import CLIReporter
+
+pyspiel = try_import_pyspiel(error=True)
 
 parser = argparse.ArgumentParser()
 # This should point to a checkpointed policy that plays connect_four.

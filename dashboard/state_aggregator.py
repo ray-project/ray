@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import json
 
 from dataclasses import asdict, fields
 from itertools import islice
@@ -359,9 +360,16 @@ class StateAPIManager:
             {task_id -> task_data_in_dict}
             task_data_in_dict's schema is in TaskState
         """
+        job_id = None
+        for filter in option.filters:
+            if filter[0] == "job_id":
+                # tuple consists of (job_id, predicate, value)
+                job_id = filter[2]
 
         try:
-            reply = await self._client.get_all_task_info(timeout=option.timeout)
+            reply = await self._client.get_all_task_info(
+                timeout=option.timeout, job_id=job_id
+            )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
@@ -371,10 +379,15 @@ class StateAPIManager:
             """
             task_state = {}
             task_info = task_attempt.get("task_info", {})
-            state_updates = task_attempt.get("state_updates", None)
-
-            if state_updates is None:
-                return {}
+            state_updates = task_attempt.get("state_updates", [])
+            profiling_data = task_attempt.get("profiling_data", {})
+            if profiling_data:
+                for event in profiling_data["events"]:
+                    # End/start times are recorded in ns. We convert them to ms.
+                    event["end_time"] = int(event["end_time"]) / 1e6
+                    event["start_time"] = int(event["start_time"]) / 1e6
+                    event["extra_data"] = json.loads(event["extra_data"])
+            task_state["profiling_data"] = profiling_data
 
             # Convert those settable fields
             mappings = [
@@ -389,6 +402,7 @@ class StateAPIManager:
                         "language",
                         "required_resources",
                         "runtime_env_info",
+                        "parent_task_id",
                     ],
                 ),
                 (task_attempt, ["task_id", "attempt_number", "job_id"]),
@@ -398,16 +412,32 @@ class StateAPIManager:
                 for key in keys:
                     task_state[key] = src.get(key)
 
-            # Get the most updated scheduling_state by state transition ordering.
-            def _get_most_recent_status(task_state: dict) -> str:
-                # Reverse the order as defined in protobuf for the most recent state.
-                for status_name in reversed(common_pb2.TaskStatus.keys()):
-                    key = f"{status_name.lower()}_ts"
-                    if state_updates.get(key):
-                        return status_name
-                return common_pb2.TaskStatus.Name(common_pb2.NIL)
+            task_state["start_time_ms"] = None
+            task_state["end_time_ms"] = None
+            events = []
 
-            task_state["scheduling_state"] = _get_most_recent_status(state_updates)
+            for state in common_pb2.TaskStatus.keys():
+                key = f"{state.lower()}_ts"
+                if key in state_updates:
+                    # timestamp is recorded in ns.
+                    ts_ms = int(state_updates[key]) // 1e6
+                    events.append(
+                        {
+                            "state": state,
+                            "created_ms": ts_ms,
+                        }
+                    )
+                    if state == "RUNNING":
+                        task_state["start_time_ms"] = ts_ms
+                    if state == "FINISHED" or state == "FAILED":
+                        task_state["end_time_ms"] = ts_ms
+
+            task_state["events"] = events
+            if len(events) > 0:
+                latest_state = events[-1]["state"]
+            else:
+                latest_state = common_pb2.TaskStatus.Name(common_pb2.NIL)
+            task_state["state"] = latest_state
 
             return task_state
 
@@ -421,12 +451,12 @@ class StateAPIManager:
                         "node_id",
                         "actor_id",
                         "parent_task_id",
+                        "component_id",
                     ],
                 )
             )
             for message in reply.events_by_task
         ]
-        result = [e for e in result if len(e) > 0]
 
         num_after_truncation = len(result)
         num_total = num_after_truncation + reply.num_status_task_events_dropped
@@ -648,7 +678,9 @@ class StateAPIManager:
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
             option=ListApiOptions(
-                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout,
+                limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                filters=option.filters,
             )
         )
         summary = StateSummary(
@@ -662,16 +694,16 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
-            # Currently, there's no filtering support for summary,
-            # so we don't calculate this separately.
-            num_filtered=len(result.result),
+            num_filtered=result.num_filtered,
         )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_actors(
             option=ListApiOptions(
-                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout,
+                limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                filters=option.filters,
             )
         )
         summary = StateSummary(
@@ -685,16 +717,16 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
-            # Currently, there's no filtering support for summary,
-            # so we don't calculate this separately.
-            num_filtered=len(result.result),
+            num_filtered=result.num_filtered,
         )
 
     async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
         # For summary, try getting as many entries as possible to minimize data loss.
         result = await self.list_objects(
             option=ListApiOptions(
-                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+                timeout=option.timeout,
+                limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                filters=option.filters,
             )
         )
         summary = StateSummary(
@@ -708,9 +740,7 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
-            # Currently, there's no filtering support for summary,
-            # so we don't calculate this separately.
-            num_filtered=len(result.result),
+            num_filtered=result.num_filtered,
         )
 
     def _message_to_dict(

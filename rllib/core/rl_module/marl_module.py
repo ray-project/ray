@@ -4,6 +4,7 @@ from typing import Iterator, Mapping, Any, Union, Dict
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.nested_dict import NestedDict
 
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -277,56 +278,54 @@ class MultiAgentRLModule(RLModule):
 
     @override(RLModule)
     def _forward_train(
-        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+        self, batch: MultiAgentBatch, **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         """Runs the forward_train pass.
+
+        TODO(avnishn, kourosh): Review type hints for forward methods.
 
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
                 SampleBaches).
-            module_id: The module ID to run the forward pass for. If not specified, all
-                modules are run.
 
         Returns:
             The output of the forward_train pass the specified modules.
         """
-        return self.__run_forward_pass("forward_train", batch, module_id, **kwargs)
+        return self.__run_forward_pass("forward_train", batch, **kwargs)
 
     @override(RLModule)
     def _forward_inference(
-        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+        self, batch: MultiAgentBatch, **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         """Runs the forward_inference pass.
+
+        TODO(avnishn, kourosh): Review type hints for forward methods.
 
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
                 SampleBaches).
-            module_id: The module ID to run the forward pass for. If not specified, all
-                modules are run.
 
         Returns:
             The output of the forward_inference pass the specified modules.
         """
-        return self.__run_forward_pass("forward_inference", batch, module_id, **kwargs)
+        return self.__run_forward_pass("forward_inference", batch, **kwargs)
 
     @override(RLModule)
     def _forward_exploration(
-        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+        self, batch: MultiAgentBatch, **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         """Runs the forward_exploration pass.
+
+        TODO(avnishn, kourosh): Review type hints for forward methods.
 
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
                 SampleBaches).
-            module_id: The module ID to run the forward pass for. If not specified, all
-                modules are run.
 
         Returns:
             The output of the forward_exploration pass the specified modules.
         """
-        return self.__run_forward_pass(
-            "forward_exploration", batch, module_id, **kwargs
-        )
+        return self.__run_forward_pass("forward_exploration", batch, **kwargs)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
@@ -358,14 +357,54 @@ class MultiAgentRLModule(RLModule):
         for module_id, module in self._rl_modules.items():
             module.set_state(state_dict[module_id])
 
+    def serialize(self) -> Mapping[str, Any]:
+        """Return the serialized state of the module.
+
+        NOTE: This method needs to be implemented in order to support
+        checkpointing and fault tolerance.
+
+        """
+        return {
+            "class": self.__class__,
+            "rl_modules": {
+                module_id: module.serialize()
+                for module_id, module in self._rl_modules.items()
+            },
+        }
+
+    @classmethod
+    def deserialize(cls, state: Mapping[str, Any]) -> "MultiAgentRLModule":
+        """Construct a module from a serialized state.
+
+        Args:
+            state: The serialized state of the module.
+            The state should contain the keys "class", "kwargs", and "state".
+
+            - "class" is the class of the RLModule to be constructed.
+            - "rl_modules" is a dict mapping module ids of the RLModules to
+                their serialized states. The serialized states can be obtained
+                from `RLModule.serialize()`.
+
+        NOTE: this state is typically obtained from `serialize()`.
+
+        NOTE: This method needs to be implemented in order to support
+            checkpointing and fault tolerance.
+
+        Returns:
+            A deserialized MultiAgentRLModule.
+        """
+        rl_modules = {}
+        for module_id, module_state in state["rl_modules"].items():
+            rl_modules[module_id] = RLModule.deserialize(module_state)
+        return cls(rl_modules)
+
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
 
     def __run_forward_pass(
         self,
         forward_fn_name: str,
-        batch: MultiAgentBatch,
-        module_id: ModuleID = "",
+        batch: NestedDict[Any],
         **kwargs,
     ) -> Dict[ModuleID, Mapping[str, Any]]:
         """This is a helper method that runs the forward pass for the given module.
@@ -377,18 +416,16 @@ class MultiAgentRLModule(RLModule):
             forward_fn_name: The name of the forward pass method to run.
             batch: The batch of multi-agent data (i.e. mapping from module ids to
                 SampleBaches).
-            module_id: The module ID to run the forward pass for. If not specified, all
-                modules are run.
+            **kwargs: Additional keyword arguments to pass to the forward function.
 
         Returns:
             The output of the forward pass the specified modules. The output is a
             mapping from module ID to the output of the forward pass.
         """
-        if module_id:
+
+        module_ids = list(batch.shallow_keys())
+        for module_id in module_ids:
             self._check_module_exists(module_id)
-            module_ids = [module_id]
-        else:
-            module_ids = self.keys()
 
         outputs = {}
         for module_id in module_ids:

@@ -229,9 +229,8 @@ def test_lazy_fanout(shutdown_only, local_path):
         {"one": 4, "two": "b"},
         {"one": 5, "two": "c"},
     ]
-    # Test that data is read twice (+ 1 extra for ramp-up read before converting to a
-    # lazy dataset).
-    assert ray.get(read_counter.get.remote()) == 3
+    # Test that data is read twice.
+    assert ray.get(read_counter.get.remote()) == 2
     # Test that first map is executed twice.
     assert ray.get(map_counter.get.remote()) == 2 * 3 + 3 + 3
 
@@ -258,9 +257,9 @@ def test_lazy_fanout(shutdown_only, local_path):
     ray.get(map_counter.reset.remote())
     # The source data shouldn't be cleared since it's non-lazy.
     ds = ray.data.from_items(list(range(10)))
-    # Add extra transformation before being lazy.
-    ds = ds.map(inc)
+    # Add extra transformation after being lazy.
     ds = ds.lazy()
+    ds = ds.map(inc)
     ds1 = ds.map(inc)
     ds2 = ds.map(inc)
     # Test content.
@@ -503,6 +502,13 @@ def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
     context.optimize_fuse_read_stages = True
     context.optimize_fuse_shuffle_stages = True
 
+    def put(x):
+        # We only support automatic deref in the legacy backend.
+        if DatasetContext.get_current().new_execution_backend:
+            return x
+        else:
+            return ray.put(x)
+
     # Set up.
     df = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     table = pa.Table.from_pandas(df)
@@ -519,8 +525,8 @@ def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
             return self.b * x + self.a
 
     # Test callable chain.
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     pipe = (
         ray.data.read_parquet(str(tmp_path))
         .repeat(2)
@@ -555,8 +561,8 @@ def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
     )
 
     # Test function + callable chain.
-    fn_constructor_args = (ray.put(1),)
-    fn_constructor_kwargs = {"b": ray.put(2)}
+    fn_constructor_args = (put(1),)
+    fn_constructor_kwargs = {"b": put(2)}
     pipe = (
         ray.data.read_parquet(str(tmp_path))
         .repeat(2)
@@ -565,8 +571,8 @@ def test_optimize_callable_classes(ray_start_regular_shared, tmp_path):
             batch_size=1,
             batch_format="pandas",
             compute="actors",
-            fn_args=(ray.put(1),),
-            fn_kwargs={"b": ray.put(2)},
+            fn_args=(put(1),),
+            fn_kwargs={"b": put(2)},
         )
         .map_batches(
             CallableFn,
@@ -608,7 +614,7 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
     pipe = ds1.repeat(N)
     pipe.take()
     num_reads = ray.get(counter.get.remote())
-    assert num_reads == N + 1, num_reads
+    assert num_reads == N, num_reads
 
     # Re-read off.
     context.optimize_fuse_read_stages = False

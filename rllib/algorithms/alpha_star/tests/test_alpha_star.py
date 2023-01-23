@@ -4,12 +4,16 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.alpha_star as alpha_star
+from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
     framework_iterator,
 )
+
+open_spiel = try_import_open_spiel(error=True)
+pyspiel = try_import_pyspiel(error=True)
 
 # Connect-4 OpenSpiel env.
 gym.register("connect_four", lambda: OpenSpielEnv(pyspiel.load_game("connect_four")))
