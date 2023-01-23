@@ -71,7 +71,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const NodeID node_id,
                        const std::string node_address,
                        int num_workers_soft_limit,
-                       int num_initial_python_workers_for_first_job,
+                       int num_prestarted_python_workers,
                        int maximum_startup_concurrency,
                        int min_worker_port,
                        int max_worker_port,
@@ -93,9 +93,9 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
       ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
-      first_job_driver_wait_num_python_workers_(std::min(
-          num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
-      num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
+      first_job_driver_wait_num_python_workers_(
+          std::min(num_prestarted_python_workers, maximum_startup_concurrency)),
+      num_prestarted_python_workers_(num_prestarted_python_workers),
       periodical_runner_(io_service),
       get_time_(get_time) {
   RAY_CHECK(maximum_startup_concurrency > 0);
@@ -802,10 +802,9 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   if (first_job_.IsNil()) {
     first_job_ = job_id;
     // If the number of Python workers we need to wait is positive.
-    if (num_initial_python_workers_for_first_job_ > 0) {
+    if (num_prestarted_python_workers_ > 0) {
       delay_callback = true;
-      PrestartDefaultCpuWorkers(Language::PYTHON,
-                                num_initial_python_workers_for_first_job_);
+      PrestartDefaultCpuWorkers(Language::PYTHON, num_prestarted_python_workers_);
     }
   }
 
