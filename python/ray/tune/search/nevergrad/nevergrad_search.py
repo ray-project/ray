@@ -144,7 +144,7 @@ class NevergradSearch(Searcher):
         self._space = None
         self._opt_factory = None
         self._nevergrad_opt = None
-        self._optimizer_configs = optimizer_configs or {}
+        self._optimizer_kwargs = optimizer_kwargs or {}
 
         if points_to_evaluate is None:
             self._points_to_evaluate = None
