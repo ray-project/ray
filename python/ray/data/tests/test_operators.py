@@ -4,7 +4,6 @@ import time
 
 import ray
 from ray.data.block import Block
-from ray.data.context import DatasetContext
 from ray.data._internal.compute import TaskPoolStrategy, ActorPoolStrategy
 from ray.data._internal.execution.interfaces import RefBundle, PhysicalOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
