@@ -51,6 +51,7 @@ if [ -z "$TSAPIKEY" ]; then
 fi
 
 deviceid=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname=="'$HOSTNAME'")' | jq -r .id)
+export deviceid = $deviceid
 
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
@@ -115,9 +116,9 @@ term_handler(){
    && /usr/local/bin/crash -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
 
    echo "Deleting the device from Tailscale"
-   curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Deleting the device from Tailscale didn't work for $deviceid"
+   curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
    echo "Shutting Tailscale Down"
-   tailscale down
+   sudo tailscale down
    exit 0
 }
 
