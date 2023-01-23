@@ -52,8 +52,7 @@ class NevergradSearch(Searcher):
     Parameters:
         optimizer: Optimizer provided
             from Nevergrad. Alter
-        optimizer_configs: Dictionary used
-            to instantiate the Nevergrad optimizer.
+        optimizer_configs: Kwargs passed in when instantiating the `optimizer`
         space: Nevergrad parametrization
             to be passed to optimizer on instantiation, or list of parameter
             names if you passed an optimizer object.
