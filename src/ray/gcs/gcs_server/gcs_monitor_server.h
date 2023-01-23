@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "src/ray/protobuf/monitor.pb.h"
 #include "src/ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
