@@ -137,39 +137,33 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     }
 
     // No data to send.
-    if (buffer_.empty() && send_buffer_.empty()) {
+    if (buffer_.empty()) {
       return;
     }
 
-    // Have new data and send buffer empty, add new data to the send buffer.
-    if (send_buffer_.empty() && !buffer_.empty()) {
-      buffer_.swap(send_buffer_);
-      next_idx_to_overwrite_ = 0;
-
-      num_profile_task_events_dropped = num_profile_task_events_dropped_;
-      num_profile_task_events_dropped_ = 0;
-
-      num_status_task_events_dropped = num_status_task_events_dropped_;
-      num_status_task_events_dropped_ = 0;
-    }
-
-    // Take one single batch to send.
-    if (static_cast<int64_t>(send_buffer_.size()) >
+    if (static_cast<int64_t>(buffer_.size()) >
         RayConfig::instance().task_events_send_batch_size()) {
+      // We will take a batch from the buffer to send.
       size_t batch_size = RayConfig::instance().task_events_send_batch_size();
-      auto move_start = std::prev(send_buffer_.end(), batch_size);
+
+      auto move_start = std::prev(buffer_.end(), batch_size);
       to_send.insert(to_send.end(),
                      std::make_move_iterator(move_start),
-                     std::make_move_iterator(send_buffer_.end()));
-      send_buffer_.erase(move_start, send_buffer_.end());
+                     std::make_move_iterator(buffer_.end()));
+      buffer_.erase(move_start, buffer_.end());
+      // Enough space in the buffer now, reset the next_idx_to_overwrite.
     } else {
-      // Move all, so just swap.
-      to_send.swap(send_buffer_);
+      // Just send all.
+      to_send.swap(buffer_);
     }
+    next_idx_to_overwrite_ = 0;
 
-    if (to_send.empty()) {
-      return;
-    }
+    // Send and reset the counters
+    num_profile_task_events_dropped = num_profile_task_events_dropped_;
+    num_profile_task_events_dropped_ = 0;
+
+    num_status_task_events_dropped = num_status_task_events_dropped_;
+    num_status_task_events_dropped_ = 0;
   }
 
   // Convert to rpc::TaskEventsData
@@ -241,7 +235,7 @@ const std::string TaskEventBufferImpl::DebugString() {
 
   bool grpc_in_progress;
   size_t num_status_task_events_dropped, num_profile_task_events_dropped,
-      send_buffer_size, data_buffer_size;
+      data_buffer_size;
   uint64_t total_events_bytes, total_num_events;
 
   {
@@ -251,7 +245,6 @@ const std::string TaskEventBufferImpl::DebugString() {
     num_profile_task_events_dropped = num_profile_task_events_dropped_;
     total_events_bytes = total_events_bytes_;
     total_num_events = total_num_events_;
-    send_buffer_size = send_buffer_.size();
     data_buffer_size = buffer_.size();
   }
 
@@ -260,7 +253,6 @@ const std::string TaskEventBufferImpl::DebugString() {
   ss << "\nOther Stats:"
      << "\n\tgrpc_in_progress:" << grpc_in_progress
      << "\n\tcurrent number of task events in buffer: " << data_buffer_size
-     << "\n\tnumber of task events to be sent in batches: " << send_buffer_size
      << "\n\ttotal task events sent: " << 1.0 * total_events_bytes / 1024 / 1024 << " MiB"
      << "\n\ttotal number of task events sent: " << total_num_events
      << "\n\tnum status task events dropped: " << num_status_task_events_dropped

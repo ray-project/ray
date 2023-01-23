@@ -309,12 +309,12 @@ TEST_F(TaskEventBufferTestBatchSend, TestBatchedSend) {
 
   for (int i = 0; i * batch_size < num_events; i++) {
     task_event_buffer_->FlushEvents(false);
-    EXPECT_EQ(task_event_buffer_->send_buffer_.size(), num_events - (i + 1) * batch_size);
+    EXPECT_EQ(task_event_buffer_->GetAllTaskEvents().size(),
+              num_events - (i + 1) * batch_size);
   }
 
   // With last flush, there should be no more events in the buffer and as data.
-  EXPECT_EQ(task_event_buffer_->send_buffer_.size(), 0);
-  EXPECT_EQ(task_event_buffer_->buffer_.size(), 0);
+  EXPECT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
 }
 
 TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {

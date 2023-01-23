@@ -186,9 +186,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// process them quick enough.
   bool grpc_in_progress_ GUARDED_BY(mutex_) = false;
 
-  /// A buffer to store task events to be sent to GCS in batches.
-  std::vector<rpc::TaskEvents> send_buffer_ GUARDED_BY(mutex_);
-
   /// Debug stats: total number of bytes of task events sent so far to GCS.
   uint64_t total_events_bytes_ GUARDED_BY(mutex_) = 0;
 
