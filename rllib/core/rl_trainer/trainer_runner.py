@@ -1,5 +1,5 @@
 import math
-from typing import Any, List, Mapping, Type, Optional, Callable
+from typing import Any, List, Mapping, Type, Optional, Callable, Dict
 
 import ray
 
@@ -9,8 +9,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamOptimizerPairs,
     Optimizer,
 )
-from ray.rllib.core.rl_trainer.tf.tf_rl_trainer import TfRLTrainer
-from ray.rllib.core.rl_trainer.torch.torch_rl_trainer import TorchRLTrainer
+
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 
 
@@ -58,11 +57,11 @@ class TrainerRunner:
                 use_gpu=(not use_fake_gpus),
             )
 
-            if issubclass(trainer_class, TorchRLTrainer):
+            if trainer_class.framework == "torch":
                 from ray.train.torch import TorchConfig
 
                 backend_config = TorchConfig()
-            elif issubclass(trainer_class, TfRLTrainer):
+            elif trainer_class.framework == "tf":
                 from ray.train.tensorflow import TensorflowConfig
 
                 backend_config = TensorflowConfig()
@@ -77,9 +76,10 @@ class TrainerRunner:
                 max_retries=0,
             )
 
-            # TODO(avnishn, kourosh): let's not pass this into the config which will
-            # cause information leakage into the RLTrainer about other workers.
-            trainer_config["distributed"] = self._distributed = True
+            # TODO(avnishn, kourosh): Should we pass in scaling config into the
+            # trainer?
+            trainer_config["distributed"] = self._distributed = bool(num_gpus > 1)
+            trainer_config["scaling_config"] = scaling_config
             self.backend_executor.start(
                 train_cls=trainer_class, train_cls_kwargs=trainer_config
             )
@@ -220,6 +220,15 @@ class TrainerRunner:
             ray.get(refs)
         else:
             self._trainer.remove_module(module_id)
+
+    def get_weight(self) -> Dict:
+        """Get the weights of the MARLModule.
+
+        Returns:
+            The weights of the neural networks that can be exchanged with the policy.
+        """
+        # TODO (Avnish): implement this.
+        pass
 
     def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
         """Get the states of the RLTrainers"""

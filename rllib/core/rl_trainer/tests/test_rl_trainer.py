@@ -29,7 +29,6 @@ def get_trainer(distributed=False) -> RLTrainer:
         },
         optimizer_config={"lr": 1e-3},
         distributed=distributed,
-        in_test=True,
     )
 
     trainer.build()

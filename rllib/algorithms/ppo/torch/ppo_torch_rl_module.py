@@ -243,18 +243,18 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
-        specs = {SampleBatch.ACTION_DIST: self.__get_action_dist_type()}
         if self._is_discrete:
-            specs[SampleBatch.ACTION_DIST_INPUTS] = {
-                "logits": TorchTensorSpec("b, h", h=int(self.config.action_space.n))
-            }
+            action_dist_inputs = ((SampleBatch.ACTION_DIST_INPUTS, "logits"),)
         else:
-            specs[SampleBatch.ACTION_DIST_INPUTS] = {
-                "loc": TorchTensorSpec("b, h", h=self.config.action_space.shape[0]),
-                "scale": TorchTensorSpec("b, h", h=self.config.action_space.shape[0]),
-            }
-
-        return SpecDict(specs)
+            action_dist_inputs = (
+                (SampleBatch.ACTION_DIST_INPUTS, "loc"),
+                (SampleBatch.ACTION_DIST_INPUTS, "scale"),
+            )
+        return [
+            SampleBatch.VF_PREDS,
+            SampleBatch.ACTION_DIST,
+            *action_dist_inputs,
+        ]
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:

@@ -1487,6 +1487,16 @@ def test_schema_lazy(ray_start_regular_shared):
     assert ds._plan.execute()._num_computed() == 1
 
 
+def test_count_lazy(ray_start_regular_shared):
+    ds = ray.data.range(100, parallelism=10)
+    # We do not kick off the read task by default.
+    assert ds._plan._in_blocks._num_computed() == 0
+    assert ds.count() == 100
+    # Getting number of rows should not trigger execution of any read tasks
+    # for ray.data.range(), as the number of rows is known beforehand.
+    assert ds._plan._in_blocks._num_computed() == 0
+
+
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
     assert ds._plan.execute()._num_computed() == 0
@@ -5394,8 +5404,10 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
                 time.sleep(1000)
                 return block
 
-    with pytest.raises(ray.exceptions.RayTaskError):
-        aps._apply(test_func, {}, blocks, False)
+    # No need to test ActorPoolStrategy in new execution backend.
+    if not DatasetContext.get_current().new_execution_backend:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            aps._apply(test_func, {}, blocks, False)
 
     # Check that all actors have been killed by counting the available CPUs
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
@@ -5414,13 +5426,45 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     ray.data.range(10, parallelism=10).map_batches(
         f, batch_size=1, compute=compute_strategy
     ).fully_executed()
-    expected_max_num_workers = math.ceil(
-        num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
+
+    # The new execution backend is not using the ActorPoolStrategy under
+    # the hood, so the expectation here applies only to the old backend.
+    # TODO(https://github.com/ray-project/ray/issues/31723): we should check
+    # the num of workers once we have autoscaling in new execution backend.
+    if not DatasetContext.get_current().new_execution_backend:
+        expected_max_num_workers = math.ceil(
+            num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
+        )
+        assert (
+            compute_strategy.num_workers >= num_cpus
+            and compute_strategy.num_workers <= expected_max_num_workers
+        ), "Number of actors is out of the expected bound"
+
+
+def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
+    """Tests that blocks are bundled up to the specified max number of actors."""
+
+    def f(x):
+        return x
+
+    max_size = 2
+    compute_strategy = ray.data.ActorPoolStrategy(max_size=max_size)
+    ds = (
+        ray.data.range(10, parallelism=10)
+        .map_batches(f, batch_size=None, compute=compute_strategy)
+        .fully_executed()
     )
-    assert (
-        compute_strategy.num_workers >= num_cpus
-        and compute_strategy.num_workers <= expected_max_num_workers
-    ), "Number of actors is out of the expected bound"
+
+    assert f"{max_size}/{max_size} blocks" in ds.stats()
+
+    # Check batch size is still respected.
+    ds = (
+        ray.data.range(10, parallelism=10)
+        .map_batches(f, batch_size=10, compute=compute_strategy)
+        .fully_executed()
+    )
+
+    assert "1/1 blocks" in ds.stats()
 
 
 def test_default_batch_format(shutdown_only):
