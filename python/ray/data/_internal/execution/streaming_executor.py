@@ -16,7 +16,6 @@ from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     build_streaming_topology,
     process_completed_tasks,
-    refresh_progress_bar,
     select_operator_to_run,
 )
 from ray.data._internal.progress_bar import ProgressBar
@@ -107,7 +106,8 @@ class StreamingExecutor(Executor):
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
         process_completed_tasks(topology)
-        refresh_progress_bar(topology)
+        for op_state in topology.values():
+            op_state.refresh_progress_bar()
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()

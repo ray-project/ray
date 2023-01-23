@@ -124,7 +124,8 @@ def build_streaming_topology(
     setup_state(dag)
 
     # Create the progress bars starting from the first operator to run.
-    # Note that the topology dict is in topological sort order.
+    # Note that the topology dict is in topological sort order. Index zero is reserved
+    # for global progress information.
     i = 1
     for op_state in list(topology.values()):
         if not isinstance(op_state.op, InputDataBuffer):
@@ -194,17 +195,15 @@ def select_operator_to_run(
         for op, state in topology.items()
         if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
     ]
+
+    # To ensure liveness, allow at least 1 op to run regardless of limits.
+    if not ops and all(op.num_active_work_refs() == 0 for op in topology):
+        # The topology is entirely idle, so choose from all ready ops ignoring limits.
+        ops = [op for op, state in topology.items() if state.num_queued() > 0]
+
+    # Nothing to run.
     if not ops:
-        # Should ensure at least 1 active op for liveness.
-        if not any(op.num_active_work_refs() for op in topology):
-            ops = [
-                op
-                for op, state in topology.items()
-                if state.num_queued() > 0
-                and _execution_allowed(op, cur_usage, limits, soft_limit=True)
-            ]
-        if not ops:
-            return None
+        return None
 
     # Equally penalize outqueue length and active tasks for backpressure.
     return min(
@@ -212,21 +211,21 @@ def select_operator_to_run(
     )
 
 
-def refresh_progress_bar(topology: Topology) -> None:
-    for op_state in topology.values():
-        op_state.refresh_progress_bar()
-
-
 def _execution_allowed(
     op: PhysicalOperator,
     global_usage: ExecutionResources,
     global_limits: ExecutionResources,
-    soft_limit: bool = False,
 ) -> bool:
-    # If no resources are currently used, execution is always allowed.
-    if soft_limit and op.num_active_work_refs() == 0:
-        return True
+    """Return whether an operator is allowed to execute given resource usage.
 
+    Args:
+        op: The operator to check.
+        global_usage: Resource usage across the entire topology.
+        global_limits: Execution resource limits.
+
+    Returns:
+        Whether the op is allowed to run.
+    """
     # To avoid starvation problems when dealing with fractional resource types,
     # convert all quantities to integer (0 or 1) for deciding admissibility. This
     # allows operators with non-integral requests to slightly overshoot the limit.

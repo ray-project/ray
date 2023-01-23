@@ -199,6 +199,14 @@ def test_validate_topology():
         _validate_topology(topo, ExecutionResources(cpu=10))
 
 
+def test_execution_allowed():
+    assert False
+
+
+def test_select_ops_ensure_liveness():
+    assert False
+
+
 def test_pipelined_execution():
     executor = StreamingExecutor(ExecutionOptions())
     inputs = make_ref_bundles([[x] for x in range(20)])
