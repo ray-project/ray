@@ -6,7 +6,7 @@ import pickle
 import time
 import traceback
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray._private.utils import (
@@ -351,7 +351,7 @@ class ServeController:
         deployment_config_proto_bytes: bytes,
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
-        deployer_job_id: str,
+        deployer_job_id: Union[str, bytes],
         is_driver_deployment: Optional[bool] = False,
     ) -> bool:
         if route_prefix is not None:
@@ -381,6 +381,12 @@ class ServeController:
             autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
         else:
             autoscaling_policy = None
+
+        # Java API passes in JobID as bytes
+        if isinstance(deployer_job_id, bytes):
+            deployer_job_id = ray.JobID.from_int(
+                int.from_bytes(deployer_job_id, "little")
+            ).hex()
 
         deployment_info = DeploymentInfo(
             actor_name=name,
