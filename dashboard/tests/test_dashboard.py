@@ -19,6 +19,8 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
+from click.testing import CliRunner
+from requests.exceptions import ConnectionError
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -34,6 +36,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
+import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
 from ray.experimental.state.api import StateApiClient
@@ -900,7 +903,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
-def test_agent_port_conflict():
+def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
     # start ray and test agent works.
@@ -989,6 +992,7 @@ def test_dashboard_module_load(tmpdir):
         str(tmpdir),
         str(tmpdir),
         False,
+        True,
     )
 
     # Test basic.
@@ -1043,6 +1047,76 @@ def test_dashboard_module_no_warnings(enable_test_module):
             dashboard_utils.get_all_modules(dashboard_utils.DashboardAgentModule)
     finally:
         debug._disabled = old_val
+
+
+def test_dashboard_not_included_ray_init(shutdown_only, capsys):
+    addr = ray.init(include_dashboard=False, dashboard_port=8265)
+    dashboard_url = addr["webui_url"]
+    assert "View the dashboard" not in capsys.readouterr().err
+    assert not dashboard_url
+
+    # Warm up.
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with pytest.raises(ConnectionError):
+        # Since the dashboard doesn't start, it should raise ConnectionError
+        # becasue we cannot estabilish a connection.
+        requests.get("http://localhost:8265")
+
+
+def test_dashboard_not_included_ray_start(shutdown_only, capsys):
+    runner = CliRunner()
+    try:
+        runner.invoke(
+            scripts.start,
+            ["--head", "--include-dashboard=False", "--dashboard-port=8265"],
+        )
+        addr = ray.init("auto")
+        dashboard_url = addr["webui_url"]
+        assert not dashboard_url
+
+        assert "view the dashboard at" not in capsys.readouterr().err
+
+        # Warm up.
+        @ray.remote
+        def f():
+            pass
+
+        ray.get(f.remote())
+
+        with pytest.raises(ConnectionError):
+            # Since the dashboard doesn't start, it should raise ConnectionError
+            # becasue we cannot estabilish a connection.
+            requests.get("http://localhost:8265")
+    finally:
+        runner.invoke(scripts.stop, ["--force"])
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This test only works for minimal installation.",
+)
+def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
+    addr = ray.init(dashboard_port=8265)
+    dashboard_url = addr["webui_url"]
+    assert "View the dashboard" not in capsys.readouterr().err
+    assert not dashboard_url
+
+    # Warm up.
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with pytest.raises(ConnectionError):
+        # Since the dashboard doesn't start, it should raise ConnectionError
+        # becasue we cannot estabilish a connection.
+        requests.get("http://localhost:8265")
 
 
 if __name__ == "__main__":
