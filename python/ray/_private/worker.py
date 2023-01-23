@@ -2108,7 +2108,7 @@ def connect(
         )
         if (
             worker.current_job_id != JobID.nil()
-            and ray._raylet.Config.start_python_importer_thread
+            and ray._raylet.Config.start_python_importer_thread()
         ):
             worker.import_thread.start()
 
