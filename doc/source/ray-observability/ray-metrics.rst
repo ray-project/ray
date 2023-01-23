@@ -69,6 +69,10 @@ allows you to create custom dashboards with your favorite metrics. Ray exports s
 configurations which includes a default dashboard showing some of the most valuable metrics
 for debugging ray applications.
 
+
+Deploying Grafana
+~~~~~~~~~~~~~~~~~
+
 First, `download Grafana <https://grafana.com/grafana/download>`_. Follow the instructions on the download page to download the right binary for your operating system.
 
 Then go to to the location of the binary and run grafana using the built in configuration found in `/tmp/ray/session_latest/metrics/grafana` folder.
@@ -86,6 +90,41 @@ You can then see the default dashboard by going to dashboards -> manage -> Ray -
 
 .. image:: images/graphs.png
     :align: center
+
+Using an existing Grafana instance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When you want to use existing Grafana instance, before starting your Ray cluster you will need to setup environment variable `RAY_GRAFANA_HOST` with an URL of your Grafana. After starting Ray, you can find Grafana dashboard json at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. `Import this dashboard <https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard>`_ to your Grafana.
+
+If Grafana reports that datasource is not found, you can `add a datasource variable <https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable>`_ and using `JSON model view <https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/modify-dashboard-settings/#view-dashboard-json-model>`_ change all values of `datasource` key in the imported `default_grafana_dashboard.json` to the name of the variable. For example, if the variable name is `data_source`, all `"datasource"` mappings should be:
+
+.. code-block:: json
+
+  "datasource": {
+    "type": "prometheus",
+    "uid": "$data_source"
+  }
+
+When existing Grafana instance requires user authentication, the following settings have to be in its `configuration file <https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/>`_ to correctly embed in Ray dashboard:
+
+.. code-block:: ini
+
+  [security]
+  allow_embedding = true
+  cookie_secure = true
+  cookie_samesite = none
+
+If Grafana is exposed via nginx ingress on Kubernetes cluster, the following line should be present in the Grafana ingress annotation:
+
+.. code-block:: yaml
+
+  nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options SAMEORIGIN always;
+
+When both Grafana and Ray cluster are on the same Kubernetes cluster, it is important to set `RAY_GRAFANA_HOST` to the external URL of the Grafana ingress. For successful embedding, `RAY_GRAFANA_HOST` needs to be accessible to both Ray cluster backend and Ray dashboard frontend:
+
+* On the backend, *Ray cluster head* does health checks on Grafana. Hence `RAY_GRAFANA_HOST` needs to be accessible in the Kubernetes pod which is running the head node.
+* When accessing *Ray dashboard* from the browser, frontend embeds Grafana dashboard using the URL specified in `RAY_GRAFANA_HOST`. Hence `RAY_GRAFANA_HOST` needs to be accessible from the browser as well.
 
 .. _system-metrics:
 
@@ -240,3 +279,9 @@ When downloading binaries from the internet, Mac requires that the binary be sig
 Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
 
 See `these instructions <https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac>`_ on how to override the restriction and install or run the application.
+
+Grafana dashboards are not embedded in the Ray dashboard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you're getting error that `RAY_GRAFANA_HOST` is not setup despite you've set it up, please check:
+That you've included protocol in the URL (e.g. `http://your-grafana-url.com` instead of `your-grafana-url.com`).
+Also, make sure that url doesn't have trailing slash (e.g. `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
