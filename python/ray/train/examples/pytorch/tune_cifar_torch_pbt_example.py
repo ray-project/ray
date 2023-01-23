@@ -69,7 +69,6 @@ def train_func(config):
     epochs = config.get("epochs", 3)
 
     model = resnet18()
-    model = train.torch.prepare_model(model)
 
     # Create optimizer.
     optimizer_config = {
@@ -97,6 +96,8 @@ def train_func(config):
         # The current epoch increments the loaded epoch by 1
         checkpoint_epoch = checkpoint_dict["epoch"]
         starting_epoch = checkpoint_epoch + 1
+
+    model = train.torch.prepare_model(model)
 
     # Load in training and validation data.
     transform_train = transforms.Compose(
@@ -146,7 +147,7 @@ def train_func(config):
         checkpoint = Checkpoint.from_dict(
             {
                 "epoch": epoch,
-                "model": model.module.state_dict(),
+                "model": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
             }
         )
