@@ -95,7 +95,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(
           std::min(num_prestarted_python_workers, maximum_startup_concurrency)),
-      num_prestarted_python_workers_(num_prestarted_python_workers),
+      num_prestart_python_workers_(num_prestarted_python_workers),
       periodical_runner_(io_service),
       get_time_(get_time) {
   RAY_CHECK(maximum_startup_concurrency > 0);
@@ -133,12 +133,6 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       free_ports_->push(port);
     }
   }
-  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
-    periodical_runner_.RunFnPeriodically(
-        [this] { TryKillingIdleWorkers(); },
-        RayConfig::instance().kill_idle_workers_interval_ms(),
-        "RayletWorkerPool.deadline_timer.kill_idle_workers");
-  }
 }
 
 WorkerPool::~WorkerPool() {
@@ -152,6 +146,19 @@ WorkerPool::~WorkerPool() {
   for (Process proc : procs_to_kill) {
     proc.Kill();
     // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
+  }
+}
+
+void WorkerPool::Start() {
+  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { TryKillingIdleWorkers(); },
+        RayConfig::instance().kill_idle_workers_interval_ms(),
+        "RayletWorkerPool.deadline_timer.kill_idle_workers");
+  }
+
+  if (num_prestart_python_workers_ > 0) {
+    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers_);
   }
 }
 
@@ -777,6 +784,17 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
   }
 }
 
+void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback) {
+  if (first_job_registered_ || first_job_registered_python_worker_count_ >=
+                                   first_job_driver_wait_num_python_workers_) {
+    callback();
+    return;
+  }
+  first_job_registered_ = true;
+  RAY_CHECK(!first_job_send_register_client_reply_to_driver_);
+  first_job_send_register_client_reply_to_driver_ = std::move(callback);
+}
+
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
                                   const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
@@ -793,29 +811,10 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   const auto job_id = driver->GetAssignedJobId();
   HandleJobStarted(job_id, job_config);
 
-  // This is a workaround to start initial workers on this node if and only if Raylet is
-  // started by a Python driver and the job config is not set in `ray.init(...)`.
   // Invoke the `send_reply_callback` later to only finish driver
-  // registration after all initial workers are registered to Raylet.
-  bool delay_callback = false;
-  // If this is the first job.
-  if (first_job_.IsNil()) {
-    first_job_ = job_id;
-    // If the number of Python workers we need to wait is positive.
-    if (num_prestarted_python_workers_ > 0) {
-      delay_callback = true;
-      PrestartDefaultCpuWorkers(Language::PYTHON, num_prestarted_python_workers_);
-    }
-  }
-
-  if (delay_callback) {
-    RAY_CHECK(!first_job_send_register_client_reply_to_driver_);
-    first_job_send_register_client_reply_to_driver_ = [send_reply_callback, port]() {
-      send_reply_callback(Status::OK(), port);
-    };
-  } else {
-    send_reply_callback(Status::OK(), port);
-  }
+  // registration after all prestarted workers are registered to Raylet.
+  ExecuteOnPrestartWorkersStarted([send_reply_callback = std::move(send_reply_callback),
+                                   port]() { send_reply_callback(Status::OK(), port); });
 
   return Status::OK();
 }

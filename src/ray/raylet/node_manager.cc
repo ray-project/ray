@@ -138,7 +138,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           self_node_id_,
           config.node_manager_address,
           config.num_workers_soft_limit,
-          config.num_prestarted_workers,
+          config.num_prestart_python_workers_,
           config.maximum_startup_concurrency,
           config.min_worker_port,
           config.max_worker_port,
@@ -424,7 +424,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
   worker_pool_.SetAgentManager(agent_manager_);
-
+  worker_pool_.Start();
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                        RayConfig::instance().task_failure_entry_ttl_ms());
 }

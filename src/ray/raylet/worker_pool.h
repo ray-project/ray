@@ -203,6 +203,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
 
+  /// Start the worker pool. Could only be called once.
+  void Start();
+
   /// Set the node manager port.
   /// \param node_manager_port The port Raylet uses for listening to incoming connections.
   void SetNodeManagerPort(int node_manager_port);
@@ -705,6 +708,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const std::string &serialized_runtime_env_context,
       const WorkerPool::State &state) const;
 
+  void ExecuteOnPrestartWorkersStarted(std::function<void()> callback);
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
   /// Node ID of the current node.
@@ -729,8 +734,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// If 1, expose Ray debuggers started by the workers externally (to this node).
   int ray_debugger_external;
 
-  /// The Job ID of the firstly received job.
-  JobID first_job_;
+  /// If the first job has already been registered.
+  bool first_job_registered_;
 
   /// The callback to send RegisterClientReply to the driver of the first job.
   std::function<void()> first_job_send_register_client_reply_to_driver_;
@@ -743,7 +748,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int first_job_driver_wait_num_python_workers_;
 
   /// The number of prestarted default Python workers.
-  const int num_prestarted_python_workers_;
+  const int num_prestart_python_workers_;
 
   /// This map tracks the latest infos of unfinished jobs.
   absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
