@@ -24,6 +24,8 @@ from ray.data._internal.stats import DatasetStats
 
 logger = logging.getLogger(__name__)
 
+DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
+
 
 class StreamingExecutor(Executor):
     """A streaming Dataset executor.
@@ -97,8 +99,8 @@ class StreamingExecutor(Executor):
             True if we should continue running the scheduling loop.
         """
 
-        if "RAY_DATASET_TRACE_SCHEDULING" in os.environ:
-            print("Scheduling loop step...")
+        if DEBUG_TRACE_SCHEDULING in os.environ:
+            logger.info("Scheduling loop step...")
 
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
@@ -112,7 +114,8 @@ class StreamingExecutor(Executor):
         self._report_current_usage(cur_usage, limits)
         op = select_operator_to_run(topology, cur_usage, limits)
         while op is not None:
-            _trace_scheduling(topology)
+            if DEBUG_TRACE_SCHEDULING:
+                _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
             cur_usage = self._get_current_usage(topology)
             op = select_operator_to_run(topology, cur_usage, limits)
@@ -189,11 +192,8 @@ class StreamingExecutor(Executor):
             )
 
 
-def _trace_scheduling(topology: Topology) -> None:
-    if "RAY_DATASET_TRACE_SCHEDULING" in os.environ:
-        print()
-        print("vvv scheduling trace vvv")
-        for i, (op, state) in enumerate(topology.items()):
-            print(i, op.name, state.summary_str())
-        print("^^^ scheduling trace ^^^")
-        print()
+def _debug_dump_topology(topology: Topology) -> None:
+    logger.info("vvv scheduling trace vvv")
+    for i, (op, state) in enumerate(topology.items()):
+        logger.info(i, op.name, state.summary_str())
+    logger.info("^^^ scheduling trace ^^^")
