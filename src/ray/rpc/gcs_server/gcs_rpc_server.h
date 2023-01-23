@@ -33,9 +33,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, MAX_ACTIVE_RPCS)
 
 #define MONITOR_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER(MonitorService,    \
-                      HANDLER,               \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
+  RPC_SERVICE_HANDLER(                       \
+      MonitorService, HANDLER, RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
 #define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(NodeInfoGcsService,      \
@@ -621,7 +620,6 @@ class InternalPubSubGrpcService : public GrpcService {
 
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
-  // using MonitorServiceHandler = MonitorGrpcServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
