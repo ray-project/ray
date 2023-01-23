@@ -47,7 +47,7 @@ class AnyscaleJobRunner(JobRunner):
         self.upload_path = join_s3_paths(
             f"s3://{self.file_manager.bucket}", self.path_in_bucket
         )
-        self.prepare_commands = []
+        self.prepare_command = None
 
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
@@ -72,7 +72,7 @@ class AnyscaleJobRunner(JobRunner):
     def run_prepare_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
     ):
-        self.prepare_commands.append((command, env, timeout))
+        self.prepare_command = (command, env, timeout)
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Handled by Anyscale
@@ -84,15 +84,16 @@ class AnyscaleJobRunner(JobRunner):
     def run_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
     ) -> float:
-        prepare_commands = ""
-        for command, env, timeout in self.prepare_commands:
+        prepare_command_str = ""
+        if self.prepare_command:
+            prepare_command, env, timeout = self.prepare_command
             prepare_env = self.get_full_command_env(env)
 
             if prepare_env:
                 env_str = " ".join(f"{k}={v}" for k, v in prepare_env.items()) + " "
             else:
                 env_str = ""
-            prepare_commands += f"{env_str}timeout '{timeout}' {command}; "
+            prepare_command_str = f"{env_str}timeout '{timeout}' {prepare_command}; "
 
         full_env = self.get_full_command_env(env)
 
@@ -102,7 +103,7 @@ class AnyscaleJobRunner(JobRunner):
             env_str = ""
 
         full_command = (
-            f"{prepare_commands}{env_str}bash anyscale_job_wrapper.sh '{command}' "
+            f"{prepare_command_str}{env_str}bash anyscale_job_wrapper.sh '{command}' "
             f"'{timeout}' '{join_s3_paths(self.upload_path, self.result_output_json)}' "
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}'"
         )
