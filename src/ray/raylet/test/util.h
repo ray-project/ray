@@ -166,6 +166,8 @@ class MockWorker : public WorkerInterface {
     return true;
   }
 
+  void SetJobId(const JobID &job_id) override { job_id_ = job_id; }
+
  protected:
   void SetStartupToken(StartupToken startup_token) override {
     RAY_CHECK(false) << "Method unused";
