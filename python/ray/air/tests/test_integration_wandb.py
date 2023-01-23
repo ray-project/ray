@@ -64,14 +64,28 @@ class _MockWandbConfig:
     kwargs: Dict
 
 
+class _FakeConfig:
+    def update(self, config, *args, **kwargs):
+        for key, value in config.items():
+            setattr(self, key, value)
+
+    def __iter__(self):
+        return iter(self.__dict__)
+
+
 class _MockWandbAPI:
     def __init__(self):
         self.logs = Queue()
+        self.config = _FakeConfig()
 
     def init(self, *args, **kwargs):
         mock = Mock()
         mock.args = args
         mock.kwargs = kwargs
+
+        if "config" in kwargs:
+            self.config.update(kwargs["config"])
+
         return mock
 
     def log(self, data):
@@ -84,10 +98,6 @@ class _MockWandbAPI:
 
     def finish(self):
         pass
-
-    @property
-    def config(self):
-        return Mock()
 
 
 class _MockWandbLoggingActor(_WandbLoggingActor):
@@ -109,7 +119,7 @@ class WandbTestExperimentLogger(WandbLoggerCallback):
             logdir=trial.logdir,
             queue=self._trial_queues[trial],
             exclude=exclude_results,
-            to_config=self._config_results,
+            to_config=self.AUTO_CONFIG_KEYS,
             **wandb_init_kwargs,
         )
         self._trial_logging_actors[trial] = local_actor
@@ -191,18 +201,34 @@ class TestWandbLogger:
         assert logger.project == "test_project_from_env_var"
         assert logger.group == "test_group_from_env_var"
 
-    def test_wandb_logger_api_key_config(self):
+    def test_wandb_logger_api_key_config(self, monkeypatch):
         # No API key
         with pytest.raises(ValueError):
             logger = WandbTestExperimentLogger(project="test_project")
             logger.setup()
 
+        # Fetch API key from argument even if external hook and WANDB_ENV_VAR set
+        monkeypatch.setenv(
+            WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
+        )
+        monkeypatch.setenv(
+            WANDB_ENV_VAR,
+            "abcde",
+        )
         # API Key in config
         logger = WandbTestExperimentLogger(project="test_project", api_key="1234")
         logger.setup()
         assert os.environ[WANDB_ENV_VAR] == "1234"
 
-    def test_wandb_logger_api_key_file(self):
+    def test_wandb_logger_api_key_file(self, monkeypatch):
+        # Fetch API key from file even if external hook and WANDB_ENV_VAR set
+        monkeypatch.setenv(
+            WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
+        )
+        monkeypatch.setenv(
+            WANDB_ENV_VAR,
+            "abcde",
+        )
         # API Key file
         with tempfile.NamedTemporaryFile("wt") as fp:
             fp.write("5678")
@@ -214,14 +240,57 @@ class TestWandbLogger:
             logger.setup()
             assert os.environ[WANDB_ENV_VAR] == "5678"
 
-    def test_wandb_logger_api_key_external_hook(self, monkeypatch):
-        # API Key from external hook
+    def test_wandb_logger_api_key_env_var(self, monkeypatch):
+        # API Key from env var takes precedence over external hook and
+        # logged in W&B API key
         monkeypatch.setenv(
             WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
         )
-        logger = WandbTestExperimentLogger(project="test_project")
-        logger.setup()
+        monkeypatch.setenv(
+            WANDB_ENV_VAR,
+            "1234",
+        )
+        mock_wandb = Mock(api=Mock(api_key="efgh"))
+        with patch.multiple("ray.air.integrations.wandb", wandb=mock_wandb):
+            logger = WandbTestExperimentLogger(project="test_project")
+            logger.setup()
+        assert os.environ[WANDB_ENV_VAR] == "1234"
+        mock_wandb.ensure_configured.assert_not_called()
+
+    def test_wandb_logger_api_key_external_hook(self, monkeypatch):
+        # API Key from external hook if API key not provided through
+        # argument or WANDB_ENV_VAR and user not already logged in to W&B
+        monkeypatch.setenv(
+            WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
+        )
+
+        mock_wandb = Mock(api=Mock(api_key=None))
+        with patch.multiple("ray.air.integrations.wandb", wandb=mock_wandb):
+            logger = WandbTestExperimentLogger(project="test_project")
+            logger.setup()
         assert os.environ[WANDB_ENV_VAR] == "abcd"
+        mock_wandb.ensure_configured.assert_called_once()
+
+        mock_wandb = Mock(ensure_configured=Mock(side_effect=AttributeError()))
+        with patch.multiple("ray.air.integrations.wandb", wandb=mock_wandb):
+            logger = WandbTestExperimentLogger(project="test_project")
+            logger.setup()
+        assert os.environ[WANDB_ENV_VAR] == "abcd"
+
+    def test_wandb_logger_api_key_from_wandb_login(self, monkeypatch):
+        # No API key should get set if user is already logged in to W&B
+        # and they didn't pass API key through argument or env var.
+        # External hook should not be called because user already logged
+        # in takes precedence.
+        monkeypatch.setenv(
+            WANDB_SETUP_API_KEY_HOOK, "ray._private.test_utils.wandb_setup_api_key_hook"
+        )
+        mock_wandb = Mock()
+        with patch.multiple("ray.air.integrations.wandb", wandb=mock_wandb):
+            logger = WandbTestExperimentLogger(project="test_project")
+            logger.setup()
+        assert os.environ.get(WANDB_ENV_VAR) is None
+        mock_wandb.ensure_configured.assert_called_once()
 
     def test_wandb_logger_run_location_external_hook(self, monkeypatch):
         # No project
@@ -299,6 +368,43 @@ class TestWandbLogger:
         assert "metric4" in logged
         assert "const" not in logged
         assert "config" not in logged
+
+    def test_wandb_logger_auto_config_keys(self, trial):
+        logger = WandbTestExperimentLogger(project="test_project", api_key="1234")
+        logger.on_trial_start(iteration=0, trials=[], trial=trial)
+        config = logger.trial_processes[trial]._wandb.config
+
+        result = {key: 0 for key in WandbLoggerCallback.AUTO_CONFIG_KEYS}
+        logger.on_trial_result(0, [], trial, result)
+
+        logger.on_trial_complete(0, [], trial)
+        # The results in `AUTO_CONFIG_KEYS` should be saved as training configuration
+        # instead of output metrics.
+        assert set(WandbLoggerCallback.AUTO_CONFIG_KEYS) < set(config)
+
+    def test_wandb_logger_exclude_config(self):
+        trial = Trial(
+            config={"param1": 0, "param2": 0},
+            trial_id=0,
+            trial_name="trial_0",
+            experiment_dir_name="trainable",
+            placement_group_factory=PlacementGroupFactory([{"CPU": 1}]),
+            logdir=tempfile.gettempdir(),
+        )
+        logger = WandbTestExperimentLogger(
+            project="test_project",
+            api_key="1234",
+            excludes=(["param2"] + WandbLoggerCallback.AUTO_CONFIG_KEYS),
+        )
+        logger.on_trial_start(iteration=0, trials=[], trial=trial)
+        config = logger.trial_processes[trial]._wandb.config
+
+        # We need to test that `excludes` also applies to `AUTO_CONFIG_KEYS`.
+        result = {key: 0 for key in WandbLoggerCallback.AUTO_CONFIG_KEYS}
+        logger.on_trial_result(0, [], trial, result)
+
+        logger.on_trial_complete(0, [], trial)
+        assert set(config) == {"param1"}
 
     def test_set_serializability_result(self, trial):
         """Tests that objects that contain sets can be serialized by wandb."""
