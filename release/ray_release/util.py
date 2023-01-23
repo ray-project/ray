@@ -171,7 +171,7 @@ def join_s3_paths(*paths: str):
         for i in range(1, len(paths)):
             while paths[i][0] == "/":
                 paths[i] = paths[i][1:]
-    joined_path = os.path.join(paths)
+    joined_path = os.path.join(*paths)
     while joined_path[-1] == "/":
         joined_path = joined_path[:-1]
     return joined_path
