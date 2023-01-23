@@ -56,15 +56,17 @@ if __name__ == "__main__":
         .environment(
             "NestedSpaceRepeatAfterMeEnv",
             env_config={
-                "space": Dict(
-                    {
-                        "a": Tuple(
-                            [Dict({"d": Box(-10.0, 10.0, ()), "e": Discrete(2)})]
-                        ),
-                        "b": Box(-10.0, 10.0, (2,)),
-                        "c": Discrete(4),
-                    }
-                ),
+                "c": {
+                    "space": Dict(
+                        {
+                            "a": Tuple(
+                                [Dict({"d": Box(-10.0, 10.0, ()), "e": Discrete(2)})]
+                            ),
+                            "b": Box(-10.0, 10.0, (2,)),
+                            "c": Discrete(4),
+                        }
+                    ),
+                },
             },
         )
         .framework(args.framework)
