@@ -11,7 +11,9 @@ ENV TZ=America/Los_Angeles
 # TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
 ENV PATH "/home/ray/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.7.7
+ARG PYTHON_VERSION=3.7.16
+
+ARG HOSTTYPE=${HOSTTYPE:-x86_64}
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
@@ -49,7 +51,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc \
     && rm /tmp/miniconda.sh \
     && $HOME/anaconda3/bin/conda install -y \
-        libgcc python=$PYTHON_VERSION \
+        libgcc-ng python=$PYTHON_VERSION \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \

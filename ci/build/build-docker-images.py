@@ -5,6 +5,7 @@ import functools
 import glob
 import itertools
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -201,6 +202,9 @@ def _build_docker_image(
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
     # I.e. "py310"[3:] == 10
     build_args["PYTHON_MINOR_VERSION"] = py_version[3:]
+
+    if platform.processor() == "aarch64":
+        build_args["HOSTTYPE"] = "aarch64"
 
     device_tag = f"{image_type}"
 

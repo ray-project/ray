@@ -6,9 +6,11 @@ ARG BASE_IMAGE
 ARG AUTOSCALER="autoscaler"
 ENV TZ=America/Los_Angeles
 
+ARG HOSTTYPE=${HOSTTYPE:-x86_64}
+
 ENV PATH "/root/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.7.7
+ARG PYTHON_VERSION=3.7.16
 
 RUN apt-get update -y \
     && apt-get install -y sudo tzdata \
