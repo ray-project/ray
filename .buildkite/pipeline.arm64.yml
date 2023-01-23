@@ -56,7 +56,7 @@
 #    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
 
-- label: ":docker: :mechanical-arm: Build Images: py37 [aarch64] (1/2)"
+- label: ":mechanical_arm: :docker: Build Images: py37 [aarch64] (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
   commands:
@@ -66,7 +66,7 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base --suffix aarch64
 
-- label: ":docker: :mechanical-arm: Build Images: py37 [aarch64] (2/2)"
+- label: ":mechanical_arm: :docker: Build Images: py37 [aarch64] (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
   commands:
@@ -76,7 +76,7 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base --suffix aarch64
 
-- label: ":docker: :mechanical-arm: Build Images: py38 [aarch64] (1/2)"
+- label: ":mechanical_arm: :docker: Build Images: py38 [aarch64] (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
   commands:
@@ -86,7 +86,7 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base --suffix aarch64
 
-- label: ":docker: :mechanical-arm: Build Images: py38 [aarch64] (2/2)"
+- label: ":mechanical_arm: :docker: Build Images: py38 [aarch64] (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
   commands:
@@ -96,7 +96,7 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base --suffix aarch64
 
-- label: ":docker: :mechanical-arm: Build Images: py39 [aarch64] (1/2)"
+- label: ":mechanical_arm: :docker: Build Images: py39 [aarch64] (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
   commands:
@@ -106,7 +106,7 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base --suffix aarch64
 
-- label: ":docker: :mechanical-arm: Build Images: py39 [aarch64] (2/2)"
+- label: ":mechanical_arm: :docker: Build Images: py39 [aarch64] (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
   commands:
@@ -116,7 +116,7 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base --suffix aarch64
 
-- label: ":docker: :mechanical-arm: Build Images: py310 [aarch64] (1/2)"
+- label: ":mechanical_arm: :docker: Build Images: py310 [aarch64] (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
   commands:
@@ -126,7 +126,7 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base --suffix aarch64
 
-- label: ":docker: :mechanical-arm: Build Images: py310 [aarch64] (2/2)"
+- label: ":mechanical_arm: :docker: Build Images: py310 [aarch64] (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
   commands:
