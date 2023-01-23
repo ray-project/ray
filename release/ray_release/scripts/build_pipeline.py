@@ -58,6 +58,11 @@ def main(test_collection_file: Optional[str] = None):
             ) from e
         test_collection_file = os.path.join(tmpdir, "release", "release_tests.yaml")
         schema_file = os.path.join(tmpdir, "release", "ray_release", "schema.json")
+        current_schema_file = os.path.join(
+            os.path.dirname(__file__), "..", "schema.json"
+        )
+        os.remove(current_schema_file)
+        shutil.copy(schema_file, current_schema_file)
         env = {
             "RAY_TEST_REPO": repo,
             "RAY_TEST_BRANCH": branch,
@@ -68,7 +73,7 @@ def main(test_collection_file: Optional[str] = None):
         )
         schema_file = None
     test_collection = read_and_validate_release_test_collection(
-        test_collection_file, schema_file=schema_file
+        test_collection_file
     )
 
     if tmpdir:
