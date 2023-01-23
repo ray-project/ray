@@ -190,6 +190,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     events_by_task->Swap(&task_event);
   }
 
+  gcs::TaskInfoAccessor *task_accessor;
   {
     // Sending the protobuf to GCS.
     absl::MutexLock lock(&mutex_);
@@ -198,6 +199,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     total_events_bytes_ += data->ByteSizeLong();
     // The flag should be unset when on_complete is invoked.
     grpc_in_progress_ = true;
+    task_accessor = &gcs_client_->Tasks();
   }
 
   auto on_complete = [this, num_task_events](const Status &status) {
@@ -210,7 +212,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     grpc_in_progress_ = false;
   };
 
-  auto status = gcs_client_->Tasks().AsyncAddTaskEventData(std::move(data), on_complete);
+  auto status = task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
   {
     absl::MutexLock lock(&mutex_);
     if (!status.ok()) {
