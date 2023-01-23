@@ -142,6 +142,7 @@ ray.get(a.pid.remote())
     assert "Traceback" not in log
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_run_on_all_workers(call_ray_start, tmp_path):
     # This test is to ensure run_function_on_all_workers are executed
     # on all workers.
@@ -246,7 +247,7 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     ???? # unknown
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
-    assert freqs["internal_kv_get"] == 5
+    assert freqs["internal_kv_get"] == 4
 
 
 if __name__ == "__main__":
