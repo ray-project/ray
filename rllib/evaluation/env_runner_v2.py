@@ -383,7 +383,9 @@ class EnvRunnerV2:
 
         return outputs
 
-    def _get_rollout_metrics(self, episode: EpisodeV2) -> List[RolloutMetrics]:
+    def _get_rollout_metrics(
+        self, episode: EpisodeV2, policy_map: Dict[str, Policy]
+    ) -> List[RolloutMetrics]:
         """Get rollout metrics from completed episode."""
         # TODO(jungong) : why do we need to handle atari metrics differently?
         # Can we unify atari and normal env metrics?
@@ -392,16 +394,24 @@ class EnvRunnerV2:
             for m in atari_metrics:
                 m._replace(custom_metrics=episode.custom_metrics)
             return atari_metrics
+        # Create connector metrics
+        connector_metrics = {}
+        active_agents = episode.get_agents()
+        for agent in active_agents:
+            policy_id = episode.policy_for(agent)
+            policy = episode.policy_map[policy_id]
+            connector_metrics[policy_id] = policy.get_connector_metrics()
         # Otherwise, return RolloutMetrics for the episode.
         return [
             RolloutMetrics(
-                episode.length,
-                episode.total_reward,
-                dict(episode.agent_rewards),
-                episode.custom_metrics,
-                {},
-                episode.hist_data,
-                episode.media,
+                episode_length=episode.length,
+                episode_reward=episode.total_reward,
+                agent_rewards=dict(episode.agent_rewards),
+                custom_metrics=episode.custom_metrics,
+                perf_stats={},
+                hist_data=episode.hist_data,
+                media=episode.media,
+                connector_metrics=connector_metrics,
             )
         ]
 
@@ -795,7 +805,11 @@ class EnvRunnerV2:
         else:
             episode_or_exception: EpisodeV2 = self._active_episodes[env_id]
             # Add rollout metrics.
-            outputs.extend(self._get_rollout_metrics(episode_or_exception))
+            outputs.extend(
+                self._get_rollout_metrics(
+                    episode_or_exception, policy_map=self._worker.policy_map
+                )
+            )
             # Output the collected episode after adding rollout metrics so that we
             # always fetch metrics with RolloutWorker before we fetch samples.
             # This is because we need to behave like env_runner() for now.

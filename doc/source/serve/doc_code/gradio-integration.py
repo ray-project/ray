@@ -1,3 +1,6 @@
+import requests
+from ray import serve
+
 # __doc_import_begin__
 from ray.serve.gradio_integrations import GradioServer
 
@@ -7,17 +10,9 @@ from transformers import pipeline
 
 # __doc_import_end__
 
+
 # __doc_gradio_app_begin__
-summarizer = pipeline("summarization", model="t5-small")
-
-
-def model(text):
-    summary_list = summarizer(text)
-    summary = summary_list[0]["summary_text"]
-    return summary
-
-
-example = (
+example_input = (
     "HOUSTON -- Men have landed and walked on the moon. "
     "Two Americans, astronauts of Apollo 11, steered their fragile "
     "four-legged lunar module safely and smoothly to the historic landing "
@@ -36,14 +31,34 @@ example = (
     "of millions of people on earth."
 )
 
-io = gr.Interface(
-    fn=model,
-    inputs=[gr.inputs.Textbox(default=example, label="Input prompt")],
-    outputs=[gr.outputs.Textbox(label="Model output")],
-)
-# __doc_gradio_app_end__
+
+def gradio_summarizer_builder():
+    summarizer = pipeline("summarization", model="t5-small")
+
+    def model(text):
+        summary_list = summarizer(text)
+        summary = summary_list[0]["summary_text"]
+        return summary
+
+    return gr.Interface(
+        fn=model,
+        inputs=[gr.inputs.Textbox(default=example_input, label="Input prompt")],
+        outputs=[gr.outputs.Textbox(label="Model output")],
+    )
+    # __doc_gradio_app_end__
 
 
 # __doc_app_begin__
-app = GradioServer.options(num_replicas=2, ray_actor_options={"num_cpus": 4}).bind(io)
+app = GradioServer.options(num_replicas=2, ray_actor_options={"num_cpus": 4}).bind(
+    gradio_summarizer_builder
+)
 # __doc_app_end__
+
+# Test example code
+serve.run(app)
+response = requests.post(
+    "http://127.0.0.1:8000/api/predict/", json={"data": [example_input]}
+)
+assert response.status_code == 200
+print("gradio-integration.py: Response from example code is", response.json()["data"])
+serve.shutdown()
