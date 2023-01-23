@@ -129,7 +129,6 @@ class NevergradSearch(Searcher):
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         points_to_evaluate: Optional[List[Dict]] = None,
-        **kwargs,
     ):
         assert (
             ng is not None
@@ -139,7 +138,7 @@ class NevergradSearch(Searcher):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
-        super(NevergradSearch, self).__init__(metric=metric, mode=mode, **kwargs)
+        super(NevergradSearch, self).__init__(metric=metric, mode=mode)
 
         self._space = None
         self._opt_factory = None
