@@ -3888,10 +3888,10 @@
 
   run:
     timeout: 7200
-    # 4cpus per node x 1500 nodes / 0.2 cpus per actor = 30k
-    script: python many_nodes_tests/actor_test.py --cpus-per-actor=0.2 --total-actors=30000
+    # 4cpus per node x 250 nodes / 0.2 cpus per actor = 5k
+    script: python many_nodes_tests/actor_test.py --cpus-per-actor=0.2 --total-actors=5000
     wait_for_nodes:
-      num_nodes: 250
+      num_nodes: 251
     type: job
 
 #- name: many_nodes_multi_master_test
