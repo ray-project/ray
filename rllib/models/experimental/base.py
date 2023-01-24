@@ -97,7 +97,7 @@ class Model:
 
 
 class Encoder(Model):
-    """The base class for all encoders Rllib produces.
+    """The base class for all encoders RLlib produces.
 
     Encoders are used to encode observations into a latent space in RLModules.
     Therefore, their input_spec usually contains the observation space dimensions.
