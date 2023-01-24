@@ -63,7 +63,6 @@ def main(test_collection_file: Optional[str] = None):
             ) from e
         subprocess.check_output(
             ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
-            shell=True,
         )
 
         for module in sys.modules.values():
