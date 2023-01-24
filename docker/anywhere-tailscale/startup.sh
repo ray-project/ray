@@ -18,7 +18,11 @@ export shm_memory=$shm_memory"G"
 set -ae
 
 ## add in code to search and remove the machine name from tailscale if it already exists
+deviceid=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname=="'$HOSTNAME'")' | jq -r .id)
+export deviceid=$deviceid
 
+echo "Deleting the device from Tailscale"
+curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
 
 # Make sure directories exist as they are not automatically created
 # This needs to happen at runtime, as the directory could be mounted.
@@ -53,11 +57,7 @@ if [ -z "$TSAPIKEY" ]; then
   exit 1
 fi
 
-deviceid=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname=="'$HOSTNAME'")' | jq -r .id)
-export deviceid=$deviceid
 
-echo "Deleting the device from Tailscale"
-curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
 
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
