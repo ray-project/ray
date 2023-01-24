@@ -32,6 +32,7 @@ def parse_script_args():
 
 def scale_and_wait_until_cluster_ready(total_cpus):
     import math
+
     total_cpus = int(math.floor(total_cpus))
 
     ray.autoscaler.sdk.request_resources(num_cpus=total_cpus)
@@ -39,7 +40,11 @@ def scale_and_wait_until_cluster_ready(total_cpus):
     # ray.nodes()[0]['Resources']['CPU']
     curr_cpus = 0
     while curr_cpus < total_cpus:
-        curr_cpus = sum(node.get("Resources", {}).get("CPU", 0) for node in ray.nodes() if node["Alive"])
+        curr_cpus = sum(
+            node.get("Resources", {}).get("CPU", 0)
+            for node in ray.nodes()
+            if node["Alive"]
+        )
         print(f"Waiting for the cluster to be ready: {curr_cpus}/{total_cpus}")
         sleep(5)
 
