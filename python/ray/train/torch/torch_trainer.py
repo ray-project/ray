@@ -93,6 +93,40 @@ class TorchTrainer(DataParallelTrainer):
     To save a model to use for the ``TorchPredictor``, you must save it under the
     "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
 
+    .. note::
+        When you wrap the ``model`` with ``prepare_model``, the keys of its
+        ``state_dict`` are prefixed by ``module.``. For example,
+        ``layer1.0.bn1.bias`` becomes ``module.layer1.0.bn1.bias``.
+        However, when saving ``model`` through ``session.report()``
+        all ``module.`` prefixes are stripped.
+        As a result, when you load from a saved checkpoint, make sure that
+        you first load ``state_dict`` to the model
+        before calling ``prepare_model``.
+        Otherwise, you will run into errors like
+        ``Error(s) in loading state_dict for DistributedDataParallel:
+        Missing key(s) in state_dict: "module.conv1.weight", ...``. See snippet below.
+
+        .. testcode::
+
+            from torchvision.models import resnet18
+            from ray.air import session
+            from ray.air.checkpoint import Checkpoint
+            import ray.train as train
+
+            def train_func():
+                ...
+                model = resnet18()
+                model = train.torch.prepare_model(model)
+                for epoch in range(3):
+                    ...
+                    ckpt = Checkpoint.from_dict({
+                        "epoch": epoch,
+                        "model": model.state_dict(),
+                        # "model": model.module.state_dict(),
+                        # ** The above two are equivalent **
+                    })
+                    session.report({"foo": "bar"}, ckpt)
+
     Example:
 
         .. testcode::
