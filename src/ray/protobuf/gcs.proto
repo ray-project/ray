@@ -212,6 +212,10 @@ message TaskStateUpdate {
   optional int64 finished_ts = 6;
   // Timestamp when status changes to FAILED.
   optional int64 failed_ts = 7;
+  // The size of input objects ray.get is called on.
+  optional uint64 input_size_bytes = 8;
+  // The size of output objects of this task
+  optional int64 output_size_bytes = 9;
 }
 
 // Represents events and state changes from a single task run.

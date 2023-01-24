@@ -309,12 +309,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   std::vector<ObjectID> dynamic_return_ids;
   std::vector<ObjectID> dynamic_returns_in_plasma;
   std::vector<ObjectID> direct_return_ids;
+  int64_t output_size_bytes = 0;
   if (reply.dynamic_return_objects_size() > 0) {
     RAY_CHECK(reply.return_objects_size() == 1)
         << "Dynamic generators only supported for num_returns=1";
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
     for (const auto &return_object : reply.dynamic_return_objects()) {
       const auto object_id = ObjectID::FromBinary(return_object.object_id());
+      output_size_bytes += return_object.size();
       if (first_execution) {
         reference_counter_->AddDynamicReturn(object_id, generator_id);
         dynamic_return_ids.push_back(object_id);
@@ -332,6 +334,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
   for (const auto &return_object : reply.return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
+    output_size_bytes += return_object.size();
     if (HandleTaskReturn(object_id,
                          return_object,
                          NodeID::FromBinary(worker_addr.raylet_id()),
@@ -343,6 +346,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   TaskSpecification spec;
   bool release_lineage = true;
   int64_t min_lineage_bytes_to_evict = 0;
+
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -378,9 +382,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     it->second.num_successful_executions++;
 
     if (is_application_error) {
-      SetTaskStatus(it->second, rpc::TaskStatus::FAILED);
+      SetTaskFailed(it->second);
     } else {
-      SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
+      SetTaskFinished(it->second, /*output_size_bytes*/ output_size_bytes);
     }
     num_pending_tasks_--;
 
@@ -503,7 +507,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
-    SetTaskStatus(it->second, rpc::TaskStatus::FAILED);
+    SetTaskFailed(it->second);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -829,6 +833,29 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry) {
                         /* include_task_info */ true);
 }
 
+void TaskManager::SetTaskFailed(TaskEntry &task_entry) {
+  task_entry.SetStatus(rpc::TaskStatus::FAILED);
+  RecordTaskStatusEvent(task_entry.spec.AttemptNumber(),
+                        task_entry.spec,
+                        rpc::TaskStatus::FAILED,
+                        /*include_task_info*/ false,
+                        /*node_id*/ absl::nullopt,
+                        /*input_size_bytes*/ absl::nullopt,
+                        /*output_size_bytes*/ absl::nullopt);
+}
+
+void TaskManager::SetTaskFinished(TaskEntry &task_entry,
+                                  absl::optional<int64_t> output_size_bytes) {
+  task_entry.SetStatus(rpc::TaskStatus::FINISHED);
+  RecordTaskStatusEvent(task_entry.spec.AttemptNumber(),
+                        task_entry.spec,
+                        rpc::TaskStatus::FINISHED,
+                        /*include_task_info*/ false,
+                        /*node_id*/ absl::nullopt,
+                        /*input_size_bytes*/ absl::nullopt,
+                        /*output_size_bytes*/ output_size_bytes);
+}
+
 void TaskManager::SetTaskStatus(TaskEntry &task_entry, rpc::TaskStatus status) {
   task_entry.SetStatus(status);
   RecordTaskStatusEvent(task_entry.spec.AttemptNumber(), task_entry.spec, status);
@@ -921,7 +948,9 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
                                         const TaskSpecification &spec,
                                         rpc::TaskStatus status,
                                         bool include_task_info,
-                                        absl::optional<NodeID> node_id) {
+                                        absl::optional<NodeID> node_id,
+                                        absl::optional<uint64_t> input_size_bytes,
+                                        absl::optional<int64_t> output_size_bytes) {
   if (!task_event_buffer_.Enabled()) {
     return;
   }
@@ -941,6 +970,16 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
     RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "Node ID should be included when task status changes to SUBMITTED_TO_WORKER.";
     state_updates->set_node_id(node_id->Binary());
+  }
+  if (input_size_bytes.has_value()) {
+    RAY_CHECK(status == rpc::TaskStatus::RUNNING)
+        << "input_size_bytes should be included when task status changes to RUNNING.";
+    state_updates->set_input_size_bytes(*input_size_bytes);
+  }
+  if (output_size_bytes.has_value()) {
+    RAY_CHECK(status == rpc::TaskStatus::FINISHED || status == rpc::TaskStatus::FAILED)
+        << "output_size_bytes should be included when task status changes to RUNNING.";
+    state_updates->set_output_size_bytes(*output_size_bytes);
   }
   gcs::FillTaskStatusUpdateTime(status, absl::GetCurrentTimeNanos(), state_updates);
   task_event_buffer_.AddTaskEvent(std::move(task_event));

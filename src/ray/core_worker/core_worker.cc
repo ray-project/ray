@@ -2386,9 +2386,6 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-    task_manager_->RecordTaskStatusEvent(
-        task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
-
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }
@@ -2409,7 +2406,16 @@ Status CoreWorker::ExecuteTask(
   // execution and unpinned once the task completes. We will notify the caller
   // about any IDs that we are still borrowing by the time the task completes.
   std::vector<ObjectID> borrowed_ids;
-  RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
+  uint64_t input_size_bytes = 0;
+  RAY_CHECK_OK(GetAndPinArgsForExecutor(
+      task_spec, &args, &arg_refs, &borrowed_ids, &input_size_bytes));
+
+  task_manager_->RecordTaskStatusEvent(task_spec.AttemptNumber(),
+                                       task_spec,
+                                       rpc::TaskStatus::RUNNING,
+                                       /*include_task_info*/ false,
+                                       /*node_id*/ absl::nullopt,
+                                       input_size_bytes);
 
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_objects->push_back(std::make_pair<>(task_spec.ReturnId(i), nullptr));
@@ -2680,7 +2686,8 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
 Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
                                             std::vector<std::shared_ptr<RayObject>> *args,
                                             std::vector<rpc::ObjectReference> *arg_refs,
-                                            std::vector<ObjectID> *borrowed_ids) {
+                                            std::vector<ObjectID> *borrowed_ids,
+                                            uint64_t *input_size_bytes) {
   auto num_args = task.NumArgs();
   args->resize(num_args);
   arg_refs->resize(num_args);
@@ -2735,7 +2742,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       args->at(i) =
           std::make_shared<RayObject>(data, metadata, task.ArgInlinedRefs(i), copy_data);
       arg_refs->at(i).set_object_id(ObjectID::Nil().Binary());
-      // The task borrows all ObjectIDs that were serialized in the inlined
+      *input_size_bytes += args->at(i)->GetSize();
       // arguments. The task will receive references to these IDs, so it is
       // possible for the task to continue borrowing these arguments by the
       // time it finishes.
@@ -2764,6 +2771,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
       args->at(idx) = it.second;
+      *input_size_bytes += it.second->GetSize();
     }
   }
 

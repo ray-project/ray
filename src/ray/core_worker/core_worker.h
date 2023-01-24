@@ -1293,11 +1293,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                  with all argument IDs that were passed by reference and
   ///                  any ObjectIDs that were included in the task spec's
   ///                  inlined arguments.
+  /// \param input_size_bytes[out] The size of input objects get & pinned by this API.
   /// \return Error if the values could not be retrieved.
   Status GetAndPinArgsForExecutor(const TaskSpecification &task,
                                   std::vector<std::shared_ptr<RayObject>> *args,
                                   std::vector<rpc::ObjectReference> *arg_refs,
-                                  std::vector<ObjectID> *pinned_ids);
+                                  std::vector<ObjectID> *pinned_ids,
+                                  uint64_t *input_size_bytes);
 
   /// Process a subscribe message for wait for object eviction.
   /// The object eviction message will be published once the object
