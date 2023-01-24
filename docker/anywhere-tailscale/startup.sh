@@ -66,8 +66,10 @@ ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-hos
             -Cnode.name=nexus \
             -Cnode.master=true \
             -Cnode.data=true \
-            -Cnode.store.allow_mmap=false \
-            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 \
+#            -Cnode.store.allow_mmap=false \
+            -Chttp.cors.enabled=true \
+            -Chttp.cors.allow-origin="/*" \
+            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300,glkttn2.chimp-beta.ts.net:4300,f9m3fx2.chimp-beta.ts.net:4300 \
             -Ccluster.initial_master_nodes=nexus \
             -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false &
@@ -78,9 +80,12 @@ else
 ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address ${HOSTNAME}.chimp-beta.ts.net
 
 /crate/bin/crate -Cnetwork.host=_tailscale0_ \
+#            -Cnode.master=false \
             -Cnode.data=true \
-            -Cnode.store.allow_mmap=false \
-            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 \
+#            -Cnode.store.allow_mmap=false \
+            -Chttp.cors.enabled=true \
+            -Chttp.cors.allow-origin="/*" \
+            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300,glkttn2.chimp-beta.ts.net:4300,f9m3fx2.chimp-beta.ts.net:4300 \
             -Ccluster.initial_master_nodes=nexus \
             -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false &
