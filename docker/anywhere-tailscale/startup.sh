@@ -116,7 +116,8 @@ term_handler(){
    echo "Running Cluster Election"
    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';" \
    && echo "Running Decomission" \
-   && /usr/local/bin/crash --hosts $(tailscale ip --1) -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
+   && $dbserver=$(tailscale ip --1) \
+   && /usr/local/bin/crash --hosts $dbserver -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
 
    echo "Deleting the device from Tailscale"
    curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
