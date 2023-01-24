@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import sys
@@ -13,9 +12,7 @@ import pytest
 import ray
 from ray import tune
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
-from ray.tune.execution.trial_runner import _load_trial_from_checkpoint
 from ray.tune.experiment import Trial
-from ray.tune.utils.serialization import TuneFunctionDecoder
 
 
 def train(config):
@@ -259,8 +256,9 @@ class TrialRelativeLogdirTest(unittest.TestCase):
 
 
 def test_load_trial_from_json_state(tmpdir):
-    """Check that `Trial.get_json_state` and `_load_trial_from_checkpoint`
-    for saving and loading a Trial is done correctly."""
+    """Check that serializing a trial to a JSON string with `Trial.get_json_state`
+    and then creating a new trial using the `Trial.from_json_state` alternate
+    constructor loads the trial with equivalent state."""
     trial = Trial(
         "MockTrainable", stub=True, trial_id="abcd1234", local_dir=str(tmpdir)
     )
@@ -276,22 +274,37 @@ def test_load_trial_from_json_state(tmpdir):
         )
     )
 
-    json_cp = trial.get_json_state()
-    trial_cp = json.loads(json_cp, cls=TuneFunctionDecoder)
     # After loading, the trial state should be the same
-    new_trial = _load_trial_from_checkpoint(trial_cp.copy(), stub=True)
-    assert new_trial.get_json_state() == json_cp
+    json_state = trial.get_json_state()
+    new_trial = Trial.from_json_state(json_state, stub=True)
+    assert new_trial.get_json_state() == json_state
+
+
+def test_change_trial_local_dir(tmpdir):
+    trial = Trial(
+        "MockTrainable", stub=True, trial_id="abcd1234", local_dir=str(tmpdir)
+    )
+    trial.init_logdir()
+    trial.status = Trial.TERMINATED
+
+    checkpoint_logdir = os.path.join(trial.logdir, "checkpoint_00000")
+    trial.checkpoint_manager.on_checkpoint(
+        _TrackedCheckpoint(
+            dir_or_data=checkpoint_logdir,
+            storage_mode=CheckpointStorage.PERSISTENT,
+            metrics={"training_iteration": 1},
+        )
+    )
+
+    assert trial.logdir.startswith(str(tmpdir))
+    assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(str(tmpdir))
 
     # Specify a new local dir, and the logdir/checkpoint path should be updated
     with tempfile.TemporaryDirectory() as new_local_dir:
-        new_trial = _load_trial_from_checkpoint(
-            trial_cp.copy(), stub=True, new_local_dir=new_local_dir
-        )
+        trial.local_dir = new_local_dir
 
-        assert new_trial.logdir.startswith(new_local_dir)
-        assert new_trial.get_trial_checkpoints()[0].dir_or_data.startswith(
-            new_local_dir
-        )
+        assert trial.logdir.startswith(new_local_dir)
+        assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(new_local_dir)
 
 
 if __name__ == "__main__":
