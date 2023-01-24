@@ -537,9 +537,9 @@ py_test(
 )
 
 py_test(
-    name = "test_wandb_integration",
+    name = "test_e2e_wandb_integration",
     size = "small",
-    srcs = ["tests/test_wandb_integration.py"],
+    srcs = ["tests/test_e2e_wandb_integration.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
