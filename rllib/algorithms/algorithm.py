@@ -496,6 +496,15 @@ class Algorithm(Trainable):
         # Create the callbacks object.
         self.callbacks = self.config.callbacks_class()
 
+        if self.config.log_level in ["WARN", "ERROR"]:
+            logger.info(
+                f"Current log_level is {self.config.log_level}. For more information, "
+                "set 'log_level': 'INFO' / 'DEBUG' or use the -v and "
+                "-vv flags."
+            )
+        if self.config.log_level:
+            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
+
         # Create local replay buffer if necessary.
         self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
             self.config
