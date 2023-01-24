@@ -1,7 +1,9 @@
 import collections
 import itertools
+import queue
 import sys
-from typing import Iterator, Optional, Union
+import threading
+from typing import Iterator, Optional, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -13,6 +15,7 @@ from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+T = TypeVar("T")
 
 if sys.version_info >= (3, 7):
     from contextlib import nullcontext
@@ -39,6 +42,7 @@ def batch_block_refs(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
+    prefetch_batches: int = 0,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more block object references.
 
@@ -71,6 +75,12 @@ def batch_block_refs(
         shuffle_seed: The seed to use for the local random shuffle.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
+        prefetch_batches: The number of batches to fetch ahead of the current batch to
+            process. If set to greater than 0, a separate thread will be used to fetch
+            the specified amount of formatted batches from blocks. This improves
+            performance for non-CPU bound UDFs, allowing batch fetching compute and
+            formatting to be overlapped with the UDF. Defaults to 0 (no prefetching
+            enabled).
 
     Returns:
         An iterator over record batches.
@@ -107,6 +117,7 @@ def batch_block_refs(
         shuffle_buffer_min_size=shuffle_buffer_min_size,
         shuffle_seed=shuffle_seed,
         ensure_copy=ensure_copy,
+        prefetch_batches=prefetch_batches,
     )
 
 
@@ -120,6 +131,7 @@ def batch_blocks(
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
+    prefetch_batches: int = 0,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more blocks.
 
@@ -142,10 +154,60 @@ def batch_blocks(
         stats=stats,
     )
 
+    if prefetch_batches > 0:
+        batch_iter = _make_async_gen(batch_iter, prefetch_buffer_size=prefetch_batches)
+
     for formatted_batch in batch_iter:
         user_timer = stats.iter_user_s.timer() if stats else nullcontext()
         with user_timer:
             yield formatted_batch
+
+
+def _make_async_gen(
+    base_iterator: Iterator[T], prefetch_buffer_size: int = 1
+) -> Iterator[T]:
+    """Returns a new iterator with elements fetched from the base_iterator
+    in an async fashion using a background thread.
+
+    Args:
+        base_iterator: The iterator to asynchronously fetch from.
+        prefetch_buffer_size: The maximum number of items to prefetch. Increasing the
+            size allows for more computation overlap for very expensive downstream UDFs.
+            However it comes at the cost of additional memory overhead. Defaults to 1.
+
+    Returns:
+        An iterator with the same elements as the base_iterator.
+    """
+
+    fetch_queue = queue.Queue(maxsize=prefetch_buffer_size)
+
+    sentinel = object()
+
+    def _async_fetch():
+        for item in base_iterator:
+            fetch_queue.put(item, block=True)
+
+        # Indicate done adding items.
+        fetch_queue.put(sentinel, block=True)
+
+    # Start a background thread which iterates through the base iterator,
+    # triggering execution and adding results to the queue until it is full.
+    # Iterating through the iterator returned by this function pulls
+    # ready items from the queue, allowing the background thread to continue execution.
+
+    fetch_thread = threading.Thread(target=_async_fetch)
+    fetch_thread.start()
+
+    while True:
+        next_item = fetch_queue.get(block=True)
+        if next_item is not sentinel:
+            yield next_item
+        fetch_queue.task_done()
+        if next_item is sentinel:
+            break
+
+    fetch_queue.join()
+    fetch_thread.join()
 
 
 def _resolve_blocks(

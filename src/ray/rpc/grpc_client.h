@@ -99,7 +99,8 @@ class GrpcClient {
              ClientCallManager &call_manager,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-    std::shared_ptr<grpc::Channel> channel = BuildChannel(address, port);
+    std::shared_ptr<grpc::Channel> channel =
+        BuildChannel(address, port, CreateDefaultChannelArguments());
     channel_ = BuildChannel(address, port);
     stub_ = GrpcService::NewStub(channel_);
   }
@@ -110,9 +111,9 @@ class GrpcClient {
              int num_threads,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
+    grpc::ChannelArguments argument = CreateDefaultChannelArguments();
     grpc::ResourceQuota quota;
     quota.SetMaxThreads(num_threads);
-    grpc::ChannelArguments argument;
     argument.SetResourceQuota(quota);
     argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
                     ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);

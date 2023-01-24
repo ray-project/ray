@@ -82,7 +82,7 @@ class DatasetPipeline(Generic[T]):
         self,
         base_iterable: Iterable[Callable[[], Dataset[T]]],
         stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
-        length: int = None,
+        length: Optional[int] = None,
         progress_bars: bool = progress_bar._enabled,
         _executed: List[bool] = None,
     ):
@@ -101,8 +101,8 @@ class DatasetPipeline(Generic[T]):
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
-        self._dataset_iter = None
-        self._first_dataset = None
+        self._first_dataset: Optional[Dataset] = None
+        self._remaining_datasets_iter: Optional[Iterator[Callable[[], Dataset]]] = None
         self._schema = None
         self._stats = DatasetPipelineStats()
 
@@ -504,7 +504,7 @@ class DatasetPipeline(Generic[T]):
                 # This is calculated later.
                 self._max_i = None
 
-            def __next__(self) -> Dataset[T]:
+            def __next__(self) -> Callable[[], Dataset[T]]:
                 # Still going through the original pipeline.
                 if self._original_iter:
                     try:
@@ -540,11 +540,11 @@ class DatasetPipeline(Generic[T]):
                     raise StopIteration
 
         class RepeatIterable:
-            def __init__(self, original_iter):
-                self._original_iter = original_iter
+            def __init__(self, original_iterable):
+                self._original_iterable = original_iterable
 
             def __iter__(self):
-                return RepeatIterator(self._original_iter)
+                return RepeatIterator(iter(self._original_iterable))
 
         if not times:
             length = float("inf")
@@ -554,7 +554,7 @@ class DatasetPipeline(Generic[T]):
             length = None
 
         return DatasetPipeline(
-            RepeatIterable(iter(self._base_iterable)),
+            RepeatIterable(self._base_iterable),
             stages=self._stages.copy(),
             length=length,
         )
@@ -788,6 +788,7 @@ class DatasetPipeline(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        prefetch_batches: int = 0,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -802,6 +803,7 @@ class DatasetPipeline(Generic[T]):
                 batch_size=batch_size,
                 compute=compute,
                 batch_format=batch_format,
+                prefetch_batches=prefetch_batches,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
@@ -1180,12 +1182,35 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
-        if self._first_dataset is None:
-            self._peek()
-        iter = itertools.chain([self._first_dataset], self._dataset_iter)
-        self._first_dataset = None
-        self._dataset_iter = None
-        return iter
+
+        self._optimize_stages()
+
+        # If the first dataset has already been executed (via a peek operation), then
+        # we don't re-execute the first dataset when iterating through the pipeline.
+        # We re-use the saved _first_dataset and _remaining_dataset_iter.
+        if self._first_dataset is not None:
+
+            class _IterableWrapper(Iterable):
+                """Wrapper that takes an iterator and converts it to an
+                iterable."""
+
+                def __init__(self, base_iterator):
+                    self.base_iterator = base_iterator
+
+                def __iter__(self):
+                    return self.base_iterator
+
+            # Update the base iterable to skip the first dataset.
+            # It is ok to update the base iterable here since
+            # the pipeline can never be executed again.
+            self._base_iterable = _IterableWrapper(self._remaining_datasets_iter)
+
+            iter = itertools.chain([self._first_dataset], PipelineExecutor(self))
+            self._first_dataset = None
+            self._remaining_datasets_iter = None
+            return iter
+        else:
+            return PipelineExecutor(self)
 
     @DeveloperAPI
     def foreach_window(
@@ -1201,6 +1226,7 @@ class DatasetPipeline(Generic[T]):
         """
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
+
         return DatasetPipeline(
             self._base_iterable,
             self._stages + [fn],
@@ -1289,9 +1315,21 @@ class DatasetPipeline(Generic[T]):
 
     def _peek(self) -> Dataset[T]:
         if self._first_dataset is None:
-            self._optimize_stages()
-            self._dataset_iter = PipelineExecutor(self)
-            self._first_dataset = next(self._dataset_iter)
+            dataset_iter = iter(self._base_iterable)
+            first_dataset_gen = next(dataset_iter)
+            peek_pipe = DatasetPipeline(
+                base_iterable=[first_dataset_gen],
+                stages=self._stages.copy(),
+                length=1,
+                progress_bars=True,
+            )
+            # Cache the executed _first_dataset.
+            self._first_dataset = next(peek_pipe.iter_datasets())
+            self._remaining_datasets_iter = dataset_iter
+
+            # Store the stats from the peek pipeline.
+            self._stats.add_pipeline_stats(peek_pipe._stats)
+
         return self._first_dataset
 
     def _write_each_dataset(self, write_fn: Callable[[Dataset[T]], None]) -> None:

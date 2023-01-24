@@ -2071,9 +2071,6 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   // number of connections. The method is idempotent.
   actor_manager_->SubscribeActorState(actor_id);
 
-  // Add one for actor cursor object id for tasks.
-  const int num_returns = task_options.num_returns + 1;
-
   // Build common task spec.
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
@@ -2100,7 +2097,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       rpc_address_,
                       function,
                       args,
-                      num_returns,
+                      task_options.num_returns,
                       task_options.resources,
                       required_resources,
                       "",    /* debugger_breakpoint */
@@ -2111,10 +2108,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
-  // TODO(swang): Do we actually need to set this ObjectID?
-  const ObjectID new_cursor = ObjectID::FromIndex(actor_task_id, num_returns);
-  actor_handle->SetActorTaskSpec(builder, new_cursor);
-
+  actor_handle->SetActorTaskSpec(builder, ObjectID::Nil());
   // Submit task.
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
@@ -2457,8 +2451,6 @@ Status CoreWorker::ExecuteTask(
     }
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
-    RAY_CHECK(return_objects->size() > 0);
-    return_objects->pop_back();
     task_type = TaskType::ACTOR_TASK;
   }
 
@@ -2653,9 +2645,6 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
 
   std::vector<rpc::ObjectReference> returned_refs;
   size_t num_returns = task_spec.NumReturns();
-  if (task_spec.IsActorTask()) {
-    num_returns--;
-  }
   for (size_t i = 0; i < num_returns; i++) {
     if (!task_spec.IsActorCreationTask()) {
       reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
@@ -2790,9 +2779,9 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   }
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
-    worker_context_.MaybeInitializeJobInfo(
-        JobID::FromBinary(request.task_spec().job_id()),
-        request.task_spec().job_config());
+    auto job_id = JobID::FromBinary(request.task_spec().job_id());
+    worker_context_.MaybeInitializeJobInfo(job_id, request.task_spec().job_config());
+    task_counter_.SetJobId(job_id);
   }
   // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;

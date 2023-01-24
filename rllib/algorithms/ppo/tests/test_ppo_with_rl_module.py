@@ -15,6 +15,33 @@ from ray.rllib.utils.test_utils import (
 )
 
 
+def get_model_config(framework, lstm=False):
+    model_config = {
+        "torch": dict(
+            # Settings in case we use an LSTM.
+            lstm_cell_size=10,
+            max_seq_len=20,
+        ),
+        "tf2": dict(
+            fcnet_activation="relu",
+            fcnet_hiddens=[32, 32],
+            vf_share_layers=False,
+        ),
+    }
+    if framework == "tf2":
+        return model_config["tf2"]
+    elif framework == "torch":
+        torch_model_config = model_config["torch"]
+        for k in [
+            "use_lstm",
+            "lstm_use_prev_action",
+            "lstm_use_prev_reward",
+            "vf_share_layers",
+        ]:
+            torch_model_config[k] = lstm
+        return model_config["torch"]
+
+
 class MyCallbacks(DefaultCallbacks):
     @staticmethod
     def _check_lr_torch(policy, policy_id):
@@ -72,11 +99,6 @@ class TestPPO(unittest.TestCase):
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
                 train_batch_size=128,
-                model=dict(
-                    # Settings in case we use an LSTM.
-                    lstm_cell_size=10,
-                    max_seq_len=20,
-                ),
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -90,33 +112,23 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        # TODO (Kourosh): for now just do torch
+        # TODO (avnish): re enable eager tracing when we get this working with the new
+        # sampler.
         for fw in framework_iterator(
-            config, frameworks=("torch"), with_eager_tracing=True
+            config, frameworks=("torch", "tf2"), with_eager_tracing=False
         ):
             # TODO (Kourosh) Bring back "FrozenLake-v1" and "MsPacmanNoFrameskip-v4"
             for env in ["CartPole-v1", "Pendulum-v1"]:
                 print("Env={}".format(env))
-                # TODO (Kourosh): for now just do lstm=False
+                # TODO (Kourosh, Avnishn): for now just do lstm=False
                 for lstm in [False]:
                     print("LSTM={}".format(lstm))
-                    config.training(
-                        model=dict(
-                            use_lstm=lstm,
-                            lstm_use_prev_action=lstm,
-                            lstm_use_prev_reward=lstm,
-                            vf_share_layers=lstm,
-                        )
-                    )
+                    config.training(model=get_model_config(fw, lstm=lstm))
 
                     algo = config.build(env=env)
                     policy = algo.get_policy()
                     entropy_coeff = algo.get_policy().entropy_coeff
                     lr = policy.cur_lr
-                    if fw == "tf":
-                        entropy_coeff, lr = policy.get_session().run(
-                            [entropy_coeff, lr]
-                        )
                     check(entropy_coeff, 0.1)
                     check(lr, config.lr)
 
@@ -140,7 +152,7 @@ class TestPPO(unittest.TestCase):
             )
             .rollouts(
                 # Run locally.
-                num_rollout_workers=0,
+                num_rollout_workers=1,
                 enable_connectors=True,
             )
             .rl_module(_enable_rl_module_api=True)
@@ -148,7 +160,7 @@ class TestPPO(unittest.TestCase):
         obs = np.array(0)
 
         # TODO (Kourosh) Test against all frameworks.
-        for fw in framework_iterator(config, frameworks=("torch")):
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             # Default Agent should be setup with StochasticSampling.
             trainer = config.build()
             # explore=False, always expect the same (deterministic) action.
