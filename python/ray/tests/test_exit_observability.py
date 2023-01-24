@@ -314,6 +314,10 @@ def test_worker_exit_intended_system_exit_and_user_error(ray_start_cluster):
     wait_for_condition(verify_exit_by_actor_init_failure)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows because sigkill doesn't work on Windows",
+)
 def test_worker_start_end_time(shutdown_only):
     ray.init(num_cpus=1)
 
