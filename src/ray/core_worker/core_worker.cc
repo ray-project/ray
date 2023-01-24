@@ -2779,9 +2779,9 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   }
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
-    worker_context_.MaybeInitializeJobInfo(
-        JobID::FromBinary(request.task_spec().job_id()),
-        request.task_spec().job_config());
+    auto job_id = JobID::FromBinary(request.task_spec().job_id());
+    worker_context_.MaybeInitializeJobInfo(job_id, request.task_spec().job_config());
+    task_counter_.SetJobId(job_id);
   }
   // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
