@@ -754,7 +754,7 @@ class TestServeRequestProcessingTimeoutS:
             {"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
             {
                 "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5",
-                "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "50",
+                "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0",
             },
         ],
         indirect=True,
@@ -776,10 +776,10 @@ class TestServeRequestProcessingTimeoutS:
     @pytest.mark.parametrize(
         "ray_instance",
         [
-            {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
-            {"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
+            {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
+            {"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
             {
-                "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5",
+                "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
                 "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0",
             },
         ],
