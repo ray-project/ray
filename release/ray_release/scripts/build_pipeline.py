@@ -52,7 +52,7 @@ def main(test_collection_file: Optional[str] = None):
         ray_dir = os.path.normpath(
             os.path.abspath(os.path.join(current_dir, "..", "..", ".."))
         )
-        shutil.rmtree(current_dir)
+        shutil.rmtree(ray_dir)
 
         clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {ray_dir}"
         try:
