@@ -3,7 +3,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import importlib
 from typing import Optional
 
@@ -48,21 +47,20 @@ def main(test_collection_file: Optional[str] = None):
         # the test configuration file. Otherwise we might be missing newly
         # added test.
         repo = settings["ray_test_repo"]
-        tmpdir = tempfile.mktemp()
 
-        clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {tmpdir}"
+        current_dir = os.path.normpath(os.path.abspath(os.path.dirname(__file__)))
+        ray_dir = os.path.normpath(
+            os.path.abspath(os.path.join(current_dir, "..", "..", ".."))
+        )
+        shutil.rmtree(current_dir)
+
+        clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {ray_dir}"
         try:
             subprocess.check_output(clone_cmd, shell=True)
         except Exception as e:
             raise ReleaseTestCLIError(
                 f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
             ) from e
-        test_collection_file = os.path.join(tmpdir, "release", "release_tests.yaml")
-        current_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..")
-        )
-        shutil.rmtree(current_dir)
-        shutil.copytree(os.path.join(tmpdir, "release"), current_dir)
 
         for module in sys.modules.values():
             if module.__name__.startswith("ray_release"):
@@ -71,14 +69,16 @@ def main(test_collection_file: Optional[str] = None):
                 except Exception:
                     pass
 
+        os.chdir(current_dir)
+        assert os.curdir()
+
         env = {
             "RAY_TEST_REPO": repo,
             "RAY_TEST_BRANCH": branch,
         }
-    else:
-        test_collection_file = test_collection_file or os.path.join(
-            os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-        )
+    test_collection_file = test_collection_file or os.path.join(
+        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
+    )
     test_collection = read_and_validate_release_test_collection(test_collection_file)
 
     if tmpdir:
