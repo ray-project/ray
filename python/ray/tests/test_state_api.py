@@ -1,7 +1,6 @@
 import time
 import json
 import sys
-from datetime import datetime
 from collections import Counter
 from dataclasses import dataclass
 from typing import List, Tuple
