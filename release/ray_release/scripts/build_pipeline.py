@@ -58,9 +58,9 @@ def main(test_collection_file: Optional[str] = None):
                 f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
             ) from e
         test_collection_file = os.path.join(tmpdir, "release", "release_tests.yaml")
-        current_dir = os.path.join(
+        current_dir = os.path.abspath(os.path.join(
             os.path.dirname(__file__), ".."
-        )
+        ))
         shutil.rmtree(current_dir)
         shutil.copytree(tmpdir, current_dir)
 
