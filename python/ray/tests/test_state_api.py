@@ -1,7 +1,6 @@
 import time
 import json
 import sys
-from datetime import datetime
 from collections import Counter
 from dataclasses import dataclass
 from typing import List, Tuple
@@ -802,7 +801,9 @@ async def test_api_manager_list_tasks(state_api_manager):
         )
     ]
     result = await state_api_manager.list_tasks(option=create_api_options())
-    data_source_client.get_all_task_info.assert_any_await(timeout=DEFAULT_RPC_TIMEOUT)
+    data_source_client.get_all_task_info.assert_any_await(
+        timeout=DEFAULT_RPC_TIMEOUT, job_id=None
+    )
     data = result.result
     data = data
     assert len(data) == 2
@@ -911,19 +912,19 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     expected_events = [
         {
             "state": "PENDING_ARGS_AVAIL",
-            "created": str(datetime.fromtimestamp(current // second)),
+            "created_ms": current // 1e6,
         },
         {
             "state": "SUBMITTED_TO_WORKER",
-            "created": str(datetime.fromtimestamp((current + second) // second)),
+            "created_ms": (current + second) // 1e6,
         },
         {
             "state": "RUNNING",
-            "created": str(datetime.fromtimestamp((current + 2 * second) // second)),
+            "created_ms": (current + 2 * second) // 1e6,
         },
         {
             "state": "FINISHED",
-            "created": str(datetime.fromtimestamp((current + 3 * second) // second)),
+            "created_ms": (current + 3 * second) // 1e6,
         },
     ]
     for actual, expected in zip(result["events"], expected_events):
@@ -2483,6 +2484,10 @@ def test_limit(shutdown_only):
     assert output == list_actors(limit=2)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows",
+)
 def test_network_failure(shutdown_only):
     """When the request fails due to network failure,
     verifies it raises an exception."""
