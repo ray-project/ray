@@ -2780,5 +2780,6 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     py_callback(result)
     cpython.Py_DECREF(py_callback)
 
+
 def del_key_from_storage(host, port, password, use_ssl, key):
     return RedisDelKeySync(host, port, password, use_ssl, key)
