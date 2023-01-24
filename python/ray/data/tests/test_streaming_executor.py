@@ -23,6 +23,7 @@ from ray.data._internal.execution.operators.all_to_all_operator import AllToAllO
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 @ray.remote
@@ -206,6 +207,26 @@ def test_e2e_option_propagation():
 
     DatasetContext.get_current().execution_options.resource_limits.cpu = None
     run()
+
+
+def test_configure_output_locality():
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator(
+        make_transform(lambda block: [b * 2 for b in block]),
+        o2,
+        compute_strategy=ray.data.ActorPoolStrategy(1, 1),
+    )
+    topo, _ = build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
+    assert isinstance(
+        o2._execution_state._task_submitter._ray_remote_args["scheduling_strategy"],
+        NodeAffinitySchedulingStrategy,
+    )
+    assert isinstance(
+        o3._execution_state._task_submitter._ray_remote_args["scheduling_strategy"],
+        NodeAffinitySchedulingStrategy,
+    )
 
 
 if __name__ == "__main__":
