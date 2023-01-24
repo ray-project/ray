@@ -37,9 +37,21 @@ DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
+
+# TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
 RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0)) or None
+    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or None
 )
+
+if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
+    logger.warning(
+        "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
+        "been deprecated. Please use `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` "
+        "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
+        "future versions."
+    )
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:

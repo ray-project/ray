@@ -748,7 +748,16 @@ def test_controller_recover_and_delete(shutdown_ray):
 
 class TestServeRequestProcessingTimeoutS:
     @pytest.mark.parametrize(
-        "ray_instance", [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
+        "ray_instance",
+        [
+            {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
+            {"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
+            {
+                "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5",
+                "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "50",
+            },
+        ],
+        indirect=True,
     )
     def test_normal_operation(self, ray_instance):
         """Checks that a moderate timeout doesn't affect normal operation."""
@@ -760,10 +769,22 @@ class TestServeRequestProcessingTimeoutS:
         serve.run(f.bind())
 
         for _ in range(20):
-            requests.get("http://localhost:8000").text == "Success!"
+            requests.get("http://localhost:8000", timeout=5).text == "Success!"
 
         serve.shutdown()
 
+    @pytest.mark.parametrize(
+        "ray_instance",
+        [
+            {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
+            {"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
+            {
+                "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5",
+                "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "50",
+            },
+        ],
+        indirect=True,
+    )
     @pytest.mark.parametrize(
         "ray_instance",
         [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"}],
@@ -797,7 +818,7 @@ class TestServeRequestProcessingTimeoutS:
         serve.run(waiter.bind())
 
         with ThreadPoolExecutor() as pool:
-            response_fut = pool.submit(requests.get, "http://localhost:8000")
+            response_fut = pool.submit(requests.get, "http://localhost:8000", timeout=5)
 
             # Force request to hang
             time.sleep(0.5)
