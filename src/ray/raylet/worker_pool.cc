@@ -593,6 +593,11 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     RAY_LOG(DEBUG) << debug_info;
   }
 
+  if (RayConfig::instance().experimental_worker_proc_forkserver()) {
+    // Ignore return value for now.
+    _experimental_worker_proc_forkserver();
+  }
+
   // Launch the process to create the worker.
   std::error_code ec;
   std::vector<const char *> argv;
@@ -614,6 +619,16 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     }
   }
   return child;
+}
+
+Process WorkerPool::_experimental_worker_proc_forkserver() {
+    RAY_LOG(DEBUG) << "_experimental_worker_proc_forkserver called";
+    experimental_fork_server_->CreateProcess();
+    return Process();
+}
+
+void ExperimentalForkServer::CreateProcess() {
+    RAY_LOG(DEBUG) << "ExperimentalForkServer::CreateProcess called";
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {

@@ -146,6 +146,12 @@ class IOWorkerPoolInterface {
   virtual ~IOWorkerPoolInterface(){};
 };
 
+class ExperimentalForkServer {
+    public:
+        void CreateProcess();
+    private:
+};
+
 class WorkerInterface;
 class Worker;
 
@@ -437,6 +443,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return An object representing the started worker process.
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
                                const ProcessEnvironment &env);
+  
+  Process _experimental_worker_proc_forkserver();
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -772,6 +780,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
+
+  /// WIP experimental 
+  std::unique_ptr<ExperimentalForkServer> experimental_fork_server_;
 
   /// Stats
   int64_t process_failed_job_config_missing_ = 0;
