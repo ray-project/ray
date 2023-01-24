@@ -385,7 +385,7 @@ class AlgorithmConfig:
         # `self.debugging()`
         self.logger_creator = None
         self.logger_config = None
-        self.log_level = DEPRECATED_VALUE
+        self.log_level = "WARN"
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
@@ -2052,7 +2052,7 @@ class AlgorithmConfig:
         *,
         logger_creator: Optional[Callable[[], Logger]] = NotProvided,
         logger_config: Optional[dict] = NotProvided,
-        log_level: Optional[str] = DEPRECATED_VALUE,
+        log_level: Optional[str] = NotProvided,
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
@@ -2086,16 +2086,8 @@ class AlgorithmConfig:
             self.logger_creator = logger_creator
         if logger_config is not NotProvided:
             self.logger_config = logger_config
-        if log_level != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.log_level",
-                help=(
-                    "RLlib no longer has a separate logging configuration from the rest"
-                    " of Ray. Configure logging on the root logger; RLlib messages "
-                    "will be propagated up the logger hierarchy to be handled there."
-                ),
-                error=False,
-            )
+        if log_level is not NotProvided:
+            self.log_level = log_level
         if log_sys_usage is not NotProvided:
             self.log_sys_usage = log_sys_usage
         if fake_sampler is not NotProvided:
