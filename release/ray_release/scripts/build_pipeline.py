@@ -4,7 +4,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import importlib
 from typing import Optional
 
 import click
@@ -58,23 +57,12 @@ def main(test_collection_file: Optional[str] = None):
                 f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
             ) from e
         test_collection_file = os.path.join(tmpdir, "release", "release_tests.yaml")
-        current_dir = os.path.normpath(
-            os.path.abspath(
-                os.path.join(os.path.dirname(__file__), "..", "..")
-            )
+        schema_file = os.path.join(tmpdir, "release", "ray_release", "schema.json")
+        current_schema_file = os.path.join(
+            os.path.dirname(__file__), "..", "schema.json"
         )
-        shutil.rmtree(current_dir)
-        print(current_dir, os.path.join(tmpdir, "release"))
-        print(os.path.abspath(os.path.join(tmpdir, "release")))
-        shutil.copytree(os.path.join(tmpdir, "release"), current_dir)
-
-        for module in sys.modules.values():
-            if module.__name__.startswith("ray_release"):
-                try:
-                    importlib.reload(module)
-                except Exception:
-                    pass
-
+        os.remove(current_schema_file)
+        shutil.copy(schema_file, current_schema_file)
         env = {
             "RAY_TEST_REPO": repo,
             "RAY_TEST_BRANCH": branch,
@@ -83,7 +71,10 @@ def main(test_collection_file: Optional[str] = None):
         test_collection_file = test_collection_file or os.path.join(
             os.path.dirname(__file__), "..", "..", "release_tests.yaml"
         )
-    test_collection = read_and_validate_release_test_collection(test_collection_file)
+        schema_file = None
+    test_collection = read_and_validate_release_test_collection(
+        test_collection_file
+    )
 
     if tmpdir:
         shutil.rmtree(tmpdir, ignore_errors=True)
