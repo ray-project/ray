@@ -1,6 +1,7 @@
 import abc
 import inspect
 import logging
+import os
 from pathlib import Path
 import tempfile
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
@@ -305,7 +306,7 @@ class BaseTrainer(abc.ABC):
             local_dir of the synced trainer state
         """
         if not is_non_local_path_uri(restore_path):
-            return os.path.expanduser(restore_path)
+            return Path(os.path.expanduser(restore_path)) / _TRAINER_PKL
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
