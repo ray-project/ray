@@ -56,6 +56,9 @@ fi
 deviceid=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname=="'$HOSTNAME'")' | jq -r .id)
 export deviceid=$deviceid
 
+echo "Deleting the device from Tailscale"
+curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY:
+
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
@@ -66,7 +69,7 @@ ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-hos
             -Cnode.name=nexus \
             -Cnode.master=true \
             -Cnode.data=true \
-#            -Cnode.store.allow_mmap=false \
+            -Cnode.store.allow_mmap=false \
             -Chttp.cors.enabled=true \
             -Chttp.cors.allow-origin="/*" \
             -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300,glkttn2.chimp-beta.ts.net:4300,f9m3fx2.chimp-beta.ts.net:4300 \
@@ -82,7 +85,7 @@ ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-
 /crate/bin/crate -Cnetwork.host=_tailscale0_ \
 #            -Cnode.master=false \
             -Cnode.data=true \
-#            -Cnode.store.allow_mmap=false \
+            -Cnode.store.allow_mmap=false \
             -Chttp.cors.enabled=true \
             -Chttp.cors.allow-origin="/*" \
             -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300,glkttn2.chimp-beta.ts.net:4300,f9m3fx2.chimp-beta.ts.net:4300 \

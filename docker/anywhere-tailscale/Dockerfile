@@ -92,4 +92,3 @@ RUN sudo chmod +x /home/ray/startup.sh \
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
 HEALTHCHECK --interval=300s --timeout=5s --start-period=300s \
 CMD tailscale status -json | jq -r .BackendState | grep -q "Running" || exit 1
-##CMD nexusip=$(tailscale ip --1 nexus) && /usr/local/bin/crash --hosts ${nexusip} -c "SELECT * FROM sys.nodes" || exit 1
