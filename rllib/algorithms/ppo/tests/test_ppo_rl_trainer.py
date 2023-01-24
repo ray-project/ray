@@ -2,6 +2,7 @@
 import ray
 import unittest
 import numpy as np
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 import torch
 import tree # pip install dm-tree
 
@@ -88,7 +89,7 @@ class TestPPO(unittest.TestCase):
         config.validate()
         config.freeze()
         trainer_runner_config = config.get_trainer_runner_config(
-            policy.observation_space, policy.action_space
+            SingleAgentRLModuleSpec(observation_space=policy.observation_space, action_space=policy.action_space)
         )
         trainer_runner = trainer_runner_config.build()
 
