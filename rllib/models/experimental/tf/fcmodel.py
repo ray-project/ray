@@ -1,17 +1,17 @@
-import torch.nn as nn
-
-from ray.rllib.models.base_model import Model, ForwardOutputType
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
+from ray.rllib.utils import try_import_tf
 from ray.rllib.models.temp_spec_classes import TensorDict
-from ray.rllib.models.tf.primitives import FCNet
-from rllib.models.base_model import ModelConfig
+from ray.rllib.models.tf.primitives import FCNet, TFModel
+from rllib.models.experimental.base import ModelConfig, ForwardOutputType
+
+tf1, tf, tfv = try_import_tf()
 
 
-class FCModel(Model, nn.Module):
+class FCModel(tf.Module, TFModel):
     def __init__(self, config: ModelConfig) -> None:
-        nn.Module.__init__(self)
-        Model.__init__(self, config)
+        tf.Module.__init__(self)
+        TFModel.__init__(self, config)
 
         self.net = FCNet(
             input_dim=config.input_dim,
@@ -30,5 +30,5 @@ class FCModel(Model, nn.Module):
 
     @check_input_specs("input_spec", filter=True, cache=False)
     @check_output_specs("output_spec", cache=False)
-    def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
+    def __call__(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         return self.net(inputs)

@@ -2,11 +2,10 @@ from dataclasses import dataclass, field
 from typing import List
 import functools
 
-from ray.rllib.models.torch.primitives import Identity
-from ray.rllib.models.base_model import ModelConfig, Model
+from ray.rllib.models.experimental.base import ModelConfig, Model
 
 
-def check_framework(fn):
+def _check_framework(fn):
     @functools.wraps(fn)
     def checked_build(self, framework, **kwargs):
         if framework not in ("torch", "tf", "tf2"):
@@ -33,12 +32,12 @@ class FCConfig(ModelConfig):
     activation: str = "ReLU"
     output_activation: str = "ReLU"
 
-    @check_framework
+    @_check_framework
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
-            from ray.rllib.core.rl_module.torch.fcmodel import FCModel
+            from ray.rllib.models.experimental.torch.fcmodel import FCModel
         else:
-            from ray.rllib.core.rl_module.tf.fcmodel import FCModel
+            from ray.rllib.models.experimental.tf.fcmodel import FCModel
         return FCModel(self)
 
 
@@ -46,9 +45,9 @@ class FCConfig(ModelConfig):
 class FCEncoderConfig(FCConfig):
     def build(self, framework: str = "torch"):
         if framework == "torch":
-            from ray.rllib.core.rl_module.torch.encoder import FCEncoder
+            from ray.rllib.models.experimental.torch.encoder import FCEncoder
         else:
-            from ray.rllib.core.rl_module.tf.encoder import FCEncoder
+            from ray.rllib.models.experimental.tf.encoder import FCEncoder
         return FCEncoder(self)
 
 
@@ -59,11 +58,11 @@ class LSTMEncoderConfig(ModelConfig):
     num_layers: int = None
     batch_first: bool = True
 
-    @check_framework
+    @_check_framework
     def build(self, framework: str = "torch"):
         if not framework == "torch":
             raise ValueError("Only torch framework supported.")
-        from rllib.core.rl_module.torch.encoder import LSTMEncoder
+        from rllib.models.experimental.torch.encoder import LSTMEncoder
 
         return LSTMEncoder(self)
 
@@ -72,6 +71,11 @@ class LSTMEncoderConfig(ModelConfig):
 class IdentityConfig(ModelConfig):
     """Configuration for an identity encoder."""
 
-    @check_framework
+    @_check_framework
     def build(self, framework: str = "torch"):
-        return Identity(self)
+        if framework == "torch":
+            from rllib.models.experimental.torch.encoder import IdentityEncoder
+        else:
+            from rllib.models.experimental.tf.encoder import IdentityEncoder
+
+        return IdentityEncoder(self)

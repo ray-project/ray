@@ -336,3 +336,15 @@ def check_output_specs(
         return wrapper
 
     return decorator
+
+
+@DeveloperAPI(stability="alpha")
+def is_input_decorated(obj: object) -> bool:
+    """Returns True if the object is decorated with `check_input_specs`."""
+    return hasattr(obj, "__checked_input_specs__")
+
+
+@DeveloperAPI(stability="alpha")
+def is_output_decorated(obj: object) -> bool:
+    """Returns True if the object is decorated with `check_output_specs`."""
+    return hasattr(obj, "__checked_output_specs__")

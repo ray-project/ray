@@ -11,14 +11,14 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
 )
 from rllib.algorithms.ppo.ppo import PPOModuleConfig
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
-    PPOTfModule,
+    PPOTfRLModule,
 )
-from ray.rllib.core.rl_module.model_configs import (
+from ray.rllib.models.experimental.model_configs import (
     FCConfig,
     FCEncoderConfig,
     LSTMEncoderConfig,
 )
-from ray.rllib.core.rl_module.torch.encoder import (
+from ray.rllib.models.experimental.torch.encoder import (
     STATE_IN,
     STATE_OUT,
 )
@@ -144,7 +144,7 @@ class TestPPO(unittest.TestCase):
         if framework == "torch":
             module = PPOTorchRLModule(config)
         else:
-            module = PPOTfModule(config)
+            module = PPOTfRLModule(config)
         return module
 
     def get_input_batch_from_obs(self, framework, obs):

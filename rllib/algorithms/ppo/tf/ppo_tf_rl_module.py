@@ -3,14 +3,14 @@ from typing import Mapping, Any, List
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.core.rl_module.model_configs import FCConfig, IdentityConfig
+from ray.rllib.models.experimental.model_configs import FCConfig, IdentityConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
-from ray.rllib.models.tf.primitives import FCNet
-from ray.rllib.core.rl_module.tf.encoder import ENCODER_OUT
+from ray.rllib.models.experimental.tf.primitives import FCNet
+from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
 from ray.rllib.algorithms.ppo.ppo import PPOModuleConfig
 
 
@@ -18,7 +18,7 @@ tf1, tf, _ = try_import_tf()
 tf1.enable_eager_execution()
 
 
-class PPOTfModule(TfRLModule):
+class PPOTfRLModule(TfRLModule):
     def __init__(self, config: RLModuleConfig):
         super().__init__()
         self.config = config

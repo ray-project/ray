@@ -15,7 +15,7 @@ from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 import gymnasium as gym
 
-from ray.rllib.core.rl_module.model_configs import FCConfig
+from ray.rllib.models.experimental.model_configs import FCConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 
 from ray.util.debug import log_once

@@ -1,11 +1,52 @@
 from typing import List, Optional
+from typing import Tuple
 
-from ray.rllib.models.base_model import Model, ForwardOutputType
+from ray.rllib.models.experimental.base import Model, ForwardOutputType
+from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.checker import (
+    is_input_decorated,
+    is_output_decorated,
+)
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.utils.framework import try_import_torch
-from rllib.models.base_model import ModelConfig
+from ray.rllib.utils.typing import TensorType
+from rllib.models.experimental.base import ModelConfig
 
 torch, nn = try_import_torch()
+
+
+def _forward_not_decorated(input_or_output):
+    return (
+        f"forward not decorated with {input_or_output} specification. Decorate "
+        f"with @check_{input_or_output}_specs() to define a specification. See "
+        f"BaseModel for examples."
+    )
+
+
+class TorchModel(nn.Module, Model):
+    """Base class for torch models.
+
+    This class is used to define the general interface for torch models and checks
+    whether inputs and outputs are checked with `check_input_specs()` and
+    `check_output_specs()` respectively.
+    """
+
+    def __init__(self, config: ModelConfig):
+        nn.Module.__init__(self)
+        Model.__init__(self, config)
+        assert is_input_decorated(self.forward), _forward_not_decorated("input")
+        assert is_output_decorated(self.forward), _forward_not_decorated("output")
+
+    def forward(self, input_dict: TensorDict) -> Tuple[TensorDict, List[TensorType]]:
+        """Returns the output of this model for the given input.
+
+        Args:
+            input_dict: The input tensors.
+
+        Returns:
+            Tuple[TensorDict, List[TensorType]]: The output tensors.
+        """
+        raise NotImplementedError
 
 
 class FCNet(nn.Module):
@@ -54,11 +95,3 @@ class FCNet(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
-
-
-class Identity(Model):
-    def __init__(self, config: ModelConfig) -> None:
-        super().__init__(config)
-
-    def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
-        return inputs

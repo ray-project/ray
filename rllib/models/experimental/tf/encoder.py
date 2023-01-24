@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import tree
 
-from ray.rllib.models.base_model import (
+from ray.rllib.models.experimental.base import (
     Model,
+    Encoder,
     STATE_IN,
     STATE_OUT,
     ForwardOutputType,
@@ -11,38 +12,51 @@ from ray.rllib.models.base_model import (
 )
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.models.experimental.tf.primitives import FCNet
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
-from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-from ray.rllib.core.rl_module.torch.fcmodel import FCModel
+from ray.rllib.models.specs.specs_tf import TFTensorSpecs
+from ray.rllib.models.experimental.torch.encoder import ENCODER_OUT
+from ray.rllib.models.experimental.tf.primitives import TFModel
 
-ENCODER_OUT: str = "encoder_out"
 
+class FCEncoder(Encoder, TFModel):
+    """A fully connected encoder."""
 
-class FCEncoder(FCModel):
+    def __init__(self, config: ModelConfig) -> None:
+        Encoder.__init__(self, config)
+        TFModel.__init__(self, config)
+
+        self.net = FCNet(
+            input_dim=config.input_dim,
+            hidden_layers=config.hidden_layers,
+            output_dim=config.output_dim,
+            activation=config.activation,
+        )
+
     @property
     def input_spec(self):
         return SpecDict(
-            {SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dim)}
+            {SampleBatch.OBS: TFTensorSpecs("b, h", h=self.config.input_dim)}
         )
 
     @property
     def output_spec(self):
-        return SpecDict(
-            {ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim)}
-        )
+        return SpecDict({ENCODER_OUT: TFTensorSpecs("b, h", h=self.config.output_dim)})
 
-    @check_input_specs("input_spec", filter=True, cache=False)
+    @check_input_specs("input_spec", cache=False)
     @check_output_specs("output_spec", cache=False)
-    def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
+    def __call__(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
-class LSTMEncoder(Model, nn.Module):
+class LSTMEncoder(Encoder, TFModel):
+    """An encoder that uses an LSTM cell and a linear layer."""
+
     def __init__(self, config: ModelConfig) -> None:
-        nn.Module.__init__(self)
-        Model.__init__(self, config)
+        Encoder.__init__(self, config)
+        TFModel.__init__(self, config)
 
         self.lstm = nn.LSTM(
             config.input_dim,
@@ -65,12 +79,12 @@ class LSTMEncoder(Model, nn.Module):
         return SpecDict(
             {
                 # bxt is just a name for better readability to indicated padded batch
-                self.config.input_key: TorchTensorSpec("bxt, h", h=config.input_dim),
-                self.config.state_in_key: {
-                    "h": TorchTensorSpec(
+                SampleBatch.OBS: TFTensorSpecs("bxt, h", h=config.input_dim),
+                STATE_IN: {
+                    "h": TFTensorSpecs(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
-                    "c": TorchTensorSpec(
+                    "c": TFTensorSpecs(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
                 },
@@ -83,12 +97,12 @@ class LSTMEncoder(Model, nn.Module):
         config = self.config
         return SpecDict(
             {
-                self.config.output_key: TorchTensorSpec("bxt, h", h=config.output_dim),
-                self.config.state_out_key: {
-                    "h": TorchTensorSpec(
+                ENCODER_OUT: TFTensorSpecs("bxt, h", h=config.output_dim),
+                STATE_OUT: {
+                    "h": TFTensorSpecs(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
-                    "c": TorchTensorSpec(
+                    "c": TFTensorSpecs(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
                 },
@@ -97,7 +111,7 @@ class LSTMEncoder(Model, nn.Module):
 
     @check_input_specs("input_spec", filter=True, cache=False)
     @check_output_specs("output_spec", cache=False)
-    def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
+    def __call__(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         x = inputs[SampleBatch.OBS]
         states = inputs[STATE_IN]
         # states are batch-first when coming in
@@ -116,19 +130,30 @@ class LSTMEncoder(Model, nn.Module):
         x = x.view(-1, x.shape[-1])
 
         return {
-            self.config.output_key: x,
-            self.config.state_out_key: tree.map_structure(
-                lambda x: x.transpose(0, 1), states_o
-            ),
+            ENCODER_OUT: x,
+            STATE_OUT: tree.map_structure(lambda x: x.transpose(0, 1), states_o),
         }
 
 
-class Identity(Model):
+class IdentityEncoder(TFModel):
     def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         pass
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__(config)
 
-    def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
-        return inputs
+    @property
+    def input_spec(self):
+        return SpecDict(
+            # Use the output dim as input dim because identity.
+            {SampleBatch.OBS: TFTensorSpecs("b, h", h=self.config.output_dim)}
+        )
+
+    @property
+    def output_spec(self):
+        return SpecDict({ENCODER_OUT: TFTensorSpecs("b, h", h=self.config.output_dim)})
+
+    @check_input_specs("input_spec", cache=False)
+    @check_output_specs("output_spec", cache=False)
+    def __call__(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
+        return {ENCODER_OUT: inputs[SampleBatch.OBS]}

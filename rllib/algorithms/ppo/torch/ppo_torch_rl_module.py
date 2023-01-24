@@ -2,16 +2,16 @@ from typing import Mapping, Any, Union
 
 import gymnasium as gym
 
-from ray.rllib.core.rl_module.torch.encoder import (
-    ENCODER_OUT,
-)
-from ray.rllib.core.rl_module.model_configs import (
-    LSTMEncoderConfig,
-)
-from ray.rllib.core.rl_module.model_configs import FCConfig, FCEncoderConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.base_model import STATE_OUT
+from ray.rllib.models.experimental.base import STATE_OUT
+from ray.rllib.models.experimental.model_configs import FCConfig, FCEncoderConfig
+from ray.rllib.models.experimental.model_configs import (
+    LSTMEncoderConfig,
+)
+from ray.rllib.models.experimental.torch.encoder import (
+    ENCODER_OUT,
+)
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.torch_distributions import (
