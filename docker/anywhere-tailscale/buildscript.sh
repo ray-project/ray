@@ -13,7 +13,7 @@ if [ -d $builddir/ ]; then
     cd $builddir/
     sudo rm -rf *
 else
-    sudo mkdir -p $builddir /home/tripps/data && cd $builddir 
+    sudo mkdir -p $builddir /home/tripps/data && cd $builddir
 fi
 
 if [ -x /usr/bin/podman ]; then
@@ -30,10 +30,11 @@ if [ -x /usr/bin/docker ]; then
     docker login --username jcoffi --password $DOCKER_PASSWORD
 fi
 
-
-sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 
-sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 
+sudo sysctl -w vm.max_map_count=262144
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
 sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+sudo sysctl -p
 
 if [ -d /sys/class/power_supply/BAT0 ]; then
     echo "Script is running on a laptop"
@@ -110,14 +111,14 @@ wget https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/any
 
 if [[ -n $cuda_version ]] && [ $cuda_version != "gpu" ]; then
   sudo $exec build --cache-from=index.docker.io/rayproject/ray-ml:2.2.0-py38-cu$cuda_version $builddir -t docker.io/jcoffi/cluster-anywhere:cu$cuda_version --build-arg IMAGETYPE=cu$cuda_version
-  sudo $exec push  docker.io/jcoffi/cluster-anywhere:cu$cuda_version 
+  sudo $exec push  docker.io/jcoffi/cluster-anywhere:cu$cuda_version
 elif [[ -n $cuda_version ]] && [ $cuda_version == "gpu" ]; then
   sudo $exec build --cache-from=index.docker.io/rayproject/ray-ml:2.2.0-py38-gpu $builddir -t docker.io/jcoffi/cluster-anywhere:gpu -t docker.io/jcoffi/cluster-anywhere:gpu-latest --build-arg IMAGETYPE=gpu
   sudo $exec push docker.io/jcoffi/cluster-anywhere:gpu
 else
   sudo $exec build --cache-from=index.docker.io/rayproject/ray:2.2.0-py38-cpu $builddir -t docker.io/jcoffi/cluster-anywhere:cpu -t docker.io/jcoffi/cluster-anywhere:latest -t docker.io/jcoffi/cluster-anywhere:cpu-latest --build-arg IMAGETYPE=cpu
   sudo $exec push docker.io/jcoffi/cluster-anywhere:$cuda_version
-fi 
+fi
 
 if [ -f /root/.docker/config.json ]; then
     sudo rm /root/.docker/config.json
