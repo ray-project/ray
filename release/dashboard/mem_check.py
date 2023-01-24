@@ -1,3 +1,4 @@
+import argparse
 import time
 import os
 import json
@@ -12,11 +13,18 @@ from ray.job_submission import JobSubmissionClient, JobStatus
 addr = ray.init()
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--working-dir",
+        required=True,
+        help="working_dir to use for the job within this test.",
+    )
+    args = parser.parse_args()
     client = JobSubmissionClient("http://127.0.0.1:8265")
-    path = os.path.abspath(os.path.join(os.path.dirname(__file__), "workload.py"))
     job_id = client.submit_job(
         # Entrypoint shell command to execute
-        entrypoint=f"python '{path}'",
+        entrypoint="python workload.py",
+        runtime_env={"working_dir": args.working_dir},
     )
     print(job_id)
 

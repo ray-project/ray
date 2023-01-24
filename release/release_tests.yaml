@@ -4760,7 +4760,7 @@
 
   run:
     timeout: 14400
-    script: python mem_check.py
+    script: python mem_check.py --working-dir .
 
 - name: k8s_serve_ha_test
   group: k8s-test
