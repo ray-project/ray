@@ -130,12 +130,12 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
     ray_remote_args = ray_remote_args.copy()
     if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
         ray_remote_args["num_cpus"] = 1
-    if "num_gpus" in ray_remote_args:
+    if ray_remote_args.get("num_gpus", 0) > 0:
         if ray_remote_args.get("num_cpus", 0) != 0:
             raise ValueError(
                 "It is not allowed to specify both num_cpus and num_gpus for map tasks."
             )
-    elif "num_cpus" in ray_remote_args:
+    elif ray_remote_args.get("num_cpus", 0) > 0:
         if ray_remote_args.get("num_gpus", 0) != 0:
             raise ValueError(
                 "It is not allowed to specify both num_cpus and num_gpus for map tasks."
