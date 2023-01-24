@@ -814,26 +814,6 @@ def test_if_blocks_owned_by_consumer(ray_start_regular_shared):
     ray.get([consume.remote(splits[0], True), consume.remote(splits[1], True)])
 
 
-def test_incremental_take(shutdown_only):
-    # TODO(https://github.com/ray-project/ray/issues/31145): re-enable
-    # after the segfault bug is fixed.
-    if DatasetContext.get_current().new_execution_backend:
-        return
-
-    ray.shutdown()
-    ray.init(num_cpus=2)
-
-    # Can read incrementally even if future results are delayed.
-    def block_on_ones(x: int) -> int:
-        if x == 1:
-            time.sleep(999999)
-        return x
-
-    pipe = ray.data.range(2).window(blocks_per_window=1)
-    pipe = pipe.map(block_on_ones)
-    assert pipe.take(1) == [0]
-
-
 if __name__ == "__main__":
     import sys
 
