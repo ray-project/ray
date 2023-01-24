@@ -57,7 +57,7 @@ deviceid=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jc
 export deviceid=$deviceid
 
 echo "Deleting the device from Tailscale"
-curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY:
+curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
 
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
