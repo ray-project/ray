@@ -400,7 +400,7 @@ class BaseTrainer(abc.ABC):
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``.
         """
-        from ray.tune.tuner import Tuner
+        from ray.tune.tuner import Tuner, TunerInternal
         from ray.tune.error import TuneError
 
         trainable = self.as_trainable()
@@ -414,6 +414,14 @@ class BaseTrainer(abc.ABC):
             )
         else:
             tuner = Tuner(trainable=trainable, run_config=self.run_config)
+            experiment_path = Path(
+                TunerInternal.setup_create_experiment_checkpoint_dir(
+                    trainable, self.run_config
+                )
+            )
+            with open(experiment_path / _TRAINER_PKL, "wb") as fp:
+                pickle.dump(self, fp)
+
         result_grid = tuner.fit()
         assert len(result_grid) == 1
         try:

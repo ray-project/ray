@@ -108,8 +108,8 @@ class TunerInternal:
         self._resume_config = None
 
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
-        self._experiment_checkpoint_dir = self._setup_create_experiment_checkpoint_dir(
-            self._run_config
+        self._experiment_checkpoint_dir = self.setup_create_experiment_checkpoint_dir(
+            self.converted_trainable, self._run_config
         )
 
         self._experiment_analysis = None
@@ -338,7 +338,9 @@ class TunerInternal:
             # directory. Create an experiment checkpoint dir instead and move
             # our data there.
             new_exp_path = Path(
-                self._setup_create_experiment_checkpoint_dir(self._run_config)
+                self.setup_create_experiment_checkpoint_dir(
+                    self.converted_trainable, self._run_config
+                )
             )
             for file_dir in experiment_checkpoint_path.glob("*"):
                 file_dir.replace(new_exp_path / file_dir.name)
@@ -383,12 +385,13 @@ class TunerInternal:
             return
         self._param_space["scaling_config"] = scaling_config.__dict__.copy()
 
-    def _setup_create_experiment_checkpoint_dir(
-        self, run_config: Optional[RunConfig]
+    @classmethod
+    def setup_create_experiment_checkpoint_dir(
+        cls, trainable: TrainableType, run_config: Optional[RunConfig]
     ) -> str:
         """Sets up experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
-            self.converted_trainable,
+            trainable,
             run_config.local_dir,
             run_config.name,
         )
