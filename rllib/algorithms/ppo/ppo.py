@@ -474,8 +474,8 @@ DEFAULT_CONFIG = _deprecated_default_config()
 
 
 @dataclass
-class PPOModuleConfig(RLModuleConfig):
-    """Configuration for the PPO module.
+class __PPOModuleConfig(RLModuleConfig):
+    """Configuration for the PPO RLModule.
 
     Attributes:
         observation_space: The observation space of the environment.

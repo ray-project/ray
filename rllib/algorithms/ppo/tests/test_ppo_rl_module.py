@@ -9,7 +9,7 @@ from ray.rllib import SampleBatch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
-from rllib.algorithms.ppo.ppo import PPOModuleConfig
+from rllib.algorithms.ppo.ppo import __PPOModuleConfig
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
 )
@@ -29,7 +29,7 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 def get_expected_model_config(
     env: gym.Env,
     lstm: bool,
-) -> PPOModuleConfig:
+) -> __PPOModuleConfig:
     """Get a PPOModuleConfig that we would expect from the catalog otherwise.
 
     Args:
@@ -78,7 +78,7 @@ def get_expected_model_config(
     else:
         pi_config.output_dim = env.action_space.shape[0] * 2
 
-    return PPOModuleConfig(
+    return __PPOModuleConfig(
         observation_space=env.observation_space,
         action_space=env.action_space,
         shared_encoder_config=shared_encoder_config,
