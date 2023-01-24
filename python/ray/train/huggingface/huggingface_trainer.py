@@ -3,7 +3,7 @@ import inspect
 import os
 import sys
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
 try:
     from packaging.version import Version
@@ -264,16 +264,11 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             trainer_init_per_worker, "trainer_init_per_worker"
         )
 
-        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
-        if "_trainer_init_per_worker" in trainer_init_config:
-            raise ValueError(
-                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
-            )
-        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
-
         super().__init__(
             train_loop_per_worker=_huggingface_train_loop_per_worker,
-            train_loop_config=trainer_init_config,
+            train_loop_config=self._create_trainer_init_config(
+                trainer_init_per_worker, trainer_init_config
+            ),
             torch_config=torch_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
@@ -281,6 +276,55 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+        )
+
+    @classmethod
+    def _create_trainer_init_config(
+        cls,
+        trainer_init_per_worker: Callable[
+            [TorchDataset, Optional[TorchDataset], Any],
+            transformers.trainer.Trainer,
+        ],
+        trainer_init_config: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
+        if "_trainer_init_per_worker" in trainer_init_config:
+            raise ValueError(
+                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
+            )
+        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
+        return trainer_init_config
+
+    @classmethod
+    def restore(
+        cls: Type["HuggingFaceTrainer"],
+        path: str,
+        trainer_init_per_worker: Optional[
+            Callable[
+                [TorchDataset, Optional[TorchDataset], Any],
+                transformers.trainer.Trainer,
+            ]
+        ] = None,
+        trainer_init_config: Optional[Dict] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+    ) -> "HuggingFaceTrainer":
+        train_loop_config = (
+            cls._create_trainer_init_config(
+                trainer_init_per_worker, trainer_init_config
+            )
+            if train_loop_config
+            else None
+        )
+
+        return super(HuggingFaceTrainer, cls).restore(
+            train_loop_per_worker=_huggingface_train_loop_per_worker,
+            train_loop_config=train_loop_config,
+            path=path,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            scaling_config=scaling_config,
         )
 
     def _validate_trainer_init_per_worker(

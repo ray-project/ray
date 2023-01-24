@@ -279,6 +279,32 @@ class DataParallelTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
+    @classmethod
+    def restore(
+        cls: Type["DataParallelTrainer"],
+        path: str,
+        train_loop_per_worker: Optional[
+            Union[Callable[[], None], Callable[[Dict], None]]
+        ] = None,
+        train_loop_config: Optional[Dict] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+    ) -> "DataParallelTrainer":
+        trainer: DataParallelTrainer = super(DataParallelTrainer, cls).restore(
+            path=path,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            scaling_config=scaling_config,
+        )
+        if train_loop_per_worker:
+            # check if this thing contains object references??
+            trainer._train_loop_per_worker = train_loop_per_worker
+        if train_loop_config:
+            # same for this
+            trainer._train_loop_config = train_loop_config
+        return trainer
+
     def _validate_attributes(self):
         super()._validate_attributes()
 

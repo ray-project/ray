@@ -1,10 +1,14 @@
 import abc
 import inspect
 import logging
+from pathlib import Path
+import tempfile
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
+import ray.cloudpickle as pickle
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
+from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
@@ -18,6 +22,8 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
     from ray.tune import Trainable
+
+_TRAINER_PKL = "trainer.pkl"
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
@@ -159,7 +165,38 @@ class BaseTrainer(abc.ABC):
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
 
+        # This path is only set through the `restore` path of constructing the trainer
+        self._restore_path = None
+
         self._validate_attributes()
+
+    @classmethod
+    def restore(
+        cls: Type["BaseTrainer"],
+        path: str,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+    ) -> "BaseTrainer":
+        trainer_state_path = cls._maybe_sync_down_trainer_state(path)
+        assert trainer_state_path.exists()
+
+        with open(trainer_state_path, "rb") as fp:
+            trainer = pickle.load(fp)
+        assert isinstance(trainer, cls)
+        trainer._restore_path = path
+
+        if trainer.datasets and not datasets:
+            raise ValueError()
+        assert set(trainer.datasets.keys()) == set(datasets.keys())
+        trainer.datasets = datasets
+
+        if preprocessor:
+            trainer.preprocessor = preprocessor
+        if scaling_config:
+            trainer.scaling_config = scaling_config
+
+        return trainer
 
     def __repr__(self):
         # A dictionary that maps parameters to their default values.
@@ -260,6 +297,22 @@ class BaseTrainer(abc.ABC):
         )
         return scaling_config
 
+    @classmethod
+    def _maybe_sync_down_trainer_state(cls, restore_path: str) -> Path:
+        """Sync down trainer state from remote storage.
+
+        Returns:
+            local_dir of the synced trainer state
+        """
+        if not is_non_local_path_uri(restore_path):
+            return os.path.expanduser(restore_path)
+
+        tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
+
+        path = Path(restore_path)
+        download_from_uri(str(path / _TRAINER_PKL), str(tempdir / _TRAINER_PKL))
+        return tempdir / _TRAINER_PKL
+
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
 
@@ -351,7 +404,15 @@ class BaseTrainer(abc.ABC):
 
         trainable = self.as_trainable()
 
-        tuner = Tuner(trainable=trainable, run_config=self.run_config)
+        if self._restore_path:
+            tuner = Tuner.restore(
+                self._restore_path,
+                resume_unfinished=True,
+                resume_errored=True,
+                overwrite_trainable=trainable,
+            )
+        else:
+            tuner = Tuner(trainable=trainable, run_config=self.run_config)
         result_grid = tuner.fit()
         assert len(result_grid) == 1
         try:
