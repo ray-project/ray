@@ -3859,7 +3859,6 @@ def test_prom_null_metric_inc_fix():
     NullMetric().inc(5)
 
 
-
 if __name__ == "__main__":
 
     if os.environ.get("PARALLEL_CI"):
