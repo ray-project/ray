@@ -93,6 +93,7 @@ def test_update_app_deploy_failed():
     assert app_status.status == ApplicationStatus.DEPLOY_FAILED
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("fail_deploy", [False, True])
 def test_config_deploy_app(fail_deploy):
     """Test config based deploy

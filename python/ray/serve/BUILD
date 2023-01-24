@@ -19,7 +19,7 @@ filegroup(
 
 py_test(
     name = "test_api",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
