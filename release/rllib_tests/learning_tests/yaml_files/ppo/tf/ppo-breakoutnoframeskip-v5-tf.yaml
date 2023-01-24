@@ -7,7 +7,6 @@ ppo-breakoutnoframeskip-v5:
         timesteps_total: 7000000
     stop:
         time_total_s: 3600
-    num_samples: 10
     config:
         # Make analogous to old v4 + NoFrameskip.
         env_config:
