@@ -5,8 +5,11 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 
-from rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec, MultiAgentRLModule
-from rllib.core.rl_module.tests.test_marl_module import DEFAULT_POLICY_ID
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModuleSpec,
+    MultiAgentRLModule,
+)
+from ray.rllib.core.rl_module.tests.test_marl_module import DEFAULT_POLICY_ID
 
 if TYPE_CHECKING:
     import gymnasium as gym
