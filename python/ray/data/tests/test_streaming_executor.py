@@ -209,6 +209,25 @@ def test_e2e_option_propagation():
     run()
 
 
+def test_configure_spread_e2e():
+    from ray import remote_function
+
+    tasks = []
+
+    def _test_hook(fn, args, strategy):
+        if "map_task" in str(fn):
+            tasks.append(strategy)
+
+    remote_function._task_launch_hook = _test_hook
+    DatasetContext.get_current().use_streaming_executor = True
+
+    # Simple 2-stage pipeline.
+    ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
+
+    # Read tasks get SPREAD by default, subsequent ones use default policy.
+    assert tasks == ["SPREAD", "SPREAD", "DEFAULT", "DEFAULT"]
+
+
 def test_configure_output_locality():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
@@ -217,6 +236,15 @@ def test_configure_output_locality():
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(1, 1),
+    )
+    topo, _ = build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))
+    assert (
+        o2._execution_state._task_submitter._ray_remote_args.get("scheduling_strategy")
+        is None
+    )
+    assert (
+        o3._execution_state._task_submitter._ray_remote_args.get("scheduling_strategy")
+        is None
     )
     topo, _ = build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
     assert isinstance(
