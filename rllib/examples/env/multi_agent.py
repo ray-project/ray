@@ -36,6 +36,10 @@ class BasicMultiAgent(MultiAgentEnv):
         self.resetted = False
 
     def reset(self, *, seed=None, options=None):
+        # Call super's `reset()` method to set the np_random with the value of `seed`.
+        # Note: This call to super does NOT return anything.
+        super().reset(seed=seed)
+
         self.resetted = True
         self.terminateds = set()
         self.truncateds = set()

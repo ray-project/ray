@@ -272,7 +272,11 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--gradio",
     is_flag=True,
-    help=("Whether to enable gradio visualization of deployment graph."),
+    help=(
+        "Whether to enable gradio visualization of deployment graph. The "
+        "visualization can only be used with deployment graphs with DAGDriver "
+        "as the ingress deployment."
+    ),
 )
 def run(
     config_or_import_path: str,
