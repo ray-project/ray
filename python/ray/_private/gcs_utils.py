@@ -579,7 +579,9 @@ def use_gcs_for_bootstrap():
     return True
 
 
-def cleanup_redis_storage(host: str, port: int, password: str, use_ssl: bool, storage_namespace: str):
+def cleanup_redis_storage(
+    host: str, port: int, password: str, use_ssl: bool, storage_namespace: str
+):
     """This function is used to cleanup the storage. Before we having
     a good design for storage backend, it can be used to delete the old
     data. It support redis cluster and non cluster mode.
@@ -609,4 +611,6 @@ def cleanup_redis_storage(host: str, port: int, password: str, use_ssl: bool, st
     if not isinstance(storage_namespace, str):
         raise ValueError("storage namespace must be a string")
 
+    # Right now, GCS store all data into a hash set key by storage_namespace.
+    # So we only need to delete the specific key to cleanup the cluster.
     return del_key_from_storage(host, port, password, use_ssl, storage_namespace)
