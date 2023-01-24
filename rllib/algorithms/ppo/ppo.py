@@ -10,13 +10,7 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging
-from dataclasses import dataclass
 from typing import List, Optional, Type, Union, TYPE_CHECKING
-
-import gymnasium as gym
-
-from ray.rllib.models.experimental.configs import FCConfig
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 
 from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -471,27 +465,3 @@ class _deprecated_default_config(dict):
 
 
 DEFAULT_CONFIG = _deprecated_default_config()
-
-
-@ExperimentalAPI
-@dataclass
-class PPOModuleConfig(RLModuleConfig):
-    """Configuration for the PPO RLModule.
-
-    Attributes:
-        observation_space: The observation space of the environment.
-        action_space: The action space of the environment.
-        shared_encoder_config: The configuration for the encoder network.
-        pi_config: The configuration for the policy network.
-        vf_config: The configuration for the value network.
-        free_log_std: For DiagGaussian action distributions, make the second half of
-            the model outputs floating bias variables instead of state-dependent. This
-            only has an effect is using the default fully connected net.
-    """
-
-    observation_space: gym.Space = None
-    action_space: gym.Space = None
-    shared_encoder_config: FCConfig = None
-    pi_config: FCConfig = None
-    vf_config: FCConfig = None
-    free_log_std: bool = False

@@ -15,14 +15,6 @@ STATE_IN: str = "state_in"
 STATE_OUT: str = "state_out"
 
 
-def _not_decorated_message(input_or_output):
-    return (
-        f"__call__ not decorated with {input_or_output} specification. Decorate "
-        f"with @check_{input_or_output}_specs() to define a specification. See "
-        f"BaseModel for examples."
-    )
-
-
 @ExperimentalAPI
 @dataclass
 class ModelConfig(abc.ABC):

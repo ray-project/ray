@@ -11,8 +11,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
 from ray.rllib.models.experimental.tf.primitives import FCNet
 from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
-from ray.rllib.algorithms.ppo.ppo import PPOModuleConfig
-
+from rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 
 tf1, tf, _ = try_import_tf()
 tf1.enable_eager_execution()

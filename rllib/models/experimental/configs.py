@@ -1,18 +1,42 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Callable
 import functools
 
 from ray.rllib.models.experimental.base import ModelConfig, Model
+from ray.rllib.utils.annotations import DeveloperAPI
 
 
-def _check_framework(fn):
-    @functools.wraps(fn)
-    def checked_build(self, framework, **kwargs):
-        if framework not in ("torch", "tf", "tf2"):
-            raise ValueError(f"Framework {framework} not supported.")
-        return fn(self, framework, **kwargs)
+@DeveloperAPI
+def _framework_implemented(torch: bool = True, tf: bool = True):
+    """Decorator to check if a model was implemented in a framework.
 
-    return checked_build
+    Args:
+        torch: Whether we can build this model with torch.
+        tf: Whether we can build this model with tf.
+
+    Returns:
+        The decorated function.
+
+    Raises:
+        ValueError: If the framework is not available to build.
+    """
+    accepted = []
+    if torch:
+        accepted.append("torch")
+    if tf:
+        accepted.append("tf")
+        accepted.append("tf2")
+
+    def decorator(fn: Callable) -> Callable:
+        @functools.wraps(fn)
+        def checked_build(self, framework, **kwargs):
+            if framework not in accepted:
+                raise ValueError(f"Framework {framework} not supported.")
+            return fn(self, framework, **kwargs)
+
+        return checked_build
+
+    return decorator
 
 
 @dataclass
@@ -32,7 +56,7 @@ class FCConfig(ModelConfig):
     activation: str = "ReLU"
     output_activation: str = "ReLU"
 
-    @_check_framework
+    @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
             from ray.rllib.models.experimental.torch.fcmodel import FCModel
@@ -43,6 +67,7 @@ class FCConfig(ModelConfig):
 
 @dataclass
 class FCEncoderConfig(FCConfig):
+    @_framework_implemented()
     def build(self, framework: str = "torch"):
         if framework == "torch":
             from ray.rllib.models.experimental.torch.encoder import FCEncoder
@@ -58,11 +83,10 @@ class LSTMEncoderConfig(ModelConfig):
     num_layers: int = None
     batch_first: bool = True
 
-    @_check_framework
+    @_framework_implemented(tf=False)
     def build(self, framework: str = "torch"):
-        if not framework == "torch":
-            raise ValueError("Only torch framework supported.")
-        from rllib.models.experimental.torch.encoder import LSTMEncoder
+        if framework == "torch":
+            from rllib.models.experimental.torch.encoder import LSTMEncoder
 
         return LSTMEncoder(self)
 
@@ -71,7 +95,7 @@ class LSTMEncoderConfig(ModelConfig):
 class IdentityConfig(ModelConfig):
     """Configuration for an identity encoder."""
 
-    @_check_framework
+    @_framework_implemented()
     def build(self, framework: str = "torch"):
         if framework == "torch":
             from rllib.models.experimental.torch.encoder import IdentityEncoder
