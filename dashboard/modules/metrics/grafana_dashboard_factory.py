@@ -39,6 +39,8 @@ class Panel:
         id: Integer id used to reference the graph from Metrics.tsx.
         unit: The unit to display on the y-axis of the graph.
         targets: List of query targets.
+        fill: Whether or not the graph will be filled by a color.
+        stack: Whether or not the lines in the graph will be stacked.
     """
 
     title: str
@@ -46,6 +48,8 @@ class Panel:
     id: int
     unit: str
     targets: List[Target]
+    fill: int = 10
+    stack: bool = True
 
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
@@ -361,7 +365,52 @@ GRAFANA_PANELS = [
             ),
         ],
     ),
+    Panel(
+        id=41,
+        title="Cluster Utilization",
+        description="Aggregated utilization of all physical resources (CPU, GPU, memory, disk, or etc.) across the cluster.",
+        unit="%",
+        targets=[
+            # CPU
+            Target(
+                expr="avg(ray_node_cpu_utilization{{{global_filters}}})",
+                legend="CPU (physical)",
+            ),
+            # GPU
+            Target(
+                expr="avg(ray_node_gpus_utilization{{{global_filters}}})",
+                legend="GPU (physical)",
+            ),
+            # Memory
+            Target(
+                expr="sum(ray_node_mem_used{{{global_filters}}}) / on() (sum(ray_node_mem_total{{{global_filters}}})) * 100",
+                legend="Memory (RAM)",
+            ),
+            # GRAM
+            Target(
+                expr="sum(ray_node_gram_used{{{global_filters}}}) / on() (sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 100",
+                legend="GRAM",
+            ),
+            # Object Store
+            Target(
+                expr='sum(ray_object_store_memory{{{global_filters}}}) / on() sum(ray_resources{{Name="object_store_memory",{global_filters}}}) * 100',
+                legend="Object Store Memory",
+            ),
+            # Disk
+            Target(
+                expr="sum(ray_node_disk_usage{{{global_filters}}}) / on() (sum(ray_node_disk_free{{{global_filters}}}) + sum(ray_node_disk_usage{{{global_filters}}})) * 100",
+                legend="Disk",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
 ]
+
+ids = []
+for panel in GRAFANA_PANELS:
+    ids.append(panel.id)
+assert len(ids) == len(set(ids)), ids
 
 
 TARGET_TEMPLATE = {
@@ -499,6 +548,8 @@ def _generate_grafana_panels() -> List[dict]:
         template["gridPos"]["y"] = i // 2
         template["gridPos"]["x"] = 12 * (i % 2)
         template["yaxes"][0]["format"] = panel.unit
+        template["fill"] = panel.fill
+        template["stack"] = panel.stack
         panels.append(template)
     return panels
 
@@ -506,10 +557,17 @@ def _generate_grafana_panels() -> List[dict]:
 GLOBAL_FILTERS = ['SessionName="$SessionName"']
 
 
+def gen_incrementing_alphabets(length):
+    # 65: ascii code of 'A'.
+    return list(map(chr, range(65, 65 + length)))
+
+
 def _generate_targets(panel: Panel) -> List[dict]:
     global_filters = ",".join(GLOBAL_FILTERS)
     targets = []
-    for target, ref_id in zip(panel.targets, ["A", "B", "C", "D"]):
+    for target, ref_id in zip(
+        panel.targets, gen_incrementing_alphabets(len(panel.targets))
+    ):
         template = copy.deepcopy(TARGET_TEMPLATE)
         template.update(
             {
