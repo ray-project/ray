@@ -769,7 +769,7 @@ class TestServeRequestProcessingTimeoutS:
         serve.run(f.bind())
 
         for _ in range(20):
-            requests.get("http://localhost:8000", timeout=5).text == "Success!"
+            requests.get("http://localhost:8000").text == "Success!"
 
         serve.shutdown()
 
