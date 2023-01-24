@@ -6,6 +6,7 @@ from ray_release.file_manager.file_manager import FileManager
 from ray_release.util import exponential_backoff_retry
 from click.exceptions import ClickException
 
+
 class CommandRunner(abc.ABC):
     def __init__(
         self,
@@ -89,7 +90,9 @@ class CommandRunner(abc.ABC):
         return exponential_backoff_retry(
             lambda: self.run_command(command, env, timeout),
             ClickException,
-            initial_retry_delay_s=5, max_retries=3)
+            initial_retry_delay_s=5,
+            max_retries=3,
+        )
 
     def get_last_logs(self):
         raise NotImplementedError
