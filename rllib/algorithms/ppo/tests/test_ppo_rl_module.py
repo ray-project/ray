@@ -1,19 +1,21 @@
+import itertools
 import ray
 import unittest
 import numpy as np
-import gym
+import gymnasium as gym
 import torch
+import tensorflow as tf
 import tree
 
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
-from rllib.algorithms.ppo.ppo import __PPOModuleConfig
+from rllib.algorithms.ppo.ppo import PPOModuleConfig
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
 )
-from ray.rllib.models.experimental.model_configs import (
+from ray.rllib.models.experimental.configs import (
     FCConfig,
     FCEncoderConfig,
     LSTMEncoderConfig,
@@ -29,7 +31,7 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 def get_expected_model_config(
     env: gym.Env,
     lstm: bool,
-) -> __PPOModuleConfig:
+) -> PPOModuleConfig:
     """Get a PPOModuleConfig that we would expect from the catalog otherwise.
 
     Args:
@@ -51,8 +53,6 @@ def get_expected_model_config(
             batch_first=True,
             num_layers=1,
             output_dim=32,
-            input_key=SampleBatch.OBS,
-            output_key=shared_encoder_kh.create(BaseModelIOKeys.OUT),
         )
     else:
         shared_encoder_config = FCEncoderConfig(
@@ -78,7 +78,7 @@ def get_expected_model_config(
     else:
         pi_config.output_dim = env.action_space.shape[0] * 2
 
-    return __PPOModuleConfig(
+    return PPOModuleConfig(
         observation_space=env.observation_space,
         action_space=env.action_space,
         shared_encoder_config=shared_encoder_config,
@@ -217,45 +217,33 @@ class TestPPO(unittest.TestCase):
                 initial_state = state_in
             while tstep < 10:
                 if lstm:
-                    state_in = module.get_initial_state()
-                    state_in = tree.map_structure(
-                        lambda x: x[None], convert_to_torch_tensor(state_in)
-                    )
-                    initial_state = state_in
-                while tstep < 10:
-                    if lstm:
-                        input_batch = {
-                            SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
-                            STATE_IN: state_in,
-                            SampleBatch.SEQ_LENS: np.array([1]),
-                        }
-                    else:
-                        input_batch = {
-                            SampleBatch.OBS: convert_to_torch_tensor(obs)[None]
-                        }
-                    fwd_out = module.forward_exploration(input_batch)
-                    action = convert_to_numpy(
-                        fwd_out["action_dist"].sample().squeeze(0)
-                    )
-                    new_obs, reward, terminated, truncated, _ = env.step(action)
-                    output_batch = {
-                        SampleBatch.OBS: obs,
-                        SampleBatch.NEXT_OBS: new_obs,
-                        SampleBatch.ACTIONS: action,
-                        SampleBatch.REWARDS: np.array(reward),
-                        SampleBatch.TERMINATEDS: np.array(terminated),
-                        SampleBatch.TRUNCATEDS: np.array(truncated),
-                    }
-                    if lstm:
-                        assert STATE_OUT in fwd_out
-                        state_in = fwd_out[STATE_OUT]
-                    batches.append(output_batch)
-                    obs = new_obs
-                    tstep += 1
+                    input_batch = self.get_input_batch_from_obs(fw, obs)
+                    input_batch[STATE_IN] = state_in
+                    input_batch[SampleBatch.SEQ_LENS] = np.array([1])
+                else:
+                    input_batch = self.get_input_batch_from_obs(fw, obs)
+                fwd_out = module.forward_exploration(input_batch)
+                action = convert_to_numpy(fwd_out["action_dist"].sample()[0])
+                new_obs, reward, terminated, truncated, _ = env.step(action)
+                output_batch = {
+                    SampleBatch.OBS: obs,
+                    SampleBatch.NEXT_OBS: new_obs,
+                    SampleBatch.ACTIONS: action,
+                    SampleBatch.REWARDS: np.array(reward),
+                    SampleBatch.TERMINATEDS: np.array(terminated),
+                    SampleBatch.TRUNCATEDS: np.array(truncated),
+                }
+                if lstm:
+                    assert STATE_OUT in fwd_out
+                    state_in = fwd_out[STATE_OUT]
+                batches.append(output_batch)
+                obs = new_obs
+                tstep += 1
 
-                # convert the list of dicts to dict of lists
-                batch = tree.map_structure(lambda *x: list(x), *batches)
-                # convert dict of lists to dict of tensors
+            # convert the list of dicts to dict of lists
+            batch = tree.map_structure(lambda *x: np.array(x), *batches)
+            # convert dict of lists to dict of tensors
+            if fw == "torch":
                 fwd_in = {
                     k: convert_to_torch_tensor(np.array(v)) for k, v in batch.items()
                 }
@@ -264,12 +252,12 @@ class TestPPO(unittest.TestCase):
                     fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
 
                 # forward train
-                # before training make sure module is on the right device and in
-                # training mode
+                # before training make sure module is on the right device
+                # and in training mode
                 module.to("cpu")
                 module.train()
                 fwd_out = module.forward_train(fwd_in)
-                loss = get_ppo_loss(fwd_in, fwd_out)
+                loss = dummy_torch_ppo_loss(fwd_in, fwd_out)
                 loss.backward()
 
                 # check that all neural net parameters have gradients

@@ -15,7 +15,7 @@ from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 import gymnasium as gym
 
-from ray.rllib.models.experimental.model_configs import FCConfig
+from ray.rllib.models.experimental.configs import FCConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 
 from ray.util.debug import log_once
@@ -473,6 +473,7 @@ class _deprecated_default_config(dict):
 DEFAULT_CONFIG = _deprecated_default_config()
 
 
+@ExperimentalAPI
 @dataclass
 class PPOModuleConfig(RLModuleConfig):
     """Configuration for the PPO RLModule.

@@ -5,8 +5,8 @@ import gymnasium as gym
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.experimental.base import STATE_OUT
-from ray.rllib.models.experimental.model_configs import FCConfig, FCEncoderConfig
-from ray.rllib.models.experimental.model_configs import (
+from ray.rllib.models.experimental.configs import FCConfig, FCEncoderConfig
+from ray.rllib.models.experimental.configs import (
     LSTMEncoderConfig,
 )
 from ray.rllib.models.experimental.torch.encoder import (

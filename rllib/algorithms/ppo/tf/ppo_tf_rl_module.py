@@ -3,7 +3,7 @@ from typing import Mapping, Any, List
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.experimental.model_configs import FCConfig, IdentityConfig
+from ray.rllib.models.experimental.configs import FCConfig, IdentityConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
