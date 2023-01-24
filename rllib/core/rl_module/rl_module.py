@@ -48,6 +48,23 @@ class SingleAgentRLModuleSpec:
             model_config=self.model_config,
         )
 
+@ExperimentalAPI
+@dataclass
+class RLModuleConfig:
+    """Configuration for the PPO module.
+    # TODO (Kourosh): Whether we need this or not really depends on how the catalog
+    # design end up being.
+    Attributes:
+        observation_space: The observation space of the environment.
+        action_space: The action space of the environment.
+        max_seq_len: Max seq len for training an RNN model.
+        (TODO (Kourosh) having max_seq_len here seems a bit unnatural, can we rethink
+        this design?)
+    """
+
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    max_seq_len: int = None
 
 @ExperimentalAPI
 class RLModule(abc.ABC):
