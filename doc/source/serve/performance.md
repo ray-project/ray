@@ -165,6 +165,6 @@ proper backpressure. You can increase the value in the deployment decorator; e.g
 (serve-performance-e2e-timeout)=
 ### Set an end-to-end request timeout
 
-By default, Serve lets client HTTP requests run to completion no matter how long they take. Slow requests could bottleneck the replica processing them while other requests wait in a queue. It's recommended that you set an end-to-end timeout, so slow requests can be terminated and retried at another replica.
+By default, Serve lets client HTTP requests run to completion no matter how long they take. However, slow requests could bottleneck the replica processing, blocking other requests that are waiting. It's recommended that you set an end-to-end timeout, so slow requests can be terminated and retried at another replica.
 
 You can set an end-to-end timeout for HTTP requests by setting the `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable. HTTP Proxies will wait for that many seconds before terminating an HTTP request and retrying it at another replica. This environment variable should be set on every node in your Ray cluster, and it cannot be updated during runtime.
