@@ -226,8 +226,8 @@ class GBDTTrainer(BaseTrainer):
             scaling_config_dataclass, self._ray_params_cls, self._default_ray_params
         )
 
-    def preprocess_datasets(self) -> None:
-        super().preprocess_datasets()
+    def preprocess_datasets(self, should_fit_preprocessor: bool = True) -> None:
+        super().preprocess_datasets(should_fit_preprocessor=should_fit_preprocessor)
 
         # XGBoost/LightGBM-Ray requires each dataset to have at least as many
         # blocks as there are workers.

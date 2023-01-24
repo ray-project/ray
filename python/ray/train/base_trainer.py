@@ -11,6 +11,7 @@ import ray.cloudpickle as pickle
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.checkpoint import Checkpoint
+from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
@@ -192,8 +193,10 @@ class BaseTrainer(abc.ABC):
         assert set(trainer.datasets.keys()) == set(datasets.keys())
         trainer.datasets = datasets
 
-        if preprocessor:
-            trainer.preprocessor = preprocessor
+        # If no preprocessor is re-specified, then it will be loaded from
+        # the latest checkpoint
+        trainer.preprocessor = preprocessor
+
         if scaling_config:
             trainer.scaling_config = scaling_config
 
@@ -327,7 +330,7 @@ class BaseTrainer(abc.ABC):
         """
         pass
 
-    def preprocess_datasets(self) -> None:
+    def preprocess_datasets(self, should_fit_preprocessor: bool = True) -> None:
         """Called during fit() to preprocess dataset attributes with preprocessor.
 
         .. note:: This method is run on a remote process.
@@ -349,7 +352,7 @@ class BaseTrainer(abc.ABC):
 
         if self.preprocessor:
             train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
-            if train_dataset:
+            if train_dataset and should_fit_preprocessor:
                 self.preprocessor.fit(train_dataset)
 
             # Execute dataset transformations serially for now.
@@ -445,18 +448,31 @@ class BaseTrainer(abc.ABC):
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
 
-        def train_func(config, checkpoint_dir=None):
+        def train_func(config):
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
 
-            if checkpoint_dir:
-                trainer.resume_from_checkpoint = Checkpoint.from_directory(
-                    checkpoint_dir
+            # Get the checkpoint from the Tune session, and use it to initialize
+            # the restored trainer
+            checkpoint = session.get_checkpoint()
+            loaded_preprocessor = False
+            if checkpoint:
+                trainer.resume_from_checkpoint = checkpoint
+                # Always use the checkpointed preprocessor when retrying on errors
+                # (configured by FailureConfig(max_failures)).
+                # On a restored the full experiment via Trainer.restore, only load the
+                # checkpointed preprocessor if the preprocessor is not re-specified.
+                should_load_from_checkpoint = (
+                    not trainer._restore_path or not trainer.preprocessor
                 )
+                if should_load_from_checkpoint:
+                    trainer.preprocessor = checkpoint.get_preprocessor()
+                    loaded_preprocessor = True
 
             trainer.setup()
-            trainer.preprocess_datasets()
+            # Don't re-fit the preprocessor if it's loaded from the checkpoint
+            trainer.preprocess_datasets(should_fit_preprocessor=not loaded_preprocessor)
             trainer.training_loop()
 
         # Change the name of the training function to match the name of the Trainer
