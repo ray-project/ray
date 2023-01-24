@@ -1,3 +1,4 @@
+import os
 import time
 import json
 import sys
@@ -12,6 +13,7 @@ from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
@@ -2211,6 +2213,58 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+def test_pg_worker_id_tasks(shutdown_only):
+    ray.init(num_cpus=1)
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    pg.wait()
+
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    class A:
+        def ready(self):
+            return os.getpid()
+
+    ray.get(
+        f.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    )
+
+    def verify():
+        tasks = list_tasks(detail=True)
+        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+        assert len(tasks) == 1
+        assert len(workers) == 1
+
+        assert tasks[0]["placement_group_id"] == pg.id.hex()
+        assert tasks[0]["worker_id"] == workers[0]["worker_id"]
+
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks(detail=True))
+
+    a = A.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote()
+    pid = ray.get(a.ready.remote())
+
+    def verify():
+        actors = list_actors(detail=True)
+        workers = list_workers(detail=True, filters=[("pid", "=", pid)])
+        assert len(actors) == 1
+        assert len(workers) == 1
+
+        assert actors[0]["placement_group_id"] == pg.id.hex()
+        return True
+
+    wait_for_condition(verify)
+    print(list_actors(detail=True))
+
+
 def test_parent_task_id(shutdown_only):
     """Test parent task id set up properly"""
     ray.init(num_cpus=2)
@@ -3252,7 +3306,6 @@ def test_core_state_api_usage_tags(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):
