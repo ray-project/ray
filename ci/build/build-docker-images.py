@@ -71,6 +71,12 @@ DEFAULT_PYTHON_VERSION = "py37"
 IMAGE_NAMES = list(DOCKER_HUB_DESCRIPTION.keys())
 
 
+def _with_suffix(tag: str, suffix: Optional[str] = None):
+    if suffix:
+        return tag + "-" + suffix
+    return tag
+
+
 def _get_branch():
     branch = os.environ.get("TRAVIS_BRANCH") or os.environ.get("BUILDKITE_BRANCH")
     if not branch:
@@ -213,8 +219,7 @@ def _build_docker_image(
     else:
         base_image = f"-{py_version}-{device_tag}"
 
-        if suffix:
-            base_image += "-" + suffix
+        base_image = _with_suffix(base_image, suffix=suffix)
 
     if image_name != "ray-worker-container":
         build_args["BASE_IMAGE"] = base_image
@@ -228,8 +233,7 @@ def _build_docker_image(
 
     tagged_name = f"rayproject/{image_name}:nightly-{py_version}-{device_tag}"
 
-    if suffix:
-        tagged_name += "-" + suffix
+    tagged_name = _with_suffix(tagged_name, suffix=suffix)
 
     for i in range(2):
         cleanup = DOCKER_CLIENT.containers.prune().get("SpaceReclaimed")
@@ -499,10 +503,7 @@ def push_and_tag_images(
                     )
                     continue
 
-                tag = f"nightly-{py_name}-{image_type}"
-
-                if suffix:
-                    tag += "-" + suffix
+                tag = _with_suffix(f"nightly-{py_name}-{image_type}", suffix=suffix)
 
                 tag_mapping[tag].append(tag)
 
@@ -546,40 +547,82 @@ def push_and_tag_images(
             )
             tag_mapping[old_tag].extend(new_tags)
 
+        print(f"These tags will be created for {image_name}: ", tag_mapping)
+
         # Sanity checking.
         for old_tag in tag_mapping.keys():
             if DEFAULT_PYTHON_VERSION in old_tag:
                 if "-cpu" in old_tag:
-                    assert "nightly-cpu" in tag_mapping[old_tag]
+                    assert (
+                        _with_suffix("nightly-cpu", suffix=suffix)
+                        in tag_mapping[old_tag]
+                    )
                     if "-deps" in image_name:
-                        assert "nightly" in tag_mapping[old_tag]
-                        assert f"{date_tag}-cpu" in tag_mapping[old_tag]
-                        assert f"{date_tag}" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix("nightly", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{date_tag}-cpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{date_tag}", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     elif image_name == "ray":
-                        assert "nightly" in tag_mapping[old_tag]
-                        assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
-                        assert f"{sha_tag}" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix("nightly", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{sha_tag}-cpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{sha_tag}", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     # For ray-ml, nightly should refer to the GPU image.
                     elif image_name == "ray-ml":
-                        assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix(f"{sha_tag}-cpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     else:
                         raise RuntimeError(f"Invalid image name: {image_name}")
 
                 elif ML_CUDA_VERSION in old_tag:
-                    assert "nightly-gpu" in tag_mapping[old_tag]
+                    assert (
+                        _with_suffix("nightly-gpu", suffix=suffix)
+                        in tag_mapping[old_tag]
+                    )
                     if "-deps" in image_name:
-                        assert f"{date_tag}-gpu" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix(f"{date_tag}-gpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     elif image_name == "ray":
-                        assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix(f"{sha_tag}-gpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     # For ray-ml, nightly should refer to the GPU image.
                     elif image_name == "ray-ml":
-                        assert "nightly" in tag_mapping[old_tag]
-                        assert f"{sha_tag}" in tag_mapping[old_tag]
-                        assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
+                        assert (
+                            _with_suffix("nightly", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{sha_tag}", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
+                        assert (
+                            _with_suffix(f"{sha_tag}-gpu", suffix=suffix)
+                            in tag_mapping[old_tag]
+                        )
                     else:
                         raise RuntimeError(f"Invalid image name: {image_name}")
-
-        print(f"These tags will be created for {image_name}: ", tag_mapping)
 
         # Tag and push all images.
         for old_tag in tag_mapping.keys():
