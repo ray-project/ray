@@ -2448,6 +2448,7 @@
 - name: serve_serve_micro_benchmark_k8s
   group: Serve tests
   working_dir: serve_tests
+  env: prod
 
   legacy:
     test_name: serve_micro_benchmark_k8s
@@ -2465,6 +2466,7 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_micro_benchmark.py
+    type: sdk_command
 
   alert: default
 
@@ -3856,6 +3858,7 @@
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
   working_dir: nightly_tests
+  env: prod
   legacy:
     test_name: dask_on_ray_1tb_sort
     test_suite: nightly_tests
@@ -3870,6 +3873,7 @@
     timeout: 7200
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions
       1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
+    type: sdk_command
 
     wait_for_nodes:
       num_nodes: 32
@@ -4208,6 +4212,7 @@
 - name: shuffle_data_loader
   group: data-tests
   working_dir: nightly_tests/dataset
+  env: prod
   legacy:
     test_name: shuffle_data_loader
     test_suite: dataset_test
@@ -4221,6 +4226,7 @@
   run:
     timeout: 1800
     script: python dataset_shuffle_data_loader.py
+    type: sdk_command
 
 - name: parquet_metadata_resolution
   group: data-tests
@@ -4245,6 +4251,7 @@
   group: data-tests
   working_dir: nightly_tests/dataset
   stable: false
+  env: prod
 
   frequency: nightly
   team: data
@@ -4257,6 +4264,7 @@
     script: python dataset_random_access.py
     wait_for_nodes:
       num_nodes: 15
+    type: sdk_command
 
 
 - name: pipelined_data_ingest_benchmark
@@ -4395,6 +4403,7 @@
 - name: pipelined_training_50_gb
   group: data-tests
   working_dir: nightly_tests/dataset
+  env: prod
   legacy:
     test_name: pipelined_training_50_gb
     test_suite: dataset_test
@@ -4410,11 +4419,13 @@
     script: python pipelined_training.py --epochs 1
     wait_for_nodes:
       num_nodes: 15
+    type: sdk_command
 
 
 - name: pipelined_ingestion_1500_gb
   group: data-tests
   working_dir: nightly_tests/dataset
+  env: prod
   legacy:
     test_name: pipelined_ingestion_1500_gb
     test_suite: dataset_test
@@ -4429,6 +4440,7 @@
     timeout: 9600
     script: python pipelined_training.py --epochs 2 --num-windows 5 --num-files 915
       --debug
+    type: sdk_command
 
     wait_for_nodes:
       num_nodes: 21
@@ -4622,6 +4634,7 @@
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
   group: data-tests
   working_dir: nightly_tests
+  env: prod
   legacy:
     test_name: chaos_pipelined_ingestion_1500_gb_15_windows
     test_suite: chaos_test
@@ -4639,6 +4652,7 @@
     prepare: ' python setup_chaos.py --node-kill-interval 300'
     script: python dataset/pipelined_training.py --epochs 1 --num-windows 15  --num-files
       915 --debug
+    type: sdk_command
 
 
 - name: chaos_dataset_shuffle_push_based_sort_1tb
@@ -4771,6 +4785,7 @@
 - name: aws_cluster_launcher
   group: cluster-launcher-test
   working_dir: cluster_tests
+  env: prod
   legacy:
     test_name: aws_cluster_launcher
     test_suite: cluster-launcher-test
@@ -4786,3 +4801,4 @@
   run:
     timeout: 1200
     script: bash test_aws_cluster_launcher.sh
+    type: sdk_command
