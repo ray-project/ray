@@ -9,7 +9,7 @@ from ray.rllib.models.specs.checker import (
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
-from rllib.models.experimental.base import ModelConfig
+from ray.rllib.models.experimental.base import ModelConfig
 
 torch, nn = try_import_torch()
 
