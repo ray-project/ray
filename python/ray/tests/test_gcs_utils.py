@@ -239,14 +239,14 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     redis_addr = os.environ["RAY_REDIS_ADDRESS"]
     host, port = redis_addr.split(":")
     if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
-        cli = redis.RedisCluster(host, port)
+        cli = redis.RedisCluster(host, int(port))
     else:
-        cli = redis.Redis(host, port)
+        cli = redis.Redis(host, int(port))
 
     assert set(cli.keys()) == {b"c1", b"c2"}
-    gcs_utils.cleanup_redis_storage(host, port, "c1")
+    gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
     assert set(cli.keys()) == {b"c2"}
-    gcs_utils.cleanup_redis_storage(host, port, "c2")
+    gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c2")
     assert len(cli.keys()) == 0
 
 

@@ -109,7 +109,7 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-
+from ray.includes.global_state_accessor cimport RedisDelKeySync
 from ray.includes.optional cimport (
     optional
 )
@@ -2779,3 +2779,6 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     py_callback = <object>user_callback
     py_callback(result)
     cpython.Py_DECREF(py_callback)
+
+def del_key_from_storage(host, port, password, use_ssl, key):
+    return RedisDelKeySync(host, port, password, use_ssl, key)
