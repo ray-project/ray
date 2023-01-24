@@ -2,10 +2,13 @@ import gym
 import unittest
 
 import ray
+
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_trainer.trainer_runner_config import TrainerRunnerConfig
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core.testing.utils import get_module_spec
 
 
 class TestAlgorithmConfig(unittest.TestCase):
@@ -24,12 +27,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         config = (
             TrainerRunnerConfig()
-            .module(
-                module_class=DiscreteBCTFModule,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
-                model_config={"hidden_dim": 32},
-            )
+            .module(get_module_spec("tf", env))
             .trainer(
                 trainer_class=BCTfRLTrainer,
             )
@@ -50,7 +48,9 @@ class TestAlgorithmConfig(unittest.TestCase):
         )
         config.freeze()
         runner_config = config.get_trainer_runner_config(
-            env.observation_space, env.action_space
+            SingleAgentRLModuleSpec(
+                observation_space=env.observation_space, action_space=env.action_space
+            )
         )
         runner_config.build()
 
