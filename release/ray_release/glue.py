@@ -76,7 +76,7 @@ command_runner_to_file_manager = {
 }
 
 
-DEFAULT_RUN_TYPE = "anyscale_job"
+DEFAULT_RUN_TYPE = "sdk_command"
 
 
 def _get_extra_tags_from_env() -> dict:
