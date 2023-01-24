@@ -494,6 +494,15 @@ class Algorithm(Trainable):
         self._record_usage(self.config)
 
         self.callbacks = self.config["callbacks"]()
+        log_level = self.config.get("log_level")
+        if log_level in ["WARN", "ERROR"]:
+            logger.info(
+                "Current log_level is {}. For more information, "
+                "set 'log_level': 'INFO' / 'DEBUG' or use the -v and "
+                "-vv flags.".format(log_level)
+            )
+        if self.config.get("log_level"):
+            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # Create local replay buffer if necessary.
         self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
@@ -670,6 +679,9 @@ class Algorithm(Trainable):
                     "either a class path or a sub-class of ray.rllib."
                     "offline.offline_evaluator::OfflineEvaluator"
                 )
+            # TODO (Rohan138): Refactor this and remove deprecated methods
+            # Need to add back method_type in case Algorithm is restored from checkpoint
+            method_config["type"] = method_type
 
         self.trainer_runner = None
         if self.config._enable_rl_trainer_api:
