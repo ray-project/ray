@@ -876,7 +876,3 @@ class ExperimentAnalysis:
 
         state["trials"] = [make_stub_if_needed(t) for t in state["trials"]]
         return state
-
-
-def _decode_checkpoint_from_experiment_state(cp: Union[str, dict]) -> dict:
-    return json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp
