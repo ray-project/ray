@@ -6,7 +6,7 @@ impala-breakoutnoframeskip-v5:
         episode_reward_mean: 200.0
         timesteps_total: 6000000
     stop:
-        time_total_s: 1800
+        time_total_s: 2400
     config:
         # Make analogous to old v4 + NoFrameskip.
         env_config:
@@ -18,8 +18,5 @@ impala-breakoutnoframeskip-v5:
         num_workers: 10
         num_envs_per_worker: 5
         clip_rewards: True
-        lr_schedule: [
-            [0, 0.0005],
-            [20000000, 0.000000000001],
-        ]
+        lr: 0.0005
         num_gpus: 1
