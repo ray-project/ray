@@ -85,7 +85,7 @@ RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/rele
 
 COPY startup.sh /home/ray/startup.sh
 COPY docker-healthcheck /usr/local/bin/
-RUN sudo chmod +x /home/ray/startup.sh && \
+RUN sudo chmod +x /home/ray/startup.sh \
 && echo -e "net.ipv6.conf.all.disable_ipv6=1\n" | sudo tee /etc/sysctl.conf \
 && echo -e "net.ipv6.conf.default.disable_ipv6=1\n" | sudo tee /etc/sysctl.conf \
 && echo -e "net.ipv6.conf.lo.disable_ipv6=1\n" | sudo tee /etc/sysctl.conf
