@@ -86,7 +86,7 @@ class LSTMEncoderConfig(ModelConfig):
     @_framework_implemented(tf=False)
     def build(self, framework: str = "torch"):
         if framework == "torch":
-            from rllib.models.experimental.torch.encoder import LSTMEncoder
+            from ray.rllib.models.experimental.torch.encoder import LSTMEncoder
 
         return LSTMEncoder(self)
 
@@ -98,8 +98,8 @@ class IdentityConfig(ModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch"):
         if framework == "torch":
-            from rllib.models.experimental.torch.encoder import IdentityEncoder
+            from ray.rllib.models.experimental.torch.encoder import IdentityEncoder
         else:
-            from rllib.models.experimental.tf.encoder import IdentityEncoder
+            from ray.rllib.models.experimental.tf.encoder import IdentityEncoder
 
         return IdentityEncoder(self)

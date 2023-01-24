@@ -3,7 +3,7 @@ from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.utils import try_import_tf
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.models.tf.primitives import FCNet, TFModel
-from rllib.models.experimental.base import ModelConfig, ForwardOutputType
+from ray.rllib.models.experimental.base import ModelConfig, ForwardOutputType
 
 tf1, tf, tfv = try_import_tf()
 
