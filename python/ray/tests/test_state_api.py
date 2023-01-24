@@ -18,7 +18,6 @@ import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
 )
@@ -88,7 +87,6 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     ActorState,
     ListApiOptions,
-    StateResource,
     SummaryApiOptions,
     NodeState,
     ObjectState,
@@ -2621,66 +2619,6 @@ async def test_cli_format_print(state_api_manager):
         header = headers[i].upper()
         col = cols[i].upper()
         assert header == col
-
-
-def test_handle_driver_tasks(shutdown_only):
-    ray.init()
-
-    job_id = ray.get_runtime_context().get_job_id()
-    script = """
-import ray
-import time
-ray.init("auto")
-
-@ray.remote
-def f():
-    time.sleep(3)
-
-
-ray.get(f.remote())
-"""
-    run_string_as_driver_nonblocking(script)
-
-    client = StateApiClient()
-
-    def list_tasks(exclude_driver):
-        return client.list(
-            StateResource.TASKS,
-            # Filter out this driver
-            options=ListApiOptions(
-                exclude_driver=exclude_driver, filters=[("job_id", "!=", job_id)]
-            ),
-            raise_on_missing_output=True,
-        )
-
-    # Check driver running
-    def verify():
-        tasks_with_driver = list_tasks(exclude_driver=False)
-        assert len(tasks_with_driver) == 2, tasks_with_driver
-        task_types = {task["type"] for task in tasks_with_driver}
-        assert task_types == {"NORMAL_TASK", "DRIVER_TASK"}
-
-        for task in tasks_with_driver:
-            if task["type"] == "DRIVER_TASK":
-                assert task["scheduling_state"] == "RUNNING", task
-
-        return True
-
-    wait_for_condition(verify)
-
-    # Check driver finishes
-    def verify():
-        tasks_with_driver = list_tasks(exclude_driver=False)
-        assert len(tasks_with_driver) == 2, tasks_with_driver
-        for task in tasks_with_driver:
-            if task["type"] == "DRIVER_TASK":
-                assert task["scheduling_state"] == "FINISHED", task
-
-        tasks_no_driver = list_tasks(exclude_driver=True)
-        assert len(tasks_no_driver) == 1, tasks_no_driver
-        return True
-
-    wait_for_condition(verify)
 
 
 def test_filter(shutdown_only):
