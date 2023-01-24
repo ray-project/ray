@@ -66,7 +66,10 @@ def main(test_collection_file: Optional[str] = None):
 
         for module in sys.modules.values():
             if module.__name__.startswith("ray_release"):
-                importlib.reload(module)
+                try:
+                    importlib.reload(module)
+                except:
+                    pass
 
         env = {
             "RAY_TEST_REPO": repo,
