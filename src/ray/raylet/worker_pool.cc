@@ -623,12 +623,18 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
 
 Process WorkerPool::_experimental_worker_proc_forkserver() {
     RAY_LOG(DEBUG) << "_experimental_worker_proc_forkserver called";
-    experimental_fork_server_->CreateProcess();
+    // TODO guard by mutex?
+    experimental_fork_server_->CreateProcess(*io_service_);
     return Process();
 }
 
-void ExperimentalForkServer::CreateProcess() {
+void ExperimentalForkServer::CreateProcess(instrumented_io_context &io_service) {
     RAY_LOG(DEBUG) << "ExperimentalForkServer::CreateProcess called";
+    using boost::asio::local::stream_protocol;
+
+    stream_protocol::socket s(io_service);
+    s.connect("/tmp/socket_test.s");
+
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {

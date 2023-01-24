@@ -148,7 +148,7 @@ class IOWorkerPoolInterface {
 
 class ExperimentalForkServer {
     public:
-        void CreateProcess();
+        void CreateProcess(instrumented_io_context &io_service);
     private:
 };
 
