@@ -22,7 +22,7 @@ supersuit==3.7.0; python_version >= '3.7'
 minigrid==2.1.0
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
-tensorflow_estimator==2.10.1
+tensorflow_estimator==2.9.0
 # DeepMind's OpenSpiel
 open-spiel==1.2
 
