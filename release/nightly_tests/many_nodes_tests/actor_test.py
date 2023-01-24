@@ -30,15 +30,31 @@ def parse_script_args():
     return parser.parse_known_args()
 
 
+def scale_and_wait_until_cluster_ready(total_cpus):
+    import math
+    total_cpus = int(math.floor(total_cpus))
+
+    ray.autoscaler.sdk.request_resources(num_cpus=total_cpus)
+    # Wait until the cluster is ready
+    # ray.nodes()[0]['Resources']['CPU']
+    curr_cpus = 0
+    while curr_cpus < total_cpus:
+        curr_cpus = sum(node.get("Resources", {}).get("CPU", 0) for node in ray.nodes() if node["Alive"])
+        print(f"Waiting for the cluster to be ready: {curr_cpus}/{total_cpus}")
+        sleep(5)
+
+
 def main():
     args, unknown = parse_script_args()
 
     ray.init(address="auto")
-
+    total_cpus = args.cpus_per_actor * args.total_actors
+    scale_and_wait_until_cluster_ready(total_cpus)
     actor_launch_start = perf_counter()
     actors = test_max_actors_launch(args.cpus_per_actor, args.total_actors)
     actor_launch_end = perf_counter()
     actor_launch_time = actor_launch_end - actor_launch_start
+
     if args.fail:
         sleep(10)
         return
