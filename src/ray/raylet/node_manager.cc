@@ -1457,10 +1457,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   }
   // Publish the worker failure.
   auto worker_failure_data_ptr =
-      gcs::CreateWorkerFailureData(self_node_id_,
-                                   worker->WorkerId(),
-                                   worker->IpAddress(),
-                                   worker->Port(),
+      gcs::CreateWorkerFailureData(worker->WorkerId(),
                                    time(nullptr),
                                    disconnect_type,
                                    disconnect_detail,

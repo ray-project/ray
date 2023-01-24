@@ -469,7 +469,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
       };
 
   task_finisher_.MarkTaskWaitingForExecution(task_id,
-                                             NodeID::FromBinary(addr.raylet_id()));
+                                             NodeID::FromBinary(addr.raylet_id()),
+                                             WorkerID::FromBinary(addr.worker_id()));
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 

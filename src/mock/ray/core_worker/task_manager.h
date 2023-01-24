@@ -59,7 +59,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
   MOCK_METHOD(void, MarkDependenciesResolved, (const TaskID &task_id), (override));
   MOCK_METHOD(void,
               MarkTaskWaitingForExecution,
-              (const TaskID &task_id, const NodeID &node_id),
+              (const TaskID &task_id, const NodeID &node_id, const WorkerID &worker_id),
               (override));
 };
 
