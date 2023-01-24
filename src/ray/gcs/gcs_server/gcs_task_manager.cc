@@ -35,8 +35,9 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
   // probably have to do if we are supporting pagination in the future.
   // As for now, this will make sure data is returned w.r.t insertion order, so we could
   // return the more recent entries when limit applies.
-  RAY_CHECK(next_idx_to_overwrite_ < task_events_.size())
-      << "next_idx_to_overwrite should be in bound.";
+  RAY_CHECK(next_idx_to_overwrite_ == 0 || next_idx_to_overwrite_ < task_events_.size())
+      << "next_idx_to_overwrite=" << next_idx_to_overwrite_
+      << " should be in bound. (size=" << task_events_.size() << ")";
   // Copy from the next insertion index
   std::copy(task_events_.begin() + next_idx_to_overwrite_,
             task_events_.end(),
