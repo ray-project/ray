@@ -1,9 +1,8 @@
-import time
-
 import pytest
 
 import ray
 from ray.air import Checkpoint, RunConfig, ScalingConfig, session
+from ray.train.base_trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
@@ -41,10 +40,8 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
         scaling_config=ScalingConfig(num_workers=1),
         run_config=RunConfig(name="data_parallel_restore_test", local_dir=tmpdir),
     )
-    try:
+    with pytest.raises(TrainingFailedError):
         result = trainer.fit()
-    except:
-        pass
 
     trainer = DataParallelTrainer.restore(
         str(tmpdir / "data_parallel_restore_test"),
