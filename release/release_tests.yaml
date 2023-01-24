@@ -327,6 +327,8 @@
     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
     type: job
 
+    wait_for_nodes:
+        num_nodes: 4
 
   alert: default
 
@@ -3890,6 +3892,27 @@
       num_nodes: 251
 
 
+#- name: many_nodes_multi_master_test
+#  group: core-daily-test
+#  working_dir: nightly_tests
+#  legacy:
+#    test_name: many_nodes_multi_master_test
+#    test_suite: nightly_tests
+#
+#  frequency: nightly-3x
+#  team: core
+#  cluster:
+#    cluster_env: many_nodes_tests/app_config.yaml
+#    cluster_compute: many_nodes_tests/compute_config.yaml
+#
+#  run:
+#    timeout: 7200
+#    script: python many_nodes_tests/multi_master_test.py
+#    wait_for_nodes:
+#      num_nodes: 251
+#
+#    type: sdk_command
+#    file_manager: sdk
 
 - name: pg_autoscaling_regression_test
   group: core-daily-test
@@ -4227,14 +4250,13 @@
   frequency: nightly
   team: data
   cluster:
-    cluster_env: pipelined_training_app.yaml
-    cluster_compute: pipelined_training_compute.yaml
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    timeout: 1200
+    # Expect the test to finish around 40 seconds.
+    timeout: 80
     script: python parquet_metadata_resolution.py --num-files 915
-    wait_for_nodes:
-      num_nodes: 15
 
 
 - name: dataset_random_access
@@ -4288,7 +4310,7 @@
 
 
 - name: read_parquet_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4303,7 +4325,6 @@
     script: python read_parquet_benchmark.py
 
     type: sdk_command
-    file_manager: sdk
 
 - name: read_images_benchmark_single_node
   group: data-tests
@@ -4354,8 +4375,25 @@
 
     type: sdk_command
 
+- name: iter_tensor_batches_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py
+
+    type: sdk_command
+
 - name: iter_batches_benchmark_single_node
-  group: core-dataset-tests
+  group: data-tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
@@ -4412,45 +4450,6 @@
     wait_for_nodes:
       num_nodes: 21
 
-
-- name: datasets_preprocess_ingest
-  group: data-tests
-  working_dir: nightly_tests/dataset
-  legacy:
-    test_name: datasets_preprocess_ingest
-    test_suite: dataset_test
-
-  frequency: nightly
-  team: data
-  cluster:
-    cluster_env: ray_sgd_training_app.yaml
-    cluster_compute: ray_sgd_training_compute_no_gpu.yaml
-
-  run:
-    timeout: 7200
-    script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu
-      --large-dataset --debug
-
-    wait_for_nodes:
-      num_nodes: 17
-
-
-- name: datasets_ingest_400G
-  group: data-tests
-  working_dir: nightly_tests/dataset
-  legacy:
-    test_name: datasets_ingest_400G
-    test_suite: dataset_test
-
-  frequency: nightly
-  team: data
-  cluster:
-    cluster_env: ray_sgd_training_app.yaml
-    cluster_compute: dataset_ingest_400G_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python ray_sgd_runner.py --address auto --use-gpu --num-epochs 1
 
 - name: dataset_shuffle_random_shuffle_1tb
   group: data-tests

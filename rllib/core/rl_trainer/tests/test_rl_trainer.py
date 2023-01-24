@@ -12,10 +12,8 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 
 
-def get_trainer(scaling_config=None, distributed: bool = False) -> RLTrainer:
+def get_trainer(distributed=False) -> RLTrainer:
     env = gym.make("CartPole-v1")
-    scaling_config = {} or scaling_config
-    distributed = False
 
     # TODO: Another way to make RLTrainer would be to construct the module first
     # and then apply trainer to it. We should also allow that. In fact if we figure
@@ -29,10 +27,8 @@ def get_trainer(scaling_config=None, distributed: bool = False) -> RLTrainer:
             "action_space": env.action_space,
             "model_config": {"hidden_dim": 32},
         },
-        scaling_config=scaling_config,
         optimizer_config={"lr": 1e-3},
         distributed=distributed,
-        in_test=True,
     )
 
     trainer.build()
