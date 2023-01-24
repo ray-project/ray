@@ -63,9 +63,5 @@ timeout "$timeout_time" python prometheus_metrics.py "$start_time" --path "$METR
 # 5. Upload metrics.json to s3
 aws s3 cp "$METRICS_OUTPUT_JSON" "$metrics_s3_path" --acl bucket-owner-full-control
 
-# 6. Use job outputs for return code
-pip install -U anyscale
-python -c "import anyscale.job;anyscale.job.output({'return_code':$return_code,'exit_return_code':$exit_return_code})"
-
 echo "$exit_return_code"
 exit "$exit_return_code"
