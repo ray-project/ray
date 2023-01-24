@@ -67,7 +67,7 @@ DEFAULT_USE_POLARS = False
 
 # Whether to use the new executor backend.
 DEFAULT_NEW_EXECUTION_BACKEND = bool(
-    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "1"))
+    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "0"))
 )
 
 # Whether to use the streaming executor. This only has an effect if the new execution
