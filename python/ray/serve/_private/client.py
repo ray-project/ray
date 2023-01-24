@@ -12,6 +12,7 @@ from ray.serve._private.common import (
     DeploymentStatus,
     StatusOverview,
     ApplicationStatus,
+    DeploymentStatusInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve._private.constants import (
@@ -23,6 +24,9 @@ from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfo as DeploymentStatusInfoProto,
+)
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.schema import ServeApplicationSchema
 
@@ -159,13 +163,17 @@ class ServeControllerClient:
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
 
-            status = ray.get(self._controller.get_deployment_status.remote(name))
+            status_bytes = ray.get(self._controller.get_deployment_status.remote(name))
 
-            if status is None:
+            if status_bytes is None:
                 raise RuntimeError(
                     f"Waiting for deployment {name} to be HEALTHY, "
                     "but deployment doesn't exist."
                 )
+
+            status = DeploymentStatusInfo.from_proto(
+                DeploymentStatusInfoProto.FromString(status_bytes)
+            )
 
             if status.status == DeploymentStatus.HEALTHY:
                 break
@@ -194,9 +202,14 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            curr_status = ray.get(self._controller.get_deployment_status.remote(name))
-            if curr_status is None:
+            curr_status_bytes = ray.get(
+                self._controller.get_deployment_status.remote(name)
+            )
+            if curr_status_bytes is None:
                 break
+            curr_status = DeploymentStatusInfo.from_proto(
+                DeploymentStatusInfoProto.FromString(curr_status_bytes)
+            )
             logger.debug(
                 f"Waiting for {name} to be deleted, current status: {curr_status}."
             )

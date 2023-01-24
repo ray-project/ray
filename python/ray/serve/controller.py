@@ -23,7 +23,6 @@ from ray.serve._private.common import (
     NodeId,
     RunningReplicaInfo,
     StatusOverview,
-    DeploymentStatusInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve._private.constants import (
@@ -617,12 +616,12 @@ class ServeController:
 
             return config
 
-    def get_deployment_status(self, name: str) -> Union[None, DeploymentStatusInfo]:
+    def get_deployment_status(self, name: str) -> Union[None, bytes]:
         """Get deployment status by deployment name"""
         status = self.deployment_state_manager.get_deployment_statuses([name])
         if not status:
             return None
-        return status[0]
+        return status[0].to_proto().SerializeToString()
 
     def delete_apps(self, names: Iterable[str]):
         """Delete applications based on names
