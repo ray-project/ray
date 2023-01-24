@@ -193,15 +193,13 @@ class TorchRLTrainer(RLTrainer):
         self,
         *,
         module_id: ModuleID,
-        module_cls: Type[RLModule],
-        module_kwargs: Mapping[str, Any],
+        module_spec: SingleAgentRLModuleSpec,
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         super().add_module(
             module_id=module_id,
-            module_cls=module_cls,
-            module_kwargs=module_kwargs,
+            module_spec=module_spec,
             set_optimizer_fn=set_optimizer_fn,
             optimizer_cls=optimizer_cls,
         )

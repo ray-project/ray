@@ -435,8 +435,7 @@ class RLTrainer:
         self,
         *,
         module_id: ModuleID,
-        module_cls: Type[RLModule],
-        module_kwargs: Mapping[str, Any],
+        module_spec: SingleAgentRLModuleSpec,
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
@@ -455,7 +454,7 @@ class RLTrainer:
                 should be provided.
         """
         self.__check_if_build_called()
-        module = module_cls.from_model_config(**module_kwargs)
+        module = module_spec.build()
 
         # construct a default set_optimizer_fn if not provided
         if set_optimizer_fn is None:

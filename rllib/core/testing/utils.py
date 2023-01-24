@@ -121,11 +121,6 @@ def add_module_to_runner_or_trainer(
 ):
     runner_or_trainer.add_module(
         module_id=module_id,
-        module_cls=get_module_class(framework),
-        module_kwargs={
-            "observation_space": env.observation_space,
-            "action_space": env.action_space,
-            "model_config": {"hidden_dim": 32},
-        },
+        module_spec=get_module_spec(framework, env, is_multi_agent=False),
         optimizer_cls=get_optimizer_default_class(framework),
     )

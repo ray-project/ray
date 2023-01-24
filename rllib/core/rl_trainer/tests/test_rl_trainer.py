@@ -127,13 +127,12 @@ class TestRLTrainer(unittest.TestCase):
 
         trainer.add_module(
             module_id="test",
-            module_cls=DiscreteBCTFModule,
-            module_kwargs={
-                "observation_space": env.observation_space,
-                "action_space": env.action_space,
-                # the hidden size is different than the default module
-                "model_config": {"hidden_dim": 16},
-            },
+            module_spec=SingleAgentRLModuleSpec(
+                module_class=DiscreteBCTFModule,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config={"hidden_dim": 16},
+            ),
             set_optimizer_fn=set_optimizer_fn,
         )
 
