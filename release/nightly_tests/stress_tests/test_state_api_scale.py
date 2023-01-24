@@ -1,7 +1,7 @@
 import click
 import json
 import ray
-from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME
+from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME, LOG_PREFIX_JOB_ID
 from ray._private.state_api_test_utils import (
     STATE_LIST_LIMIT,
     StateAPIMetric,
@@ -251,7 +251,8 @@ def test_large_log_file(log_file_size_byte: int):
     class LogActor:
         def write_log(self, log_file_size_byte: int):
             ctx = hashlib.md5()
-            prefix = f"{LOG_PREFIX_ACTOR_NAME}LogActor\n"
+            job_id = ray.get_runtime_context().get_job_id()
+            prefix = f"{LOG_PREFIX_JOB_ID}{job_id}\n{LOG_PREFIX_ACTOR_NAME}LogActor\n"
             ctx.update(prefix.encode())
             while log_file_size_byte > 0:
                 n = min(log_file_size_byte, 4 * MiB)

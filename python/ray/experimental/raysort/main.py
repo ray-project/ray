@@ -447,6 +447,7 @@ def init(args: Args):
         ray.init(resources={"worker": os.cpu_count()})
     else:
         ray.init(address=args.ray_address)
+    logging_utils.init()
     logging.info(args)
     os.makedirs(constants.WORK_DIR, exist_ok=True)
     resources = ray.cluster_resources()
