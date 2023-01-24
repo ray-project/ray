@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass
 import gymnasium as gym
-from typing import Mapping, Any, TYPE_CHECKING, Union
+from typing import Mapping, Any, TYPE_CHECKING, Union, Optional, Type, Dict
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -26,23 +26,27 @@ ModuleID = str
 
 @ExperimentalAPI
 @dataclass
-class RLModuleConfig:
-    """Configuration for the PPO module.
+class SingleAgentRLModuleSpec:
+    """A utility spec class to make it constructing RLModules (in single-agent case) easier.
 
-    # TODO (Kourosh): Whether we need this or not really depends on how the catalog
-    # design end up being.
-
-    Attributes:
-        observation_space: The observation space of the environment.
-        action_space: The action space of the environment.
-        max_seq_len: Max seq len for training an RNN model.
-        (TODO (Kourosh) having max_seq_len here seems a bit unnatural, can we rethink
-        this design?)
+    Args:
+        module_class: ...
+        observation_space: ...
+        action_space: ...
+        model_config: ...
     """
 
-    observation_space: gym.Space = None
-    action_space: gym.Space = None
-    max_seq_len: int = None
+    module_class: Optional[Type["RLModule"]] = None
+    observation_space: Optional["gym.Space"] = None
+    action_space: Optional["gym.Space"] = None
+    model_config: Optional[Dict[str, Any]] = None
+
+    def build(self) -> "RLModule":
+        return self.module_class.from_model_config(
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            model_config=self.model_config,
+        )
 
 
 @ExperimentalAPI

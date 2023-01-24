@@ -5,6 +5,7 @@ import numpy as np
 
 import ray
 
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchRLTrainer
@@ -26,12 +27,12 @@ def _get_trainer(scaling_config=None, distributed: bool = False) -> RLTrainer:
     # and internally it will serialize and deserialize the module for distributed
     # construction.
     trainer = BCTorchRLTrainer(
-        module_class=DiscreteBCTorchModule,
-        module_kwargs={
-            "observation_space": env.observation_space,
-            "action_space": env.action_space,
-            "model_config": {"hidden_dim": 32},
-        },
+        module_spec=SingleAgentRLModuleSpec(
+            module_class=DiscreteBCTorchModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"hidden_dim": 32},
+        ),
         scaling_config=scaling_config,
         optimizer_config={"lr": 1e-3},
         distributed=distributed,

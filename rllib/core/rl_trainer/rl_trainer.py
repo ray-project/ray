@@ -18,8 +18,15 @@ from typing import (
 )
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.rl_module import (
+    RLModule,
+    ModuleID,
+    SingleAgentRLModuleSpec,
+)
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -105,9 +112,12 @@ class RLTrainer:
 
     def __init__(
         self,
-        module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
-        module_kwargs: Mapping[str, Any],
-        optimizer_config: Mapping[str, Any],
+        *,
+        module_spec: Optional[
+            Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
+        ] = None,
+        module: Optional[RLModule] = None,
+        optimizer_config: Mapping[str, Any] = None,
         distributed: bool = False,
         scaling_config: Optional["ScalingConfig"] = None,
         algorithm_config: Optional["AlgorithmConfig"] = None,
@@ -117,8 +127,18 @@ class RLTrainer:
         # understand it. If we can find a better way to make subset of the config
         # available to the trainer, that would be great.
         # TODO (Kourosh): convert optimizer configs to dataclasses
-        self.module_class = module_class
-        self.module_kwargs = module_kwargs
+        if module_spec is not None and module is not None:
+            raise ValueError(
+                "Only one of module spec or module can be provided to RLTrainer."
+            )
+
+        if module_spec is None and module is None:
+            raise ValueError(
+                "Either module_spec or module should be provided to RLTrainer."
+            )
+
+        self.module_spec = module_spec
+        self.module_obj = module
         self.optimizer_config = optimizer_config
         self.distributed = distributed
         self.scaling_config = scaling_config
@@ -420,7 +440,7 @@ class RLTrainer:
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
-        """Add a module to the trainer.
+        """Add a module to the underlying MultiAgentRLModule and the trainer.
 
         Args:
             module_id: The id of the module to add.
@@ -492,19 +512,11 @@ class RLTrainer:
         Returns:
             The constructed module.
         """
-
-        if issubclass(self.module_class, MultiAgentRLModule):
-            module = self.module_class.from_multi_agent_config(**self.module_kwargs)
-        elif issubclass(self.module_class, RLModule):
-            module = self.module_class.from_model_config(
-                **self.module_kwargs
-            ).as_multi_agent()
+        if self.module_obj is not None:
+            module = self.module_obj
         else:
-            raise ValueError(
-                f"Module class {self.module_class} is not a subclass of "
-                f"RLModule or MultiAgentRLModule."
-            )
-
+            module = self.module_spec.build()
+        module = module.as_multi_agent()
         return module
 
     def build(self) -> None:

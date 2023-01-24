@@ -14,14 +14,21 @@ from typing import (
 
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
-    MultiAgentRLModule,
     ParamOptimizerPairs,
     ParamRef,
     Optimizer,
     ParamType,
     ParamDictType,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
+from ray.rllib.core.rl_module.rl_module import (
+    RLModule,
+    ModuleID,
+    SingleAgentRLModuleSpec,
+)
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -86,8 +93,11 @@ class TfRLTrainer(RLTrainer):
 
     def __init__(
         self,
-        module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
-        module_kwargs: Mapping[str, Any],
+        *,
+        module_spec: Optional[
+            Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
+        ] = None,
+        module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
         enable_tf_function: bool = True,
@@ -95,8 +105,8 @@ class TfRLTrainer(RLTrainer):
         algorithm_config: Optional["AlgorithmConfig"] = None,
     ):
         super().__init__(
-            module_class=module_class,
-            module_kwargs=module_kwargs,
+            module_spec=module_spec,
+            module=module,
             optimizer_config=optimizer_config,
             distributed=distributed,
             scaling_config=scaling_config,
