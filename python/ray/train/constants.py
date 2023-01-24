@@ -68,11 +68,8 @@ TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 # as Trainable)
 DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
 
-# Default NCCL_SOCKET_IFNAME.
-# Use ethernet when possible.
-# NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
-# "en".
-DEFAULT_NCCL_SOCKET_IFNAME = "en,eth,bond"
+# Blacklist virtualized networking.
+DEFAULT_NCCL_SOCKET_IFNAME = "^lo,docker,veth"
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata
 CHECKPOINT_METADATA_KEY = "checkpoint_metadata"

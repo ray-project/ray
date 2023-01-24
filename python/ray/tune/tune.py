@@ -696,7 +696,7 @@ def run(
         search_alg=search_alg,
         scheduler=scheduler,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
-        remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
+        experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
         resume=resume,

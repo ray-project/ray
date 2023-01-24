@@ -210,7 +210,13 @@ class StateAPIManager:
         for message in reply.actor_table_data:
             data = self._message_to_dict(
                 message=message,
-                fields_to_decode=["actor_id", "owner_id", "job_id", "node_id"],
+                fields_to_decode=[
+                    "actor_id",
+                    "owner_id",
+                    "job_id",
+                    "node_id",
+                    "placement_group_id",
+                ],
             )
             result.append(data)
         num_after_truncation = len(result)
@@ -280,6 +286,9 @@ class StateAPIManager:
         for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
             data["node_ip"] = data["node_manager_address"]
+            data["start_time_ms"] = int(data["start_time_ms"])
+            data["end_time_ms"] = int(data["end_time_ms"])
+
             result.append(data)
 
         total_nodes = len(result)
@@ -319,6 +328,8 @@ class StateAPIManager:
             data["worker_id"] = data["worker_address"]["worker_id"]
             data["node_id"] = data["worker_address"]["raylet_id"]
             data["ip"] = data["worker_address"]["ip_address"]
+            data["start_time_ms"] = int(data["start_time_ms"])
+            data["end_time_ms"] = int(data["end_time_ms"])
             result.append(data)
 
         num_after_truncation = len(result)
@@ -403,10 +414,11 @@ class StateAPIManager:
                         "required_resources",
                         "runtime_env_info",
                         "parent_task_id",
+                        "placement_group_id",
                     ],
                 ),
                 (task_attempt, ["task_id", "attempt_number", "job_id"]),
-                (state_updates, ["node_id"]),
+                (state_updates, ["node_id", "worker_id"]),
             ]
             for src, keys in mappings:
                 for key in keys:
@@ -451,6 +463,8 @@ class StateAPIManager:
                         "node_id",
                         "actor_id",
                         "parent_task_id",
+                        "worker_id",
+                        "placement_group_id",
                         "component_id",
                     ],
                 )
