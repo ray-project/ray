@@ -1,19 +1,20 @@
 import itertools
-import ray
 import unittest
-import numpy as np
+
 import gymnasium as gym
-import torch
+import numpy as np
 import tensorflow as tf
+import torch
 import tree
 
+import ray
 from ray.rllib import SampleBatch
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    PPOTorchRLModule,
-)
-from rllib.algorithms.ppo.ppo import PPOModuleConfig
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
+)
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+    PPOTorchRLModule,
 )
 from ray.rllib.models.experimental.configs import (
     FCConfig,
