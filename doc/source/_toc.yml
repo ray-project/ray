@@ -236,6 +236,7 @@ parts:
               - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
               - file: rllib/rllib-connector
+              - file: rllib/rllib-fault-tolerance
               - file: rllib/rllib-dev
               - file: rllib/rllib-cli
           - file: rllib/rllib-examples
