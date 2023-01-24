@@ -1,4 +1,6 @@
 from typing import Type, Optional, TYPE_CHECKING, Union, Dict
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.from_config import NotProvided
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 
@@ -8,6 +10,7 @@ if TYPE_CHECKING:
     from ray.rllib.core.rl_trainer import RLTrainer
     import gymnasium as gym
 
+ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
 
 # TODO (Kourosh): We should make all configs come from a standard base class that
 # defines the general interfaces for validation, from_dict, to_dict etc.
@@ -20,11 +23,7 @@ class TrainerRunnerConfig:
         self.trainer_runner_class = cls or TrainerRunner
 
         # `self.module()`
-        self.module_obj = None
-        self.module_class = None
-        self.observation_space = None
-        self.action_space = None
-        self.model_config = None
+        self.module_spec = None
 
         # `self.trainer()`
         self.trainer_class = None
@@ -40,29 +39,11 @@ class TrainerRunnerConfig:
 
     def validate(self) -> None:
 
-        if self.module_class is None and self.module_obj is None:
+        if self.module_spec is None:
             raise ValueError(
-                "Cannot initialize an RLTrainer without an RLModule. Please provide "
-                "the RLModule class with .module(module_class=MyModuleClass) or "
-                "an RLModule instance with .module(module=MyModuleInstance)."
+                "Cannot initialize an RLTrainer without the module specs. Please provide "
+                "the specs via .module(module_spec)."
             )
-
-        if self.module_class is not None:
-            if self.observation_space is None:
-                raise ValueError(
-                    "Must provide observation_space for RLModule when RLModule class "
-                    "is provided. Use .module(observation_space=MySpace)."
-                )
-            if self.action_space is None:
-                raise ValueError(
-                    "Must provide action_space for RLModule when RLModule class "
-                    "is provided. Use .module(action_space=MySpace)."
-                )
-            if self.model_config is None:
-                raise ValueError(
-                    "Must provide model_config for RLModule when RLModule class "
-                    "is provided. Use .module(model_config=MyConfig)."
-                )
 
         if self.trainer_class is None:
             raise ValueError(
@@ -86,17 +67,15 @@ class TrainerRunnerConfig:
 
     def build(self) -> TrainerRunner:
         self.validate()
+
+        # if the module class is a multi agent class it will override the default MultiAgentRLModule class
+        # otherwise, it will be a single agent wrapped with mutliagent
         # TODO (Kourosh): What should be scaling_config? it's not clear what
         # should be passed in as trainer_config and what will be inferred
         return self.trainer_runner_class(
             trainer_class=self.trainer_class,
             trainer_config={
-                "module_class": self.module_class,
-                "module_kwargs": {
-                    "observation_space": self.observation_space,
-                    "action_space": self.action_space,
-                    "model_config": self.model_config,
-                },
+                "module_spec": self.module_spec,
                 # TODO (Kourosh): should this be inferred inside the constructor?
                 "distributed": self.num_gpus > 1,
                 # TODO (Avnish): add this
@@ -120,31 +99,32 @@ class TrainerRunnerConfig:
 
     def module(
         self,
-        *,
-        module_class: Optional[Type["RLModule"]] = NotProvided,
-        observation_space: Optional["gym.Space"] = NotProvided,
-        action_space: Optional["gym.Space"] = NotProvided,
-        model_config: Optional[dict] = NotProvided,
-        module: Optional["RLModule"] = NotProvided,
+        module_spec: Optional[ModuleSpec] = NotProvided,
     ) -> "TrainerRunnerConfig":
 
-        if module is NotProvided and module_class is NotProvided:
-            raise ValueError(
-                "Must provide either module or module_class. Please provide "
-                "the RLModule class with .module(module=MyModule) or "
-                ".module(module_class=MyModuleClass)."
-            )
+        if module_spec is not NotProvided:
+            self.module_spec = module_spec
 
-        if module_class is not NotProvided:
-            self.module_class = module_class
-        if observation_space is not NotProvided:
-            self.observation_space = observation_space
-        if action_space is not NotProvided:
-            self.action_space = action_space
-        if model_config is not NotProvided:
-            self.model_config = model_config
-        if module is not NotProvided:
-            self.module_obj = module
+        return self
+
+    def multi_agent(
+        self,
+        *,
+        modules: Optional[Dict[str, "SingleAgentRLModuleConfig"]] = NotProvided,
+        marl_module_class: Optional[Type["MultiAgentRLModule"]] = NotProvided,
+    ) -> "TrainerRunnerConfig":
+        pass
+
+    def resources(
+        self,
+        num_gpus: Optional[Union[float, int]] = NotProvided,
+        fake_gpus: Optional[bool] = NotProvided,
+    ) -> "TrainerRunnerConfig":
+
+        if num_gpus is not NotProvided:
+            self.num_gpus = num_gpus
+        if fake_gpus is not NotProvided:
+            self.fake_gpus = fake_gpus
 
         return self
 
@@ -162,18 +142,5 @@ class TrainerRunnerConfig:
             self.eager_tracing = eager_tracing
         if optimizer_config is not NotProvided:
             self.optimizer_config = optimizer_config
-
-        return self
-
-    def resources(
-        self,
-        num_gpus: Optional[Union[float, int]] = NotProvided,
-        fake_gpus: Optional[bool] = NotProvided,
-    ) -> "TrainerRunnerConfig":
-
-        if num_gpus is not NotProvided:
-            self.num_gpus = num_gpus
-        if fake_gpus is not NotProvided:
-            self.fake_gpus = fake_gpus
 
         return self

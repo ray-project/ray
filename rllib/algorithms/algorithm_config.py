@@ -16,7 +16,11 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_trainer import TrainerRunnerConfig
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_trainer.trainer_runner_config import (
+    TrainerRunnerConfig,
+    ModuleSpec,
+)
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -2607,8 +2611,24 @@ class AlgorithmConfig:
         raise NotImplementedError
 
     def get_trainer_runner_config(
-        self, observation_space: Space, action_space: Space
+        self, module_spec: Optional[ModuleSpec] = None
     ) -> TrainerRunnerConfig:
+
+        if module_spec is None:
+            module_spec = SingleAgentRLModuleSpec()
+
+        if isinstance(module_spec, SingleAgentRLModuleSpec):
+            if module_spec.module_class is None:
+                module_spec.module_class = self.rl_module_class
+
+            if module_spec.observation_space is None:
+                module_spec.observation_space = self.observation_space
+
+            if module_spec.action_space is None:
+                module_spec.action_space = self.action_space
+
+            if module_spec.model_config is None:
+                module_spec.model_config = self.model
 
         if not self._is_frozen:
             raise ValueError(
@@ -2618,12 +2638,7 @@ class AlgorithmConfig:
 
         config = (
             TrainerRunnerConfig()
-            .module(
-                module_class=self.rl_module_class,
-                observation_space=observation_space,
-                action_space=action_space,
-                model_config=self.model,
-            )
+            .module(module_spec)
             .trainer(
                 trainer_class=self.rl_trainer_class,
                 eager_tracing=self.eager_tracing,

@@ -674,22 +674,21 @@ class Algorithm(Trainable):
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
 
+        if self.config._enable_rl_module_api:
+            local_worker = self.workers.local_worker()
+            marl_config = {"modules": {}}
 
-        local_worker = self.workers.local_worker()
-        marl_config = {"modules": {}}
+            for pid, policy in local_worker.policy_map.items():
+                marl_config["modules"][pid] = {
+                    "module_class": policy.config["rl_module_class"],
+                    "observation_space": policy.observation_space,
+                    "action_space": policy.action_space,
+                    "model_config": policy.config["model"],
+                }
 
-        breakpoint()
-        for pid, policy in local_worker.policy_map:
-            marl_config["modules"][pid] = {
-                "module_class": policy.config["rl_module_class"],
-                "observation_space": policy.observation_space,
-                "action_space": policy.action_space,
-                "model_config": policy.config["model"]
-            }
+            from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
-        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-        marl = MultiAgentRLModule.from_multi_agent_config(marl_config)
-        breakpoint()
+            marl = MultiAgentRLModule.from_multi_agent_config(marl_config)
 
         self.trainer_runner = None
         if self.config._enable_rl_trainer_api:
