@@ -1,8 +1,10 @@
-from typing import Any, Sequence, Union
+from typing import Any, Sequence, Union, TYPE_CHECKING
 import warnings
 
 import numpy as np
-from pandas.core.dtypes.generic import ABCSeries
+
+if TYPE_CHECKING:
+    from pandas.core.dtypes.generic import ABCSeries
 
 
 def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
@@ -26,32 +28,11 @@ def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
     return True
 
 
-def _create_strict_ragged_ndarray(values: Any) -> np.ndarray:
-    """Create a ragged ndarray; the representation will be ragged (1D array of
-    subndarray pointers) even if it's possible to represent it as a non-ragged ndarray.
-    """
-    # Use the create-empty-and-fill method. This avoids the following pitfalls of the
-    # np.array constructor - np.array(values, dtype=object):
-    #  1. It will fail to construct an ndarray if the first element dimension is
-    #  uniform, e.g. for imagery whose first element dimension is the channel.
-    #  2. It will construct the wrong representation for a single-row column (i.e. unit
-    #  outer dimension). Namely, it will consolidate it into a single multi-dimensional
-    #  ndarray rather than a 1D array of subndarray pointers, resulting in the single
-    #  row not being well-typed (having object dtype).
-
-    # Create an empty object-dtyped 1D array.
-    arr = np.empty(len(values), dtype=object)
-    # Try to fill the 1D array of pointers with the (ragged) tensors.
-    arr[:] = list(values)
-    return arr
-
-
 def _create_possibly_ragged_ndarray(
-    values: Union[np.ndarray, ABCSeries, Sequence[Any]]
+    values: Union[np.ndarray, "ABCSeries", Sequence[Any]]
 ) -> np.ndarray:
     """
     Create a possibly ragged ndarray.
-
     Using the np.array() constructor will fail to construct a ragged ndarray that has a
     uniform first dimension (e.g. uniform channel dimension in imagery). This function
     catches this failure and tries a create-and-fill method to construct the ragged
@@ -83,3 +64,23 @@ def _create_possibly_ragged_ndarray(
         else:
             # Re-raise original error if the failure wasn't a broadcast error.
             raise e from None
+
+
+def _create_strict_ragged_ndarray(values: Any) -> np.ndarray:
+    """Create a ragged ndarray; the representation will be ragged (1D array of
+    subndarray pointers) even if it's possible to represent it as a non-ragged ndarray.
+    """
+    # Use the create-empty-and-fill method. This avoids the following pitfalls of the
+    # np.array constructor - np.array(values, dtype=object):
+    #  1. It will fail to construct an ndarray if the first element dimension is
+    #  uniform, e.g. for imagery whose first element dimension is the channel.
+    #  2. It will construct the wrong representation for a single-row column (i.e. unit
+    #  outer dimension). Namely, it will consolidate it into a single multi-dimensional
+    #  ndarray rather than a 1D array of subndarray pointers, resulting in the single
+    #  row not being well-typed (having object dtype).
+
+    # Create an empty object-dtyped 1D array.
+    arr = np.empty(len(values), dtype=object)
+    # Try to fill the 1D array of pointers with the (ragged) tensors.
+    arr[:] = list(values)
+    return arr

@@ -29,11 +29,11 @@ def main():
     args, unknown = parse_script_args()
 
     ray.init(address="auto")
-
     actor_launch_start = perf_counter()
     actors = test_max_actors_launch(args.cpus_per_actor, args.total_actors)
     actor_launch_end = perf_counter()
     actor_launch_time = actor_launch_end - actor_launch_start
+
     if args.fail:
         sleep(10)
         return

@@ -313,10 +313,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// Return the dependencies of this task. This is recomputed each time, so it can
   /// be used if the task spec is mutated.
-  /// \param add_dummy_dependency whether to add a dummy object in the returned objects.
   /// \return The recomputed dependencies for the task.
-  std::vector<rpc::ObjectReference> GetDependencies(
-      bool add_dummy_dependency = true) const;
+  std::vector<rpc::ObjectReference> GetDependencies() const;
 
   std::string GetDebuggerBreakpoint() const;
 
@@ -367,8 +365,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   uint64_t ActorCounter() const;
 
   ObjectID ActorCreationDummyObjectId() const;
-
-  ObjectID PreviousActorTaskDummyObjectId() const;
 
   int MaxActorConcurrency() const;
 
@@ -473,6 +469,8 @@ class WorkerCacheKey {
   int IntHash() const;
 
  private:
+  std::size_t CalculateHash() const;
+
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
   /// The required resources for this worker.
@@ -481,9 +479,9 @@ class WorkerCacheKey {
   const bool is_actor;
   /// Whether the worker is to use a GPU.
   const bool is_gpu;
-  /// The cached hash of the worker's environment.  This is set to 0
+  /// The hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
-  mutable std::size_t hash_ = 0;
+  const std::size_t hash_ = 0;
 };
 
 }  // namespace ray

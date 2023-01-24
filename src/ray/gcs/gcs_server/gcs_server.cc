@@ -225,6 +225,10 @@ void GcsServer::Stop() {
     kv_manager_.reset();
 
     is_stopped_ = true;
+    if (gcs_redis_failure_detector_) {
+      gcs_redis_failure_detector_->Stop();
+    }
+
     RAY_LOG(INFO) << "GCS server stopped.";
   }
 }
@@ -505,7 +509,8 @@ void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance;
   // TODO (yic): Use a factory with configs
   if (storage_type_ == "redis") {
-    instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<RedisStoreClient>(GetOrConnectRedis()));
   } else if (storage_type_ == "memory") {
     instance =
         std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
@@ -720,7 +725,9 @@ std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
 
     // Init redis failure detector.
     gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-        main_service_, redis_client_->GetPrimaryContext(), [this]() { Stop(); });
+        main_service_, redis_client_->GetPrimaryContext(), []() {
+          RAY_LOG(FATAL) << "Redis failed. Shutdown GCS.";
+        });
     gcs_redis_failure_detector_->Start();
   }
   return redis_client_;

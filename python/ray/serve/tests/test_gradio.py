@@ -28,8 +28,9 @@ def test_gradio_ingress_correctness(serve_start_shutdown):
     def greet(name):
         return f"Good morning {name}!"
 
-    io = gr.Interface(fn=greet, inputs="text", outputs="text")
-    app = GradioServer.bind(io)
+    app = GradioServer.bind(
+        lambda: gr.Interface(fn=greet, inputs="text", outputs="text")
+    )
     serve.run(app)
 
     test_input = "Alice"
@@ -51,8 +52,9 @@ def test_gradio_ingress_scaling(serve_start_shutdown):
     def f(*args):
         return os.getpid()
 
-    io = gr.Interface(fn=f, inputs="text", outputs="text")
-    app = GradioServer.options(num_replicas=2).bind(io)
+    app = GradioServer.options(num_replicas=2).bind(
+        lambda: gr.Interface(fn=f, inputs="text", outputs="text")
+    )
     serve.run(app)
 
     pids = []
