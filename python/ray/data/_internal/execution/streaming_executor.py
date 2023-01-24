@@ -167,8 +167,8 @@ class StreamingExecutor(Executor):
 def _validate_topology(topology: Topology, limits: ExecutionResources) -> None:
     """Raises an exception on invalid topologies.
 
-    For example, a topology is invalid if its configuration would require more
-    resources than the cluster has to execute.
+    It checks if the the sum of min actor pool sizes are larger than the resource
+    limit, as well as other unsupported resource configurations.
 
     Args:
         topology: The topology to validate.
