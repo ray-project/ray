@@ -9,6 +9,8 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.execution.interfaces import (
     RefBundle,
+    ExecutionOptions,
+    ExecutionResources,
     PhysicalOperator,
 )
 from ray.data._internal.execution.operators.map_operator_state import (
@@ -47,9 +49,14 @@ class MapOperator(PhysicalOperator):
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
+        ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         compute_strategy = compute_strategy or TaskPoolStrategy()
+        self._ray_remote_args = ray_remote_args
         self._execution_state = MapOperatorState(
-            transform_fn, compute_strategy, ray_remote_args, min_rows_per_bundle
+            transform_fn,
+            compute_strategy,
+            ray_remote_args,
+            min_rows_per_bundle,
         )
         self._output_metadata: List[BlockMetadata] = []
         super().__init__(name, [input_op])
@@ -61,6 +68,9 @@ class MapOperator(PhysicalOperator):
             "obj_store_mem_peak": self._execution_state.obj_store_mem_peak,
         }
 
+    def progress_str(self) -> str:
+        return self._execution_state.progress_str()
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0, input_index
         self._execution_state.add_input(refs)
@@ -70,9 +80,11 @@ class MapOperator(PhysicalOperator):
         super().inputs_done()
 
     def has_next(self) -> bool:
+        assert self._started
         return self._execution_state.has_next()
 
     def get_next(self) -> RefBundle:
+        assert self._started
         bundle = self._execution_state.get_next()
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
@@ -90,5 +102,42 @@ class MapOperator(PhysicalOperator):
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
 
+    def start(self, options: ExecutionOptions) -> None:
+        self._execution_state.start(options)
+        super().start(options)
+
     def shutdown(self) -> None:
         self._execution_state.shutdown()
+        super().shutdown()
+
+    def base_resource_usage(self) -> ExecutionResources:
+        return self._execution_state.base_resource_usage()
+
+    def incremental_resource_usage(self) -> ExecutionResources:
+        return self._execution_state.incremental_resource_usage()
+
+    def current_resource_usage(self) -> ExecutionResources:
+        return self._execution_state.current_resource_usage()
+
+
+def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
+    """Enforce rules on ray remote args for map tasks.
+
+    Namely, args must explicitly specify either CPU or GPU, not both. Disallowing
+    mixed resources avoids potential starvation and deadlock issues during scheduling,
+    and should not be a serious limitation for users.
+    """
+    ray_remote_args = ray_remote_args.copy()
+    if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
+        ray_remote_args["num_cpus"] = 1
+    if ray_remote_args.get("num_gpus", 0) > 0:
+        if ray_remote_args.get("num_cpus", 0) != 0:
+            raise ValueError(
+                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
+            )
+    elif ray_remote_args.get("num_cpus", 0) > 0:
+        if ray_remote_args.get("num_gpus", 0) != 0:
+            raise ValueError(
+                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
+            )
+    return ray_remote_args

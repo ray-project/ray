@@ -360,6 +360,5 @@ WorkerThreadContext &WorkerContext::GetThreadContext() const {
 
   return *thread_context_;
 }
-
 }  // namespace core
 }  // namespace ray
