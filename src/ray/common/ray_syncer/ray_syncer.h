@@ -96,7 +96,8 @@ class RaySyncer {
   /// TODO (iycheng): Introduce grpc channel pool and use node_id
   /// for the connection.
   ///
-  /// \param connection The connection to the remote node.
+  /// \param node_id The id of the node connect to.
+  /// \param channel The gRPC channel.
   void Connect(const std::string &node_id, std::shared_ptr<grpc::Channel> channel);
 
   void Disconnect(const std::string &node_id);
