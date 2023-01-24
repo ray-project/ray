@@ -469,6 +469,7 @@ def push_and_tag_images(
     image_types: List[str],
     merge_build: bool = False,
     image_list: Optional[List[str]] = None,
+    suffix: Optional[str] = None,
 ):
 
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -499,6 +500,10 @@ def push_and_tag_images(
                     continue
 
                 tag = f"nightly-{py_name}-{image_type}"
+
+                if suffix:
+                    tag += "-" + suffix
+
                 tag_mapping[tag].append(tag)
 
         # If no device is specified, it should map to CPU image.
@@ -796,6 +801,7 @@ if __name__ == "__main__":
                     image_types,
                     merge_build=valid_branch and is_merge,
                     image_list=images_to_tag_and_push,
+                    suffix=args.suffix,
                 )
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password
