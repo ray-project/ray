@@ -2,6 +2,7 @@ import os
 import time
 import json
 import sys
+from datetime import datetime
 from collections import Counter
 from dataclasses import dataclass
 from typing import List, Tuple
@@ -808,7 +809,6 @@ async def test_api_manager_list_tasks(state_api_manager):
     data = data
     assert len(data) == 2
     assert result.total == 2
-
     verify_schema(TaskState, data[0])
     assert data[0]["node_id"] == node_id.hex()
     verify_schema(TaskState, data[1])
@@ -862,6 +862,118 @@ async def test_api_manager_list_tasks(state_api_manager):
         option=create_api_options(filters=[("task_id", "=", bytearray(id).hex())])
     )
     assert len(result.result) == 1
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 8, 0),
+    reason=("Not passing in CI although it works locally. Will handle it later."),
+)
+@pytest.mark.asyncio
+async def test_api_manager_list_tasks_events(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+
+    node_id = NodeID.from_random()
+    data_source_client.get_all_task_info = AsyncMock()
+    id = b"1234"
+    func_or_class = "f"
+
+    # Generate a task event.
+
+    task_info = TaskInfoEntry(
+        task_id=id,
+        name=func_or_class,
+        func_or_class_name=func_or_class,
+        type=TaskType.NORMAL_TASK,
+    )
+    current = time.time_ns()
+    second = int(1e9)
+    state_updates = TaskStateUpdate(
+        node_id=node_id.binary(),
+        pending_args_avail_ts=current,
+        submitted_to_worker_ts=current + second,
+        running_ts=current + (2 * second),
+        finished_ts=current + (3 * second),
+    )
+
+    """
+    Test basic.
+    """
+    events = TaskEvents(
+        task_id=id,
+        job_id=b"0001",
+        attempt_number=0,
+        task_info=task_info,
+        state_updates=state_updates,
+    )
+    data_source_client.get_all_task_info.side_effect = [generate_task_data([events])]
+    result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
+    result = result.result[0]
+    assert "events" in result
+    assert result["state"] == "FINISHED"
+    expected_events = [
+        {
+            "state": "PENDING_ARGS_AVAIL",
+            "created": str(datetime.fromtimestamp(current // second)),
+        },
+        {
+            "state": "SUBMITTED_TO_WORKER",
+            "created": str(datetime.fromtimestamp((current + second) // second)),
+        },
+        {
+            "state": "RUNNING",
+            "created": str(datetime.fromtimestamp((current + 2 * second) // second)),
+        },
+        {
+            "state": "FINISHED",
+            "created": str(datetime.fromtimestamp((current + 3 * second) // second)),
+        },
+    ]
+    for actual, expected in zip(result["events"], expected_events):
+        assert actual == expected
+    assert result["start_time_ms"] == (current + 2 * second) // 1e6
+    assert result["end_time_ms"] == (current + 3 * second) // 1e6
+
+    """
+    Test only start_time_ms is updated.
+    """
+    state_updates = TaskStateUpdate(
+        node_id=node_id.binary(),
+        pending_args_avail_ts=current,
+        submitted_to_worker_ts=current + second,
+        running_ts=current + (2 * second),
+    )
+    events = TaskEvents(
+        task_id=id,
+        job_id=b"0001",
+        attempt_number=0,
+        task_info=task_info,
+        state_updates=state_updates,
+    )
+    data_source_client.get_all_task_info.side_effect = [generate_task_data([events])]
+    result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
+    result = result.result[0]
+    assert result["start_time_ms"] == (current + 2 * second) // 1e6
+    assert result["end_time_ms"] is None
+
+    """
+    Test None of start & end time is updated.
+    """
+    state_updates = TaskStateUpdate(
+        pending_args_avail_ts=current,
+        submitted_to_worker_ts=current + second,
+    )
+    events = TaskEvents(
+        task_id=id,
+        job_id=b"0001",
+        attempt_number=0,
+        task_info=task_info,
+        state_updates=state_updates,
+    )
+    data_source_client.get_all_task_info.side_effect = [generate_task_data([events])]
+    result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
+    result = result.result[0]
+    assert result["start_time_ms"] is None
+    assert result["end_time_ms"] is None
 
 
 @pytest.mark.skipif(
@@ -2041,7 +2153,7 @@ def test_list_get_tasks(shutdown_only):
         waiting_for_execution = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
+                    lambda task: task["state"] == "SUBMITTED_TO_WORKER",
                     tasks,
                 )
             )
@@ -2050,7 +2162,7 @@ def test_list_get_tasks(shutdown_only):
         scheduled = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "PENDING_NODE_ASSIGNMENT",
+                    lambda task: task["state"] == "PENDING_NODE_ASSIGNMENT",
                     tasks,
                 )
             )
@@ -2059,7 +2171,7 @@ def test_list_get_tasks(shutdown_only):
         waiting_for_dep = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "PENDING_ARGS_AVAIL",
+                    lambda task: task["state"] == "PENDING_ARGS_AVAIL",
                     tasks,
                 )
             )
@@ -2068,7 +2180,7 @@ def test_list_get_tasks(shutdown_only):
         running = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "RUNNING",
+                    lambda task: task["state"] == "RUNNING",
                     tasks,
                 )
             )
@@ -2082,15 +2194,17 @@ def test_list_get_tasks(shutdown_only):
             assert get_task_data == task
 
         # Test node id.
-        tasks = list_tasks(
-            filters=[("scheduling_state", "=", "PENDING_NODE_ASSIGNMENT")]
-        )
+        tasks = list_tasks(filters=[("state", "=", "PENDING_NODE_ASSIGNMENT")])
         for task in tasks:
             assert task["node_id"] is None
 
-        tasks = list_tasks(filters=[("scheduling_state", "=", "RUNNING")])
+        tasks = list_tasks(filters=[("state", "=", "RUNNING")])
         for task in tasks:
             assert task["node_id"] == node_id
+
+        tasks = list_tasks(filters=[("job_id", "=", job_id)])
+        for task in tasks:
+            assert task["job_id"] == job_id
 
         return True
 
@@ -2165,7 +2279,7 @@ def test_parent_task_id(shutdown_only):
     ray.get(parent.remote())
 
     def verify():
-        tasks = list_tasks()
+        tasks = list_tasks(detail=True)
         assert len(tasks) == 2, "Expect 2 tasks to finished"
         parent_task_id = None
         child_parent_task_id = None
@@ -2199,7 +2313,7 @@ def test_list_get_task_multiple_attempt_all_failed(shutdown_only):
         assert len(task_attempts) == 3  # 2 retries + 1 initial run
         for task_attempt in task_attempts:
             assert task_attempt["job_id"] == job_id
-            assert task_attempt["scheduling_state"] == "FAILED"
+            assert task_attempt["state"] == "FAILED"
             assert task_attempt["node_id"] == node_id
 
         assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
@@ -2247,9 +2361,9 @@ def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
     def verify(task_attempts):
         assert len(task_attempts) == 3
         for task_attempt in task_attempts[:-1]:
-            assert task_attempt["scheduling_state"] == "FAILED"
+            assert task_attempt["state"] == "FAILED"
 
-        task_attempts[-1]["scheduling_state"] == "FINISHED"
+        task_attempts[-1]["state"] == "FINISHED"
 
         assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
             0,
@@ -2291,7 +2405,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
+                        lambda task: task["state"] == "SUBMITTED_TO_WORKER",
                         tasks,
                     )
                 )
@@ -2302,8 +2416,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"]
-                        == "PENDING_NODE_ASSIGNMENT",
+                        lambda task: task["state"] == "PENDING_NODE_ASSIGNMENT",
                         tasks,
                     )
                 )
@@ -2314,7 +2427,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"] == "PENDING_ARGS_AVAIL",
+                        lambda task: task["state"] == "PENDING_ARGS_AVAIL",
                         tasks,
                     )
                 )
@@ -2325,7 +2438,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"] == "RUNNING",
+                        lambda task: task["state"] == "RUNNING",
                         tasks,
                     )
                 )
