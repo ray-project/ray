@@ -1,7 +1,7 @@
 .. _fault-tolerance-actors:
 .. _actor-fault-tolerance:
 
-Actor fault tolerance
+Actor Fault Tolerance
 =====================
 
 Actors can fail if the actor process dies, or if the **owner** of the actor

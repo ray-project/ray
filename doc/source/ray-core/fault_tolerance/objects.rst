@@ -1,7 +1,7 @@
 .. _fault-tolerance-objects:
 .. _object-fault-tolerance:
 
-Object fault tolerance
+Object Fault Tolerance
 ======================
 
 A Ray object has both data (the value returned when calling ``ray.get``) and

@@ -1,7 +1,7 @@
 .. _fault-tolerance-tasks:
 .. _task-fault-tolerance:
 
-Task fault tolerance
+Task Fault Tolerance
 ====================
 
 Tasks can fail due to application-level errors, e.g., Python-level exceptions,
