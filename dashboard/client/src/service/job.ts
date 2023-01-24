@@ -38,3 +38,9 @@ export const getStateApiJobProgressByLineageAndName = (jobId: string) => {
     `api/v0/tasks/summarize?filter_keys=job_id&filter_predicates=%3D&filter_values=${jobId}&summary_by=lineage_and_name`,
   );
 };
+
+export const getStateApiJobProgressByLineage = (jobId: string) => {
+  return get<StateApiNestedJobProgressRsp>(
+    `api/v0/tasks/summarize?filter_keys=job_id&filter_predicates=%3D&filter_values=${jobId}&summary_by=lineage`,
+  );
+};

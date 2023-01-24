@@ -665,11 +665,23 @@ class StateAPIManager:
         else:
             summary_results = TaskSummaries.to_summary_by_lineage(tasks=result.result)
         summary = StateSummary(node_id_to_summary={"cluster": summary_results})
+        warnings = result.warnings
+        if (
+            summary_results.total_actor_scheduled
+            + summary_results.total_actor_tasks
+            + summary_results.total_tasks
+            < result.num_filtered
+        ):
+            warnings = warnings or []
+            warnings.append(
+                "There is missing data in this aggregation. "
+                "Possibly due to task data being evicted to preserve memory."
+            )
         return SummaryApiResponse(
             total=result.total,
             result=summary,
             partial_failure_warning=result.partial_failure_warning,
-            warnings=result.warnings,
+            warnings=warnings,
             num_after_truncation=result.num_after_truncation,
             num_filtered=result.num_filtered,
         )
