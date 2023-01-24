@@ -95,23 +95,6 @@ ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-
 
 fi
 
-# Function to gracefully stop a CrateDB cluster
-#graceful_stop_cratedb() {
-#    curl -XPOST "http://localhost:4200/_cluster/graceful_stop"
-#}
-
-# Function to check if the graceful stop process has completed
-#graceful_stop_complete_cratedb() {
-#    response=$(curl -XGET "http://localhost:4200/_cluster/graceful_stop_complete")
-#    if [[ $response == *"graceful_stop_complete"* ]]; then
-#        echo "Graceful stop process has completed"
-#    else
-#        echo "Graceful stop process is still in progress"
-#    fi
-#}
-
-
-
 #CREATE REPOSITORY s3backup TYPE s3
 #[ WITH (parameter_name [= value], [, ...]) ]
 #[ WITH (access_key = ${AWS_ACCESS_KEY_ID}, secret_key = ${AWS_SECRET_ACCESS_KEY}), endpoint = s3.${AWS_DEFAULT_REGION}.amazonaws.com, bucket = ${AWS_S3_BUCKET}, base_path=crate/ ]
@@ -120,18 +103,20 @@ fi
 
 # SIGTERM-handler this funciton will be executed when the container receives the SIGTERM signal (when stopping)
 term_handler(){
-   echo "***Stopping"
-   echo "Running Cluster Election"
-   /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';" \
-   && echo "Running Decomission" \
-   && $dbserver=$(tailscale ip --1) \
-   && /usr/local/bin/crash --hosts $dbserver -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
+    echo "***Stopping"
+    echo "Running Cluster Election"
+    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';" \
+    && echo "Running Decomission" \
+    && $dbserver=$(tailscale ip --1) \
+    && /usr/local/bin/crash --hosts $dbserver -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
 
-   echo "Deleting the device from Tailscale"
-   curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
-   echo "Shutting Tailscale Down"
-   sudo tailscale down
-   exit 0
+    deviceid=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname=="'$HOSTNAME'")' | jq -r .id)
+    export deviceid=$deviceid
+    echo "Deleting the device from Tailscale"
+    curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
+    echo "Shutting Tailscale Down"
+    sudo tailscale down
+    exit 0
 }
 
 # Setup signal handlers
