@@ -191,6 +191,23 @@ def test_e2e_streaming_sanity():
     assert result.take(4) == [1, 2, 3, 4]
 
 
+def test_e2e_option_propagation():
+    DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = True
+
+    def run():
+        ray.data.range(5, parallelism=5).map(
+            lambda x: x, compute_strategy=ray.data.ActorPoolStrategy(8, 8)
+        ).take_all()
+
+    DatasetContext.get_current().execution_options.resource_limits.cpu = 1
+    with pytest.raises(ValueError):
+        run()
+
+    DatasetContext.get_current().execution_options.resource_limits.cpu = None
+    run()
+
+
 if __name__ == "__main__":
     import sys
 

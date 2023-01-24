@@ -3,6 +3,9 @@ import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+)
 from ray.data._internal.execution.operators.map_task_submitter import (
     MapTaskSubmitter,
     _map_task,
@@ -28,8 +31,7 @@ class ActorPoolSubmitter(MapTaskSubmitter):
             ray_remote_args: Remote arguments for the Ray actors to be created.
             pool_size: The size of the actor pool.
         """
-        self._transform_fn_ref = transform_fn_ref
-        self._ray_remote_args = ray_remote_args
+        super().__init__(transform_fn_ref, ray_remote_args)
         self._pool_size = pool_size
         # A map from task output futures to the actors on which they are running.
         self._active_actors: Dict[ObjectRef[Block], ray.actor.ActorHandle] = {}
@@ -39,7 +41,8 @@ class ActorPoolSubmitter(MapTaskSubmitter):
     def progress_str(self) -> str:
         return f"{self._actor_pool.size()} actors"
 
-    def start(self):
+    def start(self, options: ExecutionOptions):
+        super().start(options)
         # Create the actor workers and add them to the pool.
         ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         cls_ = ray.remote(**ray_remote_args)(MapWorker)
