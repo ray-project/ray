@@ -15,8 +15,9 @@ from typing import (
 )
 
 import ray
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.rl_trainer import TrainerRunnerConfig
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -37,7 +38,7 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.from_config import from_config, NotProvided
 from ray.rllib.utils.gym import (
     convert_old_gym_space_to_gymnasium_space,
     try_import_gymnasium_and_gym,
@@ -86,49 +87,9 @@ path: /tmp/
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.core.rl_module import RLModule
+    from ray.rllib.core.rl_trainer import RLTrainer
 
 logger = logging.getLogger(__name__)
-
-
-class _NotProvided:
-    """Singleton class to provide a "not provided" value for AlgorithmConfig signatures.
-
-    Using the only instance of this class indicates that the user does NOT wish to
-    change the value of some property.
-
-    Examples:
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        >>> config = AlgorithmConfig()
-        >>> # Print out the default learning rate.
-        >>> print(config.lr)
-        ... 0.001
-        >>> # Print out the default `preprocessor_pref`.
-        >>> print(config.preprocessor_pref)
-        ... "deepmind"
-        >>> # Will only set the `preprocessor_pref` property (to None) and leave
-        >>> # all other properties at their default values.
-        >>> config.training(preprocessor_pref=None)
-        >>> config.preprocessor_pref is None
-        ... True
-        >>> # Still the same value (didn't touch it in the call to `.training()`.
-        >>> print(config.lr)
-        ... 0.001
-    """
-
-    class __NotProvided:
-        pass
-
-    instance = None
-
-    def __init__(self):
-        if _NotProvided.instance is None:
-            _NotProvided.instance = _NotProvided.__NotProvided()
-
-
-# Use this object as default values in all method signatures of
-# AlgorithmConfig, indicating that the respective property should NOT be touched
-# in the call.
-NotProvided = _NotProvided()
 
 
 # TODO (Kourosh): Move this to rllib.utils.importlib
@@ -324,7 +285,7 @@ class AlgorithmConfig:
         self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
         self.sample_async = False
-        self.enable_connectors = False
+        self.enable_connectors = True
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
@@ -350,6 +311,8 @@ class AlgorithmConfig:
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
+        self.rl_trainer_class = None
+        self._enable_rl_trainer_api = False
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -422,7 +385,7 @@ class AlgorithmConfig:
         # `self.debugging()`
         self.logger_creator = None
         self.logger_config = None
-        self.log_level = DEPRECATED_VALUE
+        self.log_level = "WARN"
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
@@ -902,6 +865,11 @@ class AlgorithmConfig:
         if self._enable_rl_module_api and self.rl_module_class is None:
             rl_module_class_path = self.get_default_rl_module_class()
             self.rl_module_class = _resolve_class_path(rl_module_class_path)
+
+        # resolve rl_trainer class
+        if self._enable_rl_trainer_api and self.rl_trainer_class is None:
+            rl_trainer_class_path = self.get_default_rl_trainer_class()
+            self.rl_trainer_class = _resolve_class_path(rl_trainer_class_path)
 
     def build(
         self,
@@ -1409,6 +1377,8 @@ class AlgorithmConfig:
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        _enable_rl_trainer_api: Optional[bool] = NotProvided,
+        rl_trainer_class: Optional[Type["RLTrainer"]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1432,6 +1402,9 @@ class AlgorithmConfig:
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
+            _enable_rl_trainer_api: Whether to enable the TrainerRunner and RLTrainer
+                for training. This API uses ray.train to run the training loop which
+                allows for a more flexible distributed training.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1472,6 +1445,10 @@ class AlgorithmConfig:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
+        if _enable_rl_trainer_api is not NotProvided:
+            self._enable_rl_trainer_api = _enable_rl_trainer_api
+        if rl_trainer_class is not NotProvided:
+            self.rl_trainer_class = rl_trainer_class
 
         return self
 
@@ -2075,7 +2052,7 @@ class AlgorithmConfig:
         *,
         logger_creator: Optional[Callable[[], Logger]] = NotProvided,
         logger_config: Optional[dict] = NotProvided,
-        log_level: Optional[str] = DEPRECATED_VALUE,
+        log_level: Optional[str] = NotProvided,
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
@@ -2109,16 +2086,8 @@ class AlgorithmConfig:
             self.logger_creator = logger_creator
         if logger_config is not NotProvided:
             self.logger_config = logger_config
-        if log_level != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.log_level",
-                help=(
-                    "RLlib no longer has a separate logging configuration from the rest"
-                    " of Ray. Configure logging on the root logger; RLlib messages "
-                    "will be propagated up the logger hierarchy to be handled there."
-                ),
-                error=False,
-            )
+        if log_level is not NotProvided:
+            self.log_level = log_level
         if log_sys_usage is not NotProvided:
             self.log_sys_usage = log_sys_usage
         if fake_sampler is not NotProvided:
@@ -2143,9 +2112,8 @@ class AlgorithmConfig:
             rl_module_class: The RLModule class to use for this config.
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
                 By default if you call `config.rl_module(rl_module=MyRLModule)`, the
-                RLModule API will be enabled. If you want to disable it, you can call
-                `config.rl_module(_enable_rl_module_api=False)`.
-
+                RLModule API will NOT be enabled. If you want to enable it, you can call
+                `config.rl_module(_enable_rl_module_api=True)`.
         Returns:
             This updated AlgorithmConfig object.
         """
@@ -2614,9 +2582,51 @@ class AlgorithmConfig:
 
         Returns:
             The RLModule class to use for this algorithm either as a class type or as
-            a string (e.g. x.y.z).
+            a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCModule).
         """
         raise NotImplementedError
+
+    def get_default_rl_trainer_class(self) -> Union[Type["RLTrainer"], str]:
+        """Returns the RLTrainer class to use for this algorithm.
+
+        Override this method in the sub-class to return the RLTrainer class type given
+        the input framework.
+
+        Returns:
+            The RLTrainer class to use for this algorithm either as a class type or as
+            a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCTrainer).
+        """
+        raise NotImplementedError
+
+    def get_trainer_runner_config(
+        self, observation_space: Space, action_space: Space
+    ) -> TrainerRunnerConfig:
+
+        if not self._is_frozen:
+            raise ValueError(
+                "Cannot call `get_trainer_runner_config()` on an unfrozen "
+                "AlgorithmConfig! Please call `freeze()` first."
+            )
+
+        config = (
+            TrainerRunnerConfig()
+            .module(
+                module_class=self.rl_module_class,
+                observation_space=observation_space,
+                action_space=action_space,
+                model_config=self.model,
+            )
+            .trainer(
+                trainer_class=self.rl_trainer_class,
+                eager_tracing=self.eager_tracing,
+                # TODO (Kourosh): optimizer config can now be more complicated.
+                optimizer_config={"lr": self.lr},
+            )
+            .resources(num_gpus=self.num_gpus, fake_gpus=self._fake_gpus)
+            .algorithm(algorithm_config=self)
+        )
+
+        return config
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""

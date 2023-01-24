@@ -134,20 +134,6 @@ def test_pipeline_actors(shutdown_only):
     assert sorted(pipe.take(999)) == sorted([2, 3, 4] * 10)
 
 
-def test_incremental_take(shutdown_only):
-    ray.init(num_cpus=2)
-
-    # Can read incrementally even if future results are delayed.
-    def block_on_ones(x: int) -> int:
-        if x == 1:
-            time.sleep(999999)
-        return x
-
-    pipe = ray.data.range(2).window(blocks_per_window=1)
-    pipe = pipe.map(block_on_ones)
-    assert pipe.take(1) == [0]
-
-
 def test_pipeline_is_parallel(shutdown_only):
     ray.init(num_cpus=4)
     ds = ray.data.range(10)
@@ -529,10 +515,8 @@ def test_split_at_indices(ray_start_regular_shared):
     refs = [consume.remote(s, i) for i, s in enumerate(shards)]
     outs = ray.get(refs)
     np.testing.assert_equal(
-        np.array(outs, dtype=np.object),
-        np.array(
-            [[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]], dtype=np.object
-        ),
+        np.array(outs, dtype=object),
+        np.array([[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]], dtype=object),
     )
 
 

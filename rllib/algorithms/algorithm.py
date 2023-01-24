@@ -32,9 +32,10 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
-from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 import ray.cloudpickle as pickle
+
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
@@ -493,6 +494,15 @@ class Algorithm(Trainable):
         self._record_usage(self.config)
 
         self.callbacks = self.config["callbacks"]()
+        log_level = self.config.get("log_level")
+        if log_level in ["WARN", "ERROR"]:
+            logger.info(
+                "Current log_level is {}. For more information, "
+                "set 'log_level': 'INFO' / 'DEBUG' or use the -v and "
+                "-vv flags.".format(log_level)
+            )
+        if self.config.get("log_level"):
+            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
         # Create local replay buffer if necessary.
         self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
@@ -669,6 +679,19 @@ class Algorithm(Trainable):
                     "either a class path or a sub-class of ray.rllib."
                     "offline.offline_evaluator::OfflineEvaluator"
                 )
+            # TODO (Rohan138): Refactor this and remove deprecated methods
+            # Need to add back method_type in case Algorithm is restored from checkpoint
+            method_config["type"] = method_type
+
+        self.trainer_runner = None
+        if self.config._enable_rl_trainer_api:
+            policy = self.get_policy()
+            observation_space = policy.observation_space
+            action_space = policy.action_space
+            trainer_runner_config = self.config.get_trainer_runner_config(
+                observation_space, action_space
+            )
+            self.trainer_runner = trainer_runner_config.build()
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -1316,7 +1339,9 @@ class Algorithm(Trainable):
             # cases should use the multi-GPU optimizer, even if only using 1 GPU).
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
-            if self.config.get("simple_optimizer") is True:
+            if self.config._enable_rl_trainer_api:
+                train_results = self.trainer_runner.update(train_batch)
+            elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:
                 train_results = multi_gpu_train_one_step(self, train_batch)
@@ -1330,7 +1355,14 @@ class Algorithm(Trainable):
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            # TODO (Avnish): Implement this on trainer_runner.get_weights().
+            # TODO (Kourosh): figure out how we are going to sync MARLModule
+            # weights to MARLModule weights under the policy_map objects?
+            from_worker = None
+            if self.config._enable_rl_trainer_api:
+                from_worker = self.trainer_runner
             self.workers.sync_weights(
+                from_worker=from_worker,
                 policies=list(train_results.keys()),
                 global_vars=global_vars,
             )
