@@ -780,14 +780,9 @@ class TestServeRequestProcessingTimeoutS:
             {"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
             {
                 "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5",
-                "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "50",
+                "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0",
             },
         ],
-        indirect=True,
-    )
-    @pytest.mark.parametrize(
-        "ray_instance",
-        [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"}],
         indirect=True,
     )
     def test_hanging_request(self, ray_instance):
@@ -818,7 +813,7 @@ class TestServeRequestProcessingTimeoutS:
         serve.run(waiter.bind())
 
         with ThreadPoolExecutor() as pool:
-            response_fut = pool.submit(requests.get, "http://localhost:8000", timeout=5)
+            response_fut = pool.submit(requests.get, "http://localhost:8000")
 
             # Force request to hang
             time.sleep(0.5)
