@@ -760,7 +760,7 @@ def test_tuner_restore_from_moved_experiment_path(
 def test_tuner_restore_from_moved_cloud_uri(
     ray_start_2_cpus, tmp_path, clear_memory_filesys
 ):
-    """Test that that restoring an experiment that was moved to a new remote URI
+    """Test that restoring an experiment that was moved to a new remote URI
     resumes and continues saving new results at that URI."""
 
     def failing_fn(config):
@@ -787,9 +787,11 @@ def test_tuner_restore_from_moved_cloud_uri(
     upload_to_uri(str(tmp_path / "moved"), "memory:///moved")
 
     tuner = Tuner.restore("memory:///moved/new_exp_dir", resume_errored=True)
-    # This is needed because the mock memory:/// filesystem doesn't
-    # sync checkpoints properly, so this just copies the original checkpoint
-    # to the new local directory.
+    # Just for the test, since we're using `memory://` to mock a remote filesystem,
+    # the checkpoint needs to be copied to the new local directory.
+    # This is because the trainable actor uploads its checkpoints to a
+    # different `memory://` filesystem than the driver and is not
+    # downloaded along with the other parts of the experiment dir.
     # NOTE: A new local directory is used since the experiment name got modified.
     shutil.move(
         tmp_path / "ray_results/exp_dir/test/checkpoint_000000",
