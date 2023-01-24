@@ -155,7 +155,8 @@ class MultiAgentRLModule(RLModule):
     def __check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
         """Checks the module configs for validity.
 
-        The module_configs be a mapping from module_ids to SingleAgentRLModuleSpec objects.
+        The module_configs be a mapping from module_ids to SingleAgentRLModuleSpec
+        objects.
 
         Args:
             module_configs: The module configs to check.
@@ -166,8 +167,7 @@ class MultiAgentRLModule(RLModule):
         for module_id, module_spec in module_configs.items():
             if not isinstance(module_spec, SingleAgentRLModuleSpec):
                 raise ValueError(
-                    f"Module config for module_id {module_id} is missing "
-                    f"required key {module_key}."
+                    f"Module {module_id} is not a SingleAgentRLModuleSpec object."
                 )
 
     def keys(self) -> Iterator[ModuleID]:

@@ -36,7 +36,10 @@ import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec, MultiAgentRLModule
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModuleSpec,
+    MultiAgentRLModule,
+)
 
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
@@ -679,11 +682,11 @@ class Algorithm(Trainable):
 
         self.trainer_runner = None
         if self.config._enable_rl_trainer_api:
-            # TODO (Kourosh): This is an interim solution where policies and modules co-exist. 
-            # In this world we have both policy_map and MARLModule that need to be 
-            # consistent with one another. To make a consistent parity between the two we 
-            # need to loop throught the policy modules and create a simple MARLModule 
-            # from the RLModule within each policy.
+            # TODO (Kourosh): This is an interim solution where policies and modules
+            # co-exist. In this world we have both policy_map and MARLModule that need
+            # to be consistent with one another. To make a consistent parity between
+            # the two we need to loop throught the policy modules and create a simple
+            # MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
             module_specs = {}
 
@@ -695,7 +698,9 @@ class Algorithm(Trainable):
                     model_config=policy.config["model"],
                 )
 
-            module_spec = MultiAgentRLModuleSpec(module_class=MultiAgentRLModule, module_specs=module_specs)
+            module_spec = MultiAgentRLModuleSpec(
+                module_class=MultiAgentRLModule, module_specs=module_specs
+            )
 
             trainer_runner_config = self.config.get_trainer_runner_config(module_spec)
             self.trainer_runner = trainer_runner_config.build()

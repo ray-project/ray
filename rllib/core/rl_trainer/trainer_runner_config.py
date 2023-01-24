@@ -6,11 +6,10 @@ from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    from ray.rllib.core.rl_module import RLModule
     from ray.rllib.core.rl_trainer import RLTrainer
-    import gymnasium as gym
 
 ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
+
 
 # TODO (Kourosh): We should make all configs come from a standard base class that
 # defines the general interfaces for validation, from_dict, to_dict etc.
@@ -41,8 +40,8 @@ class TrainerRunnerConfig:
 
         if self.module_spec is None:
             raise ValueError(
-                "Cannot initialize an RLTrainer without the module specs. Please provide "
-                "the specs via .module(module_spec)."
+                "Cannot initialize an RLTrainer without the module specs. "
+                "Please provide the specs via .module(module_spec)."
             )
 
         if self.trainer_class is None:
@@ -68,8 +67,9 @@ class TrainerRunnerConfig:
     def build(self) -> TrainerRunner:
         self.validate()
 
-        # if the module class is a multi agent class it will override the default MultiAgentRLModule class
-        # otherwise, it will be a single agent wrapped with mutliagent
+        # If the module class is a multi agent class it will override the default
+        # MultiAgentRLModule class. otherwise, it will be a single agent wrapped with
+        # mutliagent
         # TODO (Kourosh): What should be scaling_config? it's not clear what
         # should be passed in as trainer_config and what will be inferred
         return self.trainer_runner_class(
@@ -106,14 +106,6 @@ class TrainerRunnerConfig:
             self.module_spec = module_spec
 
         return self
-
-    def multi_agent(
-        self,
-        *,
-        modules: Optional[Dict[str, "SingleAgentRLModuleConfig"]] = NotProvided,
-        marl_module_class: Optional[Type["MultiAgentRLModule"]] = NotProvided,
-    ) -> "TrainerRunnerConfig":
-        pass
 
     def resources(
         self,

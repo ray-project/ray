@@ -48,6 +48,7 @@ class SingleAgentRLModuleSpec:
             model_config=self.model_config,
         )
 
+
 @ExperimentalAPI
 @dataclass
 class RLModuleConfig:
@@ -65,6 +66,7 @@ class RLModuleConfig:
     observation_space: gym.Space = None
     action_space: gym.Space = None
     max_seq_len: int = None
+
 
 @ExperimentalAPI
 class RLModule(abc.ABC):

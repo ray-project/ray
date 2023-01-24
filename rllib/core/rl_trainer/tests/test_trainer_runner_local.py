@@ -1,14 +1,11 @@
 import gymnasium as gym
 import unittest
 
-from ray.rllib.utils.framework import try_import_tf
 import ray
 
-from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.core.testing.utils import (
     add_module_to_runner_or_trainer,
     get_trainer_runner,
