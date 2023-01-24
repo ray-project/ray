@@ -142,6 +142,10 @@ class BaseTrainer(abc.ABC):
     _handles_checkpoint_freq: bool = False
     _handles_checkpoint_at_end: bool = False
 
+    # fields to propagate to Tuner param_space.
+    # See `BaseTrainer._extract_fields_for_tuner_param_space` for more details.
+    _fields_for_tuner_param_space = []
+
     def __init__(
         self,
         *,
