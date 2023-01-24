@@ -69,7 +69,7 @@ def test_status_task_events_metrics(shutdown_only):
             "At least 10 tasks events should be reported. "
             "Could be more than 10 with multiple flush."
         )
-        assert metric["STORED"] == 10, "10 task's events should be stored."
+        assert metric["STORED"] == 11, "10 task + 1 driver's events should be stored."
 
         return True
 
