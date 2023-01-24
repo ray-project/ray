@@ -196,7 +196,7 @@ class MosaicTrainer(TorchTrainer):
             cls._create_trainer_init_config(
                 trainer_init_per_worker, trainer_init_config
             )
-            if train_loop_config
+            if trainer_init_config
             else None
         )
 
