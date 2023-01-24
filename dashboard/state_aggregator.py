@@ -406,7 +406,7 @@ class StateAPIManager:
                     ],
                 ),
                 (task_attempt, ["task_id", "attempt_number", "job_id"]),
-                (state_updates, ["node_id"]),
+                (state_updates, ["node_id", "input_size_bytes", "output_size_bytes"]),
             ]
             for src, keys in mappings:
                 for key in keys:
@@ -414,6 +414,8 @@ class StateAPIManager:
 
             task_state["start_time_ms"] = None
             task_state["end_time_ms"] = None
+            task_state["input_size_bytes"] = int(task_state["input_size_bytes"])
+            task_state["output_size_bytes"] = int(task_state["output_size_bytes"])
             events = []
 
             for state in common_pb2.TaskStatus.keys():

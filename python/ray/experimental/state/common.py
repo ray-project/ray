@@ -533,6 +533,10 @@ class TaskState(StateSchema):
     start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
     #: The time when the task finishes or failed. A Unix timestamp in ms.
     end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    #: The size of input objects in bytes.
+    input_size_bytes: int = state_column(detail=True, filterable=False)
+    #: The size of output objects in bytes.
+    output_size_bytes: int = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)

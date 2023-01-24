@@ -320,12 +320,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param status the changed status.
   /// \param include_task_info True if TaskInfoEntry will be added to the Task events.
   /// \param node_id Node ID of the worker for which the task's submitted. Only applicable
+  /// \param input_size_bytes The size of input objects ray.get is called on.
+  /// \param input_size_bytes The size of the output objects of this task.
   /// for SUBMITTED_TO_WORKER status change.
   void RecordTaskStatusEvent(int32_t attempt_number,
                              const TaskSpecification &spec,
                              rpc::TaskStatus status,
                              bool include_task_info = false,
-                             absl::optional<NodeID> node_id = absl::nullopt);
+                             absl::optional<NodeID> node_id = absl::nullopt,
+                             absl::optional<uint64_t> input_size_bytes = absl::nullopt,
+                             absl::optional<int64_t> output_size_bytes = absl::nullopt);
 
  private:
   struct TaskEntry {
@@ -478,6 +482,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
+
+  void SetTaskFailed(TaskEntry &task_entry);
+
+  void SetTaskFinished(TaskEntry &task_entry, absl::optional<int64_t> output_size_bytes);
 
   /// Set the TaskStatus
   ///
