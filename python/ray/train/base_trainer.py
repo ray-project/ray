@@ -427,12 +427,9 @@ class BaseTrainer(abc.ABC):
 
         result_grid = tuner.fit()
         assert len(result_grid) == 1
-        try:
-            result = result_grid[0]
-            if result.error:
-                raise result.error
-        except TuneError as e:
-            raise TrainingFailedError from e
+        result = result_grid[0]
+        if result.error:
+            raise TrainingFailedError from result.error
         return result
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:
