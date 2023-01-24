@@ -1,3 +1,4 @@
+import importlib
 import json
 import os
 import shutil
@@ -49,6 +50,10 @@ def main(test_collection_file: Optional[str] = None):
         repo = settings["ray_test_repo"]
         tmpdir = tempfile.mktemp()
 
+        current_release_dir = os.path.abspath(
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        )
+
         clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {tmpdir}"
         try:
             subprocess.check_output(clone_cmd, shell=True)
@@ -56,25 +61,26 @@ def main(test_collection_file: Optional[str] = None):
             raise ReleaseTestCLIError(
                 f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
             ) from e
-        test_collection_file = os.path.join(tmpdir, "release", "release_tests.yaml")
-        schema_file = os.path.join(tmpdir, "release", "ray_release", "schema.json")
-        current_schema_file = os.path.join(
-            os.path.dirname(__file__), "..", "schema.json"
+        subprocess.check_output(
+            ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
+            shell=True,
         )
-        os.remove(current_schema_file)
-        shutil.copy(schema_file, current_schema_file)
+
+        for module in sys.modules.values():
+            if module.__name__.startswith("ray_release"):
+                try:
+                    importlib.reload(module)
+                except Exception:
+                    pass
+
         env = {
             "RAY_TEST_REPO": repo,
             "RAY_TEST_BRANCH": branch,
         }
-    else:
-        test_collection_file = test_collection_file or os.path.join(
-            os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-        )
-        schema_file = None
-    test_collection = read_and_validate_release_test_collection(
-        test_collection_file
+    test_collection_file = test_collection_file or os.path.join(
+        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
     )
+    test_collection = read_and_validate_release_test_collection(test_collection_file)
 
     if tmpdir:
         shutil.rmtree(tmpdir, ignore_errors=True)
