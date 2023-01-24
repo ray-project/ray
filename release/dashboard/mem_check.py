@@ -13,9 +13,10 @@ addr = ray.init()
 
 if __name__ == "__main__":
     client = JobSubmissionClient("http://127.0.0.1:8265")
+    path = os.path.abspath(os.path.join(os.path.dirname(__file__), "workload.py"))
     job_id = client.submit_job(
         # Entrypoint shell command to execute
-        entrypoint="python workload.py",
+        entrypoint=f"python '{path}'",
     )
     print(job_id)
 

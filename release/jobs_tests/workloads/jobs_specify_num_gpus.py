@@ -62,9 +62,13 @@ if __name__ == "__main__":
     # This test script runs on the head node, which should not have a GPU.
     assert not torch.cuda.is_available()
 
+    path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "jobs_check_cuda_available.py")
+    )
+
     for num_gpus in [0, 0.1]:
         job_id = client.submit_job(
-            entrypoint="python jobs_check_cuda_available.py",
+            entrypoint=f"python '{path}",
             runtime_env={"working_dir": args.working_dir},
             entrypoint_num_gpus=num_gpus,
         )

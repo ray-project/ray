@@ -56,8 +56,11 @@ if __name__ == "__main__":
         address = "http://127.0.0.1:8265"
 
     client = JobSubmissionClient(address)
+    path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "run_simple_tune_job.py")
+    )
     job_id = client.submit_job(
-        entrypoint="python run_simple_tune_job.py",
+        entrypoint=f"python '{path}'",
         runtime_env={"pip": ["ray[tune]"], "working_dir": args.working_dir},
     )
     timeout_s = 10 * 60
