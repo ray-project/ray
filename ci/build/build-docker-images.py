@@ -467,8 +467,8 @@ def _create_new_tags(all_tags, old_str, new_str):
 def push_and_tag_images(
     py_versions: List[str],
     image_types: List[str],
-    push_base_images: bool,
     merge_build: bool = False,
+    image_list: Optional[List[str]] = None,
 ):
 
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -477,10 +477,6 @@ def push_and_tag_images(
         release_name = re.search("[0-9]+\.[0-9]+\.[0-9].*", _get_branch()).group(0)
         date_tag = release_name
         sha_tag = release_name
-
-    image_list = ["ray", "ray-ml"]
-    if push_base_images:
-        image_list.extend(["base-deps", "ray-deps"])
 
     for image_name in image_list:
         full_image_name = f"rayproject/{image_name}"
@@ -761,12 +757,25 @@ if __name__ == "__main__":
             # Build Ray Docker images.
             build_for_all_versions("ray", py_versions, image_types, suffix=args.suffix)
 
+            # List of images to tag and push to docker hub
+            images_to_tag_and_push = []
+
+            if is_base_images_built:
+                images_to_tag_and_push += ["base-deps", "ray-deps"]
+
+            # Always tag/push ray
+            images_to_tag_and_push += ["ray"]
+
             # Only build ML Docker images for ML_CUDA_VERSION or cpu.
-            ml_image_types = [
-                image_type
-                for image_type in image_types
-                if image_type in [ML_CUDA_VERSION, "cpu"]
-            ]
+            if platform.processor() in ["i386"]:
+                ml_image_types = [
+                    image_type
+                    for image_type in image_types
+                    if image_type in [ML_CUDA_VERSION, "cpu"]
+                ]
+            else:
+                # Do not build ray-ml e.g. for arm64
+                ml_image_types = []
 
             if len(ml_image_types) > 0:
                 prep_ray_ml()
@@ -776,6 +785,7 @@ if __name__ == "__main__":
                     image_types=ml_image_types,
                     suffix=args.suffix,
                 )
+                images_to_tag_and_push += ["ray-ml"]
 
             if build_type in {MERGE, PR}:
                 valid_branch = _valid_branch()
@@ -784,8 +794,8 @@ if __name__ == "__main__":
                 push_and_tag_images(
                     py_versions,
                     image_types,
-                    is_base_images_built,
-                    valid_branch and is_merge,
+                    merge_build=valid_branch and is_merge,
+                    image_list=images_to_tag_and_push,
                 )
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password
