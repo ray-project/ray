@@ -1,7 +1,8 @@
 import itertools
 import time
-from concurrent.futures import Executor
+from concurrent.futures import Executor, Future
 from functools import partial
+from typing import Any, Callable, typing, Union
 
 import ray
 from ray.util.annotations import PublicAPI
@@ -13,40 +14,35 @@ class RayExecutor(Executor):
     `ThreadPoolExecutor` from `concurrent.futures` but distributes and executes
     the specified tasks over a Ray cluster instead of multiple processes or
     threads.
+
+    It initialises a new RayExecutor instance which distributes tasks over
+    a Ray cluster.
+
+    Args:
+        max_workers:
+            If the maximum number of Ray workers is given, task is distributed
+            over a ray Actor pool, otherwise it is distributed over the cpus of
+            the cluster
+
+        All additional keyword arguments are passed to ray.init()
+        (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
+
+        For example, this will connect to a cluster at the specified address:
+        .. code-block:: python
+
+            RayExecutor(address='192.168.0.123:25001')
+
+        Note: excluding an address will initialise a local Ray cluster.
     """
 
     def __init__(self, max_workers=None, **kwargs):
-        """Initialises a new RayExecutor instance which distributes tasks over
-        a Ray cluster.
-
-        Args:
-            max_workers:
-                The maximum number of Ray workers to distribute the
-                tasks over. This is achieved by creating a fixed pool
-                of Actors (see
-                https://docs.ray.io/en/latest/ray-core/actors/
-                actor-utils.html#actor-pool).
-
-            All additional keyword arguments are passed to ray.init()
-            (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
-
-            For example, this will connect to a cluster at the specified address:
-            .. code-block:: python
-
-                RayExecutor(address='192.168.0.123:25001')
-
-            Note: excluding an address will initialise a local Ray cluster.
-        """
         self._shutdown_lock = False
         self._futures = []
         self.__actor_pool = None
         self.__remote_fn = None
         self.context = None
 
-        """
-        The following is necessary because `@ray.remote` is only available at runtime.
-        """
-
+        # The following is necessary because `@ray.remote` is only available at runtime.
         if max_workers is None:
 
             @ray.remote
@@ -56,7 +52,9 @@ class RayExecutor(Executor):
             self.__remote_fn = remote_fn
         else:
             if max_workers < 1:
-                raise ValueError("max_workers must be >= 1")
+                raise ValueError(
+                    f"max_workers={max_workers} given, max_workers must be >= 1"
+                )
 
             @ray.remote
             class ExecutorActor:
@@ -74,7 +72,7 @@ class RayExecutor(Executor):
 
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
 
-    def submit(self, fn, *args, **kwargs):
+    def submit(self, fn: Callable, *args: Any, **kwargs: Any) -> Future:
         """Submits a callable to be executed with the given arguments.
 
         Schedules the callable to be executed as `fn(*args, **kwargs)` and returns
@@ -108,7 +106,9 @@ class RayExecutor(Executor):
         self._futures.append(future)
         return future
 
-    def map(self, fn, *iterables, timeout=None, chunksize=1):
+    def map(
+        self, fn: Callable, *iterables: Any, timeout: int = None, chunksize=1
+    ) -> itertools.chain:
         """Returns an iterator equivalent to `map(fn, iter)`.
 
         Args:
@@ -145,12 +145,12 @@ class RayExecutor(Executor):
                     lambda a, v: a.actor_function.remote(partial(fn, *v)), chunk
                 )
             else:
-                results = self._map(self.submit, fn, chunk, timeout)
+                results = self._map(fn, chunk, timeout)
             results_list.append(results)
         return itertools.chain(*results_list)
 
     @staticmethod
-    def _get_chunks(*iterables, chunksize):
+    def _get_chunks(*iterables: Any, chunksize: int) -> tuple[Any]:
         """
         https://github.com/python/cpython/blob/main/Lib/concurrent/futures/process.py#L186
         Iterates over zip()-ed iterables in chunks.
@@ -163,7 +163,7 @@ class RayExecutor(Executor):
             yield chunk
 
     @staticmethod
-    def _result_or_cancel(fut, timeout=None):
+    def _result_or_cancel(fut: Future, timeout=None) -> Any:
         """
         From concurrent.futures
         """
@@ -176,14 +176,14 @@ class RayExecutor(Executor):
             # Break a reference cycle with the exception in self._exception
             del fut
 
-    def _map(self, submit_fn, fn, iterables, timeout=None):
+    def _map(self, fn: Callable, iterables: Union[list, tuple], timeout: int = None):
         """
         This was adapted from concurrent.futures.Executor.map.
         """
         if timeout is not None:
             end_time = timeout + time.monotonic()
 
-        fs = [submit_fn(fn, *args) for args in iterables]
+        fs = [self.submit(fn, *args) for args in iterables]
 
         # Yield must be hidden in closure so that the futures are submitted
         # before the first iterator value is required.
@@ -205,7 +205,7 @@ class RayExecutor(Executor):
 
         return result_iterator()
 
-    def shutdown(self, wait=True, *, cancel_futures=False):
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
         """Clean-up the resources associated with the Executor.
 
         It is safe to call this method several times. No other methods can be
@@ -232,6 +232,6 @@ class RayExecutor(Executor):
 
         ray.shutdown()
 
-    def _check_shutdown_lock(self):
+    def _check_shutdown_lock(self) -> None:
         if self._shutdown_lock:
             raise RuntimeError("New task submitted after shutdown() was called")
