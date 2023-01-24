@@ -99,6 +99,9 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// that is not related to running out of memory. Retries indefinitely if the value is -1.
 RAY_CONFIG(uint64_t, task_oom_retries, 15)
 
+/// The worker killing policy to use, as defined in worker_killing_policy.h.
+RAY_CONFIG(std::string, worker_killing_policy, "retriable_lifo")
+
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
 
@@ -462,6 +465,11 @@ RAY_CONFIG(int64_t, task_events_max_num_task_events_in_buffer, 10000)
 /// report gRPC call.
 /// Setting the value to -1 allows unlimited profile events to be sent.
 RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 100)
+
+/// The delay in ms that GCS should mark any running tasks from a job as failed.
+/// Setting this value too smaller might result in some finished tasks marked as failed by
+/// GCS.
+RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_job_done_delay_ms, /*  15 secs */ 1000 * 15)
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
