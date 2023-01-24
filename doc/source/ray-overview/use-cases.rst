@@ -464,6 +464,7 @@ The following highlights feature companies leveraging Ray's unified API to build
         :text: [Talk] Ray Summit Panel - ML Platform on Ray
         :classes: btn-link btn-block stretched-link summitMLPlatform
 
+
 End-to-End ML Workflows
 -----------------------
 
@@ -558,3 +559,21 @@ The following highlights feature companies leveraging Ray Core's distributed API
         :type: url
         :text: [Blog] Ray Forward 2022 Conference: Hyper-scale Ray Application Use Cases
         :classes: btn-link btn-block stretched-link rayForward
+
+
+Basic Examples
+--------------
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    +++
+    .. link-button:: /ray-overview/examples/web-crawler
+        :type: ref
+        :text: Speed up your web crawler by parallelizing it with Ray
+        :classes: btn-link btn-block stretched-link webCrawler
