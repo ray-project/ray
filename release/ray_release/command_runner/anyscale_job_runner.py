@@ -80,14 +80,16 @@ class AnyscaleJobRunner(JobRunner):
         is_long_running: bool = False,
     ) -> float:
         prepare_command_str = ""
-        for prepare_command, env, timeout in self.prepare_commands:
-            prepare_env = self.get_full_command_env(env)
+        for prepare_command, prepare_env, prepare_timeout in self.prepare_commands:
+            prepare_env = self.get_full_command_env(prepare_env)
 
             if prepare_env:
                 env_str = " ".join(f"{k}={v}" for k, v in prepare_env.items()) + " "
             else:
                 env_str = ""
-            prepare_command_str += f"{env_str}timeout '{timeout}' {prepare_command}; "
+            prepare_command_str += (
+                f"{env_str}timeout '{prepare_timeout}' {prepare_command}; "
+            )
 
         full_env = self.get_full_command_env(env)
 
