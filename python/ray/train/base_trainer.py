@@ -382,7 +382,7 @@ class BaseTrainer(abc.ABC):
             A dictionary that should be passed to Tuner.param_space.
         """
         result = {}
-        for key in ["train_loop_config"]:
+        for key in self._fields_for_tuner_param_space:
             if key in self._param_dict.keys():
                 result[key] = copy.deepcopy(self._param_dict[key])
         return result
