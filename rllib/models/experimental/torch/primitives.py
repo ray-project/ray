@@ -1,10 +1,9 @@
 from typing import List, Optional
 from typing import Tuple
 
-from ray.rllib.models.experimental.base import Model, ForwardOutputType
-from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.experimental.base import Model
 from ray.rllib.models.specs.checker import (
-    is_input_decorated,
+    input_is_decorated,
     is_output_decorated,
 )
 from ray.rllib.models.temp_spec_classes import TensorDict
@@ -34,7 +33,7 @@ class TorchModel(nn.Module, Model):
     def __init__(self, config: ModelConfig):
         nn.Module.__init__(self)
         Model.__init__(self, config)
-        assert is_input_decorated(self.forward), _forward_not_decorated("input")
+        assert input_is_decorated(self.forward), _forward_not_decorated("input")
         assert is_output_decorated(self.forward), _forward_not_decorated("output")
 
     def forward(self, input_dict: TensorDict) -> Tuple[TensorDict, List[TensorType]]:

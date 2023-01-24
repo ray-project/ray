@@ -3,7 +3,6 @@ import torch.nn as nn
 import tree
 
 from ray.rllib.models.experimental.base import (
-    Model,
     Encoder,
     STATE_IN,
     STATE_OUT,

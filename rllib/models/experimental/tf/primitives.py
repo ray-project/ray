@@ -1,12 +1,11 @@
 from typing import List
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.checker import (
-    is_input_decorated,
+    input_is_decorated,
     is_output_decorated,
 )
 from ray.rllib.models.temp_spec_classes import TensorDict
-from ray.rllib.models.experimental.base import ModelConfig, Model, ForwardOutputType
+from ray.rllib.models.experimental.base import Model
 from ray.rllib.utils.typing import TensorType
 from typing import Tuple
 
@@ -31,7 +30,7 @@ class TFModel(Model):
 
     def __init__(self, config):
         super().__init__(config)
-        assert is_input_decorated(self.__call__), _call_not_decorated("input")
+        assert input_is_decorated(self.__call__), _call_not_decorated("input")
         assert is_output_decorated(self.__call__), _call_not_decorated("output")
 
     def __call__(self, input_dict: TensorDict) -> Tuple[TensorDict, List[TensorType]]:

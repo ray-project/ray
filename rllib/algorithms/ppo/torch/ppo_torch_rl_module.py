@@ -23,8 +23,9 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
+from ray.rllib.algorithms.ppo.ppo import PPOModuleConfig
 from ray.rllib.utils.nested_dict import NestedDict
-from rllib.algorithms.ppo.ppo import __PPOModuleConfig
+
 
 torch, nn = try_import_torch()
 
@@ -43,7 +44,7 @@ def get_ppo_loss(fwd_in, fwd_out):
 
 
 class PPOTorchRLModule(TorchRLModule):
-    def __init__(self, config: __PPOModuleConfig) -> None:
+    def __init__(self, config: PPOModuleConfig) -> None:
         super().__init__()
         self.config = config
         self.setup()
@@ -142,7 +143,7 @@ class PPOTorchRLModule(TorchRLModule):
         else:
             pi_config.output_dim = action_space.shape[0] * 2
 
-        config_ = __PPOModuleConfig(
+        config_ = PPOModuleConfig(
             observation_space=observation_space,
             action_space=action_space,
             shared_encoder_config=shared_encoder_config,

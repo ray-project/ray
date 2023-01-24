@@ -474,7 +474,7 @@ DEFAULT_CONFIG = _deprecated_default_config()
 
 
 @dataclass
-class __PPOModuleConfig(RLModuleConfig):
+class PPOModuleConfig(RLModuleConfig):
     """Configuration for the PPO RLModule.
 
     Attributes:
