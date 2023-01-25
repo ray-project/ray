@@ -308,6 +308,10 @@ img.horizontal-scroll {
     float: right;
 }
 
+.card-body {
+    padding: 0.5rem !important;
+}
+
 /* Wrap code blocks instead of horizontal scrolling. */
 pre {
     white-space: pre-wrap;
@@ -317,6 +321,7 @@ pre {
 .cell .cell_output {
     max-height: 250px;
     overflow-y: auto;
+    font-weight: bold;
 }
 
 /* Yellow doesn't render well on light background */
