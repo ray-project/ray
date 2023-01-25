@@ -20,7 +20,6 @@ from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
-from ray.util.check_object_refs import contains_object_refs
 from ray.widgets import Template
 from ray.widgets.util import ensure_notebook_deps
 
@@ -246,6 +245,8 @@ class DataParallelTrainer(BaseTrainer):
         "train_loop_config"
     ]
 
+    _optional_fields_for_restore = ["train_loop_per_worker", "train_loop_config"]
+
     def __init__(
         self,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
@@ -262,8 +263,8 @@ class DataParallelTrainer(BaseTrainer):
         if not ray.is_initialized():
             ray.init()
 
-        self._train_loop_per_worker = train_loop_per_worker
-        self._train_loop_config = train_loop_config
+        self.train_loop_per_worker = train_loop_per_worker
+        self.train_loop_config = train_loop_config
 
         backend_config = (
             backend_config if backend_config is not None else BackendConfig()
@@ -284,45 +285,11 @@ class DataParallelTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    @classmethod
-    def restore(
-        cls: Type["DataParallelTrainer"],
-        path: str,
-        train_loop_per_worker: Optional[
-            Union[Callable[[], None], Callable[[Dict], None]]
-        ] = None,
-        train_loop_config: Optional[Dict] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
-        scaling_config: Optional[ScalingConfig] = None,
-    ) -> "DataParallelTrainer":
-        trainer: DataParallelTrainer = super(DataParallelTrainer, cls).restore(
-            path=path,
-            datasets=datasets,
-            preprocessor=preprocessor,
-            scaling_config=scaling_config,
-        )
-        if (
-            contains_object_refs(trainer._train_loop_per_worker)
-            and not train_loop_per_worker
-        ):
-            raise ValueError()
-        if train_loop_per_worker:
-            trainer._train_loop_per_worker = train_loop_per_worker
-
-        if contains_object_refs(trainer._train_loop_config) and not train_loop_config:
-            raise ValueError()
-        if train_loop_config:
-            old_config = trainer._train_loop_config or {}
-            assert set(old_config.keys()) == set(train_loop_config.keys())
-            trainer._train_loop_config = train_loop_config
-        return trainer
-
     def _validate_attributes(self):
         super()._validate_attributes()
 
         self._validate_train_loop_per_worker(
-            self._train_loop_per_worker, "train_loop_per_worker"
+            self.train_loop_per_worker, "train_loop_per_worker"
         )
 
     def preprocess_datasets(self, should_fit_preprocessor: bool = True) -> None:
@@ -385,8 +352,8 @@ class DataParallelTrainer(BaseTrainer):
         scaling_config = self._validate_scaling_config(self.scaling_config)
 
         train_loop_per_worker = construct_train_func(
-            self._train_loop_per_worker,
-            self._train_loop_config,
+            self.train_loop_per_worker,
+            self.train_loop_config,
             fn_arg_name="train_loop_per_worker",
             discard_returns=True,
         )
@@ -456,7 +423,7 @@ class DataParallelTrainer(BaseTrainer):
             self._datasets_repr_() if self.datasets else None,
             HTML(self._dataset_config_repr_html_()) if self._dataset_config else None,
             HTML(self._train_loop_config_repr_html_())
-            if self._train_loop_config
+            if self.train_loop_config
             else None,
             HTML(self.scaling_config._repr_html_()) if self.scaling_config else None,
             HTML(self.run_config._repr_html_()) if self.run_config else None,
@@ -477,9 +444,9 @@ class DataParallelTrainer(BaseTrainer):
         display(VBox([title, tab], layout=Layout(width="100%")))
 
     def _train_loop_config_repr_html_(self) -> str:
-        if self._train_loop_config:
+        if self.train_loop_config:
             table_data = {}
-            for k, v in self._train_loop_config.items():
+            for k, v in self.train_loop_config.items():
                 if isinstance(v, str) or str(v).isnumeric():
                     table_data[k] = v
                 elif hasattr(v, "_repr_html_"):
