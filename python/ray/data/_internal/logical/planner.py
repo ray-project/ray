@@ -2,8 +2,8 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.read_operator import Read, plan_read_op
 from ray.data._internal.logical.operators.map_operator import (
-    MapBatches,
-    plan_map_batches_op,
+    BaseMapLike,
+    plan_map_like_op,
 )
 
 
@@ -24,9 +24,9 @@ class Planner:
         if isinstance(logical_dag, Read):
             assert not physical_children
             physical_dag = plan_read_op(logical_dag)
-        elif isinstance(logical_dag, MapBatches):
+        elif isinstance(logical_dag, BaseMapLike):
             assert len(physical_children) == 1
-            physical_dag = plan_map_batches_op(logical_dag, physical_children[0])
+            physical_dag = plan_map_like_op(logical_dag, physical_children[0])
         else:
             raise ValueError(
                 f"Found unknown logical operator during planning: {logical_dag}"
