@@ -190,7 +190,9 @@ class BaseTrainer(abc.ABC):
 
         if trainer.datasets and not datasets:
             raise ValueError()
-        assert set(trainer.datasets.keys()) == set(datasets.keys())
+        original_datasets = trainer.datasets or {}
+        datasets = datasets or {}
+        assert set(original_datasets.keys()) == set(datasets.keys())
         trainer.datasets = datasets
 
         # If no preprocessor is re-specified, then it will be set to None

@@ -299,6 +299,43 @@ def test_obj_ref_in_train_loop_config(tmpdir):
     )
 
 
+def test_train_loop_config_validation(tmpdir):
+    train_loop_config = {"a": 1, "b": 2, "c": 3}
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=lambda config: session.report({"score": 1}),
+        train_loop_config=train_loop_config,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(name="train_loop_config_validation_1", local_dir=tmpdir),
+    )
+    trainer._save(tmpdir)
+
+    with pytest.raises(AssertionError):
+        DataParallelTrainer.restore(str(tmpdir), train_loop_config={"a": 1, "b": 2})
+
+    trainer = DataParallelTrainer.restore(
+        str(tmpdir), train_loop_config=train_loop_config
+    )
+
+    datasets = {"train": ray.data.from_items([{"x": i} for i in range(8)])}
+    trainer = HuggingFaceTrainer(
+        trainer_init_per_worker=lambda a, b, c: None,
+        datasets=datasets,
+        trainer_init_config=train_loop_config,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(name="train_loop_config_validation_2", local_dir=tmpdir),
+    )
+    trainer._save(tmpdir)
+
+    with pytest.raises(AssertionError):
+        HuggingFaceTrainer.restore(
+            str(tmpdir), datasets=datasets, trainer_init_config={"a": 1, "b": 2}
+        )
+
+    trainer = HuggingFaceTrainer.restore(
+        str(tmpdir), datasets=datasets, trainer_init_config=train_loop_config
+    )
+
+
 def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
     class ModelPreprocessor:
         def transform(self, x):
