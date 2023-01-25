@@ -24,7 +24,7 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
 #        TS_STATEDIR="/data/tailscale/" \
 #        TS_STATE="tailscale.state"
 
-RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+RUN sudo rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
         sudo apt update \
