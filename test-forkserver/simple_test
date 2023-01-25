@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+
+import subprocess
+subprocess.run(
+    "ray stop --force; RAY_experimental_worker_proc_forkserver=true RAY_BACKEND_LOG_LEVEL=DEBUG ray start --head --port=6379 --object-manager-port=8076 --port=9031 --no-monitor",
+    shell=True,
+)
+
+import ray
+ray.init()
+
+@ray.remote
+def a():
+    print('hello')
+
+ray.get(a.remote())
+
+subprocess.run("ray stop", shell=True)

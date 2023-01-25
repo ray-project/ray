@@ -1,0 +1,45 @@
+#!/usr/bin/python3
+
+import socket
+import os
+import time
+from collections import deque
+import sys
+
+
+def main():
+    listen()
+
+def listen():
+  if os.path.exists("/tmp/socket_test.s"):
+    os.remove("/tmp/socket_test.s")
+  
+  server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+  server.bind("/tmp/socket_test.s")
+  
+  while True:
+    server.listen(1)
+    print('listening')
+  
+    conn, addr = server.accept()
+    print(f'accepted {addr}')
+    all_recv = b''
+    while True:
+      all_recv += conn.recv(1024)
+      argv = all_recv.split(b'\x00')
+      if len(argv) > 2 and argv[-1] == argv[-2] == b'':
+          break
+  
+    print('got', argv[:-2])
+    child_pid = spawn(argv[:-2])
+  
+    conn.send(bytes(f"{child_pid}", "utf-8"))
+    print('sent response')
+  
+    conn.close()
+
+def spawn(argv):
+    return -1
+
+if __name__ == '__main__':
+    sys.exit(main())

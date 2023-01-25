@@ -1,0 +1,15 @@
+#!/usr/bin/python3
+
+import socket
+import os
+import time
+from collections import deque
+
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect("/tmp/socket_test.s")
+s.send(b"known_good_client")
+r = s.recv(1024)
+print(f'got back {r} from server')
+s.close()
+
+#while True:
