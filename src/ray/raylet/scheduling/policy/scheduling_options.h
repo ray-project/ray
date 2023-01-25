@@ -184,7 +184,7 @@ struct SchedulingOptions {
         avoid_gpu_nodes(avoid_gpu_nodes),
         max_cpu_fraction_per_node(max_cpu_fraction_per_node),
         scheduling_context(std::move(scheduling_context)),
-        preferred_node_id(preferred_node_id) {}
+        preferred_node_id(preferred_node_id),
         schedule_top_k_absolute(schedule_top_k_absolute),
         scheduler_top_k_fraction(scheduler_top_k_fraction) {}
 
