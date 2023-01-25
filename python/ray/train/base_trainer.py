@@ -514,14 +514,7 @@ class BaseTrainer(abc.ABC):
             loaded_preprocessor = False
             if checkpoint:
                 trainer.resume_from_checkpoint = checkpoint
-                # Always use the checkpointed preprocessor when retrying on errors
-                # (configured by FailureConfig(max_failures)).
-                # On a restored the full experiment via Trainer.restore, only load the
-                # checkpointed preprocessor if the preprocessor is not re-specified.
-                should_load_from_checkpoint = (
-                    not trainer._restore_path or not trainer.preprocessor
-                )
-                if should_load_from_checkpoint:
+                if not trainer.preprocessor:
                     trainer.preprocessor = checkpoint.get_preprocessor()
                     loaded_preprocessor = True
 
