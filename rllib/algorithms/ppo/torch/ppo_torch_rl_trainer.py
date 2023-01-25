@@ -1,9 +1,9 @@
 import logging
-from typing import Mapping, Any, Union
+from typing import Mapping, Any
 
 from ray.rllib.core.rl_trainer.torch.torch_rl_trainer import TorchRLTrainer
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     explained_variance,
@@ -14,11 +14,13 @@ torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
+
 class PPOTorchRLTrainer(TorchRLTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # TODO (Kourosh): Move these failures to config.validate() or support them.
+        self.entropy_coeff_scheduler = None
         if self.config.entropy_coeff_schedule:
             raise ValueError("entropy_coeff_schedule is not supported in RLTrainer yet")
 
@@ -46,7 +48,9 @@ class PPOTorchRLTrainer(TorchRLTrainer):
 
         curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
         action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
-        prev_action_dist = action_dist_class(**batch[SampleBatch.ACTION_DIST_INPUTS].asdict())
+        prev_action_dist = action_dist_class(
+            **batch[SampleBatch.ACTION_DIST_INPUTS].asdict()
+        )
 
         logp_ratio = torch.exp(
             fwd_out[SampleBatch.ACTION_LOGP] - batch[SampleBatch.ACTION_LOGP]
@@ -123,9 +127,9 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         # TODO (Kourosh): We may want to index into the schedulers to get the right one
         # for this module
         if self.entropy_coeff_scheduler is not None:
-            self.entropy_coeff_scheduleler.update(timestep)
+            self.entropy_coeff_scheduler.update(timestep)
 
         if self.lr_scheduler is not None:
-            self.lr_scheduleler.update(timestep)
+            self.lr_scheduler.update(timestep)
 
         return results

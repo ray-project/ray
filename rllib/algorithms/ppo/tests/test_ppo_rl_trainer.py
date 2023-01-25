@@ -1,10 +1,9 @@
-
 import ray
 import unittest
 import numpy as np
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 import torch
-import tree # pip install dm-tree
+import tree  # pip install dm-tree
 
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_trainer import PPOTorchRLTrainer
@@ -29,9 +28,9 @@ FAKE_BATCH = {
     SampleBatch.TERMINATEDS: np.array([False, False, True]),
     SampleBatch.TRUNCATEDS: np.array([False, False, False]),
     SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-    SampleBatch.ACTION_DIST_INPUTS: {"logits": np.array(
-        [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
-    )},
+    SampleBatch.ACTION_DIST_INPUTS: {
+        "logits": np.array([[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32)
+    },
     SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
     SampleBatch.EPS_ID: np.array([0, 0, 0]),
     SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
@@ -46,7 +45,6 @@ class TestPPO(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
-
 
     def test_loss(self):
 
@@ -83,13 +81,14 @@ class TestPPO(unittest.TestCase):
 
         policy_loss = policy.loss(policy.model, policy.dist_class, train_batch)
 
-        config.training(
-            _enable_rl_trainer_api=True
-        )
+        config.training(_enable_rl_trainer_api=True)
         config.validate()
         config.freeze()
         trainer_runner_config = config.get_trainer_runner_config(
-            SingleAgentRLModuleSpec(observation_space=policy.observation_space, action_space=policy.action_space)
+            SingleAgentRLModuleSpec(
+                observation_space=policy.observation_space,
+                action_space=policy.action_space,
+            )
         )
         trainer_runner = trainer_runner_config.build()
 
@@ -102,7 +101,6 @@ class TestPPO(unittest.TestCase):
         trainer_runner_loss = results[0]["loss"]["total_loss"]
 
         check(trainer_runner_loss, policy_loss)
-
 
 
 if __name__ == "__main__":

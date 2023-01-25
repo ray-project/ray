@@ -42,6 +42,8 @@ from ray.rllib.utils.metrics import (
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module import RLModule
+    from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +137,7 @@ class PPOConfig(PGConfig):
     def get_default_rl_trainer_class(self) -> Union[Type["RLTrainer"], str]:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_trainer import (
-                PPOTorchRLTrainer
+                PPOTorchRLTrainer,
             )
 
             return PPOTorchRLTrainer
@@ -377,14 +379,31 @@ class PPO(Algorithm):
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
         if self.config._enable_rl_trainer_api:
-            train_results = self.trainer_runner.update(train_batch)
+            # TODO (Kourosh) Clearly define what train_batch_size
+            # vs. sgd_minibatch_size and num_sgd_iter is.
+            # TODO (Kourosh) Do this inside the RL Trainer so
+            # that we don't have to this back and forth
+            # communication between driver and the remote
+            # trainer workers
+            for epoch in range(self.config.num_sgd_iter):
+                # bsize = self.config.sgd_minibatch_size
+                # for minibatch in SampleBatchLoader(train_batch, batch_size=bsize):
+                #     train_results = self.trainer_runner.update(minibatch)
+                # TODO (Kourosh) The output of trainer_runner.update() should be
+                # one item not a list of items
+                train_results = self.trainer_runner.update(train_batch)[0]
         elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        policies_to_update = list(train_results.keys())
+        if self.config._enable_rl_trainer_api:
+            policies_to_update = set(train_results["loss"].keys()) - {"total_loss"}
+        else:
+            policies_to_update = list(train_results.keys())
 
+        # TODO (Kourosh): num_grad_updates per each policy should be accessible via
+        # train_results
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
             "num_grad_updates_per_policy": {
@@ -395,24 +414,32 @@ class PPO(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
-        if self.workers.num_remote_workers() > 0:
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                from_worker = None
-                if self.config._enable_rl_trainer_api:
-                    from_worker = self.trainer_runner
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            from_worker = None
+            if self.config._enable_rl_trainer_api:
+                # sync from trainer_runner to all rollout workers
+                from_worker = self.trainer_runner
+
+            if self.workers.num_remote_workers() > 0:
                 self.workers.sync_weights(
                     from_worker=from_worker,
                     policies=list(train_results.keys()),
                     global_vars=global_vars,
                 )
+            elif self.config._enable_rl_trainer_api:
+                weights = self.trainer_runner.get_weights()
+                self.workers.local_worker().set_weights(weights)
 
         if self.config._enable_rl_trainer_api:
             kl_dict = {
-                pid: pinfo[LEARNER_STATS_KEY].get("kl")
-                for pid, pinfo in train_results.items()
+                pid: train_results["loss"][pid].get("mean_kl_loss")
+                for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.
-            self.trainer_runner.additional_update(kl_values=kl_dict)
+            self.trainer_runner.additional_update(
+                sampled_kl_values=kl_dict,
+                timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
+            )
 
             return train_results
 

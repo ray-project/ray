@@ -30,6 +30,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -157,19 +158,23 @@ class TorchRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def _convert_batch_type(self, batch: MultiAgentBatch):
-        batch = NestedDict(batch.policy_batches)
-        batch = NestedDict(
-            {
-                k: torch.as_tensor(v, dtype=torch.float32, device=self._device)
-                for k, v in batch.items()
-            }
-        )
+        batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
+        batch = NestedDict(batch)
         return batch
 
     @override(RLTrainer)
     def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         # in torch the distributed update is no different than the normal update
         return self._update(batch)
+
+    def get_weights(self) -> Mapping[str, Any]:
+        """Returns the state of the underlying MultiAgentRLModule"""
+        return self._module.get_state()
+
+    def set_weights(self, weights: Mapping[str, Any]) -> None:
+        """Sets the state of the underlying MultiAgentRLModule"""
+        weights = convert_to_torch_tensor(weights, device=self._device)
+        return self._module.set_state(weights)
 
     @override(RLTrainer)
     def get_param_ref(self, param: ParamType) -> Hashable:

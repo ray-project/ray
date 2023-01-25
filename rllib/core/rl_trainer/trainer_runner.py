@@ -230,6 +230,21 @@ class TrainerRunner:
         # TODO (Avnish): implement this.
         pass
 
+    def set_weights(self, weights) -> None:
+        # TODO (Kourosh) Set / get weight has to be thoroughly
+        # tested across actors and multi-gpus
+        if self._distributed:
+            ray.get([worker.set_weights(weights) for worker in self._workers])
+        else:
+            self._trainer.set_weights(weights)
+
+    def get_weights(self) -> Mapping[str, Any]:
+        if self._distributed:
+            worker = next(iter(self._workers))
+            return ray.get(worker.get_weights())
+        else:
+            return self._trainer.get_weights()
+
     def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
         """Get the states of the RLTrainers"""
         if self._distributed:

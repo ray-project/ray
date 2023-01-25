@@ -264,6 +264,14 @@ class TfRLTrainer(RLTrainer):
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
         return batch
 
+    def get_weights(self) -> Mapping[str, Any]:
+        # TODO (Kourosh) Implement this.
+        raise NotImplementedError
+
+    def set_weights(self, weights: Mapping[str, Any]) -> None:
+        # TODO (Kourosh) Implement this.
+        raise NotImplementedError
+
     @override(RLTrainer)
     def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
         return module.trainable_variables

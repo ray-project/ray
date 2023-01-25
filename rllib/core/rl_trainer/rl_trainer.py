@@ -408,6 +408,14 @@ class RLTrainer:
             gradients: A dictionary of gradients.
         """
 
+    @abc.abstractmethod
+    def get_weights(self) -> Mapping[str, Any]:
+        """Returns the state of the underlying MultiAgentRLModule"""
+
+    @abc.abstractmethod
+    def set_weights(self, weights: Mapping[str, Any]) -> None:
+        """Sets the state of the underlying MultiAgentRLModule"""
+
     def set_state(self, state: Mapping[str, Any]) -> None:
         """Set the state of the trainer.
 

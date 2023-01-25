@@ -705,6 +705,10 @@ class Algorithm(Trainable):
             trainer_runner_config = self.config.get_trainer_runner_config(module_spec)
             self.trainer_runner = trainer_runner_config.build()
 
+            weights = local_worker.get_weights()
+            # we need to create marl module weights
+            self.trainer_runner.set_weights(weights)
+
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
 
