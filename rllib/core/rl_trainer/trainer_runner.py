@@ -279,15 +279,6 @@ class TrainerRunner:
         else:
             self._trainer.remove_module(module_id)
 
-    def get_weight(self) -> Dict:
-        """Get the weights of the MARLModule.
-
-        Returns:
-            The weights of the neural networks that can be exchanged with the policy.
-        """
-        # TODO (Avnish): implement this.
-        pass
-
     def set_weights(self, weights) -> None:
         # TODO (Kourosh) Set / get weight has to be thoroughly
         # tested across actors and multi-gpus
