@@ -815,6 +815,7 @@ class SyncerReactorTest : public ::testing::Test {
                       },
                       std::move(cli_stub))
                       .release();
+    cli_reactor->StartCall();
 
     work_guard_ = std::make_unique<work_guard_type>(io_context_.get_executor());
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });

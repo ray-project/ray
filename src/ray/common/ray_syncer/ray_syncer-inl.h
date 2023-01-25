@@ -87,6 +87,34 @@ class NodeState {
 ///
 /// Please refer to https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md
 /// for the callback API
+///
+// clang-format off
+/// For the server side:
+///                                     grpc end (error or request)
+///                       +---------------------------------------------------------------+
+///                       |                                                               v
+/// +------------+      +-------------+  canceled by client            +----------+     +--------+     +--------+
+/// | StartRead  | <--> | OnReadDone  | -----------------------------> | OnCancel | --> | Finish | --> | OnDone |
+/// +------------+      +-------------+                                +----------+     +--------+     +--------+
+///                                     canceled by client               ^                ^
+///                       +----------------------------------------------+                |
+///                       |                                                               |
+/// +------------+      +-------------+  grpc end (error or request)                      |
+/// | StartWrite | <--> | OnWriteDone | --------------------------------------------------+
+/// +------------+      +-------------+
+///
+///
+/// For the client side:
+/// +------------+      +-------------+       +------------+  gRPC error or disconnected   +--------+
+/// | StartCall  | ---> |  StartRead  | <---> | OnReadDone | ----------------------------> | OnDone |
+/// +------------+      +-------------+       +------------+                               +--------+
+///   |                                                                                        ^
+///   |                                                                                        |
+///   v                                                                                        |
+/// +------------+      +-------------+  gRPC error or disconnected                            |
+/// | StartWrite | <--> | OnWriteDone | -------------------------------------------------------+
+/// +------------+      +-------------+
+// clang-format on
 class RaySyncerBidiReactor {
  public:
   RaySyncerBidiReactor(const std::string &remote_node_id)

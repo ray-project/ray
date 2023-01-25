@@ -4393,7 +4393,6 @@
     script: python iter_tensor_batches_benchmark.py
 
     type: sdk_command
-    file_manager: sdk
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
