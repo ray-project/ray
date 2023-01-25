@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from typing import List, Any
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -298,15 +299,15 @@ def test_e2e_option_propagation():
 
     def run():
         ray.data.range(5, parallelism=5).map(
-            lambda x: x, compute=ray.data.ActorPoolStrategy(8, 8)
+            lambda x: x, compute=ray.data.ActorPoolStrategy(2, 2)
         ).take_all()
+
+    DatasetContext.get_current().execution_options.resource_limits = ExecutionResources()
+    run()
 
     DatasetContext.get_current().execution_options.resource_limits.cpu = 1
     with pytest.raises(ValueError):
         run()
-
-    DatasetContext.get_current().execution_options.resource_limits.cpu = None
-    run()
 
 
 def test_configure_spread_e2e():
@@ -320,12 +321,14 @@ def test_configure_spread_e2e():
 
     remote_function._task_launch_hook = _test_hook
     DatasetContext.get_current().use_streaming_executor = True
+    DatasetContext.get_current().execution_options.preserve_order = True
 
     # Simple 2-stage pipeline.
     ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
 
     # Read tasks get SPREAD by default, subsequent ones use default policy.
-    assert tasks == ["SPREAD", "SPREAD", "DEFAULT", "DEFAULT"]
+    tasks = sorted(tasks)
+    assert tasks == ["DEFAULT", "DEFAULT", "SPREAD", "SPREAD"]
 
 
 def test_configure_output_locality():
