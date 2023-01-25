@@ -594,7 +594,7 @@ def cleanup_redis_storage(
        storage_namespace: The namespace of the storage to be deleted.
     """
 
-    from ray._raylet import del_key_from_storage # type: ignore
+    from ray._raylet import del_key_from_storage  # type: ignore
 
     if not isinstance(host, str):
         raise ValueError("Host must be a string")
