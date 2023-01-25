@@ -132,7 +132,6 @@ RayClientBidiReactor::RayClientBidiReactor(
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
   stub_->async()->StartSync(&client_context_, this);
-  StartCall();
   StartPull();
 }
 
@@ -188,7 +187,7 @@ void RaySyncer::Connect(const std::string &node_id,
   io_context_.dispatch(
       [=]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
-        auto reactor = std::make_unique<RayClientBidiReactor>(
+        auto reactor = new RayClientBidiReactor(
             /* remote_node_id */ node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
@@ -203,7 +202,8 @@ void RaySyncer::Connect(const std::string &node_id,
               }
             },
             /* stub */ std::move(stub));
-        Connect(reactor.release());
+        Connect(reactor);
+        reactor->StartCall();
       },
       "");
 }
