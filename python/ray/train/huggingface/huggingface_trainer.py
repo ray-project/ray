@@ -238,6 +238,8 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         "evaluation": DatasetConfig(split=False),
     }
 
+    _optional_fields_for_restore = ["trainer_init_per_worker", "trainer_init_config"]
+
     def __init__(
         self,
         trainer_init_per_worker: Callable[
@@ -267,11 +269,12 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             trainer_init_per_worker, "trainer_init_per_worker"
         )
 
+        self.trainer_init_per_worker = trainer_init_per_worker
+        self.trainer_init_config = trainer_init_config
+
         super().__init__(
             train_loop_per_worker=_huggingface_train_loop_per_worker,
-            train_loop_config=self._create_trainer_init_config(
-                trainer_init_per_worker, trainer_init_config
-            ),
+            train_loop_config=self.train_loop_config,
             torch_config=torch_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
@@ -281,57 +284,26 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    @classmethod
-    def _create_trainer_init_config(
-        cls,
-        trainer_init_per_worker: Callable[
-            [TorchDataset, Optional[TorchDataset], Any],
-            transformers.trainer.Trainer,
-        ],
-        trainer_init_config: Optional[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
+    @property
+    def train_loop_config(self) -> Dict[str, Any]:
+        trainer_init_config = (
+            self.trainer_init_config.copy() if self.trainer_init_config else {}
+        )
         if TRAINER_INIT_FN_KEY in trainer_init_config:
             raise ValueError(
                 f"'{TRAINER_INIT_FN_KEY}' is a reserved key in `trainer_init_config`."
             )
-        if trainer_init_per_worker:
-            trainer_init_config[TRAINER_INIT_FN_KEY] = trainer_init_per_worker
+        if self.trainer_init_per_worker:
+            trainer_init_config[TRAINER_INIT_FN_KEY] = self.trainer_init_per_worker
         return trainer_init_config
 
-    @classmethod
-    def restore(
-        cls: Type["HuggingFaceTrainer"],
-        path: str,
-        trainer_init_per_worker: Optional[
-            Callable[
-                [TorchDataset, Optional[TorchDataset], Any],
-                transformers.trainer.Trainer,
-            ]
-        ] = None,
-        trainer_init_config: Optional[Dict] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
-        scaling_config: Optional[ScalingConfig] = None,
-    ) -> "HuggingFaceTrainer":
-        trainer = super(HuggingFaceTrainer, cls).restore(
-            train_loop_per_worker=_huggingface_train_loop_per_worker,
-            path=path,
-            datasets=datasets,
-            preprocessor=preprocessor,
-            scaling_config=scaling_config,
-        )
-
-        if trainer_init_per_worker:
-            trainer._train_loop_config[TRAINER_INIT_FN_KEY] = trainer_init_per_worker
-
-        if trainer_init_config:
-            assert set(trainer._train_loop_config.keys()) - {
-                TRAINER_INIT_FN_KEY
-            } == set(trainer_init_config.keys())
-            trainer._train_loop_config.update(trainer_init_config)
-
-        return trainer
+    @train_loop_config.setter
+    def train_loop_config(self, config):
+        # This disables setting the `train_loop_config` attribute.
+        # The `train_loop_config` for this Trainer depends only on
+        # the `trainer_init_per_worker` and `trainer_init_config` args,
+        # and will be created with the getter above.
+        pass
 
     def _validate_trainer_init_per_worker(
         self, trainer_init_per_worker: Callable, fn_name: str
