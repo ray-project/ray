@@ -6,7 +6,6 @@ import torch
 import tree  # pip install dm-tree
 
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_trainer import PPOTorchRLTrainer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.test_utils import check

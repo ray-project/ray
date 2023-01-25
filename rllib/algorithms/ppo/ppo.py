@@ -415,12 +415,11 @@ class PPO(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            from_worker = None
-            if self.config._enable_rl_trainer_api:
-                # sync from trainer_runner to all rollout workers
-                from_worker = self.trainer_runner
-
             if self.workers.num_remote_workers() > 0:
+                from_worker = None
+                if self.config._enable_rl_trainer_api:
+                    # sync weights from trainer_runner to all rollout workers
+                    from_worker = self.trainer_runner
                 self.workers.sync_weights(
                     from_worker=from_worker,
                     policies=list(train_results.keys()),
