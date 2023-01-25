@@ -240,3 +240,10 @@ class ResultGrid:
             best_checkpoints=best_checkpoints,
         )
         return result
+
+    def __repr__(self) -> str:
+        all_results_repr = ""
+        for result in self:
+            result_repr = "  " + result.__repr__().replace("\n", "\n  ")
+            all_results_repr += f"{result_repr},\n"
+        return f"[\n{all_results_repr}]"

@@ -224,6 +224,39 @@ def test_result_repr(ray_start_2_cpus):
     assert not any(key in representation for key in AUTO_RESULT_KEYS)
 
 
+def test_result_grid_repr(ray_start_2_cpus, tmpdir):
+    from ray.air import session
+
+    def f(config):
+        if config["x"] == 1:
+            raise RuntimeError
+
+        metrics = {"loss": 1}
+        session.report(metrics, checkpoint=Checkpoint.from_dict(metrics))
+
+    tuner = tune.Tuner(
+        f,
+        run_config=air.RunConfig(
+            name="test_result_grid_repr",
+            local_dir=str(tmpdir / "test_result_grid_repr_results"),
+        ),
+        param_space={"x": tune.grid_search([1, 2])},
+    )
+    result_grid = tuner.fit()
+
+    representation = result_grid.__repr__()
+
+    from ray.tune.result import AUTO_RESULT_KEYS
+
+    assert not any(key in representation for key in AUTO_RESULT_KEYS)
+
+    assert len(result_grid) == 2
+    assert representation.count("metrics=") == 2
+    assert representation.count("log_dir=") == 2
+    assert representation.count("checkpoint=") == 2
+    assert representation.count("error=") == 1 and "RuntimeError" in representation
+
+
 def test_no_metric_mode(ray_start_2_cpus):
     def f(config):
         tune.report(x=1)
