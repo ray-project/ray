@@ -146,6 +146,10 @@ class DataParallelIngestSpec:
                     ds_to_fit = datasets[k]
             if ds_to_fit and should_fit_preprocessor:
                 prep.fit(ds_to_fit)
+            assert prep.fit_status() in [
+                Preprocessor.FitStatus.FITTED,
+                Preprocessor.FitStatus.NOT_FITTABLE,
+            ]
             new_datasets = {}
 
             for key, dataset in datasets.items():
