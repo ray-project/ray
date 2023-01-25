@@ -22,6 +22,8 @@ def configure_component_logger(
     log_level: int = logging.INFO,
     log_to_stream: bool = True,
     log_to_file: bool = True,
+    max_bytes: Optional[int] = None,
+    backup_count: Optional[int] = None
 ):
     """Returns a logger to be used by a Serve component.
 
@@ -51,8 +53,10 @@ def configure_component_logger(
             ray._private.worker._global_node.get_logs_dir_path(), "serve"
         )
         os.makedirs(logs_dir, exist_ok=True)
-        max_bytes = ray._private.worker._global_node.max_bytes
-        backup_count = ray._private.worker._global_node.backup_count
+        if max_bytes is None:
+            max_bytes = ray._private.worker._global_node.max_bytes
+        if backup_count is None:
+            backup_count = ray._private.worker._global_node.backup_count
         if component_type is not None:
             component_name = f"{component_type}_{component_name}"
         log_file_name = LOG_FILE_FMT.format(
