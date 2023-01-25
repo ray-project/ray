@@ -7,9 +7,8 @@ import { Link } from "react-router-dom";
 const useStyles = makeStyles((theme) =>
   createStyles({
     root: {
-      padding: theme.spacing(2, 3),
-      height: 270,
-      borderRadius: 8,
+      height: 294,
+      overflow: "hidden",
     },
   }),
 );

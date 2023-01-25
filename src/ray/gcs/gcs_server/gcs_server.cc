@@ -668,9 +668,11 @@ void GcsServer::InstallEventListeners() {
       });
 
   // Install job event listeners.
-  gcs_job_manager_->AddJobFinishedListener([this](std::shared_ptr<JobID> job_id) {
-    gcs_actor_manager_->OnJobFinished(*job_id);
-    gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
+  gcs_job_manager_->AddJobFinishedListener([this](const rpc::JobTableData &job_data) {
+    const auto job_id = JobID::FromBinary(job_data.job_id());
+    gcs_actor_manager_->OnJobFinished(job_id);
+    gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
+    gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
   });
 
   // Install scheduling event listeners.
