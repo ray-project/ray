@@ -43,7 +43,7 @@ def _failing_train_fn(config):
 class FailureInjectionCallback(Callback):
     """Inject failure at the configured iteration number."""
 
-    def __init__(self, num_iters=5):
+    def __init__(self, num_iters=2):
         self.num_iters = num_iters
 
     def on_trial_save(self, iteration, trials, trial, **info):
@@ -126,6 +126,9 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
             name=exp_name,
             checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
             callbacks=[FailureInjectionCallback(num_iters=2)],
+            # We also use a stopper criteria, since the restored run will go for
+            # another 5 boosting rounds otherwise.
+            stop={"training_iteration": 5},
         ),
         num_boost_round=5,
     )
