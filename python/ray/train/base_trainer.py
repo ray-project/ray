@@ -404,7 +404,6 @@ class BaseTrainer(abc.ABC):
             ``self.as_trainable()``.
         """
         from ray.tune.tuner import Tuner, TunerInternal
-        from ray.tune.error import TuneError
 
         trainable = self.as_trainable()
 
@@ -422,8 +421,7 @@ class BaseTrainer(abc.ABC):
                     trainable, self.run_config
                 )
             )
-            with open(experiment_path / _TRAINER_PKL, "wb") as fp:
-                pickle.dump(self, fp)
+            self._save(experiment_path)
 
         result_grid = tuner.fit()
         assert len(result_grid) == 1
@@ -431,6 +429,10 @@ class BaseTrainer(abc.ABC):
         if result.error:
             raise TrainingFailedError from result.error
         return result
+
+    def _save(self, experiment_path: Path):
+        with open(experiment_path / _TRAINER_PKL, "wb") as fp:
+            pickle.dump(self, fp)
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:
         """Generate the base Trainable class.
@@ -469,7 +471,8 @@ class BaseTrainer(abc.ABC):
 
             trainer.setup()
             # Don't re-fit the preprocessor if it's loaded from the checkpoint
-            trainer.preprocess_datasets(should_fit_preprocessor=not loaded_preprocessor)
+            should_fit_preprocessor = not checkpoint or not loaded_preprocessor
+            trainer.preprocess_datasets(should_fit_preprocessor=should_fit_preprocessor)
             trainer.training_loop()
 
         # Change the name of the training function to match the name of the Trainer
