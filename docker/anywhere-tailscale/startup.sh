@@ -58,7 +58,10 @@ if [ -z "$TSAPIKEY" ]; then
 fi
 
 
-
+echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee /etc/sysctl.conf
+echo "net.ipv6.conf.default.disable_ipv6=1" | sudo tee /etc/sysctl.conf
+echo "net.ipv6.conf.lo.disable_ipv6=1" | sudo tee /etc/sysctl.conf
+echo "vm.max_map_count = 262144" | sudo tee /etc/sysctl.conf
 
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
