@@ -815,7 +815,7 @@ if __name__ == "__main__":
             images_to_tag_and_push += ["ray"]
 
             # Only build ML Docker images for ML_CUDA_VERSION or cpu.
-            if platform.processor() in ["i386"]:
+            if platform.processor() not in ["aarch64"]:
                 ml_image_types = [
                     image_type
                     for image_type in image_types
