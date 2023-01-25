@@ -69,13 +69,14 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
   RAY_CHECK(!node_scores.empty());
   RAY_CHECK(num_candidate_nodes >= 1);
   // Pick the top num_candidate_nodes nodes with the lowest score.
-  // First, sort nodes so that we always break ties between nodes in the same
+  // First, sort nodes by id so that we always break ties between nodes in the same
   // order.
   std::sort(
       node_scores.begin(),
       node_scores.end(),
       [](const std::pair<scheduling::NodeID, float> &a,
          const std::pair<scheduling::NodeID, float> &b) { return a.first < b.first; });
+  // Then sort nodes by scores and preserve the order of equivalent elements.
   std::stable_sort(
       node_scores.begin(),
       node_scores.end(),

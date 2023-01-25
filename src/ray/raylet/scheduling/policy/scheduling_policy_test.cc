@@ -61,6 +61,7 @@ class SchedulingPolicyTest : public ::testing::Test {
                              avoid_gpu_nodes,
                              /*max_cpu_fraction_per_node*/ 1.0,
                              /*scheduling_context*/ nullptr,
+                             /*preferred node*/ "",
                              schedule_top_k_absolute,
                              scheduler_top_k_fraction);
   }
