@@ -1,12 +1,10 @@
 import pytest
-import asyncio
 import time
 from unittest.mock import MagicMock
 
 from typing import List, Any
 
 import ray
-from ray.data.context import DatasetContext
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
