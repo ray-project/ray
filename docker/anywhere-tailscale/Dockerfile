@@ -31,6 +31,7 @@ RUN sudo apt update \
 
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     pandas \
+    # dask version compatible with ray and modin
     'dask==2022.2.0' \
     modin[dask] \
     modin[ray] \
