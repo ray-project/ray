@@ -71,7 +71,7 @@ ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-hos
 /crate/bin/crate -Cnetwork.host=_tailscale0_ \
             -Cnode.name=nexus \
             -Cnode.master=true \
-            -Cnode.data=true \
+            -Cnode.data=false \
             -Cnode.store.allow_mmap=false \
             -Chttp.cors.enabled=true \
             -Chttp.cors.allow-origin="/*" \
