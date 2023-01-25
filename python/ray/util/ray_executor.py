@@ -91,7 +91,7 @@ class RayExecutor(Executor):
         else:
             if max_workers < 1:
                 raise ValueError(
-                    f"max_workers={max_workers} given, max_workers must be >= 1"
+                    f"`max_workers={max_workers}` is given. The argument `max_workers` must be >= 1"
                 )
 
             @ray.remote
