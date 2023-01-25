@@ -87,7 +87,9 @@ class RayExecutor(Executor):
                     return fn()
 
             actors = [
-                ExecutorActor.options(name=f"actor-{i}").remote()  # type: ignore[attr-defined]
+                ExecutorActor.options(  # type: ignore[attr-defined]
+                    name=f"actor-{i}"
+                ).remote()
                 for i in range(max_workers)
             ]
             self.__actor_pool = ray.util.ActorPool(actors)
@@ -126,7 +128,9 @@ class RayExecutor(Executor):
             ]
         else:
             if self.__remote_fn:
-                oref = self.__remote_fn.options(name=fn.__name__).remote(fn_curried)  # type: ignore
+                oref = self.__remote_fn.options(  # type: ignore
+                    name=fn.__name__
+                ).remote(fn_curried)
             else:
                 raise RuntimeError("Remote function is undefined")
 
@@ -174,7 +178,10 @@ class RayExecutor(Executor):
         for chunk in self._get_chunks(*iterables, chunksize=chunksize):
             if self.__actor_pool:
                 results = self.__actor_pool.map(
-                    lambda a, v: a.actor_function.remote(partial(fn, *v)), chunk  # type: ignore
+                    lambda a, v: a.actor_function.remote(  # type: ignore
+                        partial(fn, *v)
+                    ),
+                    list(chunk),
                 )
             else:
                 results = self._map(fn, chunk, timeout)
