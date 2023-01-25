@@ -30,11 +30,13 @@ class GcsJobManager : public rpc::JobInfoHandler {
   explicit GcsJobManager(std::shared_ptr<GcsTableStorage> gcs_table_storage,
                          std::shared_ptr<GcsPublisher> gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
-                         GcsFunctionManager &function_manager)
+                         GcsFunctionManager &function_manager,
+                         InternalKVInterface &internal_kv)
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_publisher_(std::move(gcs_publisher)),
         runtime_env_manager_(runtime_env_manager),
-        function_manager_(function_manager) {}
+        function_manager_(function_manager),
+        internal_kv_(internal_kv) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -75,6 +77,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   ray::RuntimeEnvManager &runtime_env_manager_;
   GcsFunctionManager &function_manager_;
+  InternalKVInterface &internal_kv_;
   void ClearJobInfos(const JobID &job_id);
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,

@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 
+#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -147,13 +148,52 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                                         rpc::GetAllJobInfoReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Getting all job info.";
-  auto on_done = [reply, send_reply_callback](
+  auto on_done = [this, reply, send_reply_callback](
                      const absl::flat_hash_map<JobID, JobTableData> &result) {
     for (auto &data : result) {
       reply->add_job_info_list()->CopyFrom(data.second);
     }
-    RAY_LOG(INFO) << "Finished getting all job info.";
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+
+    std::shared_ptr<std::atomic<int>> num_processed_jobs = std::make_shared<std::atomic<int>>(0);
+    
+    // For each job with a submission id, we query the internal KV store to get the Ray Job API
+    // JobInfo, and send the gRPC reply in the KV callback. If there are *no* jobs with a submission
+    // id, we must send the gRPC reply in the current function instead. Use this flag to track it.
+    bool any_jobs_with_submission_id = false;
+
+    for (int i = 0; i < reply->job_info_list_size(); i++) {
+      const auto& metadata = reply->job_info_list(i).config().metadata();
+      if(metadata.find("job_submission_id") == metadata.end()) {
+        num_processed_jobs->fetch_add(1);
+        continue;
+
+      }
+      const auto& job_submission_id = metadata.at("job_submission_id");
+      any_jobs_with_submission_id = true;
+      auto kv_get_callback = [reply, send_reply_callback, num_processed_jobs](std::optional<std::string> job_info_json) {
+        if (job_info_json) {
+          rpc::JobsAPIInfo jobs_api_info;
+          RAY_CHECK(google::protobuf::util::JsonStringToMessage(*job_info_json, &jobs_api_info).ok());
+        }
+        else {
+          RAY_LOG(ERROR) << "Failed to look up Ray Job API JobInfo for job with submission id " << job_submission_id;
+        }
+
+        // Send reply if all jobs have been processed.
+        if (num_processed_jobs->fetch_add(1) == reply->job_info_list_size() - 1) {
+          RAY_LOG(INFO) << "Finished getting all job info.";
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        }
+      };
+      std::string job_data_key = "_ray_internal_job_info_" + job_submission_id;
+      internal_kv_.Get("job", job_data_key, kv_get_callback);
+    }
+
+    // If there were no jobs with a submission id, we must send the reply here.
+    if (!any_jobs_with_submission_id) {
+      RAY_LOG(INFO) << "Finished getting all job info.";
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    }
   };
   Status status = gcs_table_storage_->JobTable().GetAll(on_done);
   if (!status.ok()) {
