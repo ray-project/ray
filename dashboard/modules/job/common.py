@@ -141,6 +141,10 @@ class JobInfo:
         # Convert enum values to strings.
         json_dict["status"] = str(json_dict["status"])
 
+        # Convert runtime_env to a JSON-serialized string.
+        if json_dict["runtime_env"] is not None:
+            json_dict["runtime_env"] = json.dumps(json_dict["runtime_env"])
+
         # Assert that the dictionary is JSON-serializable.
         json.dumps(json_dict)
 
@@ -155,6 +159,10 @@ class JobInfo:
         """
         # Convert enum values to enum objects.
         json_dict["status"] = JobStatus(json_dict["status"])
+
+        # Convert runtime_env from a JSON-serialized string to a dictionary.
+        if json_dict["runtime_env"] is not None:
+            json_dict["runtime_env"] = json.loads(json_dict["runtime_env"])
 
         return cls(**json_dict)
 
