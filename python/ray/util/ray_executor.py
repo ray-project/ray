@@ -42,9 +42,9 @@ class RayExecutor(Executor):
 
     Args:
         max_workers:
-            If the maximum number of Ray workers is given, task is distributed
-            over a ray Actor pool, otherwise it is distributed over the cpus of
-            the cluster
+            If max_workers=None, the work is distributed over the number of
+            CPUs available in the cluster (num_cpus) , otherwise the number of
+            CPUs is limited to the value of max_workers.
 
         All additional keyword arguments are passed to ray.init()
         (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
@@ -60,16 +60,18 @@ class RayExecutor(Executor):
     def __init__(self, max_workers: Optional[int] = None, **kwargs):
 
         """
-        self._shutdown_lock: This is set to True once self.shutdown() is called.
-                             Further task submissions are blocked.
-        self._futures:       Futures are aggregated into this list as they are
-                             returned.
-        self.__actor_pool:   ActorPool which is used by self.map() when
-                             max_workers > 1
-        self.__remote_fn:    Wrapper around the remote function to be executed
-                             by Ray.
-        self.context:        Context containing settings and attributes
-                             returned after initialising the Ray client.
+        self._shutdown_lock:
+            This is set to True once self.shutdown() is called. Further task
+            submissions are blocked.
+        self._futures:
+            Futures are aggregated into this list as they are returned.
+        self.__actor_pool:
+            ActorPool which is used by self.map() when max_workers > 1
+        self.__remote_fn:
+            Wrapper around the remote function to be executed by Ray.
+        self.context:
+            Context containing settings and attributes returned after
+            initialising the Ray client.
         """
 
         self._shutdown_lock: bool = False
