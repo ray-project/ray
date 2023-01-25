@@ -380,18 +380,25 @@ class PPO(Algorithm):
         # Train
         if self.config._enable_rl_trainer_api:
             # TODO (Kourosh) Clearly define what train_batch_size
-            # vs. sgd_minibatch_size and num_sgd_iter is.
+            # vs. sgd_minibatch_size and num_sgd_iter is in the config.
             # TODO (Kourosh) Do this inside the RL Trainer so
             # that we don't have to this back and forth
             # communication between driver and the remote
             # trainer workers
-            for epoch in range(self.config.num_sgd_iter):
-                # bsize = self.config.sgd_minibatch_size
-                # for minibatch in SampleBatchLoader(train_batch, batch_size=bsize):
-                #     train_results = self.trainer_runner.update(minibatch)
-                # TODO (Kourosh) The output of trainer_runner.update() should be
-                # one item not a list of items
-                train_results = self.trainer_runner.update(train_batch)[0]
+
+            train_results = self.trainer_runner.fit(
+                train_batch,
+                minibatch_size=self.config.sgd_minibatch_size,
+                num_iters=self.config.num_sgd_iter,
+            )
+            # for epoch in range(self.config.num_sgd_iter):
+            #     # bsize = self.config.sgd_minibatch_size
+            #     # for minibatch in SampleBatchLoader(train_batch, batch_size=bsize):
+            #     #     train_results = self.trainer_runner.update(minibatch)
+            #     # TODO (Kourosh) The output of trainer_runner.update() should be
+            #     # one item not a list of items
+
+            #     train_results = self.trainer_runner.update(train_batch)[0]
         elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:

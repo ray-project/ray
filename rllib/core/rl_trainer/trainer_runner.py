@@ -1,8 +1,11 @@
 import math
 from typing import Any, List, Mapping, Type, Optional, Callable, Dict
+import tree  # pip install dm-tree
+import numpy as np
 
 import ray
 
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
@@ -98,22 +101,54 @@ class TrainerRunner:
             self._trainer = trainer_class(**trainer_config)
             self._trainer.build()
 
-
-    def fit(self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int) -> Mapping[str, Any]:
+    def fit(
+        self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int
+    ) -> Mapping[str, Any]:
         """Do `num_iters` minibatch updates given the original batch.
-        
-        Given a batch of episodes you can use this method to take more 
-        than one backward pass on the batch. 
+
+        Given a batch of episodes you can use this method to take more
+        than one backward pass on the batch. The same minibatch_size and num_iters gets will be used for all module ids (previously known as policies) in the multiagent batch
 
         Args:
-            batch: 
-            minibatch_size:
-            num_iters: 
-        
+            batch: The data to use for the update.
+            minibatch_size: The size of the minibatch to use for each update.
+            num_iters: The number of minibatch updates to perform.
+
         Returns:
-            The training statistics of this fitting round. 
+            A dictionary of results summarizing the statistics of the updates.
         """
-        
+
+        start = {mid: 0 for mid in batch.policy_batches.keys()}
+        results = []
+        for _ in range(num_iters):
+            minibatch = {}
+            for module_id, module_batch in batch.policy_batches.items():
+                s = start[module_id]
+                e = s + minibatch_size
+
+                samples_to_concat = []
+                # cycle through the batch until we have enough samples
+                while e > len(module_batch):
+                    samples_to_concat.append(module_batch[s:])
+                    e = minibatch_size - len(module_batch[s:])
+                    s = 0
+
+                samples_to_concat.append(module_batch[s:e])
+
+                # concatenate all the samples, we should have minibatch_size of sample
+                # after this step
+                minibatch[module_id] = SampleBatch.concat_samples(samples_to_concat)
+                # roll back to zero when we reach the end of the batch
+                start[module_id] = e
+
+            # TODO (Kourosh): len(batch) is not correct here. However it's also not
+            # clear what the correct value should be. Since training does not depend on
+            # this it will be fine for now.
+            minibatch = MultiAgentBatch(minibatch, len(batch))
+            results.append(self.update(minibatch))
+
+        # return the average of the results using tree map
+        return tree.map_structure(lambda *x: np.mean(x), *results)
 
     def update(self, batch: MultiAgentBatch) -> List[Mapping[str, Any]]:
         """Do one gradient based update to the RLTrainer(s) maintained by this TrainerRunner.
@@ -145,7 +180,6 @@ class TrainerRunner:
         """
         refs = []
         global_size = len(self._workers)
-        batch_size = math.ceil(len(batch) / global_size)
         for i, worker in enumerate(self._workers):
             batch_to_send = {}
             for pid, sub_batch in batch.policy_batches.items():
@@ -153,6 +187,7 @@ class TrainerRunner:
                 start = batch_size * i
                 end = min(start + batch_size, len(sub_batch))
                 batch_to_send[pid] = sub_batch[int(start) : int(end)]
+            # TODO (Avnish): int(batch_size) ? How should we shard MA batches really?
             new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
             refs.append(worker.update.remote(new_batch))
 
