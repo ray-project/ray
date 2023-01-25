@@ -7,7 +7,7 @@ from ray.air._internal.remote_storage import get_fs_and_path
 
 
 def test_get_fs_and_path_hdfs():
-    hostname = os.getenv("HOSTNAME")
+    hostname = os.getenv("CONTAINER_ID")
     hdfs_uri = f"hdfs://{hostname}:8020/test/"
     # do it twice should yield the same result
     _, path = get_fs_and_path(hdfs_uri)
