@@ -799,6 +799,7 @@ class TaskSummaries:
 
         tasks_by_id = {}
         task_group_by_key = {}
+        actor_creation_task_id_for_actor_id = {}
         summary = {}
         total_tasks = 0
         total_actor_tasks = 0
@@ -809,6 +810,9 @@ class TaskSummaries:
         # parent.
         for task in tasks:
             tasks_by_id[task["task_id"]] = task
+            type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
+            if type_enum == TaskType.ACTOR_CREATION_TASK:
+                actor_creation_task_id_for_actor_id[task["actor_id"]] = task["task_id"]
 
         @functools.lru_cache(None)
         def find_lineage(task_id: str) -> List[str]:
@@ -819,39 +823,82 @@ class TaskSummaries:
             # Use name first which allows users to customize the name of
             # their remote function call using the name option.
             func_name = task["name"] or task["func_or_class_name"]
-            parent_task_id = task["parent_task_id"]
-            if not parent_task_id or parent_task_id.startswith(DRIVER_TASK_ID_PREFIX):
-                return [func_name]
-            else:
-                parent_lineage = find_lineage(parent_task_id)
-                if not parent_lineage:
+            type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
+            if type_enum == TaskType.ACTOR_TASK:
+                # For actor tasks, lineage is based on the actor_id and not parent_task_id
+                actor_id = task["actor_id"]
+                # TODO(aguo): Get actor name from actors state-api.
+                [actor_name, *rest] = task["func_or_class_name"].split(".")
+                if actor_id not in actor_creation_task_id_for_actor_id:
+                    # We're missing data about a task's parent. Drop this tree.
                     return None
-                return [*parent_lineage, func_name]
+                grand_parent_task = actor_creation_task_id_for_actor_id[actor_id]
+                grand_parent_lineage = find_lineage(grand_parent_task)
+                if not grand_parent_lineage:
+                    return None
+                return [*grand_parent_lineage, actor_name, func_name]
+            else:
+                parent_task_id = task["parent_task_id"]
+                if not parent_task_id or parent_task_id.startswith(DRIVER_TASK_ID_PREFIX):
+                    return [func_name]
+                else:
+                    parent_lineage = find_lineage(parent_task_id)
+                    if not parent_lineage:
+                        return None
+                    return [*parent_lineage, func_name]
 
-        def create_empty_summary(lineage, key, task):
+        def get_or_create_actor_task_group(actor_lineage, actor_id):
+            key = ",".join(actor_lineage)
+            if key not in task_group_by_key:
+                task_group_by_key[key] = NestedTaskSummary(
+                    name=actor_lineage[-1],
+                    key=key,
+                    type=TaskType.DESCRIPTOR.values_by_number[TaskType.ACTOR_CREATION_TASK].name,
+                )
+                parent_lineage = actor_lineage[0:-1]
+                parent_key = ",".join(parent_lineage)
+                if parent_key not in task_group_by_key:
+                    parent_task_id = actor_creation_task_id_for_actor_id[actor_id]
+                    parent_task = tasks_by_id[parent_task_id]
+                    create_task_group(parent_lineage, parent_key, parent_task)
+
+                parent_task_group = task_group_by_key[parent_key]
+                parent_task_group.children.append(task_group_by_key[key])
+            
+            return task_group_by_key[key]
+
+
+        def create_task_group(lineage, key, task):
             task_group_by_key[key] = NestedTaskSummary(
                 name=lineage[-1],
                 key=key,
                 type=task["type"],
             )
-            parent_task_id = task["parent_task_id"]
             # Set summary in right place under parent
             if len(lineage) == 1:
                 summary[key] = task_group_by_key[key]
-            elif parent_task_id in tasks_by_id:
-                parent_lineage = lineage[0:-1]
-                parent_key = ",".join(parent_lineage)
-
-                if parent_key not in task_group_by_key:
-                    parent_task = tasks_by_id[parent_task_id]
-                    create_empty_summary(parent_lineage, parent_key, parent_task)
-
-                parent_task_group = task_group_by_key[parent_key]
-                parent_task_group.children.append(task_group_by_key[key])
             else:
-                # We're missing data about this parent. So we're dropping the whole
-                # tree at that node.
-                pass
+                type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
+                if type_enum == TaskType.ACTOR_TASK:
+                    parent_lineage = lineage[0:-1]
+                    parent_task_group = get_or_create_actor_task_group(parent_lineage, task["actor_id"])
+                    parent_task_group.children.append(task_group_by_key[key])
+                else:
+                    parent_task_id = task["parent_task_id"]
+                    if parent_task_id in tasks_by_id:
+                        parent_lineage = lineage[0:-1]
+                        parent_key = ",".join(parent_lineage)
+
+                        if parent_key not in task_group_by_key:
+                            parent_task = tasks_by_id[parent_task_id]
+                            create_task_group(parent_lineage, parent_key, parent_task)
+
+                        parent_task_group = task_group_by_key[parent_key]
+                        parent_task_group.children.append(task_group_by_key[key])
+                    else:
+                        # We're missing data about this parent. So we're dropping the whole
+                        # tree at that node.
+                        pass
 
         for task in tasks:
             lineage = find_lineage(task["task_id"])
@@ -861,7 +908,7 @@ class TaskSummaries:
             key = ",".join(lineage)
 
             if key not in task_group_by_key:
-                create_empty_summary(lineage, key, task)
+                create_task_group(lineage, key, task)
 
             task_group = task_group_by_key[key]
 
@@ -903,7 +950,7 @@ class TaskSummaries:
         )
 
     @classmethod
-    def to_summary_by_lineage(cls, *, tasks: List[Dict]):
+    def to_summary_by_lineage(cls, *, tasks: List[Dict], actors: List[Dict]):
         """
         This summarizes tasks by lineage.
         i.e. A task will be grouped with another task if they have the
@@ -925,38 +972,70 @@ class TaskSummaries:
         for task in tasks:
             tasks_by_id[task["task_id"]] = task
 
-        def create_empty_summary(task):
+        def get_or_create_actor_task_group(actor_id):
+            key = f"actor:{actor_id}"
+            if key not in task_group_by_id:
+                # TODO(aguo): Name this based off of actor name instead of actor_id
+                task_group_by_id[key] = NestedTaskSummary(
+                    name=key,
+                    key=key,
+                    type=TaskType.DESCRIPTOR.values_by_number[TaskType.ACTOR_CREATION_TASK].name
+                )
+            return task_group_by_id[key]
+
+        def create_task_group(task):
+            """
+            Creates a task group and puts it in the right place under its parent.
+            For actor tasks, the parent is the Actor that owns it. For all other tasks,
+            the owner is the driver or task that created it.
+
+            For task groups that represents actors, the id is in the format actor:{actor_id}
+            """
             # Use name first which allows users to customize the name of
             # their remote function call using the name option.
             func_name = task["name"] or task["func_or_class_name"]
             task_id = task["task_id"]
-            parent_task_id = task["parent_task_id"]
+            type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
 
             task_group_by_id[task_id] = NestedTaskSummary(
                 name=func_name,
                 key=task_id,
                 type=task["type"],
             )
-            # Set summary in right place under parent
-            if not parent_task_id or parent_task_id.startswith(DRIVER_TASK_ID_PREFIX):
-                summary[task_id] = task_group_by_id[task_id]
-            elif parent_task_id in tasks_by_id:
-                if parent_task_id not in task_group_by_id:
-                    parent_task = tasks_by_id[parent_task_id]
-                    create_empty_summary(parent_task)
 
-                parent_task_group = task_group_by_id[parent_task_id]
+            if type_enum == TaskType.ACTOR_CREATION_TASK:
+                # If this is creating a new actor, make sure to put the actor group as
+                # a child.
+                actor_group = get_or_create_actor_task_group(task['actor_id'])
+                task_group_by_id[task_id].children.append(actor_group)
+
+
+            # Set summary in right place under parent
+            if type_enum == TaskType.ACTOR_TASK:
+                # For actor tasks, the parent is the actor and not the parent task.
+                parent_task_group = get_or_create_actor_task_group(task['actor_id'])
                 parent_task_group.children.append(task_group_by_id[task_id])
             else:
-                # We're missing data about this parent. So we're dropping the whole
-                # tree at that node.
-                pass
+                parent_task_id = task["parent_task_id"]
+                if not parent_task_id or parent_task_id.startswith(DRIVER_TASK_ID_PREFIX):
+                    summary[task_id] = task_group_by_id[task_id]
+                elif parent_task_id in tasks_by_id:
+                    if parent_task_id not in task_group_by_id:
+                        parent_task = tasks_by_id[parent_task_id]
+                        create_task_group(parent_task)
+
+                    parent_task_group = task_group_by_id[parent_task_id]
+                    parent_task_group.children.append(task_group_by_id[task_id])
+                else:
+                    # We're missing data about this parent. So we're dropping the whole
+                    # tree at that node.
+                    pass
 
         for task in tasks:
             task_id = task["task_id"]
 
             if task_id not in task_group_by_id:
-                create_empty_summary(task)
+                create_task_group(task)
 
             task_group = task_group_by_id[task_id]
 

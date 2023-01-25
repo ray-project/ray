@@ -649,6 +649,9 @@ class StateAPIManager:
             )
 
         # For summary, try getting as many entries as possible to minimze data loss.
+        actors = await self.list_actors(
+            option=ListApiOptions(timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=option.filters)
+        )
         result = await self.list_tasks(
             option=ListApiOptions(
                 timeout=option.timeout,
@@ -663,7 +666,7 @@ class StateAPIManager:
                 tasks=result.result
             )
         else:
-            summary_results = TaskSummaries.to_summary_by_lineage(tasks=result.result)
+            summary_results = TaskSummaries.to_summary_by_lineage(tasks=result.result, actors=actors)
         summary = StateSummary(node_id_to_summary={"cluster": summary_results})
         warnings = result.warnings
         if (
