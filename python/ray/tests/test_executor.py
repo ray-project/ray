@@ -120,25 +120,34 @@ def test_with_syntax_invokes_shutdown():
 # ----------------------------------------------------------------------------------------------------
 # ThreadPool/ProcessPool comparison
 # ----------------------------------------------------------------------------------------------------
-def f_process(x):
+
+# ProcessPoolExecutor uses pickle which can only serialize top-level functions
+def f_process1(x):
     return len([i for i in range(x) if i % 2 == 0])
 
-
 def test_conformity_with_processpool():
+    def f_process0(x):
+        return len([i for i in range(x) if i % 2 == 0])
+    assert f_process0.__code__.co_code == f_process1.__code__.co_code
+
     with RayExecutor() as ex:
-        ray_result = ex.submit(f_process, 100).result()
+        ray_result = ex.submit(f_process0, 100).result()
     with ProcessPoolExecutor() as ppe:
-        ppe_result = ppe.submit(f_process, 100).result()
+        ppe_result = ppe.submit(f_process1, 100).result()
     assert type(ray_result) == type(ppe_result)
     assert ray_result == ppe_result
 
 
 def test_conformity_with_processpool_map():
+    def f_process0(x):
+        return len([i for i in range(x) if i % 2 == 0])
+    assert f_process0.__code__.co_code == f_process1.__code__.co_code
+
     with RayExecutor() as ex:
-        ray_iter = ex.map(f_process, range(10))
+        ray_iter = ex.map(f_process0, range(10))
         ray_result = list(ray_iter)
     with ProcessPoolExecutor() as ppe:
-        ppe_iter = ppe.map(f_process, range(10))
+        ppe_iter = ppe.map(f_process1, range(10))
         ppe_result = list(ppe_iter)
     assert hasattr(ray_iter, "__iter__")
     assert hasattr(ray_iter, "__next__")
@@ -149,20 +158,28 @@ def test_conformity_with_processpool_map():
 
 
 def test_conformity_with_threadpool():
+    def f_process0(x):
+        return len([i for i in range(x) if i % 2 == 0])
+    assert f_process0.__code__.co_code == f_process1.__code__.co_code
+
     with RayExecutor() as ex:
-        ray_result = ex.submit(lambda x: len([i for i in range(x) if i % 2 == 0]), 100)
+        ray_result = ex.submit(f_process0, 100)
     with ThreadPoolExecutor() as tpe:
-        tpe_result = tpe.submit(lambda x: len([i for i in range(x) if i % 2 == 0]), 100)
+        tpe_result = tpe.submit(f_process1, 100)
     assert type(ray_result) == type(tpe_result)
     assert ray_result.result() == tpe_result.result()
 
 
 def test_conformity_with_threadpool_map():
+    def f_process0(x):
+        return len([i for i in range(x) if i % 2 == 0])
+    assert f_process0.__code__.co_code == f_process1.__code__.co_code
+
     with RayExecutor() as ex:
-        ray_iter = ex.map(f_process, range(10))
+        ray_iter = ex.map(f_process0, range(10))
         ray_result = list(ray_iter)
     with ThreadPoolExecutor() as tpe:
-        tpe_iter = tpe.map(f_process, range(10))
+        tpe_iter = tpe.map(f_process1, range(10))
         tpe_result = list(tpe_iter)
     assert hasattr(ray_iter, "__iter__")
     assert hasattr(ray_iter, "__next__")
@@ -173,20 +190,28 @@ def test_conformity_with_threadpool_map():
 
 
 def test_conformity_with_processpool_using_max_workers():
+    def f_process0(x):
+        return len([i for i in range(x) if i % 2 == 0])
+    assert f_process0.__code__.co_code == f_process1.__code__.co_code
+
     with RayExecutor(max_workers=2) as ex:
-        ray_result = ex.submit(f_process, 100).result()
+        ray_result = ex.submit(f_process0, 100).result()
     with ProcessPoolExecutor(max_workers=2) as ppe:
-        ppe_result = ppe.submit(f_process, 100).result()
+        ppe_result = ppe.submit(f_process1, 100).result()
     assert type(ray_result) == type(ppe_result)
     assert ray_result == ppe_result
 
 
 def test_conformity_with_processpool_map_using_max_workers():
+    def f_process0(x):
+        return len([i for i in range(x) if i % 2 == 0])
+    assert f_process0.__code__.co_code == f_process1.__code__.co_code
+
     with RayExecutor(max_workers=2) as ex:
-        ray_iter = ex.map(f_process, range(10))
+        ray_iter = ex.map(f_process0, range(10))
         ray_result = list(ray_iter)
     with ProcessPoolExecutor(max_workers=2) as ppe:
-        ppe_iter = ppe.map(f_process, range(10))
+        ppe_iter = ppe.map(f_process1, range(10))
         ppe_result = list(ppe_iter)
     assert hasattr(ray_iter, "__iter__")
     assert hasattr(ray_iter, "__next__")
@@ -197,20 +222,28 @@ def test_conformity_with_processpool_map_using_max_workers():
 
 
 def test_conformity_with_threadpool_using_max_workers():
+    def f_process0(x):
+        return len([i for i in range(x) if i % 2 == 0])
+    assert f_process0.__code__.co_code == f_process1.__code__.co_code
+
     with RayExecutor(max_workers=2) as ex:
-        ray_result = ex.submit(lambda x: len([i for i in range(x) if i % 2 == 0]), 100)
+        ray_result = ex.submit(f_process0, 100)
     with ThreadPoolExecutor(max_workers=2) as tpe:
-        tpe_result = tpe.submit(lambda x: len([i for i in range(x) if i % 2 == 0]), 100)
+        tpe_result = tpe.submit(f_process1, 100)
     assert type(ray_result) == type(tpe_result)
     assert ray_result.result() == tpe_result.result()
 
 
 def test_conformity_with_threadpool_map_using_max_workers():
+    def f_process0(x):
+        return len([i for i in range(x) if i % 2 == 0])
+    assert f_process0.__code__.co_code == f_process1.__code__.co_code
+
     with RayExecutor(max_workers=2) as ex:
-        ray_iter = ex.map(f_process, range(10))
+        ray_iter = ex.map(f_process0, range(10))
         ray_result = list(ray_iter)
     with ThreadPoolExecutor(max_workers=2) as tpe:
-        tpe_iter = tpe.map(f_process, range(10))
+        tpe_iter = tpe.map(f_process1, range(10))
         tpe_result = list(tpe_iter)
     assert hasattr(ray_iter, "__iter__")
     assert hasattr(ray_iter, "__next__")
