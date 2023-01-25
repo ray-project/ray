@@ -1175,7 +1175,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ForceExit(const rpc::WorkerExitType exit_type, const std::string &detail);
 
   /// Register this worker or driver to GCS.
-  void RegisterToGcs();
+  void RegisterToGcs(int64_t worker_launch_time_ms, int64_t worker_launched_time_ms);
 
   /// (WORKER mode only) Check if the raylet has failed. If so, shutdown.
   void ExitIfParentRayletDies();

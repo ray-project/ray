@@ -330,6 +330,8 @@ class StateAPIManager:
             data["ip"] = data["worker_address"]["ip_address"]
             data["start_time_ms"] = int(data["start_time_ms"])
             data["end_time_ms"] = int(data["end_time_ms"])
+            data["worker_launch_time_ms"] = int(data["worker_launch_time_ms"])
+            data["worker_launched_time_ms"] = int(data["worker_launched_time_ms"])
             result.append(data)
 
         num_after_truncation = len(result)

@@ -346,6 +346,11 @@ message WorkerTableData {
   uint64 start_time_ms = 23;
   // The unix ms timestamp the worker was ended at.
   uint64 end_time_ms = 24;
+  // The time when this worker is launched.
+  // The field exists only when the worker is launched
+  // by a raylet. (I.e., driver worker won't have this value).
+  optional int64 worker_launch_time_ms = 25;
+  optional int64 worker_launched_time_ms = 26;
 }
 
 // Fields to publish when worker fails.

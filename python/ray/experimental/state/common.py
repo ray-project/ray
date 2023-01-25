@@ -480,6 +480,8 @@ class WorkerState(StateSchema):
     #: The time when the worker exits. The timestamp could be delayed
     #: if the worker is dead unexpectedly.
     end_time_ms: int = state_column(filterable=False, detail=True)
+    worker_launch_time_ms: int = state_column(filterable=False, detail=True)
+    worker_launched_time_ms: int = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=True)

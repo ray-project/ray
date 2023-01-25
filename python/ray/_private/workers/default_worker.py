@@ -2,6 +2,7 @@ import argparse
 import base64
 import json
 import time
+import sys
 
 import ray
 import ray._private.node
@@ -144,6 +145,12 @@ parser.add_argument(
     required=False,
     help="The address of web ui",
 )
+parser.add_argument(
+    "--worker-launch-time-ms",
+    required=True,
+    type=int,
+    help="The time worker process is launched from raylet",
+)
 
 
 if __name__ == "__main__":
@@ -153,6 +160,14 @@ if __name__ == "__main__":
     # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
     ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
+
+    if sys.version_info >= (3, 7):
+        worker_launched_time_ms = time.time_ns() // 1e6
+    else:
+        # This value might be inaccurate in Python 3.6.
+        # We will anyway deprecate Python 3.6.
+        worker_launched_time = time.time() * 1000
+
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
@@ -214,6 +229,8 @@ if __name__ == "__main__":
         runtime_env_hash=args.runtime_env_hash,
         startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external,
+        worker_launch_time_ms=args.worker_launch_time_ms,
+        worker_launched_time_ms=worker_launched_time_ms,
     )
 
     # Setup log file.

@@ -219,7 +219,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  RegisterToGcs();
+  RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   // Initialize the task state event buffer.
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
@@ -764,7 +764,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id,
   }
 }
 
-void CoreWorker::RegisterToGcs() {
+void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms, int64_t worker_launched_time_ms) {
   absl::flat_hash_map<std::string, std::string> worker_info;
   const auto &worker_id = GetWorkerID();
   worker_info.emplace("node_ip_address", options_.node_ip_address);
@@ -800,6 +800,8 @@ void CoreWorker::RegisterToGcs() {
   worker_data->set_is_alive(true);
   worker_data->set_pid(getpid());
   worker_data->set_start_time_ms(current_sys_time_ms());
+  worker_data->set_worker_launch_time_ms(worker_launch_time_ms);
+  worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
