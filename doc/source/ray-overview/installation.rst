@@ -11,8 +11,8 @@ Official Releases
 
 From Wheels
 ~~~~~~~~~~~
-You can install the latest official version of Ray from PyPI on linux, windows
-and macos as follows:
+You can install the latest official version of Ray from PyPI on Linux, Windows
+and macOS as follows:
 
 .. code-block:: bash
 
@@ -119,7 +119,7 @@ Here's a summary of the variations:
 
 * For Python 3.8 and 3.9, the ``m`` before the OS version should be deleted and the OS version for MacOS should read ``macosx_10_15_x86_64`` instead of ``macosx_10_15_intel``.
 
-* For MacOS, commits predating August 7, 2021 will have ``macosx_10_13`` in the filename instad of ``macosx_10_15``.
+* For MacOS, commits predating August 7, 2021 will have ``macosx_10_13`` in the filename instead of ``macosx_10_15``.
 
 .. _ray-install-java:
 
@@ -196,7 +196,7 @@ You can install and use Ray C++ API as follows.
 
 .. note::
 
-  If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
+  If you build Ray from source, remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
 
 .. _apple-silcon-supprt:
 
@@ -268,7 +268,7 @@ on the AUR page of ``python-ray`` `here`_.
 
 Installing From conda-forge
 ---------------------------
-Ray can also be installed as a conda package on linux and windows
+Ray can also be installed as a conda package on Linux and Windows.
 
 .. code-block:: bash
 
@@ -282,7 +282,7 @@ Ray can also be installed as a conda package on linux and windows
   # Install Ray with minimal dependencies
   # conda install -c conda-forge ray
 
-To install Ray libraries, you can use ``pip`` as above or ``conda``/``mamba``
+To install Ray libraries, use ``pip`` as above or ``conda``/``mamba``.
 
 .. code-block:: bash
 
