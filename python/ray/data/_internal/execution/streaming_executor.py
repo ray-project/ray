@@ -1,9 +1,12 @@
 import logging
+import os
 from typing import Iterator, Optional
 
+import ray
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
+    ExecutionResources,
     RefBundle,
     PhysicalOperator,
 )
@@ -15,9 +18,13 @@ from ray.data._internal.execution.streaming_executor_state import (
     process_completed_tasks,
     select_operator_to_run,
 )
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 
 logger = logging.getLogger(__name__)
+
+# Set this environment variable for detailed scheduler debugging logs.
+DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
 
 
 class StreamingExecutor(Executor):
@@ -33,6 +40,9 @@ class StreamingExecutor(Executor):
         # object as data is streamed through (similar to how iterating over the output
         # data updates the stats object in legacy code).
         self._stats: Optional[DatasetStats] = None
+        self._global_info: Optional[ProgressBar] = None
+        if options.locality_with_output:
+            raise NotImplementedError("locality with output")
         super().__init__(options)
 
     def execute(
@@ -45,19 +55,29 @@ class StreamingExecutor(Executor):
         """
         if not isinstance(dag, InputDataBuffer):
             logger.info("Executing DAG %s", dag)
+            self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
 
         # Setup the streaming DAG topology.
         topology, self._stats = build_streaming_topology(dag, self._options)
         output_node: OpState = topology[dag]
 
-        # Run scheduling loop until complete.
-        while self._scheduling_loop_step(topology):
+        try:
+            _validate_topology(topology, self._get_or_refresh_resource_limits())
+            output_node: OpState = topology[dag]
+
+            # Run scheduling loop until complete.
+            while self._scheduling_loop_step(topology):
+                while output_node.outqueue:
+                    yield output_node.outqueue.pop(0)
+
+            # Handle any leftover outputs.
             while output_node.outqueue:
                 yield output_node.outqueue.pop(0)
-
-        # Handle any leftover outputs.
-        while output_node.outqueue:
-            yield output_node.outqueue.pop(0)
+        finally:
+            for op in topology:
+                op.shutdown()
+            if self._global_info:
+                self._global_info.close()
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -79,16 +99,110 @@ class StreamingExecutor(Executor):
             True if we should continue running the scheduling loop.
         """
 
+        if DEBUG_TRACE_SCHEDULING:
+            logger.info("Scheduling loop step...")
+
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
         process_completed_tasks(topology)
+        for op_state in topology.values():
+            op_state.refresh_progress_bar()
 
         # Dispatch as many operators as we can for completed tasks.
-        op = select_operator_to_run(topology)
+        limits = self._get_or_refresh_resource_limits()
+        cur_usage = self._get_current_usage(topology)
+        self._report_current_usage(cur_usage, limits)
+        op = select_operator_to_run(topology, cur_usage, limits)
         while op is not None:
+            if DEBUG_TRACE_SCHEDULING:
+                _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
-            op = select_operator_to_run(topology)
+            cur_usage = self._get_current_usage(topology)
+            op = select_operator_to_run(topology, cur_usage, limits)
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
+
+    def _get_or_refresh_resource_limits(self) -> ExecutionResources:
+        """Return concrete limits for use at the current time.
+
+        This method autodetects any unspecified execution resource limits based on the
+        current cluster size, refreshing these values periodically to support cluster
+        autoscaling.
+        """
+        base = self._options.resource_limits
+        cluster = ray.cluster_resources()
+        return ExecutionResources(
+            cpu=base.cpu if base.cpu is not None else cluster.get("CPU", 0.0),
+            gpu=base.gpu if base.gpu is not None else cluster.get("GPU", 0.0),
+            object_store_memory=base.object_store_memory
+            if base.object_store_memory is not None
+            else cluster.get("object_store_memory", 0.0) // 4,
+        )
+
+    def _get_current_usage(self, topology: Topology) -> ExecutionResources:
+        cur_usage = ExecutionResources()
+        for op, state in topology.items():
+            cur_usage = cur_usage.add(op.current_resource_usage())
+            if isinstance(op, InputDataBuffer):
+                continue  # Don't count input refs towards dynamic memory usage.
+            for bundle in state.outqueue:
+                cur_usage.object_store_memory += bundle.size_bytes()
+        return cur_usage
+
+    def _report_current_usage(
+        self, cur_usage: ExecutionResources, limits: ExecutionResources
+    ) -> None:
+        if self._global_info:
+            self._global_info.set_description(
+                "Resource usage vs limits: "
+                f"{cur_usage.cpu}/{limits.cpu} CPU, "
+                f"{cur_usage.gpu}/{limits.gpu} GPU, "
+                f"{cur_usage.object_store_memory_str()}/"
+                f"{limits.object_store_memory_str()} object_store_memory"
+            )
+
+
+def _validate_topology(topology: Topology, limits: ExecutionResources) -> None:
+    """Raises an exception on invalid topologies.
+
+    It checks if the the sum of min actor pool sizes are larger than the resource
+    limit, as well as other unsupported resource configurations.
+
+    Args:
+        topology: The topology to validate.
+        limits: The limits to validate against.
+    """
+
+    base_usage = ExecutionResources(cpu=1)
+    for op in topology:
+        base_usage = base_usage.add(op.base_resource_usage())
+        inc_usage = op.incremental_resource_usage()
+        if inc_usage.cpu and inc_usage.gpu:
+            raise NotImplementedError(
+                "Operator incremental resource usage cannot specify both CPU "
+                "and GPU at the same time, since it may cause deadlock."
+            )
+        elif inc_usage.object_store_memory:
+            raise NotImplementedError(
+                "Operator incremental resource usage must not include memory."
+            )
+
+    if not base_usage.satisfies_limit(limits):
+        raise ValueError(
+            f"The base resource usage of this topology {base_usage} "
+            f"exceeds the execution limits {limits}!"
+        )
+
+
+def _debug_dump_topology(topology: Topology) -> None:
+    """Print out current execution state for the topology for debugging.
+
+    Args:
+        topology: The topology to debug.
+    """
+    logger.info("vvv scheduling trace vvv")
+    for i, (op, state) in enumerate(topology.items()):
+        logger.info(f"{i}: {state.summary_str()}")
+    logger.info("^^^ scheduling trace ^^^")
