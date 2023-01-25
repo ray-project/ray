@@ -4,7 +4,7 @@ services:
     build: .
       shm_size: '4gb'
       network_mode: bridge
-    devices: ["/dev/net/tun:/dev/net/tun"]
+      devices: ["/dev/net/tun:/dev/net/tun"]
     networks:
       - test_net
     command: run_tests.sh
