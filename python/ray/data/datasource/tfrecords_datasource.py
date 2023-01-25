@@ -1,4 +1,14 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union, Iterable, Iterator
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Tuple,
+    Union,
+    Iterable,
+    Iterator,
+)
 import struct
 
 import numpy as np
@@ -35,8 +45,12 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"record in '{path}'. This error can occur if your TFRecord "
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
-
-            yield pa.Table.from_pydict(_convert_example_to_dict(example))
+            mapping, schema = _convert_example_to_dict(example)
+            raw_table = pa.Table.from_pydict(
+                mapping=mapping,
+                schema=schema,
+            )
+            yield raw_table
 
     def _write_block(
         self,
@@ -64,27 +78,42 @@ class TFRecordDatasource(FileBasedDatasource):
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
-) -> Dict[
-    str,
-    Union[
-        List[bytes],
-        List[List[bytes]],
-        List[float],
-        List[List[float]],
-        List[int],
-        List[List[int]],
+) -> Tuple[
+    Dict[
+        str,
+        Union[
+            List[bytes],
+            List[List[bytes]],
+            List[float],
+            List[List[float]],
+            List[int],
+            List[List[int]],
+        ],
     ],
+    "pyarrow.Schema",
 ]:
+    import pyarrow as pa
+
     record = {}
+    schema_items = []
     for feature_name, feature in example.features.feature.items():
-        value = _get_feature_value(feature)
+        value, feature_type = _get_feature_value_and_type(feature)
+
+        # Check if the returned value is explicitly an empty list
+        # (i.e. no feature values).
+        if value == []:
+            value = None
         # Return value itself if the list has single value.
         # This is to give better user experience when writing preprocessing UDF on
         # these single-value lists.
-        if len(value) == 1:
+        elif len(value) == 1:
             value = value[0]
+        # For values with more than one element, convert to list type.
+        else:
+            feature_type = pa.list_(feature_type)
+        schema_items.append((feature_name, feature_type))
         record[feature_name] = [value]
-    return record
+    return record, pa.schema(schema_items)
 
 
 def _convert_arrow_table_to_examples(
@@ -106,23 +135,43 @@ def _convert_arrow_table_to_examples(
         yield proto
 
 
-def _get_feature_value(
+def _get_feature_value_and_type(
     feature: "tf.train.Feature",
-) -> Union[List[bytes], List[float], List[int]]:
+) -> Tuple[Union[List[bytes], List[float], List[int]], "pyarrow.DataType"]:
+    import pyarrow as pa
+
     values = (
         feature.bytes_list.value,
         feature.float_list.value,
         feature.int64_list.value,
     )
-    # Exactly one of `bytes_list`, `float_list`, and `int64_list` should contain data.
-    assert sum(bool(value) for value in values) == 1
+
+    # For Feature objects with non-null values, exactly one of
+    # `bytes_list`, `float_list`, and `int64_list` should contain data.
+    # If the Feature object has no values, all three type lists will be empty.
+    assert sum(bool(value) for value in values) <= 1
 
     if feature.bytes_list.value:
-        return list(feature.bytes_list.value)
+        return list(feature.bytes_list.value), pa.binary()
     if feature.float_list.value:
-        return list(feature.float_list.value)
+        return list(feature.float_list.value), pa.float32()
     if feature.int64_list.value:
-        return list(feature.int64_list.value)
+        return list(feature.int64_list.value), pa.int64()
+
+    # If a Feature has no values, regardless of the Feature object's dtype,
+    # it will have empty lists for all three list attributes:
+    # int64_list, float_list, and bytes_list.
+    # Therefore, in order to determine the type of a Feature object
+    # with no feature values, we examine the string, which only contains
+    # one of the three list attributes.
+    feature_stringified = str(feature)
+    if "int64_list" in feature_stringified:
+        return [], pa.int64()
+    elif "float_list" in feature_stringified:
+        return [], pa.float32()
+    elif "bytes_list" in feature_stringified:
+        return [], pa.binary()
+    return [], pa.null()
 
 
 def _value_to_feature(value: Union[bytes, float, int, List]) -> "tf.train.Feature":

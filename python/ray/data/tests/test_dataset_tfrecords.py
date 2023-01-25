@@ -2,6 +2,8 @@ import json
 import os
 
 import numpy as np
+import pandas as pd
+from pandas.api.types import is_int64_dtype, is_float_dtype, is_object_dtype
 import pytest
 
 import ray
@@ -18,14 +20,17 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
             "int64_list": tf.train.Feature(
                 int64_list=tf.train.Int64List(value=[1, 2, 3, 4])
             ),
+            "int64_empty": tf.train.Feature(int64_list=tf.train.Int64List(value=[])),
             "float": tf.train.Feature(float_list=tf.train.FloatList(value=[1.0])),
             "float_list": tf.train.Feature(
                 float_list=tf.train.FloatList(value=[1.0, 2.0, 3.0, 4.0])
             ),
+            "float_empty": tf.train.Feature(float_list=tf.train.FloatList(value=[])),
             "bytes": tf.train.Feature(bytes_list=tf.train.BytesList(value=[b"abc"])),
             "bytes_list": tf.train.Feature(
                 bytes_list=tf.train.BytesList(value=[b"abc", b"1234"])
             ),
+            "bytes_empty": tf.train.Feature(bytes_list=tf.train.BytesList(value=[])),
         }
     )
     example = tf.train.Example(features=features)
@@ -37,20 +42,29 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
 
     df = ds.to_pandas()
     # Protobuf serializes features in a non-deterministic order.
-    assert dict(df.dtypes) == {
-        "int64": np.int64,
-        "int64_list": object,
-        "float": np.float,
-        "float_list": object,
-        "bytes": object,
-        "bytes_list": object,
-    }
+    assert is_int64_dtype(dict(df.dtypes)["int64"])
+    assert is_object_dtype(dict(df.dtypes)["int64_list"])
+    assert is_int64_dtype(dict(df.dtypes)["int64_empty"])
+
+    assert is_float_dtype(dict(df.dtypes)["float"])
+    assert is_object_dtype(dict(df.dtypes)["float_list"])
+    assert is_float_dtype(dict(df.dtypes)["float_empty"])
+
+    assert is_object_dtype(dict(df.dtypes)["bytes"])
+    assert is_object_dtype(dict(df.dtypes)["bytes_list"])
+    assert is_object_dtype(dict(df.dtypes)["bytes_empty"])
+
     assert list(df["int64"]) == [1]
     assert np.array_equal(df["int64_list"][0], np.array([1, 2, 3, 4]))
+    assert list(df["int64_empty"]) == [pd.NA]
+
     assert list(df["float"]) == [1.0]
     assert np.array_equal(df["float_list"][0], np.array([1.0, 2.0, 3.0, 4.0]))
+    assert list(df["float_empty"]) == [pd.NA]
+
     assert list(df["bytes"]) == [b"abc"]
     assert np.array_equal(df["bytes_list"][0], np.array([b"abc", b"1234"]))
+    assert list(df["bytes_empty"]) == [None]
 
 
 def test_write_tfrecords(ray_start_regular_shared, tmp_path):

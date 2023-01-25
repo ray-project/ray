@@ -223,8 +223,17 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def to_pandas(self) -> "pandas.DataFrame":
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+        import pandas as pd
 
-        df = self._table.to_pandas()
+        # The custom `types_mapper` is needed to handle possibly null values, which
+        # is not supported by all Pandas data types.For more details:
+        # https://arrow.apache.org/docs/python/pandas.html#nullable-types
+        df = self._table.to_pandas(
+            types_mapper={
+                pyarrow.int64(): pd.Int64Dtype(),
+                pyarrow.float32(): pd.Float32Dtype(),
+            }.get
+        )
         ctx = DatasetContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_tensor_columns_to_ndarrays(df)
