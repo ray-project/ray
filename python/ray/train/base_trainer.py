@@ -185,7 +185,7 @@ class BaseTrainer(abc.ABC):
 
         with open(trainer_state_path, "rb") as fp:
             trainer = pickle.load(fp)
-        assert isinstance(trainer, cls)
+        assert type(trainer) == cls
         trainer._restore_path = path
 
         if trainer.datasets and not datasets:

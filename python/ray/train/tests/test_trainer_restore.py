@@ -2,8 +2,9 @@ import pytest
 
 import ray
 from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
-from ray.train.base_trainer import TrainingFailedError
+from ray.train.base_trainer import BaseTrainer, TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.huggingface import HuggingFaceTrainer
@@ -376,6 +377,21 @@ def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
 
     # Applying preprocessor to the dataset 2 times -> 3
     assert trainer.datasets["train"].take()[0]["x"] == 3
+
+
+def test_restore_with_different_trainer(tmpdir):
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=lambda config: session.report({"score": 1}),
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(name="restore_with_diff_trainer", local_dir=tmpdir),
+    )
+    trainer._save(tmpdir)
+    with pytest.raises(AssertionError):
+        BaseTrainer.restore(str(tmpdir))
+    with pytest.raises(AssertionError):
+        TorchTrainer.restore(str(tmpdir))
+    with pytest.raises(AssertionError):
+        XGBoostTrainer.restore(str(tmpdir))
 
 
 if __name__ == "__main__":
