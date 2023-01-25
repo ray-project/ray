@@ -293,31 +293,6 @@ def test_pipelined_execution():
     assert output == expected, (output, expected)
 
 
-# TODO(ekl) remove this test once we have the new backend on by default.
-def test_e2e_streaming_sanity():
-    DatasetContext.get_current().new_execution_backend = True
-    DatasetContext.get_current().use_streaming_executor = True
-
-    @ray.remote
-    class Barrier:
-        async def admit(self, x):
-            if x == 4:
-                print("Not allowing 4 to pass")
-                await asyncio.sleep(999)
-            else:
-                print(f"Allowing {x} to pass")
-
-    barrier = Barrier.remote()
-
-    def f(x):
-        ray.get(barrier.admit.remote(x))
-        return x + 1
-
-    # Check we can take the first items even if the last one gets stuck.
-    result = ray.data.range(5, parallelism=5).map(f)
-    assert result.take(4) == [1, 2, 3, 4]
-
-
 if __name__ == "__main__":
     import sys
 
