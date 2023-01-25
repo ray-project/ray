@@ -46,6 +46,6 @@ describe("RecentJobsCard", () => {
     expect(screen.getByText("02000000")).toBeVisible();
     expect(screen.getByText("raysubmit_23456")).toBeVisible();
     expect(screen.getByText("04000000")).toBeVisible();
-    expect(screen.getByText("05000000")).toBeVisible();
+    expect(screen.queryByText("05000000")).toBeNull();
   });
 });

@@ -51,3 +51,6 @@ class TaskPoolSubmitter(MapTaskSubmitter):
                 # a different error, or cancellation failed. In all cases, we
                 # swallow the exception.
                 pass
+
+    def progress_str(self) -> str:
+        return ""

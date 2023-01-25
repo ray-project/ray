@@ -5441,6 +5441,35 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
         ), "Number of actors is out of the expected bound"
 
 
+def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
+    """Tests that blocks are bundled up to the specified max number of actors."""
+
+    def f(x):
+        return x
+
+    max_size = 2
+    compute_strategy = ray.data.ActorPoolStrategy(max_size=max_size)
+    ds = (
+        ray.data.range(10, parallelism=10)
+        .map_batches(f, batch_size=None, compute=compute_strategy)
+        .fully_executed()
+    )
+
+    # TODO(https://github.com/ray-project/ray/issues/31723): implement the feature
+    # of capping bundle size by actor pool size, and then re-enable this test.
+    if not DatasetContext.get_current().new_execution_backend:
+        assert f"{max_size}/{max_size} blocks" in ds.stats()
+
+    # Check batch size is still respected.
+    ds = (
+        ray.data.range(10, parallelism=10)
+        .map_batches(f, batch_size=10, compute=compute_strategy)
+        .fully_executed()
+    )
+
+    assert "1/1 blocks" in ds.stats()
+
+
 def test_default_batch_format(shutdown_only):
     ds = ray.data.range(100)
     assert ds.default_batch_format() == list

@@ -1,4 +1,5 @@
 import abc
+import copy
 import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
@@ -140,6 +141,10 @@ class BaseTrainer(abc.ABC):
     ]
     _handles_checkpoint_freq: bool = False
     _handles_checkpoint_at_end: bool = False
+
+    # fields to propagate to Tuner param_space.
+    # See `BaseTrainer._extract_fields_for_tuner_param_space` for more details.
+    _fields_for_tuner_param_space = []
 
     def __init__(
         self,
@@ -350,8 +355,11 @@ class BaseTrainer(abc.ABC):
         from ray.tune.error import TuneError
 
         trainable = self.as_trainable()
+        param_space = self._extract_fields_for_tuner_param_space()
 
-        tuner = Tuner(trainable=trainable, run_config=self.run_config)
+        tuner = Tuner(
+            trainable=trainable, param_space=param_space, run_config=self.run_config
+        )
         result_grid = tuner.fit()
         assert len(result_grid) == 1
         try:
@@ -360,6 +368,23 @@ class BaseTrainer(abc.ABC):
                 raise result.error
         except TuneError as e:
             raise TrainingFailedError from e
+        return result
+
+    def _extract_fields_for_tuner_param_space(self) -> Dict:
+        """Extracts fields to be included in `Tuner.param_space`.
+
+        This is needed to leverage the full logging/integration offerings from Tune.
+        For example, `param_space` is logged automatically to wandb integration.
+
+        Currently only done for `train_loop_config`.
+
+        Returns:
+            A dictionary that should be passed to Tuner.param_space.
+        """
+        result = {}
+        for key in self._fields_for_tuner_param_space:
+            if key in self._param_dict.keys():
+                result[key] = copy.deepcopy(self._param_dict[key])
         return result
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:

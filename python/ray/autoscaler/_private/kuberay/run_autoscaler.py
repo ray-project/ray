@@ -17,21 +17,7 @@ BACKOFF_S = 5
 
 
 def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
-    """Wait until the Ray head container is ready. Then start the autoscaler.
-
-    For kuberay's autoscaler integration, the autoscaler runs in a sidecar container
-    in the same pod as the main Ray container, which runs the rest of the Ray
-    processes.
-
-    The logging configuration here is for the sidecar container, but we need the
-    logs to go to the same place as the head node logs because the autoscaler is
-    allowed to send scaling events to Ray drivers' stdout. The implementation of
-    this feature involves the autoscaler communicating to another Ray process
-    (the log monitor) via logs in that directory.
-
-    However, the Ray head container sets up the log directory. Thus, we set up
-    logging only after the Ray head is ready.
-    """
+    """Wait until the Ray head container is ready. Then start the autoscaler."""
     head_ip = get_node_ip_address()
     ray_address = f"{head_ip}:6379"
     while True:
@@ -55,6 +41,8 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
             print(f"Will check again in {BACKOFF_S} seconds.")
             time.sleep(BACKOFF_S)
 
+    # The Ray head container sets up the log directory. Thus, we set up logging
+    # only after the Ray head is ready.
     _setup_logging()
 
     # autoscaling_config_producer reads the RayCluster CR from K8s and uses the CR
