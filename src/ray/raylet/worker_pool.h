@@ -148,9 +148,7 @@ class IOWorkerPoolInterface {
 
 class ExperimentalForkServer {
     public:
-        void CreateProcess(instrumented_io_context &io_service);
-    private:
-
+        void CreateProcess(const std::vector<std::string> &worker_command_args, instrumented_io_context &io_service, std::error_code &ec, bool decouple, const ProcessEnvironment &env);
 };
 
 class WorkerInterface;
@@ -445,8 +443,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
                                const ProcessEnvironment &env);
   
-  Process _experimental_worker_proc_forkserver();
-
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
 

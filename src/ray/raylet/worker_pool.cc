@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <fstream>
+#include <boost/system/error_code.hpp>
 
 
 #include "ray/common/constants.h"
@@ -595,10 +596,6 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     RAY_LOG(DEBUG) << debug_info;
   }
 
-  if (RayConfig::instance().experimental_worker_proc_forkserver()) {
-    // Ignore return value for now.
-    _experimental_worker_proc_forkserver();
-  }
 
   // Launch the process to create the worker.
   std::error_code ec;
@@ -607,6 +604,16 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     argv.push_back(arg.c_str());
   }
   argv.push_back(NULL);
+
+  if (RayConfig::instance().experimental_worker_proc_forkserver()) {
+    // TODO guard by mutex?
+    experimental_fork_server_->CreateProcess(worker_command_args, *io_service_, ec, /*decouple=*/false, env);
+
+    // ec is always set until the forkserver is implemented.
+    if (!ec) {
+        return Process();
+    }
+  }
 
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
@@ -623,14 +630,9 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   return child;
 }
 
-Process WorkerPool::_experimental_worker_proc_forkserver() {
-    RAY_LOG(DEBUG) << "_experimental_worker_proc_forkserver called";
-    // TODO guard by mutex?
-    experimental_fork_server_->CreateProcess(*io_service_);
-    return Process();
-}
-
-void ExperimentalForkServer::CreateProcess(instrumented_io_context &io_service) {
+// TODO implement decouple=false
+// TODO use protobuf struct for communication
+void ExperimentalForkServer::CreateProcess(const std::vector<std::string> &worker_command_args, instrumented_io_context &io_service, std::error_code &ec, bool decouple, const ProcessEnvironment &env) {
     RAY_LOG(DEBUG) << "ExperimentalForkServer::CreateProcess called";
     // TODO make connection long-lived
 
@@ -641,9 +643,19 @@ void ExperimentalForkServer::CreateProcess(instrumented_io_context &io_service) 
     }
     auto connection = ServerConnection::Create(std::move(socket));
     
-    std::string message = "get cade";
-    connection->WriteBuffer({boost::asio::buffer(message.c_str(), message.size())});
-    RAY_LOG(DEBUG) << "written to forkserver: " << message;
+    std::vector<uint8_t> null_char(1, 0);
+
+    for (const std::string &arg : worker_command_args) {
+        // TODO batching
+        connection->WriteBuffer({boost::asio::buffer(arg.c_str(), arg.size())});
+        connection->WriteBuffer({boost::asio::buffer(null_char.data(), null_char.size())});
+        RAY_LOG(DEBUG) << "written to forkserver: " << arg;
+    }
+    std::string empty = "";
+    connection->WriteBuffer({boost::asio::buffer(empty.c_str(), empty.size())});
+    connection->WriteBuffer({boost::asio::buffer(null_char.data(), null_char.size())});
+
+    // TODO send env
 
     std::vector<uint8_t> read_buffer(1024, 0);
     connection->ReadBuffer({boost::asio::buffer(read_buffer)});
@@ -651,8 +663,12 @@ void ExperimentalForkServer::CreateProcess(instrumented_io_context &io_service) 
     std::string read_buffer_str(read_buffer.begin(), read_buffer.end());
     RAY_LOG(DEBUG) << "read from forkserver: " << read_buffer_str;
 
-    // TODO use protobuf struct for communication
-    // TODO send request for process creation
+    ec = boost::system::errc::make_error_code(boost::system::errc::not_supported);
+
+    // Too messy, should just use protobuf
+    //auto child_pid = std::stoi(read_buffer_str);
+
+    //RAY_LOG(DEBUG) << "parsed pid " << child_pid;
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {
