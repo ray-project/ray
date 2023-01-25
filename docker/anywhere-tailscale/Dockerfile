@@ -31,6 +31,7 @@ RUN sudo apt update \
 
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     pandas \
+    'dask==2022.2.0' \
     modin[dask] \
     modin[ray] \
     'ray>=2.2.0'

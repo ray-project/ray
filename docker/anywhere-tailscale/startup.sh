@@ -89,6 +89,7 @@ ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-hos
             -Chttp.cors.allow-origin="/*" \
             -Cdiscovery.seed_hosts=$hostnames \
             -Ccluster.initial_master_nodes=nexus \
+            -Ccluster.routing.allocation.enable=full \
             -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false &
 
@@ -105,6 +106,7 @@ ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-
             -Chttp.cors.allow-origin="/*" \
             -Cdiscovery.seed_hosts=$hostnames \
             -Ccluster.initial_master_nodes=nexus \
+            -Ccluster.routing.allocation.enable=full \
             -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false &
 
