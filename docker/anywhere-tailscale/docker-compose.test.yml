@@ -2,8 +2,15 @@ version: "3.5"
 services:
   sut:
     build: .
-    shm_size: '4gb'
-    network_mode: "bridge"
-    devices:
-        - "/dev/net/tun:/dev/net/tun"
+      shm_size: '4gb'
+      network: host
+      devices: "/dev/net/tun:/dev/net/tun"
+    networks:
+      test_net
     command: run_tests.sh
+    sysctls: vm.max_map_count=262144
+
+networks:
+  test_net:
+    driver: bridge
+    enable_ipv6: false
