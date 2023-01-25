@@ -1,4 +1,5 @@
 import abc
+import copy
 import inspect
 import logging
 import os
@@ -148,6 +149,10 @@ class BaseTrainer(abc.ABC):
     ]
     _handles_checkpoint_freq: bool = False
     _handles_checkpoint_at_end: bool = False
+
+    # fields to propagate to Tuner param_space.
+    # See `BaseTrainer._extract_fields_for_tuner_param_space` for more details.
+    _fields_for_tuner_param_space = []
 
     def __init__(
         self,
@@ -408,16 +413,19 @@ class BaseTrainer(abc.ABC):
         from ray.tune.tuner import Tuner, TunerInternal
 
         trainable = self.as_trainable()
+        param_space = self._extract_fields_for_tuner_param_space()
 
         if self._restore_path:
             tuner = Tuner.restore(
                 self._restore_path,
+                overwrite_trainable=trainable,
                 resume_unfinished=True,
                 resume_errored=True,
-                overwrite_trainable=trainable,
             )
         else:
-            tuner = Tuner(trainable=trainable, run_config=self.run_config)
+            tuner = Tuner(
+                trainable=trainable, param_space=param_space, run_config=self.run_config
+            )
             experiment_path = Path(
                 TunerInternal.setup_create_experiment_checkpoint_dir(
                     trainable, self.run_config
@@ -432,9 +440,27 @@ class BaseTrainer(abc.ABC):
             raise TrainingFailedError from result.error
         return result
 
-    def _save(self, experiment_path: Path):
+    def _save(self, experiment_path: Union[str, Path]):
+        experiment_path = Path(experiment_path)
         with open(experiment_path / _TRAINER_PKL, "wb") as fp:
             pickle.dump(self, fp)
+
+    def _extract_fields_for_tuner_param_space(self) -> Dict:
+        """Extracts fields to be included in `Tuner.param_space`.
+
+        This is needed to leverage the full logging/integration offerings from Tune.
+        For example, `param_space` is logged automatically to wandb integration.
+
+        Currently only done for `train_loop_config`.
+
+        Returns:
+            A dictionary that should be passed to Tuner.param_space.
+        """
+        result = {}
+        for key in self._fields_for_tuner_param_space:
+            if key in self._param_dict.keys():
+                result[key] = copy.deepcopy(self._param_dict[key])
+        return result
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:
         """Generate the base Trainable class.
