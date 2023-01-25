@@ -11,6 +11,7 @@ azure-mgmt-compute==23.1.0
 azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 msrestazure==0.6.4
+beautifulsoup4==4.11.1
 boto3==1.23.10
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
