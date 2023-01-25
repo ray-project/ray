@@ -124,7 +124,7 @@ class GcsHealthCheckManager {
     std::shared_ptr<bool> stopped_;
 
     /// gRPC related fields
-    std::shared_ptr<::grpc::health::v1::Health::Stub> stub_;
+    std::unique_ptr<::grpc::health::v1::Health::Stub> stub_;
 
     // The context is used in the gRPC callback which is in another
     // thread, so we need it to be a shared_ptr.

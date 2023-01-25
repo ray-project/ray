@@ -84,10 +84,8 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       context_.get(),
       &request_,
       &response_,
-      [this,
-       stopped = this->stopped_,
-       context = this->context_,
-       now = absl::Now()](::grpc::Status status) {
+      [this, stopped = this->stopped_, context = this->context_, now = absl::Now()](
+          ::grpc::Status status) {
         // This callback is done in gRPC's thread pool.
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - now));
@@ -112,12 +110,14 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
               }
 
               if (health_check_remaining_ == 0) {
-                manager_->io_service_.post([this, stopped]() {
-                  if(*stopped) {
-                    return;
-                  }
-                  manager_->FailNode(node_id_); },
-                  "");
+                manager_->io_service_.post(
+                    [this, stopped]() {
+                      if (*stopped) {
+                        return;
+                      }
+                      manager_->FailNode(node_id_);
+                    },
+                    "");
               } else {
                 // Do another health check.
                 timer_.expires_from_now(
