@@ -201,7 +201,7 @@ class ExecutionPlan:
             num_blocks = "?"
         else:
             num_blocks = dataset_blocks.initial_num_blocks()
-        dataset_str = "Dataset(num_blocks={}, num_rows={}, schema={})".format(
+        dataset_str = "<Dataset num_blocks={}, num_rows={}, schema={}>".format(
             num_blocks, count, schema_str
         )
 

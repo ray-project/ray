@@ -367,7 +367,7 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)], parallelism=40)
-    res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
+    res = "<Dataset num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>>"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
@@ -1446,7 +1446,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x > 1)
     ds.fully_executed()
-    assert str(ds) == "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
+    assert str(ds) == "<Dataset num_blocks=1, num_rows=0, schema=Unknown schema>"
 
     # Test map on empty dataset.
     ds = ray.data.from_items([])
@@ -1468,11 +1468,11 @@ def test_schema(ray_start_regular_shared):
     ds3.fully_executed()
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     ds4.fully_executed()
-    assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
-    assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
-    assert str(ds3) == "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
+    assert str(ds) == "<Dataset num_blocks=10, num_rows=10, schema=<class 'int'>>"
+    assert str(ds2) == "<Dataset num_blocks=10, num_rows=10, schema={value: int64}>"
+    assert str(ds3) == "<Dataset num_blocks=5, num_rows=10, schema={value: int64}>"
     assert (
-        str(ds4) == "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
+        str(ds4) == "<Dataset num_blocks=1, num_rows=5, schema={a: string, b: double}>"
     )
 
 
@@ -1514,44 +1514,44 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
 
 def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
-    assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+    assert repr(ds) == "<Dataset num_blocks=10, num_rows=10, schema=<class 'int'>>"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "MapBatches\n" "+- <Dataset num_blocks=10, num_rows=10, schema=<class 'int'>>"
     )
     ds = ds.filter(lambda x: x > 0)
     assert repr(ds) == (
         "Filter\n"
         "+- MapBatches\n"
-        "   +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "   +- <Dataset num_blocks=10, num_rows=10, schema=<class 'int'>>"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
         "+- Filter\n"
         "   +- MapBatches\n"
-        "      +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "      +- <Dataset num_blocks=10, num_rows=10, schema=<class 'int'>>"
     )
     ds.fully_executed()
-    assert repr(ds) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    assert repr(ds) == "<Dataset num_blocks=10, num_rows=9, schema=<class 'int'>>"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+        "MapBatches\n" "+- <Dataset num_blocks=10, num_rows=9, schema=<class 'int'>>"
     )
     ds1, ds2 = ds.split(2)
     assert (
         repr(ds1)
-        == f"Dataset(num_blocks=5, num_rows={ds1.count()}, schema=<class 'int'>)"
+        == f"<Dataset num_blocks=5, num_rows={ds1.count()}, schema=<class 'int'>>"
     )
     assert (
         repr(ds2)
-        == f"Dataset(num_blocks=5, num_rows={ds2.count()}, schema=<class 'int'>)"
+        == f"<Dataset num_blocks=5, num_rows={ds2.count()}, schema=<class 'int'>>"
     )
     ds3 = ds1.union(ds2)
-    assert repr(ds3) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+    assert repr(ds3) == "<Dataset num_blocks=10, num_rows=9, schema=<class 'int'>>"
     ds = ds.zip(ds3)
     assert repr(ds) == (
-        "Zip\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+        "Zip\n" "+- <Dataset num_blocks=10, num_rows=9, schema=<class 'int'>>"
     )
 
 
@@ -4762,7 +4762,9 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = "Dataset(num_blocks=1, num_rows=10, schema={1: float64, a: float64})"
+    expected_str = (
+        "<Dataset num_blocks=1, num_rows=10, schema={1: float64, a: float64}>"
+    )
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
