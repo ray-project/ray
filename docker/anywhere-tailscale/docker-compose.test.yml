@@ -2,8 +2,8 @@ version: "3.5"
 services:
   sut:
     build: .
-    shm_size: '4gb'
-    network_mode: bridge
+      shm_size: '4gb'
+      network_mode: bridge
     devices: ["/dev/net/tun:/dev/net/tun"]
     networks:
       - test_net
@@ -14,4 +14,5 @@ services:
 networks:
   test_net:
     driver: bridge
+    network_mode: bridge
     enable_ipv6: false
