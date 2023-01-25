@@ -128,7 +128,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._plan.execute()._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 0
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
@@ -263,7 +263,7 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
         @ray.remote
         def write(b):
-            node_id = ray.get_runtime_context().node_id.hex()
+            node_id = ray.get_runtime_context().get_node_id()
             return ray.get(data_sink.write.remote(node_id, b))
 
         tasks = []
@@ -293,7 +293,7 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
 

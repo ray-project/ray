@@ -1,11 +1,12 @@
-import gym
+import gymnasium as gym
 import tensorflow as tf
 import tensorflow_probability as tfp
 from typing import Any, Mapping, Union
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -19,7 +20,9 @@ class DiscreteBCTFModule(TfRLModule):
         hidden_dim: int,
         output_dim: int,
     ) -> None:
-        super().__init__()
+        super().__init__(
+            input_dim=input_dim, output_dim=output_dim, hidden_dim=hidden_dim
+        )
         layers = []
 
         layers.append(tf.keras.Input(shape=(input_dim,)))
@@ -30,31 +33,30 @@ class DiscreteBCTFModule(TfRLModule):
 
         self.policy = tf.keras.Sequential(layers)
         self._input_dim = input_dim
-        self._output_dim = output_dim
 
     @override(RLModule)
-    def input_specs_exploration(self) -> ModelSpec:
-        return ModelSpec(self._default_inputs())
+    def input_specs_exploration(self) -> SpecType:
+        return self._default_inputs()
 
     @override(RLModule)
-    def input_specs_inference(self) -> ModelSpec:
-        return ModelSpec(self._default_inputs())
+    def input_specs_inference(self) -> SpecType:
+        return self._default_inputs()
 
     @override(RLModule)
-    def input_specs_train(self) -> ModelSpec:
-        return ModelSpec(self._default_inputs())
+    def input_specs_train(self) -> SpecType:
+        return self._default_inputs()
 
     @override(RLModule)
-    def output_specs_exploration(self) -> ModelSpec:
-        return ModelSpec(self._default_outputs())
+    def output_specs_exploration(self) -> SpecType:
+        return self._default_outputs()
 
     @override(RLModule)
-    def output_specs_inference(self) -> ModelSpec:
-        return ModelSpec(self._default_outputs())
+    def output_specs_inference(self) -> SpecType:
+        return self._default_outputs()
 
     @override(RLModule)
-    def output_specs_train(self) -> ModelSpec:
-        return ModelSpec(self._default_outputs())
+    def output_specs_train(self) -> SpecType:
+        return self._default_outputs()
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -83,10 +85,6 @@ class DiscreteBCTFModule(TfRLModule):
     def set_state(self, state: Mapping[str, Any]) -> None:
         self.policy.set_weights(state["policy"])
 
-    @override(TfRLModule)
-    def trainable_variables(self) -> NestedDict[tf.Tensor]:
-        return NestedDict({"policy": self.policy.trainable_variables})
-
     @classmethod
     @override(RLModule)
     def from_model_config(
@@ -104,9 +102,9 @@ class DiscreteBCTFModule(TfRLModule):
 
         return cls(**config)
 
-    def _default_inputs(self) -> ModelSpec:
+    def _default_inputs(self) -> SpecDict:
         obs_dim = self._input_dim
         return {"obs": TFTensorSpecs("b, do", do=obs_dim)}
 
-    def _default_outputs(self) -> ModelSpec:
+    def _default_outputs(self) -> SpecDict:
         return {"action_dist": tfp.distributions.Distribution}

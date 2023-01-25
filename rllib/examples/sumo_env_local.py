@@ -84,7 +84,6 @@ if __name__ == "__main__":
         .framework("tf")
         .rollouts(
             batch_mode="complete_episodes",
-            no_done_at_end=True,
             num_rollout_workers=args.num_workers,
         )
         .training(

@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass
-import gym
-from typing import Mapping, Any, TYPE_CHECKING, Union
+import gymnasium as gym
+from typing import Mapping, Any, TYPE_CHECKING, Union, Optional, Type, Dict
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -10,8 +10,10 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.serialization import check_if_args_kwargs_serializable
 
-from ray.rllib.models.specs.specs_dict import ModelSpec, check_specs
+from ray.rllib.models.specs.typing import SpecType
+from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.nested_dict import NestedDict
@@ -24,12 +26,35 @@ ModuleID = str
 
 @ExperimentalAPI
 @dataclass
+class SingleAgentRLModuleSpec:
+    """A utility spec class to make it constructing RLModules (in single-agent case) easier.
+
+    Args:
+        module_class: ...
+        observation_space: ...
+        action_space: ...
+        model_config: ...
+    """
+
+    module_class: Optional[Type["RLModule"]] = None
+    observation_space: Optional["gym.Space"] = None
+    action_space: Optional["gym.Space"] = None
+    model_config: Optional[Dict[str, Any]] = None
+
+    def build(self) -> "RLModule":
+        return self.module_class.from_model_config(
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            model_config=self.model_config,
+        )
+
+
+@ExperimentalAPI
+@dataclass
 class RLModuleConfig:
     """Configuration for the PPO module.
-
     # TODO (Kourosh): Whether we need this or not really depends on how the catalog
     # design end up being.
-
     Attributes:
         observation_space: The observation space of the environment.
         action_space: The action space of the environment.
@@ -54,13 +79,13 @@ class RLModule(abc.ABC):
     .. code-block:: python
 
         module: RLModule = ...
-        obs = env.reset()
-        while not done:
+        obs, info = env.reset()
+        while not terminated and not truncated:
             fwd_outputs = module.forward_exploration({"obs": obs})
             # this can be deterministic or stochastic exploration
             action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, done, info = env.step(action)
-            buffer.add(obs, action, next_obs, reward, done, info)
+            next_obs, reward, terminated, truncated, info = env.step(action)
+            buffer.add(obs, action, next_obs, reward, terminated, truncated, info)
             next_obs = obs
 
     # During Training (learning the policy)
@@ -76,21 +101,28 @@ class RLModule(abc.ABC):
     ----------------------------------------------------------
     .. code-block:: python
         module: RLModule = ...
-        obs = env.reset()
-        while not done:
+        obs, info = env.reset()
+        while not terminated and not truncated:
             fwd_outputs = module.forward_inference({"obs": obs})
             # this can be deterministic or stochastic evaluation
             action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, done, info = env.step(action)
+            next_obs, reward, terminated, truncated, info = env.step(action)
             next_obs = obs
 
     Args:
-        config: The config object for the module.
+        *args: Arguments for constructing the RLModule.
+        **kwargs: Keyword args for constructing the RLModule.
 
     Abstract Methods:
         forward_train: Forward pass during training.
         forward_exploration: Forward pass during training for exploration.
         forward_inference: Forward pass during inference.
+
+    Error:
+        The args and kwargs that are passed to the constructor are saved for
+        serialization and deserialization purposes. The RLModule checks if they
+        are serializable/deserializable using ray and if they are not, a
+        ValueError is thrown.
 
     Note: There is a reason that the specs are not written as abstract properties.
         The reason is that torch overrides `__getattr__` and `__setattr__`. This means
@@ -99,6 +131,10 @@ class RLModule(abc.ABC):
         `__getattr__` which will give a confusing error about the attribute not found.
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
+
+    def __init__(self, *args, **kwargs):
+        check_if_args_kwargs_serializable(args, kwargs)
+        self._args_and_kwargs = {"args": args, "kwargs": kwargs}
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -188,7 +224,7 @@ class RLModule(abc.ABC):
         return {}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_inference(self) -> ModelSpec:
+    def output_specs_inference(self) -> SpecType:
         """Returns the output specs of the forward_inference method.
 
         Override this method to customize the output specs of the inference call.
@@ -196,10 +232,10 @@ class RLModule(abc.ABC):
         has `action_dist` key and its value is an instance of `Distribution`.
         This assumption must always hold.
         """
-        return ModelSpec({"action_dist": Distribution})
+        return {"action_dist": Distribution}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_exploration(self) -> ModelSpec:
+    def output_specs_exploration(self) -> SpecType:
         """Returns the output specs of the forward_exploration method.
 
         Override this method to customize the output specs of the inference call.
@@ -207,27 +243,26 @@ class RLModule(abc.ABC):
         that has `action_dist` key and its value is an instance of
         `Distribution`. This assumption must always hold.
         """
-        return ModelSpec({"action_dist": Distribution})
+        return {"action_dist": Distribution}
 
-    def output_specs_train(self) -> ModelSpec:
+    def output_specs_train(self) -> SpecType:
         """Returns the output specs of the forward_train method."""
-        return ModelSpec()
+        return {}
 
-    def input_specs_inference(self) -> ModelSpec:
+    def input_specs_inference(self) -> SpecType:
         """Returns the input specs of the forward_inference method."""
-        return ModelSpec()
+        return {}
 
-    def input_specs_exploration(self) -> ModelSpec:
+    def input_specs_exploration(self) -> SpecType:
         """Returns the input specs of the forward_exploration method."""
-        return ModelSpec()
+        return {}
 
-    def input_specs_train(self) -> ModelSpec:
+    def input_specs_train(self) -> SpecType:
         """Returns the input specs of the forward_train method."""
-        return ModelSpec()
+        return {}
 
-    @check_specs(
-        input_spec="_input_specs_inference", output_spec="_output_specs_inference"
-    )
+    @check_input_specs("_input_specs_inference")
+    @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation, called from the sampler. This method should
         not be overriden. Instead, override the _forward_inference method.
@@ -247,9 +282,8 @@ class RLModule(abc.ABC):
     def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during evaluation. See forward_inference for details."""
 
-    @check_specs(
-        input_spec="_input_specs_exploration", output_spec="_output_specs_exploration"
-    )
+    @check_input_specs("_input_specs_exploration")
+    @check_output_specs("_output_specs_exploration")
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
@@ -271,11 +305,9 @@ class RLModule(abc.ABC):
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
-    @check_specs(input_spec="_input_specs_train", output_spec="_output_specs_train")
-    def forward_train(
-        self,
-        batch: SampleBatchType,
-    ) -> Mapping[str, Any]:
+    @check_input_specs("_input_specs_train")
+    @check_output_specs("_output_specs_train")
+    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training called from the trainer. This method should
         not be overriden. Instead, override the _forward_train method.
 
@@ -288,7 +320,7 @@ class RLModule(abc.ABC):
             The output of the forward pass. This output should comply with the
             ouptut_specs_train().
         """
-        return self._forward_train(batch)
+        return self._forward_train(batch, **kwargs)
 
     @abc.abstractmethod
     def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
@@ -301,6 +333,41 @@ class RLModule(abc.ABC):
     @abc.abstractmethod
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
+
+    def serialize(self) -> Mapping[str, Any]:
+        """Return the serialized state of the module."""
+        return {
+            "class": self.__class__,
+            "args": self._args_and_kwargs["args"],
+            "kwargs": self._args_and_kwargs["kwargs"],
+            "state": self.get_state(),
+        }
+
+    @classmethod
+    def deserialize(cls, state: Mapping[str, Any]) -> "RLModule":
+        """Construct a module from a serialized state.
+
+        Args:
+            state: The serialized state of the module.
+
+        NOTE: this state is typically obtained from `serialize()`.
+
+        NOTE: This method needs to be implemented in order to support
+            checkpointing and fault tolerance.
+
+        Returns:
+            A deserialized RLModule.
+        """
+        for key in ["class", "args", "kwargs", "state"]:
+            if key not in state:
+                raise ValueError(
+                    "By default, the serialized state must contain the following "
+                    f"keys: 'class', 'args', 'args', and 'kwargs'. Got: {state.keys()}"
+                )
+        constructor = state["class"]
+        module = constructor(*state["args"], **state["kwargs"])
+        module.set_state(state["state"])
+        return module
 
     @abc.abstractmethod
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:

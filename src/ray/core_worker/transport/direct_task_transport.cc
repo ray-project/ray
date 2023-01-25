@@ -565,7 +565,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
-  task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id);
+  task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id, addr.worker_id);
   client.PushNormalTask(
       std::move(request),
       [this,
@@ -648,6 +648,7 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
     const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
   rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
   std::unique_ptr<rpc::RayErrorInfo> error_info;
+  bool fail_immediately = false;
   if (get_task_failure_cause_reply_status.ok()) {
     RAY_LOG(DEBUG) << "Task failure cause for task " << task_id << ": "
                    << ray::gcs::RayErrorInfoToString(
@@ -679,7 +680,9 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
       task_id,
       is_actor ? rpc::ErrorType::ACTOR_DIED : task_error_type,
       &task_execution_status,
-      error_info.get()));
+      error_info.get(),
+      /*mark_task_object_failed*/ true,
+      fail_immediately));
 }
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,

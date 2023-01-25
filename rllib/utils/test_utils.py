@@ -1,11 +1,15 @@
 from collections import Counter
 import copy
+import gymnasium as gym
+from gymnasium.spaces import Box
 import logging
+import numpy as np
+import os
+import pprint
 import random
 import re
 import time
-import os
-import gym
+import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,12 +21,7 @@ from typing import (
     Type,
     Union,
 )
-
-import numpy as np
-import tree  # pip install dm_tree
 import yaml
-import pprint
-from gym.spaces import Box
 
 import ray
 from ray import air, tune
@@ -39,6 +38,7 @@ from ray.tune import CLIReporter, run_experiments
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms import Algorithm, AlgorithmConfig
+    from ray.rllib.offline.dataset_reader import DatasetReader
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -220,7 +220,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         else:
             assert x == y, f"ERROR: x ({x}) is not the same as y ({y})!"
     # String/byte comparisons.
-    elif hasattr(x, "dtype") and (x.dtype == object or str(x.dtype).startswith("<U")):
+    elif (
+        hasattr(x, "dtype") and (x.dtype == object or str(x.dtype).startswith("<U"))
+    ) or isinstance(x, bytes):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
@@ -494,7 +496,11 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
     # Avoids circular import
     from ray.rllib.utils.policy import local_policy_inference
 
-    env = gym.make(env_name)
+    # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
+    if env_name.startswith("ALE/"):
+        env = gym.make("GymV26Environment-v0", env_id=env_name)
+    else:
+        env = gym.make(env_name)
 
     # Potentially wrap the env like we do in RolloutWorker
     if is_atari(env):
@@ -504,20 +510,21 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
             framestack=policy.config["model"].get("framestack"),
         )
 
-    obs = env.reset()
-    reward, done, info = 0.0, False, {}
+    obs, info = env.reset()
+    reward, terminated, truncated = 0.0, False, False
     ts = 0
-    while not done and ts < max_steps:
+    while not terminated and not truncated and ts < max_steps:
         action_out = local_policy_inference(
             policy,
             env_id=0,
             agent_id=0,
             obs=obs,
             reward=reward,
-            done=done,
+            terminated=terminated,
+            truncated=truncated,
             info=info,
         )
-        obs, reward, done, info = env.step(action_out[0][0])
+        obs, reward, terminated, truncated, info = env.step(action_out[0][0])
 
         ts += 1
 
@@ -1123,3 +1130,34 @@ def check_reproducibilty(
                 results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
                 results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
             )
+
+
+def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
+    """Returns a DatasetReader for the cartpole dataset.
+    Args:
+        batch_size: The batch size to use for the reader.
+    Returns:
+        A rllib DatasetReader for the cartpole dataset.
+    """
+    from ray.rllib.algorithms import AlgorithmConfig
+    from ray.rllib.offline import IOContext
+    from ray.rllib.offline.dataset_reader import (
+        DatasetReader,
+        get_dataset_and_shards,
+    )
+
+    path = "tests/data/cartpole/large.json"
+    input_config = {"format": "json", "paths": path}
+    dataset, _ = get_dataset_and_shards(
+        AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
+    )
+    ioctx = IOContext(
+        config=(
+            AlgorithmConfig()
+            .training(train_batch_size=batch_size)
+            .offline_data(actions_in_input_normalized=True)
+        ),
+        worker_index=0,
+    )
+    reader = DatasetReader(dataset, ioctx)
+    return reader

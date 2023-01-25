@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
-import gym
-from gym.spaces import Box
+import gymnasium as gym
+from gymnasium.spaces import Box
 import json
 import logging
 import numpy as np
@@ -404,6 +404,24 @@ class Policy(metaclass=ABCMeta):
             for k, v in view_reqs.items():
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
+
+    def get_connector_metrics(self) -> Dict:
+        """Get metrics on timing from connectors."""
+        return {
+            "agent_connectors": {
+                name + "_ms": 1000 * timer.mean
+                for name, timer in self.agent_connectors.timers.items()
+            },
+            "action_connectors": {
+                name + "_ms": 1000 * timer.mean
+                for name, timer in self.agent_connectors.timers.items()
+            },
+        }
+
+    def reset_connectors(self, env_id) -> None:
+        """Reset action- and agent-connectors for this policy."""
+        self.agent_connectors.reset(env_id=env_id)
+        self.action_connectors.reset(env_id=env_id)
 
     @DeveloperAPI
     def compute_single_action(
@@ -970,14 +988,14 @@ class Policy(metaclass=ABCMeta):
             self.agent_connectors = restore_connectors_for_policy(
                 self, connector_configs["agent"]
             )
-            logger.info("restoring agent connectors:")
-            logger.info(self.agent_connectors.__str__(indentation=4))
+            logger.debug("restoring agent connectors:")
+            logger.debug(self.agent_connectors.__str__(indentation=4))
         if "action" in connector_configs:
             self.action_connectors = restore_connectors_for_policy(
                 self, connector_configs["action"]
             )
-            logger.info("restoring action connectors:")
-            logger.info(self.action_connectors.__str__(indentation=4))
+            logger.debug("restoring action connectors:")
+            logger.debug(self.action_connectors.__str__(indentation=4))
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1262,9 +1280,9 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.PREV_REWARDS: ViewRequirement(
                 data_col=SampleBatch.REWARDS, shift=-1
             ),
-            SampleBatch.DONES: ViewRequirement(),
+            SampleBatch.TERMINATEDS: ViewRequirement(),
+            SampleBatch.TRUNCATEDS: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
-            SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
@@ -1423,7 +1441,8 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.EPS_ID,
                             SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID,
-                            SampleBatch.DONES,
+                            SampleBatch.TERMINATEDS,
+                            SampleBatch.TRUNCATEDS,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
                             SampleBatch.T,
@@ -1431,8 +1450,8 @@ class Policy(metaclass=ABCMeta):
                     ):
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
-                # by Sampler to properly execute sample collection).
-                # Also always leave DONES, REWARDS, INFOS, no matter what.
+                # by Sampler to properly execute sample collection). Also always leave
+                # TERMINATEDS, TRUNCATEDS, REWARDS, INFOS, no matter what.
                 for key in list(self.view_requirements.keys()):
                     if (
                         key not in all_accessed_keys
@@ -1441,7 +1460,8 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.EPS_ID,
                             SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID,
-                            SampleBatch.DONES,
+                            SampleBatch.TERMINATEDS,
+                            SampleBatch.TRUNCATEDS,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
                             SampleBatch.T,

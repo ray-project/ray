@@ -20,6 +20,7 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_MAX_LAUNCH_BATCH,
     AUTOSCALER_MAX_NUM_FAILURES,
+    AUTOSCALER_STATUS_LOG,
     AUTOSCALER_UPDATE_INTERVAL_S,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
@@ -186,6 +187,7 @@ class StandardAutoscaler:
         config_reader: Union[str, Callable[[], dict]],
         load_metrics: LoadMetrics,
         gcs_node_info_stub: gcs_service_pb2_grpc.NodeInfoGcsServiceStub,
+        session_name: Optional[str] = None,
         max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
         max_failures: int = AUTOSCALER_MAX_NUM_FAILURES,
@@ -201,6 +203,8 @@ class StandardAutoscaler:
             config_reader: Path to a Ray Autoscaler YAML, or a function to read
                 and return the latest config.
             load_metrics: Provides metrics for the Ray cluster.
+            session_name: The session name of the cluster this autoscaler
+                is deployed.
             max_launch_batch: Max number of nodes to launch in one request.
             max_concurrent_launches: Max number of nodes that can be
                 concurrently launched. This value and `max_launch_batch`
@@ -236,7 +240,9 @@ class StandardAutoscaler:
         # Keep this before self.reset (if an exception occurs in reset
         # then prom_metrics must be instantitiated to increment the
         # exception counter)
-        self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics()
+        self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics(
+            session_name=session_name
+        )  # noqa
         self.resource_demand_scheduler = None
         self.reset(errors_fatal=True)
         self.load_metrics = load_metrics
@@ -317,6 +323,7 @@ class StandardAutoscaler:
                 pending=self.pending_launches,
                 event_summarizer=self.event_summarizer,
                 node_provider_availability_tracker=self.node_provider_availability_tracker,  # noqa: E501 Flake and black disagree how to format this.
+                session_name=session_name,
                 node_types=self.available_node_types,
                 prom_metrics=self.prom_metrics,
             )
@@ -331,6 +338,7 @@ class StandardAutoscaler:
                     pending=self.pending_launches,
                     event_summarizer=self.event_summarizer,
                     node_provider_availability_tracker=self.node_provider_availability_tracker,  # noqa: E501 Flake and black disagreee how to format this.
+                    session_name=session_name,
                     node_types=self.available_node_types,
                     prom_metrics=self.prom_metrics,
                 )
@@ -407,7 +415,8 @@ class StandardAutoscaler:
         )
 
         # Update status strings
-        logger.info(self.info_string())
+        if AUTOSCALER_STATUS_LOG:
+            logger.info(self.info_string())
         legacy_log_info_string(self, self.non_terminated_nodes.worker_ids)
 
         if not self.provider.is_readonly():

@@ -165,6 +165,9 @@ logger = logging.getLogger(__name__)
 current_task_id = None
 current_task_id_lock = threading.Lock()
 
+job_config_initialized = False
+job_config_initialization_lock = threading.Lock()
+
 
 class ObjectRefGenerator:
     def __init__(self, refs):
@@ -261,9 +264,19 @@ cdef increase_recursion_limit():
     """Double the recusion limit if current depth is close to the limit"""
     cdef:
         CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
-        int current_depth = s.recursion_depth
         int current_limit = Py_GetRecursionLimit()
         int new_limit = current_limit * 2
+        cdef extern from *:
+            """
+#if PY_VERSION_HEX >= 0x30B00A4
+    #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
+#else
+    #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
+#endif
+            """
+            int CURRENT_DEPTH(CPyThreadState *x)
+
+        int current_depth = CURRENT_DEPTH(s)
 
     if current_limit - current_depth < 500:
         Py_SetRecursionLimit(new_limit)
@@ -573,8 +586,8 @@ cdef store_task_errors(
         CoreWorker core_worker = worker.core_worker
 
     # If the debugger is enabled, drop into the remote pdb here.
-    if "RAY_PDB" in os.environ:
-        ray.util.pdb.post_mortem()
+    if ray.util.pdb._is_ray_debugger_enabled():
+        ray.util.pdb._post_mortem()
 
     backtrace = ray._private.utils.format_error_message(
         "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
@@ -733,8 +746,8 @@ cdef void execute_task(
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
     function_name = execution_info.function_name
-    extra_data = (b'{"name": ' + function_name.encode("ascii") +
-                  b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
+    extra_data = (b'{"name": "' + function_name.encode("ascii") +
+                  b'", "task_id": "' + task_id.hex().encode("ascii") + b'"}')
 
     name_of_concurrency_group_to_execute = \
         c_name_of_concurrency_group_to_execute.decode("ascii")
@@ -1146,6 +1159,10 @@ cdef CRayStatus task_execution_handler(
         c_bool is_reattempt) nogil:
 
     with gil, disable_client_hook():
+        # Initialize job_config if it hasn't already.
+        # Setup system paths configured in job_config.
+        maybe_initialize_job_config()
+
         try:
             try:
                 # Exceptions, including task cancellation, should be handled
@@ -1370,6 +1387,43 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
         # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
         object_ids = [None]
         worker.raise_errors([(data, metadata)], object_ids)
+
+
+def maybe_initialize_job_config():
+    with job_config_initialization_lock:
+        global job_config_initialized
+        if job_config_initialized:
+            return
+        # Add code search path to sys.path, set load_code_from_local.
+        core_worker = ray._private.worker.global_worker.core_worker
+        code_search_path = core_worker.get_job_config().code_search_path
+        load_code_from_local = False
+        if code_search_path:
+            load_code_from_local = True
+            for p in code_search_path:
+                if os.path.isfile(p):
+                    p = os.path.dirname(p)
+                sys.path.insert(0, p)
+        ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
+        # Add driver's system path to sys.path
+        py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+        if py_driver_sys_path:
+            for p in py_driver_sys_path:
+                sys.path.insert(0, p)
+
+        # Record the task name via :task_name: magic token in the log file.
+        # This is used for the prefix in driver logs `(task_name pid=123) ...`
+        job_id_magic_token = "{}{}\n".format(
+            ray_constants.LOG_PREFIX_JOB_ID, core_worker.get_current_job_id().hex())
+        # Print on both .out and .err
+        print(job_id_magic_token, end="")
+        print(job_id_magic_token, file=sys.stderr, end="")
+
+        # Only start import thread after job_config is initialized
+        ray._private.worker.start_import_thread()
+
+        job_config_initialized = True
 
 
 # This function introduces ~2-7us of overhead per call (i.e., it can be called

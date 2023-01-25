@@ -51,16 +51,8 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 /// warning is logged that the handler is taking too long.
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
-/// The duration between heartbeats sent by the raylets.
-RAY_CONFIG(uint64_t, raylet_heartbeat_period_milliseconds, 1000)
-
 /// The duration between loads pulled by GCS
 RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
-
-/// If a component has not sent a heartbeat in the last num_heartbeats_timeout
-/// heartbeat intervals, the raylet monitor process will report
-/// it as dead to the db_client table.
-RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
 
 /// If GCS restarts, before the first heatbeat is sent,
 /// gcs_failover_worker_reconnect_timeout is used for the threshold
@@ -68,11 +60,6 @@ RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
 /// a while to reconnect to the GCS, for example, when GCS is available
 /// but not reachable to raylet.
 RAY_CONFIG(int64_t, gcs_failover_worker_reconnect_timeout, 120)
-
-/// For a raylet, if the last heartbeat was sent more than this many
-/// heartbeat periods ago, then a warning will be logged that the heartbeat
-/// handler is drifting.
-RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
@@ -109,9 +96,11 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// memory_monitor_refresh_ms. If the task or actor is not retriable then this value is
 /// ignored. This retry counter is only used when the process is killed due to memory, and
 /// the retry counter of the task or actor is only used when it fails in other ways
-/// that is not related to running out of memory. Note infinite retry (-1) is not
-/// supported.
+/// that is not related to running out of memory. Retries indefinitely if the value is -1.
 RAY_CONFIG(uint64_t, task_oom_retries, 15)
+
+/// The worker killing policy to use, as defined in worker_killing_policy.h.
+RAY_CONFIG(std::string, worker_killing_policy, "retriable_lifo")
 
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
@@ -351,9 +340,6 @@ RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 /// Maximum number of items in one batch to scan/get/delete from GCS storage.
 RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 
-/// Maximum number of rows in GCS profile table.
-RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
-
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
@@ -472,7 +458,7 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 /// The interval duration for which task state events will be reported to GCS.
 /// The reported data should only be used for observability.
 /// Setting the value to 0 disables the task event recording and reporting.
-RAY_CONFIG(int64_t, task_events_report_interval_ms, 0)
+RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 
 /// The number of tasks tracked in GCS for task state events. Any additional events
 /// from new tasks will evict events of tasks reported earlier.
@@ -490,6 +476,11 @@ RAY_CONFIG(int64_t, task_events_max_num_task_events_in_buffer, 10000)
 /// report gRPC call.
 /// Setting the value to -1 allows unlimited profile events to be sent.
 RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 100)
+
+/// The delay in ms that GCS should mark any running tasks from a job as failed.
+/// Setting this value too smaller might result in some finished tasks marked as failed by
+/// GCS.
+RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_job_done_delay_ms, /*  15 secs */ 1000 * 15)
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
@@ -538,6 +529,8 @@ RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
+/// This requires RAY_task_events_report_interval_ms > 0, so that events will
+/// be sent to GCS.
 RAY_CONFIG(bool, enable_timeline, true)
 
 /// The maximum number of pending placement group entries that are reported to monitor to
@@ -687,16 +680,22 @@ RAY_CONFIG(bool, isolate_workers_across_task_types, true)
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
 
-/// grpc keepalive sent interval
+/// grpc keepalive sent interval for server.
 /// This is only configured in GCS server now.
-/// NOTE: It is not ideal for other components because
+RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000)
+
+/// grpc keepalive timeout.
+RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
+
+/// NOTE: we set a loose client keep alive because
 /// they have a failure model that considers network failures as component failures
 /// and this configuration break that assumption. We should apply to every other component
 /// after we change this failure assumption from code.
-RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000)
+/// grpc keepalive timeout for client.
+RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
-/// grpc keepalive timeout
-RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
+/// grpc keepalive timeout for client.
+RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
@@ -745,11 +744,8 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
-/// A feature flag to enable pull based health check.
-RAY_CONFIG(bool, pull_based_healthcheck, true)
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)
-
 /// The delay to send the first health check.
 RAY_CONFIG(int64_t, health_check_initial_delay_ms, 5000)
 /// The interval between two health check.

@@ -171,6 +171,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest,

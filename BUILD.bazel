@@ -937,17 +937,6 @@ cc_test(
 )
 
 cc_test(
-    name = "gcs_heartbeat_manager_test",
-    srcs = ["src/ray/gcs/gcs_server/test/gcs_heartbeat_manager_test.cc"],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "dependency_resolver_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/dependency_resolver_test.cc"],
@@ -1666,6 +1655,7 @@ cc_test(
     deps = [
         ":ray_common",
         "@boost//:filesystem",
+        "@boost//:thread",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1678,9 +1668,21 @@ cc_test(
     ],
     copts = COPTS,
     tags = ["team:core"],
-    target_compatible_with = [
-        "@platforms//os:linux",
+    deps = [
+        ":ray_common",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_test(
+    name = "worker_killing_policy_group_by_owner_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/worker_killing_policy_group_by_owner_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_common",
         ":raylet_lib",
@@ -2920,6 +2922,8 @@ genrule(
         # shellcheck disable=SC2006
         files=(`ls python/ray/core/generated/*_pb2*.py` `ls python/ray/serve/generated/*_pb2*.py`)
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
+        # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
+        # https://github.com/ray-project/ray/issues/31358
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
         echo "$${PWD}" > $@

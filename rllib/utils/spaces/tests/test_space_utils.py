@@ -3,7 +3,7 @@
 import unittest
 
 import numpy as np
-from gym.spaces import Box, Discrete, MultiDiscrete, MultiBinary, Tuple, Dict
+from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary, Tuple, Dict
 from ray.rllib.utils.spaces.space_utils import (
     convert_element_to_space_type,
     get_base_struct_from_space,

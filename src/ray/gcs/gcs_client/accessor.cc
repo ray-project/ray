@@ -555,28 +555,6 @@ bool NodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
   return removed_nodes_.count(node_id) == 1;
 }
 
-Status NodeInfoAccessor::AsyncReportHeartbeat(
-    const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-    const StatusCallback &callback) {
-  rpc::ReportHeartbeatRequest request;
-  request.mutable_heartbeat()->CopyFrom(*data_ptr);
-  static auto *rpc_client = [this]() -> rpc::GcsRpcClient * {
-    auto io_service = new instrumented_io_context;
-    auto client_call_manager = new rpc::ClientCallManager(*io_service);
-    new boost::asio::io_service::work(*io_service);
-    new std::thread([io_service]() { io_service->run(); });
-    const auto addr = client_impl_->GetGcsServerAddress();
-    return new rpc::GcsRpcClient(addr.first, addr.second, *client_call_manager);
-  }();
-  rpc_client->ReportHeartbeat(
-      request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-      });
-  return Status::OK();
-}
-
 void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
@@ -618,7 +596,7 @@ void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   } else {
     node.set_node_id(node_info.node_id());
     node.set_state(rpc::GcsNodeInfo::DEAD);
-    node.set_timestamp(node_info.timestamp());
+    node.set_end_time_ms(node_info.end_time_ms());
   }
 
   // If the notification is new, call registered callback.
@@ -778,45 +756,6 @@ Status NodeResourceInfoAccessor::AsyncGetAllResourceUsage(
   return Status::OK();
 }
 
-StatsInfoAccessor::StatsInfoAccessor(GcsClient *client_impl)
-    : client_impl_(client_impl) {}
-
-Status StatsInfoAccessor::AsyncAddProfileData(
-    const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
-    const StatusCallback &callback) {
-  NodeID node_id = NodeID::FromBinary(data_ptr->component_id());
-  RAY_LOG(DEBUG) << "Adding profile data, component type = " << data_ptr->component_type()
-                 << ", node id = " << node_id;
-  rpc::AddProfileDataRequest request;
-  request.mutable_profile_data()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().AddProfileData(
-      request,
-      [data_ptr, node_id, callback](const Status &status,
-                                    const rpc::AddProfileDataReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished adding profile data, status = " << status
-                       << ", component type = " << data_ptr->component_type()
-                       << ", node id = " << node_id;
-      });
-  return Status::OK();
-}
-
-Status StatsInfoAccessor::AsyncGetAll(
-    const MultiItemCallback<rpc::ProfileTableData> &callback) {
-  RAY_LOG(DEBUG) << "Getting all profile info.";
-  RAY_CHECK(callback);
-  rpc::GetAllProfileInfoRequest request;
-  client_impl_->GetGcsRpcClient().GetAllProfileInfo(
-      request,
-      [callback](const Status &status, const rpc::GetAllProfileInfoReply &reply) {
-        callback(status, VectorFromProtobuf(reply.profile_info_list()));
-        RAY_LOG(DEBUG) << "Finished getting all job info.";
-      });
-  return Status::OK();
-}
-
 Status TaskInfoAccessor::AsyncAddTaskEventData(
     std::unique_ptr<rpc::TaskEventData> data_ptr, StatusCallback callback) {
   RAY_LOG(DEBUG) << "Adding task events." << data_ptr->DebugString();
@@ -830,6 +769,19 @@ Status TaskInfoAccessor::AsyncAddTaskEventData(
         }
         RAY_LOG(DEBUG) << "Accessor added task events grpc OK";
       });
+  return Status::OK();
+}
+
+Status TaskInfoAccessor::AsyncGetTaskEvents(
+    const MultiItemCallback<rpc::TaskEvents> &callback) {
+  RAY_LOG(DEBUG) << "Getting all task events info.";
+  RAY_CHECK(callback);
+  rpc::GetTaskEventsRequest request;
+  client_impl_->GetGcsRpcClient().GetTaskEvents(
+      request, [callback](const Status &status, const rpc::GetTaskEventsReply &reply) {
+        callback(status, VectorFromProtobuf(reply.events_by_task()));
+      });
+
   return Status::OK();
 }
 

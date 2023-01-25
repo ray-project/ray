@@ -163,6 +163,7 @@ py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+    "test_annotations.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_concurrency_group.py",
@@ -517,4 +518,20 @@ py_test_module_list(
   name_suffix = "_asan",
   tags = ["exclusive", "asan_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "spark/test_basic.py",
+    "spark/test_GPU.py",
+    "spark/test_multicores_per_task.py",
+    "spark/test_utils.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+  data = [
+    "spark/discover_2_gpu.sh",
+    "spark/discover_4_gpu.sh"
+  ],
 )

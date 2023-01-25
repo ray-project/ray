@@ -55,6 +55,10 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
   }
 
  private:
+  void GetWorkerInfo(
+      const WorkerID &worker_id,
+      std::function<void(const boost::optional<WorkerTableData> &)> callback) const;
+
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   UsageStatsClient *usage_stats_client_;

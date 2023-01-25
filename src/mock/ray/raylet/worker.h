@@ -79,6 +79,7 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(void, SetAssignedTask, (const RayTask &assigned_task), (override));
   MOCK_METHOD(bool, IsRegistered, (), (override));
   MOCK_METHOD(rpc::CoreWorkerClientInterface *, rpc_client, (), (override));
+  MOCK_METHOD(bool, SetJobId, (const JobID &job_id), (override));
 };
 
 }  // namespace raylet

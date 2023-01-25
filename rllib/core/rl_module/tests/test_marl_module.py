@@ -1,10 +1,12 @@
 import unittest
 
 
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule, _get_module_configs
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.utils.test_utils import check
+
 
 DEFAULT_POLICY_ID = "default_policy"
 
@@ -39,14 +41,14 @@ class TestMARLModule(unittest.TestCase):
 
         multi_agent_dict = {
             "modules": {
-                "module1": {
-                    "module_class": DiscreteBCTorchModule,
-                    "model_config": {"hidden_dim": 64},
-                },
-                "module2": {
-                    "module_class": DiscreteBCTorchModule,
-                    "model_config": {"hidden_dim": 32},
-                },
+                "module1": SingleAgentRLModuleSpec(
+                    module_class=DiscreteBCTorchModule,
+                    model_config={"hidden_dim": 64},
+                ),
+                "module2": SingleAgentRLModuleSpec(
+                    module_class=DiscreteBCTorchModule,
+                    model_config={"hidden_dim": 32},
+                ),
             },
             "observation_space": env.observation_space,  # this is common
             "action_space": env.action_space,  # this is common
@@ -160,60 +162,100 @@ class TestMARLModule(unittest.TestCase):
 
         config = {
             "modules": {
-                "1": {"module_class": "foo", "model_config": "bar"},
-                "2": {"module_class": "foo2", "model_config": "bar2"},
+                "1": SingleAgentRLModuleSpec(
+                    **{"module_class": "foo", "model_config": "bar"}
+                ),
+                "2": SingleAgentRLModuleSpec(
+                    **{"module_class": "foo2", "model_config": "bar2"}
+                ),
             },
             "observation_space": "obs_space",
             "action_space": "action_space",
         }
 
         expected_config = {
-            "1": {
-                "module_class": "foo",
-                "model_config": "bar",
-                "observation_space": "obs_space",
-                "action_space": "action_space",
-            },
-            "2": {
-                "module_class": "foo2",
-                "model_config": "bar2",
-                "observation_space": "obs_space",
-                "action_space": "action_space",
-            },
+            "1": SingleAgentRLModuleSpec(
+                **{
+                    "module_class": "foo",
+                    "model_config": "bar",
+                    "observation_space": "obs_space",
+                    "action_space": "action_space",
+                }
+            ),
+            "2": SingleAgentRLModuleSpec(
+                **{
+                    "module_class": "foo2",
+                    "model_config": "bar2",
+                    "observation_space": "obs_space",
+                    "action_space": "action_space",
+                }
+            ),
         }
 
         self.assertDictEqual(_get_module_configs(config), expected_config)
 
         config = {
             "modules": {
-                "1": {
-                    "module_class": "foo",
-                    "model_config": "bar",
-                    "observation_space": "obs_space1",  # won't get overwritten
-                    "action_space": "action_space1",  # won't get overwritten
-                },
-                "2": {"module_class": "foo2", "model_config": "bar2"},
+                "1": SingleAgentRLModuleSpec(
+                    **{
+                        "module_class": "foo",
+                        "model_config": "bar",
+                        "observation_space": "obs_space1",  # won't get overwritten
+                        "action_space": "action_space1",  # won't get overwritten
+                    }
+                ),
+                "2": SingleAgentRLModuleSpec(
+                    **{"module_class": "foo2", "model_config": "bar2"}
+                ),
             },
             "observation_space": "obs_space",
             "action_space": "action_space",
         }
 
         expected_config = {
-            "1": {
-                "module_class": "foo",
-                "model_config": "bar",
-                "observation_space": "obs_space1",
-                "action_space": "action_space1",
-            },
-            "2": {
-                "module_class": "foo2",
-                "model_config": "bar2",
-                "observation_space": "obs_space",
-                "action_space": "action_space",
-            },
+            "1": SingleAgentRLModuleSpec(
+                **{
+                    "module_class": "foo",
+                    "model_config": "bar",
+                    "observation_space": "obs_space1",
+                    "action_space": "action_space1",
+                }
+            ),
+            "2": SingleAgentRLModuleSpec(
+                **{
+                    "module_class": "foo2",
+                    "model_config": "bar2",
+                    "observation_space": "obs_space",
+                    "action_space": "action_space",
+                }
+            ),
         }
 
         self.assertDictEqual(_get_module_configs(config), expected_config)
+
+    def test_serialize_deserialize(self):
+        env_class = make_multi_agent("CartPole-v0")
+        env = env_class({"num_agents": 2})
+        module1 = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
+        module2 = DiscreteBCTorchModule.from_model_config(
+            env.observation_space,
+            env.action_space,
+            model_config={"hidden_dim": 32},
+        )
+
+        multi_agent_dict = {"module1": module1, "module2": module2}
+        marl_module = MultiAgentRLModule(multi_agent_dict)
+        new_marl_module = marl_module.deserialize(marl_module.serialize())
+
+        self.assertNotEqual(id(marl_module), id(new_marl_module))
+        self.assertEqual(set(marl_module.keys()), set(new_marl_module.keys()))
+        for key in marl_module.keys():
+            self.assertNotEqual(id(marl_module[key]), id(new_marl_module[key]))
+            check(marl_module[key].get_state(), new_marl_module[key].get_state())
 
 
 if __name__ == "__main__":

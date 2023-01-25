@@ -189,6 +189,7 @@ venv
 tags
 tags.lock
 tags.temp
+*.vim
 
 # Emacs
 .#*
@@ -199,10 +200,6 @@ tools/prometheus*
 # ray project files
 project-id
 .mypy_cache/
-
-# gitpod cache related
-.pip-cache/
-.bazel-cache/
 
 # release test related
 .anyscale.yaml
@@ -224,3 +221,6 @@ workflow_data/
 /compile_commands.json
 # Directory where clangd puts its indexing work
 /.cache/
+
+# Auto-generated tag mapping
+tag-mapping.json
