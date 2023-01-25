@@ -1179,7 +1179,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":scheduler",
-        "@com_google_absl//absl/random:mock_distributions", 
+        "@com_google_absl//absl/random:mock_distributions",
         "@com_google_googletest//:gtest_main",
     ],
 )
