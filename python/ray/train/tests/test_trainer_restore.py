@@ -6,6 +6,7 @@ from ray.train.base_trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
+from ray.train.huggingface import HuggingFaceTrainer
 from ray.tune import Callback, TuneError
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessor import Preprocessor
@@ -21,34 +22,58 @@ def ray_start_4_cpus():
 
 def _failing_train_fn(config):
     checkpoint = session.get_checkpoint()
-    it = 0
+    it = 1
     if checkpoint:
         it = checkpoint.to_dict()["it"] + 1
-        print("\nLoading from checkpoint, which is at iteration {it}...\n")
+        print(f"\nLoading from checkpoint, which is at iteration {it}...\n")
     session.report({"it": it}, checkpoint=Checkpoint.from_dict({"it": it}))
-    if it == 0:
+    if it == 1:
         raise RuntimeError
 
 
+class FailureInjectionCallback(Callback):
+    """Inject failure at the configured iteration number."""
+
+    def __init__(self, num_iters=5):
+        self.num_iters = num_iters
+
+    def on_trial_save(self, iteration, trials, trial, **info):
+        print(f"\n{iteration}\n")
+        if trial.last_result["training_iteration"] == self.num_iters:
+            print(f"Failing after {self.num_iters} iters...")
+            raise RuntimeError
+
+
 def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
-    obj_ref = ray.put({"test": 1})
 
-    def train_fn(config):
-        assert ray.get(obj_ref)["test"] == 1
-        assert ray.get(config["obj_ref"])["test"] == 1
-        ds = session.get_dataset_shard("train")
-        assert sum(len(batch) for batch in ds.iter_batches()) == 10
+    dataset_size = 10
+    num_workers = 2
 
-        _failing_train_fn(config)
+    def create_train_fn_and_config():
+        obj_ref = ray.put({"test": 1})
 
-    train_loop_config = {"obj_ref": obj_ref}
+        def train_fn(config):
+            assert ray.get(obj_ref)["test"] == 1
+            assert ray.get(config["obj_ref"])["test"] == 1
+            ds = session.get_dataset_shard("train")
+            assert (
+                sum([len(batch["feature"]) for batch in ds.iter_batches()])
+                == dataset_size // num_workers
+            )
+
+            _failing_train_fn(config)
+
+        train_loop_config = {"obj_ref": obj_ref}
+        return train_fn, train_loop_config
+
     datasets = {"train": ray.data.from_items([{"feature": i} for i in range(10)])}
 
+    train_fn, train_loop_config = create_train_fn_and_config()
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_fn,
         train_loop_config=train_loop_config,
         datasets=datasets,
-        scaling_config=ScalingConfig(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=num_workers),
         run_config=RunConfig(
             name="data_parallel_restore_test",
             local_dir=tmpdir,
@@ -58,6 +83,7 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
     with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
+    train_fn, train_loop_config = create_train_fn_and_config()
     trainer = DataParallelTrainer.restore(
         str(tmpdir / "data_parallel_restore_test"),
         train_loop_per_worker=train_fn,
@@ -65,23 +91,14 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
         datasets=datasets,
     )
     result = trainer.fit()
-    assert result.metrics["it"] == 1
+    assert not result.error
+    assert result.metrics["training_iteration"] == 2
+    assert result.metrics["iterations_since_restore"] == 1
     assert tmpdir / "data_parallel_restore_test" in result.log_dir.parents
 
 
 @pytest.mark.parametrize("trainer_cls", [XGBoostTrainer, LightGBMTrainer])
 def test_gbdt_trainer_restore(ray_start_4_cpus, tmpdir, trainer_cls):
-    class FailureInjectionCallback(Callback):
-        """Inject failure at the configured iteration number."""
-
-        def __init__(self, num_iters=5):
-            self.num_iters = num_iters
-
-        def on_trial_result(self, iteration, trials, trial, result, **info):
-            if iteration == self.num_iters:
-                print(f"Failing after {self.num_iters} iters.")
-                raise RuntimeError
-
     exp_name = f"{trainer_cls.__name__}_restore_test"
     datasets = {"train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])}
     trainer = trainer_cls(
@@ -92,8 +109,9 @@ def test_gbdt_trainer_restore(ray_start_4_cpus, tmpdir, trainer_cls):
         run_config=RunConfig(
             local_dir=str(tmpdir),
             name=exp_name,
-            checkpoint_config=CheckpointConfig(num_to_keep=1),
-            callbacks=[FailureInjectionCallback()],
+            checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
+            callbacks=[FailureInjectionCallback(num_iters=5)],
+            stop={"training_iteration": 10},
         ),
         num_boost_round=10,
     )
@@ -102,7 +120,55 @@ def test_gbdt_trainer_restore(ray_start_4_cpus, tmpdir, trainer_cls):
 
     trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
     result = trainer.fit()
+    assert not result.error
     assert result.metrics["training_iteration"] == 10
+    assert result.metrics["iterations_since_restore"] == 5
+    assert tmpdir / exp_name in result.log_dir.parents
+
+
+@pytest.mark.parametrize("trainer_cls", [HuggingFaceTrainer])
+def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
+    exp_name = f"{trainer_cls.__name__}_restore_test"
+
+    if trainer_cls == HuggingFaceTrainer:
+        from ray.train.tests.test_huggingface_trainer import (
+            train_function as hf_init,
+            train_df,
+        )
+
+        trainer_init_fn = hf_init
+        trainer_init_config = {"epochs": 10, "save_strategy": "epoch"}
+        datasets = {"train": ray.data.from_pandas(train_df)}
+    # TODO(ml-team): Add MosaicTrainer test after Mosaic checkpointing is supported
+    # else:
+    #     from ray.train.tests.test_mosaic_trainer import (
+    #         trainer_init_per_worker as mosaic_init,
+    #     )
+
+    #     trainer_init_fn = mosaic_init
+    #     trainer_init_config = {"max_duration": "10ep"}
+    #     datasets = {}
+
+    trainer = trainer_cls(
+        trainer_init_per_worker=trainer_init_fn,
+        trainer_init_config=trainer_init_config,
+        datasets=datasets,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(
+            local_dir=str(tmpdir),
+            name=exp_name,
+            checkpoint_config=CheckpointConfig(num_to_keep=1),
+            callbacks=[FailureInjectionCallback(num_iters=5)],
+        ),
+    )
+    with pytest.raises(TuneError):
+        result = trainer.fit()
+
+    trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
+    result = trainer.fit()
+    assert not result.error
+    assert result.metrics["training_iteration"] == 10
+    assert result.metrics["iterations_since_restore"] == 5
     assert tmpdir / exp_name in result.log_dir.parents
 
 
