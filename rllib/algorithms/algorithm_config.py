@@ -16,7 +16,11 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_trainer import TrainerRunnerConfig
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_trainer.trainer_runner_config import (
+    TrainerRunnerConfig,
+    ModuleSpec,
+)
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -385,7 +389,7 @@ class AlgorithmConfig:
         # `self.debugging()`
         self.logger_creator = None
         self.logger_config = None
-        self.log_level = DEPRECATED_VALUE
+        self.log_level = "WARN"
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
@@ -2052,7 +2056,7 @@ class AlgorithmConfig:
         *,
         logger_creator: Optional[Callable[[], Logger]] = NotProvided,
         logger_config: Optional[dict] = NotProvided,
-        log_level: Optional[str] = DEPRECATED_VALUE,
+        log_level: Optional[str] = NotProvided,
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
@@ -2086,16 +2090,8 @@ class AlgorithmConfig:
             self.logger_creator = logger_creator
         if logger_config is not NotProvided:
             self.logger_config = logger_config
-        if log_level != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.log_level",
-                help=(
-                    "RLlib no longer has a separate logging configuration from the rest"
-                    " of Ray. Configure logging on the root logger; RLlib messages "
-                    "will be propagated up the logger hierarchy to be handled there."
-                ),
-                error=False,
-            )
+        if log_level is not NotProvided:
+            self.log_level = log_level
         if log_sys_usage is not NotProvided:
             self.log_sys_usage = log_sys_usage
         if fake_sampler is not NotProvided:
@@ -2607,8 +2603,24 @@ class AlgorithmConfig:
         raise NotImplementedError
 
     def get_trainer_runner_config(
-        self, observation_space: Space, action_space: Space
+        self, module_spec: Optional[ModuleSpec] = None
     ) -> TrainerRunnerConfig:
+
+        if module_spec is None:
+            module_spec = SingleAgentRLModuleSpec()
+
+        if isinstance(module_spec, SingleAgentRLModuleSpec):
+            if module_spec.module_class is None:
+                module_spec.module_class = self.rl_module_class
+
+            if module_spec.observation_space is None:
+                module_spec.observation_space = self.observation_space
+
+            if module_spec.action_space is None:
+                module_spec.action_space = self.action_space
+
+            if module_spec.model_config is None:
+                module_spec.model_config = self.model
 
         if not self._is_frozen:
             raise ValueError(
@@ -2618,12 +2630,7 @@ class AlgorithmConfig:
 
         config = (
             TrainerRunnerConfig()
-            .module(
-                module_class=self.rl_module_class,
-                observation_space=observation_space,
-                action_space=action_space,
-                model_config=self.model,
-            )
+            .module(module_spec)
             .trainer(
                 trainer_class=self.rl_trainer_class,
                 eager_tracing=self.eager_tracing,
@@ -2631,6 +2638,7 @@ class AlgorithmConfig:
                 optimizer_config={"lr": self.lr},
             )
             .resources(num_gpus=self.num_gpus, fake_gpus=self._fake_gpus)
+            .algorithm(algorithm_config=self)
         )
 
         return config

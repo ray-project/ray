@@ -790,11 +790,16 @@ void CoreWorker::RegisterToGcs() {
   }
 
   auto worker_data = std::make_shared<rpc::WorkerTableData>();
+  worker_data->mutable_worker_address()->set_raylet_id(rpc_address_.raylet_id());
+  worker_data->mutable_worker_address()->set_ip_address(rpc_address_.ip_address());
+  worker_data->mutable_worker_address()->set_port(rpc_address_.port());
   worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
   worker_data->set_worker_type(options_.worker_type);
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
+
   worker_data->set_is_alive(true);
   worker_data->set_pid(getpid());
+  worker_data->set_start_time_ms(current_sys_time_ms());
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
@@ -2779,9 +2784,9 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   }
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
-    worker_context_.MaybeInitializeJobInfo(
-        JobID::FromBinary(request.task_spec().job_id()),
-        request.task_spec().job_config());
+    auto job_id = JobID::FromBinary(request.task_spec().job_id());
+    worker_context_.MaybeInitializeJobInfo(job_id, request.task_spec().job_config());
+    task_counter_.SetJobId(job_id);
   }
   // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
