@@ -430,6 +430,10 @@ message TaskInfoEntry {
   // If the task type is Actor creation task or Actor task
   // this is set. Otherwise, it is empty.
   optional bytes actor_id = 25;
+  // The placement group id of this task.
+  // If the task/actor is created within a placement group,
+  // this value is configured.
+  optional bytes placement_group_id = 26;
 }
 
 message Bundle {

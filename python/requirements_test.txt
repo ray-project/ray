@@ -53,7 +53,8 @@ PyOpenSSL==22.1.0
 pygame==2.1.2; python_version < '3.11'
 Pygments==2.13.0
 pymongo==4.3.2
-pyspark==3.3.1
+# TODO: Replace this with pyspark==3.4 once it is released.
+https://ml-team-public-read.s3.us-west-2.amazonaws.com/pyspark-3.4.0.dev0.tar.gz
 pytest==7.0.1
 pytest-asyncio==0.16.0
 pytest-rerunfailures==10.2
