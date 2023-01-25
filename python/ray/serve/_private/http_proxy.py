@@ -421,11 +421,12 @@ class HTTPProxyActor:
         """Returns when HTTP proxy is ready to serve traffic.
         Or throw exception when it is not able to serve traffic.
         """
+        setup_task = get_or_create_event_loop().create_task(self.setup_complete.wait())
         done_set, _ = await asyncio.wait(
             [
                 # Either the HTTP setup has completed.
                 # The event is set inside self.run.
-                self.setup_complete.wait(),
+                setup_task,
                 # Or self.run errored.
                 self.running_task,
             ],

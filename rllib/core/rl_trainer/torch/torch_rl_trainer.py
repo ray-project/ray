@@ -11,10 +11,17 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
+from ray.rllib.core.rl_module.rl_module import (
+    RLModule,
+    ModuleID,
+    SingleAgentRLModuleSpec,
+)
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
-    MultiAgentRLModule,
     ParamOptimizerPairs,
     Optimizer,
     ParamType,
@@ -45,16 +52,19 @@ class TorchRLTrainer(RLTrainer):
 
     def __init__(
         self,
-        module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
-        module_kwargs: Mapping[str, Any],
+        *,
+        module_spec: Optional[
+            Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
+        ] = None,
+        module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any],
         distributed: bool = False,
         scaling_config: Optional["ScalingConfig"] = None,
         algorithm_config: Optional["AlgorithmConfig"] = None,
     ):
         super().__init__(
-            module_class=module_class,
-            module_kwargs=module_kwargs,
+            module_spec=module_spec,
+            module=module,
             optimizer_config=optimizer_config,
             distributed=distributed,
             scaling_config=scaling_config,
@@ -183,15 +193,13 @@ class TorchRLTrainer(RLTrainer):
         self,
         *,
         module_id: ModuleID,
-        module_cls: Type[RLModule],
-        module_kwargs: Mapping[str, Any],
+        module_spec: SingleAgentRLModuleSpec,
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
         super().add_module(
             module_id=module_id,
-            module_cls=module_cls,
-            module_kwargs=module_kwargs,
+            module_spec=module_spec,
             set_optimizer_fn=set_optimizer_fn,
             optimizer_cls=optimizer_cls,
         )

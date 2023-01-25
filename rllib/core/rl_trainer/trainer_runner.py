@@ -3,7 +3,11 @@ from typing import Any, List, Mapping, Type, Optional, Callable, Dict
 
 import ray
 
-from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
+from ray.rllib.core.rl_module.rl_module import (
+    RLModule,
+    ModuleID,
+    SingleAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
     ParamOptimizerPairs,
@@ -165,8 +169,7 @@ class TrainerRunner:
         self,
         *,
         module_id: ModuleID,
-        module_cls: Type[RLModule],
-        module_kwargs: Mapping[str, Any],
+        module_spec: SingleAgentRLModuleSpec,
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
@@ -174,8 +177,7 @@ class TrainerRunner:
 
         Args:
             module_id: The id of the module to add.
-            module_cls: The module class to add.
-            module_kwargs: The config for the module.
+            module_spec:  #TODO (Kourosh) fill in here.
             set_optimizer_fn: A function that takes in the module and returns a list of
                 (param, optimizer) pairs. Each element in the tuple describes a
                 parameter group that share the same optimizer object, if None, the
@@ -189,8 +191,7 @@ class TrainerRunner:
             for worker in self._workers:
                 ref = worker.add_module.remote(
                     module_id=module_id,
-                    module_cls=module_cls,
-                    module_kwargs=module_kwargs,
+                    module_spec=module_spec,
                     set_optimizer_fn=set_optimizer_fn,
                     optimizer_cls=optimizer_cls,
                 )
@@ -199,8 +200,7 @@ class TrainerRunner:
         else:
             self._trainer.add_module(
                 module_id=module_id,
-                module_cls=module_cls,
-                module_kwargs=module_kwargs,
+                module_spec=module_spec,
                 set_optimizer_fn=set_optimizer_fn,
                 optimizer_cls=optimizer_cls,
             )
