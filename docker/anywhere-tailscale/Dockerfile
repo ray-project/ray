@@ -1,12 +1,5 @@
 ARG IMAGETYPE=cpu
 FROM rayproject/ray:2.2.0-py38-$IMAGETYPE
-
-RUN sudo chmod +x /home/ray/startup.sh && sudo chmod +x /home/ray/run_tests.sh \
-&& sudo sysctl -w vm.max_map_count=262144 \
-&& sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 \
-&& sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 \
-&& sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
-
 ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         MODIN_ENGINE=ray \
         MODIN_RAY_CLUSTER=True \
@@ -94,8 +87,17 @@ RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/rele
   sudo install juicefs /usr/bin && \
   rm juicefs "juicefs-${JFS_LATEST_TAG}-linux-amd64.tar.gz"
 
-COPY startup.sh /home/ray/startup.sh
-COPY run_tests.sh /home/ray/run_tests.sh
+##COPY startup.sh /home/ray/startup.sh
+##COPY run_tests.sh /home/ray/run_tests.sh
+
+RUN curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh" \
+&& sudo chmod +x /home/ray/startup.sh \
+&& curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/run_tests.sh" \
+&& sudo chmod +x /home/ray/run_tests.sh \
+&& sudo sysctl -w vm.max_map_count=262144 \
+&& sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 \
+&& sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 \
+&& sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
 
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
 HEALTHCHECK --interval=300s --timeout=5s --start-period=300s \
