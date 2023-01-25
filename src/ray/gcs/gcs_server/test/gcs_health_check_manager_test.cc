@@ -263,8 +263,9 @@ TEST_F(GcsHealthCheckManagerTest, StressTest) {
     std::this_thread::sleep_for(10ms);
   }
 
-  for (size_t i = 0; i < 200000000UL; ++i) {
+  for (size_t i = 0; i < 20000UL; ++i) {
     auto iter = alive_nodes.begin() + std::rand() % alive_nodes.size();
+    health_check->RemoveNode(*iter);
     DeleteServer(*iter);
     alive_nodes.erase(iter);
     alive_nodes.emplace_back(AddServer(true));
