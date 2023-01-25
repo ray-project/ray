@@ -1,8 +1,8 @@
 meta:
-  section-titles: true
-  container: container pb-12
-  column: col-md-12 px-2 py-2
-  img-top-cls: pt-10 w-50 d-block mx-auto
+  section-titles: false
+  container: container pb-4
+  column: col-md-4 px-1 py-1
+  img-top-cls: p-2 w-75 d-block mx-auto
 
 buttons:
   classes: btn-outline-info btn-block
@@ -146,7 +146,7 @@ projects:
       random forests, gradient boosting, k-means and DBSCAN, and is designed to
       interoperate with the Python numerical and scientific libraries NumPy and SciPy.
     website: https://docs.ray.io/en/master/joblib.html
-    repo: https://docs.ray.io/en/master/joblib.html
+    repo: https://github.com/scikit-learn/scikit-learn
     image: ../images/scikit.png
   - name: Seldon Alibi Integration
     section_title: Seldon Alibi
