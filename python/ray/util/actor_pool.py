@@ -6,6 +6,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from ray.actor import ActorClass
 
+
 @DeveloperAPI
 class ActorPool:
     """Utility class to operate on a fixed pool of actors.

@@ -125,9 +125,11 @@ def test_with_syntax_invokes_shutdown():
 def f_process1(x):
     return len([i for i in range(x) if i % 2 == 0])
 
+
 def test_conformity_with_processpool():
     def f_process0(x):
         return len([i for i in range(x) if i % 2 == 0])
+
     assert f_process0.__code__.co_code == f_process1.__code__.co_code
 
     with RayExecutor() as ex:
@@ -141,6 +143,7 @@ def test_conformity_with_processpool():
 def test_conformity_with_processpool_map():
     def f_process0(x):
         return len([i for i in range(x) if i % 2 == 0])
+
     assert f_process0.__code__.co_code == f_process1.__code__.co_code
 
     with RayExecutor() as ex:
@@ -160,6 +163,7 @@ def test_conformity_with_processpool_map():
 def test_conformity_with_threadpool():
     def f_process0(x):
         return len([i for i in range(x) if i % 2 == 0])
+
     assert f_process0.__code__.co_code == f_process1.__code__.co_code
 
     with RayExecutor() as ex:
@@ -173,6 +177,7 @@ def test_conformity_with_threadpool():
 def test_conformity_with_threadpool_map():
     def f_process0(x):
         return len([i for i in range(x) if i % 2 == 0])
+
     assert f_process0.__code__.co_code == f_process1.__code__.co_code
 
     with RayExecutor() as ex:
@@ -192,6 +197,7 @@ def test_conformity_with_threadpool_map():
 def test_conformity_with_processpool_using_max_workers():
     def f_process0(x):
         return len([i for i in range(x) if i % 2 == 0])
+
     assert f_process0.__code__.co_code == f_process1.__code__.co_code
 
     with RayExecutor(max_workers=2) as ex:
@@ -205,6 +211,7 @@ def test_conformity_with_processpool_using_max_workers():
 def test_conformity_with_processpool_map_using_max_workers():
     def f_process0(x):
         return len([i for i in range(x) if i % 2 == 0])
+
     assert f_process0.__code__.co_code == f_process1.__code__.co_code
 
     with RayExecutor(max_workers=2) as ex:
@@ -224,6 +231,7 @@ def test_conformity_with_processpool_map_using_max_workers():
 def test_conformity_with_threadpool_using_max_workers():
     def f_process0(x):
         return len([i for i in range(x) if i % 2 == 0])
+
     assert f_process0.__code__.co_code == f_process1.__code__.co_code
 
     with RayExecutor(max_workers=2) as ex:
@@ -237,6 +245,7 @@ def test_conformity_with_threadpool_using_max_workers():
 def test_conformity_with_threadpool_map_using_max_workers():
     def f_process0(x):
         return len([i for i in range(x) if i % 2 == 0])
+
     assert f_process0.__code__.co_code == f_process1.__code__.co_code
 
     with RayExecutor(max_workers=2) as ex:

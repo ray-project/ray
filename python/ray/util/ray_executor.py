@@ -2,7 +2,17 @@ import itertools
 import time
 from concurrent.futures import Executor, Future
 from functools import partial
-from typing import Callable, Optional, List, Any, TypeVar, ParamSpec, Iterable, Iterator, TYPE_CHECKING
+from typing import (
+    Callable,
+    Optional,
+    List,
+    Any,
+    TypeVar,
+    ParamSpec,
+    Iterable,
+    Iterator,
+    TYPE_CHECKING,
+)
 
 import ray
 from ray.util.actor_pool import ActorPool
@@ -14,8 +24,8 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray._private.worker import BaseContext, RemoteFunction0
 
-T = TypeVar('T')
-P = ParamSpec('P')
+T = TypeVar("T")
+P = ParamSpec("P")
 
 # ------------------------------------------------------
 
@@ -46,14 +56,13 @@ class RayExecutor(Executor):
 
         Note: excluding an address will initialise a local Ray cluster.
     """
-        
-    def __init__(self, max_workers: Optional[int]=None, **kwargs):
+
+    def __init__(self, max_workers: Optional[int] = None, **kwargs):
         self._shutdown_lock: bool = False
         self._futures: List[Future] = []
         self.__actor_pool: Optional[ActorPool] = None
         self.__remote_fn: "Optional[RemoteFunction0]" = None
         self.context: "Optional[BaseContext]" = None
-
 
         # The following is necessary because `@ray.remote` is only available at runtime.
         if max_workers is None:
@@ -78,14 +87,16 @@ class RayExecutor(Executor):
                     return fn()
 
             actors = [
-                ExecutorActor.options(name=f"actor-{i}").remote() # type: ignore[attr-defined]
+                ExecutorActor.options(name=f"actor-{i}").remote()  # type: ignore[attr-defined]
                 for i in range(max_workers)
             ]
             self.__actor_pool = ray.util.ActorPool(actors)
 
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
 
-    def submit(self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> Future[T]:
+    def submit(
+        self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
+    ) -> Future[T]:
         """Submits a callable to be executed with the given arguments.
 
         Schedules the callable to be executed as `fn(*args, **kwargs)` and returns
@@ -115,7 +126,7 @@ class RayExecutor(Executor):
             ]
         else:
             if self.__remote_fn:
-                oref = self.__remote_fn.options(name=fn.__name__).remote(fn_curried) # type: ignore
+                oref = self.__remote_fn.options(name=fn.__name__).remote(fn_curried)  # type: ignore
             else:
                 raise RuntimeError("Remote function is undefined")
 
@@ -123,7 +134,13 @@ class RayExecutor(Executor):
         self._futures.append(future)
         return future
 
-    def map(self, fn: Callable[..., T], *iterables: Iterable[Any], timeout: Optional[float]=None, chunksize: int=1) -> Iterator[T]:
+    def map(
+        self,
+        fn: Callable[..., T],
+        *iterables: Iterable[Any],
+        timeout: Optional[float] = None,
+        chunksize: int = 1,
+    ) -> Iterator[T]:
         """Returns an iterator equivalent to `map(fn, iter)`.
 
         Args:
@@ -157,7 +174,7 @@ class RayExecutor(Executor):
         for chunk in self._get_chunks(*iterables, chunksize=chunksize):
             if self.__actor_pool:
                 results = self.__actor_pool.map(
-                        lambda a, v: a.actor_function.remote(partial(fn, *v)), chunk # type: ignore
+                    lambda a, v: a.actor_function.remote(partial(fn, *v)), chunk  # type: ignore
                 )
             else:
                 results = self._map(fn, chunk, timeout)
@@ -165,7 +182,9 @@ class RayExecutor(Executor):
         return itertools.chain(*results_list)
 
     @staticmethod
-    def _get_chunks(*iterables: Iterable[Any], chunksize: int) -> Iterator[tuple[tuple[Any, ...], ...]]:
+    def _get_chunks(
+        *iterables: Iterable[Any], chunksize: int
+    ) -> Iterator[tuple[tuple[Any, ...], ...]]:
         """
         https://github.com/python/cpython/blob/main/Lib/concurrent/futures/process.py#L186
         Iterates over zip()-ed iterables in chunks.
@@ -178,7 +197,7 @@ class RayExecutor(Executor):
             yield chunk
 
     @staticmethod
-    def _result_or_cancel(fut: Future[T], timeout: Optional[float]=None) -> T:
+    def _result_or_cancel(fut: Future[T], timeout: Optional[float] = None) -> T:
         """
         From concurrent.futures
         """
@@ -191,7 +210,12 @@ class RayExecutor(Executor):
             # Break a reference cycle with the exception in self._exception
             del fut
 
-    def _map(self, fn: Callable[..., T], iterables: Iterable[tuple[Any, ...]], timeout: Optional[float]=None) -> Iterator[T]:
+    def _map(
+        self,
+        fn: Callable[..., T],
+        iterables: Iterable[tuple[Any, ...]],
+        timeout: Optional[float] = None,
+    ) -> Iterator[T]:
         """
         This was adapted from concurrent.futures.Executor.map.
         """
