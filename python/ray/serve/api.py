@@ -475,9 +475,10 @@ def run(
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0".
         port: Port for HTTP server. Defaults to 8000.
-        name: Application name. If not provided, destroy all existing applications.
+        name: Application name. If not provided, this will be the only
+            application running on the cluster (it will delete all others).
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
-            ingrerss deployment route prefix. By default, the ingress route
+            route_prefix of the ingress deployment. By default, the ingress route
             prefix is '/'.
 
     Returns:
@@ -526,6 +527,8 @@ def run(
             f"Got unexpected type {type(target)} instead."
         )
 
+    # when name provided, keep all existing applications
+    # otherwise, delete all of them.
     remove_past_deployments = True
     if name:
         remove_past_deployments = False
@@ -596,11 +599,13 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
 
 
 @PublicAPI(stability="alpha")
-def delete(app_name: str, _blocking: bool = True):
-    """Delete app by name
-    Delete the app with all corresponding deployments
+def delete(name: str, _blocking: bool = True):
+    """Delete an app by its name
+
+    Deletes the app with all corresponding deployments.
+
     Args:
-        app_name: the name of app to delete
+        name: the name of app to delete.
     """
     client = get_global_client()
-    client.delete_apps([app_name], blocking=_blocking)
+    client.delete_apps([name], blocking=_blocking)

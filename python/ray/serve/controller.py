@@ -411,9 +411,7 @@ class ServeController:
 
         return updating
 
-    def deploy_group(
-        self, app_name: str, deployment_args_list: List[Dict]
-    ) -> List[bool]:
+    def deploy_group(self, name: str, deployment_args_list: List[Dict]) -> List[bool]:
         """
         Takes in a list of dictionaries that contain keyword arguments for the
         controller's deploy() function. Calls deploy on all the argument
@@ -422,9 +420,7 @@ class ServeController:
         """
 
         deployments_success = [self.deploy(**args) for args in deployment_args_list]
-        self.application_state_manager.deploy_application(
-            app_name, deployment_args_list
-        )
+        self.application_state_manager.deploy_application(name, deployment_args_list)
         return deployments_success
 
     def deploy_app(
@@ -439,7 +435,7 @@ class ServeController:
 
         Args:
             config: Contains the following:
-                app_name: Application name. If not provided, it is empty string.
+                name: Application name. If not provided, it is empty string.
                 import_path: Serve deployment graph's import path
                 runtime_env: runtime_env to run the deployment graph in
                 deployment_override_options: Dictionaries that
@@ -457,9 +453,9 @@ class ServeController:
             config_checkpoints_dict = {}
         else:
             config_checkpoints_dict = pickle.loads(config_checkpoints)
-        if config.app_name in config_checkpoints_dict:
+        if config.name in config_checkpoints_dict:
             _, last_config_dict, last_version_dict = config_checkpoints_dict[
-                config.app_name
+                config.name
             ]
             updated_version_dict = _generate_deployment_config_versions(
                 config_dict, last_config_dict, last_version_dict
@@ -469,29 +465,31 @@ class ServeController:
 
         deployment_override_options = config_dict.get("deployments", [])
 
+        if not deployment_time:
+            deployment_time = time.time()
+
+        config_checkpoints_dict[config.name] = (
+            deployment_time,
+            config_dict,
+            updated_version_dict,
+        )
+        self.kv_store.put(
+            CONFIG_CHECKPOINT_KEY,
+            pickle.dumps(config_checkpoints_dict),
+        )
+
         deploy_obj_ref = run_graph.options(runtime_env=config.runtime_env).remote(
             config.import_path,
             config.runtime_env,
             deployment_override_options,
             updated_version_dict,
-            config.app_name,
+            config.name,
             config_dict.get("route_prefix", "/"),
         )
         self.application_state_manager.create_application_state(
-            config.app_name,
+            config.name,
             deploy_obj_ref=deploy_obj_ref,
             deployment_time=deployment_time,
-        )
-
-        config_checkpoints_dict[config.app_name] = (
-            self.application_state_manager.get_deployment_timestamp(config.app_name),
-            config_dict,
-            updated_version_dict,
-        )
-
-        self.kv_store.put(
-            CONFIG_CHECKPOINT_KEY,
-            pickle.dumps(config_checkpoints_dict),
         )
 
     def delete_deployment(self, name: str):
@@ -592,7 +590,7 @@ class ServeController:
             name
         )
         status_info = StatusOverview(
-            app_name=name,
+            name=name,
             app_status=app_status,
             deployment_statuses=deployment_statuses,
         )
@@ -604,15 +602,15 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, app_name: str = "") -> Dict:
+    def get_app_config(self, name: str = "") -> Dict:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is None:
             return ServeApplicationSchema.get_empty_schema_dict()
         else:
             config_checkpoints_dict = pickle.loads(checkpoint)
-            if app_name not in config_checkpoints_dict:
+            if name not in config_checkpoints_dict:
                 return ServeApplicationSchema.get_empty_schema_dict()
-            _, config, _ = config_checkpoints_dict[app_name]
+            _, config, _ = config_checkpoints_dict[name]
 
             return config
 
@@ -728,7 +726,7 @@ def run_graph(
     graph_env: Dict,
     deployment_override_options: List[Dict],
     deployment_versions: Dict,
-    app_name: str = "",
+    name: str = "",
     route_prefix: str = "/",
 ):
     """
@@ -742,7 +740,7 @@ def run_graph(
         deployment_versions: Versions of each deployment, each of which is
             the same as the last deployment if it is a config update or
             a new randomly generated version if it is a code update
-        app_name: application name. If specified, application will be deployed
+        name: application name. If specified, application will be deployed
             without removing existing applications.
         route_prefix: route_prefix. Define the route path for the application.
     """
@@ -756,7 +754,7 @@ def run_graph(
 
         # Override options for each deployment
         for options in deployment_override_options:
-            name = options["name"]
+            deployment_name = options["name"]
 
             # Merge graph-level and deployment-level runtime_envs
             if "ray_actor_options" in options:
@@ -765,19 +763,21 @@ def run_graph(
             else:
                 # Otherwise, get options from graph code (and default to {} if code
                 # sets options to None)
-                ray_actor_options = app.deployments[name].ray_actor_options or {}
+                ray_actor_options = (
+                    app.deployments[deployment_name].ray_actor_options or {}
+                )
             deployment_env = ray_actor_options.get("runtime_env", {})
             merged_env = override_runtime_envs_except_env_vars(
                 graph_env, deployment_env
             )
             ray_actor_options.update({"runtime_env": merged_env})
             options["ray_actor_options"] = ray_actor_options
-            options["version"] = deployment_versions[name]
+            options["version"] = deployment_versions[deployment_name]
             # Update the deployment's options
-            app.deployments[name].set_options(**options, _internal=True)
+            app.deployments[deployment_name].set_options(**options, _internal=True)
 
         # Run the graph locally on the cluster
-        serve.run(app, name=app_name, route_prefix=route_prefix)
+        serve.run(app, name=name, route_prefix=route_prefix)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_app() is called.

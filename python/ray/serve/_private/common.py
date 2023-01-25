@@ -93,7 +93,7 @@ class DeploymentStatusInfo:
 @dataclass(eq=True)
 class StatusOverview:
     app_status: ApplicationStatusInfo
-    app_name: str = ""
+    name: str = ""
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
 
     def debug_string(self):
@@ -133,7 +133,7 @@ class StatusOverview:
 
         # Return protobuf encapsulating application and deployment protos
         return StatusOverviewProto(
-            app_name=self.app_name,
+            name=self.name,
             app_status=app_status_proto,
             deployment_statuses=deployment_status_proto_list,
         )
@@ -153,7 +153,7 @@ class StatusOverview:
         return cls(
             app_status=app_status,
             deployment_statuses=deployment_statuses,
-            app_name=proto.app_name,
+            name=proto.name,
         )
 
 

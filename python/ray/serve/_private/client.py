@@ -254,7 +254,7 @@ class ServeControllerClient:
     @_ensure_connected
     def deploy_group(
         self,
-        app_name,
+        name,
         deployments: List[Dict],
         _blocking: bool = True,
         remove_past_deployments: bool = True,
@@ -276,7 +276,7 @@ class ServeControllerClient:
             )
 
         updating_list = ray.get(
-            self._controller.deploy_group.remote(app_name, deployment_args_list)
+            self._controller.deploy_group.remote(name, deployment_args_list)
         )
 
         tags = []
@@ -385,9 +385,9 @@ class ServeControllerClient:
         return ray.get(self._controller.get_app_config.remote())
 
     @_ensure_connected
-    def get_serve_status(self, app_name: str = "") -> StatusOverview:
+    def get_serve_status(self, name: str = "") -> StatusOverview:
         proto = StatusOverviewProto.FromString(
-            ray.get(self._controller.get_serve_status.remote(app_name))
+            ray.get(self._controller.get_serve_status.remote(name))
         )
         return StatusOverview.from_proto(proto)
 

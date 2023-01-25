@@ -507,24 +507,30 @@ def test_deploy_application(serve_instance):
         def root(self):
             return "Hello, world!"
 
+    # Test function deployment with app name
     f_handle = serve.run(f.bind(), name="app_f")
     assert ray.get(f_handle.remote()) == "got f"
     assert requests.get("http://127.0.0.1:8000/").text == "got f"
 
+    # Test function deployment with app name and route_prefix
     g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
     assert ray.get(g_handle.remote()) == "got g"
     assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
 
+    # Test function deployment with app name and route_prefix set in deployment
+    # decorator
     h_handle = serve.run(h.bind(), name="app_h")
     assert ray.get(h_handle.remote()) == "got h"
     assert requests.get("http://127.0.0.1:8000/my_prefix").text == "got h"
 
+    # Test deployment graph
     graph_handle = serve.run(
         DAGDriver.bind(Model1.bind()), name="graph", route_prefix="/my_graph"
     )
     assert ray.get(graph_handle.predict.remote()) == "got model1"
     assert requests.get("http://127.0.0.1:8000/my_graph").text == '"got model1"'
 
+    # Test FastAPI
     serve.run(MyFastAPIDeployment.bind(), name="FastAPI")
     assert requests.get("http://127.0.0.1:8000/hello").text == '"Hello, world!"'
 

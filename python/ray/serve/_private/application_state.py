@@ -22,7 +22,7 @@ class ApplicationState:
 
     def __init__(
         self,
-        app_name: str,
+        name: str,
         deployment_state_manager: DeploymentStateManager,
         deployment_params: List[Dict] = None,
         deploy_obj_ref: ObjectRef = None,
@@ -30,7 +30,7 @@ class ApplicationState:
     ):
         """
         Args:
-            app_name: application name
+            name: application name
             deployment_state_manager: deployment state manager which is used for
                 fetching deployment information
             deployment_params: all deployment parameters to deploy.
@@ -41,7 +41,7 @@ class ApplicationState:
             self.status: ApplicationStatus = ApplicationStatus.DEPLOYING
         else:
             self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
-        self.app_name = app_name
+        self.name = name
         self.deployment_params = deployment_params
         self.to_be_deleted = False
         self.deployment_state_manager = deployment_state_manager
