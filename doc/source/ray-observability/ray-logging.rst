@@ -173,8 +173,11 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a job when connecting via :ref:`Ray Client <ray-client-ref>`.
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver.- 
 
+.. _ray-log-rotation:
+
 Log rotation
 ------------
+
 Ray supports log rotation of log files. Note that not all components are currently supporting log rotation. (Raylet and Python/Java worker logs are not rotating).
 
 By default, logs are rotating when it reaches to 512MB (maxBytes), and there could be up to 5 backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)

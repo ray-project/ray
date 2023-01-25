@@ -23,7 +23,7 @@ def configure_component_logger(
     log_to_stream: bool = True,
     log_to_file: bool = True,
     max_bytes: Optional[int] = None,
-    backup_count: Optional[int] = None
+    backup_count: Optional[int] = None,
 ):
     """Returns a logger to be used by a Serve component.
 
