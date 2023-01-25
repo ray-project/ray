@@ -187,15 +187,7 @@ class MosaicTrainer(TorchTrainer):
         return trainer_init_config
 
     @classmethod
-    def restore(
-        cls: Type["MosaicTrainer"],
-        path: str,
-        trainer_init_per_worker: Optional[Callable[[Optional[Dict]], Trainer]] = None,
-        trainer_init_config: Optional[Dict[str, Any]] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
-        scaling_config: Optional[ScalingConfig] = None,
-    ) -> "MosaicTrainer":
+    def restore(cls: Type["MosaicTrainer"], **kwargs) -> "MosaicTrainer":
         # TODO(ml-team): Reenable after Mosaic checkpointing is supported
         raise NotImplementedError
 
