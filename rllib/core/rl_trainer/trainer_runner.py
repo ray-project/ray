@@ -112,7 +112,7 @@ class TrainerRunner:
         Args:
             batch: The data to use for the update.
             minibatch_size: The size of the minibatch to use for each update.
-            num_iters: The number of complete passes over all the sub-batches 
+            num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
 
         Returns:
@@ -122,7 +122,7 @@ class TrainerRunner:
         start = {mid: 0 for mid in batch.policy_batches.keys()}
         num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
         results = []
-        # loop until the number of passes through all modules batches reaches the num_iters 
+        # loop until the number of passes through all modules batches reaches the num_iters
         while min(num_covered_epochs.values()) < num_iters:
             minibatch = {}
             for module_id, module_batch in batch.policy_batches.items():
@@ -144,7 +144,6 @@ class TrainerRunner:
                 minibatch[module_id] = concat_samples(samples_to_concat)
                 # roll miniback to zero when we reach the end of the batch
                 start[module_id] = e
-
 
             # TODO (Kourosh): len(batch) is not correct here. However it's also not
             # clear what the correct value should be. Since training does not depend on
@@ -293,14 +292,14 @@ class TrainerRunner:
         # TODO (Kourosh) Set / get weight has to be thoroughly
         # tested across actors and multi-gpus
         if self._distributed:
-            ray.get([worker.set_weights(weights) for worker in self._workers])
+            ray.get([worker.set_weights.remote(weights) for worker in self._workers])
         else:
             self._trainer.set_weights(weights)
 
     def get_weights(self) -> Mapping[str, Any]:
         if self._distributed:
             worker = next(iter(self._workers))
-            return ray.get(worker.get_weights())
+            return ray.get(worker.get_weights.remote())
         else:
             return self._trainer.get_weights()
 
@@ -310,9 +309,9 @@ class TrainerRunner:
             refs = []
             for worker in self._workers:
                 refs.append(worker.get_state.remote())
-            return ray.get(refs)
+            return ray.get(refs)[0]
         else:
-            return [self._trainer.get_state()]
+            return self._trainer.get_state()
 
     def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:
         """Sets the states of the RLTrainers.
