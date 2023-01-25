@@ -20,6 +20,14 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_start_6_cpus():
+    address_info = ray.init(num_cpus=6)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 def _failing_train_fn(config):
     checkpoint = session.get_checkpoint()
     it = 1
@@ -38,7 +46,6 @@ class FailureInjectionCallback(Callback):
         self.num_iters = num_iters
 
     def on_trial_save(self, iteration, trials, trial, **info):
-        print(f"\n{iteration}\n")
         if trial.last_result["training_iteration"] == self.num_iters:
             print(f"Failing after {self.num_iters} iters...")
             raise RuntimeError
@@ -98,22 +105,28 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
 
 
 @pytest.mark.parametrize("trainer_cls", [XGBoostTrainer, LightGBMTrainer])
-def test_gbdt_trainer_restore(ray_start_4_cpus, tmpdir, trainer_cls):
+def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
     exp_name = f"{trainer_cls.__name__}_restore_test"
     datasets = {"train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])}
+
     trainer = trainer_cls(
         label_column="y",
-        params={"objective": "reg:squarederror"},
+        params={
+            "objective": (
+                "reg:squarederror" if trainer_cls == XGBoostTrainer else "regression"
+            )
+        },
         datasets=datasets,
-        scaling_config=ScalingConfig(num_workers=2),
+        scaling_config=ScalingConfig(
+            num_workers=2, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 1}
+        ),
         run_config=RunConfig(
             local_dir=str(tmpdir),
             name=exp_name,
             checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
-            callbacks=[FailureInjectionCallback(num_iters=5)],
-            stop={"training_iteration": 10},
+            callbacks=[FailureInjectionCallback(num_iters=2)],
         ),
-        num_boost_round=10,
+        num_boost_round=5,
     )
     with pytest.raises(TuneError):
         result = trainer.fit()
@@ -121,8 +134,8 @@ def test_gbdt_trainer_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
     result = trainer.fit()
     assert not result.error
-    assert result.metrics["training_iteration"] == 10
-    assert result.metrics["iterations_since_restore"] == 5
+    assert result.metrics["training_iteration"] == 5
+    assert result.metrics["iterations_since_restore"] == 3
     assert tmpdir / exp_name in result.log_dir.parents
 
 
@@ -137,7 +150,7 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
         )
 
         trainer_init_fn = hf_init
-        trainer_init_config = {"epochs": 10, "save_strategy": "epoch"}
+        trainer_init_config = {"epochs": 5, "save_strategy": "epoch"}
         datasets = {"train": ray.data.from_pandas(train_df)}
     # TODO(ml-team): Add MosaicTrainer test after Mosaic checkpointing is supported
     # else:
@@ -146,7 +159,7 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     #     )
 
     #     trainer_init_fn = mosaic_init
-    #     trainer_init_config = {"max_duration": "10ep"}
+    #     trainer_init_config = {"max_duration": "5ep"}
     #     datasets = {}
 
     trainer = trainer_cls(
@@ -158,7 +171,7 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
             local_dir=str(tmpdir),
             name=exp_name,
             checkpoint_config=CheckpointConfig(num_to_keep=1),
-            callbacks=[FailureInjectionCallback(num_iters=5)],
+            callbacks=[FailureInjectionCallback(num_iters=2)],
         ),
     )
     with pytest.raises(TuneError):
@@ -167,8 +180,8 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
     result = trainer.fit()
     assert not result.error
-    assert result.metrics["training_iteration"] == 10
-    assert result.metrics["iterations_since_restore"] == 5
+    assert result.metrics["training_iteration"] == 5
+    assert result.metrics["iterations_since_restore"] == 3
     assert tmpdir / exp_name in result.log_dir.parents
 
 
