@@ -18,6 +18,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <fstream>
 
+
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -29,6 +30,7 @@
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
+#include "ray/common/client_connection.h"
 
 DEFINE_stats(worker_register_time_ms,
              "end to end latency of register a worker process.",
@@ -630,11 +632,60 @@ Process WorkerPool::_experimental_worker_proc_forkserver() {
 
 void ExperimentalForkServer::CreateProcess(instrumented_io_context &io_service) {
     RAY_LOG(DEBUG) << "ExperimentalForkServer::CreateProcess called";
-    using boost::asio::local::stream_protocol;
+    //using boost::asio::generic::stream_protocol;
 
-    stream_protocol::socket s(io_service);
-    s.connect("/tmp/socket_test.s");
 
+    // TODO make connection long-lived
+
+    //stream_protocol::socket s(io_service);
+    //s.connect("/tmp/socket_test.s");
+    //auto connection = ServerConnection::Create();
+
+    local_stream_socket socket(io_service);
+    Status s = ConnectSocketRetry(socket, "/tmp/socket_test.s", 1, 100);
+    if (!s.ok()) {
+      RAY_LOG(FATAL) << "Could not connect to socket ";
+    }
+    auto connection = ServerConnection::Create(std::move(socket));
+    
+    std::string message = "get cade";
+    connection->WriteBuffer({boost::asio::buffer(message.c_str(), message.size())});
+    RAY_LOG(DEBUG) << "written to forkserver: " << message;
+
+    std::vector<uint8_t> read_buffer(1024, 0);
+    connection->ReadBuffer({boost::asio::buffer(read_buffer)});
+
+    std::string read_buffer_str(read_buffer.begin(), read_buffer.end());
+    RAY_LOG(DEBUG) << "read from forkserver: " << read_buffer_str;
+
+
+    //std::string message = "get cade";
+    //boost::array<char, 1024> data;
+    ////s.send("get cade");
+
+    //boost::latch latch(1);
+
+    //auto handle_read = [&](const boost::system::error_code& error, size_t bytes_transferred) {
+    //    RAY_LOG(DEBUG) << "handle_read " << bytes_transferred;
+    //    latch.count_down();
+    //};
+
+    //auto handle_write = [&](const boost::system::error_code& error, size_t bytes_transferred) {
+    //    RAY_CHECK(false);
+    //    RAY_LOG(DEBUG) << "handle_write " << bytes_transferred;
+    //    s.async_read_some(boost::asio::buffer(data), handle_read);
+    //};
+
+    //boost::asio::async_write(
+    //    s,
+    //    boost::asio::buffer(message.c_str(), message.size()),
+    //    handle_write
+    //);
+
+    //latch.wait();
+    // TODO use protobuf struct for communication
+    // TODO send request for process creation
+    // TODO get response
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {
