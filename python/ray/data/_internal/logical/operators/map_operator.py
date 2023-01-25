@@ -23,7 +23,7 @@ else:
     from typing_extensions import Literal
 
 
-class BaseMapLike(LogicalOperator):
+class AbstractMap(LogicalOperator):
     """Abstract class for logical operators should be converted to physical
     MapOperator.
     """
@@ -54,7 +54,7 @@ class BaseMapLike(LogicalOperator):
         self._ray_remote_args = ray_remote_args or {}
 
 
-class MapBatches(BaseMapLike):
+class MapBatches(AbstractMap):
     """Logical operator for map_batches."""
 
     def __init__(
@@ -91,7 +91,7 @@ class MapBatches(BaseMapLike):
         self._zero_copy_batch = zero_copy_batch
 
 
-class Map(BaseMapLike):
+class Map(AbstractMap):
     """Logical operator for map."""
 
     def __init__(
@@ -112,10 +112,10 @@ class Map(BaseMapLike):
         )
 
 
-def plan_map_like_op(
-    op: BaseMapLike, input_physical_dag: PhysicalOperator
+def plan_map_op(
+    op: AbstractMap, input_physical_dag: PhysicalOperator
 ) -> MapOperator:
-    """Get the corresponding physical operators DAG for map-like operators."""
+    """Get the corresponding physical operators DAG for AbstractMap operators."""
     compute = get_compute(op._compute)
     block_fn = op._block_fn
 
