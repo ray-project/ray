@@ -126,7 +126,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
       }
       bool is_available =
           node_resources.IsAvailable(resource_request, ignore_pull_manager_at_capacity);
-      if (node_id == local_node_id_ and is_available) {
+      if (node_id == local_node_id_ && is_available) {
         local_node_is_available = true;
       }
       float node_score = ComputeNodeScore(node_resources, spread_threshold);
@@ -155,7 +155,8 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
         available_nodes,
         num_candidate_nodes,
         prioritize_local_node,
-        prioritize_local_node ? CompuateLocalNodeScore(spread_threshold) : 1);
+        /* local_node_score*/
+            prioritize_local_node ? CompuateLocalNodeScore(spread_threshold) : 1);
   } else if (!feasible_nodes.empty() && !require_node_available) {
     bool prioritize_local_node = !force_spillback && local_node_is_feasible;
     // If there are no available nodes, and the caller is okay with an

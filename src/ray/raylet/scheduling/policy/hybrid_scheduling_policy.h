@@ -75,11 +75,16 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
     kNonGpu
   };
 
+  /// Return true if the node is alive and its total resource
+  /// satisify the filter and resource requrement.
   bool IsNodeFeasible(const scheduling::NodeID &node_id,
                       const NodeFilter &node_filter,
                       const NodeResources &node_resources,
                       const ResourceRequest &resource_request) const;
 
+  /// helper function compute a score between 0-1 indicates
+  /// the preference of the current node (the lower score,
+  /// the more preferable.
   float CompuateLocalNodeScore(float spread_threshold) const;
 
   scheduling::NodeID GetBestNode(
@@ -89,9 +94,14 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
       float local_node_score) const;
 
   /// \param resource_request: The resource request we're attempting to schedule.
+  /// \param spread_threshold,
+  /// \param force_spillback,
+  /// \param require_available,
   /// \param node_filter: defines the subset of nodes were are allowed to schedule on.
   /// can be one of kAny (can schedule on all nodes), kGPU (can only schedule on kGPU
   /// nodes), kNonGpu (can only schedule on non-GPU nodes.
+  /// \param schedule_top_k_absolute,
+  /// \param schedule_top_k_fraction,
   ///
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
