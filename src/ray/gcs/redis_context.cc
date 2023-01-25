@@ -212,6 +212,11 @@ std::shared_ptr<RedisCallbackManager::CallbackItem> RedisCallbackManager::GetCal
   return it->second;
 }
 
+void RedisCallbackManager::Clear() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    callback_items_.clear();
+}
+
 void RedisCallbackManager::RemoveCallback(int64_t callback_index) {
   std::lock_guard<std::mutex> lock(mutex_);
   callback_items_.erase(callback_index);

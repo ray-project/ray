@@ -63,6 +63,7 @@ class GcsServerTest : public ::testing::Test {
     gcs_server_->Stop();
     thread_io_service_->join();
     gcs_server_.reset();
+    ray::gcs::RedisCallbackManager::instance().Clear();
   }
 
   bool AddJob(const rpc::AddJobRequest &request) {
