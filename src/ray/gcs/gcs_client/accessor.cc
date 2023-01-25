@@ -596,7 +596,7 @@ void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   } else {
     node.set_node_id(node_info.node_id());
     node.set_state(rpc::GcsNodeInfo::DEAD);
-    node.set_timestamp(node_info.timestamp());
+    node.set_end_time_ms(node_info.end_time_ms());
   }
 
   // If the notification is new, call registered callback.
