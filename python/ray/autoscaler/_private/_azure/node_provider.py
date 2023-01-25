@@ -24,7 +24,7 @@ from ray.autoscaler.tags import (
 )
 
 VM_NAME_MAX_LEN = 64
-UNIQUE_ID_LEN = 8
+UNIQUE_ID_LEN = 4
 
 logger = logging.getLogger(__name__)
 azure_logger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
@@ -223,10 +223,10 @@ class AzureNodeProvider(NodeProvider):
         config_tags.update(tags)
         config_tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
 
-        vm_name = "{cluster}-{node}-{id}".format(
-            cluster=self.cluster_name,
+        vm_name = "{node}-{unique_id}-{vm_id}".format(
             node=config_tags.get(TAG_RAY_NODE_NAME, "node"),
-            id=uuid4().hex[:UNIQUE_ID_LEN],
+            unique_id=self.provider_config["unique_id"],
+            vm_id=uuid4().hex[:UNIQUE_ID_LEN],
         )[:VM_NAME_MAX_LEN]
         use_internal_ips = self.provider_config.get("use_internal_ips", False)
 
