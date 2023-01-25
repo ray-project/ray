@@ -632,14 +632,7 @@ Process WorkerPool::_experimental_worker_proc_forkserver() {
 
 void ExperimentalForkServer::CreateProcess(instrumented_io_context &io_service) {
     RAY_LOG(DEBUG) << "ExperimentalForkServer::CreateProcess called";
-    //using boost::asio::generic::stream_protocol;
-
-
     // TODO make connection long-lived
-
-    //stream_protocol::socket s(io_service);
-    //s.connect("/tmp/socket_test.s");
-    //auto connection = ServerConnection::Create();
 
     local_stream_socket socket(io_service);
     Status s = ConnectSocketRetry(socket, "/tmp/socket_test.s", 1, 100);
@@ -658,34 +651,8 @@ void ExperimentalForkServer::CreateProcess(instrumented_io_context &io_service) 
     std::string read_buffer_str(read_buffer.begin(), read_buffer.end());
     RAY_LOG(DEBUG) << "read from forkserver: " << read_buffer_str;
 
-
-    //std::string message = "get cade";
-    //boost::array<char, 1024> data;
-    ////s.send("get cade");
-
-    //boost::latch latch(1);
-
-    //auto handle_read = [&](const boost::system::error_code& error, size_t bytes_transferred) {
-    //    RAY_LOG(DEBUG) << "handle_read " << bytes_transferred;
-    //    latch.count_down();
-    //};
-
-    //auto handle_write = [&](const boost::system::error_code& error, size_t bytes_transferred) {
-    //    RAY_CHECK(false);
-    //    RAY_LOG(DEBUG) << "handle_write " << bytes_transferred;
-    //    s.async_read_some(boost::asio::buffer(data), handle_read);
-    //};
-
-    //boost::asio::async_write(
-    //    s,
-    //    boost::asio::buffer(message.c_str(), message.size()),
-    //    handle_write
-    //);
-
-    //latch.wait();
     // TODO use protobuf struct for communication
     // TODO send request for process creation
-    // TODO get response
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {
