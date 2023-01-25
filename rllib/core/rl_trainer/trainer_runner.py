@@ -98,8 +98,25 @@ class TrainerRunner:
             self._trainer = trainer_class(**trainer_config)
             self._trainer.build()
 
+
+    def fit(self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int) -> Mapping[str, Any]:
+        """Do `num_iters` minibatch updates given the original batch.
+        
+        Given a batch of episodes you can use this method to take more 
+        than one backward pass on the batch. 
+
+        Args:
+            batch: 
+            minibatch_size:
+            num_iters: 
+        
+        Returns:
+            The training statistics of this fitting round. 
+        """
+        
+
     def update(self, batch: MultiAgentBatch) -> List[Mapping[str, Any]]:
-        """Do a gradient based update to the RLTrainer(s) maintained by this TrainerRunner.
+        """Do one gradient based update to the RLTrainer(s) maintained by this TrainerRunner.
 
         Args:
             batch: The data to use for the update.
