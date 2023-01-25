@@ -281,6 +281,7 @@ parts:
           - file: ray-core/examples/batch_prediction
           - file: ray-core/examples/batch_training
           - file: ray-core/examples/automl_for_time_series
+          - file: ray-core/examples/web-crawler
       - file: ray-core/api
 
   - caption: Ray Clusters
