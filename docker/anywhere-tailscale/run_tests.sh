@@ -11,3 +11,6 @@ else
 fi
 
 /usr/local/bin/crash -U crate --hosts $hostnames -c "SELECT * FROM sys.nodes" || exit 1
+
+
+ray status || exit 1

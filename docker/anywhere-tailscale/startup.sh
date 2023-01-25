@@ -30,7 +30,9 @@ curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY
 response=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].hostname')
 # Output the hostnames left as a comma-separated list. This will be used by the crate seed host parameter
 hostnames=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr '\n' ',')
-if [ -z hostnames ]; then
+if [ -n hostnames ]; then
+    hostnames=${hostnames%?}
+else
     hostnames="nexus.chimp-beta.ts.net:4300"
 fi
 

@@ -1,5 +1,14 @@
 ARG IMAGETYPE=cpu
 FROM rayproject/ray:2.2.0-py38-$IMAGETYPE
+COPY startup.sh /home/ray/startup.sh
+COPY run_tests.sh /home/ray/run_tests.sh
+
+RUN sudo chmod +x /home/ray/startup.sh && sudo chmod +x /home/ray/run_tests.sh \
+&& sudo sysctl -w vm.max_map_count=262144 \
+&& sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 \
+&& sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 \
+&& sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
 ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         MODIN_ENGINE=ray \
         MODIN_RAY_CLUSTER=True \
@@ -24,28 +33,32 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
 #        TS_STATEDIR="/data/tailscale/" \
 #        TS_STATE="tailscale.state"
 
-RUN sudo apt update \
-        && sudo apt install -y --no-install-recommends ca-certificates curl bc wget jq lsb-release \
-        && sudo apt clean \
-        && sudo rm -rf /var/lib/apt/lists/*
+RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+        sudo apt update \
+        && sudo apt install -y --no-install-recommends ca-certificates curl bc wget jq lsb-release
 
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     pandas \
-    # dask version compatible with ray and modin
     'dask==2022.2.0' \
     modin[dask] \
     modin[ray] \
     'ray>=2.2.0'
+    # dask version compatible with ray and modin
+
 
 #installing tailscale
 
-RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null \
         && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/focal.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list \
         && sudo apt update \
         && sudo apt install -y --no-install-recommends tailscale \
-        && sudo apt clean \
-        && sudo rm -rf /var/lib/apt/lists/* \
         && sudo mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale
+#        && sudo apt clean \
+#        && sudo rm -rf /var/lib/apt/lists/* \
 
 ### begin installing crate
 RUN sudo groupadd crate \
@@ -85,13 +98,6 @@ RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/rele
 
 
 
-COPY startup.sh /home/ray/startup.sh
-RUN sudo chmod +x /home/ray/startup.sh \
-&& sudo sysctl -w vm.max_map_count=262144 \
-&& sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 \
-&& sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 \
-&& sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
-
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
 HEALTHCHECK --interval=300s --timeout=5s --start-period=300s \
-CMD tailscale status -json | jq -r .BackendState | grep -q "Running" || exit 1
+CMD sh /home/ray/run_tests.sh
