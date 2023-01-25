@@ -5,7 +5,7 @@ import numpy as np
 
 import ray
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
@@ -112,34 +112,39 @@ class TrainerRunner:
         Args:
             batch: The data to use for the update.
             minibatch_size: The size of the minibatch to use for each update.
-            num_iters: The number of minibatch updates to perform.
+            num_iters: The number of complete passes over all the sub-batches 
+                in the input multi-agent batch.
 
         Returns:
             A dictionary of results summarizing the statistics of the updates.
         """
 
         start = {mid: 0 for mid in batch.policy_batches.keys()}
+        num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
         results = []
-        for _ in range(num_iters):
+        # loop until the number of passes through all modules batches reaches the num_iters 
+        while min(num_covered_epochs.values()) < num_iters:
             minibatch = {}
             for module_id, module_batch in batch.policy_batches.items():
-                s = start[module_id]
-                e = s + minibatch_size
+                s = start[module_id]  # start
+                e = s + minibatch_size  # end
 
                 samples_to_concat = []
                 # cycle through the batch until we have enough samples
-                while e > len(module_batch):
+                while e >= len(module_batch):
                     samples_to_concat.append(module_batch[s:])
                     e = minibatch_size - len(module_batch[s:])
                     s = 0
+                    num_covered_epochs[module_id] += 1
 
                 samples_to_concat.append(module_batch[s:e])
 
                 # concatenate all the samples, we should have minibatch_size of sample
                 # after this step
-                minibatch[module_id] = SampleBatch.concat_samples(samples_to_concat)
-                # roll back to zero when we reach the end of the batch
+                minibatch[module_id] = concat_samples(samples_to_concat)
+                # roll miniback to zero when we reach the end of the batch
                 start[module_id] = e
+
 
             # TODO (Kourosh): len(batch) is not correct here. However it's also not
             # clear what the correct value should be. Since training does not depend on
@@ -162,7 +167,7 @@ class TrainerRunner:
         if self._distributed:
             return self._distributed_update(batch)
         else:
-            return [self._trainer.update(batch)]
+            return self._trainer.update(batch)
 
     def _distributed_update(self, batch: MultiAgentBatch) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the RLTrainers using DDP training.
@@ -191,7 +196,9 @@ class TrainerRunner:
             new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
             refs.append(worker.update.remote(new_batch))
 
-        return ray.get(refs)
+        results = ray.get(refs)
+        # take an average across the result of all actors
+        return tree.map_structure(lambda *x: np.mean(x), *results)
 
     def additional_update(self, *args, **kwargs) -> List[Mapping[str, Any]]:
         """Apply additional non-gradient based updates to the RLTrainers.
