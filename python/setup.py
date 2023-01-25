@@ -212,11 +212,13 @@ if setup_spec.type == SetupType.RAY:
     if sys.version_info >= (3, 7):
         pandas_dep = "pandas >= 1.3"
         numpy_dep = "numpy >= 1.20"
+        pickle_dep = "pickle"
     else:
         # Pandas dropped python 3.6 support in 1.2.
         pandas_dep = "pandas >= 1.0.5"
         # NumPy dropped python 3.6 support in 1.20.
         numpy_dep = "numpy >= 1.19"
+        pickle_dep = "pickle5"
     if sys.version_info >= (3, 7) and sys.platform != "win32":
         pyarrow_dep = "pyarrow >= 6.0.1"
     else:
@@ -228,6 +230,7 @@ if setup_spec.type == SetupType.RAY:
             numpy_dep,
             pandas_dep,
             pyarrow_dep,
+            pickle_dep,
             "fsspec",
         ],
         "default": [
