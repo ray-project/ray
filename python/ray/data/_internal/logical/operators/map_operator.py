@@ -91,7 +91,7 @@ class MapBatches(AbstractMap):
         self._zero_copy_batch = zero_copy_batch
 
 
-class Map(AbstractMap):
+class MapRows(AbstractMap):
     """Logical operator for map."""
 
     def __init__(
@@ -103,7 +103,7 @@ class Map(AbstractMap):
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "Map",
+            "MapRows",
             input_op,
             block_fn,
             compute=compute,
@@ -112,9 +112,7 @@ class Map(AbstractMap):
         )
 
 
-def plan_map_op(
-    op: AbstractMap, input_physical_dag: PhysicalOperator
-) -> MapOperator:
+def plan_map_op(op: AbstractMap, input_physical_dag: PhysicalOperator) -> MapOperator:
     """Get the corresponding physical operators DAG for AbstractMap operators."""
     compute = get_compute(op._compute)
     block_fn = op._block_fn

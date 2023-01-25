@@ -32,7 +32,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import (
-    Map,
+    MapRows,
     MapBatches,
 )
 from ray.data.dataset_iterator import DatasetIterator
@@ -340,7 +340,7 @@ class Dataset(Generic[T]):
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
-            map_op = Map(
+            map_op = MapRows(
                 logical_plan.dag,
                 transform,
                 fn,
