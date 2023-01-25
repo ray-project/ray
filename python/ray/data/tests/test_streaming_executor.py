@@ -302,7 +302,9 @@ def test_e2e_option_propagation():
             lambda x: x, compute=ray.data.ActorPoolStrategy(2, 2)
         ).take_all()
 
-    DatasetContext.get_current().execution_options.resource_limits = ExecutionResources()
+    DatasetContext.get_current().execution_options.resource_limits = (
+        ExecutionResources()
+    )
     run()
 
     DatasetContext.get_current().execution_options.resource_limits.cpu = 1
