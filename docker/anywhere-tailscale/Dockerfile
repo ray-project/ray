@@ -94,11 +94,9 @@ RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/rele
   sudo install juicefs /usr/bin && \
   rm juicefs "juicefs-${JFS_LATEST_TAG}-linux-amd64.tar.gz"
 
-
+COPY startup.sh /home/ray/startup.sh
+COPY run_tests.sh /home/ray/run_tests.sh
 
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
 HEALTHCHECK --interval=300s --timeout=5s --start-period=300s \
 CMD sh /home/ray/run_tests.sh
-
-COPY startup.sh /home/ray/startup.sh
-COPY run_tests.sh /home/ray/run_tests.sh
