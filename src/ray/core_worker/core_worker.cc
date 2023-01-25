@@ -764,7 +764,8 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id,
   }
 }
 
-void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms, int64_t worker_launched_time_ms) {
+void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
+                               int64_t worker_launched_time_ms) {
   absl::flat_hash_map<std::string, std::string> worker_info;
   const auto &worker_id = GetWorkerID();
   worker_info.emplace("node_ip_address", options_.node_ip_address);

@@ -168,7 +168,6 @@ if __name__ == "__main__":
         # We will anyway deprecate Python 3.6.
         worker_launched_time = time.time() * 1000
 
-
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
     elif args.worker_type == "SPILL_WORKER":

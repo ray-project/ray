@@ -1499,7 +1499,8 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, entrypoint, worker_launch_time_ms, worker_launched_time_ms):
+                  startup_token, session_name, entrypoint,
+                  worker_launch_time_ms, worker_launched_time_ms):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()

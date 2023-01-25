@@ -324,14 +324,14 @@ def summarize_worker_startup_time():
             time_to_initialize.append(start_time - launched_time)
     time_to_launch.sort()
     time_to_initialize.sort()
-    
+
     def print_latencies(latencies):
         print(f"Avg: {round(sum(latencies) / len(latencies), 2)} ms")
         print(f"P25: {round(latencies[int(len(latencies) * 0.25)], 2)} ms")
         print(f"P50: {round(latencies[int(len(latencies) * 0.5)], 2)} ms")
         print(f"P95: {round(latencies[int(len(latencies) * 0.95)], 2)} ms")
         print(f"P99: {round(latencies[int(len(latencies) * 0.99)], 2)} ms")
-    
+
     print("Time to launch workers")
     print_latencies(time_to_launch)
     print("=======================")
