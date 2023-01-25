@@ -278,7 +278,7 @@ By default, only one gRPC thread is used for server and client polling from the
 completion queue. This might become the bottleneck if QPS is too high.
 
 - ``RAY_gcs_server_rpc_server_thread_num`` Control the number of threads in GCS
-  polling from the server completion queue, by default, 1.
+  polling from the server completion queue, by default, 1. // set to 2
 - ``RAY_gcs_server_rpc_client_thread_num`` Control the number of threads in GCS
   polling from the client completion queue, by default, 1.
 
