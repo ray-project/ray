@@ -1,4 +1,3 @@
-import os
 import pytest
 
 import ray
@@ -8,7 +7,6 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.tune import Callback, TuneError
-from ray.tune.tuner import TunerInternal
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessor import Preprocessor
 
