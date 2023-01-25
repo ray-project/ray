@@ -807,3 +807,8 @@ message NamedActorInfo {
   string ray_namespace = 1;
   string name = 2;
 }
+
+message ExperimentalProcessArgs {
+  string test = 1;
+  string second = 2;
+}

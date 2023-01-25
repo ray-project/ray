@@ -643,32 +643,35 @@ void ExperimentalForkServer::CreateProcess(const std::vector<std::string> &worke
     }
     auto connection = ServerConnection::Create(std::move(socket));
     
-    std::vector<uint8_t> null_char(1, 0);
+    rpc::ExperimentalProcessArgs argv_wire;
+    argv_wire.set_test("Cade");
+    argv_wire.set_second("Daniel");
 
-    for (const std::string &arg : worker_command_args) {
-        // TODO batching
-        connection->WriteBuffer({boost::asio::buffer(arg.c_str(), arg.size())});
-        connection->WriteBuffer({boost::asio::buffer(null_char.data(), null_char.size())});
-        RAY_LOG(DEBUG) << "written to forkserver: " << arg;
-    }
-    std::string empty = "";
-    connection->WriteBuffer({boost::asio::buffer(empty.c_str(), empty.size())});
-    connection->WriteBuffer({boost::asio::buffer(null_char.data(), null_char.size())});
+    std::string serialized;
+    argv_wire.SerializeToString(&serialized);
+    connection->WriteBuffer({boost::asio::buffer(serialized.c_str(), serialized.size())});
 
-    // TODO send env
+    //std::vector<uint8_t> null_char(1, 0);
 
-    std::vector<uint8_t> read_buffer(1024, 0);
-    connection->ReadBuffer({boost::asio::buffer(read_buffer)});
+    //for (const std::string &arg : worker_command_args) {
+    //    // TODO batching
+    //    connection->WriteBuffer({boost::asio::buffer(arg.c_str(), arg.size())});
+    //    connection->WriteBuffer({boost::asio::buffer(null_char.data(), null_char.size())});
+    //    RAY_LOG(DEBUG) << "written to forkserver: " << arg;
+    //}
+    //std::string empty = "";
+    //connection->WriteBuffer({boost::asio::buffer(empty.c_str(), empty.size())});
+    //connection->WriteBuffer({boost::asio::buffer(null_char.data(), null_char.size())});
 
-    std::string read_buffer_str(read_buffer.begin(), read_buffer.end());
-    RAY_LOG(DEBUG) << "read from forkserver: " << read_buffer_str;
+    //// TODO send env
+
+    //std::vector<uint8_t> read_buffer(1024, 0);
+    //connection->ReadBuffer({boost::asio::buffer(read_buffer)});
+
+    //std::string read_buffer_str(read_buffer.begin(), read_buffer.end());
+    //RAY_LOG(DEBUG) << "read from forkserver: " << read_buffer_str;
 
     ec = boost::system::errc::make_error_code(boost::system::errc::not_supported);
-
-    // Too messy, should just use protobuf
-    //auto child_pid = std::stoi(read_buffer_str);
-
-    //RAY_LOG(DEBUG) << "parsed pid " << child_pid;
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {
