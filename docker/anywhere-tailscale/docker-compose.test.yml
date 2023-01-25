@@ -1,4 +1,9 @@
+version: "3.5"
 services:
   sut:
     build: .
+    shm_size: '4gb'
+    network_mode: "bridge"
+    devices:
+        - "/dev/net/tun:/dev/net/tun"
     command: run_tests.sh
