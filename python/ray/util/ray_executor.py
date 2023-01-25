@@ -58,6 +58,20 @@ class RayExecutor(Executor):
     """
 
     def __init__(self, max_workers: Optional[int] = None, **kwargs):
+
+        """
+        self._shutdown_lock: This is set to True once self.shutdown() is called.
+                             Further task submissions are blocked.
+        self._futures:       Futures are aggregated into this list as they are
+                             returned.
+        self.__actor_pool:   ActorPool which is used by self.map() when
+                             max_workers > 1
+        self.__remote_fn:    Wrapper around the remote function to be executed
+                             by Ray.
+        self.context:        Context containing settings and attributes
+                             returned after initialising the Ray client.
+        """
+
         self._shutdown_lock: bool = False
         self._futures: List[Future] = []
         self.__actor_pool: Optional[ActorPool] = None
