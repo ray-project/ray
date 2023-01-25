@@ -155,6 +155,24 @@ def test_arrow_variable_shaped_tensor_array_roundtrip_boolean():
         np.testing.assert_array_equal(o, a)
 
 
+def test_arrow_variable_shaped_tensor_array_roundtrip_string():
+    arr = np.array(
+        [
+            ["Philip", "J", "Fry"],
+            ["Leela", "Turanga"],
+            ["Professor", "Hubert", "J", "Farnsworth"],
+            ["Lrrr"],
+        ],
+        dtype=object,
+    )
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    for o, a in zip(out, arr):
+        np.testing.assert_array_equal(o, a)
+
+
 def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization():
     # Test that a roundtrip on slices of an already-contiguous 1D base array does not
     # create any unnecessary copies.
