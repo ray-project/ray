@@ -195,7 +195,21 @@ class BaseTrainer(abc.ABC):
         with open(trainer_state_path, "rb") as fp:
             trainer = pickle.load(fp)
         assert type(trainer) == cls
-        assert all(k in cls._optional_fields_for_restore for k in kwargs)
+
+        invalid_fields = [
+            k for k in kwargs if k not in cls._optional_fields_for_restore
+        ]
+        valid_fields = [
+            "datasets",
+            "preprocessor",
+            "scaling_config",
+        ] + cls._optional_fields_for_restore
+        assert not invalid_fields, (
+            f"`{cls.__name__}.restore(path, ...)` only takes in the following "
+            "set of fields as additional arguments:\n"
+            f"\t{valid_fields}\n"
+            f"You passed in the following invalid arguments: {invalid_fields}"
+        )
 
         trainer._restore_path = path
 
