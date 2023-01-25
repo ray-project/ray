@@ -154,6 +154,10 @@ class MosaicTrainer(TorchTrainer):
         self._validate_datasets(datasets)
         self._validate_trainer_init_config(trainer_init_config)
 
+        if resume_from_checkpoint:
+            # TODO(ml-team): Reenable after Mosaic checkpointing is supported
+            raise NotImplementedError
+
         super().__init__(
             train_loop_per_worker=_mosaic_train_loop_per_worker,
             train_loop_config=self._create_trainer_init_config(
@@ -192,22 +196,8 @@ class MosaicTrainer(TorchTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
     ) -> "MosaicTrainer":
-        train_loop_config = (
-            cls._create_trainer_init_config(
-                trainer_init_per_worker, trainer_init_config
-            )
-            if trainer_init_config
-            else None
-        )
-
-        return super(MosaicTrainer, cls).restore(
-            train_loop_per_worker=_mosaic_train_loop_per_worker,
-            train_loop_config=train_loop_config,
-            path=path,
-            datasets=datasets,
-            preprocessor=preprocessor,
-            scaling_config=scaling_config,
-        )
+        # TODO(ml-team): Reenable after Mosaic checkpointing is supported
+        raise NotImplementedError
 
     def _validate_trainer_init_per_worker(
         self, trainer_init_per_worker: Callable, fn_name: str
