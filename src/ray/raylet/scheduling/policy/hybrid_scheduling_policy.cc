@@ -156,7 +156,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
         num_candidate_nodes,
         prioritize_local_node,
         /* local_node_score*/
-            prioritize_local_node ? CompuateLocalNodeScore(spread_threshold) : 1);
+        prioritize_local_node ? CompuateLocalNodeScore(spread_threshold) : 1);
   } else if (!feasible_nodes.empty() && !require_node_available) {
     bool prioritize_local_node = !force_spillback && local_node_is_feasible;
     // If there are no available nodes, and the caller is okay with an
