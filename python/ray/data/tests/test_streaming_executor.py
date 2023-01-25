@@ -198,7 +198,7 @@ def test_e2e_option_propagation():
 
     def run():
         ray.data.range(5, parallelism=5).map(
-            lambda x: x, compute_strategy=ray.data.ActorPoolStrategy(8, 8)
+            lambda x: x, compute=ray.data.ActorPoolStrategy(8, 8)
         ).take_all()
 
     DatasetContext.get_current().execution_options.resource_limits.cpu = 1
