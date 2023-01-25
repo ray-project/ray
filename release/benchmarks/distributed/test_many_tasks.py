@@ -104,7 +104,11 @@ def test(num_tasks, smoke_test):
     del monitor_actor
     test_utils.wait_for_condition(no_resource_leaks)
 
-    summarize_worker_startup_time()
+    try:
+        summarize_worker_startup_time()
+    except Exception as e:
+        print("Failed to summarize worker startup time.")
+        print(e)
 
     rate = num_tasks / (end_time - start_time - sleep_time)
     print(
