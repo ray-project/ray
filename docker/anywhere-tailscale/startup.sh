@@ -22,7 +22,17 @@ deviceid=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jc
 export deviceid=$deviceid
 
 echo "Deleting the device from Tailscale"
-curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
+curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
+
+### getting a list of remaining devices
+# Make the GET request to the Tailscale API to retrieve the list of all devices
+# This could be updated to grab the DNS domain too to be more flexable.
+response=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].hostname')
+# Output the hostnames left as a comma-separated list. This will be used by the crate seed host parameter
+hostnames=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr '\n' ',')
+
+
+
 
 # Make sure directories exist as they are not automatically created
 # This needs to happen at runtime, as the directory could be mounted.
@@ -68,14 +78,14 @@ if [ "$NODETYPE" = "head" ]; then
 
 ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address nexus.chimp-beta.ts.net
 
-/crate/bin/crate -Cnetwork.host=_tailscale0_ \
+/crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
             -Cnode.name=nexus \
             -Cnode.master=true \
             -Cnode.data=false \
             -Cnode.store.allow_mmap=false \
             -Chttp.cors.enabled=true \
             -Chttp.cors.allow-origin="/*" \
-            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 \
+            -Cdiscovery.seed_hosts=$hostnames \
             -Ccluster.initial_master_nodes=nexus \
             -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false &
@@ -85,13 +95,13 @@ else
 
 ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address ${HOSTNAME}.chimp-beta.ts.net
 
-/crate/bin/crate -Cnetwork.host=_tailscale0_ \
+/crate/bin/crate -Cnetwork.host=_tailscale0_,local \
 #            -Cnode.master=false \
             -Cnode.data=true \
             -Cnode.store.allow_mmap=false \
             -Chttp.cors.enabled=true \
             -Chttp.cors.allow-origin="/*" \
-            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300,glkttn2.chimp-beta.ts.net:4300,f9m3fx2.chimp-beta.ts.net:4300 \
+            -Cdiscovery.seed_hosts=$hostnames \
             -Ccluster.initial_master_nodes=nexus \
             -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false &
@@ -116,7 +126,7 @@ term_handler(){
     deviceid=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq '.devices[] | select(.hostname=="'$HOSTNAME'")' | jq -r .id)
     export deviceid=$deviceid
     echo "Deleting the device from Tailscale"
-    curl -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
+    curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
     echo "Shutting Tailscale Down"
     sudo tailscale down
     exit 0
