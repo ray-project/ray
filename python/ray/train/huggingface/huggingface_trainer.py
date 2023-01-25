@@ -73,6 +73,9 @@ if "datasets_modules" not in sys.modules and is_datasets_available():
 # TODO(ml-team): Make dir syncing checkpoint logic generic.
 
 
+TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
+
+
 @PublicAPI(stability="alpha")
 class HuggingFaceTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
@@ -288,11 +291,12 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         trainer_init_config: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
-        if "_trainer_init_per_worker" in trainer_init_config:
+        if TRAINER_INIT_FN_KEY in trainer_init_config:
             raise ValueError(
-                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
+                f"'{TRAINER_INIT_FN_KEY}' is a reserved key in `trainer_init_config`."
             )
-        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
+        if trainer_init_per_worker:
+            trainer_init_config[TRAINER_INIT_FN_KEY] = trainer_init_per_worker
         return trainer_init_config
 
     @classmethod
@@ -310,22 +314,24 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
     ) -> "HuggingFaceTrainer":
-        train_loop_config = (
-            cls._create_trainer_init_config(
-                trainer_init_per_worker, trainer_init_config
-            )
-            if trainer_init_config
-            else None
-        )
-
-        return super(HuggingFaceTrainer, cls).restore(
+        trainer = super(HuggingFaceTrainer, cls).restore(
             train_loop_per_worker=_huggingface_train_loop_per_worker,
-            train_loop_config=train_loop_config,
             path=path,
             datasets=datasets,
             preprocessor=preprocessor,
             scaling_config=scaling_config,
         )
+
+        if trainer_init_per_worker:
+            trainer._train_loop_config[TRAINER_INIT_FN_KEY] = trainer_init_per_worker
+
+        if trainer_init_config:
+            assert set(trainer._train_loop_config.keys()) - {
+                TRAINER_INIT_FN_KEY
+            } == set(trainer_init_config.keys())
+            trainer._train_loop_config.update(trainer_init_config)
+
+        return trainer
 
     def _validate_trainer_init_per_worker(
         self, trainer_init_per_worker: Callable, fn_name: str

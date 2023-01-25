@@ -193,8 +193,8 @@ class BaseTrainer(abc.ABC):
         assert set(trainer.datasets.keys()) == set(datasets.keys())
         trainer.datasets = datasets
 
-        # If no preprocessor is re-specified, then it will be loaded from
-        # the latest checkpoint
+        # If no preprocessor is re-specified, then it will be set to None
+        # here and loaded from the latest checkpoint
         trainer.preprocessor = preprocessor
 
         if scaling_config:

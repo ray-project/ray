@@ -309,6 +309,8 @@ class DataParallelTrainer(BaseTrainer):
         if contains_object_refs(trainer._train_loop_config) and not train_loop_config:
             raise ValueError()
         if train_loop_config:
+            old_config = trainer._train_loop_config or {}
+            assert set(old_config.keys()) == set(train_loop_config.keys())
             trainer._train_loop_config = train_loop_config
         return trainer
 
