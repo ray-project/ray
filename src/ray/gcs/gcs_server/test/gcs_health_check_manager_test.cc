@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <cstdlib>
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
@@ -20,6 +19,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/optional.hpp>
 #include <boost/thread.hpp>
+#include <cstdlib>
 #include <unordered_map>
 
 using namespace boost;
@@ -254,18 +254,16 @@ TEST_F(GcsHealthCheckManagerTest, NoRegister) {
 TEST_F(GcsHealthCheckManagerTest, StressTest) {
   boost::asio::io_service::work work(io_service);
   std::srand(std::time(nullptr));
-  auto t = std::make_unique<std::thread>([this]() {
-    io_service.run();
-  });
+  auto t = std::make_unique<std::thread>([this]() { io_service.run(); });
 
   std::vector<NodeID> alive_nodes;
 
-  for(int i = 0; i < 200; ++i) {
+  for (int i = 0; i < 200; ++i) {
     alive_nodes.emplace_back(AddServer(true));
     std::this_thread::sleep_for(10ms);
   }
 
-  for(size_t i = 0; i < 200000000UL; ++i) {
+  for (size_t i = 0; i < 200000000UL; ++i) {
     auto iter = alive_nodes.begin() + std::rand() % alive_nodes.size();
     DeleteServer(*iter);
     alive_nodes.erase(iter);
