@@ -223,6 +223,46 @@ def test_arrow_variable_shaped_tensor_array_slice():
             np.testing.assert_array_equal(o, e)
 
 
+def test_arrow_variable_shaped_string_tensor_array_slice():
+    arr = np.array(
+        [
+            ["Philip", "J", "Fry"],
+            ["Leela", "Turanga"],
+            ["Professor", "Hubert", "J", "Farnsworth"],
+            ["Lrrr"],
+        ],
+        dtype=object,
+    )
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
+    assert len(ata) == len(arr)
+    indices = [0, 1, 2]
+    for i in indices:
+        np.testing.assert_array_equal(ata[i], arr[i])
+    slices = [
+        slice(0, 1),
+        slice(1, 2),
+        slice(2, 3),
+        slice(3, 4),
+        slice(0, 2),
+        slice(1, 3),
+        slice(2, 4),
+        slice(0, 3),
+        slice(1, 4),
+        slice(0, 4),
+    ]
+    for slice_ in slices:
+        ata_slice = ata[slice_]
+        ata_slice_np = ata_slice.to_numpy()
+        arr_slice = arr[slice_]
+        # Check for equivalent dtypes and shapes.
+        assert ata_slice_np.dtype == arr_slice.dtype
+        assert ata_slice_np.shape == arr_slice.shape
+        # Iteration over tensor array slices triggers NumPy conversion.
+        for o, e in zip(ata_slice, arr_slice):
+            np.testing.assert_array_equal(o, e)
+
+
 def test_variable_shaped_tensor_array_roundtrip():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
@@ -518,6 +558,8 @@ def test_arrow_variable_shaped_tensor_array_getitem(chunked):
         ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float32),
         ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float16),
         ([[False, True], [True, False], [True, True], [False, False]], None),
+        ([["Aa", "Bb"], ["Cc", "Dd"], ["Ee", "Ff"], ["Gg", "Hh"]], None),
+        ([["Aa", "Bb"], ["Cc", "Dd"], ["Ee", "Ff"], ["Gg", "Hh"]], np.str_),
     ],
 )
 def test_arrow_tensor_array_slice(test_arr, dtype):
