@@ -643,35 +643,29 @@ void ExperimentalForkServer::CreateProcess(const std::vector<std::string> &worke
     }
     auto connection = ServerConnection::Create(std::move(socket));
     
-    rpc::ExperimentalProcessArgs argv_wire;
-    argv_wire.set_test("Cade");
-    argv_wire.set_second("Daniel");
+    rpc::ExperimentalCreateProcessRequest req;
+    for (const auto &argv : worker_command_args) {
+        req.add_argv_list(argv);
+    }
 
-    std::string serialized;
-    argv_wire.SerializeToString(&serialized);
-    connection->WriteBuffer({boost::asio::buffer(serialized.c_str(), serialized.size())});
+    for (auto const& pair : env) {
+        (*req.mutable_environ_map())[pair.first] = pair.second;
+    }
 
-    //std::vector<uint8_t> null_char(1, 0);
+    req.add_preload_import_list("numpy");
+    req.add_preload_import_list("tensorflow");
 
-    //for (const std::string &arg : worker_command_args) {
-    //    // TODO batching
-    //    connection->WriteBuffer({boost::asio::buffer(arg.c_str(), arg.size())});
-    //    connection->WriteBuffer({boost::asio::buffer(null_char.data(), null_char.size())});
-    //    RAY_LOG(DEBUG) << "written to forkserver: " << arg;
-    //}
-    //std::string empty = "";
-    //connection->WriteBuffer({boost::asio::buffer(empty.c_str(), empty.size())});
-    //connection->WriteBuffer({boost::asio::buffer(null_char.data(), null_char.size())});
+    std::string req_wire;
+    req.SerializeToString(&req_wire);
+    connection->WriteBuffer({boost::asio::buffer(req_wire.c_str(), req_wire.size())});
 
-    //// TODO send env
-
+    rpc::ExperimentalCreateProcessReply reply;
+    
+    // TODO need to find hacky way to do this
     //std::vector<uint8_t> read_buffer(1024, 0);
     //connection->ReadBuffer({boost::asio::buffer(read_buffer)});
-
-    //std::string read_buffer_str(read_buffer.begin(), read_buffer.end());
-    //RAY_LOG(DEBUG) << "read from forkserver: " << read_buffer_str;
-
-    ec = boost::system::errc::make_error_code(boost::system::errc::not_supported);
+    
+    //ec = boost::system::errc::make_error_code(boost::system::errc::not_supported);
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {

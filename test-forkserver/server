@@ -5,7 +5,7 @@ import os
 import time
 from collections import deque
 import sys
-from ray.core.generated.common_pb2 import ExperimentalProcessArgs
+from ray.core.generated.common_pb2 import ExperimentalCreateProcessRequest, ExperimentalCreateProcessReply
 
 
 def main():
@@ -31,20 +31,36 @@ def listen():
         break
       all_recv += received
 
-    proc_args = ExperimentalProcessArgs()
-    proc_args.ParseFromString(all_recv)
-    print(proc_args)
-    #print(all_recv)
-  
-    #print('got', argv[:-2])
-    #child_pid = spawn(argv[:-2])
-  
-    #conn.send(bytes(f"{child_pid}", "utf-8"))
+    req = ExperimentalCreateProcessRequest()
+    req.ParseFromString(all_recv)
+    print(req)
+
+    reply = ExperimentalCreateProcessReply()
+    reply.success = True
+    reply_serialized = reply.SerializeToString()
+
+    child_pid = spawn(req.argv_list, req.environ_map, req.preload_import_list)
+
+    # TODO
+    #conn.send(reply_serialized)
     #print('sent response')
-  
     conn.close()
 
-def spawn(argv):
+"""
+This will call exec to create a clean process per runtime environment.
+https://github.com/ray-project/ray/blob/master/python/ray/_private/workers/setup_worker.py
+Exec call https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/context.py#L52
+
+We need to create a forkserver per runtime environment.
+Also, preload_import_list needs to move to forkserver creation time.
+
+TODO find out how PID is known to Raylet
+"""
+def spawn(argv, environ_map, preload_import_list):
+    print(argv)
+    print(environ_map)
+    print(preload_import_list)
+    
     return -1
 
 if __name__ == '__main__':

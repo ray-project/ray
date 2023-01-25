@@ -7,7 +7,7 @@ subprocess.run(
 )
 
 import ray
-ray.init()
+ray.init(runtime_env={"env_vars": {"CADE_FROM_RUNTIME_ENV": "1"}})
 
 @ray.remote
 def a():

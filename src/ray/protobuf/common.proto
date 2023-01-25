@@ -808,7 +808,13 @@ message NamedActorInfo {
   string name = 2;
 }
 
-message ExperimentalProcessArgs {
-  string test = 1;
-  string second = 2;
+message ExperimentalCreateProcessRequest {
+  repeated string argv_list = 1;
+  map<string, string> environ_map = 2;
+  repeated string preload_import_list = 3;
+}
+
+// TODO add status
+message ExperimentalCreateProcessReply {
+  bool success = 1;
 }
