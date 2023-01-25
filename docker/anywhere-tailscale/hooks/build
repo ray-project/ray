@@ -6,5 +6,5 @@ if [ $DOCKER_TAG = "cpu" ]; then
 elif [ $DOCKER_TAG = "gpu" ]; then
     docker build . --cache-from rayproject/ray:2.2.0-py38-gpu -t jcoffi/cluster-anywhere:gpu --build-arg IMAGETYPE=gpu
 else
-    docker build . --cache-from rayproject/ray:2.2.0-py38-$DOCKER_TAG -t rayproject/ray:2.2.0-py38-$DOCKER_TAG --build-arg IMAGETYPE=$DOCKER_TAG
+    docker build . --cache-from rayproject/ray:2.2.0-py38-$DOCKER_TAG -t jcoffi/cluster-anywhere:$DOCKER_TAG --build-arg IMAGETYPE=$DOCKER_TAG
 fi
