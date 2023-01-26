@@ -36,6 +36,9 @@
 
 namespace ray {
 namespace core {
+namespace {
+const uint64_t kMinConcurrentLeaseCap = 10;
+}
 
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
   if (options.worker_type == WorkerType::DRIVER) {
@@ -417,11 +420,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   std::function<uint64_t()> get_max_pending_lease_requests_per_scheduling_category =
       [this]() -> uint64_t {
-    if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() >
-        0) {
+    if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
       return RayConfig::instance().max_pending_lease_requests_per_scheduling_category();
     }
-    return gcs_client_->Nodes().GetAll().size();
+    return std::max<int64_t>(kMinConcurrentLeaseCap,
+                             gcs_client_->Nodes().GetAll().size());
   };
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_,
