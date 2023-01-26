@@ -124,6 +124,9 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             from ray.train.huggingface import HuggingFaceTrainer
             from ray.air.config import ScalingConfig
 
+            # If using GPUs, set this to True.
+            use_gpu = False
+
             model_checkpoint = "gpt2"
             tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
             block_size = 128
@@ -180,6 +183,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                     logging_strategy="epoch",
                     learning_rate=2e-5,
                     weight_decay=0.01,
+                    no_cuda=(not use_gpu),
                 )
                 return transformers.Trainer(
                     model=model,
@@ -188,9 +192,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                     eval_dataset=eval_dataset,
                 )
 
-            scaling_config = ScalingConfig(num_workers=3)
-            # If using GPUs, use the below scaling config instead.
-            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
+            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
             trainer = HuggingFaceTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
