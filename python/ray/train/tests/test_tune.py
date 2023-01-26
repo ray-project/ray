@@ -290,9 +290,7 @@ def test_run_config_in_trainer_and_tuner(
         run_config=RunConfig(name="ignored", local_dir="ignored"),
     )
     with caplog.at_level(logging.INFO, logger="ray.tune.impl.tuner_internal"):
-        tuner = Tuner(
-            trainer, run_config=RunConfig(name="used", local_dir=str(tmp_path))
-        )
+        Tuner(trainer, run_config=RunConfig(name="used", local_dir=str(tmp_path)))
     assert list((tmp_path / "used").glob(_TUNER_PKL))
     assert (
         "`RunConfig` was passed to both the `Tuner` and the `DataParallelTrainer`"
