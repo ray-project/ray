@@ -111,12 +111,17 @@ class RayExecutor(Executor):
                 def actor_function(self, fn: Callable):
                     return fn()
 
+                def ready(self):
+                    return
+
             actors = [
                 ExecutorActor.options(  # type: ignore[attr-defined]
                     name=f"actor-{i}"
                 ).remote()
                 for i in range(max_workers)
             ]
+            for a in actors:
+                ray.get(a.ready.remote())
             self.__actor_pool = ray.util.ActorPool(actors)
 
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
