@@ -495,20 +495,24 @@ def test_legacy_memory_monitor_disabled_by_oom_killer():
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_infinite_retry_fail_immediately(ray_with_memory_monitor):
-    addr = ray_with_memory_monitor
-    
-    with ray.init():
-        @ray.remote
-        def mem_leaker():
-            chunks = []
-            bytes_per_chunk = 1024 * 1024 * 1024
-            while True:
-                chunks.append([0] * bytes_per_chunk)
-                time.sleep(5)
+def test_last_task_of_the_group_fail_immediately():
+    @ray.remote(max_retries = -1)
+    def infinite_retry_task():
+        chunks = []
+        bytes_per_chunk = 1024 * 1024 * 1024
+        while True:
+            chunks.append([0] * bytes_per_chunk)
+            time.sleep(5)
 
+    # TODO(clarng): remove once these becomes the default
+    with ray.init(
+        _system_config={
+            "task_oom_retries": -1,
+            "worker_killing_policy": "group_by_owner",
+        },
+    ) as addr:
         with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-            ray.get(mem_leaker.remote())
+            ray.get(infinite_retry_task.remote())
 
         wait_for_condition(
             has_metric_tagged_with_value,
