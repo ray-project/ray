@@ -11,6 +11,14 @@ gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
 shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
 
+num_cpus = $(nproc)
+
+export NUMEXPR_MAX_THREADS=$num_cpus
+#used by conda to specify cpus for building packages
+export MAKEFLAGS="-j$num_cpus"
+#used by conda
+export CPU_COUNT=$num_cpus
+
 CRATE_HEAP_SIZE=$(echo $shm_memory | awk '{print int($0+0.5)}')
 export CRATE_HEAP_SIZE=$CRATE_HEAP_SIZE"G"
 export shm_memory=$shm_memory"G"
@@ -49,8 +57,9 @@ if [ -c /dev/net/tun ]; then
 else
     echo "tun doesn't exist"
     sudo tailscaled -tun userspace-networking -state mem: -socks5-server localhost:1080 -outbound-http-proxy-listen=localhost:3128
+    export socks_proxy=socks5h://localhost:1080
     export ALL_PROXY=socks5h://localhost:1080
-    export http_proxy=socks5h://localhost:3128
+    export http_proxy=http://localhost:3128
     sudo tailscale up --authkey=${TSKEY} --accept-risk=all --accept-routes --accept-dns=true
 fi
 
@@ -98,7 +107,7 @@ ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-hos
 
 else
 
-ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address ${HOSTNAME}.chimp-beta.ts.net
+ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address $HOSTNAME.chimp-beta.ts.net
 
 /crate/bin/crate -Cnetwork.host=_tailscale0_,local \
 #            -Cnode.master=false \

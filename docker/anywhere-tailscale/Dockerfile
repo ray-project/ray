@@ -3,11 +3,11 @@ FROM rayproject/ray:2.2.0-py38-$IMAGETYPE
 ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         MODIN_ENGINE=ray \
         MODIN_RAY_CLUSTER=True \
+        RAY_IGNORE_UNHANDLED_ERRORS=1 \
         TZ=America/Los_Angeles \
         NODETYPE=edge \
         TSKEY="" \
         TSAPIKEY="" \
-        CFLAGS="-O3" \
         AWS_ACCESS_KEY_ID="" \
         AWS_SECRET_ACCESS_KEY="" \
         AWS_DEFAULT_REGION="us-west-2" \
@@ -23,7 +23,7 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         IPv6=false
 #        TS_STATEDIR="/data/tailscale/" \
 #        TS_STATE="tailscale.state"
-
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN sudo rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/keep-cache
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -35,7 +35,13 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     'dask==2022.2.0' \
     modin[dask] \
     modin[ray] \
-    'ray>=2.2.0'
+    'ray>=2.2.0' \
+    fredapi \
+    sympy \
+    numba \
+    numpy \
+    scikit-learn-intelex
+
     # dask version compatible with ray and modin
 
 
