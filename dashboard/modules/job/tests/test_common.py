@@ -151,7 +151,7 @@ def test_job_info_to_json():
         "entrypoint_num_cpus": 1,
         "entrypoint_num_gpus": 1,
         "entrypoint_resources": {"Custom": 1},
-        "runtime_env": {"pip": ["pkg"]},
+        "runtime_env": '{"pip": ["pkg"]}',
     }
 
     # Check that the expected items are in the JSON.
