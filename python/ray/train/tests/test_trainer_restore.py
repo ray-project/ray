@@ -397,19 +397,6 @@ def test_restore_with_different_trainer(tmpdir):
         XGBoostTrainer.restore(str(tmpdir))
 
 
-def test_restore_with_invalid_kwargs(tmpdir):
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: session.report({"score": 1}),
-        scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(name="invalid_kwargs", local_dir=tmpdir),
-    )
-    trainer._save(tmpdir)
-    with pytest.raises(AssertionError):
-        DataParallelTrainer.restore(str(tmpdir), oops=1)
-    with pytest.raises(AssertionError):
-        DataParallelTrainer.restore(str(tmpdir), train_loop_per_worker=1, oops=2)
-
-
 if __name__ == "__main__":
     import sys
 

@@ -18,7 +18,6 @@ from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
-from ray.util.check_object_refs import contains_object_refs
 from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
@@ -155,8 +154,6 @@ class BaseTrainer(abc.ABC):
     # See `BaseTrainer._extract_fields_for_tuner_param_space` for more details.
     _fields_for_tuner_param_space = []
 
-    _optional_fields_for_restore = []
-
     def __init__(
         self,
         *,
@@ -187,7 +184,6 @@ class BaseTrainer(abc.ABC):
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        **kwargs,
     ) -> "BaseTrainer":
         trainer_state_path = cls._maybe_sync_down_trainer_state(path)
         assert trainer_state_path.exists()
@@ -195,22 +191,6 @@ class BaseTrainer(abc.ABC):
         with open(trainer_state_path, "rb") as fp:
             trainer = pickle.load(fp)
         assert type(trainer) == cls
-
-        invalid_fields = [
-            k for k in kwargs if k not in cls._optional_fields_for_restore
-        ]
-        valid_fields = [
-            "datasets",
-            "preprocessor",
-            "scaling_config",
-        ] + cls._optional_fields_for_restore
-        assert not invalid_fields, (
-            f"`{cls.__name__}.restore(path, ...)` only takes in the following "
-            "set of fields as additional arguments:\n"
-            f"\t{valid_fields}\n"
-            f"You passed in the following invalid arguments: {invalid_fields}"
-        )
-
         trainer._restore_path = path
 
         if trainer.datasets and not datasets:
@@ -226,14 +206,6 @@ class BaseTrainer(abc.ABC):
 
         if scaling_config:
             trainer.scaling_config = scaling_config
-
-        for field_name in cls._optional_fields_for_restore:
-            original_attr = getattr(trainer, field_name, None)
-            respecified = field_name in kwargs
-            if contains_object_refs(original_attr) and not respecified:
-                raise ValueError()
-            if respecified:
-                setattr(trainer, field_name, kwargs[field_name])
 
         return trainer
 
