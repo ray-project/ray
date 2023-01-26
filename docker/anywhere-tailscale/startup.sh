@@ -11,7 +11,7 @@ gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
 
 shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
 
-num_cpus = $(nproc)
+num_cpus=$(nproc)
 
 export NUMEXPR_MAX_THREADS=$num_cpus
 #used by conda to specify cpus for building packages
