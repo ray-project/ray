@@ -232,6 +232,48 @@ class Tuner:
             )
             return Tuner(_tuner_internal=tuner_internal)
 
+    @classmethod
+    def can_restore(cls, path: str) -> bool:
+        """Checks whether a given directory contains a restorable Tune experiment.
+
+        Usage Pattern:
+
+        Use this utility to switch between starting a new Tune experiment
+        and restoring when possible. This is useful for experiment fault-tolerance
+        when re-running a failed tuning script.
+
+        .. code-block:: python
+
+            import os
+            from ray.tune import Tuner
+            from ray.air import RunConfig
+
+            def train_fn(config):
+                # Make sure to implement checkpointing so that progress gets
+                # saved on restore.
+                pass
+
+            name = "exp_name"
+            local_dir = "~/ray_results"
+            exp_dir = os.path.join(local_dir, name)
+
+            if Tuner.can_restore(exp_dir):
+                tuner = Tuner.restore(exp_dir, resume_errored=True)
+            else:
+                tuner = Tuner(
+                    "PPO",
+                    run_config=RunConfig(name="exp_name", local_dir="~/ray_results"),
+                )
+            tuner.fit()
+
+        Args:
+            path: The path to the experiment directory of the Tune experiment.
+                This can be either a local directory (e.g. ~/ray_results/exp_name)
+                or a remote URI (e.g. s3://bucket/exp_name).
+        """
+
+        return TunerInternal.can_restore(path)
+
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
         run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
         progress_reporter, string_queue = _prepare_progress_reporter_for_ray_client(

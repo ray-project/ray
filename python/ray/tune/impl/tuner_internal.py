@@ -12,7 +12,11 @@ import urllib.parse
 import ray
 import ray.cloudpickle as pickle
 from ray.util import inspect_serializability
-from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
+from ray.air._internal.remote_storage import (
+    download_from_uri,
+    is_non_local_path_uri,
+    list_at_uri,
+)
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.trial_runner import _ResumeConfig
@@ -284,6 +288,25 @@ class TunerInternal:
             "If you encounter errors during training, ensure that you are passing "
             "in the same trainable that was passed into the initial `Tuner` object."
         )
+
+    @classmethod
+    def can_restore(cls, path: str) -> bool:
+        """Checks whether a given directory contains a restorable Tune experiment.
+
+        Args:
+            path: The path to the experiment directory of the Tune experiment.
+                This can be either a local directory (e.g. ~/ray_results/exp_name)
+                or a remote URI (e.g. s3://bucket/exp_name).
+
+        Returns:
+            can_restore: Whether or not this path exists and contains the pickled Tuner,
+                to load on restore.
+        """
+        if is_non_local_path_uri(path):
+            dir_contents = list_at_uri(path)
+        else:
+            dir_contents = list(Path(path).glob("*"))
+        return bool(dir_contents) and _TUNER_PKL in dir_contents
 
     def _restore_from_path_or_uri(
         self,

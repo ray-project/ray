@@ -246,7 +246,7 @@ def list_at_uri(uri: str) -> List[str]:
     fs, bucket_path = get_fs_and_path(uri)
     if not fs:
         raise ValueError(
-            f"Could not upload to URI: "
+            f"Could not list at URI: "
             f"URI `{uri}` is not a valid or supported cloud target. "
             f"Hint: {fs_hint(uri)}"
         )
