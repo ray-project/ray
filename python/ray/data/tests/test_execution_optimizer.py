@@ -4,7 +4,12 @@ import ray
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.map_operator import MapRows, MapBatches
+from ray.data._internal.logical.operators.map_operator import (
+    MapRows,
+    MapBatches,
+    Filter,
+    FlatMap,
+)
 from ray.data._internal.logical.planner import Planner
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
@@ -56,6 +61,38 @@ def test_map_rows_operator(ray_start_cluster_enabled, enable_optimizer):
     physical_op = planner.plan(op)
 
     assert op.name == "MapRows"
+    assert isinstance(physical_op, MapOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+
+def test_filter_operator(ray_start_cluster_enabled, enable_optimizer):
+    planner = Planner()
+    read_op = Read(ParquetDatasource())
+    op = Filter(
+        read_op,
+        lambda it: (x for x in it),
+        lambda x: x,
+    )
+    physical_op = planner.plan(op)
+
+    assert op.name == "Filter"
+    assert isinstance(physical_op, MapOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+
+def test_flat_map(ray_start_cluster_enabled, enable_optimizer):
+    planner = Planner()
+    read_op = Read(ParquetDatasource())
+    op = FlatMap(
+        read_op,
+        lambda it: ([x, x] for x in it),
+        lambda x: x,
+    )
+    physical_op = planner.plan(op)
+
+    assert op.name == "FlatMap"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
