@@ -76,8 +76,11 @@ do
   echo "$key=${!key}" >> $destdir
 done
 
-# Needed for pyarrow to work.
-echo "CLASSPATH=$(hadoop classpath --glob)" >> $destdir
-
 # Needed for unit test to specify hdfs uri.
 echo "CONTAINER_ID=$(hostname)" >> $destdir
+
+# make it a separate file to be set directly in the unit test.
+# the variable is too big to be supplied through command line.
+classpath_destdir=/tmp/hdfs_classpath_env
+# Needed for pyarrow to work.
+hadoop classpath --glob >> $classpath_destdir
