@@ -89,10 +89,10 @@ class TunerInternal:
             if run_config and trainable.run_config != RunConfig():
                 logger.info(
                     "A `RunConfig` was passed to both the `Tuner` and the "
-                    "`{trainable.__class__.__name__}`. The run config passed to "
+                    f"`{trainable.__class__.__name__}`. The run config passed to "
                     "the `Tuner` is the one that will be used."
                 )
-            if "run_config" in param_space:
+            if param_space and "run_config" in param_space:
                 raise ValueError(
                     "`RunConfig` cannot be tuned as part of the `param_space`! "
                     "Move the run config to be a parameter of the `Tuner`: "
