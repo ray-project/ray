@@ -202,7 +202,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       internal_kv_.Get("job", job_data_key, kv_get_callback);
     }
 
-    // If there were no jobs with a submission id, we must send the reply here because no callbacks will execute.
+    // If there were no jobs with a submission id, we must send the reply here because no
+    // callbacks will execute.
     if (!any_jobs_with_submission_id) {
       RAY_LOG(INFO) << "Finished getting all job info.";
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
