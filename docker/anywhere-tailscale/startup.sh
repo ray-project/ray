@@ -109,7 +109,7 @@ else
 ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address $HOSTNAME.chimp-beta.ts.net
 
 /crate/bin/crate -Cnetwork.host=_tailscale0_ \
-#            -Cnode.master=false \
+            -Cnode.name=$HOSTNAME \
             -Cnode.data=true \
             -Cnode.store.allow_mmap=false \
             -Chttp.cors.enabled=true \
