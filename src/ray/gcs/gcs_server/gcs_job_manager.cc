@@ -168,19 +168,25 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         num_processed_jobs->fetch_add(1);
         continue;
       }
-      const auto &job_submission_id = metadata.at("job_submission_id");
+
       any_jobs_with_submission_id = true;
+      const auto &job_submission_id = metadata.at("job_submission_id");
+
       auto kv_get_callback =
-          [reply, send_reply_callback, num_processed_jobs, &job_submission_id](
+          [reply, send_reply_callback, num_processed_jobs, i, &job_submission_id](
               std::optional<std::string> job_info_json) {
             if (job_info_json) {
+              // Parse the JSON into a JobsAPIInfo proto.
               rpc::JobsAPIInfo jobs_api_info;
               RAY_CHECK(google::protobuf::util::JsonStringToMessage(*job_info_json,
                                                                     &jobs_api_info)
                             .ok());
+
+              // Load info into the reply.
+              reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(jobs_api_info);
             } else {
               RAY_LOG(ERROR)
-                  << "Failed to look up Ray Job API JobInfo for job with submission id "
+                  << "Failed to look up Ray Job API JobInfo for job with submission ID "
                   << job_submission_id;
             }
 
@@ -190,6 +196,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
             }
           };
+
       std::string job_data_key = "_ray_internal_job_info_" + job_submission_id;
       internal_kv_.Get("job", job_data_key, kv_get_callback);
     }

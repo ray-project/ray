@@ -316,7 +316,7 @@ message JobsAPIInfo {
   uint64 end_time = 6;
   // Arbitrary user-provided metadata for the job.
   map<string, string> metadata = 7;
-  // The JSON-serialized runtime environment for the job. 
+  // The JSON-serialized runtime environment for the job.
   string runtime_env = 8;
   // The quantity of CPU cores to reserve for the entrypoint command.
   double entrypoint_num_cpus = 9;
@@ -352,6 +352,8 @@ message JobTableData {
   uint64 end_time = 8;
   // The entrypoint of the job.
   string entrypoint = 9;
+  // The optional JobInfo from the Ray Job API.
+  optional JobsAPIInfo job_info = 10;
 }
 
 message WorkerTableData {
