@@ -46,7 +46,8 @@ class DirectTaskTransportTest : public ::testing::Test {
         WorkerType::WORKER, /* worker_type */
         0,                  /* lease_timeout_ms */
         actor_creator,
-        JobID::Nil() /* job_id */);
+        JobID::Nil() /* job_id */,
+        []() { return 1; });
   }
 
   TaskSpecification GetCreatingTaskSpec(const ActorID &actor_id) {
