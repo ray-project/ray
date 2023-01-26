@@ -627,6 +627,106 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
                 << ", which takes " << current_time_ms() - start_ms << " ms";
 }
 
+TEST_F(ZeroNodeTest, TestNonMultithreadedActorWorkerContext) {
+  auto job_id = NextJobId();
+  auto task_id = TaskID::FromRandom(job_id);
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), job_id);
+  ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
+
+  // Set the task
+  {
+    TaskSpecification task_spec;
+    task_spec.GetMutableMessage().set_job_id(job_id.Binary());
+    task_spec.GetMutableMessage().set_task_id(task_id.Binary());
+    context.SetCurrentTask(task_spec);
+  }
+
+  ASSERT_EQ(context.GetCurrentTaskID(), task_id);
+  ASSERT_EQ(context.GetNextTaskIndex(), 1);
+  ASSERT_EQ(context.GetNextPutIndex(), 1);
+
+  auto thread_func = [&context, &task_id]() {
+    // Verify the same task.
+    ASSERT_EQ(context.GetCurrentTaskID(), task_id);
+    ASSERT_EQ(context.GetNextTaskIndex(), 2);
+    ASSERT_EQ(context.GetNextPutIndex(), 2);
+  };
+
+  std::thread async_thread(thread_func);
+  async_thread.join();
+
+  // Verify that these fields are thread-local.
+  ASSERT_EQ(context.GetCurrentTaskID(), task_id);
+  ASSERT_EQ(context.GetNextTaskIndex(), 3);
+  ASSERT_EQ(context.GetNextPutIndex(), 3);
+}
+
+TEST_F(ZeroNodeTest, TestMultithreadActorWorkerContext) {
+  auto job_id = NextJobId();
+  auto task_id = TaskID::FromRandom(job_id);
+  auto task_id_thd1 = TaskID::FromRandom(job_id);
+  auto task_id_thd2 = TaskID::FromRandom(job_id);
+
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), job_id);
+  ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
+  TaskSpecification task_spec;
+  task_spec.GetMutableMessage().set_job_id(job_id.Binary());
+  task_spec.GetMutableMessage().set_task_id(task_id.Binary());
+  task_spec.GetMutableMessage()
+      .mutable_actor_creation_task_spec()
+      ->set_execute_out_of_order(true);
+  task_spec.GetMutableMessage().set_type(TaskType::ACTOR_CREATION_TASK);
+  context.SetCurrentTask(task_spec);
+  ASSERT_EQ(context.GetNextTaskIndex(), 1);
+  ASSERT_EQ(context.GetNextPutIndex(), 1);
+  ASSERT_EQ(context.GetNextTaskIndex(), 2);
+  ASSERT_EQ(context.GetNextPutIndex(), 2);
+
+  // Unknown thread started should have the same exec context.
+  auto unknown_thread_func = [&context, &task_id]() {
+    ASSERT_EQ(context.GetCurrentTaskID(), task_id);
+    ASSERT_EQ(context.GetNextTaskIndex(), 3);
+    ASSERT_EQ(context.GetNextPutIndex(), 3);
+  };
+
+  auto thread_func = [&context, &job_id](TaskID task_id) {
+    TaskSpecification task_spec;
+    task_spec.GetMutableMessage().set_job_id(job_id.Binary());
+    task_spec.GetMutableMessage().set_task_id(task_id.Binary());
+    task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+    task_spec.GetMutableMessage()
+        .mutable_actor_creation_task_spec()
+        ->set_execute_out_of_order(true);
+
+    context.SetCurrentTask(task_spec);
+
+    std::this_thread::yield();
+
+    ASSERT_EQ(context.GetCurrentTaskID(), task_id);
+    ASSERT_EQ(context.GetNextTaskIndex(), 1);
+    ASSERT_EQ(context.GetNextPutIndex(), 1);
+  };
+
+  std::thread unknown_thd(unknown_thread_func);
+  unknown_thd.join();
+
+  std::thread thd1(thread_func, task_id_thd1);
+  std::thread thd2(thread_func, task_id_thd2);
+  thd1.join();
+  thd2.join();
+
+  // Verify that the task in the main thread is not affected.
+  ASSERT_EQ(context.GetCurrentTaskID(), task_id);
+  ASSERT_EQ(context.GetNextTaskIndex(), 4);
+  ASSERT_EQ(context.GetNextPutIndex(), 4);
+}
+
+TEST_F(ZeroNodeTest, TestDriverWorkerContext) {
+  auto job_id = NextJobId();
+  WorkerContext context(WorkerType::DRIVER, WorkerID::FromRandom(), job_id);
+  ASSERT_EQ(context.GetCurrentTaskID(), TaskID::ForDriverTask(job_id));
+}
+
 TEST_F(ZeroNodeTest, TestWorkerContext) {
   auto job_id = NextJobId();
 
@@ -636,19 +736,6 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   ASSERT_EQ(context.GetNextTaskIndex(), 2);
   ASSERT_EQ(context.GetNextPutIndex(), 1);
   ASSERT_EQ(context.GetNextPutIndex(), 2);
-
-  auto thread_func = [&context]() {
-    // Verify that task_index, put_index are thread-local.
-    ASSERT_EQ(context.GetNextTaskIndex(), 1);
-    ASSERT_EQ(context.GetNextPutIndex(), 1);
-  };
-
-  std::thread async_thread(thread_func);
-  async_thread.join();
-
-  // Verify that these fields are thread-local.
-  ASSERT_EQ(context.GetNextTaskIndex(), 3);
-  ASSERT_EQ(context.GetNextPutIndex(), 3);
 
   TaskSpecification task_spec;
   size_t num_returns = 3;

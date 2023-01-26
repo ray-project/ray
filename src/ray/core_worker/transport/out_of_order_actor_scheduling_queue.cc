@@ -102,6 +102,7 @@ bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
 void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
   while (!pending_actor_tasks_.empty()) {
     auto request = pending_actor_tasks_.front();
+    RAY_LOG(INFO) << "processing request for task  " << request.TaskID();
     if (is_asyncio_) {
       // Process async actor task.
       auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
