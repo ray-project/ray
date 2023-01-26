@@ -1,5 +1,9 @@
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.operators.all_to_all_operator import (
+    AbstractAllToAll,
+    plan_all_to_all_op,
+)
 from ray.data._internal.logical.operators.read_operator import Read, plan_read_op
 from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
@@ -27,6 +31,9 @@ class Planner:
         elif isinstance(logical_dag, AbstractMap):
             assert len(physical_children) == 1
             physical_dag = plan_map_op(logical_dag, physical_children[0])
+        elif isinstance(logical_dag, AbstractAllToAll):
+            assert len(physical_children) == 1
+            physical_dag = plan_all_to_all_op(logical_dag, physical_children[0])
         else:
             raise ValueError(
                 f"Found unknown logical operator during planning: {logical_dag}"

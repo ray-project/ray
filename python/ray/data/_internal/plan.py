@@ -1114,7 +1114,7 @@ def _rewrite_read_stage(
     has_randomize = stages and isinstance(stages[0], RandomizeBlocksStage)
     if has_randomize:
         if stages and isinstance(stages[0], RandomizeBlocksStage):
-            block_list, _ = stages[0].do_randomize(block_list)
+            block_list, _ = stages[0].fn(block_list)
             stages = stages[1:]
         name += "->randomize_block_order"
 

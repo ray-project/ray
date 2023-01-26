@@ -26,23 +26,6 @@ else:
 class AbstractMap(LogicalOperator):
     """Abstract class for logical operators should be converted to physical
     MapOperator.
-
-    Args:
-        name: Name for this operator. This is the name that will appear when inspecting
-            the logical plan of a Dataset.
-        input_op: The operator preceding this operator in the plan DAG. The outputs of
-            `input_op` will be the inputs to this operator.
-        block_fn: The transform function to apply to each input block to produce output
-            blocks.
-        target_block_size: The target size for blocks outputted by this operator.
-        fn: User provided UDF to be called in `block_fn`.
-        fn_args: Arguments to `fn`.
-        fn_kwargs: Keyword arguments to `fn`.
-        fn_constructor_args: Arguments to provide to the initializor of `fn` if `fn` is
-            a callable class.
-        fn_constructor_kwargs: Keyword Arguments to provide to the initializor of `fn`
-            if `fn` is a callable class.
-        ray_remote_args: Args to provide to ray.remote.
     """
 
     # TODO: Replace `fn`, `fn_args`, `fn_kwargs`, `fn_constructor_args`, and
@@ -62,6 +45,24 @@ class AbstractMap(LogicalOperator):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
+        """
+        Args:
+            name: Name for this operator. This is the name that will appear when
+                inspecting the logical plan of a Dataset.
+            input_op: The operator preceding this operator in the plan DAG. The outputs
+                of `input_op` will be the inputs to this operator.
+            block_fn: The transform function to apply to each input block to produce
+                output blocks.
+            target_block_size: The target size for blocks outputted by this operator.
+            fn: User provided UDF to be called in `block_fn`.
+            fn_args: Arguments to `fn`.
+            fn_kwargs: Keyword arguments to `fn`.
+            fn_constructor_args: Arguments to provide to the initializor of `fn` if
+                `fn` is a callable class.
+            fn_constructor_kwargs: Keyword Arguments to provide to the initializor of
+                `fn` if `fn` is a callable class.
+            ray_remote_args: Args to provide to ray.remote.
+        """
         super().__init__(name, [input_op])
         self._block_fn = block_fn
         self._compute = compute or "tasks"
