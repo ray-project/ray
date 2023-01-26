@@ -564,7 +564,7 @@ if __name__ == "__main__":
             trainer,
             param_space={
                 "train_loop_config": {
-                    "random_var": tune.grid_search(list(range(1, args.tune_trials + 1)))
+                    "random_var": tune.grid_search(range(1, args.tune_trials + 1))
                 }
             },
             tune_config=tune.TuneConfig(
