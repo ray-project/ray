@@ -3983,6 +3983,7 @@
     timeout: 12000
     prepare: sleep 0
     script: python single_node/test_single_node.py
+    type: anyscale_job
 
 - name: object_store
   group: core-scalability-test
@@ -4002,6 +4003,7 @@
     script: python object_store/test_object_store.py
     wait_for_nodes:
       num_nodes: 50
+    type: anyscale_job
 
 
 - name: many_actors
@@ -4022,6 +4024,7 @@
     script: python distributed/test_many_actors.py
     wait_for_nodes:
       num_nodes: 65
+    type: anyscale_job
 
 
 - name: many_actors_smoke_test
@@ -4042,6 +4045,7 @@
     script: SMOKE_TEST=1 python distributed/test_many_actors.py
     wait_for_nodes:
       num_nodes: 2
+    type: anyscale_job
 
 
 - name: many_tasks
@@ -4062,6 +4066,7 @@
     script: python distributed/test_many_tasks.py --num-tasks=10000
     wait_for_nodes:
       num_nodes: 65
+    type: anyscale_job
 
 
   smoke_test:
@@ -4074,6 +4079,7 @@
       script: python distributed/test_many_tasks.py --num-tasks=100
       wait_for_nodes:
         num_nodes: 2
+      type: anyscale_job
 
 
 - name: many_pgs
@@ -4094,6 +4100,7 @@
     script: python distributed/test_many_pgs.py
     wait_for_nodes:
       num_nodes: 65
+    type: anyscale_job
 
 
 - name: many_pgs_smoke_test
@@ -4114,6 +4121,7 @@
     script: SMOKE_TEST=1 python distributed/test_many_pgs.py
     wait_for_nodes:
       num_nodes: 2
+    type: anyscale_job
 
 
 - name: many_nodes
@@ -4136,6 +4144,7 @@
     script: python distributed/test_many_tasks.py --num-tasks=1000
     wait_for_nodes:
       num_nodes: 250
+    type: anyscale_job
 
 
 - name: scheduling_test_many_0s_tasks_many_nodes
@@ -4158,6 +4167,7 @@
 
     wait_for_nodes:
       num_nodes: 32
+    type: anyscale_job
 
 
 # - name: scheduling_test_many_5s_tasks_single_node
@@ -4230,6 +4240,7 @@
     script: python inference.py
     wait_for_nodes:
       num_nodes: 2
+    type: anyscale_job
 
 
 - name: shuffle_data_loader
@@ -4249,7 +4260,7 @@
   run:
     timeout: 1800
     script: python dataset_shuffle_data_loader.py
-    type: sdk_command
+    type: anyscale_job
 
 - name: parquet_metadata_resolution
   group: data-tests
@@ -4268,6 +4279,7 @@
     # Expect the test to finish around 40 seconds.
     timeout: 80
     script: python parquet_metadata_resolution.py --num-files 915
+    type: anyscale_job
 
 
 - name: dataset_random_access
@@ -4287,7 +4299,7 @@
     script: python dataset_random_access.py
     wait_for_nodes:
       num_nodes: 15
-    type: sdk_command
+    type: anyscale_job
 
 
 - name: pipelined_data_ingest_benchmark
@@ -4305,6 +4317,7 @@
     script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
     wait_for_nodes:
       num_nodes: 20
+    type: anyscale_job
 
 
 - name: aggregate_benchmark
@@ -4320,6 +4333,7 @@
   run:
     timeout: 1800
     script: python aggregate_benchmark.py
+    type: anyscale_job
 
 
 - name: read_parquet_benchmark_single_node
@@ -4337,7 +4351,7 @@
     timeout: 300
     script: python read_parquet_benchmark.py
 
-    type: sdk_command
+    type: anyscale_job
 
 - name: read_images_benchmark_single_node
   group: data-tests
@@ -4352,6 +4366,7 @@
   run:
     timeout: 1800
     script: python read_images_benchmark.py
+    type: anyscale_job
 
 
 - name: read_tfrecords_benchmark_single_node
@@ -4369,7 +4384,7 @@
     timeout: 1800
     script: python read_tfrecords_benchmark.py
 
-    type: sdk_command
+    type: anyscale_job
 
 - name: map_batches_benchmark_single_node
   group: data-tests
@@ -4386,7 +4401,7 @@
     timeout: 2400
     script: python map_batches_benchmark.py
 
-    type: sdk_command
+    type: anyscale_job
 
 - name: iter_tensor_batches_benchmark_single_node
   group: data-tests
@@ -4403,7 +4418,7 @@
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py
 
-    type: sdk_command
+    type: anyscale_job
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
@@ -4420,7 +4435,7 @@
     timeout: 1080
     script: python iter_batches_benchmark.py
 
-    type: sdk_command
+    type: anyscale_job
 
 - name: pipelined_training_50_gb
   group: data-tests
@@ -4441,7 +4456,7 @@
     script: python pipelined_training.py --epochs 1
     wait_for_nodes:
       num_nodes: 15
-    type: sdk_command
+    type: anyscale_job
 
 
 - name: pipelined_ingestion_1500_gb
@@ -4462,7 +4477,7 @@
     timeout: 9600
     script: python pipelined_training.py --epochs 2 --num-windows 5 --num-files 915
       --debug
-    type: sdk_command
+    type: anyscale_job
 
     wait_for_nodes:
       num_nodes: 21
@@ -4486,6 +4501,7 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    type: anyscale_job
 
 - name: dataset_shuffle_sort_1tb
   group: data-tests
@@ -4505,6 +4521,7 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
+    type: anyscale_job
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
@@ -4524,6 +4541,7 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    type: anyscale_job
 
 - name: dataset_shuffle_push_based_sort_1tb
   group: data-tests
@@ -4543,6 +4561,7 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
+    type: anyscale_job
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
   group: data-tests
@@ -4562,6 +4581,7 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 100
+    type: anyscale_job
 
 ##################
 # Core Chaos tests
