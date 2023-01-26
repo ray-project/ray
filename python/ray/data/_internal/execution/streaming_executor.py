@@ -43,6 +43,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # data updates the stats object in legacy code).
         self._stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
+        self._output_info: Optional[ProgressBar] = None
 
         # Internal execution state shared across thread boundaries. We run the control
         # loop on a separate thread so that it doesn't become stalled between
@@ -68,6 +69,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, self._stats = build_streaming_topology(dag, self._options)
+        self._output_info = ProgressBar(
+            "Output", dag.num_outputs_total() or 1, len(self._topology)
+        )
         _validate_topology(self._topology, self._get_or_refresh_resource_limits())
 
         self._output_node: OpState = self._topology[dag]
@@ -80,6 +84,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 if isinstance(item, Exception):
                     raise item
                 else:
+                    self._output_info.update(1)
                     yield item
                 item = self._runner_thread_out.get()
         finally:
@@ -87,6 +92,8 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown()
             if self._global_info:
                 self._global_info.close()
+            if self._output_info:
+                self._output_info.close()
 
     def run(self):
         """Run the control loop in a helper thread.
@@ -96,8 +103,13 @@ class StreamingExecutor(Executor, threading.Thread):
         try:
             # Run scheduling loop until complete.
             while self._scheduling_loop_step(self._topology):
-                while self._output_node.outqueue:
-                    self._runner_thread_out.put(self._output_node.outqueue.pop(0))
+                try:
+                    while self._output_node.outqueue:
+                        item = self._output_node.outqueue[0]
+                        self._runner_thread_out.put_nowait(item)
+                        self._output_node.outqueue.pop(0)
+                except queue.Full:
+                    pass
 
             # Handle any leftover outputs.
             while self._output_node.outqueue:
@@ -136,23 +148,39 @@ class StreamingExecutor(Executor, threading.Thread):
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
         process_completed_tasks(topology)
-        for op_state in topology.values():
-            op_state.refresh_progress_bar()
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
         cur_usage = self._get_current_usage(topology)
         self._report_current_usage(cur_usage, limits)
-        op = select_operator_to_run(topology, cur_usage, limits)
+        op = select_operator_to_run(
+            topology,
+            cur_usage,
+            limits,
+            ensure_at_least_one_running=self._consumer_blocked(),
+        )
         while op is not None:
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
             cur_usage = self._get_current_usage(topology)
-            op = select_operator_to_run(topology, cur_usage, limits)
+            op = select_operator_to_run(
+                topology,
+                cur_usage,
+                limits,
+                ensure_at_least_one_running=self._consumer_blocked(),
+            )
+
+        # Update the progress bar to reflect scheduling decisions.
+        for op_state in topology.values():
+            op_state.refresh_progress_bar()
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
+
+    def _consumer_blocked(self) -> bool:
+        """Returns whether the user thread is blocked on topology execution."""
+        return self._runner_thread_out.qsize() == 0
 
     def _get_or_refresh_resource_limits(self) -> ExecutionResources:
         """Return concrete limits for use at the current time.
@@ -191,6 +219,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 f"{cur_usage.gpu}/{limits.gpu} GPU, "
                 f"{cur_usage.object_store_memory_str()}/"
                 f"{limits.object_store_memory_str()} object_store_memory"
+            )
+        if self._output_info:
+            self._output_info.set_description(
+                f"output: {len(self._output_node.outqueue)} queued"
             )
 
 

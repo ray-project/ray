@@ -177,7 +177,10 @@ def process_completed_tasks(topology: Topology) -> None:
 
 
 def select_operator_to_run(
-    topology: Topology, cur_usage: ExecutionResources, limits: ExecutionResources
+    topology: Topology,
+    cur_usage: ExecutionResources,
+    limits: ExecutionResources,
+    ensure_at_least_one_running: bool,
 ) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
@@ -197,7 +200,11 @@ def select_operator_to_run(
     ]
 
     # To ensure liveness, allow at least 1 op to run regardless of limits.
-    if not ops and all(op.num_active_work_refs() == 0 for op in topology):
+    if (
+        ensure_at_least_one_running
+        and not ops
+        and all(op.num_active_work_refs() == 0 for op in topology)
+    ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
         ops = [op for op, state in topology.items() if state.num_queued() > 0]
 

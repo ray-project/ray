@@ -29,6 +29,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.test_utils import wait_for_condition
 
 
 @ray.remote
@@ -119,31 +120,37 @@ def test_select_operator_to_run():
 
     # Test empty.
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) is None
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        is None
     )
 
     # Test backpressure based on queue length between operators.
     topo[o1].outqueue.append("dummy1")
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) == o2
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o2
     )
     topo[o1].outqueue.append("dummy2")
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) == o2
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o2
     )
     topo[o2].outqueue.append("dummy3")
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) == o3
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o3
     )
 
     # Test backpressure includes num active tasks as well.
     topo[o3].num_active_tasks = MagicMock(return_value=2)
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) == o2
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o2
     )
     topo[o2].num_active_tasks = MagicMock(return_value=2)
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) == o3
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o3
     )
 
 
@@ -262,16 +269,22 @@ def test_select_ops_ensure_at_least_one_live_operator():
     o1.num_active_work_refs = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
-            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1)
+            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1), True
         )
         is None
     )
     o1.num_active_work_refs = MagicMock(return_value=0)
     assert (
         select_operator_to_run(
-            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1)
+            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1), True
         )
         is o3
+    )
+    assert (
+        select_operator_to_run(
+            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1), False
+        )
+        is None
     )
 
 
@@ -331,6 +344,60 @@ def test_configure_spread_e2e():
     # Read tasks get SPREAD by default, subsequent ones use default policy.
     tasks = sorted(tasks)
     assert tasks == ["DEFAULT", "DEFAULT", "SPREAD", "SPREAD"]
+
+
+def test_scheduling_progress_when_output_blocked():
+    # Processing stages should fully finish even if output is completely stalled.
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.i = 0
+
+        def inc(self):
+            self.i += 1
+
+        def get(self):
+            return self.i
+
+    counter = Counter.remote()
+
+    def func(x):
+        ray.get(counter.inc.remote())
+        return x
+
+    DatasetContext.get_current().use_streaming_executor = True
+    DatasetContext.get_current().execution_options.preserve_order = True
+
+    # Only take the first item from the iterator.
+    it = iter(
+        ray.data.range(100, parallelism=100)
+        .map_batches(func, batch_size=None)
+        .iter_batches(batch_size=None)
+    )
+    next(it)
+    # The pipeline should fully execute even when the output iterator is blocked.
+    wait_for_condition(lambda: ray.get(counter.get.remote()) == 100)
+    # Check we can take the rest.
+    assert list(it) == [[x] for x in range(1, 100)]
+
+
+def test_e2e_liveness_with_output_backpressure():
+    # At least one operator is ensured to be running, if the output becomes idle.
+    DatasetContext.get_current().use_streaming_executor = True
+    DatasetContext.get_current().execution_options.preserve_order = True
+    try:
+        DatasetContext.get_current().execution_options.resource_limits.object_store_memory = (
+            1
+        )
+        ds = ray.data.range(10000, parallelism=100).map(lambda x: x, num_cpus=2)
+        # This will hang forever if the liveness logic is wrong, since the output
+        # backpressure will prevent any operators from running at all.
+        assert ds.take_all() == list(range(10000))
+    finally:
+        DatasetContext.get_current().execution_options.resource_limits.object_store_memory = (
+            None
+        )
 
 
 def test_configure_output_locality():
