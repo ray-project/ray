@@ -48,8 +48,8 @@ class TorchModel(nn.Module, Model):
         raise NotImplementedError
 
 
-class TorchFCNet(nn.Module):
-    """A simple fully connected network.
+class TorchMLP(nn.Module):
+    """A multi-layer perceptron.
 
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.

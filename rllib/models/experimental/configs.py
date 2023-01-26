@@ -59,13 +59,13 @@ class FCConfig(ModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.fcmodel import TorchFCModel
+            from ray.rllib.models.experimental.torch.fcmodel import TorchMLPModel
 
-            return TorchFCModel(self)
+            return TorchMLPModel(self)
         else:
-            from ray.rllib.models.experimental.tf.fcmodel import TfFCModel
+            from ray.rllib.models.experimental.tf.fcmodel import TfMLPModel
 
-            return TfFCModel(self)
+            return TfMLPModel(self)
 
 
 @dataclass
@@ -73,9 +73,9 @@ class FCEncoderConfig(FCConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch"):
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.encoder import TorchFCEncoder
+            from ray.rllib.models.experimental.torch.encoder import TorchMLPEncoder
 
-            return TorchFCEncoder(self)
+            return TorchMLPEncoder(self)
         else:
             from ray.rllib.models.experimental.tf.encoder import TfFCEncoder
 

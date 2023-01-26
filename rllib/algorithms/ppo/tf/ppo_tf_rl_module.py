@@ -9,7 +9,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
-from ray.rllib.models.experimental.tf.primitives import TfFCNet
+from ray.rllib.models.experimental.tf.primitives import TfMLP
 from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 
@@ -28,14 +28,14 @@ class PPOTfRLModule(TfRLModule):
         assert self.config.vf_config, "vf_config must be provided."
         self.encoder = self.config.encoder_config.build(framework="tf")
 
-        self.pi = TfFCNet(
+        self.pi = TfMLP(
             input_dim=self.config.encoder_config.output_dim,
             output_dim=self.config.pi_config.output_dim,
             hidden_layers=self.config.pi_config.hidden_layers,
             activation=self.config.pi_config.activation,
         )
 
-        self.vf = TfFCNet(
+        self.vf = TfMLP(
             input_dim=self.config.encoder_config.output_dim,
             output_dim=1,
             hidden_layers=self.config.vf_config.hidden_layers,

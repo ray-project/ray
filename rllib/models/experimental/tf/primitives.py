@@ -20,7 +20,7 @@ def _call_not_decorated(input_or_output):
     )
 
 
-class TfFCModel(Model, tf.Module):
+class TfMLPModel(Model, tf.Module):
     """Base class for RLlib models.
 
     This class is used to define the general interface for RLlib models and checks
@@ -45,8 +45,8 @@ class TfFCModel(Model, tf.Module):
         raise NotImplementedError
 
 
-class TfFCNet(tf.Module):
-    """A simple fully connected network.
+class TfMLP(tf.Module):
+    """A multi-layer perceptron.
 
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.

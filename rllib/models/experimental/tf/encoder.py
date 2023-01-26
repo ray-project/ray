@@ -13,23 +13,23 @@ from ray.rllib.models.experimental.encoder import (
 )
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.experimental.tf.primitives import TfFCNet
+from ray.rllib.models.experimental.tf.primitives import TfMLP
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.models.experimental.torch.encoder import ENCODER_OUT
-from ray.rllib.models.experimental.tf.primitives import TfFCModel
+from ray.rllib.models.experimental.tf.primitives import TfMLPModel
 
 
-class TfFCEncoder(Encoder, TfFCModel):
+class TfFCEncoder(Encoder, TfMLPModel):
     """A fully connected encoder."""
 
     def __init__(self, config: ModelConfig) -> None:
         Encoder.__init__(self, config)
-        TfFCModel.__init__(self, config)
+        TfMLPModel.__init__(self, config)
 
-        self.net = TfFCNet(
+        self.net = TfMLP(
             input_dim=config.input_dim,
             hidden_layers=config.hidden_layers,
             output_dim=config.output_dim,
@@ -52,12 +52,12 @@ class TfFCEncoder(Encoder, TfFCModel):
         return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
-class LSTMEncoder(Encoder, TfFCModel):
+class LSTMEncoder(Encoder, TfMLPModel):
     """An encoder that uses an LSTM cell and a linear layer."""
 
     def __init__(self, config: ModelConfig) -> None:
         Encoder.__init__(self, config)
-        TfFCModel.__init__(self, config)
+        TfMLPModel.__init__(self, config)
 
         self.lstm = nn.LSTM(
             config.input_dim,
@@ -136,7 +136,7 @@ class LSTMEncoder(Encoder, TfFCModel):
         }
 
 
-class TfIdentityEncoder(TfFCModel):
+class TfIdentityEncoder(TfMLPModel):
     """An encoder that does nothing but passing on inputs.
 
     We use this so that we avoid having many if/else statements in the RLModule.

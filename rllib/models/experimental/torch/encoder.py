@@ -18,19 +18,19 @@ from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-from ray.rllib.models.experimental.torch.primitives import TorchFCNet, TorchModel
+from ray.rllib.models.experimental.torch.primitives import TorchMLP, TorchModel
 
 ENCODER_OUT: str = "encoder_out"
 
 
-class TorchFCEncoder(TorchModel, Encoder):
+class TorchMLPEncoder(TorchModel, Encoder):
     """A fully connected encoder."""
 
     def __init__(self, config: ModelConfig) -> None:
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        self.net = TorchFCNet(
+        self.net = TorchMLP(
             input_dim=config.input_dim,
             hidden_layers=config.hidden_layers,
             output_dim=config.output_dim,
