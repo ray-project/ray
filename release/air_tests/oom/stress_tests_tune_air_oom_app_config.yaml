@@ -8,7 +8,6 @@ env_vars: {"RAY_memory_usage_threshold": "0.7", "RAY_task_oom_retries": "-1"}
 python:
   pip_packages:
     - tensorflow
-    - torch
   conda_packages: []
 
 post_build_cmds:
