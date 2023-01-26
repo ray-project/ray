@@ -159,8 +159,6 @@ TEST_F(GcsHealthCheckManagerTest, TestBasic) {
     Run(2);  // One for starting RPC and one for the RPC callback.
   }
 
-  Run();  // For failure callback.
-
   ASSERT_EQ(1, dead_nodes.size());
   ASSERT_TRUE(dead_nodes.count(node_id));
 }
@@ -184,8 +182,6 @@ TEST_F(GcsHealthCheckManagerTest, StoppedAndResume) {
       StartServing(node_id);
     }
   }
-
-  Run();  // For failure callback.
 
   ASSERT_EQ(0, dead_nodes.size());
 }
@@ -211,8 +207,6 @@ TEST_F(GcsHealthCheckManagerTest, Crashed) {
   for (auto i = 0; i < failure_threshold; ++i) {
     Run(2);  // One for starting RPC and one for the RPC callback.
   }
-
-  Run();  // For failure callback.
 
   ASSERT_EQ(1, dead_nodes.size());
   ASSERT_TRUE(dead_nodes.count(node_id));
@@ -246,7 +240,7 @@ TEST_F(GcsHealthCheckManagerTest, NoRegister) {
     Run(2);  // One for starting RPC and one for the RPC callback.
   }
 
-  Run(2);
+  Run(1);
   ASSERT_EQ(1, dead_nodes.size());
   ASSERT_TRUE(dead_nodes.count(node_id));
 }
