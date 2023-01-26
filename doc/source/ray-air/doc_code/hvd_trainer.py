@@ -8,6 +8,10 @@ from ray.air import session, Checkpoint
 from ray.train.horovod import HorovodTrainer
 from ray.air.config import ScalingConfig
 
+# If using GPUs, set this to True.
+use_gpu = False
+
+
 input_size = 1
 layer_size = 15
 output_size = 1
@@ -43,7 +47,7 @@ def train_loop_per_worker():
     for epoch in range(num_epochs):
         model.train()
         for batch in dataset_shard.iter_torch_batches(
-            batch_size=32, dtypes=torch.float
+            batch_size=32, dtypes=torch.float, device=train.torch.get_device()
         ):
             inputs, labels = torch.unsqueeze(batch["x"], 1), batch["y"]
             inputs.to(device)
@@ -61,9 +65,7 @@ def train_loop_per_worker():
 
 
 train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-scaling_config = ScalingConfig(num_workers=3)
-# If using GPUs, use the below scaling config instead.
-# scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
+scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
 trainer = HorovodTrainer(
     train_loop_per_worker=train_loop_per_worker,
     scaling_config=scaling_config,
