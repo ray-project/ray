@@ -254,7 +254,7 @@ TEST_F(GcsHealthCheckManagerTest, NoRegister) {
 TEST_F(GcsHealthCheckManagerTest, StressTest) {
   boost::asio::io_service::work work(io_service);
   std::srand(std::time(nullptr));
-  auto t = std::make_unique<std::thread>([this]() { io_service.run(); });
+  auto t = std::make_unique<std::thread>([this]() { this->io_service.run(); });
 
   std::vector<NodeID> alive_nodes;
 
