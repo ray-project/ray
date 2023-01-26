@@ -1,6 +1,6 @@
 import asyncio
 import json
-import time
+import os
 
 import ray
 import requests
@@ -12,7 +12,7 @@ from ray._private.test_utils import wait_for_condition
 
 
 def test_timeline(shutdown_only):
-    context = ray.init()
+    ray.init()
 
     @ray.remote
     def f():
@@ -27,7 +27,7 @@ def test_timeline(shutdown_only):
     class AsyncActor:
         async def f(self):
             await asyncio.sleep(5)
-        
+
         async def g(self):
             await asyncio.sleep(5)
 
@@ -35,10 +35,12 @@ def test_timeline(shutdown_only):
     class ThreadedActor:
         def f(self):
             import time
+
             time.sleep(5)
-        
+
         def g(self):
             import time
+
             time.sleep(5)
 
     [f.remote() for _ in range(4)]
@@ -53,18 +55,9 @@ def test_timeline(shutdown_only):
     [c.f.remote() for _ in range(4)]
     [c.g.remote() for _ in range(4)]
 
-    result = json.loads(chrome_tracing_dump(list_tasks(detail=True)))
+    json.loads(chrome_tracing_dump(list_tasks(detail=True)))
 
-
-def test_timeline_data_loss(shutdown_only):
-    ray.init(
-        _system_config={
-            "task_events_max_num_task_in_gcs": 10,
-            "task_events_max_num_task_events_in_buffer": 10
-        }
-    )
-    # resp = requests.get(f"{dashboard_url}/api/v0/tasks/timeline")
-    # print(resp.json())
+    # TODO(sang): Add unit tests.
 
 
 def test_timeline_request(shutdown_only):

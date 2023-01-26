@@ -11,7 +11,19 @@ export const getTaskTimeline = (job_id: string | null) => {
   if (job_id) {
     url += `?job_id=${job_id}`;
   }
+  // Array buffer is required to post data to perfetto.
   return get<string>(url, {
     responseType: "arraybuffer",
+  });
+};
+
+export const DownloadTaskTimeline = (job_id: string | null) => {
+  let url = "api/v0/tasks/timeline";
+  if (job_id) {
+    url += `?job_id=${job_id}&download=1`;
+  }
+  // Blob is required to download a file via browser.
+  return get<Blob>(url, {
+    responseType: "blob",
   });
 };

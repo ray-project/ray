@@ -461,8 +461,14 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @RateLimitedModule.enforce_max_concurrent_calls
     async def tasks_timeline(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         job_id = req.query.get("job_id")
+        download = req.query.get("download")
         result = await self._state_api.generate_task_timeline(job_id)
-        return Response(text=result, content_type="application/json")
+        if download == "1":
+            # Support download if specified.
+            headers = {"Content-Disposition": "attachment; filename=quot.json;"}
+        else:
+            headers = None
+        return Response(text=result, content_type="application/json", headers=headers)
 
     @routes.get("/api/v0/delay/{delay_s}")
     async def delayed_response(self, req: aiohttp.web.Request):

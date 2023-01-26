@@ -1,4 +1,4 @@
-import { Button, makeStyles } from "@material-ui/core";
+import { makeStyles } from "@material-ui/core";
 import { Alert } from "@material-ui/lab";
 import dayjs from "dayjs";
 import React from "react";
@@ -7,7 +7,6 @@ import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
-import { getTaskTimeline } from "../../service/task";
 import ActorList from "../actor/ActorList";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
@@ -16,9 +15,7 @@ import { useJobDetail } from "./hook/useJobDetail";
 import { useJobProgress } from "./hook/useJobProgress";
 import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
 import { TaskProgressBar } from "./TaskProgressBar";
-
-// const PERFETTO_URL = "https://ui.perfetto.dev";
-const PERFETTO_URL = "chrome://tracing"
+import { TaskTimeline } from "./TaskTimeline";
 
 const useStyle = makeStyles((theme) => ({
   root: {
@@ -28,32 +25,6 @@ const useStyle = makeStyles((theme) => ({
     marginTop: theme.spacing(2),
   },
 }));
-
-let timer: null | any = undefined;
-
-const onClick = (job_id: string | null) => {
-  getTaskTimeline(job_id).then((resp) => {
-    openTrace(resp.data);
-  });
-};
-
-// Code from https://perfetto.dev/docs/visualization/deep-linking-to-perfetto-ui
-const openTrace = (arrayBuffer: any) => {
-  const win = window.open(PERFETTO_URL);
-  window.addEventListener("message", (evt) => onMessage(evt, win, arrayBuffer));
-  if (win) {
-    timer = setInterval(() => win.postMessage("PING", PERFETTO_URL), 50);
-  }
-};
-
-const onMessage = (evt: any, win: any, arrayBuffer: any) => {
-  if (evt.data !== "PONG") {
-    return;
-  }
-  window.clearInterval(timer);
-  timer = null;
-  win.postMessage(arrayBuffer, PERFETTO_URL);
-};
 
 type JobDetailChartsPageProps = {
   newIA?: boolean;
@@ -195,11 +166,11 @@ export const JobDetailChartsPage = ({
             },
           ]}
         />
-        <Button onClick={() => onClick(job.job_id)} color="primary">
-          Timeline
-        </Button>
       </TitleCard>
       <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
+      <TitleCard title="Task Timeline">
+        <TaskTimeline jobId={jobId} />
+      </TitleCard>
       <TitleCard title="Task Table">
         <TaskList jobId={jobId} />
       </TitleCard>
