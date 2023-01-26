@@ -1567,6 +1567,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// A shared pointer between various components that emitting task state events.
   /// e.g. CoreWorker, TaskManager.
   std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
+
+  /// keep track of the number of live nodes in the cluster.
+  std::atomic<int64_t> num_alive_nodes_ = 0;
 };
 
 }  // namespace core

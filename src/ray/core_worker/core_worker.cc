@@ -274,16 +274,19 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
 
-  // Register a callback to monitor removed nodes.
+  // Register a callback to monitor add/removed nodes.
   // Note we capture a shared ownership of reference_counter_
   // here to avoid destruction order fiasco between gcs_client and reference_counter_.
-  auto on_node_change = [reference_counter = this->reference_counter_](
+  auto on_node_change = [this, reference_counter = this->reference_counter_](
                             const NodeID &node_id, const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::DEAD) {
       RAY_LOG(INFO) << "Node failure from " << node_id
                     << ". All objects pinned on that node will be lost if object "
                        "reconstruction is not enabled.";
       reference_counter->ResetObjectsOnRemovedNode(node_id);
+      num_alive_nodes_--;
+    } else {
+      num_alive_nodes_++;
     }
   };
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
@@ -423,8 +426,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
       return RayConfig::instance().max_pending_lease_requests_per_scheduling_category();
     }
-    return std::max<int64_t>(kMinConcurrentLeaseCap,
-                             gcs_client_->Nodes().GetAll().size());
+    return std::max<int64_t>(kMinConcurrentLeaseCap, num_alive_nodes_.load());
   };
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_,
