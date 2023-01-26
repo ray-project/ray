@@ -178,6 +178,8 @@ class JobInfoStorageClient:
     Interface to put and get job data from the Internal KV store.
     """
 
+    # Please keep this format in sync with JobDataKey()
+    # in src/ray/gcs/gcs_server/gcs_job_manager.h.
     JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 

@@ -198,8 +198,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
             }
           };
 
-      std::string job_data_key = "_ray_internal_job_info_" + job_submission_id;
-      internal_kv_.Get("job", job_data_key, kv_get_callback);
+      internal_kv_.Get("job", JobDataKey(job_submission_id), kv_get_callback);
     }
 
     // If there were no jobs with a submission id, we must send the reply here because no
