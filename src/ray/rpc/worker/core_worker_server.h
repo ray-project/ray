@@ -79,7 +79,8 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)                           \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignObjectOwner)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignObjectOwner)              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(NumPendingTasks)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
 class CoreWorkerServiceHandler {

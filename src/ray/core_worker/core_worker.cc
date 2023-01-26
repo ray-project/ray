@@ -3543,6 +3543,14 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+// Handle RPC for TaskManager::NumPendingTasks().
+void CoreWorker::HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
+                                       rpc::NumPendingTasksReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  reply->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();

@@ -386,6 +386,13 @@ message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
 
+// request and reply for NumPendingTasks
+message NumPendingTasksRequest {}
+
+message NumPendingTasksReply {
+  int64 num_pending_tasks = 1;
+}
+
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
@@ -441,4 +448,6 @@ service CoreWorkerService {
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
+  // Get the number of pending tasks.
+  rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
 }
