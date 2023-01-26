@@ -2735,6 +2735,7 @@ pyx_library(
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
+        "//:redis_client",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//:stats_lib",
