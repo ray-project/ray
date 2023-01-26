@@ -246,7 +246,7 @@ TEST_F(GcsHealthCheckManagerTest, NoRegister) {
 }
 
 TEST_F(GcsHealthCheckManagerTest, StressTest) {
-#if defined(__has_feature) && __has_feature(thread_sanitizer)
+#ifdef _RAY_TSAN_BUILD
   GTEST_SKIP() << "Disabled in tsan because of performance";
 #endif
   boost::asio::io_service::work work(io_service);
