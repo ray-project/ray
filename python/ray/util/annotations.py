@@ -49,7 +49,7 @@ def PublicAPI(*args, **kwargs):
     def wrap(obj):
         if stability in ["alpha", "beta"]:
             message = (
-                f"**PublicAPI ({stability}):** This API is in {stability} "
+                f"PublicAPI ({stability}): This API is in {stability} "
                 "and may change before becoming stable."
             )
         else:
@@ -80,8 +80,7 @@ def DeveloperAPI(*args, **kwargs):
 
     def wrap(obj):
         _append_doc(
-            obj,
-            message="**DeveloperAPI:** This API may change across minor Ray releases.",
+            obj, message="DeveloperAPI: This API may change across minor Ray releases."
         )
         _mark_annotated(obj)
         return obj
