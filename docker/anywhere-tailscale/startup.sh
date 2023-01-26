@@ -139,7 +139,7 @@ term_handler(){
         hostnames="nexus.chimp-beta.ts.net"
     fi
 
-    /usr/local/bin/crash --hosts $hostnames -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';" || echo "Error running \"/usr/local/bin/crash --hosts $hostnames -c \"ALTER CLUSTER DECOMMISSION '\"$HOSTNAME\"';\""
+    /usr/local/bin/crash --hosts $hostnames -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
 
 
 
