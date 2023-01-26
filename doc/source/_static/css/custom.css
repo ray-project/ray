@@ -488,6 +488,6 @@ footer {
 }
 
 /* Make the hover color of tag/gallery buttons differ from "active" */
-.tag:hover {
+.tag.btn-outline-primary:hover {
     background-color: rgba(20, 99, 208, 0.62) !important;
 }
