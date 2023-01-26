@@ -144,12 +144,17 @@ class RayClusterOnSpark:
                         time.time() - last_progress_move_time
                         > _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT
                     ):
+                        if cur_alive_worker_count == 0:
+                            raise RuntimeError(
+                                "Current spark cluster has no resources to launch "
+                                "Ray worker nodes."
+                            )
                         _logger.warning(
                             "Timeout in waiting for all ray workers to start. "
                             "Started / Total requested: "
                             f"({cur_alive_worker_count} / {self.num_worker_nodes}). "
-                            "Please check ray logs to see why some ray workers "
-                            "failed to start."
+                            "Current spark cluster does not have sufficient resources "
+                            "to launch requested number Ray worker nodes."
                         )
                         return
         finally:
@@ -678,7 +683,7 @@ def _setup_ray_cluster(
         ).start()
 
         # Call hook immediately after spark job started.
-        start_hook.on_spark_background_job_created(spark_job_group_id)
+        start_hook.on_cluster_created(ray_cluster_handler)
 
         # wait background spark task starting.
         for _ in range(_BACKGROUND_JOB_STARTUP_WAIT):

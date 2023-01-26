@@ -1,6 +1,10 @@
+import os
+
 from .start_hook_base import RayOnSparkStartHook
 from .utils import get_spark_session
 import logging
+import threading
+import time
 
 _logger = logging.getLogger(__name__)
 
@@ -54,7 +58,11 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
     )
 
 
+AUTO_SHUTDOWN_POLL_INTERVAL = 3
+DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES = 'DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES'
+
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
+
     def get_default_temp_dir(self):
         return "/local_disk0/tmp"
 
@@ -63,12 +71,36 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             get_spark_session().sparkContext, port, "Ray Cluster Dashboard"
         )
 
-    def on_spark_background_job_created(self, job_group_id):
+    def on_cluster_created(self, ray_cluster_handler):
+        dbutils = get_dbutils()
         try:
-            get_dbutils().entry_point.registerBackgroundSparkJobGroup(job_group_id)
+            dbutils.entry_point.registerBackgroundSparkJobGroup(
+                ray_cluster_handler.spark_job_group_id
+            )
         except Exception:
             _logger.warning(
                 "Register ray cluster spark job as background job failed. You need to "
                 "manually call `ray_cluster_on_spark.shutdown()` before detaching "
                 "your databricks python REPL."
             )
+
+        auto_shutdown_timeout_millis = float(
+            os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES, "30")
+        ) * 60 * 1000
+
+        def auto_shutdown_watcher():
+            while True:
+                if ray_cluster_handler.is_shutdown:
+                    # The cluster is shut down. The watcher thread exits.
+                    return
+
+                idle_time = dbutils.entry_point.getIdleTimeMillisSinceLastNotebookExecution()
+                if idle_time > auto_shutdown_timeout_millis:
+                    ray_cluster_handler.shutdown()
+                    return
+
+                time.sleep(AUTO_SHUTDOWN_POLL_INTERVAL)
+
+        threading.Thread(
+            target=auto_shutdown_watcher, args=(), daemon=True
+        ).start()
