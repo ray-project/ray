@@ -2631,6 +2631,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":grpc_common_lib",
         ":ray_common",
         ":ray_mock",
         "@com_google_googletest//:gtest",
