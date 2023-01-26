@@ -84,9 +84,26 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "your databricks python REPL."
             )
 
-        auto_shutdown_timeout_millis = float(
+        auto_shutdown_timeout_minutes = float(
             os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES, "30")
-        ) * 60 * 1000
+        )
+        if auto_shutdown_timeout_minutes == 0:
+            _logger.info(
+                "The Ray cluster will keep running until you manually detach the "
+                "databricks notebook or call "
+                "`ray.util.spark.shutdown_ray_cluster()`."
+            )
+        else:
+            _logger.info(
+                "The Ray cluster will be shut down automatically if you don't run "
+                "commands on the databricks notebook for "
+                f"{auto_shutdown_timeout_minutes} minutes. You can change the "
+                "timeout minutes by setting "
+                "'DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES' environment "
+                "variable, setting it to 0 means infinite timeout."
+            )
+
+        auto_shutdown_timeout_millis = auto_shutdown_timeout_minutes * 60 * 1000
 
         def auto_shutdown_watcher():
             while True:
@@ -94,7 +111,19 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                     # The cluster is shut down. The watcher thread exits.
                     return
 
-                idle_time = dbutils.entry_point.getIdleTimeMillisSinceLastNotebookExecution()
+                try:
+                    idle_time = dbutils.entry_point.getIdleTimeMillisSinceLastNotebookExecution()
+                except Exception:
+                    _logger.warning(
+                        "Your current Databricks Runtime version does not support API "
+                        "`getIdleTimeMillisSinceLastNotebookExecution`, we cannot "
+                        "automatically shut down Ray cluster when databricks notebook "
+                        "is inactive, you need to manually detach databricks notebook "
+                        "or call `ray.util.spark.shutdown_ray_cluster()` to shut down "
+                        "Ray cluster on spark."
+                    )
+                    return
+
                 if idle_time > auto_shutdown_timeout_millis:
                     ray_cluster_handler.shutdown()
                     return
