@@ -317,7 +317,7 @@ message JobsAPIInfo {
   // Arbitrary user-provided metadata for the job.
   map<string, string> metadata = 7;
   // The JSON-serialized runtime environment for the job.
-  string runtime_env = 8;
+  string runtime_env_json = 8;
   // The quantity of CPU cores to reserve for the entrypoint command.
   double entrypoint_num_cpus = 9;
   // The number of GPUs to reserve for the entrypoint command.

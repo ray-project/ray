@@ -130,6 +130,9 @@ class JobInfo:
     def to_json(self) -> Dict[str, Any]:
         """Convert this object to a JSON-serializable dictionary.
 
+        Note that the runtime_env field is converted to a JSON-serialized string
+        and the field is renamed to runtime_env_json.
+
         Returns:
             A JSON-serializable dictionary representing the JobInfo object.
         """
@@ -141,7 +144,8 @@ class JobInfo:
 
         # Convert runtime_env to a JSON-serialized string.
         if json_dict["runtime_env"] is not None:
-            json_dict["runtime_env"] = json.dumps(json_dict["runtime_env"])
+            json_dict["runtime_env_json"] = json.dumps(json_dict["runtime_env"])
+            del json_dict["runtime_env"]
 
         # Assert that the dictionary is JSON-serializable.
         json.dumps(json_dict)
@@ -152,6 +156,9 @@ class JobInfo:
     def from_json(cls, json_dict: Dict[str, Any]) -> None:
         """Initialize this object from a JSON dictionary.
 
+        Note that the runtime_env_json field is converted to a dictionary and
+        the field is renamed to runtime_env.
+        
         Args:
             json_dict: A JSON dictionary to use to initialize the JobInfo object.
         """
@@ -159,8 +166,9 @@ class JobInfo:
         json_dict["status"] = JobStatus(json_dict["status"])
 
         # Convert runtime_env from a JSON-serialized string to a dictionary.
-        if json_dict["runtime_env"] is not None:
-            json_dict["runtime_env"] = json.loads(json_dict["runtime_env"])
+        if json_dict["runtime_env_json"] is not None:
+            json_dict["runtime_env"] = json.loads(json_dict["runtime_env_json"])
+            del json_dict["runtime_env_json"]
 
         return cls(**json_dict)
 
