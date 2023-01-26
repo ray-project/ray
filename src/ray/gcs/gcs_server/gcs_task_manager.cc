@@ -38,7 +38,8 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
   RAY_CHECK(next_idx_to_overwrite_ == 0 || next_idx_to_overwrite_ < task_events_.size())
       << "next_idx_to_overwrite=" << next_idx_to_overwrite_
       << " should be in bound. (size=" << task_events_.size() << ")";
-  // Copy from the next insertion index
+  // Copy from the least recently generated data, where `next_idx_to_overwrite_` points to
+  // the least recently added data.
   std::copy(task_events_.begin() + next_idx_to_overwrite_,
             task_events_.end(),
             std::back_inserter(ret));
