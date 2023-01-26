@@ -1,4 +1,6 @@
 import logging
+import queue
+import threading
 import os
 from typing import Iterator, Optional
 
@@ -27,7 +29,7 @@ logger = logging.getLogger(__name__)
 DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
 
 
-class StreamingExecutor(Executor):
+class StreamingExecutor(Executor, threading.Thread):
     """A streaming Dataset executor.
 
     This implementation executes Dataset DAGs in a fully streamed way. It runs
@@ -41,9 +43,10 @@ class StreamingExecutor(Executor):
         # data updates the stats object in legacy code).
         self._stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
-        if options.locality_with_output:
-            raise NotImplementedError("locality with output")
-        super().__init__(options)
+        self._queue = queue.Queue(maxsize=1)
+        self._dag = None
+        Executor.__init__(self, options)
+        threading.Thread.__init__(self)
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
@@ -56,6 +59,16 @@ class StreamingExecutor(Executor):
         if not isinstance(dag, InputDataBuffer):
             logger.info("Executing DAG %s", dag)
             self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
+        self._dag = dag
+        self.start()
+
+        item = self._queue.get()
+        while item is not None:
+            yield item
+            item = self._queue.get()
+
+    def run(self):
+        dag = self._dag
 
         # Setup the streaming DAG topology.
         topology, self._stats = build_streaming_topology(dag, self._options)
@@ -68,12 +81,13 @@ class StreamingExecutor(Executor):
             # Run scheduling loop until complete.
             while self._scheduling_loop_step(topology):
                 while output_node.outqueue:
-                    yield output_node.outqueue.pop(0)
+                    self._queue.put(output_node.outqueue.pop(0))
 
             # Handle any leftover outputs.
             while output_node.outqueue:
-                yield output_node.outqueue.pop(0)
+                self._queue.put(output_node.outqueue.pop(0))
         finally:
+            self._queue.put(None)
             for op in topology:
                 op.shutdown()
             if self._global_info:
