@@ -1519,7 +1519,11 @@ class DeploymentState:
                 # recovered or a new deploy happens.
                 if replica.version == self._target_state.version:
                     self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-                        self._name, DeploymentStatus.UNHEALTHY
+                        name=self._name,
+                        status=DeploymentStatus.UNHEALTHY,
+                        message="A replica's health check failed. This "
+                        "deployment will be UNHEALTHY until the replica "
+                        "recovers or a new deploy happens.",
                     )
 
         slow_start_replicas = []

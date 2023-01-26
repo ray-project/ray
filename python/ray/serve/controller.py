@@ -312,7 +312,11 @@ class ServeController:
             self.deploy_app(ServeApplicationSchema.parse_obj(config), update_time=False)
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
-        """Used for testing."""
+        """Used for testing.
+
+        Returned dictionary maps deployment names to replica infos.
+        """
+
         return self.deployment_state_manager.get_running_replica_infos()
 
     def get_http_config(self):
