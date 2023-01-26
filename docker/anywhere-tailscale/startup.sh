@@ -132,7 +132,7 @@ term_handler(){
     echo "***Stopping"
     echo "Running Cluster Election"
     /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
-    echo "Running Decomission"
+    echo "Running Decommission"
     response=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].hostname')
     hostnames=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net"}' | tr '\n' ' ')
     if [ -n hostnames ]; then
@@ -141,7 +141,7 @@ term_handler(){
         hostnames="nexus.chimp-beta.ts.net"
     fi
 
-    /usr/local/bin/crash --hosts $hostnames -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
+    /usr/local/bin/crash --hosts $hostnames -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';" || echo "Error running \"/usr/local/bin/crash --hosts $hostnames -c \"ALTER CLUSTER DECOMMISSION '\"$HOSTNAME\"';\""
 
 
 
