@@ -264,6 +264,7 @@ TEST_F(GcsHealthCheckManagerTest, StressTest) {
   }
 
   for (size_t i = 0; i < 20000UL; ++i) {
+    RAY_LOG(INFO) << "Progress: " << i << "/20000";
     auto iter = alive_nodes.begin() + std::rand() % alive_nodes.size();
     health_check->RemoveNode(*iter);
     DeleteServer(*iter);
