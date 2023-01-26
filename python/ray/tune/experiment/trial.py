@@ -40,7 +40,7 @@ from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
-from ray.tune.utils.serialization import TuneFunctionEncoder
+from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
@@ -293,7 +293,7 @@ class Trial:
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.config = config or {}
-        self.local_dir = local_dir  # This remains unexpanded for syncing.
+        self._local_dir = local_dir  # This remains unexpanded for syncing.
 
         # Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
@@ -473,8 +473,38 @@ class Trial:
         return self.location.hostname
 
     @property
+    def local_dir(self):
+        return self._local_dir
+
+    @local_dir.setter
+    def local_dir(self, local_dir):
+        relative_checkpoint_dirs = []
+        if self.logdir:
+            # Save the relative paths of persistent trial checkpoints, which are saved
+            # relative to the old `local_dir`/`logdir`
+            for checkpoint in self.get_trial_checkpoints():
+                checkpoint_dir = checkpoint.dir_or_data
+                assert isinstance(checkpoint_dir, str)
+                relative_checkpoint_dirs.append(
+                    os.path.relpath(checkpoint_dir, self.logdir)
+                )
+
+        # Update the underlying `_local_dir`, which also updates the trial `logdir`
+        self._local_dir = local_dir
+
+        if self.logdir:
+            for checkpoint, relative_checkpoint_dir in zip(
+                self.get_trial_checkpoints(), relative_checkpoint_dirs
+            ):
+                # Reconstruct the checkpoint dir using the (possibly updated)
+                # trial logdir and the relative checkpoint directory.
+                checkpoint.dir_or_data = os.path.join(
+                    self.logdir, relative_checkpoint_dir
+                )
+
+    @property
     def logdir(self):
-        if not self.relative_logdir:
+        if not self.local_dir or not self.relative_logdir:
             return None
         return str(Path(self.local_dir).joinpath(self.relative_logdir))
 
@@ -901,6 +931,20 @@ class Trial:
             self._state_valid = True
         return self._state_json
 
+    @classmethod
+    def from_json_state(cls, json_state: str, stub: bool = False) -> "Trial":
+        trial_state = json.loads(json_state, cls=TuneFunctionDecoder)
+
+        new_trial = Trial(
+            trial_state["trainable_name"],
+            stub=stub,
+            _setup_default_resource=False,
+        )
+
+        new_trial.__setstate__(trial_state)
+
+        return new_trial
+
     def __getstate__(self):
         """Memento generator for Trial.
 
@@ -922,53 +966,21 @@ class Trial:
         state["_state_valid"] = False
         state["_default_result_or_future"] = None
 
-        # Save the relative paths of persistent trial checkpoints
-        # When loading this trial state, the paths should be constructed again
-        # relative to the trial `logdir`, which may have been updated.
-        relative_checkpoint_dirs = []
-        for checkpoint in self.get_trial_checkpoints():
-            checkpoint_dir = checkpoint.dir_or_data
-            assert isinstance(checkpoint_dir, str)
-            relative_checkpoint_dirs.append(
-                os.path.relpath(checkpoint_dir, self.logdir)
-            )
-        state["__relative_checkpoint_dirs"] = relative_checkpoint_dirs
-
         return copy.deepcopy(state)
 
     def __setstate__(self, state):
-
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
         for key in self._nonjson_fields:
             if key in state:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
-        # Retrieve the relative checkpoint dirs
-        relative_checkpoint_dirs = state.pop("__relative_checkpoint_dirs", None)
-
         # Ensure that stub doesn't get overriden
         stub = state.pop("stub", True)
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)
 
-        if relative_checkpoint_dirs:
-            for checkpoint, relative_checkpoint_dir in zip(
-                self.get_trial_checkpoints(), relative_checkpoint_dirs
-            ):
-                # Reconstruct the checkpoint dir using the (possibly updated)
-                # trial logdir and the relative checkpoint directory.
-                checkpoint.dir_or_data = os.path.join(
-                    self.logdir, relative_checkpoint_dir
-                )
-
         if not self.stub:
             validate_trainable(self.trainable_name)
 
         assert self.placement_group_factory
-
-        # Avoid creating logdir in client mode for returned trial results,
-        # since the dir might not be creatable locally.
-        # TODO(ekl) this is kind of a hack.
-        if not ray.util.client.ray.is_connected():
-            self.init_logdir()  # Create logdir if it does not exist
