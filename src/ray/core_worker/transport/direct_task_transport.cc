@@ -326,14 +326,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
-  if (scheduling_key_entry.pending_lease_requests.size() ==
-      max_pending_lease_requests_per_scheduling_category_) {
+  uint64_t max_pending_lease_requests =
+      std::max(get_max_pending_lease_requests_per_scheduling_category_(),
+               static_cast<uint64_t>(1));
+
+  if (scheduling_key_entry.pending_lease_requests.size() >= max_pending_lease_requests) {
     RAY_LOG(DEBUG) << "Exceeding the pending request limit "
-                   << max_pending_lease_requests_per_scheduling_category_;
+                   << max_pending_lease_requests;
     return;
   }
-  RAY_CHECK(scheduling_key_entry.pending_lease_requests.size() <
-            max_pending_lease_requests_per_scheduling_category_);
 
   if (!scheduling_key_entry.AllWorkersBusy()) {
     // There are idle workers, so we don't need more.
