@@ -73,21 +73,26 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: OpState = self._topology[dag]
         self.start()
 
-        # Drain items from the runner thread.
-        item = self._runner_thread_out.get()
-        while item is not None:
-            if isinstance(item, Exception):
-                raise item
-            else:
-                yield item
+        # Drain items from the runner thread until completion.
+        try:
             item = self._runner_thread_out.get()
+            while item is not None:
+                if isinstance(item, Exception):
+                    raise item
+                else:
+                    yield item
+                item = self._runner_thread_out.get()
+        finally:
+            for op in self._topology:
+                op.shutdown()
+            if self._global_info:
+                self._global_info.close()
 
     def run(self):
         """Run the control loop in a helper thread.
 
         Results are returned via the `self._runner_thread_out` queue.
         """
-
         try:
             # Run scheduling loop until complete.
             while self._scheduling_loop_step(self._topology):
@@ -103,10 +108,6 @@ class StreamingExecutor(Executor, threading.Thread):
         finally:
             # Signal end of results.
             self._runner_thread_out.put(None)
-            for op in self._topology:
-                op.shutdown()
-            if self._global_info:
-                self._global_info.close()
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
