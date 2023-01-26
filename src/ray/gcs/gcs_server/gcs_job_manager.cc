@@ -192,7 +192,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
             }
 
             // Send reply if all jobs have been processed.
-            if (++num_processed_jobs == reply->job_info_list_size()) {
+            if (num_processed_jobs->fetch_add(1) == reply->job_info_list_size() - 1) {
               RAY_LOG(INFO) << "Finished getting all job info.";
               GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
             }
