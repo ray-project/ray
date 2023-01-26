@@ -3851,6 +3851,7 @@
 - name: tune_air_oom
   group: core-daily-test
   working_dir: air_tests
+  stable: false
 
   frequency: nightly
   team: core

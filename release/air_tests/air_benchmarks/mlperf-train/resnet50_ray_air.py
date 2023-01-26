@@ -456,7 +456,7 @@ if __name__ == "__main__":
         "--trainer-resources-cpu",
         default=1,
         type=int,
-        help=("CPU resources requested per AIR trainer instance" "Defaults to 1."),
+        help=("CPU resources requested per AIR trainer instance. Defaults to 1."),
     )
     parser.add_argument(
         "--tune-trials",
