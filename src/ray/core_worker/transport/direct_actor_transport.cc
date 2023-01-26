@@ -109,7 +109,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
   auto accept_callback = [this, reply, task_spec, resource_ids](
                              rpc::SendReplyCallback send_reply_callback) {
-    // Populate the
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
