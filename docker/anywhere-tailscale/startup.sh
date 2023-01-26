@@ -131,8 +131,8 @@ fi
 term_handler(){
     echo "***Stopping"
     echo "Running Cluster Election"
-    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';" \
-    echo "Running Decomission" \
+    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
+    echo "Running Decomission"
     response=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].hostname')
     hostnames=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net"}' | tr '\n' ' ')
     if [ -n hostnames ]; then
