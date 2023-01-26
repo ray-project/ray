@@ -212,27 +212,25 @@ if setup_spec.type == SetupType.RAY:
     if sys.version_info >= (3, 7):
         pandas_dep = "pandas >= 1.3"
         numpy_dep = "numpy >= 1.20"
-        pickle_dep = "pickle"
     else:
         # Pandas dropped python 3.6 support in 1.2.
         pandas_dep = "pandas >= 1.0.5"
         # NumPy dropped python 3.6 support in 1.20.
         numpy_dep = "numpy >= 1.19"
-        pickle_dep = "pickle5"
     if sys.version_info >= (3, 7) and sys.platform != "win32":
         pyarrow_dep = "pyarrow >= 6.0.1"
     else:
         # pyarrow dropped python 3.6 support in 7.0.0.
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
         pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
+
+    data_extras = [numpy_dep, pandas_dep, pyarrow_dep, "fsspec"]
+    # Need pickle5 package to override default pickle package for Python < 3.7
+    if sys.version_info < (3, 7):
+        data_extras.append("pickle5")
+
     setup_spec.extras = {
-        "data": [
-            numpy_dep,
-            pandas_dep,
-            pyarrow_dep,
-            pickle_dep,
-            "fsspec",
-        ],
+        "data": data_extras,
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to dashboard/optional_deps.py as well.
