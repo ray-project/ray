@@ -70,7 +70,7 @@ hdfs dfs -mkdir /test
 
 destdir=/tmp/hdfs_env
 touch $destdir
-for key in "JAVA_HOME" "HADOOP_HOME" "HADOOP_CONF_DIR" "USER" "PATH"
+for key in "JAVA_HOME" "HADOOP_HOME" "HADOOP_CONF_DIR" "USER"
 do
   # use indirection to access a var by its name.
   echo "$key=${!key}" >> $destdir
@@ -81,6 +81,7 @@ echo "CONTAINER_ID=$(hostname)" >> $destdir
 
 # make it a separate file to be set directly in the unit test.
 # the variable is too big to be supplied through command line.
-classpath_destdir=/tmp/hdfs_classpath_env
 # Needed for pyarrow to work.
-hadoop classpath --glob >> $classpath_destdir
+hadoop classpath --glob >> /tmp/hdfs_classpath_env
+
+echo "$PATH" >> /tmp/hdfs_path_env
