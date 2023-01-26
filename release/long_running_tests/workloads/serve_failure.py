@@ -71,13 +71,13 @@ class RandomKiller:
             chosen = random.choice(self._get_serve_actors())
             print(f"Killing {chosen}")
             ray.kill(chosen, no_restart=False)
-            asyncio.sleep(self.kill_period_s)
+            await asyncio.sleep(self.kill_period_s)
 
     async def spare(self, deployment_name: str):
         print(f'Sparing deployment "{deployment_name}" replicas.')
         self.sanctuary.add(deployment_name)
 
-    async def kill(self, deployment_name: str):
+    async def stop_spare(self, deployment_name: str):
         print(f'No longer sparing deployment "{deployment_name}" replicas.')
         self.sanctuary.discard(deployment_name)
 
@@ -125,7 +125,7 @@ class RandomTest:
 
         self.deployments.append(new_name)
 
-        ray.get(self.random_killer.kill.remote(new_name))
+        ray.get(self.random_killer.stop_spare.remote(new_name))
 
     def verify_deployment(self):
         deployment = random.choice(self.deployments)
