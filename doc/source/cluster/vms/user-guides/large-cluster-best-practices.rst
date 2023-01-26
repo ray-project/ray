@@ -97,8 +97,8 @@ General recommendations with AWS instance types:
 
 * The latest gen GPU is almost always the best bang for your buck (p3 > p2, g4
   > g3), for most well designed applications the performance outweighs the
-  price (the instance price may be higher, but you’ll use the instance for less
-  time.
+  price. (The instance price may be higher, but you use the instance for less
+  time.)
 * You may want to consider using older instances if you’re doing dev work and
   won’t actually fully utilize the GPUs though.
 * If you’re doing training (ML or RL), you should use a P instance. If you’re
