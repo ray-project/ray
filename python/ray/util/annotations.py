@@ -80,7 +80,8 @@ def DeveloperAPI(*args, **kwargs):
 
     def wrap(obj):
         _append_doc(
-            obj, message="**DeveloperAPI:** This API may change across minor Ray releases."
+            obj,
+            message="**DeveloperAPI:** This API may change across minor Ray releases.",
         )
         _mark_annotated(obj)
         return obj
