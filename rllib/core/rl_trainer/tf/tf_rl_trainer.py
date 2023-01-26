@@ -19,6 +19,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     Optimizer,
     ParamType,
     ParamDictType,
+    HyperparamType
 )
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -34,10 +35,12 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.core.rl_trainer.trainer_runner_config import TFRLTrainerScalingConfig
 
 if TYPE_CHECKING:
     from ray.air.config import ScalingConfig
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 
 tf1, tf, tfv = try_import_tf()
 
@@ -98,19 +101,16 @@ class TfRLTrainer(RLTrainer):
             Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
         ] = None,
         module: Optional[RLModule] = None,
-        optimizer_config: Mapping[str, Any],
-        distributed: bool = False,
-        enable_tf_function: bool = True,
-        scaling_config: Optional["ScalingConfig"] = None,
-        algorithm_config: Optional["AlgorithmConfig"] = None,
+        optimizer_config: Mapping[str, Any] = None,
+        scaling_config: Optional[TFRLTrainerScalingConfig] = None,
+        trainer_hyperparameters: Optional[HyperparamType] = None,
     ):
         super().__init__(
             module_spec=module_spec,
             module=module,
             optimizer_config=optimizer_config,
-            distributed=distributed,
-            scaling_config=scaling_config,
-            algorithm_config=algorithm_config,
+            scaling_config=scaling_config,  
+            trainer_hyperparameters=trainer_hyperparameters,
         )
 
         # TODO (Kourosh): This is required to make sure tf computes the values in the
@@ -121,7 +121,8 @@ class TfRLTrainer(RLTrainer):
         # does not mention this as a requirement?
         tf1.enable_eager_execution()
 
-        self._enable_tf_function = enable_tf_function
+        scaling_config = scaling_config or TFRLTrainerScalingConfig()
+        self._enable_tf_function = scaling_config.enable_tf_function
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn)
         else:

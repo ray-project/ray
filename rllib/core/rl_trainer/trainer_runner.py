@@ -1,5 +1,5 @@
 import math
-from typing import Any, List, Mapping, Type, Optional, Callable, Dict
+from typing import Any, List, Mapping, Type, Optional, Callable, Dict, TYPE_CHECKING
 
 import ray
 
@@ -14,12 +14,15 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     Optimizer,
 )
 
+
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 
 
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 
+if TYPE_CHECKING:
+    from ray.rllib.core.rl_trainer.trainer_runner_config import TrainerRunnerScalingConfig
 
 class TrainerRunner:
     """Coordinator of RLTrainers.
@@ -49,18 +52,16 @@ class TrainerRunner:
         self,
         trainer_class: Type[RLTrainer],
         trainer_config: Mapping[str, Any],
-        compute_config: Mapping[str, Any],
+        scaling_config: Optional[TrainerRunnerScalingConfig] = None
     ):
-        num_gpus = compute_config.get("num_gpus", 0)
-        use_fake_gpus = compute_config.get("_use_fake_gpus", False)
+        scaling_config = scaling_config or TrainerRunnerScalingConfig()
         self._trainer_config = trainer_config
 
-        if num_gpus > 0:
-            scaling_config = ScalingConfig(
-                num_workers=num_gpus,
-                use_gpu=(not use_fake_gpus),
-            )
-
+        self._is_local = scaling_config.local
+        if self._is_local:
+            self._trainer = trainer_class(**trainer_config, distributed=False)
+            self._trainer.build()
+        else:
             if trainer_class.framework == "torch":
                 from ray.train.torch import TorchConfig
 
@@ -82,10 +83,9 @@ class TrainerRunner:
 
             # TODO(avnishn, kourosh): Should we pass in scaling config into the
             # trainer?
-            trainer_config["distributed"] = self._distributed = bool(num_gpus > 1)
-            trainer_config["scaling_config"] = scaling_config
+            is_module_distributed = scaling_config.num_workers > 1
             self.backend_executor.start(
-                train_cls=trainer_class, train_cls_kwargs=trainer_config
+                train_cls=trainer_class, train_cls_kwargs=dict(**trainer_config, distributed=is_module_distributed, scaling_config=scaling_config)
             )
             self._workers = [
                 w.actor for w in self.backend_executor.worker_group.workers
@@ -93,10 +93,9 @@ class TrainerRunner:
 
             ray.get([w.build.remote() for w in self._workers])
 
-        else:
-            trainer_config["distributed"] = self._distributed = False
-            self._trainer = trainer_class(**trainer_config)
-            self._trainer.build()
+    @property
+    def is_local(self) -> bool:
+        return not self._is_local
 
     def update(self, batch: MultiAgentBatch) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the RLTrainer(s) maintained by this TrainerRunner.
@@ -107,7 +106,7 @@ class TrainerRunner:
         Returns:
             A list of dictionaries of results from the updates from the RLTrainer(s)
         """
-        if self._distributed:
+        if self.is_local:
             return self._distributed_update(batch)
         else:
             return [self._trainer.update(batch)]
@@ -157,7 +156,7 @@ class TrainerRunner:
             A list of dictionaries of results from the updates from each worker.
         """
 
-        if self._distributed:
+        if self.is_local:
             refs = []
             for worker in self._workers:
                 refs.append(worker.additional_update.remote(*args, **kwargs))
@@ -186,7 +185,7 @@ class TrainerRunner:
             optimizer_cls: The optimizer class to use. If None, the set_optimizer_fn
                 should be provided.
         """
-        if self._distributed:
+        if self.is_local:
             refs = []
             for worker in self._workers:
                 ref = worker.add_module.remote(
@@ -212,7 +211,7 @@ class TrainerRunner:
             module_id: The id of the module to remove.
 
         """
-        if self._distributed:
+        if self.is_local:
             refs = []
             for worker in self._workers:
                 ref = worker.remove_module.remote(module_id)
@@ -232,7 +231,7 @@ class TrainerRunner:
 
     def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
         """Get the states of the RLTrainers"""
-        if self._distributed:
+        if self.is_local:
             refs = []
             for worker in self._workers:
                 refs.append(worker.get_state.remote())
@@ -247,7 +246,7 @@ class TrainerRunner:
             state: The state of the RLTrainers
 
         """
-        if self._distributed:
+        if self.is_local:
             refs = []
             for worker in self._workers:
                 refs.append(worker.set_state.remote(state))

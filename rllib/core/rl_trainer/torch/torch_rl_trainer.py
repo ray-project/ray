@@ -26,6 +26,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     Optimizer,
     ParamType,
     ParamDictType,
+    HyperparamType
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -39,12 +40,10 @@ torch, nn = try_import_torch()
 if torch:
     from ray.air.config import ScalingConfig
     from ray.train.torch.train_loop_utils import _TorchAccelerator
+    from ray.rllib.core.rl_trainer.trainer_runner_config import TorchRLTrainerScalingConfig
 
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 logger = logging.getLogger(__name__)
-
 
 class TorchRLTrainer(RLTrainer):
 
@@ -57,24 +56,20 @@ class TorchRLTrainer(RLTrainer):
             Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
         ] = None,
         module: Optional[RLModule] = None,
-        optimizer_config: Mapping[str, Any],
-        distributed: bool = False,
-        scaling_config: Optional["ScalingConfig"] = None,
-        algorithm_config: Optional["AlgorithmConfig"] = None,
+        optimizer_config: Mapping[str, Any] = None,
+        scaling_config: Optional[TorchRLTrainerScalingConfig] = None,
+        trainer_hyperparameters: Optional[HyperparamType] = None,
     ):
         super().__init__(
             module_spec=module_spec,
             module=module,
             optimizer_config=optimizer_config,
-            distributed=distributed,
-            scaling_config=scaling_config,
-            algorithm_config=algorithm_config,
+            scaling_config=scaling_config,  
+            trainer_hyperparameters=trainer_hyperparameters,
         )
 
-        # TODO (Kourosh): Scaling config is required for torch trainer to do proper DDP
-        # wraping setup but not so much required for tf. we need to
-        scaling_config = scaling_config or ScalingConfig()
-        self._world_size = scaling_config.num_workers or 1
+        # pick the stuff that we need from the scaling config
+        scaling_config = scaling_config or TorchRLTrainerScalingConfig()
         self._use_gpu = scaling_config.use_gpu
 
         # These attributes are set in the `build` method.
