@@ -545,6 +545,14 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       is_selected_based_on_locality);
   scheduling_key_entry.pending_lease_requests.emplace(task_id, *raylet_address);
   ReportWorkerBacklogIfNeeded(scheduling_key);
+
+  // Lease more workers if there are still pending tasks and
+  // and we haven't hit the max_pending_lease_requests yet.
+  if (scheduling_key_entry.task_queue.size() >
+          scheduling_key_entry.pending_lease_requests.size() &&
+      scheduling_key_entry.pending_lease_requests.size() < max_pending_lease_requests) {
+    RequestNewWorkerIfNeeded(scheduling_key);
+  }
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(

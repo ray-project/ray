@@ -417,13 +417,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   std::function<uint64_t()> get_max_pending_lease_requests_per_scheduling_category =
       [this]() -> uint64_t {
-        if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() !=
-            -1) {
-          return RayConfig::instance()
-              .max_pending_lease_requests_per_scheduling_category();
-        }
-        return gcs_client_->Nodes().GetAll().size();
-      };
+    if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() !=
+        -1) {
+      return RayConfig::instance().max_pending_lease_requests_per_scheduling_category();
+    }
+    return gcs_client_->Nodes().GetAll().size();
+  };
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_,
       local_raylet_client_,

@@ -344,6 +344,7 @@ class CoreWorkerDirectTaskSubmitter {
   absl::flat_hash_map<TaskID, rpc::WorkerAddress> executing_tasks_ GUARDED_BY(mu_);
 
   const std::function<uint64_t()> get_max_pending_lease_requests_per_scheduling_category_;
+
   // Retries cancelation requests if they were not successful.
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
 
