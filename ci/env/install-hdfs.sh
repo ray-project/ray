@@ -45,13 +45,13 @@ sed -i "1s/^/JAVA_HOME=\/usr\/lib\/jvm\/java-8-openjdk-amd64\/\n/" $HADOOP_CONF_
 sudo apt-get update
 sudo apt-get install -y openssh-server
 sudo service ssh start
-echo -e "\n\n\n" | ssh-keygen
-cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_key
-chmod 640 authorized_keys
+ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+chmod 640 ~/.ssh/authorized_keys
 sudo service ssh restart
 
 # without this `jps` won't show NameNode but only SecondaryNameNode
-hadoop namenode -format
+yes | hadoop namenode -format
 $HADOOP_HOME/sbin/start-all.sh
 
 # Check that NameNode is up and running.
@@ -70,7 +70,7 @@ hdfs dfs -mkdir /test
 
 destdir=/tmp/hdfs_env
 touch $destdir
-for key in "JAVE_HOME" "HADOOP_HOME" "HADOOP_CONF_DIR" "USER" "PATH"
+for key in "JAVA_HOME" "HADOOP_HOME" "HADOOP_CONF_DIR" "USER" "PATH"
 do
   # use indirection to access a var by its name.
   echo "$key=${!key}" >> $destdir
