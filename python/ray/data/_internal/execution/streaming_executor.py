@@ -1,4 +1,6 @@
 import logging
+import queue
+import threading
 import os
 from typing import Iterator, Optional
 
@@ -27,7 +29,7 @@ logger = logging.getLogger(__name__)
 DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
 
 
-class StreamingExecutor(Executor):
+class StreamingExecutor(Executor, threading.Thread):
     """A streaming Dataset executor.
 
     This implementation executes Dataset DAGs in a fully streamed way. It runs
@@ -41,9 +43,16 @@ class StreamingExecutor(Executor):
         # data updates the stats object in legacy code).
         self._stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
-        if options.locality_with_output:
-            raise NotImplementedError("locality with output")
-        super().__init__(options)
+
+        # Internal execution state shared across thread boundaries. We run the control
+        # loop on a separate thread so that it doesn't become stalled between
+        # generator `yield`s.
+        self._runner_thread_out = queue.Queue(maxsize=1)
+        self._topology: Optional[Topology] = None
+        self._output_node: Optional[OpState] = None
+
+        Executor.__init__(self, options)
+        threading.Thread.__init__(self)
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
@@ -57,27 +66,48 @@ class StreamingExecutor(Executor):
             logger.info("Executing DAG %s", dag)
             self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
 
-        # Setup the streaming DAG topology.
-        topology, self._stats = build_streaming_topology(dag, self._options)
-        output_node: OpState = topology[dag]
+        # Setup the streaming DAG topology and start the runner thread.
+        self._topology, self._stats = build_streaming_topology(dag, self._options)
+        _validate_topology(self._topology, self._get_or_refresh_resource_limits())
 
+        self._output_node: OpState = self._topology[dag]
+        self.start()
+
+        # Drain items from the runner thread until completion.
         try:
-            _validate_topology(topology, self._get_or_refresh_resource_limits())
-            output_node: OpState = topology[dag]
-
-            # Run scheduling loop until complete.
-            while self._scheduling_loop_step(topology):
-                while output_node.outqueue:
-                    yield output_node.outqueue.pop(0)
-
-            # Handle any leftover outputs.
-            while output_node.outqueue:
-                yield output_node.outqueue.pop(0)
+            item = self._runner_thread_out.get()
+            while item is not None:
+                if isinstance(item, Exception):
+                    raise item
+                else:
+                    yield item
+                item = self._runner_thread_out.get()
         finally:
-            for op in topology:
+            for op in self._topology:
                 op.shutdown()
             if self._global_info:
                 self._global_info.close()
+
+    def run(self):
+        """Run the control loop in a helper thread.
+
+        Results are returned via the `self._runner_thread_out` queue.
+        """
+        try:
+            # Run scheduling loop until complete.
+            while self._scheduling_loop_step(self._topology):
+                while self._output_node.outqueue:
+                    self._runner_thread_out.put(self._output_node.outqueue.pop(0))
+
+            # Handle any leftover outputs.
+            while self._output_node.outqueue:
+                self._runner_thread_out.put(self._output_node.outqueue.pop(0))
+        except Exception as e:
+            # Propagate it to the result iterator.
+            self._runner_thread_out.put(e)
+        finally:
+            # Signal end of results.
+            self._runner_thread_out.put(None)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
