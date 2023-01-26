@@ -18,7 +18,7 @@ class Restorable(abc.ABC):
     def handle_save_error(self, error: Exception):
         pass
 
-    def handle_save_error(self, error: Exception):
+    def handle_restore_error(self, error: Exception):
         pass
 
     def can_restore(self, checkpoint_dir: str) -> bool:
