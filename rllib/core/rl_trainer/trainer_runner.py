@@ -1,5 +1,15 @@
 import math
-from typing import Any, List, Mapping, Type, Optional, Callable, Dict, TYPE_CHECKING
+from typing import (
+    Any,
+    List,
+    Mapping,
+    Type,
+    Optional,
+    Callable,
+    Dict,
+    TYPE_CHECKING,
+    cast,
+)
 
 import ray
 
@@ -12,6 +22,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
     ParamOptimizerPairs,
     Optimizer,
+    RLTrainerSpec,
 )
 
 
@@ -22,7 +33,12 @@ from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_trainer.trainer_runner_config import TrainerRunnerScalingConfig
+    from ray.rllib.core.rl_trainer.trainer_runner_config import (
+        TrainerRunnerScalingConfig,
+        TorchRLTrainerScalingConfig,
+        TFRLTrainerScalingConfig,
+    )
+
 
 class TrainerRunner:
     """Coordinator of RLTrainers.
@@ -50,30 +66,46 @@ class TrainerRunner:
 
     def __init__(
         self,
-        trainer_class: Type[RLTrainer],
-        trainer_config: Mapping[str, Any],
-        scaling_config: Optional[TrainerRunnerScalingConfig] = None
+        rl_trainer_spec: RLTrainerSpec,
+        scaling_config: Optional[TrainerRunnerScalingConfig] = None,
     ):
         scaling_config = scaling_config or TrainerRunnerScalingConfig()
-        self._trainer_config = trainer_config
+        rl_trainer_class = rl_trainer_spec.trainer_class
 
         self._is_local = scaling_config.local
         if self._is_local:
-            self._trainer = trainer_class(**trainer_config, distributed=False)
+            # in local mode the trainer is always not distributed
+            rl_trainer_spec.scaling_config.set_distributed(False)
+            self._trainer = rl_trainer_class(**rl_trainer_spec.get_params_dict())
             self._trainer.build()
         else:
-            if trainer_class.framework == "torch":
+            # in remote mode the trainer is distributed only if there are more than 1
+            # workers
+            is_trainer_distributed = scaling_config.num_workers > 1
+            rl_trainer_spec.scaling_config.set_distributed(is_trainer_distributed)
+
+            if rl_trainer_class.framework == "torch":
                 from ray.train.torch import TorchConfig
 
                 backend_config = TorchConfig()
-            elif trainer_class.framework == "tf":
+                trainer_scaling_config = cast(
+                    TorchRLTrainerScalingConfig, rl_trainer_spec.scaling_config
+                )
+
+                trainer_should_use_gpu = scaling_config.num_gpus_per_worker > 0
+                trainer_scaling_config.set_use_gpu(trainer_should_use_gpu)
+
+            elif rl_trainer_class.framework == "tf":
                 from ray.train.tensorflow import TensorflowConfig
 
                 backend_config = TensorflowConfig()
+                trainer_scaling_config = cast(
+                    TFRLTrainerScalingConfig, rl_trainer_spec.scaling_config
+                )
             else:
                 raise ValueError("framework must be either torch or tf")
 
-            self.backend_executor = BackendExecutor(
+            backend_executor = BackendExecutor(
                 backend_config=backend_config,
                 num_workers=scaling_config.num_workers,
                 num_cpus_per_worker=scaling_config.num_cpus_per_worker,
@@ -81,16 +113,14 @@ class TrainerRunner:
                 max_retries=0,
             )
 
-            # TODO(avnishn, kourosh): Should we pass in scaling config into the
-            # trainer?
-            is_module_distributed = scaling_config.num_workers > 1
-            self.backend_executor.start(
-                train_cls=trainer_class, train_cls_kwargs=dict(**trainer_config, distributed=is_module_distributed, scaling_config=scaling_config)
+            backend_executor.start(
+                train_cls=rl_trainer_class,
+                train_cls_kwargs=rl_trainer_spec.get_params_dict(),
             )
-            self._workers = [
-                w.actor for w in self.backend_executor.worker_group.workers
-            ]
 
+            self._workers = [w.actor for w in backend_executor.worker_group.workers]
+
+            # run the neural network building code on remote workers
             ray.get([w.build.remote() for w in self._workers])
 
     @property

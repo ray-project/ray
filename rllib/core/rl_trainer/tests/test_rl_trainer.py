@@ -11,7 +11,7 @@ from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-
+from ray.rllib.core.rl_trainer.trainer_runner_config import TFRLTrainerScalingConfig
 
 def get_trainer(distributed=False) -> RLTrainer:
     env = gym.make("CartPole-v1")
@@ -29,7 +29,9 @@ def get_trainer(distributed=False) -> RLTrainer:
             model_config={"hidden_dim": 32},
         ),
         optimizer_config={"lr": 1e-3},
-        distributed=distributed,
+        scaling_config=TFRLTrainerScalingConfig(
+            enable_tf_function=False,
+        ).set_distributed(distributed),
     )
 
     trainer.build()

@@ -13,41 +13,23 @@ if TYPE_CHECKING:
 ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
 
 
-class RLTrainerScalingConfig:
-    """Base class for scaling config relevant to RLTrainer."""
-    distributed: bool = False
-
-class TorchRLTrainerScalingConfig(RLTrainerScalingConfig):
-    """Torch-specific scaling config relevant to TorchRLTrainer."""
-    use_gpu: bool = False
-
-class TFRLTrainerScalingConfig(RLTrainerScalingConfig):
-    """Place holder for TF-specific scaling config relevant to TFRLTrainer."""
-    enable_tf_function: bool = True
-
 @dataclass
 class TrainerRunnerScalingConfig:
     """Configuratiom for scaling training actors.
 
     Attributes:
-        local: If True, create a trainer in the current process. This is useful for 
-            debugging to be able to use breakpoints. If False, the trainers are created 
-            as Ray actors. 
-        num_workers: The number of workers to use for training. 
+        local: If True, create a trainer in the current process. This is useful for
+            debugging to be able to use breakpoints. If False, the trainers are created
+            as Ray actors.
+        num_workers: The number of workers to use for training.
         num_cpus_per_worker: The number of CPUs to allocate per worker.
         num_gpus_per_worker: The number of GPUs to allocate per worker.
-        use_gpu: If True, use GPUs for training. It will be automatically set to True
-            if num_gpus_per_worker > 0.
     """
+
     local: bool = True
     num_workers: int = 1
     num_cpus_per_worker: int = 1
     num_gpus_per_worker: int = 0
-    use_gpu: bool = False
-
-    def __post_init__(self):
-        if self.num_gpus_per_worker > 0:
-            self.use_gpu = True
 
 
 # TODO (Kourosh): We should make all configs come from a standard base class that

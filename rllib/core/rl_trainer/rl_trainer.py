@@ -31,12 +31,10 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.core.rl_trainer.trainer_runner_config import RLTrainerScalingConfig
+from ray.rllib.core.rl_trainer.rl_trainer_config import (
+    RLTrainerScalingConfig, HyperparamType
+)
 
-if TYPE_CHECKING:
-    from ray.air.config import ScalingConfig
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    from ray.rllib.core.rl_trainer.trainer_runner_config import Hyperparams
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -48,47 +46,6 @@ ParamType = Union["torch.Tensor", "tf.Variable"]
 ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
-HyperparamType = Union[AlgorithmConfig, Hyperparams] 
-
-class RLTrainerSpec:
-    # The RLTrainer class to use.
-    rl_trainer_class: Type["RLTrainer"] = None
-    # The underlying (MA)RLModule spec to completely define the module
-    module_spec: Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec] = None
-    # Alternatively the RLModule instance can be passed in directly (won't work if 
-    # RLTrainer is an actor)
-    module: Optional[RLModule] = None,
-    # The scaling config for properly distributing the RLModule
-    scaling_config: RLTrainerScalingConfig = None
-    # The optimizer setting to apply during training
-    optimizer_config: Dict[str, Any] = {}
-    # The extra config for the loss/additional update specific hyper-parameters
-    # for now we assume we can get both algorithm config or a dict that contains the 
-    # hyper-parameters
-    trainer_hyperparameters: HyperparamType= {}
-
-    def __post_init__(self):
-        if not isinstance(self.trainer_hyperparameters, AlgorithmConfig):
-            self.trainer_hyperparameters = Hyperparams(
-                self.trainer_hyperparameters
-            )
-
-    def get_params_dict(self) -> Dict[str, Any]:
-        return {
-            "module": self.module,
-            "module_spec": self.module_spec,
-            "scaling_config": self.scaling_config,
-            "optimizer_config": self.optimizer_config,
-            "trainer_hyperparameters": self.trainer_hyperparameters,
-        }
-
-    def build(self):
-        return self.rl_trainer_class(
-            module_spec=self.module_spec,
-            optimizer_config=self.optimizer_config,
-            scaling_config=self.scaling_config,
-            algorithm_config=self.trainer_hyperparameters,
-        )
 
 class RLTrainer:
     """Base class for RLlib algorithm trainers.

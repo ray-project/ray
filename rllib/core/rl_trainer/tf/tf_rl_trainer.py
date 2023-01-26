@@ -19,7 +19,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     Optimizer,
     ParamType,
     ParamDictType,
-    HyperparamType
+    HyperparamType,
 )
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -109,7 +109,7 @@ class TfRLTrainer(RLTrainer):
             module_spec=module_spec,
             module=module,
             optimizer_config=optimizer_config,
-            scaling_config=scaling_config,  
+            scaling_config=scaling_config,
             trainer_hyperparameters=trainer_hyperparameters,
         )
 

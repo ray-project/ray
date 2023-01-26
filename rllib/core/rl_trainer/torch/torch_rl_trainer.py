@@ -26,7 +26,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     Optimizer,
     ParamType,
     ParamDictType,
-    HyperparamType
+    HyperparamType,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -40,10 +40,13 @@ torch, nn = try_import_torch()
 if torch:
     from ray.air.config import ScalingConfig
     from ray.train.torch.train_loop_utils import _TorchAccelerator
-    from ray.rllib.core.rl_trainer.trainer_runner_config import TorchRLTrainerScalingConfig
+    from ray.rllib.core.rl_trainer.trainer_runner_config import (
+        TorchRLTrainerScalingConfig,
+    )
 
 
 logger = logging.getLogger(__name__)
+
 
 class TorchRLTrainer(RLTrainer):
 
@@ -64,7 +67,7 @@ class TorchRLTrainer(RLTrainer):
             module_spec=module_spec,
             module=module,
             optimizer_config=optimizer_config,
-            scaling_config=scaling_config,  
+            scaling_config=scaling_config,
             trainer_hyperparameters=trainer_hyperparameters,
         )
 
