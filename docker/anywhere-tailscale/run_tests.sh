@@ -14,3 +14,5 @@ fi
 
 
 ray status || exit 1
+
+exit 0
