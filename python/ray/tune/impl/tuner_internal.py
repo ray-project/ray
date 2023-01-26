@@ -92,6 +92,12 @@ class TunerInternal:
                     "`{trainable.__class__.__name__}`. The run config passed to "
                     "the `Tuner` is the one that will be used."
                 )
+            if "run_config" in param_space:
+                raise ValueError(
+                    "`RunConfig` cannot be tuned as part of the `param_space`! "
+                    "Move the run config to be a parameter of the `Tuner`: "
+                    "Tuner(..., run_config=RunConfig(...))"
+                )
 
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
