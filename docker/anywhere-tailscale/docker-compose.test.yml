@@ -2,5 +2,6 @@ services:
   sut:
     environment:
       - TSAPIKEY
+      - TSKEY
     build: .
     command: run_tests.sh
