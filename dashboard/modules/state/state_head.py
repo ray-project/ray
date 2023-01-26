@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import json
 from dataclasses import asdict
 from typing import Callable, List, Tuple, Optional
 
