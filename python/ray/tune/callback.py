@@ -3,6 +3,7 @@ from abc import ABCMeta
 import warnings
 
 from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.tune.utils.restorable import Restorable
 
 if TYPE_CHECKING:
     from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
@@ -66,7 +67,7 @@ class _CallbackMeta(ABCMeta):
 
 
 @PublicAPI(stability="beta")
-class Callback(metaclass=_CallbackMeta):
+class Callback(Restorable, metaclass=_CallbackMeta):
     """Tune base callback that can be extended and passed to a ``TrialRunner``
 
     Tune callbacks are called from within the ``TrialRunner`` class. There are
@@ -103,6 +104,8 @@ class Callback(metaclass=_CallbackMeta):
         tuner.fit()
 
     """
+
+    CKPT_FILE_TMPL = "callback-state-{}.json"
 
     # arguments here match Experiment.public_spec
     def setup(
@@ -284,6 +287,7 @@ class CallbackList(Callback):
     """Call multiple callbacks at once."""
 
     IS_CALLBACK_CONTAINER = True
+    CKPT_FILE_TMPL = "callback-list-state-{}.json"
 
     def __init__(self, callbacks: List[Callback]):
         self._callbacks = callbacks
@@ -343,3 +347,24 @@ class CallbackList(Callback):
     def on_experiment_end(self, **info):
         for callback in self._callbacks:
             callback.on_experiment_end(**info)
+
+    def get_state(self) -> Optional[Dict]:
+        state = {}
+        any_stateful_callbacks = False
+        for i, callback in enumerate(self._callbacks):
+            callback_state = None
+            try:
+                callback_state = callback.get_state()
+                any_stateful_callbacks = True
+            except NotImplementedError:
+                pass
+            state[i] = callback_state
+        if not any_stateful_callbacks:
+            return None
+        return state
+
+    def set_state(self, state: Dict):
+        for i, callback in enumerate(self._callbacks):
+            callback_state = state.get(i, None)
+            if callback_state:
+                callback.set_state(callback_state)
