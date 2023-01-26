@@ -2725,15 +2725,6 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the evaluation call.
         """
-
-        eval_results = {
-            "evaluation": {
-                "episode_reward_max": np.nan,
-                "episode_reward_min": np.nan,
-                "episode_reward_mean": np.nan,
-            }
-        }
-
         eval_func_to_use = (
             self._evaluate_async
             if self.config.enable_async_evaluation
