@@ -52,7 +52,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # The dataflow here is as follows:
         #
         #   output_node_outqueue ---> runner_thread_out ---> consumer_generator
-        #  
+        #
         # Note that the "real" queue is held in output_node_outqueue. The memory used
         # in output_node_outqueue counts towards execution resources limits. In
         # contrast, the runner_thread_out queue is limited to 1 item and is only used

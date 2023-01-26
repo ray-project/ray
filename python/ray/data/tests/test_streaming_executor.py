@@ -384,20 +384,17 @@ def test_scheduling_progress_when_output_blocked():
 
 def test_e2e_liveness_with_output_backpressure():
     # At least one operator is ensured to be running, if the output becomes idle.
-    DatasetContext.get_current().use_streaming_executor = True
-    DatasetContext.get_current().execution_options.preserve_order = True
+    ctx = DatasetContext.get_current()
+    ctx.use_streaming_executor = True
+    ctx.execution_options.preserve_order = True
     try:
-        DatasetContext.get_current().execution_options.resource_limits.object_store_memory = (
-            1
-        )
+        ctx.execution_options.resource_limits.object_store_memory = 1
         ds = ray.data.range(10000, parallelism=100).map(lambda x: x, num_cpus=2)
         # This will hang forever if the liveness logic is wrong, since the output
         # backpressure will prevent any operators from running at all.
         assert ds.take_all() == list(range(10000))
     finally:
-        DatasetContext.get_current().execution_options.resource_limits.object_store_memory = (
-            None
-        )
+        ctx.execution_options.resource_limits.object_store_memory = None
 
 
 def test_configure_output_locality():
