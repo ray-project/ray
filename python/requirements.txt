@@ -65,6 +65,7 @@ aiohttp_cors
 opentelemetry-api==1.1.0
 pyyaml
 gpustat>=1.0.0
-pydantic
+pydantic; python_version < '3.11'
+pydantic==1.10.2; python_version >= '3.11'
 prometheus_client<0.14.0,>=0.7.1
 opentelemetry-sdk==1.1.0

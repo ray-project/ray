@@ -21,7 +21,7 @@ from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated import dependency_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
-from ray.core.generated import reporter_pb2
+from ray.core.generated import common_pb2
 from ray.core.generated import pubsub_pb2
 
 logger = logging.getLogger(__name__)
@@ -62,9 +62,7 @@ class _PublisherBase:
                 pubsub_pb2.PubMessage(
                     channel_type=pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL,
                     key_id=key.encode(),
-                    node_resource_usage_message=reporter_pb2.NodeResourceUsage(
-                        json=json
-                    ),
+                    node_resource_usage_message=common_pb2.NodeResourceUsage(json=json),
                 )
             ]
         )

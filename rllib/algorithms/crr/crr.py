@@ -166,16 +166,19 @@ class CRRConfig(AlgorithmConfig):
             self.tau = tau
         if td_error_loss_fn is not NotProvided:
             self.td_error_loss_fn = td_error_loss_fn
-            assert self.td_error_loss_fn in [
-                "huber",
-                "mse",
-            ], "td_error_loss_fn must be 'huber' or 'mse'."
         if categorical_distribution_temperature is not NotProvided:
             self.categorical_distribution_temperature = (
                 categorical_distribution_temperature
             )
 
         return self
+
+    def validate(self) -> None:
+        # Call super's validation method.
+        super().validate()
+
+        if self.td_error_loss_fn not in ["huber", "mse"]:
+            raise ValueError("`td_error_loss_fn` must be 'huber' or 'mse'!")
 
 
 NUM_GRADIENT_UPDATES = "num_grad_updates"

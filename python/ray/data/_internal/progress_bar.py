@@ -44,11 +44,12 @@ class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
     def __init__(self, name: str, total: int, position: int = 0):
+        self._desc = name
         if not _enabled or threading.current_thread() is not threading.main_thread():
             self._bar = None
         elif tqdm:
             self._bar = tqdm.tqdm(total=total, position=position)
-            self._bar.set_description(name)
+            self._bar.set_description(self._desc)
         else:
             global needs_warning
             if needs_warning:
@@ -83,8 +84,9 @@ class ProgressBar:
         return [ref_to_result[ref] for ref in refs]
 
     def set_description(self, name: str) -> None:
-        if self._bar:
-            self._bar.set_description(name)
+        if self._bar and name != self._desc:
+            self._desc = name
+            self._bar.set_description(self._desc)
 
     def update(self, i: int) -> None:
         if self._bar and i != 0:

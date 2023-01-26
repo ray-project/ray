@@ -35,7 +35,7 @@ message AutoscalingConfig {
   // Target number of in flight requests per replicas. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly will the replicas
   // being scaled up. Must be a non-negative integer.
-  uint32 target_num_ongoing_requests_per_replica = 3;
+  double target_num_ongoing_requests_per_replica = 3;
 
   // The frequency of how long does each replica sending metrics to autoscaler.
   double metrics_interval_s = 4;

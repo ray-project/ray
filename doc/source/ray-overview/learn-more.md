@@ -21,7 +21,7 @@ Please raise an issue if any of the below links are broken, or if you'd like to 
 - [How to Speed up Pandas by 4x with one line of code](https://www.kdnuggets.com/2019/11/speed-up-pandas-4x.html)
 - [Quick Tip -- Speed up Pandas using Modin](https://pythondata.com/quick-tip-speed-up-pandas-using-modin/)
 - [Ray Blog](https://medium.com/distributed-computing-with-ray)
-
+- [How to launch a Ray Serve API on a remote cluster (AWS)](https://jbesomi.com/ray-serve-remote-cluster)
 
 ## Talks (Videos)
 

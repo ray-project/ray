@@ -298,6 +298,33 @@ message ActorDiedErrorContext {
 }
 // ---Actor death contexts end----
 
+message JobConfig {
+  enum ActorLifetime {
+    DETACHED = 0;
+    NON_DETACHED = 1;
+  }
+
+  // The jvm options for java workers of the job.
+  repeated string jvm_options = 2;
+  // A list of directories or files (jar files or dynamic libraries) that specify the
+  // search path for user code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH`
+  // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
+  repeated string code_search_path = 3;
+  // Runtime environment to run the code
+  RuntimeEnvInfo runtime_env_info = 4;
+  // The job's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 5;
+  // An opaque kv store for job related metadata.
+  map<string, string> metadata = 6;
+  // The default lifetime of actors in this job.
+  // If the lifetime of an actor is not specified explicitly at runtime, this
+  // default value will be applied.
+  ActorLifetime default_actor_lifetime = 7;
+  // System paths of the driver scripts. Python workers need to search
+  // these paths to load modules.
+  repeated string py_driver_sys_path = 8;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task.
 message TaskSpec {
@@ -372,6 +399,8 @@ message TaskSpec {
   // first execution, we do not yet know whether the task has dynamic return
   // objects.
   repeated bytes dynamic_return_ids = 31;
+  // Job config for the task. Only set for normal task or actor creation task.
+  optional JobConfig job_config = 32;
 }
 
 message TaskInfoEntry {
@@ -532,8 +561,6 @@ message ActorTaskSpec {
   bytes actor_creation_dummy_object_id = 4;
   // Number of tasks that have been submitted to this actor so far.
   uint64 actor_counter = 5;
-  // The dummy object ID of the previous actor task.
-  bytes previous_actor_task_dummy_object_id = 7;
 }
 
 // Represents a task, including task spec.
@@ -711,6 +738,14 @@ message CoreWorkerStats {
   WorkerType worker_type = 23;
   // Length of the number of objects without truncation.
   int64 objects_total = 24;
+}
+
+// Resource usage reported by the node reporter.
+message NodeResourceUsage {
+  // Node resource usage in serialized json.
+  // TODO: add schema for the subfields, e.g.
+  // https://github.com/ray-project/ray/blob/e54d3117a40c20ca5441d38ffc72b908bc1b0609/dashboard/modules/reporter/reporter_agent.py#L330-L347
+  string json = 1;
 }
 
 message MetricPoint {

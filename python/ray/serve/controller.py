@@ -15,7 +15,7 @@ from ray._private.utils import (
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray._private.gcs_utils import GcsClient
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import (
@@ -580,9 +580,16 @@ class ServeController:
             else:
                 try:
                     await finished[0]
-                except RayTaskError:
+                except Exception as e:
                     serve_app_status = ApplicationStatus.DEPLOY_FAILED
-                    serve_app_message = f"Deployment failed:\n{traceback.format_exc()}"
+                    tb = traceback.format_exc()
+
+                    if isinstance(e, RayTaskError):
+                        serve_app_message = f"Deployment failed:\n{tb}"
+                    elif isinstance(e, RuntimeEnvSetupError):
+                        serve_app_message = f"Runtime env setup failed:\n{tb}"
+                    else:
+                        serve_app_message = f"Unknown error occurred:\n{tb}"
 
         app_status = ApplicationStatusInfo(
             serve_app_status, serve_app_message, deployment_timestamp
@@ -777,7 +784,7 @@ class ServeControllerAvatar:
             self._controller = None
         if self._controller is None:
             # Used for scheduling things to the head node explicitly.
-            head_node_id = ray.get_runtime_context().node_id.hex()
+            head_node_id = ray.get_runtime_context().get_node_id()
             http_config = HTTPOptions()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(

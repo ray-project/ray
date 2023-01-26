@@ -10,6 +10,7 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.serialization import check_if_args_kwargs_serializable
 
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
@@ -86,12 +87,19 @@ class RLModule(abc.ABC):
             next_obs = obs
 
     Args:
-        config: The config object for the module.
+        *args: Arguments for constructing the RLModule.
+        **kwargs: Keyword args for constructing the RLModule.
 
     Abstract Methods:
         forward_train: Forward pass during training.
         forward_exploration: Forward pass during training for exploration.
         forward_inference: Forward pass during inference.
+
+    Error:
+        The args and kwargs that are passed to the constructor are saved for
+        serialization and deserialization purposes. The RLModule checks if they
+        are serializable/deserializable using ray and if they are not, a
+        ValueError is thrown.
 
     Note: There is a reason that the specs are not written as abstract properties.
         The reason is that torch overrides `__getattr__` and `__setattr__`. This means
@@ -100,6 +108,10 @@ class RLModule(abc.ABC):
         `__getattr__` which will give a confusing error about the attribute not found.
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
+
+    def __init__(self, *args, **kwargs):
+        check_if_args_kwargs_serializable(args, kwargs)
+        self._args_and_kwargs = {"args": args, "kwargs": kwargs}
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -272,10 +284,7 @@ class RLModule(abc.ABC):
 
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
-    def forward_train(
-        self,
-        batch: SampleBatchType,
-    ) -> Mapping[str, Any]:
+    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         """Forward-pass during training called from the trainer. This method should
         not be overriden. Instead, override the _forward_train method.
 
@@ -288,7 +297,7 @@ class RLModule(abc.ABC):
             The output of the forward pass. This output should comply with the
             ouptut_specs_train().
         """
-        return self._forward_train(batch)
+        return self._forward_train(batch, **kwargs)
 
     @abc.abstractmethod
     def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
@@ -301,6 +310,41 @@ class RLModule(abc.ABC):
     @abc.abstractmethod
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
+
+    def serialize(self) -> Mapping[str, Any]:
+        """Return the serialized state of the module."""
+        return {
+            "class": self.__class__,
+            "args": self._args_and_kwargs["args"],
+            "kwargs": self._args_and_kwargs["kwargs"],
+            "state": self.get_state(),
+        }
+
+    @classmethod
+    def deserialize(cls, state: Mapping[str, Any]) -> "RLModule":
+        """Construct a module from a serialized state.
+
+        Args:
+            state: The serialized state of the module.
+
+        NOTE: this state is typically obtained from `serialize()`.
+
+        NOTE: This method needs to be implemented in order to support
+            checkpointing and fault tolerance.
+
+        Returns:
+            A deserialized RLModule.
+        """
+        for key in ["class", "args", "kwargs", "state"]:
+            if key not in state:
+                raise ValueError(
+                    "By default, the serialized state must contain the following "
+                    f"keys: 'class', 'args', 'args', and 'kwargs'. Got: {state.keys()}"
+                )
+        constructor = state["class"]
+        module = constructor(*state["args"], **state["kwargs"])
+        module.set_state(state["state"])
+        return module
 
     @abc.abstractmethod
     def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
