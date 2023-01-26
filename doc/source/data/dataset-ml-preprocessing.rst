@@ -93,7 +93,7 @@ Other preprocessing operations require global operations, such as groupbys and g
     # -> Sort Sample: 100%|███████████████████████████████████████| 10/10 [00:01<00:00,  9.04it/s]
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 23.66it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 937.21it/s]
-    # -> Dataset(num_blocks=10, num_rows=3, schema={})
+    # -> <Dataset num_blocks=10, num_rows=3, schema={}>
     agg_ds.to_pandas()
     # ->
     #    A  mean(B)  mean(C)
@@ -136,7 +136,7 @@ These aggregations can be combined with batch mapping to transform a dataset usi
 
     ds = ds.map_batches(impute_b, batch_format="pandas")
     # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 132.66it/s]
-    # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: int64, C: int64})
+    # -> <Dataset num_blocks=10, num_rows=10, schema={A: int64, B: int64, C: int64}>
 
     # Standard scaling of all feature columns.
     stats = ds.aggregate(Mean("B"), Std("B"), Mean("C"), Std("C"))
@@ -156,7 +156,7 @@ These aggregations can be combined with batch mapping to transform a dataset usi
 
     ds = ds.map_batches(batch_standard_scaler, batch_format="pandas")
     # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 144.79it/s]
-    # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
+    # -> <Dataset num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double}>
 
 Random shuffle
 ==============

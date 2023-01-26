@@ -29,7 +29,7 @@ A `DatasetPipeline <package-ref.html#datasetpipeline-api>`__ can be constructed 
     # Create a dataset and then create a pipeline from it.
     base = ray.data.range(1000000)
     print(base)
-    # -> Dataset(num_blocks=200, num_rows=1000000, schema=<class 'int'>)
+    # -> <Dataset num_blocks=200, num_rows=1000000, schema=<class 'int'>>
     pipe = base.window(blocks_per_window=10)
     print(pipe)
     # -> DatasetPipeline(num_windows=20, num_stages=1)
