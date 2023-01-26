@@ -11,6 +11,8 @@ import {
 import { CSSProperties } from "@material-ui/core/styles/withStyles";
 import React, { ReactNode } from "react";
 import { ActorEnum } from "../type/actor";
+import { PlacementGroupState } from "../type/placementGroup";
+import { TypeTaskStatus } from "../type/task";
 
 const colorMap = {
   node: {
@@ -26,6 +28,18 @@ const colorMap = {
     [ActorEnum.PENDING]: blue,
     [ActorEnum.RECONSTRUCTING]: lightBlue,
   },
+  task: {
+    [TypeTaskStatus.FAILED]: red,
+    [TypeTaskStatus.FINISHED]: green,
+    [TypeTaskStatus.RUNNING]: blue,
+    [TypeTaskStatus.RUNNING_IN_RAY_GET]: blue,
+    [TypeTaskStatus.RUNNING_IN_RAY_WAIT]: blue,
+    [TypeTaskStatus.SUBMITTED_TO_WORKER]: "#cfcf08",
+    [TypeTaskStatus.PENDING_ARGS_FETCH]: blue,
+    [TypeTaskStatus.PENDING_OBJ_STORE_MEM_AVAIL]: blue,
+    [TypeTaskStatus.PENDING_NODE_ASSIGNMENT]: "#cfcf08",
+    [TypeTaskStatus.PENDING_ARGS_AVAIL]: "#f79e02",
+  },
   job: {
     INIT: grey,
     SUBMITTED: blue,
@@ -35,9 +49,15 @@ const colorMap = {
     FINISHED: cyan,
     FAILED: red,
   },
+  placementGroup: {
+    [PlacementGroupState.PENDING]: "#f79e02",
+    [PlacementGroupState.CREATED]: blue,
+    [PlacementGroupState.REMOVED]: red,
+    [PlacementGroupState.RESCHEDULING]: "#cfcf08",
+  },
 } as {
   [key: string]: {
-    [key: string]: Color;
+    [key: string]: Color | string;
   };
 };
 
@@ -66,7 +86,7 @@ export const StatusChip = ({
     margin: 2,
   } as CSSProperties;
 
-  let color = blueGrey as Color;
+  let color: Color | string = blueGrey;
 
   if (typeMap[type]) {
     color = typeMap[type];
@@ -78,10 +98,12 @@ export const StatusChip = ({
     color = colorMap[type][status];
   }
 
-  style.color = color[500];
-  style.borderColor = color[500];
+  const colorValue = typeof color === "string" ? color : color[500];
+
+  style.color = colorValue;
+  style.borderColor = colorValue;
   if (color !== blueGrey) {
-    style.backgroundColor = `${color[500]}20`;
+    style.backgroundColor = `${colorValue}20`;
   }
 
   return (

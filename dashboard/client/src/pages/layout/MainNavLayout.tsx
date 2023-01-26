@@ -1,12 +1,19 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import {
+  createStyles,
+  IconButton,
+  makeStyles,
+  Tooltip,
+  Typography,
+} from "@material-ui/core";
 import classNames from "classnames";
 import React, { useContext } from "react";
+import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
 import { Link, Outlet } from "react-router-dom";
 import Logo from "../../logo.svg";
 import { MainNavContext, useMainNavState } from "./mainNavContext";
 
-const MAIN_NAV_HEIGHT = 56;
-const BREADCRUMBS_HEIGHT = 36;
+export const MAIN_NAV_HEIGHT = 56;
+export const BREADCRUMBS_HEIGHT = 36;
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -103,6 +110,19 @@ const useMainNavBarStyles = makeStyles((theme) =>
     navItemHighlighted: {
       color: "#036DCF",
     },
+    flexSpacer: {
+      flexGrow: 1,
+    },
+    actionItemsContainer: {
+      marginRight: theme.spacing(2),
+    },
+    backToOld: {
+      marginRight: theme.spacing(1),
+      textDecoration: "none",
+    },
+    actionItem: {
+      color: "#5F6469",
+    },
   }),
 );
 
@@ -121,6 +141,11 @@ const NAV_ITEMS = [
     title: "Cluster",
     path: "/new/cluster",
     id: "cluster",
+  },
+  {
+    title: "Metrics",
+    path: "/new/metrics",
+    id: "metrics",
   },
   {
     title: "Logs",
@@ -152,6 +177,37 @@ const MainNavBar = () => {
           </Link>
         </Typography>
       ))}
+      <div className={classes.flexSpacer}></div>
+      <div className={classes.actionItemsContainer}>
+        <Link
+          className={classNames(classes.actionItem, classes.backToOld)}
+          to="/"
+        >
+          <Typography variant="body2" component="span">
+            Back to old dashboard
+          </Typography>
+        </Link>
+        <Tooltip title="Docs">
+          <IconButton
+            className={classes.actionItem}
+            href="https://docs.ray.io/en/latest/ray-core/ray-dashboard.html"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <RiBookMarkLine />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Leave feedback">
+          <IconButton
+            className={classes.actionItem}
+            href="https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdashboard&template=bug-report.yml&title=%5BDashboard%5D+%3CTitle%3E"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <RiFeedbackLine />
+          </IconButton>
+        </Tooltip>
+      </div>
     </div>
   );
 };

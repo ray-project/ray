@@ -1,7 +1,8 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import { createStyles, makeStyles, Typography } from "@material-ui/core";
 import classNames from "classnames";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
+import { GrafanaNotRunningAlert } from "../../metrics";
 import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
 const useStyles = makeStyles((theme) =>
@@ -13,6 +14,13 @@ const useStyles = makeStyles((theme) =>
     },
     graph: {
       flex: 1,
+    },
+    noGraph: {
+      flex: 1,
+      padding: theme.spacing(2, 3),
+    },
+    alert: {
+      marginTop: theme.spacing(2),
     },
     links: {
       display: "flex",
@@ -37,13 +45,19 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
 
   return (
     <OverviewCard className={classNames(classes.root, className)}>
-      {/* TODO (aguo): Handle grafana not running */}
-      <iframe
-        title="Node Count"
-        className={classes.graph}
-        src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
-        frameBorder="0"
-      />
+      {grafanaHost === undefined ? (
+        <div className={classes.noGraph}>
+          <Typography variant="h3">Node count</Typography>
+          <GrafanaNotRunningAlert className={classes.alert} />
+        </div>
+      ) : (
+        <iframe
+          title="Node Count"
+          className={classes.graph}
+          src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
+          frameBorder="0"
+        />
+      )}
       <div className={classes.links}>
         <LinkWithArrow text="View all nodes" to="/new/cluster" />
       </div>

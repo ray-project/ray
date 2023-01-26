@@ -151,6 +151,13 @@ const BasicLayout = ({
               <ListItemText>METRICS</ListItemText>
             </ListItem>
           )}
+          <ListItem
+            button
+            className={classnames(classes.menuItem)}
+            onClick={() => navigate("/new")}
+          >
+            <ListItemText>TRY THE NEW UI</ListItemText>
+          </ListItem>
           <ListItem>
             <IconButton
               color="primary"
