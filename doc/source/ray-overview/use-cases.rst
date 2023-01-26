@@ -46,7 +46,7 @@ Batch inference refers to generating model predictions over a set of input obser
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
     ---
     :img-top: /images/ray_logo.png
@@ -108,7 +108,7 @@ There are three ways of using Ray to express this workload.
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
     ---
     :img-top: /images/ray_logo.png
@@ -163,7 +163,7 @@ Ray Serve is particularly well suited for model composition, enabling you to bui
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
     ---
     :img-top: /images/serve.svg
@@ -217,7 +217,7 @@ Learn more about the Tune library with the following talks and user guides.
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
     ---
     :img-top: /images/tune.png
@@ -272,7 +272,7 @@ Learn more about the Train library with the following talks and user guides.
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
     ---
     :img-top: /images/ray_logo.png
@@ -325,7 +325,7 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
     ---
     :img-top: /rllib/images/rllib-logo.png
@@ -378,7 +378,7 @@ The following highlights feature companies leveraging Ray's unified API to build
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
     ---
     :img-top: /images/shopify.png
@@ -432,7 +432,7 @@ The following are highlighted examples utilizing Ray AIR to implement end-to-end
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
     ---
     :img-top: /images/text-classification.png
@@ -485,7 +485,7 @@ The following highlights feature companies leveraging Ray Core's distributed API
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
     ---
     :img-top: /images/ray_logo.png
@@ -517,7 +517,7 @@ Basic Examples
 .. panels::
     :container: container pb-3
     :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto
+    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
     ---
     :img-top: /images/ray_logo.png

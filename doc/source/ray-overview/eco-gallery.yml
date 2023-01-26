@@ -2,7 +2,7 @@ meta:
   section-titles: false
   container: container pb-4
   column: col-md-4 px-1 py-1
-  img-top-cls: p-2 w-75 d-block mx-auto
+  img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
 
 buttons:
   classes: btn-outline-info btn-block
