@@ -3,31 +3,33 @@ import torch.nn as nn
 import tree
 
 from ray.rllib.models.experimental.base import (
-    Encoder,
-    STATE_IN,
-    STATE_OUT,
     ForwardOutputType,
     ModelConfig,
 )
+from ray.rllib.models.experimental.encoder import (
+    Encoder,
+    STATE_IN,
+    STATE_OUT,
+)
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.experimental.tf.primitives import FCNet
+from ray.rllib.models.experimental.tf.primitives import TfFCNet
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.models.experimental.torch.encoder import ENCODER_OUT
-from ray.rllib.models.experimental.tf.primitives import TFModel
+from ray.rllib.models.experimental.tf.primitives import TfFCModel
 
 
-class FCEncoder(Encoder, TFModel):
+class TfFCEncoder(Encoder, TfFCModel):
     """A fully connected encoder."""
 
     def __init__(self, config: ModelConfig) -> None:
         Encoder.__init__(self, config)
-        TFModel.__init__(self, config)
+        TfFCModel.__init__(self, config)
 
-        self.net = FCNet(
+        self.net = TfFCNet(
             input_dim=config.input_dim,
             hidden_layers=config.hidden_layers,
             output_dim=config.output_dim,
@@ -50,12 +52,12 @@ class FCEncoder(Encoder, TFModel):
         return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
-class LSTMEncoder(Encoder, TFModel):
+class LSTMEncoder(Encoder, TfFCModel):
     """An encoder that uses an LSTM cell and a linear layer."""
 
     def __init__(self, config: ModelConfig) -> None:
         Encoder.__init__(self, config)
-        TFModel.__init__(self, config)
+        TfFCModel.__init__(self, config)
 
         self.lstm = nn.LSTM(
             config.input_dim,
@@ -134,9 +136,11 @@ class LSTMEncoder(Encoder, TFModel):
         }
 
 
-class IdentityEncoder(TFModel):
-    def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
-        pass
+class TfIdentityEncoder(TfFCModel):
+    """An encoder that does nothing but passing on inputs.
+
+    We use this so that we avoid having many if/else statements in the RLModule.
+    """
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__(config)

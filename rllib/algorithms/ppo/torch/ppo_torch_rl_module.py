@@ -5,7 +5,7 @@ import gymnasium as gym
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.experimental.base import STATE_OUT
+from ray.rllib.models.experimental.encoder import STATE_OUT
 from ray.rllib.models.experimental.configs import FCConfig, FCEncoderConfig
 from ray.rllib.models.experimental.configs import (
     LSTMEncoderConfig,
@@ -51,7 +51,7 @@ class PPOModuleConfig(RLModuleConfig):
     Attributes:
         observation_space: The observation space of the environment.
         action_space: The action space of the environment.
-        shared_encoder_config: The configuration for the encoder network.
+        encoder_config: The configuration for the encoder network.
         pi_config: The configuration for the policy network.
         vf_config: The configuration for the value network.
         free_log_std: For DiagGaussian action distributions, make the second half of
@@ -59,9 +59,7 @@ class PPOModuleConfig(RLModuleConfig):
             only has an effect is using the default fully connected net.
     """
 
-    observation_space: gym.Space = None
-    action_space: gym.Space = None
-    shared_encoder_config: FCConfig = None
+    encoder_config: FCConfig = None
     pi_config: FCConfig = None
     vf_config: FCConfig = None
     free_log_std: bool = False
@@ -76,12 +74,10 @@ class PPOTorchRLModule(TorchRLModule):
     def setup(self) -> None:
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
-        assert self.config.shared_encoder_config, (
-            "shared encoder config must be " "provided."
-        )
+        assert self.config.encoder_config, "shared encoder config must be " "provided."
 
         # TODO(Artur): Unify to tf and torch setup(framework)
-        self.shared_encoder = self.config.shared_encoder_config.build(framework="torch")
+        self.shared_encoder = self.config.encoder_config.build(framework="torch")
         self.pi = self.config.pi_config.build(framework="torch")
         self.vf = self.config.vf_config.build(framework="torch")
 
@@ -120,7 +116,7 @@ class PPOTorchRLModule(TorchRLModule):
         ), "`vf_share_layers=False` is no longer supported."
 
         if model_config["use_lstm"]:
-            shared_encoder_config = LSTMEncoderConfig(
+            encoder_config = LSTMEncoderConfig(
                 input_dim=obs_dim,
                 hidden_dim=model_config["lstm_cell_size"],
                 batch_first=not model_config["_time_major"],
@@ -128,7 +124,7 @@ class PPOTorchRLModule(TorchRLModule):
                 output_dim=model_config["lstm_cell_size"],
             )
         else:
-            shared_encoder_config = FCEncoderConfig(
+            encoder_config = FCEncoderConfig(
                 input_dim=obs_dim,
                 hidden_layers=fcnet_hiddens[:-1],
                 activation=activation,
@@ -136,12 +132,12 @@ class PPOTorchRLModule(TorchRLModule):
             )
 
         pi_config = FCConfig(
-            input_dim=shared_encoder_config.output_dim,
+            input_dim=encoder_config.output_dim,
             hidden_layers=[32],
             activation="ReLU",
         )
         vf_config = FCConfig(
-            input_dim=shared_encoder_config.output_dim,
+            input_dim=encoder_config.output_dim,
             hidden_layers=[32, 1],
             activation="ReLU",
             output_dim=1,
@@ -160,8 +156,8 @@ class PPOTorchRLModule(TorchRLModule):
         )
 
         # build policy network head
-        shared_encoder_config.input_dim = observation_space.shape[0]
-        pi_config.input_dim = shared_encoder_config.output_dim
+        encoder_config.input_dim = observation_space.shape[0]
+        pi_config.input_dim = encoder_config.output_dim
         if isinstance(action_space, gym.spaces.Discrete):
             pi_config.output_dim = action_space.n
         else:
@@ -170,7 +166,7 @@ class PPOTorchRLModule(TorchRLModule):
         config_ = PPOModuleConfig(
             observation_space=observation_space,
             action_space=action_space,
-            shared_encoder_config=shared_encoder_config,
+            encoder_config=encoder_config,
             pi_config=pi_config,
             vf_config=vf_config,
             free_log_std=free_log_std,

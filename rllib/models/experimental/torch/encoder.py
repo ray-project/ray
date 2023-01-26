@@ -3,10 +3,13 @@ import torch.nn as nn
 import tree
 
 from ray.rllib.models.experimental.base import (
-    STATE_IN,
-    STATE_OUT,
     ForwardOutputType,
     ModelConfig,
+)
+from ray.rllib.models.experimental.encoder import (
+    Encoder,
+    STATE_IN,
+    STATE_OUT,
 )
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -15,20 +18,19 @@ from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-from ray.rllib.models.experimental.torch.primitives import FCNet, TorchModel
-from ray.rllib.models.experimental.base import Encoder
+from ray.rllib.models.experimental.torch.primitives import TorchFCNet, TorchModel
 
 ENCODER_OUT: str = "encoder_out"
 
 
-class FCEncoder(TorchModel, Encoder):
+class TorchFCEncoder(TorchModel, Encoder):
     """A fully connected encoder."""
 
     def __init__(self, config: ModelConfig) -> None:
         TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        self.net = FCNet(
+        self.net = TorchFCNet(
             input_dim=config.input_dim,
             hidden_layers=config.hidden_layers,
             output_dim=config.output_dim,
@@ -55,7 +57,7 @@ class FCEncoder(TorchModel, Encoder):
         return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
-class LSTMEncoder(TorchModel, Encoder):
+class TorchLSTMEncoder(TorchModel, Encoder):
     """An encoder that uses an LSTM cell and a linear layer."""
 
     def __init__(self, config: ModelConfig) -> None:
@@ -140,10 +142,7 @@ class LSTMEncoder(TorchModel, Encoder):
         }
 
 
-class IdentityEncoder(TorchModel):
-    def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
-        pass
-
+class TorchIdentityEncoder(TorchModel):
     def __init__(self, config: ModelConfig) -> None:
         super().__init__(config)
 

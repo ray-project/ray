@@ -9,7 +9,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
-from ray.rllib.models.experimental.tf.primitives import FCNet
+from ray.rllib.models.experimental.tf.primitives import TfFCNet
 from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 
@@ -26,17 +26,17 @@ class PPOTfRLModule(TfRLModule):
     def setup(self) -> None:
         assert self.config.pi_config, "pi_config must be provided."
         assert self.config.vf_config, "vf_config must be provided."
-        self.shared_encoder = self.config.shared_encoder_config.build(framework="tf")
+        self.encoder = self.config.encoder_config.build(framework="tf")
 
-        self.pi = FCNet(
-            input_dim=self.config.shared_encoder_config.output_dim,
+        self.pi = TfFCNet(
+            input_dim=self.config.encoder_config.output_dim,
             output_dim=self.config.pi_config.output_dim,
             hidden_layers=self.config.pi_config.hidden_layers,
             activation=self.config.pi_config.activation,
         )
 
-        self.vf = FCNet(
-            input_dim=self.config.shared_encoder_config.output_dim,
+        self.vf = TfFCNet(
+            input_dim=self.config.encoder_config.output_dim,
             output_dim=1,
             hidden_layers=self.config.vf_config.hidden_layers,
             activation=self.config.vf_config.activation,
@@ -60,7 +60,7 @@ class PPOTfRLModule(TfRLModule):
 
     @override(TfRLModule)
     def _forward_train(self, batch: NestedDict):
-        encoder_out = self.shared_encoder(batch)
+        encoder_out = self.encoder(batch)
         action_logits = self.pi(encoder_out[ENCODER_OUT])
         vf = self.vf(encoder_out[ENCODER_OUT])
 
@@ -87,7 +87,7 @@ class PPOTfRLModule(TfRLModule):
 
     @override(TfRLModule)
     def _forward_inference(self, batch) -> Mapping[str, Any]:
-        encoder_out = self.shared_encoder(batch)
+        encoder_out = self.encoder(batch)
 
         action_logits = self.pi(encoder_out[ENCODER_OUT])
 
@@ -116,7 +116,7 @@ class PPOTfRLModule(TfRLModule):
 
     @override(TfRLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        encoder_out = self.shared_encoder(batch)
+        encoder_out = self.encoder(batch)
 
         action_logits = self.pi(encoder_out[ENCODER_OUT])
         vf = self.vf(encoder_out[ENCODER_OUT])
@@ -160,14 +160,14 @@ class PPOTfRLModule(TfRLModule):
         if use_lstm:
             raise ValueError("LSTM not supported by PPOTfRLModule yet.")
         if vf_share_layers:
-            shared_encoder_config = FCConfig(
+            encoder_config = FCConfig(
                 input_dim=obs_dim,
                 hidden_layers=fcnet_hiddens,
                 activation=activation,
                 output_dim=model_config["fcnet_hiddens"][-1],
             )
         else:
-            shared_encoder_config = IdentityConfig(output_dim=obs_dim)
+            encoder_config = IdentityConfig(output_dim=obs_dim)
         assert isinstance(
             observation_space, gym.spaces.Box
         ), "This simple PPOModule only supports Box observation space."
@@ -181,21 +181,21 @@ class PPOTfRLModule(TfRLModule):
         )
         pi_config = FCConfig()
         vf_config = FCConfig()
-        shared_encoder_config.input_dim = observation_space.shape[0]
-        pi_config.input_dim = shared_encoder_config.output_dim
+        encoder_config.input_dim = observation_space.shape[0]
+        pi_config.input_dim = encoder_config.output_dim
         pi_config.hidden_layers = fcnet_hiddens
         if isinstance(action_space, gym.spaces.Discrete):
             pi_config.output_dim = action_space.n
         else:
             pi_config.output_dim = action_space.shape[0] * 2
         # build vf network
-        vf_config.input_dim = shared_encoder_config.output_dim
+        vf_config.input_dim = encoder_config.output_dim
         vf_config.hidden_layers = fcnet_hiddens
         vf_config.output_dim = 1
         config_ = PPOModuleConfig(
             pi_config=pi_config,
             vf_config=vf_config,
-            shared_encoder_config=shared_encoder_config,
+            encoder_config=encoder_config,
             observation_space=observation_space,
             action_space=action_space,
         )

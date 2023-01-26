@@ -48,7 +48,7 @@ def get_expected_model_config(
     obs_dim = env.observation_space.shape[0]
 
     if lstm:
-        shared_encoder_config = LSTMEncoderConfig(
+        encoder_config = LSTMEncoderConfig(
             input_dim=obs_dim,
             hidden_dim=32,
             batch_first=True,
@@ -56,7 +56,7 @@ def get_expected_model_config(
             output_dim=32,
         )
     else:
-        shared_encoder_config = FCEncoderConfig(
+        encoder_config = FCEncoderConfig(
             input_dim=obs_dim,
             hidden_layers=[32],
             activation="ReLU",
@@ -82,7 +82,7 @@ def get_expected_model_config(
     return PPOModuleConfig(
         observation_space=env.observation_space,
         action_space=env.action_space,
-        shared_encoder_config=shared_encoder_config,
+        encoder_config=encoder_config,
         pi_config=pi_config,
         vf_config=vf_config,
     )

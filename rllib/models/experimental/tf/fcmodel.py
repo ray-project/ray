@@ -8,7 +8,7 @@ from ray.rllib.models.experimental.base import ModelConfig, ForwardOutputType
 tf1, tf, tfv = try_import_tf()
 
 
-class FCModel(tf.Module, TFModel):
+class TfFCModel(tf.Module, TFModel):
     def __init__(self, config: ModelConfig) -> None:
         tf.Module.__init__(self)
         TFModel.__init__(self, config)

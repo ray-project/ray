@@ -7,12 +7,12 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-def _framework_implemented(torch: bool = True, tf: bool = True):
+def _framework_implemented(torch: bool = True, tf2: bool = True):
     """Decorator to check if a model was implemented in a framework.
 
     Args:
         torch: Whether we can build this model with torch.
-        tf: Whether we can build this model with tf.
+        tf2: Whether we can build this model with tf.
 
     Returns:
         The decorated function.
@@ -23,7 +23,7 @@ def _framework_implemented(torch: bool = True, tf: bool = True):
     accepted = []
     if torch:
         accepted.append("torch")
-    if tf:
+    if tf2:
         accepted.append("tf")
         accepted.append("tf2")
 
@@ -59,10 +59,13 @@ class FCConfig(ModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.fcmodel import FCModel
+            from ray.rllib.models.experimental.torch.fcmodel import TorchFCModel
+
+            return TorchFCModel(self)
         else:
-            from ray.rllib.models.experimental.tf.fcmodel import FCModel
-        return FCModel(self)
+            from ray.rllib.models.experimental.tf.fcmodel import TfFCModel
+
+            return TfFCModel(self)
 
 
 @dataclass
@@ -70,10 +73,13 @@ class FCEncoderConfig(FCConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch"):
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.encoder import FCEncoder
+            from ray.rllib.models.experimental.torch.encoder import TorchFCEncoder
+
+            return TorchFCEncoder(self)
         else:
-            from ray.rllib.models.experimental.tf.encoder import FCEncoder
-        return FCEncoder(self)
+            from ray.rllib.models.experimental.tf.encoder import TfFCEncoder
+
+            return TfFCEncoder(self)
 
 
 @dataclass
@@ -83,12 +89,12 @@ class LSTMEncoderConfig(ModelConfig):
     num_layers: int = None
     batch_first: bool = True
 
-    @_framework_implemented(tf=False)
+    @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch"):
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.encoder import LSTMEncoder
+            from ray.rllib.models.experimental.torch.encoder import TorchLSTMEncoder
 
-        return LSTMEncoder(self)
+            return TorchLSTMEncoder(self)
 
 
 @dataclass
@@ -98,8 +104,10 @@ class IdentityConfig(ModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch"):
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.encoder import IdentityEncoder
-        else:
-            from ray.rllib.models.experimental.tf.encoder import IdentityEncoder
+            from ray.rllib.models.experimental.torch.encoder import TorchIdentityEncoder
 
-        return IdentityEncoder(self)
+            return TorchIdentityEncoder(self)
+        else:
+            from ray.rllib.models.experimental.tf.encoder import TfIdentityEncoder
+
+            return TfIdentityEncoder(self)

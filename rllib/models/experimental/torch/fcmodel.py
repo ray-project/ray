@@ -4,17 +4,17 @@ from ray.rllib.models.experimental.base import ForwardOutputType, Model, ModelCo
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.temp_spec_classes import TensorDict
-from ray.rllib.models.experimental.torch.primitives import FCNet
+from ray.rllib.models.experimental.torch.primitives import TorchFCNet
 from ray.rllib.models.experimental.torch.primitives import TorchModel
 from ray.rllib.utils.annotations import override
 
 
-class FCModel(TorchModel, nn.Module):
+class TorchFCModel(TorchModel, nn.Module):
     def __init__(self, config: ModelConfig) -> None:
         nn.Module.__init__(self)
         TorchModel.__init__(self, config)
 
-        self.net = FCNet(
+        self.net = TorchFCNet(
             input_dim=config.input_dim,
             hidden_layers=config.hidden_layers,
             output_dim=config.output_dim,
