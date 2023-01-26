@@ -105,6 +105,9 @@ class StreamingExecutor(Executor, threading.Thread):
             while self._scheduling_loop_step(self._topology):
                 try:
                     while self._output_node.outqueue:
+                        # Do a non-blocking put on the output queue. Output
+                        # backpressure is handled via the resource limit, not by
+                        # blocking here--- which would stall the control loop.
                         item = self._output_node.outqueue[0]
                         self._runner_thread_out.put_nowait(item)
                         self._output_node.outqueue.pop(0)
