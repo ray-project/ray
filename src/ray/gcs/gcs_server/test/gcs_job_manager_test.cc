@@ -74,7 +74,7 @@ class GcsJobManagerTest : public ::testing::Test {
 
 TEST_F(GcsJobManagerTest, TestGetJobConfig) {
   gcs::GcsJobManager gcs_job_manager(
-      gcs_table_storage_, gcs_publisher_, runtime_env_manager_, *function_manager_);
+      gcs_table_storage_, gcs_publisher_, runtime_env_manager_, *function_manager_, *kv_);
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
@@ -112,7 +112,7 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
 
 TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
   gcs::GcsJobManager gcs_job_manager(
-      gcs_table_storage_, gcs_publisher_, runtime_env_manager_, *function_manager_);
+      gcs_table_storage_, gcs_publisher_, runtime_env_manager_, *function_manager_, *kv_);
 
   auto job_id = JobID::FromInt(1);
   gcs::GcsInitData gcs_init_data(gcs_table_storage_);
