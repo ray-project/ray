@@ -664,22 +664,23 @@ def test_status_schema_helpers():
     def f2():
         pass
 
-    f1._func_or_class = "ray.serve.tests.test_schema.global_f"
-    f2._func_or_class = "ray.serve.tests.test_schema.global_f"
-
     client = serve.start()
-
-    f1.deploy()
-    f2.deploy()
+    serve.run(f1.bind(), name="app1")
+    serve.run(f2.bind(), name="app2")
 
     # Check statuses
-    statuses = serve_status_to_schema(client.get_serve_status()).deployment_statuses
-    deployment_names = {"f1", "f2"}
-    for deployment_status in statuses:
-        assert deployment_status.status in {"UPDATING", "HEALTHY"}
-        assert deployment_status.name in deployment_names
-        deployment_names.remove(deployment_status.name)
-    assert len(deployment_names) == 0
+    f1_statuses = serve_status_to_schema(
+        client.get_serve_status("app1")
+    ).deployment_statuses
+    f2_statuses = serve_status_to_schema(
+        client.get_serve_status("app2")
+    ).deployment_statuses
+    assert len(f1_statuses) == 1
+    assert f1_statuses[0].status in {"UPDATING", "HEALTHY"}
+    assert f1_statuses[0].name == "app1_f1"
+    assert len(f2_statuses) == 1
+    assert f2_statuses[0].status in {"UPDATING", "HEALTHY"}
+    assert f2_statuses[0].name == "app2_f2"
 
     serve.shutdown()
 

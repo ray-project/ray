@@ -242,6 +242,20 @@ class DeploymentSchema(
 
 @PublicAPI(stability="beta")
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
+    name: str = Field(
+        default="",
+        description=(
+            "Application name, the name should be unique within the serve instance"
+        ),
+    )
+    route_prefix: str = Field(
+        default="/",
+        description=(
+            "Route prefix for HTTP requests. If not provided, it will use"
+            "route_prefix of the ingress deployment. By default, the ingress route"
+            "prefix is '/'."
+        ),
+    )
     import_path: str = Field(
         default=None,
         description=(
@@ -398,6 +412,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
 @PublicAPI(stability="beta")
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
+    name: str = Field(description="Application name", default="")
     app_status: ApplicationStatusInfo = Field(
         ...,
         description=(
@@ -438,6 +453,7 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
 def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
 
     return ServeStatusSchema(
+        name=serve_status.name,
         app_status=serve_status.app_status,
         deployment_statuses=serve_status.deployment_statuses,
     )

@@ -1979,10 +1979,14 @@ class DeploymentStateManager:
         else:
             return None
 
-    def get_deployment_statuses(self) -> List[DeploymentStatusInfo]:
-        return list(
-            map(lambda state: state.curr_status_info, self._deployment_states.values())
-        )
+    def get_deployment_statuses(
+        self, names: List[str] = None
+    ) -> List[DeploymentStatusInfo]:
+        statuses = []
+        for name, state in self._deployment_states.items():
+            if not names or name in names:
+                statuses.append(state.curr_status_info)
+        return statuses
 
     def deploy(self, deployment_name: str, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
