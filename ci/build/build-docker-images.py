@@ -19,6 +19,7 @@ print = functools.partial(print, file=sys.stderr, flush=True)
 DOCKER_USERNAME = "raytravisbot"
 DOCKER_CLIENT = None
 PYTHON_WHL_VERSION = "cp3"
+ADDITIONAL_PLATFORMS = ["aarch64"]
 
 DOCKER_HUB_DESCRIPTION = {
     "base-deps": (
@@ -209,8 +210,8 @@ def _build_docker_image(
     # I.e. "py310"[3:] == 10
     build_args["PYTHON_MINOR_VERSION"] = py_version[3:]
 
-    if platform.processor() == "aarch64":
-        build_args["HOSTTYPE"] = "aarch64"
+    if platform.processor() in ADDITIONAL_PLATFORMS:
+        build_args["HOSTTYPE"] = platform.processor()
 
     device_tag = f"{image_type}"
 
@@ -709,6 +710,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--suffix",
         required=False,
+        choices=ADDITIONAL_PLATFORMS,
         help="Suffix to append to the build tags",
     )
     parser.add_argument(
@@ -815,7 +817,7 @@ if __name__ == "__main__":
             images_to_tag_and_push += ["ray"]
 
             # Only build ML Docker images for ML_CUDA_VERSION or cpu.
-            if platform.processor() not in ["aarch64"]:
+            if platform.processor() not in ADDITIONAL_PLATFORMS:
                 ml_image_types = [
                     image_type
                     for image_type in image_types
