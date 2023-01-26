@@ -29,5 +29,7 @@ Examples tags:
 - `nightly-py38-cpu`
 - `806c18-py38-cu112`
 
+The `ray-ml` images are not built for `arm64` (`aarch64`) architectures.
+
 ## Other Images
 * [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) - Ray and all of its dependencies.
