@@ -480,7 +480,7 @@ RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 /// Maximum number of pending lease requests per scheduling category
 /// -1 means that Ray should automatically set this to the number of nodes in
 /// the cluster.
-RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, -1)
+RAY_CONFIG(int64_t, max_pending_lease_requests_per_scheduling_category, -1)
 
 /// Wait timeout for dashboard agent register.
 #ifdef _WIN32
