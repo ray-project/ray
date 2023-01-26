@@ -136,8 +136,8 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
 
 .. _tune_custom-search:
 
-How to use Custom and Conditional Search Spaces?
-------------------------------------------------
+How to use Custom and Conditional Search Spaces in Tune?
+--------------------------------------------------------
 
 You'll often run into awkward search spaces (i.e., when one hyperparameter depends on another).
 Use ``tune.sample_from(func)`` to provide a **custom** callable function for generating a search space.

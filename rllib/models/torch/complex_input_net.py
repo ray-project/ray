@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete, MultiDiscrete
+from gymnasium.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -68,7 +68,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         for i, component in enumerate(self.flattened_input_space):
             i = str(i)
             # Image space.
-            if len(component.shape) == 3:
+            if len(component.shape) == 3 and isinstance(component, Box):
                 config = {
                     "conv_filters": model_config["conv_filters"]
                     if "conv_filters" in model_config

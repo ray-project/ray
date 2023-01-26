@@ -3,7 +3,7 @@ and adapt/use it with a different version of the environment.
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import numpy as np
 from pathlib import Path
 from typing import Dict
@@ -52,13 +52,14 @@ class MyCartPole(gym.Env):
     def step(self, actions):
         # Take the first action.
         action = actions[0]
-        obs, reward, done, info = self._env.step(action)
+        obs, reward, done, truncated, info = self._env.step(action)
         # Fake additional data points to the obs.
         obs = np.hstack((obs, [8.0, 6.0]))
-        return obs, reward, done, info
+        return obs, reward, done, truncated, info
 
-    def reset(self):
-        return np.hstack((self._env.reset(), [8.0, 6.0]))
+    def reset(self, *, seed=None, options=None):
+        obs, info = self._env.reset()
+        return np.hstack((obs, [8.0, 6.0])), info
 
 
 # Custom agent connector to drop the last 2 feature values.
@@ -116,8 +117,9 @@ def run(checkpoint_path):
 
     # Run CartPole.
     env = MyCartPole()
-    obs = env.reset()
-    done = False
+    obs, info = env.reset()
+    terminated = False
+    truncated = False
     info = {}
     reward = 0
     step = 0
@@ -128,14 +130,15 @@ def run(checkpoint_path):
             agent_ids=["agent_1"],
             input_dict={
                 SampleBatch.OBS: [obs],
-                SampleBatch.DONES: [done],
+                SampleBatch.TERMINATEDS: [terminated],
+                SampleBatch.TRUNCATEDS: [truncated],
                 SampleBatch.INFOS: [info],
                 SampleBatch.REWARDS: [reward],
             },
         )
         print(f"step {step}", obs, actions)
 
-        obs, reward, done, info = env.step(actions)
+        obs, reward, terminated, truncated, info = env.step(actions)
 
 
 # __sphinx_doc_end__

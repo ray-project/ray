@@ -13,6 +13,7 @@ from freezegun import freeze_time
 
 import ray
 from ray.air import CheckpointConfig
+from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.rllib import _register_all
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
@@ -48,6 +49,9 @@ class MyCallbacks(DefaultCallbacks):
 
 
 class TrialRunnerTest3(unittest.TestCase):
+    def _resourceManager(self):
+        return PlacementGroupResourceManager()
+
     def setUp(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"  # Reset default
 
@@ -62,14 +66,16 @@ class TrialRunnerTest3(unittest.TestCase):
 
     def testStepHook(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        runner = TrialRunner(
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager())
+        )
 
-        def on_step_begin(self, trialrunner):
+        def on_step_begin(self):
             self._resource_updater.update_avail_resources()
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             self.pre_step = cnt + 1
 
-        def on_step_end(self, trialrunner):
+        def on_step_end(self):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
             self.post_step = 1 + cnt
 
@@ -93,7 +99,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
     def testStopTrial(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        runner = TrialRunner(
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager())
+        )
         kwargs = {
             "stopping_criterion": {"training_iteration": 5},
             "resources": Resources(cpu=1, gpu=1),
@@ -144,7 +152,10 @@ class TrialRunnerTest3(unittest.TestCase):
         search_alg = _MockSuggestionAlgorithm()
         searcher = search_alg.searcher
         search_alg.add_configurations(experiments)
-        runner = TrialRunner(search_alg=search_alg)
+        runner = TrialRunner(
+            search_alg=search_alg,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
 
         while not runner.is_finished():
             runner.step()
@@ -159,7 +170,10 @@ class TrialRunnerTest3(unittest.TestCase):
         experiments = [Experiment.from_json("test", experiment_spec)]
         searcher = _MockSuggestionAlgorithm()
         searcher.add_configurations(experiments)
-        runner = TrialRunner(search_alg=searcher)
+        runner = TrialRunner(
+            search_alg=searcher,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         runner.step()
         trials = runner.get_trials()
         self.assertEqual(trials[0].status, Trial.RUNNING)
@@ -184,7 +198,11 @@ class TrialRunnerTest3(unittest.TestCase):
         experiments = [Experiment.from_json("test", experiment_spec)]
         searcher = _MockSuggestionAlgorithm()
         searcher.add_configurations(experiments)
-        runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
+        runner = TrialRunner(
+            search_alg=searcher,
+            scheduler=_MockScheduler(),
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         runner.step()
         trials = runner.get_trials()
         self.assertEqual(trials[0].status, Trial.RUNNING)
@@ -209,7 +227,10 @@ class TrialRunnerTest3(unittest.TestCase):
         search_alg = _MockSuggestionAlgorithm(max_concurrent=1)
         search_alg.add_configurations(experiments)
         searcher = search_alg.searcher
-        runner = TrialRunner(search_alg=search_alg)
+        runner = TrialRunner(
+            search_alg=search_alg,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         runner.step()
         trials = runner.get_trials()
         while trials[0].status != Trial.TERMINATED:
@@ -277,7 +298,10 @@ class TrialRunnerTest3(unittest.TestCase):
         experiments = [Experiment.from_json("test", experiment_spec)]
         searcher.add_configurations(experiments)
 
-        runner = TrialRunner(search_alg=searcher)
+        runner = TrialRunner(
+            search_alg=searcher,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         self.assertFalse(runner.is_finished())
         runner.step()  # This launches a new run
         runner.step()  # This launches a 2nd run
@@ -333,7 +357,10 @@ class TrialRunnerTest3(unittest.TestCase):
 
         searcher = create_searcher()
         runner = TrialRunner(
-            search_alg=searcher, local_checkpoint_dir=self.tmpdir, checkpoint_period=-1
+            search_alg=searcher,
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=-1,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         for i in range(6):
             runner.step()
@@ -351,7 +378,10 @@ class TrialRunnerTest3(unittest.TestCase):
 
         searcher = create_searcher()
         runner2 = TrialRunner(
-            search_alg=searcher, local_checkpoint_dir=self.tmpdir, resume="LOCAL"
+            search_alg=searcher,
+            local_checkpoint_dir=self.tmpdir,
+            resume="LOCAL",
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         assert len(runner2.get_trials()) == 6, [t.config for t in runner2.get_trials()]
 
@@ -374,34 +404,10 @@ class TrialRunnerTest3(unittest.TestCase):
 
     def testTrialErrorResumeFalse(self):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
-        runner = TrialRunner(local_checkpoint_dir=self.tmpdir)
-        kwargs = {
-            "stopping_criterion": {"training_iteration": 4},
-            "resources": Resources(cpu=1, gpu=0),
-        }
-        trials = [
-            Trial("__fake", config={"mock_error": True}, **kwargs),
-            Trial("__fake", **kwargs),
-            Trial("__fake", **kwargs),
-        ]
-        for t in trials:
-            runner.add_trial(t)
-
-        while not runner.is_finished():
-            runner.step()
-
-        runner.checkpoint(force=True)
-
-        assert trials[0].status == Trial.ERROR
-        del runner
-
-        new_runner = TrialRunner(resume=True, local_checkpoint_dir=self.tmpdir)
-        assert len(new_runner.get_trials()) == 3
-        assert Trial.ERROR in (t.status for t in new_runner.get_trials())
-
-    def testTrialErrorResumeTrue(self):
-        ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
-        runner = TrialRunner(local_checkpoint_dir=self.tmpdir)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         kwargs = {
             "stopping_criterion": {"training_iteration": 4},
             "resources": Resources(cpu=1, gpu=0),
@@ -423,7 +429,43 @@ class TrialRunnerTest3(unittest.TestCase):
         del runner
 
         new_runner = TrialRunner(
-            resume="ERRORED_ONLY", local_checkpoint_dir=self.tmpdir
+            resume=True,
+            local_checkpoint_dir=self.tmpdir,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
+        assert len(new_runner.get_trials()) == 3
+        assert Trial.ERROR in (t.status for t in new_runner.get_trials())
+
+    def testTrialErrorResumeTrue(self):
+        ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
+        kwargs = {
+            "stopping_criterion": {"training_iteration": 4},
+            "resources": Resources(cpu=1, gpu=0),
+        }
+        trials = [
+            Trial("__fake", config={"mock_error": True}, **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+        ]
+        for t in trials:
+            runner.add_trial(t)
+
+        while not runner.is_finished():
+            runner.step()
+
+        runner.checkpoint(force=True)
+
+        assert trials[0].status == Trial.ERROR
+        del runner
+
+        new_runner = TrialRunner(
+            resume="ERRORED_ONLY",
+            local_checkpoint_dir=self.tmpdir,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
@@ -443,7 +485,11 @@ class TrialRunnerTest3(unittest.TestCase):
         """Creates different trials to test runner.checkpoint/restore."""
         ray.init(num_cpus=3)
 
-        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         trials = [
             Trial(
                 "__fake",
@@ -490,7 +536,11 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(len(runner.trial_executor.get_checkpoints()), 3)
         self.assertEqual(trials[2].status, Trial.RUNNING)
 
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
+        runner2 = TrialRunner(
+            resume="LOCAL",
+            local_checkpoint_dir=self.tmpdir,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         for tid in ["trial_terminate", "trial_fail"]:
             original_trial = runner.get_trial(tid)
             restored_trial = runner2.get_trial(tid)
@@ -514,7 +564,11 @@ class TrialRunnerTest3(unittest.TestCase):
 
         ray.init(num_cpus=3)
 
-        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         runner.add_trial(
             Trial(
                 "__fake",
@@ -552,7 +606,11 @@ class TrialRunnerTest3(unittest.TestCase):
         while not old_trials[2].has_reported_at_least_once:
             runner.step()
 
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
+        runner2 = TrialRunner(
+            resume="LOCAL",
+            local_checkpoint_dir=self.tmpdir,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         new_trials = runner2.get_trials()
         self.assertEqual(len(new_trials), 3)
         self.assertTrue(runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
@@ -569,13 +627,21 @@ class TrialRunnerTest3(unittest.TestCase):
             config={"callbacks": MyCallbacks},
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         )
-        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         runner.add_trial(trial)
         for _ in range(5):
             runner.step()
         # force checkpoint
         runner.checkpoint()
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
+        runner2 = TrialRunner(
+            resume="LOCAL",
+            local_checkpoint_dir=self.tmpdir,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         new_trial = runner2.get_trials()[0]
         self.assertTrue("callbacks" in new_trial.config)
 
@@ -598,7 +664,11 @@ class TrialRunnerTest3(unittest.TestCase):
             local_dir=tmpdir,
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         )
-        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         runner.add_trial(trial)
         for _ in range(5):
             runner.step()
@@ -606,7 +676,11 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.checkpoint()
         self.assertEqual(count_checkpoints(tmpdir), 1)
 
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
+        runner2 = TrialRunner(
+            resume="LOCAL",
+            local_checkpoint_dir=tmpdir,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         for _ in range(5):
             runner2.step()
         self.assertEqual(count_checkpoints(tmpdir), 2)
@@ -629,7 +703,11 @@ class TrialRunnerTest3(unittest.TestCase):
         trial = Trial(
             "__fake", checkpoint_config=CheckpointConfig(checkpoint_frequency=3)
         )
-        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         runner.add_trial(trial)
 
         runner.step()  # start trial
@@ -670,7 +748,9 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             checkpoint_period=0,
-            trial_executor=RayTrialExecutor(result_buffer_length=7),
+            trial_executor=RayTrialExecutor(
+                result_buffer_length=7, resource_manager=self._resourceManager()
+            ),
             callbacks=[observer],
         )
         runner.add_trial(trial)
@@ -709,7 +789,11 @@ class TrialRunnerTest3(unittest.TestCase):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
         ray.init(num_cpus=3)
-        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         # The Trial `local_dir` must match the TrialRunner `local_checkpoint_dir`
         # to match the directory structure assumed by `TrialRunner.resume`.
         # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
@@ -730,7 +814,11 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Process save
         self.assertTrue(trials[0].has_checkpoint())
 
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
+        runner2 = TrialRunner(
+            resume="LOCAL",
+            local_checkpoint_dir=self.tmpdir,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         runner2.step()  # 5: Start trial and dispatch restore
         trials2 = runner2.get_trials()
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
@@ -745,7 +833,11 @@ class TrialRunnerTest3(unittest.TestCase):
             )
 
         ray.init(num_cpus=3)
-        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 10}))
         trials = runner.get_trials()
 
@@ -814,6 +906,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 upload_dir="fake", syncer=CustomSyncer(), sync_period=0
             ),
             remote_checkpoint_dir="fake",
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
 
@@ -860,6 +953,8 @@ class TrialRunnerTest3(unittest.TestCase):
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
             remote_checkpoint_dir="fake",
             trial_checkpoint_config=checkpoint_config,
+            checkpoint_period=100,  # Only rely on forced syncing
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
 
         class CheckpointingTrial(Trial):
@@ -882,9 +977,14 @@ class TrialRunnerTest3(unittest.TestCase):
                 runner.step()
         assert any("syncing has been triggered multiple" in x for x in buffer)
 
-        # we should sync 4 times - every 2 checkpoints, but the last sync will not
-        # happen as the experiment finishes before it is triggered
-        assert syncer.sync_up_counter == 4
+        # We should sync 6 times:
+        # The first checkpoint happens when the experiment starts,
+        # since no checkpoints have happened yet
+        # (This corresponds to the new_trial event in the runner loop)
+        # Then, every num_to_keep=2 checkpoints, we should perform a forced checkpoint
+        # which results in 5 more checkpoints (running for 10 iterations),
+        # giving a total of 6
+        assert syncer.sync_up_counter == 6
 
     def getHangingSyncer(self, sync_period: float, sync_timeout: float):
         def _hanging_sync_up_command(*args, **kwargs):
@@ -969,6 +1069,11 @@ class TrialRunnerTest3(unittest.TestCase):
                 runner.checkpoint()
             assert any("did not finish running within the timeout" in x for x in buffer)
             assert syncer.sync_up_counter == 2
+
+
+class FixedResourceTrialRunnerTest3(TrialRunnerTest3):
+    def _resourceManager(self):
+        return FixedResourceManager()
 
 
 class SearchAlgorithmTest(unittest.TestCase):

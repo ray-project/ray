@@ -148,7 +148,7 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
         if set(pip.keys()) - {"packages", "pip_check", "pip_version"}:
             raise ValueError(
                 "runtime_env['pip'] can only have these fields: "
-                "packages, pip_check and pip_check, but got: "
+                "packages, pip_check and pip_version, but got: "
                 f"{list(pip.keys())}"
             )
 

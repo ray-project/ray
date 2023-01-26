@@ -118,7 +118,7 @@ as a single task/node (recall that ``tasks-per-node=1``).
 
 Below, you'll see that we explicitly specify the number of CPUs (``num-cpus``)
 and number of GPUs (``num-gpus``) to Ray, as this will prevent Ray from using
-more resources than allocated. We also need to explictly
+more resources than allocated. We also need to explicitly
 indicate the ``node-ip-address`` for the Ray head runtime:
 
 .. literalinclude:: /cluster/doc_code/slurm-basic.sh

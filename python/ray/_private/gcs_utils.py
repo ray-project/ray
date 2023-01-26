@@ -13,18 +13,16 @@ import grpc
 import ray
 from ray._private import ray_constants
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
-from ray.core.generated.common_pb2 import ErrorType
+from ray.core.generated.common_pb2 import ErrorType, JobConfig
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     AvailableResources,
     ErrorTableData,
     GcsEntry,
     GcsNodeInfo,
-    JobConfig,
     JobTableData,
     ObjectTableData,
     PlacementGroupTableData,
-    ProfileTableData,
     PubSubMessage,
     ResourceDemand,
     ResourceLoad,
@@ -34,6 +32,7 @@ from ray.core.generated.gcs_pb2 import (
     ResourceUsageBatchData,
     TablePrefix,
     TablePubsub,
+    TaskEvents,
     WorkerTableData,
 )
 
@@ -51,9 +50,9 @@ __all__ = [
     "ResourceUsageBatchData",
     "ResourcesData",
     "ObjectTableData",
-    "ProfileTableData",
     "TablePrefix",
     "TablePubsub",
+    "TaskEvents",
     "ResourceDemand",
     "ResourceLoad",
     "ResourceMap",

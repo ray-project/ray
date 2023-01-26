@@ -91,7 +91,7 @@ if __name__ == "__main__":
     # >> algo = PPO(config)
     # >> lstm_cell_size = config["model"]["lstm_cell_size"]
     # >> env = StatelessCartPole()
-    # >> obs = env.reset()
+    # >> obs, info = env.reset()
     # >>
     # >> # range(2) b/c h- and c-states of the LSTM.
     # >> init_state = state = [
@@ -103,9 +103,9 @@ if __name__ == "__main__":
     # >> while True:
     # >>     a, state_out, _ = algo.compute_single_action(
     # ..         obs, state, prev_a, prev_r)
-    # >>     obs, reward, done, _ = env.step(a)
+    # >>     obs, reward, done, truncated, _ = env.step(a)
     # >>     if done:
-    # >>         obs = env.reset()
+    # >>         obs, info = env.reset()
     # >>         state = init_state
     # >>         prev_a = 0
     # >>         prev_r = 0.0

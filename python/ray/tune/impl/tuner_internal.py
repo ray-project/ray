@@ -460,19 +460,22 @@ class TunerInternal:
                 # If we specifically know this trainable doesn't support the
                 # argument, raise an error
                 raise ValueError(
-                    f"You passed `checkpoint_freq={checkpoint_freq}` to your "
-                    f"CheckpointConfig, but this trainer does not support "
-                    f"this argument. If the trainer takes in a training loop, "
-                    f"you will need to trigger checkpointing yourself using "
-                    f"`ray.air.session.report(metrics=..., checkpoint=...)`."
+                    f"You passed `checkpoint_frequency={checkpoint_freq}` to your "
+                    "CheckpointConfig, but this trainer does not support "
+                    "this argument. If you passed in an AIR trainer that takes in a "
+                    "custom training loop, you will need to "
+                    "report a checkpoint every `checkpoint_frequency` iterations "
+                    "within your training loop using "
+                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "to get this behavior."
                 )
             elif handle_checkpoint_freq is True:
                 # If we specifically support it, it's handled in the training loop,
                 # so we disable tune's bookkeeping.
                 checkpoint_freq = 0
-            # Otherwise, this is a non-trainer trainable and we just keep the
+            # Otherwise, the trainable is not an AIR trainer and we just keep the
             # user-supplied value.
-
+            # Function trainables will raise a runtime error later if set > 0
         if checkpoint_at_end is not None:
             # Again, function trainables usually don't handle this argument.
             handle_cp_at_end = getattr(trainable, "_handles_checkpoint_at_end", None)
@@ -480,16 +483,18 @@ class TunerInternal:
                 # If we specifically know we don't support it, raise an error.
                 raise ValueError(
                     f"You passed `checkpoint_at_end={checkpoint_at_end}` to your "
-                    f"CheckpointConfig, but this trainer does not support "
-                    f"this argument. If the trainer takes in a training loop, "
-                    f"you will need to trigger checkpointing yourself using "
-                    f"`ray.air.session.report(metrics=..., checkpoint=...)`. "
+                    "CheckpointConfig, but this trainer does not support "
+                    "this argument. If you passed in an AIR trainer that takes in a "
+                    "custom training loop, you should include one last call to "
+                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "at the end of your training loop to get this behavior."
                 )
             elif handle_cp_at_end is True:
                 # If we specifically support it, it's handled in the training loop,
                 # so we disable tune's internal bookkeeping.
                 checkpoint_at_end = False
             # If this is a user-defined trainable, just keep the value
+            # Function trainables will raise a runtime error later if set to True
         else:
             # Set default to False for function trainables and True for everything else
             if is_function_trainable(trainable):

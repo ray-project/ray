@@ -1,8 +1,8 @@
-import tree
-import gym
+import gymnasium as gym
+from gymnasium.spaces import Box
 import numpy as np
+import tree  # pip install dm_tree
 import unittest
-from gym.spaces import Box
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
@@ -502,7 +502,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
 
         # simulate a rollout
         n_steps = 10
-        obs = env.reset()
+        obs, info = env.reset()
         env_out = AgentConnectorDataType(
             0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: -1}
         )
@@ -521,11 +521,12 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             )
             action = policy_output[0]
 
-            next_obs, rewards, dones, info = env.step(action)
+            next_obs, rewards, terminateds, truncateds, info = env.step(action)
             env_out_dict = {
                 SampleBatch.NEXT_OBS: next_obs,
                 SampleBatch.REWARDS: rewards,
-                SampleBatch.DONES: dones,
+                SampleBatch.TERMINATEDS: terminateds,
+                SampleBatch.TRUNCATEDS: truncateds,
                 SampleBatch.INFOS: info,
                 SampleBatch.ACTIONS: action,
                 # state_out

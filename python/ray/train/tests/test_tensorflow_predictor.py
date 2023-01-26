@@ -102,15 +102,14 @@ def test_tensorflow_checkpoint():
 
     checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
     assert (
-        checkpoint.get_model(model_definition=build_raw_model).get_weights()
-        == model.get_weights()
+        checkpoint.get_model(model=build_raw_model).get_weights() == model.get_weights()
     )
 
     with checkpoint.as_directory() as path:
         checkpoint = TensorflowCheckpoint.from_directory(path)
         checkpoint_preprocessor = checkpoint.get_preprocessor()
         assert (
-            checkpoint.get_model(model_definition=build_raw_model).get_weights()
+            checkpoint.get_model(model=build_raw_model).get_weights()
             == model.get_weights()
         )
         assert checkpoint_preprocessor == preprocessor

@@ -28,8 +28,7 @@ namespace core {
 
 class ActorHandle {
  public:
-  ActorHandle(rpc::ActorHandle inner)
-      : inner_(inner), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
+  ActorHandle(rpc::ActorHandle inner) : inner_(inner) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id,
@@ -103,12 +102,6 @@ class ActorHandle {
  private:
   // Protobuf-defined persistent state of the actor handle.
   const rpc::ActorHandle inner_;
-
-  /// The unique id of the dummy object returned by the previous task.
-  /// TODO: This can be removed once we schedule actor tasks by task counter
-  /// only.
-  // TODO: Save this state in the core worker.
-  ObjectID actor_cursor_ GUARDED_BY(mutex_);
   // Number of tasks that have been submitted on this handle.
   uint64_t task_counter_ GUARDED_BY(mutex_) = 0;
 

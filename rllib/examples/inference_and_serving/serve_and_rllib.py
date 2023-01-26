@@ -6,7 +6,7 @@ https://docs.ray.io/en/master/serve/tutorials/rllib.html
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import requests
 from starlette.requests import Request
 
@@ -54,7 +54,7 @@ class ServeRLlibPolicy:
 
 
 def train_rllib_policy(config: AlgorithmConfig):
-    """Trains a DQN on MsPacman-v0 for n iterations.
+    """Trains a DQN on ALE/MsPacman-v5 for n iterations.
 
     Saves the trained Trainer to disk and returns the checkpoint path.
 
@@ -78,7 +78,7 @@ def train_rllib_policy(config: AlgorithmConfig):
 if __name__ == "__main__":
 
     # Config for the served RLlib Policy/Trainer.
-    config = DQNConfig().environment("MsPacman-v0").framework(args.framework)
+    config = DQNConfig().environment("ALE/MsPacman-v5").framework(args.framework)
 
     # Train the Algorithm for some time, then save it and get the checkpoint path.
     checkpoint_path = train_rllib_policy(config)
@@ -95,8 +95,10 @@ if __name__ == "__main__":
 
     # Create the environment that we would like to receive
     # served actions for.
-    env = FrameStack(WarpFrame(gym.make("MsPacman-v0"), 84), 4)
-    obs = env.reset()
+    env = FrameStack(
+        WarpFrame(gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-v5"), 84), 4
+    )
+    obs, info = env.reset()
 
     while True:
         print("-> Requesting action for obs ...")
@@ -110,11 +112,11 @@ if __name__ == "__main__":
 
         # Apply the action in the env.
         action = response["action"]
-        obs, reward, done, _ = env.step(action)
+        obs, reward, done, _, _ = env.step(action)
 
         # If episode done -> reset to get initial observation of new episode.
         if done:
-            obs = env.reset()
+            obs, info = env.reset()
 
         # Render if necessary.
         if not args.no_render:

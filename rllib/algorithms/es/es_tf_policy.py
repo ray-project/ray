@@ -1,7 +1,7 @@
 # Code in this file is copied and adapted from
 # https://github.com/openai/evolution-strategies-starter.
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Optional
@@ -56,18 +56,18 @@ def rollout(
     )
     rewards = []
     t = 0
-    observation = env.reset()
+    observation, _ = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
         ac, _, _ = policy.compute_actions(
             [observation], add_noise=add_noise, update=True
         )
         ac = ac[0]
-        observation, r, done, _ = env.step(ac)
+        observation, r, terminated, truncated, _ = env.step(ac)
         if offset != 0.0:
             r -= np.abs(offset)
         rewards.append(r)
         t += 1
-        if done:
+        if terminated or truncated:
             break
     rewards = np.array(rewards, dtype=np.float32)
     return rewards, t

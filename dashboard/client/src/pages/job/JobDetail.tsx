@@ -8,7 +8,6 @@ import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import ActorList from "../actor/ActorList";
-import { MainNavPageInfo } from "../layout/mainNavContext";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
 
@@ -26,7 +25,13 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const JobDetailPage = () => {
+type JobDetailChartsPageProps = {
+  newIA?: boolean;
+};
+
+export const JobDetailChartsPage = ({
+  newIA = false,
+}: JobDetailChartsPageProps) => {
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
@@ -35,13 +40,6 @@ const JobDetailPage = () => {
   if (!job) {
     return (
       <div className={classes.root}>
-        <MainNavPageInfo
-          pageInfo={{
-            title: "Job details",
-            id: "job-detail",
-            path: undefined,
-          }}
-        />
         <Loading loading={msg.startsWith("Loading")} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
@@ -102,13 +100,6 @@ const JobDetailPage = () => {
 
   return (
     <div className={classes.root}>
-      <MainNavPageInfo
-        pageInfo={{
-          title: job.job_id ?? "Job details",
-          id: "job-detail",
-          path: job.job_id ? `/new/jobs/${job.job_id}` : undefined,
-        }}
-      />
       <TitleCard title={`JOB - ${params.id}`}>
         <MetadataSection
           metadataList={[
@@ -186,5 +177,3 @@ const JobDetailPage = () => {
     </div>
   );
 };
-
-export default JobDetailPage;

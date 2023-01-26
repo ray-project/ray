@@ -3,7 +3,8 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 
 
 class TestAlgorithmConfig(unittest.TestCase):
@@ -116,7 +117,9 @@ class TestAlgorithmConfig(unittest.TestCase):
 
     def test_detect_atari_env(self):
         """Tests that we can properly detect Atari envs."""
-        config = AlgorithmConfig().environment(env="BreakoutNoFrameskip-v4")
+        config = AlgorithmConfig().environment(
+            env="ALE/Breakout-v5", env_config={"frameskip": 1}
+        )
         config.validate()
         self.assertTrue(config.is_atari)
 
@@ -130,7 +133,11 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertFalse(config.is_atari)
 
         config = AlgorithmConfig().environment(
-            env=lambda ctx: gym.make("BreakoutNoFrameskip-v4")
+            env=lambda ctx: gym.make(
+                "GymV26Environment-v0",
+                env_id="ALE/Breakout-v5",
+                make_kwargs={"frameskip": 1},
+            )
         )
         config.validate()
         # We do not auto-detect callable env makers for Atari envs.
@@ -139,6 +146,41 @@ class TestAlgorithmConfig(unittest.TestCase):
         config = AlgorithmConfig().environment(env="NotAtari")
         config.validate()
         self.assertFalse(config.is_atari)
+
+    def test_rl_module_api(self):
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .framework("torch")
+            .rollouts(enable_connectors=True)
+            .rl_module(_enable_rl_module_api=True)
+        )
+
+        config.validate()
+        self.assertEqual(config.rl_module_class, PPOTorchRLModule)
+
+        class A:
+            pass
+
+        config = config.rl_module(rl_module_class=A)
+        config.validate()
+        self.assertEqual(config.rl_module_class, A)
+
+    def test_rl_trainer_api(self):
+        # TODO (Kourosh): the default rl_trainer of PPO is not implemented yet. When
+        # that's done this test should be updated
+        class A:
+            pass
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .rollouts(enable_connectors=True)
+            .training(rl_trainer_class=A, _enable_rl_trainer_api=True)
+        )
+
+        config.validate()
+        self.assertEqual(config.rl_trainer_class, A)
 
 
 if __name__ == "__main__":

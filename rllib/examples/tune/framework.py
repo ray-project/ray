@@ -10,7 +10,8 @@ from ray import air, tune
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.tune import CLIReporter
 
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.WARN)
+logger = logging.getLogger("tune_framework")
 
 
 def run(smoke_test=False):
@@ -20,7 +21,7 @@ def run(smoke_test=False):
 
     config = (
         APPOConfig()
-        .environment("PongNoFrameskip-v4", clip_rewards=True)
+        .environment("ALE/Pong-v5", clip_rewards=True)
         .framework(tune.grid_search(["tf", "torch"]))
         .rollouts(
             rollout_fragment_length=50,

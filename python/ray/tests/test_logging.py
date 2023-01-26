@@ -20,6 +20,7 @@ from ray._private.log_monitor import (
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
     LogFileInfo,
     LogMonitor,
+    is_proc_alive,
 )
 from ray._private.test_utils import (
     get_log_batch,
@@ -121,6 +122,63 @@ def test_log_rotation_config(ray_start_cluster, monkeypatch):
     config = worker_node.logging_config
     assert config["log_rotation_max_bytes"] == 0
     assert config["log_rotation_backup_count"] == 0
+
+
+def test_log_file_exists(shutdown_only):
+    """Verify all log files exist as specified in
+    https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure # noqa
+    """
+    ray.init(num_cpus=1)
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    log_rotating_component = [
+        (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
+        (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
+        (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
+        (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
+        (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),
+        (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER, [".log"]),
+        # Below components are not log rotating now.
+        (ray_constants.PROCESS_TYPE_RAYLET, [".out", ".err"]),
+        (ray_constants.PROCESS_TYPE_GCS_SERVER, [".out", ".err"]),
+        (ray_constants.PROCESS_TYPE_WORKER, [".out", ".err"]),
+    ]
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        for i in range(10):
+            print(f"test {i}")
+
+    # Create a runtime env to make sure dashboard agent is alive.
+    ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
+
+    paths = list(log_dir_path.iterdir())
+
+    def component_and_suffix_exists(component, paths):
+        component, suffixes = component
+        for path in paths:
+            filename = path.stem
+            suffix = path.suffix
+            if component in filename:
+                # core-worker log also contains "worker keyword". We ignore this case.
+                if (
+                    component == ray_constants.PROCESS_TYPE_WORKER
+                    and ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER in filename
+                ):
+                    continue
+                if suffix in suffixes:
+                    return True
+                else:
+                    # unexpected suffix.
+                    return False
+
+        return False
+
+    for component in log_rotating_component:
+        assert component_and_suffix_exists(component, paths), (component, paths)
 
 
 def test_log_rotation(shutdown_only, monkeypatch):
@@ -314,7 +372,7 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
     p = init_log_pubsub()
     print_after.remote(print_msg.remote())
     msgs = get_log_message(
-        p, num=3, timeout=1, job_id=ray.get_runtime_context().job_id.hex()
+        p, num=6, timeout=10, job_id=ray.get_runtime_context().get_job_id()
     )
 
     assert len(msgs) == 1, msgs
@@ -464,25 +522,31 @@ def create_file(dir, filename, content):
     f.write_text(content)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows",
-)
-def test_log_monitor(tmp_path):
+@pytest.fixture
+def live_dead_pids():
+    p1 = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(6000)"])
+    p2 = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(6000)"])
+    p2.kill()
+    # avoid zombie processes
+    p2.wait()
+    yield p1.pid, p2.pid
+    p1.kill()
+    p1.wait()
+
+
+def test_log_monitor(tmp_path, live_dead_pids):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     # Create an old dir.
     (log_dir / "old").mkdir()
     worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
     job_id = "01000000"
-    dead_pid = "47660"
-    alive_pid = "12345"
-
-    def proc_alive(pid):
-        return pid != int(dead_pid)
+    alive_pid, dead_pid = live_dead_pids
 
     mock_publisher = MagicMock()
-    log_monitor = LogMonitor(str(log_dir), mock_publisher, proc_alive, max_files_open=5)
+    log_monitor = LogMonitor(
+        str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+    )
 
     # files
     worker_out_log_file = f"worker-{worker_id}-{job_id}-{dead_pid}.out"
@@ -546,8 +610,8 @@ def test_log_monitor(tmp_path):
     assert not worker_out_log_file_info.is_err_file
     assert worker_err_log_file_info.is_err_file
 
-    assert worker_out_log_file_info.job_id == job_id
-    assert worker_err_log_file_info.job_id == job_id
+    assert worker_out_log_file_info.job_id is None
+    assert worker_err_log_file_info.job_id is None
     assert worker_out_log_file_info.worker_pid == int(dead_pid)
     assert worker_out_log_file_info.worker_pid == int(dead_pid)
 
@@ -627,11 +691,7 @@ def test_log_monitor(tmp_path):
     assert len(list((log_dir / "old").iterdir())) == 2
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows",
-)
-def test_log_monitor_actor_task_name(tmp_path):
+def test_log_monitor_actor_task_name_and_job_id(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
@@ -692,6 +752,26 @@ def test_log_monitor_actor_task_name(tmp_path):
         }
     )
 
+    # Test the job_id is updated.
+    job_id = "01000000"
+    with open(file_info.filename, "a") as f:
+        # Write 150 more lines.
+        f.write(f"{ray_constants.LOG_PREFIX_JOB_ID}{job_id}\n")
+        f.write("line2")
+    log_monitor.check_log_files_and_publish_updates()
+    assert file_info.job_id == job_id
+    mock_publisher.publish_logs.assert_any_call(
+        {
+            "ip": log_monitor.ip,
+            "pid": file_info.worker_pid,
+            "job": file_info.job_id,
+            "is_err": file_info.is_err_file,
+            "lines": ["line2"],
+            "actor_name": actor_name,
+            "task_name": None,
+        }
+    )
+
 
 @pytest.fixture
 def mock_timer():
@@ -701,10 +781,6 @@ def mock_timer():
     time.time = f
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows",
-)
 def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()

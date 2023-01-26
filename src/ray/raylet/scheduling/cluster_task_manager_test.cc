@@ -157,6 +157,7 @@ RayTask CreateTask(
                                  Language::PYTHON,
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id,
+                                 rpc::JobConfig(),
                                  TaskID::Nil(),
                                  0,
                                  TaskID::Nil(),

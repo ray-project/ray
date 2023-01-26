@@ -254,6 +254,8 @@ LOG_PREFIX_INFO_MESSAGE = ":info_message:"
 LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 # Task names are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_TASK_NAME = ":task_name:"
+# Job ids are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_JOB_ID = ":job_id:"
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
@@ -280,9 +282,7 @@ OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
-# The default password to prevent redis port scanning attack.
-# Hex for ray.
-REDIS_DEFAULT_PASSWORD = "5241590000000000"
+REDIS_DEFAULT_PASSWORD = ""
 
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"

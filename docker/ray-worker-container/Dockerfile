@@ -41,7 +41,7 @@ RUN apt-get update -y && sudo apt-get upgrade -y \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
-        cython==0.29.26 \
+        cython==0.29.32 \
         numpy==1.15.4 \
         psutil \
     # To avoid the following error on Jenkins:

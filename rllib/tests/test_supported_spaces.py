@@ -1,4 +1,6 @@
-from gym.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete
+import time
+
+from gymnasium.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete, MultiBinary
 import numpy as np
 import unittest
 
@@ -25,7 +27,9 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.test_utils import framework_iterator
 
 ACTION_SPACES_TO_TEST = {
-    "discrete": Discrete(5),
+    # Test discrete twice here until we support multi_binary action spaces
+    "discrete": Discrete(5),  # TODO: (Artur) Support "multi_binary"
+    "discrete2": Discrete(5),
     "vector1d": Box(-1.0, 1.0, (5,), dtype=np.float32),
     "vector2d": Box(-1.0, 1.0, (5,), dtype=np.float32),
     "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
@@ -41,6 +45,7 @@ ACTION_SPACES_TO_TEST = {
 }
 
 OBSERVATION_SPACES_TO_TEST = {
+    "multi_binary": MultiBinary([3, 10, 10]),
     "discrete": Discrete(5),
     "vector1d": Box(-1.0, 1.0, (5,), dtype=np.float32),
     "vector2d": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
@@ -58,8 +63,6 @@ OBSERVATION_SPACES_TO_TEST = {
 
 def check_support(alg, config, train=True, check_bounds=False, tf2=False):
     config["log_level"] = "ERROR"
-    config["train_batch_size"] = 50
-    config["rollout_fragment_length"] = 10
     config["env"] = RandomEnv
 
     def _do_check(alg, config, a_name, o_name):
@@ -67,17 +70,18 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
         action_space = ACTION_SPACES_TO_TEST[a_name]
         obs_space = OBSERVATION_SPACES_TO_TEST[o_name]
         print(
-            "=== Testing {} (fw={}) A={} S={} ===".format(
+            "=== Testing {} (fw={}) action_space={} obs_space={} ===".format(
                 alg, fw, action_space, obs_space
             )
         )
+        t0 = time.time()
         config.update_from_dict(
             dict(
                 env_config=dict(
                     action_space=action_space,
                     observation_space=obs_space,
                     reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
-                    p_done=1.0,
+                    p_terminated=1.0,
                     check_action_bounds=check_bounds,
                 )
             )
@@ -121,7 +125,7 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
             if train:
                 algo.train()
             algo.stop()
-        print(stat)
+        print("Test: {}, ran in {}s".format(stat, time.time() - t0))
 
     frameworks = ("tf", "torch")
     if tf2:
@@ -141,10 +145,40 @@ def check_support(alg, config, train=True, check_bounds=False, tf2=False):
             _do_check(alg, config, fixed_action_key, o_name)
 
 
-class TestSupportedSpacesPG(unittest.TestCase):
+class TestSupportedSpacesIMPALAAPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_gpus=1)
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_impala(self):
+        check_support(
+            "IMPALA",
+            (
+                ImpalaConfig()
+                .resources(num_gpus=0)
+                .training(model={"fcnet_hiddens": [10]})
+            ),
+        )
+
+    def test_appo(self):
+        config = (
+            APPOConfig()
+            .resources(num_gpus=0)
+            .training(vtrace=False, model={"fcnet_hiddens": [10]})
+        )
+        check_support("APPO", config, train=False)
+        config.training(vtrace=True)
+        check_support("APPO", config)
+
+
+class TestSupportedSpacesA3CPPO(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -161,30 +195,10 @@ class TestSupportedSpacesPG(unittest.TestCase):
         )
         check_support("A3C", config, check_bounds=True)
 
-    def test_appo(self):
-        config = (
-            APPOConfig()
-            .resources(num_gpus=0)
-            .training(vtrace=False, model={"fcnet_hiddens": [10]})
-        )
-        check_support("APPO", config, train=False)
-        config.training(vtrace=True)
-        check_support("APPO", config)
-
-    def test_impala(self):
-        check_support(
-            "IMPALA",
-            (
-                ImpalaConfig()
-                .resources(num_gpus=0)
-                .training(model={"fcnet_hiddens": [10]})
-            ),
-        )
-
     def test_ppo(self):
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
+            .rollouts(num_rollout_workers=2, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
                 num_sgd_iter=1,
@@ -196,6 +210,16 @@ class TestSupportedSpacesPG(unittest.TestCase):
         )
         check_support("PPO", config, check_bounds=True, tf2=True)
 
+
+class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_gpus=1)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_ppo_no_preprocessors_gpu(self):
         # Same test as test_ppo, but also test if we are able to move models and tensors
         # on the same device when not using preprocessors.
@@ -203,7 +227,7 @@ class TestSupportedSpacesPG(unittest.TestCase):
         # obscure errors.
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
+            .rollouts(num_rollout_workers=2, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
                 num_sgd_iter=1,
