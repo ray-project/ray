@@ -106,7 +106,7 @@ ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-hos
 
 else
 
-ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address $HOSTNAME.chimp-beta.ts.net
+ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address $HOSTNAME.chimp-beta.ts.net
 
 /crate/bin/crate -Cnetwork.host=_tailscale0_ \
             -Cnode.name=$HOSTNAME \
@@ -135,9 +135,7 @@ term_handler(){
     echo "Running Decommission"
     response=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].hostname')
     hostnames=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net"}' | tr '\n' ' ')
-    if [ -n hostnames ]; then
-        hostnames=${hostnames%?}
-    else
+    if [ -z hostnames ]; then
         hostnames="nexus.chimp-beta.ts.net"
     fi
 
