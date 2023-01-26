@@ -35,8 +35,7 @@ class AbstractMap(LogicalOperator):
         block_fn: The transform function to apply to each input block to produce output
             blocks.
         target_block_size: The target size for blocks outputted by this operator.
-        fn: User provided UDF. `fn` is used as the first argument to `block_fn` if
-            provided.
+        fn: User provided UDF to be called in `block_fn`.
         fn_args: Arguments to `fn`.
         fn_kwargs: Keyword arguments to `fn`.
         fn_constructor_args: Arguments to provide to the initializor of `fn` if `fn` is
