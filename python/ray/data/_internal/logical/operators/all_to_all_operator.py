@@ -1,4 +1,3 @@
-import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ray.data._internal.block_list import BlockList
