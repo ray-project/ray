@@ -497,8 +497,9 @@ def test_legacy_memory_monitor_disabled_by_oom_killer():
 )
 def test_infinite_retry_fail_immediately(ray_with_memory_monitor):
     addr = ray_with_memory_monitor
-    
+
     with ray.init():
+
         @ray.remote
         def mem_leaker():
             chunks = []
@@ -518,6 +519,7 @@ def test_infinite_retry_fail_immediately(ray_with_memory_monitor):
             tag="MemoryManager.TaskEviction.Total",
             value=1.0,
         )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
