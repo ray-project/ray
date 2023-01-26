@@ -25,9 +25,9 @@ The optional `Platform` tag specifies the platform where the image is intended f
 | no tag  | Aliases to `-cpu` tagged images for `ray`, and aliases to ``-gpu`` tagged images for `ray-ml`. |
 
 The optional `Architecture` tag can be used to specify images for different CPU architectures.
-Currently, we only support the `x86_64` (`amd64`) and `aarch64` (`arm64`) architectures.
+Currently, we support the `x86_64` (`amd64`) and `aarch64` (`arm64`) architectures.
 
-Please note that suffixes are currently only used to specify `aarch64` images. No suffix means
+Please note that suffixes are only used to specify `aarch64` images. No suffix means
 `x86_64`/`amd64`-compatible images.
 
 | Platform tag | Description             |
