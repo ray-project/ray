@@ -43,8 +43,14 @@ class StreamingExecutor(Executor, threading.Thread):
         # data updates the stats object in legacy code).
         self._stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
-        self._queue = queue.Queue(maxsize=10)
-        self._dag = None
+
+        # Internal execution state shared across thread boundaries. We run the control
+        # loop on a separate thread so that it doesn't become stalled between
+        # generator `yield`s.
+        self._runner_thread_out = queue.Queue(maxsize=1)
+        self._topology: Optional[Topology] = None
+        self._output_node: Optional[OpState] = None
+
         Executor.__init__(self, options)
         threading.Thread.__init__(self)
 
@@ -59,35 +65,43 @@ class StreamingExecutor(Executor, threading.Thread):
         if not isinstance(dag, InputDataBuffer):
             logger.info("Executing DAG %s", dag)
             self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
-        self._dag = dag
+
+        # Setup the streaming DAG topology and start the runner thread.
+        self._topology, self._stats = build_streaming_topology(dag, self._options)
+        self._output_node: OpState = self._topology[dag]
         self.start()
 
-        item = self._queue.get()
+        # Drain items from the runner thread.
+        item = self._runner_thread_out.get()
         while item is not None:
-            yield item
-            item = self._queue.get()
+            if isinstance(item, Exception):
+                raise item
+            else:
+                yield item
+            item = self._runner_thread_out.get()
 
     def run(self):
-        dag = self._dag
+        """Run the control loop in a helper thread.
 
-        # Setup the streaming DAG topology.
-        topology, self._stats = build_streaming_topology(dag, self._options)
-        output_node: OpState = topology[dag]
+        Results are returned via the `self._runner_thread_out` queue.
+        """
 
+        topology = self._topology
         try:
             _validate_topology(topology, self._get_or_refresh_resource_limits())
-            output_node: OpState = topology[dag]
 
             # Run scheduling loop until complete.
             while self._scheduling_loop_step(topology):
-                while output_node.outqueue:
-                    self._queue.put(output_node.outqueue.pop(0))
+                while self._output_node.outqueue:
+                    self._runner_thread_out.put(self._output_node.outqueue.pop(0))
 
             # Handle any leftover outputs.
-            while output_node.outqueue:
-                self._queue.put(output_node.outqueue.pop(0))
+            while self._output_node.outqueue:
+                self._runner_thread_out.put(self._output_node.outqueue.pop(0))
+        except Exception as e:
+            self._runner_thread_out.put(e)
         finally:
-            self._queue.put(None)
+            self._runner_thread_out.put(None)
             for op in topology:
                 op.shutdown()
             if self._global_info:

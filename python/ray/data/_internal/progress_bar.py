@@ -45,7 +45,7 @@ class ProgressBar:
 
     def __init__(self, name: str, total: int, position: int = 0):
         self._desc = name
-        if not _enabled:
+        if not _enabled or threading.current_thread() is not threading.main_thread():
             self._bar = None
         elif tqdm:
             self._bar = tqdm.tqdm(total=total, position=position)
