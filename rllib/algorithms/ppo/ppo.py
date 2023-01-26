@@ -391,14 +391,7 @@ class PPO(Algorithm):
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
             )
-            # for epoch in range(self.config.num_sgd_iter):
-            #     # bsize = self.config.sgd_minibatch_size
-            #     # for minibatch in SampleBatchLoader(train_batch, batch_size=bsize):
-            #     #     train_results = self.trainer_runner.update(minibatch)
-            #     # TODO (Kourosh) The output of trainer_runner.update() should be
-            #     # one item not a list of items
 
-            #     train_results = self.trainer_runner.update(train_batch)[0]
         elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
@@ -429,7 +422,7 @@ class PPO(Algorithm):
                     from_worker = self.trainer_runner
                 self.workers.sync_weights(
                     from_worker=from_worker,
-                    policies=list(train_results.keys()),
+                    policies=policies_to_update,
                     global_vars=global_vars,
                 )
             elif self.config._enable_rl_trainer_api:

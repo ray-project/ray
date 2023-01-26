@@ -1,5 +1,5 @@
 import math
-from typing import Any, List, Mapping, Type, Optional, Callable, Dict
+from typing import Any, List, Mapping, Type, Optional, Callable, Set
 import tree  # pip install dm-tree
 import numpy as np
 
@@ -287,12 +287,12 @@ class TrainerRunner:
         else:
             self._trainer.set_weights(weights)
 
-    def get_weights(self) -> Mapping[str, Any]:
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         if self._distributed:
             worker = next(iter(self._workers))
-            return ray.get(worker.get_weights.remote())
+            return ray.get(worker.get_weights.remote(module_ids))
         else:
-            return self._trainer.get_weights()
+            return self._trainer.get_weights(module_ids)
 
     def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
         """Get the states of the RLTrainers"""

@@ -9,6 +9,7 @@ from typing import (
     Optional,
     Callable,
     TYPE_CHECKING,
+    Set
 )
 
 from ray.rllib.core.rl_module.rl_module import (
@@ -167,9 +168,14 @@ class TorchRLTrainer(RLTrainer):
         # in torch the distributed update is no different than the normal update
         return self._update(batch)
 
-    def get_weights(self) -> Mapping[str, Any]:
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the state of the underlying MultiAgentRLModule"""
-        return self._module.get_state()
+
+        module_weights = self._module.get_state()
+        if module_ids is None:
+            return module_weights
+        
+        return {k: v for k, v in module_weights.items() if k in module_ids}
 
     def set_weights(self, weights: Mapping[str, Any]) -> None:
         """Sets the state of the underlying MultiAgentRLModule"""

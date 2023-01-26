@@ -413,7 +413,8 @@ class WorkerSet:
         # Only sync if we have remote workers or `from_worker` is provided.
         weights = None
         if self.num_remote_workers() or from_worker is not None:
-            weights = (from_worker or self.local_worker()).get_weights(policies)
+            worker_or_trainer = from_worker or self.local_worker()
+            weights = worker_or_trainer.get_weights(policies)
 
             def set_weight(w):
                 w.set_weights(weights, global_vars)
@@ -433,7 +434,7 @@ class WorkerSet:
         # If `from_worker` is provided, also sync to this WorkerSet's
         # local worker.
         if self.local_worker() is not None:
-            if from_worker is not None:
+            if worker_or_trainer is not None:
                 self.local_worker().set_weights(weights, global_vars=global_vars)
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.

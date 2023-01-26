@@ -11,6 +11,7 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Set,
     Tuple,
     Type,
     Union,
@@ -409,7 +410,7 @@ class RLTrainer:
         """
 
     @abc.abstractmethod
-    def get_weights(self) -> Mapping[str, Any]:
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the state of the underlying MultiAgentRLModule"""
 
     @abc.abstractmethod
