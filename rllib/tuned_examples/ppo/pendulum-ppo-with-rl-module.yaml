@@ -20,3 +20,4 @@ pendulum-ppo:
         seed: 42
         enable_connectors: true
         _enable_rl_module_api: true
+        eager_tracing: false

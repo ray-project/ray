@@ -484,7 +484,7 @@ class ServeControllerClient:
             "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
             "replica_config_proto_bytes": replica_config.to_proto_bytes(),
             "route_prefix": route_prefix,
-            "deployer_job_id": ray.get_runtime_context().job_id,
+            "deployer_job_id": ray.get_runtime_context().get_job_id(),
             "is_driver_deployment": is_driver_deployment,
         }
 

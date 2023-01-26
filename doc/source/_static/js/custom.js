@@ -45,3 +45,19 @@ document.addEventListener("DOMContentLoaded", function() {
         "margin-bottom: " + margin + "px !important;"
   }
 });
+
+// Remember the scroll position when the page is unloaded.
+window.onload = function() {
+    let sidebar = document.querySelector("#bd-docs-nav");
+
+    window.onbeforeunload = function() {
+        let scroll = sidebar.scrollTop;
+        localStorage.setItem("scroll", scroll);
+    }
+
+    let storedScrollPosition = localStorage.getItem("scroll");
+    if (storedScrollPosition) {
+        sidebar.scrollTop = storedScrollPosition;
+        localStorage.removeItem("scroll");
+    }
+};
