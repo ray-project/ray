@@ -43,7 +43,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # data updates the stats object in legacy code).
         self._stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
-        self._queue = queue.Queue(maxsize=1)
+        self._queue = queue.Queue(maxsize=10)
         self._dag = None
         Executor.__init__(self, options)
         threading.Thread.__init__(self)
