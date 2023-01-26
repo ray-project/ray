@@ -23,9 +23,9 @@ ds = ray.data.from_items([
         {"sepal.length": 4.7, "sepal.width": 3.2,
          "petal.length": 1.3, "petal.width": 0.2, "variety": "Setosa"},
      ])
-# Dataset(num_blocks=3, num_rows=3,
-#         schema={sepal.length: float64, sepal.width: float64,
-#                 petal.length: float64, petal.width: float64, variety: object})
+# <Dataset num_blocks=3, num_rows=3,
+#          schema={sepal.length: float64, sepal.width: float64,
+#                  petal.length: float64, petal.width: float64, variety: object}>
 
 ds.show()
 # -> {'sepal.length': 5.1, 'sepal.width': 3.5,
@@ -50,15 +50,15 @@ ds.schema()
 # Tip: "example://" is a convenient protocol to access the
 # python/ray/data/examples/data directory.
 ds = ray.data.read_csv("example://iris.csv")
-# Dataset(num_blocks=1, num_rows=150,
-#         schema={sepal.length: float64, sepal.width: float64,
-#                 petal.length: float64, petal.width: float64, variety: object})
+# <Dataset num_blocks=1, num_rows=150,
+#          schema={sepal.length: float64, sepal.width: float64,
+#                  petal.length: float64, petal.width: float64, variety: object}>
 
 # Create from Parquet.
 ds = ray.data.read_parquet("example://iris.parquet")
-# Dataset(num_blocks=1, num_rows=150,
-#         schema={sepal.length: float64, sepal.width: float64,
-#                 petal.length: float64, petal.width: float64, variety: object})
+# <Dataset num_blocks=1, num_rows=150,
+#          schema={sepal.length: float64, sepal.width: float64,
+#                  petal.length: float64, petal.width: float64, variety: object}>
 
 # __create_from_files_end__
 # fmt: on
@@ -82,18 +82,18 @@ import pandas
 
 # Create 10 blocks for parallelism.
 ds = ds.repartition(10)
-# Dataset(num_blocks=10, num_rows=150,
-#         schema={sepal.length: float64, sepal.width: float64,
-#                 petal.length: float64, petal.width: float64, variety: object})
+# <Dataset num_blocks=10, num_rows=150,
+#          schema={sepal.length: float64, sepal.width: float64,
+#                  petal.length: float64, petal.width: float64, variety: object}>
 
 # Find rows with sepal.length < 5.5 and petal.length > 3.5.
 def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
     return df[(df["sepal.length"] < 5.5) & (df["petal.length"] > 3.5)]
 
 transformed_ds = ds.map_batches(transform_batch)
-# Dataset(num_blocks=10, num_rows=3,
-#         schema={sepal.length: float64, sepal.width: float64,
-#                 petal.length: float64, petal.width: float64, variety: object})
+# <Dataset num_blocks=10, num_rows=3,
+#          schema={sepal.length: float64, sepal.width: float64,
+#                  petal.length: float64, petal.width: float64, variety: object}>
 
 transformed_ds.show()
 # -> {'sepal.length': 5.2, 'sepal.width': 2.7,
@@ -136,18 +136,18 @@ workers = [Worker.remote(i) for i in range(4)]
 
 shards = ds.split(n=4, locality_hints=workers)
 # -> [
-#       Dataset(num_blocks=3, num_rows=45,
-#               schema={sepal.length: double, sepal.width: double,
-#                       petal.length: double, petal.width: double, variety: string}),
-#       Dataset(num_blocks=3, num_rows=45,
-#               schema={sepal.length: double, sepal.width: double,
-#                       petal.length: double, petal.width: double, variety: string}),
-#       Dataset(num_blocks=2, num_rows=30,
-#               schema={sepal.length: double, sepal.width: double,
-#                       petal.length: double, petal.width: double, variety: string}),
-#       Dataset(num_blocks=2, num_rows=30,
-#               schema={sepal.length: double, sepal.width: double,
-#                       petal.length: double, petal.width: double, variety: string}),
+#       <Dataset num_blocks=3, num_rows=45,
+#                schema={sepal.length: double, sepal.width: double,
+#                        petal.length: double, petal.width: double, variety: string}>,
+#       <Dataset num_blocks=3, num_rows=45,
+#                schema={sepal.length: double, sepal.width: double,
+#                        petal.length: double, petal.width: double, variety: string}>,
+#       <Dataset num_blocks=2, num_rows=30,
+#                schema={sepal.length: double, sepal.width: double,
+#                        petal.length: double, petal.width: double, variety: string}>,
+#       <Dataset num_blocks=2, num_rows=30,
+#                schema={sepal.length: double, sepal.width: double,
+#                        petal.length: double, petal.width: double, variety: string}>,
 #    ]
 
 ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
