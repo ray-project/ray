@@ -473,7 +473,7 @@ class ActorReplicaWrapper:
                 )
                 self._health_check_period_s = deployment_config.health_check_period_s
                 self._health_check_timeout_s = deployment_config.health_check_timeout_s
-                self._node_id = ray.get(self._allocated_obj_ref).hex()
+                self._node_id = ray.get(self._allocated_obj_ref)
             except Exception:
                 logger.exception(f"Exception in deployment '{self._deployment_name}'")
                 return ReplicaStartupStatus.FAILED, None
@@ -1519,7 +1519,11 @@ class DeploymentState:
                 # recovered or a new deploy happens.
                 if replica.version == self._target_state.version:
                     self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-                        self._name, DeploymentStatus.UNHEALTHY
+                        name=self._name,
+                        status=DeploymentStatus.UNHEALTHY,
+                        message="A replica's health check failed. This "
+                        "deployment will be UNHEALTHY until the replica "
+                        "recovers or a new deploy happens.",
                     )
 
         slow_start_replicas = []
@@ -1975,10 +1979,14 @@ class DeploymentStateManager:
         else:
             return None
 
-    def get_deployment_statuses(self) -> List[DeploymentStatusInfo]:
-        return list(
-            map(lambda state: state.curr_status_info, self._deployment_states.values())
-        )
+    def get_deployment_statuses(
+        self, names: List[str] = None
+    ) -> List[DeploymentStatusInfo]:
+        statuses = []
+        for name, state in self._deployment_states.items():
+            if not names or name in names:
+                statuses.append(state.curr_status_info)
+        return statuses
 
     def deploy(self, deployment_name: str, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
