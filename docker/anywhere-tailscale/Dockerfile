@@ -101,10 +101,10 @@ RUN curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/mast
 && sudo chmod +x /home/ray/startup.sh \
 && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/run_tests.sh" \
 && sudo chmod +x /home/ray/run_tests.sh \
-&& sudo sysctl -w vm.max_map_count=262144 \
-&& sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 \
-&& sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 \
-&& sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+&& echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee /etc/sysctl.conf \
+&& echo "net.ipv6.conf.default.disable_ipv6=1" | sudo tee /etc/sysctl.conf \
+&& echo "net.ipv6.conf.lo.disable_ipv6=1" | sudo tee /etc/sysctl.conf
+
 
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
 HEALTHCHECK --interval=300s --timeout=5s --start-period=300s \
