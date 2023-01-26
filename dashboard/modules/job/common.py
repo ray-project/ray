@@ -158,7 +158,7 @@ class JobInfo:
 
         Note that the runtime_env_json field is converted to a dictionary and
         the field is renamed to runtime_env.
-        
+
         Args:
             json_dict: A JSON dictionary to use to initialize the JobInfo object.
         """
