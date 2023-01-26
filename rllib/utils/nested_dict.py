@@ -1,5 +1,5 @@
 """Custom NestedDict datatype."""
-
+from collections import abc
 import itertools
 from typing import (
     AbstractSet,
@@ -38,6 +38,7 @@ def _flatten_index(index: SeqStrType) -> Sequence[str]:
         return tuple(itertools.chain.from_iterable([_flatten_index(y) for y in index]))
 
 
+@ExperimentalAPI
 class StrKey(str):
     """A string that can be compared to a string or sequence of strings representing a
     SeqStrType. This is needed for the tree functions to work.
@@ -120,10 +121,10 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         x = x or {}
         if isinstance(x, NestedDict):
             self._data = x._data
-        elif isinstance(x, Mapping):
-            for k, v in x.items():
-                self[k] = v
-        elif isinstance(x, Iterable):
+        elif isinstance(x, abc.Mapping):
+            for k in x:
+                self[k] = x[k]
+        elif isinstance(x, abc.Iterable):
             for k, v in x:
                 self[k] = v
         else:
@@ -144,7 +145,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         return True
 
     def get(
-        self, k: SeqStrType, *, default: Optional[T] = None
+        self, k: SeqStrType, default: Optional[T] = None
     ) -> Union[T, "NestedDict[T]"]:
         """Returns `self[k]`, with partial indexing allowed.
         If `k` is not in the `NestedDict`, returns default. If default is `None`,

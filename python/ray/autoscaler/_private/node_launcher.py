@@ -4,7 +4,7 @@ import operator
 import threading
 import time
 import traceback
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
@@ -44,6 +44,7 @@ class BaseNodeLauncher:
         pending,
         event_summarizer,
         node_provider_availability_tracker: NodeProviderAvailabilityTracker,
+        session_name: Optional[str] = None,
         prom_metrics=None,
         node_types=None,
         index=None,
@@ -53,7 +54,9 @@ class BaseNodeLauncher:
         self.pending = pending
         self.event_summarizer = event_summarizer
         self.node_provider_availability_tracker = node_provider_availability_tracker
-        self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics()
+        self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics(
+            session_name=session_name
+        )
         self.provider = provider
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
@@ -174,6 +177,7 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
         pending,
         event_summarizer,
         node_provider_availability_tracker,
+        session_name: Optional[str] = None,
         prom_metrics=None,
         node_types=None,
         index=None,
@@ -186,6 +190,7 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
             provider=provider,
             pending=pending,
             event_summarizer=event_summarizer,
+            session_name=session_name,
             node_provider_availability_tracker=node_provider_availability_tracker,
             prom_metrics=prom_metrics,
             node_types=node_types,

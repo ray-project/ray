@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from dataclasses import asdict
-from typing import Callable, Optional
+from typing import Callable, List, Tuple, Optional
 
 import aiohttp.web
 from abc import ABC, abstractmethod
@@ -22,6 +22,8 @@ from ray.experimental.state.common import (
     RAY_MAX_LIMIT_FROM_API_SERVER,
     ListApiOptions,
     GetLogOptions,
+    PredicateType,
+    SupportedFilterType,
     SummaryApiOptions,
     SummaryApiResponse,
     DEFAULT_RPC_TIMEOUT,
@@ -161,6 +163,18 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             result=None,
         )
 
+    def _get_filters_from_req(
+        self, req: aiohttp.web.Request
+    ) -> List[Tuple[str, PredicateType, SupportedFilterType]]:
+        filter_keys = req.query.getall("filter_keys", [])
+        filter_predicates = req.query.getall("filter_predicates", [])
+        filter_values = req.query.getall("filter_values", [])
+        assert len(filter_keys) == len(filter_values)
+        filters = []
+        for key, predicate, val in zip(filter_keys, filter_predicates, filter_values):
+            filters.append((key, predicate, val))
+        return filters
+
     def _options_from_req(self, req: aiohttp.web.Request) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
         limit = int(
@@ -175,14 +189,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 f"limit {RAY_MAX_LIMIT_FROM_API_SERVER}. Use a lower limit."
             )
 
-        timeout = int(req.query.get("timeout"))
-        filter_keys = req.query.getall("filter_keys", [])
-        filter_predicates = req.query.getall("filter_predicates", [])
-        filter_values = req.query.getall("filter_values", [])
-        assert len(filter_keys) == len(filter_values)
-        filters = []
-        for key, predicate, val in zip(filter_keys, filter_predicates, filter_values):
-            filters.append((key, predicate, val))
+        timeout = int(req.query.get("timeout", 30))
+        filters = self._get_filters_from_req(req)
         detail = convert_string_to_type(req.query.get("detail", False), bool)
 
         return ListApiOptions(
@@ -191,7 +199,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
 
     def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:
         timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
-        return SummaryApiOptions(timeout=timeout)
+        filters = self._get_filters_from_req(req)
+        return SummaryApiOptions(timeout=timeout, filters=filters)
 
     def _reply(self, success: bool, error_message: str, result: dict, **kwargs):
         """Reply to the client."""

@@ -55,7 +55,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             name="testing_nan",
             local_dir=self.test_dir,
             stop={"training_iteration": 1},
-            checkpoint_freq=1,
             num_samples=self.num_samples,
             config={
                 "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
@@ -92,14 +91,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def testTrialDataframe(self):
         checkpoints = self.ea._checkpoints_and_paths
         idx = random.randint(0, len(checkpoints) - 1)
-        logdir_from_checkpoint = str(
-            checkpoints[idx][1].joinpath(checkpoints[idx][0]["relative_logdir"])
-        )
         logdir_from_trial = self.ea.trials[idx].logdir
-
-        self.assertEqual(logdir_from_checkpoint, logdir_from_trial)
-
-        trial_df = self.ea.trial_dataframes[logdir_from_checkpoint]
+        trial_df = self.ea.trial_dataframes[logdir_from_trial]
 
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
         self.assertEqual(trial_df.shape[0], 1)

@@ -168,7 +168,10 @@ class AgentIOTest(unittest.TestCase):
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
             )
-            .evaluation(evaluation_interval=1, evaluation_config={"input": "sampler"})
+            .evaluation(
+                evaluation_interval=1,
+                evaluation_config=PGConfig.overrides(input_="sampler"),
+            )
         )
 
         for fw in framework_iterator(config, frameworks=["tf", "torch"]):
@@ -227,8 +230,8 @@ class AgentIOTest(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             .multi_agent(
                 policies={"policy_1", "policy_2"},
-                policy_mapping_fn=(
-                    lambda agent_id, **kwargs: random.choice(["policy_1", "policy_2"])
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    random.choice(["policy_1", "policy_2"])
                 ),
             )
         )
@@ -244,7 +247,7 @@ class AgentIOTest(unittest.TestCase):
             config2.output = None
             config2.evaluation(
                 evaluation_interval=1,
-                evaluation_config={"input": "sampler"},
+                evaluation_config=PGConfig.overrides(input_="sampler"),
             )
             config2.training(train_batch_size=2000)
             config2.offline_data(input_=self.test_dir + fw)

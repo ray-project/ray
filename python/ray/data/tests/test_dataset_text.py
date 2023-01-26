@@ -19,6 +19,10 @@ from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
+def _to_lines(rows):
+    return [row["text"] for row in rows]
+
+
 def test_read_text_partitioning(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "country=us")
     os.mkdir(path)
@@ -33,6 +37,20 @@ def test_read_text_partitioning(ray_start_regular_shared, tmp_path):
     assert list(df["country"]) == ["us", "us", "us"]
 
 
+def test_empty_text_files(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_text")
+    os.mkdir(path)
+    # 2 empty files.
+    _ = open(os.path.join(path, "file1.txt"), "w")
+    _ = open(os.path.join(path, "file2.txt"), "w")
+    ds = ray.data.read_text(path)
+    assert ds.count() == 0
+    ds = ray.data.read_text(path, drop_empty_lines=False)
+    assert ds.count() == 2
+    # 2 empty lines, one from each file.
+    assert _to_lines(ds.take()) == ["", ""]
+
+
 def test_read_text(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_text")
     os.mkdir(path)
@@ -44,7 +62,7 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     with open(os.path.join(path, "file3.txt"), "w") as f:
         f.write("ray\n")
     ds = ray.data.read_text(path)
-    assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
+    assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count() == 5
 
@@ -62,7 +80,7 @@ def test_read_text_meta_provider(
         f.write("goodbye\n")
         f.write("ray\n")
     ds = ray.data.read_text(path, meta_provider=FastFileMetadataProvider())
-    assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
+    assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count() == 5
 
@@ -114,10 +132,10 @@ def test_read_text_partitioned_with_filter(
         ds = ray.data.read_text(base_dir, partition_filter=partition_path_filter)
         assert_base_partitioned_ds(
             ds,
-            schema="<class 'str'>",
+            schema="{text: string}",
             num_computed=None,
             sorted_values=["1 a", "1 b", "1 c", "3 e", "3 f", "3 g"],
-            ds_take_transform_fn=lambda t: t,
+            ds_take_transform_fn=_to_lines,
         )
         assert ray.get(kept_file_counter.get.remote()) == 2
         assert ray.get(skipped_file_counter.get.remote()) == 1
@@ -138,7 +156,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
 
@@ -161,7 +179,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
     for block in blocks:
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {bar_node_id}, locations
-    assert sorted(ds.take()) == ["goodbye", "hello", "world"]
+    assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "world"]
 
 
 if __name__ == "__main__":

@@ -200,7 +200,9 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci --config=ubsan $(./ci/run/bazel_export_options)
+    # Unset CC CXX vars set in Dockerfile. Clang currently runs into problems with ubsan builds, this will revert to
+    # using GCC instead.
+    - unset CC CXX && bazel test --config=ci --config=ubsan $(./ci/run/bazel_export_options)
       --build_tests_only
       --jobs=2
       -- //:all -//:core_worker_test -//:logging_test -//:ray_syncer_test
@@ -215,9 +217,8 @@
       --jobs=2
       -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
-      -//:gcs_server_rpc_test -//:gcs_client_test -//:gcs_heartbeat_manager_test
-      -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
-      -//:ray_syncer_test
+      -//:gcs_server_rpc_test -//:gcs_client_test -//:metric_exporter_client_test
+      -//:stats_test -//:worker_pool_test -//:ray_syncer_test
 
 - label: ":serverless: Dashboard Tests"
   conditions:
@@ -337,6 +338,14 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.10
     - ./ci/ci.sh test_latest_core_dependencies 3.10
+
+- label: ":python: Minimal install 3.11"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.11
+    - ./ci/ci.sh test_latest_core_dependencies 3.11
 
 - label: ":python: Default install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -484,6 +493,20 @@
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
 
+- label: ":python: Ray on Spark Test"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - pip uninstall -y ray
+    - RAY_DEBUG_BUILD=debug ./ci/ci.sh build
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci-debug $(./ci/run/bazel_export_options)
+      --test_env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
+      --test_env=RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
+      --test_tag_filters=-kubernetes,spark_plugin_tests
+      python/ray/tests/...
+
 # https://github.com/ray-project/ray/issues/22460
 #- label: ":python: (Privileged test)"
   #conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -550,11 +573,12 @@
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
     - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
     - bazel clean --expunge
+    - export WANDB_MODE=offline
     - ./ci/ci.sh build
 
 - label: ":octopus: Tune multinode tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: small
+  instance_size: medium
   commands:
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - mkdir -p ~/.docker/cli-plugins/ && curl -SL https://github.com/docker/compose/releases/download/v2.0.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && chmod +x ~/.docker/cli-plugins/docker-compose
@@ -600,7 +624,7 @@
     - pip install -U typing-extensions
     - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat_py36 
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat_py36
       python/ray/tests/horovod/...
       python/ray/tests/lightgbm/...
       python/ray/tests/ml_py36_compat/...

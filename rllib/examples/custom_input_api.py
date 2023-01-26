@@ -79,10 +79,9 @@ if __name__ == "__main__":
     register_input("custom_input", input_creator)
 
     # Config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
+    default_config = get_trainable_cls(args.run).get_default_config()
     config = (
-        get_trainable_cls(args.run)
-        .get_default_config()
-        .environment("Pendulum-v1", clip_actions=True)
+        default_config.environment("Pendulum-v1", clip_actions=True)
         .framework(args.framework)
         .offline_data(
             # we can either use the tune registry, class path, or direct function
@@ -100,10 +99,10 @@ if __name__ == "__main__":
             evaluation_num_workers=2,
             evaluation_duration=10,
             evaluation_parallel_to_training=True,
-            evaluation_config={
-                "input": "sampler",
-                "explore": False,
-            },
+            evaluation_config=default_config.overrides(
+                input_="sampler",
+                explore=False,
+            ),
         )
         .reporting(metrics_num_episodes_for_smoothing=5)
     )

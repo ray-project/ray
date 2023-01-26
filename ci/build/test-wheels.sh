@@ -100,7 +100,8 @@ elif [[ "$platform" == "macosx" ]]; then
           "3.7"
           "3.8"
           "3.9"
-          "3.10")
+          "3.10"
+          )
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"

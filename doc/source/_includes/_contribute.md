@@ -11,6 +11,9 @@ Help us improve Ray by submitting feature requests, bug-reports, or simply ask f
 👩‍💻 [Create a pull request](https://github.com/ray-project/ray/pulls): 
 Found a typo in the documentation? Want to add a new feature? Submit a pull request to help us improve Ray.
 
+📰 [Subscribe to the Ray newsletter](https://share.hsforms.com/1Ee3Gh8c9TY69ZQib-yZJvgc7w85):
+Get the latest news from Ray in a monthly email: Ray updates, community highlights, events, useful tutorials, and more!
+
 🐦 [Follow us on Twitter](https://twitter.com/raydistributed): 
 Stay up to date with the latest news and updates on Ray.
 

@@ -9,7 +9,7 @@ For a simpler example, see also: multiagent_cartpole.py
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     obs_space = single_dummy_env.observation_space
     act_space = single_dummy_env.action_space
 
-    def seelct_policy(algorithm, framework):
+    def select_policy(algorithm, framework):
         if algorithm == "PPO":
             if framework == "torch":
                 return PPOTorchPolicy
@@ -81,13 +81,13 @@ if __name__ == "__main__":
     # show one each for PPO and DQN.
     policies = {
         "ppo_policy": (
-            seelct_policy("PPO", args.framework),
+            select_policy("PPO", args.framework),
             obs_space,
             act_space,
             {},
         ),
         "dqn_policy": (
-            seelct_policy("DQN", args.framework),
+            select_policy("DQN", args.framework),
             obs_space,
             act_space,
             {},

@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Discrete, Box
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 import unittest
 
@@ -16,20 +16,18 @@ class NonContextualBanditEnv(gym.Env):
         best_arm_prob = config.get("best_arm_prob", 0.5)
         self.action_space = Discrete(2)
         self.observation_space = Box(0.0, 1.0, shape=(1,), dtype=np.float32)
-        self.seed(0)
+        self.reset(seed=0)
         self._arm_probs = {0: 0.1, 1: best_arm_prob}
 
-    def reset(self):
-        return [1.0]
-
-    def step(self, action):
-        reward = self.rng.binomial(1, self._arm_probs[action])
-        return ([1.0], reward, True, {})
-
-    def seed(self, seed=0):
+    def reset(self, *, seed=0, options=None):
         self._seed = seed
         if seed is not None:
             self.rng = np.random.default_rng(self._seed)
+        return [1.0], {}
+
+    def step(self, action):
+        reward = self.rng.binomial(1, self._arm_probs[action])
+        return [1.0], reward, True, False, {}
 
 
 class TestBandits(unittest.TestCase):

@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from typing import Optional, List, Dict
 
 from ray.rllib.algorithms.sac.sac_torch_model import (

@@ -4,6 +4,7 @@ import re
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -47,6 +48,10 @@ class OtherStubCheckpoint(Checkpoint):
     pass
 
 
+class OtherStubCheckpointWithAttrs(Checkpoint):
+    _SERIALIZED_ATTRS = StubCheckpoint._SERIALIZED_ATTRS
+
+
 def test_from_checkpoint():
     checkpoint = Checkpoint.from_dict({"spam": "ham"})
     assert type(StubCheckpoint.from_checkpoint(checkpoint)) is StubCheckpoint
@@ -55,6 +60,13 @@ def test_from_checkpoint():
     checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
     checkpoint.foo = "bar"
     assert StubCheckpoint.from_checkpoint(checkpoint).foo == "bar"
+
+    # Check that attributes persist if the new checkpoint
+    # has them as well.
+    # Check that attributes persist if same checkpoint type.
+    checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+    checkpoint.foo = "bar"
+    assert OtherStubCheckpointWithAttrs.from_checkpoint(checkpoint).foo == "bar"
 
 
 class TestCheckpointTypeCasting:
@@ -126,6 +138,21 @@ class TestCheckpointSerializedAttrs:
         recovered_checkpoint = StubCheckpoint.from_directory(checkpoint.to_directory())
 
         assert recovered_checkpoint.foo == "bar"
+
+    def test_directory_move_instead_of_copy(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        path = checkpoint.to_directory()
+        recovered_checkpoint = StubCheckpoint.from_directory(path)
+        tmpdir = tempfile.mkdtemp()
+        new_path = recovered_checkpoint._move_directory(tmpdir)
+        new_recovered_checkpoint = StubCheckpoint.from_directory(new_path)
+
+        assert recovered_checkpoint._local_path == tmpdir
+        assert new_recovered_checkpoint.foo == "bar"
+        assert not list(Path(path).glob("*"))
 
     def test_uri(self):
         checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
@@ -491,7 +518,7 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         with checkpoint.as_directory() as checkpoint_dir:
             assert os.path.exists(checkpoint_dir)
-            assert checkpoint_dir.endswith(checkpoint._uuid.hex)
+            assert Path(checkpoint_dir).stem.endswith(checkpoint._uuid.hex)
 
         assert not os.path.exists(checkpoint_dir)
 
@@ -700,6 +727,60 @@ class PreprocessorCheckpointTest(unittest.TestCase):
             checkpoint = checkpoint.from_dict(checkpoint_dict)
             preprocessor = checkpoint.get_preprocessor()
             assert preprocessor.multiplier == 1
+
+    def testDictCheckpointSetPreprocessor(self):
+        preprocessor = DummyPreprocessor(1)
+        data = {"metric": 5}
+        checkpoint = Checkpoint.from_dict(data)
+        checkpoint.set_preprocessor(preprocessor)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor.multiplier == 1
+
+    def testDictCheckpointSetPreprocessorAsDir(self):
+        preprocessor = DummyPreprocessor(1)
+        data = {"metric": 5}
+        checkpoint = Checkpoint.from_dict(data)
+        checkpoint.set_preprocessor(preprocessor)
+        checkpoint_path = checkpoint.to_directory()
+        checkpoint = Checkpoint.from_directory(checkpoint_path)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor.multiplier == 1
+
+    def testDirCheckpointSetPreprocessor(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            preprocessor = DummyPreprocessor(1)
+            data = {"metric": 5}
+            checkpoint_dir = os.path.join(tmpdir, "existing_checkpoint")
+            os.mkdir(checkpoint_dir, 0o755)
+            with open(os.path.join(checkpoint_dir, "test_data.pkl"), "wb") as fp:
+                pickle.dump(data, fp)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            checkpoint.set_preprocessor(preprocessor)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
+    def testDirCheckpointSetPreprocessorAsDict(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            preprocessor = DummyPreprocessor(1)
+            data = {"metric": 5}
+            checkpoint_dir = os.path.join(tmpdir, "existing_checkpoint")
+            os.mkdir(checkpoint_dir, 0o755)
+            with open(os.path.join(checkpoint_dir, "test_data.pkl"), "wb") as fp:
+                pickle.dump(data, fp)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            checkpoint.set_preprocessor(preprocessor)
+            checkpoint_dict = checkpoint.to_dict()
+            checkpoint = checkpoint.from_dict(checkpoint_dict)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
+    def testObjectRefCheckpointSetPreprocessor(self):
+        ckpt = Checkpoint.from_dict({"x": 1})
+        ckpt = ray.get(ray.put(ckpt))
+        preprocessor = DummyPreprocessor(1)
+        ckpt.set_preprocessor(preprocessor)
+
+        assert ckpt.get_preprocessor() == preprocessor
 
     def testAttrPath(self):
         with tempfile.TemporaryDirectory() as tmpdir:

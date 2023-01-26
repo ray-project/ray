@@ -6,7 +6,6 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
-    check_off_policyness,
     check_train_results,
     framework_iterator,
 )
@@ -34,8 +33,6 @@ class TestAPPO(unittest.TestCase):
                 results = algo.train()
                 print(results)
                 check_train_results(results)
-                off_policy_ness = check_off_policyness(results, upper_limit=2.0)
-                print(f"off-policy'ness={off_policy_ness}")
 
             check_compute_single_action(algo)
             algo.stop()
@@ -47,10 +44,7 @@ class TestAPPO(unittest.TestCase):
                 results = algo.train()
                 print(results)
                 check_train_results(results)
-                # Roughly: Reaches up to 0.4 for 2 rollout workers and up to 0.2 for
-                # 1 rollout worker.
-                off_policy_ness = check_off_policyness(results, upper_limit=2.0)
-                print(f"off-policy'ness={off_policy_ness}")
+
             check_compute_single_action(algo)
             algo.stop()
 

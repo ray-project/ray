@@ -270,7 +270,7 @@ class Tuner:
         if not self._is_ray_client:
             try:
                 return self._local_tuner.fit()
-            except Exception as e:
+            except TuneError as e:
                 raise TuneError(
                     _TUNER_FAILED_MSG.format(
                         path=self._local_tuner.get_experiment_checkpoint_dir()
@@ -292,7 +292,7 @@ class Tuner:
                     string_queue,
                 )
                 return ray.get(fit_future)
-            except Exception as e:
+            except TuneError as e:
                 raise TuneError(
                     _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
                 ) from e

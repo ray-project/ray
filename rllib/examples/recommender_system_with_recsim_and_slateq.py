@@ -156,7 +156,7 @@ def main():
         episode_reward = 0.0
         while num_episodes < args.random_test_episodes:
             action = env.action_space.sample()
-            _, r, d, _ = env.step(action)
+            _, r, d, _, _ = env.step(action)
             episode_reward += r
             if d:
                 num_episodes += 1

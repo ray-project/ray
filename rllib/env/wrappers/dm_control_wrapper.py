@@ -24,7 +24,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-from gym import core, spaces
+from gymnasium import core, spaces
 
 try:
     from dm_env import specs
@@ -46,7 +46,7 @@ from ray.rllib.utils.annotations import PublicAPI
 def _spec_to_box(spec):
     def extract_min_max(s):
         assert s.dtype == np.float64 or s.dtype == np.float32
-        dim = np.int(np.prod(s.shape))
+        dim = np.int_(np.prod(s.shape))
         if type(s) == specs.Array:
             bound = np.inf * np.ones(dim, dtype=np.float32)
             return -bound, bound
@@ -193,22 +193,24 @@ class DMCEnv(core.Env):
         reward = 0
         extra = {"internal_state": self._env.physics.get_state().copy()}
 
+        terminated = truncated = False
         for _ in range(self._frame_skip):
             time_step = self._env.step(action)
             reward += time_step.reward or 0
-            done = time_step.last()
-            if done:
+            terminated = False
+            truncated = time_step.last()
+            if terminated or truncated:
                 break
         obs = self._get_obs(time_step)
         self.current_state = _flatten_obs(time_step.observation)
         extra["discount"] = time_step.discount
-        return obs, reward, done, extra
+        return obs, reward, terminated, truncated, extra
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         time_step = self._env.reset()
         self.current_state = _flatten_obs(time_step.observation)
         obs = self._get_obs(time_step)
-        return obs
+        return obs, {}
 
     def render(self, mode="rgb_array", height=None, width=None, camera_id=0):
         assert mode == "rgb_array", "only support for rgb_array mode"

@@ -238,13 +238,6 @@ Debugging APIs
 
 .. autofunction:: ray.util.inspect_serializability
 
-.. toctree::
-    :maxdepth: 2
-
-    cli.rst
-    ../ray-observability/state/cli.rst
-    ../ray-observability/state/ray-state-api-reference.rst
-
 .. _ray-core-exceptions:
 
 Exceptions

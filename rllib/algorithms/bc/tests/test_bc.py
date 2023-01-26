@@ -41,7 +41,7 @@ class TestBC(unittest.TestCase):
                 evaluation_num_workers=1,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
-                evaluation_config={"input": "sampler"},
+                evaluation_config=bc.BCConfig.overrides(input_="sampler"),
             )
             .offline_data(input_=[data_file])
         )

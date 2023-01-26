@@ -71,11 +71,11 @@ def anyscale_project_url(project_id: str) -> str:
     )
 
 
-def anyscale_cluster_url(project_id: str, session_id: str) -> str:
+def anyscale_cluster_url(project_id: str, cluster_id: str) -> str:
     return (
         f"{ANYSCALE_HOST}"
         f"/o/anyscale-internal/projects/{project_id}"
-        f"/clusters/{session_id}"
+        f"/clusters/{cluster_id}"
     )
 
 

@@ -42,8 +42,9 @@ class AutoscalingConfig(BaseModel):
 
     # Publicly exposed options
     min_replicas: NonNegativeInt = 1
+    initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
-    target_num_ongoing_requests_per_replica: NonNegativeInt = 1
+    target_num_ongoing_requests_per_replica: PositiveFloat = 1.0
 
     # Private options below.
 
@@ -66,19 +67,31 @@ class AutoscalingConfig(BaseModel):
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
 
-    @validator("max_replicas")
-    def max_replicas_greater_than_or_equal_to_min_replicas(cls, v, values):
-        if "min_replicas" in values and v < values["min_replicas"]:
+    @validator("max_replicas", always=True)
+    def replicas_settings_valid(cls, max_replicas, values):
+        min_replicas = values.get("min_replicas")
+        initial_replicas = values.get("initial_replicas")
+        if min_replicas is not None and max_replicas < min_replicas:
             raise ValueError(
-                f"""max_replicas ({v}) must be greater than """
-                f"""or equal to min_replicas """
-                f"""({values["min_replicas"]})!"""
+                f"max_replicas ({max_replicas}) must be greater than "
+                f"or equal to min_replicas ({min_replicas})!"
             )
-        return v
+
+        if initial_replicas is not None:
+            if initial_replicas < min_replicas:
+                raise ValueError(
+                    f"min_replicas ({min_replicas}) must be less than "
+                    f"or equal to initial_replicas ({initial_replicas})!"
+                )
+            elif initial_replicas > max_replicas:
+                raise ValueError(
+                    f"max_replicas ({max_replicas}) must be greater than "
+                    f"or equal to initial_replicas ({initial_replicas})!"
+                )
+
+        return max_replicas
 
     # TODO(architkulkarni): implement below
-    # The number of replicas to start with when creating the deployment
-    # initial_replicas: int = 1
     # The num_ongoing_requests_per_replica error ratio (desired / current)
     # threshold for overriding `upscale_delay_s`
     # panic_mode_threshold: float = 2.0

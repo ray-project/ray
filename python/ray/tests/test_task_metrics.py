@@ -36,6 +36,12 @@ def tasks_by_name_and_state(info) -> dict:
     return tasks_breakdown(info, lambda s: (s.labels["Name"], s.labels["State"]))
 
 
+def tasks_by_all(info) -> dict:
+    return tasks_breakdown(
+        info, lambda s: (s.labels["Name"], s.labels["State"], s.labels["IsRetry"])
+    )
+
+
 def tasks_breakdown(info, key_fn) -> dict:
     res = raw_metrics(info)
     if "ray_tasks" in res:
@@ -318,9 +324,26 @@ import time
 
 ray.init("auto")
 
-@ray.remote(retry_exceptions=True)
+@ray.remote
+def sleep():
+    time.sleep(999)
+
+@ray.remote
+class Phaser:
+    def __init__(self):
+        self.i = 0
+
+    def inc(self):
+        self.i += 1
+        if self.i < 3:
+            raise ValueError("First two tries will fail")
+
+phaser = Phaser.remote()
+
+@ray.remote(retry_exceptions=True, max_retries=3)
 def f():
-    assert False
+    ray.get(phaser.inc.remote())
+    ray.get(sleep.remote())
 
 f.remote()
 time.sleep(999)
@@ -328,10 +351,72 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "FAILED": 1.0,  # Only recorded as finished once.
+        ("sleep", "RUNNING", "0"): 1.0,
+        ("f", "FAILED", "0"): 1.0,
+        ("f", "FAILED", "1"): 1.0,
+        ("f", "RUNNING_IN_RAY_GET", "1"): 1.0,
+        ("Phaser.__init__", "FINISHED", "0"): 1.0,
+        ("Phaser.inc", "FINISHED", "0"): 1.0,
+        ("Phaser.inc", "FAILED", "0"): 2.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        lambda: tasks_by_all(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
+    proc.kill()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows. Timing out.")
+def test_actor_task_retry(shutdown_only):
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    driver = """
+import ray
+import os
+import time
+
+ray.init("auto")
+
+@ray.remote
+class Phaser:
+    def __init__(self):
+        self.i = 0
+
+    def inc(self):
+        self.i += 1
+        if self.i < 3:
+            raise ValueError("First two tries will fail")
+
+phaser = Phaser.remote()
+
+@ray.remote(max_restarts=10, max_task_retries=10)
+class F:
+    def f(self):
+        try:
+            ray.get(phaser.inc.remote())
+        except Exception:
+            print("RESTART")
+            os._exit(1)
+
+f = F.remote()
+ray.get(f.f.remote())
+time.sleep(999)
+"""
+
+    proc = run_string_as_driver_nonblocking(driver)
+    expected = {
+        ("F.__init__", "FINISHED", "0"): 1.0,
+        ("F.f", "FAILED", "0"): 1.0,
+        ("F.f", "FAILED", "1"): 1.0,
+        ("F.f", "FINISHED", "1"): 1.0,
+        ("Phaser.__init__", "FINISHED", "0"): 1.0,
+        ("Phaser.inc", "FINISHED", "0"): 1.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_all(info) == expected,
+        timeout=20,
+        retry_interval_ms=500,
     )
     proc.kill()
 
@@ -347,7 +432,7 @@ import os
 
 ray.init("auto")
 
-@ray.remote
+@ray.remote(max_retries=0)
 def f():
     print("RUNNING FAILING TASK")
     os._exit(1)

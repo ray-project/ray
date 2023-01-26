@@ -68,11 +68,13 @@ TEST(RayClusterModeTest, FullTest) {
   if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
     auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
     std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
-    ray::internal::ProcessHelper::GetInstance().StartRayNode(port, password);
-    config.address = "127.0.0.1:" + std::to_string(port);
+    std::string local_ip = ray::internal::GetNodeIpAddress();
+    ray::internal::ProcessHelper::GetInstance().StartRayNode(local_ip, port, password);
+    config.address = local_ip + ":" + std::to_string(port);
     config.redis_password_ = password;
   }
   ray::Init(config, cmd_argc, cmd_argv);
+
   /// put and get object
   auto obj = ray::Put(12345);
   auto get_result = *(ray::Get(obj));
@@ -88,9 +90,9 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(1, task_result);
 
   /// common task with args
-  task_obj = ray::Task(Plus1).Remote(5);
-  task_result = *(ray::Get(task_obj));
-  EXPECT_EQ(6, task_result);
+  auto task_obj1 = ray::Task(Plus1).Remote(5);
+  auto task_result1 = *(ray::Get(task_obj1));
+  EXPECT_EQ(6, task_result1);
 
   ray::ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
                                         .SetMaxRestarts(1)
@@ -251,10 +253,16 @@ TEST(RayClusterModeTest, ActorHandleTest) {
   auto child_actor =
       actor1.Task(&Counter::CreateChildActor).Remote(child_actor_name).Get();
   EXPECT_EQ(1, *child_actor->Task(&Counter::Plus1).Remote().Get());
+
+  auto named_actor_handle_optional = ray::GetActor<Counter>(child_actor_name);
+  EXPECT_TRUE(named_actor_handle_optional);
+  auto &named_actor_handle = *named_actor_handle_optional;
+  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(2, *named_actor_obj1.Get());
 }
 
 TEST(RayClusterModeTest, PythonInvocationTest) {
-  auto py_actor_handle =
+  ray::ActorHandleXlang py_actor_handle =
       ray::Actor(ray::PyActorClass{"test_cross_language_invocation", "Counter"})
           .Remote(1);
   EXPECT_TRUE(!py_actor_handle.ID().empty());
@@ -495,6 +503,10 @@ TEST(RayClusterModeTest, TaskWithPlacementGroup) {
 }
 
 TEST(RayClusterModeTest, NamespaceTest) {
+  if (ray::IsInitialized()) {
+    ray::Shutdown();
+  }
+  ray::Init();
   // Create a named actor in namespace `isolated_ns`.
   std::string actor_name_in_isolated_ns = "named_actor_in_isolated_ns";
   std::string isolated_ns_name = "isolated_ns";
@@ -516,11 +528,11 @@ TEST(RayClusterModeTest, NamespaceTest) {
 
   // Create a named actor in job default namespace.
   std::string actor_name_in_default_ns = "actor_name_in_default_ns";
-  actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
-              .SetName(actor_name_in_default_ns)
-              .Remote();
-  initialized_obj = actor.Task(&Counter::Initialized).Remote();
-  EXPECT_TRUE(*initialized_obj.Get());
+  auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                    .SetName(actor_name_in_default_ns)
+                    .Remote();
+  auto initialized_obj1 = actor1.Task(&Counter::Initialized).Remote();
+  EXPECT_TRUE(*initialized_obj1.Get());
   // It is visible to job default namespace.
   actor_optional = ray::GetActor<Counter>(actor_name_in_default_ns);
   EXPECT_TRUE(actor_optional);
@@ -534,6 +546,9 @@ TEST(RayClusterModeTest, GetNamespaceApiTest) {
   std::string ns = "test_get_current_namespace";
   ray::RayConfig config;
   config.ray_namespace = ns;
+  if (ray::IsInitialized()) {
+    ray::Shutdown();
+  }
   ray::Init(config, cmd_argc, cmd_argv);
   // Get namespace in driver.
   EXPECT_EQ(ray::GetNamespace(), ns);

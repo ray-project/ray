@@ -116,6 +116,298 @@ Text
 
 Coming soon!
 
+Developer Guide: Implementing your own Predictor
+------------------------------------------------
+
+If you're using an unsupported framework, or if built-in predictors are too inflexible,
+you may need to implement a custom predictor.
+
+To implement a custom :class:`~ray.train.predictor.Predictor`,
+subclass :class:`~ray.train.predictor.Predictor` and implement:
+
+* :meth:`~ray.train.predictor.Predictor.__init__`
+* :meth:`~ray.train.predictor.Predictor._predict_numpy` or :meth:`~ray.train.predictor.Predictor._predict_pandas`
+* :meth:`~ray.train.predictor.Predictor.from_checkpoint`
+
+.. tip::
+    You don't need to implement both
+    :meth:`~ray.train.predictor.Predictor._predict_numpy` and
+    :meth:`~ray.train.predictor.Predictor._predict_pandas`. Pick the method that's
+    easiest to implement. If both are implemented, override
+    :meth:`~ray.train.predictor.Predictor.preferred_batch_format` to specify which format
+    is more performant. This allows upstream producers to choose the best format.
+
+Examples
+~~~~~~~~
+
+We'll walk through how to implement a predictor for two frameworks:
+
+* MXNet -- a deep learning framework like Torch.
+* statsmodel -- a Python library that provides regression and linear models.
+
+For more examples, read the source code of built-in predictors like
+:class:`~ray.train.torch.TorchPredictor`,
+:class:`~ray.train.xgboost.XGBoostPredictor`, and
+:class:`~ray.train.sklearn.SklearnPredictor`.
+
+Before you begin
+****************
+
+.. tabs::
+
+    .. group-tab:: MXNet
+
+        First, install MXNet and Ray AIR.
+
+        .. code-block:: console
+
+            pip install mxnet 'ray[air]'
+
+        Then, import the objects required for this example.
+
+        .. literalinclude:: doc_code/mxnet_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __mxnetpredictor_imports_start__
+            :end-before: __mxnetpredictor_imports_end__
+
+        Finally, create a stub for the `MXNetPredictor` class.
+
+        .. literalinclude:: doc_code/mxnet_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __mxnetpredictor_signature_start__
+            :end-before: __mxnetpredictor_signature_end__
+
+    .. group-tab:: statsmodel
+
+        First, install statsmodel and Ray AIR.
+
+        .. code-block:: console
+
+            pip install statsmodel 'ray[air]'
+
+        Then, import the objects required for this example.
+
+        .. literalinclude:: doc_code/statsmodel_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __statsmodelpredictor_imports_start__
+            :end-before: __statsmodelpredictor_imports_end__
+
+        Finally, create a stub the `StatsmodelPredictor` class.
+
+        .. literalinclude:: doc_code/statsmodel_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __statsmodelpredictor_signature_start__
+            :end-before: __statsmodelpredictor_signature_end__
+
+Create a model
+**************
+
+.. tabs::
+
+    .. group-tab:: MXNet
+
+        You'll need to pass a model to the ``MXNetPredictor`` constructor.
+
+        To create the model, load a pre-trained computer vision model from the MXNet
+        model zoo.
+
+        .. literalinclude:: doc_code/mxnet_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __mxnetpredictor_model_start__
+            :end-before: __mxnetpredictor_model_end__
+
+    .. group-tab:: statsmodel
+
+        You'll need to pass a model to the ``StatsmodelPredictor`` constructor.
+
+        To create the model, fit a linear model on the
+        `Guerry dataset <https://vincentarelbundock.github.io/Rdatasets/doc/HistData/Guerry.html>`_.
+
+        .. literalinclude:: doc_code/statsmodel_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __statsmodelpredictor_model_start__
+            :end-before: __statsmodelpredictor_model_end__
+
+
+Implement `__init__`
+********************
+
+.. tabs::
+
+    .. group-tab:: MXNet
+
+        Use the constructor to set instance attributes required for prediction. In
+        the code snippet below, we assign the model to an attribute named ``net``.
+
+        .. literalinclude:: doc_code/mxnet_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __mxnetpredictor_init_start__
+            :end-before: __mxnetpredictor_init_end__
+
+        .. warning::
+            You must call the base class' constructor; otherwise,
+            `Predictor.predict <ray.train.predictor.Predict.predict>` raises a
+            ``NotImplementedError``.
+
+    .. group-tab:: statsmodel
+
+        Use the constructor to set instance attributes required for prediction. In
+        the code snippet below, we assign the fitted model to an attribute named
+        ``results``.
+
+        .. literalinclude:: doc_code/statsmodel_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __statsmodelpredictor_init_start__
+            :end-before: __statsmodelpredictor_init_end__
+
+        .. warning::
+            You must call the base class' constructor; otherwise,
+            `Predictor.predict <ray.train.predictor.Predict.predict>` raises a
+            ``NotImplementedError``.
+
+Implement `from_checkpoint`
+***************************
+
+.. tabs::
+
+    .. group-tab:: MXNet
+
+        :meth:`~ray.train.predictor.from_checkpoint` creates a
+        :class:`~ray.train.predictor.Predictor` from a
+        :class:`~ray.air.checkpoint.Checkpoint`.
+
+        Before implementing :meth:`~ray.train.predictor.from_checkpoint`,
+        save the model parameters to a directory, and create a
+        :class:`~ray.air.checkpoint.Checkpoint` from that directory.
+
+        .. literalinclude:: doc_code/mxnet_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __mxnetpredictor_checkpoint_start__
+            :end-before: __mxnetpredictor_checkpoint_end__
+
+        Then, implement :meth:`~ray.train.predictor.from_checkpoint`.
+
+        .. literalinclude:: doc_code/mxnet_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __mxnetpredictor_from_checkpoint_start__
+            :end-before: __mxnetpredictor_from_checkpoint_end__
+
+    .. group-tab:: statsmodel
+
+        :meth:`~ray.train.predictor.from_checkpoint` creates a
+        :class:`~ray.train.predictor.Predictor` from a
+        :class:`~ray.air.checkpoint.Checkpoint`.
+
+        Before implementing :meth:`~ray.train.predictor.from_checkpoint`,
+        save the fitten model to a directory, and create a
+        :class:`~ray.air.checkpoint.Checkpoint` from that directory.
+
+        .. literalinclude:: doc_code/statsmodel_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __statsmodelpredictor_checkpoint_start__
+            :end-before: __statsmodelpredictor_checkpoint_end__
+
+        Then, implement :meth:`~ray.train.predictor.from_checkpoint`.
+
+        .. literalinclude:: doc_code/statsmodel_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __statsmodelpredictor_from_checkpoint_start__
+            :end-before: __statsmodelpredictor_from_checkpoint_end__
+
+Implement `_predict_numpy` or `_predict_pandas`
+***********************************************
+
+.. tabs::
+
+    .. group-tab:: MXNet
+
+        Because MXNet models accept tensors as input, you should implement
+        :meth:`~ray.train.predictor.Predictor._predict_numpy`.
+
+        :meth:`~ray.train.predictor.Predictor._predict_numpy` performs inference on a
+        batch of NumPy data. It accepts a ``np.ndarray`` or ``dict[str, np.ndarray]`` as
+        input and returns a ``np.ndarray`` or ``dict[str, np.ndarray]`` as output.
+
+        The input type is determined by the type of :class:`~ray.data.Dataset` passed to
+        :meth:`BatchPredictor.predict <ray.train.batch_predictor.BatchPredictor.predict>`.
+        If your dataset has columns, the input is a ``dict``; otherwise, the input is a
+        ``np.ndarray``.
+
+        .. literalinclude:: doc_code/mxnet_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __mxnetpredictor_predict_numpy_start__
+            :end-before: __mxnetpredictor_predict_numpy_end__
+
+    .. group-tab:: statsmodel
+
+        Because your OLS model accepts dataframes as input, you should implement
+        :meth:`~ray.train.predictor.Predictor._predict_pandas`.
+
+        :meth:`~ray.train.predictor.Predictor._predict_pandas` performs inference on a
+        batch of pandas data. It accepts a ``pandas.DataFrame`` as input and return a
+        ``pandas.DataFrame`` as output.
+
+        .. literalinclude:: doc_code/statsmodel_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __statsmodelpredictor_predict_pandas_start__
+            :end-before: __statsmodelpredictor_predict_pandas_end__
+
+
+Perform inference
+*****************
+
+.. tabs::
+
+    .. group-tab:: MXNet
+
+        To perform inference with the completed ``MXNetPredictor``:
+
+        1. Create a :class:`~ray.data.preprocessor.Preprocessor` and set it in the 
+           :class:`~ray.air.checkpoint.Checkpoint`. 
+           You can also use any of the out-of-the-box preprocessors instead of implementing your own: :ref:`air-preprocessor-ref`.
+        2. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
+           checkpoint.
+        3. Read sample images into a :class:`~ray.data.Dataset`.
+        4. Call :class:`~ray.train.batch_predictor.BatchPredictor.predict` to classify
+           the images in the dataset.
+
+        .. literalinclude:: doc_code/mxnet_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __mxnetpredictor_predict_start__
+            :end-before: __mxnetpredictor_predict_end__
+
+    .. group-tab:: statsmodel
+
+        To perform inference with the completed ``StatsmodelPredictor``:
+
+        1. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
+           checkpoint.
+        2. Read the Guerry dataset into a :class:`~ray.data.Dataset`.
+        3. Call :class:`~ray.train.batch_predictor.BatchPredictor.predict` to perform
+           regression on the samples in the dataset.
+
+        .. literalinclude:: doc_code/statsmodel_predictor.py
+            :language: python
+            :dedent:
+            :start-after: __statsmodelpredictor_predict_start__
+            :end-before: __statsmodelpredictor_predict_end__
+
+
 .. _pipelined-prediction:
 
 Lazy/Pipelined Prediction (experimental)
@@ -141,12 +433,3 @@ Online Inference
 ----------------
 
 Check out the :ref:`air-serving-guide` for details on how to perform online inference with AIR.
-
-
-Developer Guide: Implementing your own Predictor
-------------------------------------------------
-To implement a new Predictor for your particular framework, you should subclass the base ``Predictor`` and implement the following two methods:
-
-1. ``_predict_pandas``: Given a pandas.DataFrame input, return a pandas.DataFrame containing predictions.
-2. ``from_checkpoint``: Logic for creating a Predictor from an :ref:`AIR Checkpoint <air-checkpoint-ref>`.
-3. Optionally ``_predict_numpy`` for better performance when working with tensor data to avoid extra copies from Pandas conversions.

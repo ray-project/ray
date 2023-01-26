@@ -15,7 +15,7 @@ modifies the environment.
 
 import argparse
 import numpy as np
-from gym.spaces import Discrete
+from gymnasium.spaces import Discrete
 import os
 
 import ray
@@ -134,7 +134,7 @@ def centralized_critic_postprocessing(
             sample_batch[SampleBatch.REWARDS], dtype=np.float32
         )
 
-    completed = sample_batch["dones"][-1]
+    completed = sample_batch[SampleBatch.TERMINATEDS][-1]
     if completed:
         last_r = 0.0
     else:
@@ -247,7 +247,7 @@ class CentralizedCritic(PPO):
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model(
@@ -269,20 +269,18 @@ if __name__ == "__main__":
                     None,
                     Discrete(6),
                     TwoStepGame.action_space,
-                    {
-                        "framework": args.framework,
-                    },
+                    # `framework` would also be ok here.
+                    PPOConfig.overrides(framework_str=args.framework),
                 ),
                 "pol2": (
                     None,
                     Discrete(6),
                     TwoStepGame.action_space,
-                    {
-                        "framework": args.framework,
-                    },
+                    # `framework` would also be ok here.
+                    PPOConfig.overrides(framework_str=args.framework),
                 ),
             },
-            policy_mapping_fn=lambda agent_id, **kwargs: "pol1"
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
             if agent_id == 0
             else "pol2",
         )

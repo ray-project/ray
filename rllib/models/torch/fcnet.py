@@ -1,6 +1,6 @@
 import logging
 import numpy as np
-import gym
+import gymnasium as gym
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, normc_initializer
@@ -153,8 +153,9 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
     def value_function(self) -> TensorType:
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
-            return self._value_branch(
+            out = self._value_branch(
                 self._value_branch_separate(self._last_flat_in)
             ).squeeze(1)
         else:
-            return self._value_branch(self._features).squeeze(1)
+            out = self._value_branch(self._features).squeeze(1)
+        return out

@@ -94,12 +94,12 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
 
   // Do the procedure to drain a node.
   node->set_state(rpc::GcsNodeInfo::DEAD);
-  node->set_timestamp(current_sys_time_ms());
+  node->set_end_time_ms(current_sys_time_ms());
   AddDeadNodeToCache(node);
   auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
   node_info_delta->set_node_id(node->node_id());
   node_info_delta->set_state(node->state());
-  node_info_delta->set_timestamp(node->timestamp());
+  node_info_delta->set_end_time_ms(node->end_time_ms());
   // Set the address.
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
@@ -251,12 +251,12 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
   if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
-    node->set_timestamp(current_sys_time_ms());
+    node->set_end_time_ms(current_sys_time_ms());
     AddDeadNodeToCache(node);
     auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
     node_info_delta->set_node_id(node->node_id());
     node_info_delta->set_state(node->state());
-    node_info_delta->set_timestamp(node->timestamp());
+    node_info_delta->set_end_time_ms(node->end_time_ms());
 
     auto on_done = [this, node_id, node_info_delta](const Status &status) {
       auto on_done = [this, node_id, node_info_delta](const Status &status) {
@@ -288,7 +288,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       raylet_client->NotifyGCSRestart(nullptr);
     } else if (node_info.state() == rpc::GcsNodeInfo::DEAD) {
       dead_nodes_.emplace(node_id, std::make_shared<rpc::GcsNodeInfo>(node_info));
-      sorted_dead_node_list_.emplace_back(node_id, node_info.timestamp());
+      sorted_dead_node_list_.emplace_back(node_id, node_info.end_time_ms());
     }
   }
   sorted_dead_node_list_.sort(
@@ -305,7 +305,7 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) 
   }
   auto node_id = NodeID::FromBinary(node->node_id());
   dead_nodes_.emplace(node_id, node);
-  sorted_dead_node_list_.emplace_back(node_id, node->timestamp());
+  sorted_dead_node_list_.emplace_back(node_id, node->end_time_ms());
 }
 
 std::string GcsNodeManager::DebugString() const {

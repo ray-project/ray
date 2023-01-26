@@ -70,6 +70,7 @@ export type UnifiedJob = {
   metadata: { [key: string]: string } | null;
   runtime_env: { [key: string]: string } | null;
   driver_info: DriverInfo | null;
+  driver_agent_http_address: string | null;
 };
 
 export type DriverInfo = {
@@ -104,6 +105,31 @@ export type JobProgressByTaskName = {
 export type JobProgressByTaskNameRsp = {
   data: {
     detail: JobProgressByTaskName;
+  };
+  msg: string;
+  result: boolean;
+};
+
+export type StateApiJobProgressByTaskName = {
+  node_id_to_summary: {
+    cluster: {
+      summary: {
+        [taskName: string]: {
+          func_or_class_name: string;
+          state_counts: {
+            [stateName: string]: number;
+          };
+        };
+      };
+    };
+  };
+};
+
+export type StateApiJobProgressByTaskNameRsp = {
+  data: {
+    result: {
+      result: StateApiJobProgressByTaskName;
+    };
   };
   msg: string;
   result: boolean;

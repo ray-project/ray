@@ -3,6 +3,9 @@ from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v3
 
+# TODO (Kourosh): Noticed that the env is broken and throws an error in this test.
+# The error is ValueError: Input vector should be 1-D. (Could be pettingzoo version
+# issue)
 # Based on code from github.com/parametersharingmadrl/parametersharingmadrl
 
 if __name__ == "__main__":
@@ -47,7 +50,7 @@ if __name__ == "__main__":
                 "policies": {"shared_policy"},
                 # Always use "shared" policy.
                 "policy_mapping_fn": (
-                    lambda agent_id, episode, **kwargs: "shared_policy"
+                    lambda agent_id, episode, worker, **kwargs: "shared_policy"
                 ),
             },
         },

@@ -64,12 +64,13 @@ fi
 
 if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
+  echo "Cloning test repo ${RAY_TEST_REPO} branch ${RAY_TEST_BRANCH}"
   git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
   pushd "${TMPDIR}/release" || true
 fi
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip install -e .
+  pip install --use-deprecated=legacy-resolver -c requirements.txt -e .
 fi
 
 RETRY_NUM=0

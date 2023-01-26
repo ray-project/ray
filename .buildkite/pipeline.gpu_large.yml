@@ -2,8 +2,9 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TRAIN_TESTING=1 TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,-ray_air python/ray/train/...
 
@@ -33,8 +34,9 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu python/ray/air/... python/ray/train/...
 

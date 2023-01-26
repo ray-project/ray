@@ -1,5 +1,5 @@
 import functools
-import gym
+import gymnasium as gym
 from math import log
 import numpy as np
 import tree  # pip install dm_tree
