@@ -48,6 +48,15 @@ class StreamingExecutor(Executor, threading.Thread):
         # Internal execution state shared across thread boundaries. We run the control
         # loop on a separate thread so that it doesn't become stalled between
         # generator `yield`s.
+        #
+        # The dataflow here is as follows:
+        #
+        #   output_node_outqueue ---> runner_thread_out ---> consumer_generator
+        #  
+        # Note that the "real" queue is held in output_node_outqueue. The memory used
+        # in output_node_outqueue counts towards execution resources limits. In
+        # contrast, the runner_thread_out queue is limited to 1 item and is only used
+        # to handoff bundles between the executor and consumer thread.
         self._runner_thread_out = queue.Queue(maxsize=1)
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
