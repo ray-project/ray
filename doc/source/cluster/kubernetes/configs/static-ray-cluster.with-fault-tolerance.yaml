@@ -160,29 +160,29 @@ spec:
             - containerPort: 6380 # GCS server
             - containerPort: 10001 # Used by Ray Client
             - containerPort: 8265 # Used by Ray Dashboard
-            - containerPort: 8076
-            - containerPort: 8077
-            - containerPort: 8078
-            - containerPort: 52365
-            - containerPort: 10002
-            - containerPort: 10003
-            - containerPort: 10004
-            - containerPort: 10005
-            - containerPort: 10006
-            - containerPort: 10007
-            - containerPort: 10008
-            - containerPort: 10009
-            - containerPort: 10010
-            - containerPort: 10011
-            - containerPort: 10012
-            - containerPort: 10013
-            - containerPort: 10014
-            - containerPort: 10015
-            - containerPort: 10016
-            - containerPort: 10017
-            - containerPort: 10018
-            - containerPort: 10019
-            - containerPort: 10020 
+            - containerPort: 8076 # Ray object manager port
+            - containerPort: 8077 # Ray node manager port
+            - containerPort: 8078 # Ray dashboard agent grpc port
+            - containerPort: 52365 # Ray dashboard agent listen port
+            - containerPort: 10002 # min worker port
+            - containerPort: 10003 # available worker port
+            - containerPort: 10004 # available worker port
+            - containerPort: 10005 # available worker port
+            - containerPort: 10006 # available worker port
+            - containerPort: 10007 # available worker port
+            - containerPort: 10008 # available worker port
+            - containerPort: 10009 # available worker port
+            - containerPort: 10010 # available worker port
+            - containerPort: 10011 # available worker port
+            - containerPort: 10012 # available worker port
+            - containerPort: 10013 # available worker port
+            - containerPort: 10014 # available worker port
+            - containerPort: 10015 # available worker port
+            - containerPort: 10016 # available worker port
+            - containerPort: 10017 # available worker port
+            - containerPort: 10018 # available worker port
+            - containerPort: 10019 # available worker port
+            - containerPort: 10020 # max worker port
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
           # /tmp which cause slowdowns if it's not a shared memory volume.
