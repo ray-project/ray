@@ -13,7 +13,22 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
+from ray.air.util.tensor_extensions.utils import create_possibly_ragged_ndarray
 from ray._private.utils import _get_pyarrow_version
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [np.zeros((3, 1)), np.zeros((3, 2))],
+        [np.zeros((3,))],
+    ],
+)
+def test_create_possibly_ragged_ndarray(values):
+    ragged_array = create_possibly_ragged_ndarray(values)
+
+    assert [array.shape for array in ragged_array] == [array.shape for array in values]
+    assert [array.dtype for array in ragged_array] == [array.dtype for array in values]
 
 
 def test_tensor_array_validation():
