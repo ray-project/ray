@@ -223,24 +223,32 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def to_pandas(self) -> "pandas.DataFrame":
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
-
-        def _get_pandas_type_mapper():
-            """If the Table contains at least one null value, use a custom type mapper
-            to handle nullable types during conversion to the Pandas DataFrame."""
-            import pandas as pd
-
-            for col in self._table.columns:
-                if any(col.is_null().to_pylist()):
-                    return {
-                        pyarrow.int64(): pd.Int64Dtype(),
-                        pyarrow.float32(): pd.Float32Dtype(),
-                    }.get
-            return None
+        import pandas as pd
 
         # If the Table contains at least one null value, a custom `types_mapper` is
-        # needed to handle nullable types in Pandas. For more details:
-        # https://arrow.apache.org/docs/python/pandas.html#nullable-types
-        df = self._table.to_pandas(types_mapper=_get_pandas_type_mapper())
+        # needed to handle nullable types during conversion to a Pandas DataFrame.
+        # For more details: https://arrow.apache.org/docs/python/pandas.html#nullable-types  # noqa: E501
+        df: pd.DataFrame = self._table.to_pandas(
+            types_mapper={
+                pyarrow.int64(): pd.Int64Dtype(),
+                pyarrow.float32(): pd.Float32Dtype(),
+            }.get
+        )
+
+        # Downcast from nullable to non-nullable/primitive data types if
+        # the columns don't have null values.
+        nullable_types_mapping = {
+            pd.Int64Dtype(): np.int64,
+            pd.Float32Dtype(): np.float32,
+        }
+        for col in df:
+            col_type = df[col].dtype
+            if col_type in nullable_types_mapping:
+                try:
+                    df[col] = df[col].astype(nullable_types_mapping.get(col_type))
+                except ValueError:
+                    continue
+
         ctx = DatasetContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_tensor_columns_to_ndarrays(df)
