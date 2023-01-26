@@ -32,7 +32,8 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.core.rl_trainer.rl_trainer_config import (
-    RLTrainerScalingConfig, HyperparamType
+    RLTrainerScalingConfig,
+    HyperparamType,
 )
 
 
@@ -46,6 +47,7 @@ ParamType = Union["torch.Tensor", "tf.Variable"]
 ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
+
 
 class RLTrainer:
     """Base class for RLlib algorithm trainers.

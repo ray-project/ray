@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 HyperparamType = Union["AlgorithmConfig", Hyperparams]
 
+
 @dataclass
 class RLTrainerScalingConfig:
     """Base class for scaling config relevant to RLTrainer."""
@@ -71,7 +72,6 @@ class TFRLTrainerScalingConfig(RLTrainerScalingConfig):
     enable_tf_function: bool = True
 
 
-
 class RLTrainerSpec:
     # The RLTrainer class to use.
     rl_trainer_class: Type["RLTrainer"] = None
@@ -104,4 +104,3 @@ class RLTrainerSpec:
 
     def build(self):
         return self.rl_trainer_class(**self.get_params_dict())
-

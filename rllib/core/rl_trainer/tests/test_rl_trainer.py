@@ -13,6 +13,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.core.rl_trainer.trainer_runner_config import TFRLTrainerScalingConfig
 
+
 def get_trainer(distributed=False) -> RLTrainer:
     env = gym.make("CartPole-v1")
 
