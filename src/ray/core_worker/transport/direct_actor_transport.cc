@@ -109,9 +109,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
   auto accept_callback = [this, reply, task_spec, resource_ids](
                              rpc::SendReplyCallback send_reply_callback) {
-    // TODO(rickyx):
-    RAY_LOG(INFO) << "Accepting task.";
-
     // Populate the
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -221,9 +218,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   auto dependencies = task_spec.GetDependencies();
 
   if (task_spec.IsActorTask()) {
-    RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
-                   << " to actor task queue (out of order = " << execute_out_of_order_
-                   << ")";
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
       auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());

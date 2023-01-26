@@ -41,10 +41,10 @@ WorkerContext::WorkerContext(WorkerType worker_type,
   // (For other threads it's initialized to TaskID::Nil(), and set to task's task id when
   // executing a task later).
   absl::WriterMutexLock lock(&mutex_);
-  RAY_CHECK(WorkerType::Driver != worker_type_ || !job_id.IsNil())
+  RAY_CHECK(WorkerType::DRIVER != worker_type_ || !job_id.IsNil())
       << "job id is required for initializing driver's exec context's task id.";
   auto task_id =
-      WorkerType::Driver == worker_type_ ? TaskID::ForDriverTask(job_id) : TaskID::Nil();
+      WorkerType::DRIVER == worker_type_ ? TaskID::ForDriverTask(job_id) : TaskID::Nil();
   InitExecContext(task_id);
 }
 
@@ -147,9 +147,8 @@ void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mu
 void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
-  RAY_LOG(INFO) << "Setting current task : " << task_spec.TaskId();
   absl::WriterMutexLock lock(&mutex_);
-  InitExecContext(task_spec.TaskId(), task_spec.IsDriverTask());
+  InitExecContext(task_spec.TaskId());
   current_exec_context_->SetCurrentTask(task_spec);
   SetTaskDepth(task_spec.GetDepth());
   RAY_CHECK(current_job_id_ == task_spec.JobId());
@@ -238,7 +237,6 @@ bool WorkerContext::CurrentActorDetached() const {
 }
 
 void WorkerContext::InitExecContext(const TaskID &task_id) {
-  RAY_LOG(INFO) << "Initializing exec context for task " << task_id;
   auto thread_ctx = std::make_shared<WorkerExecContext>(task_id);
   auto itr_inserted = all_exec_threads_contexts_.insert(
       {std::this_thread::get_id(), std::move(thread_ctx)});
