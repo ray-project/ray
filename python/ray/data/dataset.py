@@ -187,22 +187,22 @@ class Dataset(Generic[T]):
         >>> # Transform in parallel with map_batches().
         >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
         MapBatches
-        +- Dataset(num_blocks=17, num_rows=1000, schema=<class 'int'>)
+        +- <Dataset num_blocks=17, num_rows=1000, schema=<class 'int'>>
         >>> # Compute max.
         >>> ds.max()
         999
         >>> # Group the data.
         >>> ds.groupby(lambda x: x % 3).count()
         Aggregate
-        +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        +- <Dataset num_blocks=..., num_rows=1000, schema=<class 'int'>>
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle()
         RandomShuffle
-        +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        +- <Dataset num_blocks=..., num_rows=1000, schema=<class 'int'>>
         >>> # Sort it back in order.
         >>> ds.sort()
         Sort
-        +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+        +- <Dataset num_blocks=..., num_rows=1000, schema=<class 'int'>>
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors without incurring a copy. Datasets support
@@ -259,12 +259,12 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(1000)
             >>> ds.map(lambda x: x * 2)
             Map
-            +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+            +- <Dataset num_blocks=..., num_rows=1000, schema=<class 'int'>>
             >>> # Transform Arrow records.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
             >>> ds.map(lambda record: {"v2": record["value"] * 2})
-            Dataset(num_blocks=..., num_rows=1000, schema={v2: int64})
+            <Dataset num_blocks=..., num_rows=1000, schema={v2: int64}>
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -409,7 +409,7 @@ class Dataset(Generic[T]):
             ... })
             >>> ds = ray.data.from_pandas(df)
             >>> ds
-            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+            <Dataset num_blocks=1, num_rows=3, schema={name: object, age: int64}>
 
             Call :meth:`.default_batch_format` to determine the default batch
             type.
@@ -430,7 +430,7 @@ class Dataset(Generic[T]):
             ...     return batch
             >>> ds = ds.map_batches(map_fn)
             >>> ds
-            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64, age_in_dog_years: int64})
+            <Dataset num_blocks=1, num_rows=3, schema={name: object, age: int64, age_in_dog_years: int64}>
 
             Your ``fn`` can return a different type than the input type. To learn more
             about supported output types, read
@@ -441,7 +441,7 @@ class Dataset(Generic[T]):
             ...     return list(batch["age_in_dog_years"])
             >>> ds = ds.map_batches(map_fn)
             >>> ds
-            Dataset(num_blocks=1, num_rows=3, schema=<class 'int'>)
+            <Dataset num_blocks=1, num_rows=3, schema=<class 'int'>>
 
             :ref:`Actors <actor-guide>` can improve the performance of some workloads.
             For example, you can use :ref:`actors <actor-guide>` to load a model once
@@ -801,7 +801,7 @@ class Dataset(Generic[T]):
             >>> # Select only "col1" and "col2" columns.
             >>> ds = ds.select_columns(cols=["col1", "col2"])
             >>> ds
-            Dataset(num_blocks=..., num_rows=10, schema={col1: int64, col2: int64})
+            <Dataset num_blocks=..., num_rows=10, schema={col1: int64, col2: int64}>
 
 
         Time complexity: O(dataset size / parallelism)
@@ -838,7 +838,7 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(1000)
             >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
             FlatMap
-            +- Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
+            +- <Dataset num_blocks=..., num_rows=1000, schema=<class 'int'>>
 
         Time complexity: O(dataset size / parallelism)
 
@@ -907,7 +907,7 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(100)
             >>> ds.filter(lambda x: x % 2 == 0)
             Filter
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- <Dataset num_blocks=..., num_rows=100, schema=<class 'int'>>
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1002,11 +1002,11 @@ class Dataset(Generic[T]):
             >>> # Shuffle this dataset randomly.
             >>> ds.random_shuffle()
             RandomShuffle
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- <Dataset num_blocks=..., num_rows=100, schema=<class 'int'>>
             >>> # Shuffle this dataset with a fixed random seed.
             >>> ds.random_shuffle(seed=12345)
             RandomShuffle
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- <Dataset num_blocks=..., num_rows=100, schema=<class 'int'>>
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1573,12 +1573,12 @@ class Dataset(Generic[T]):
             >>> # Group by a key function and aggregate.
             >>> ray.data.range(100).groupby(lambda x: x % 3).count()
             Aggregate
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- <Dataset num_blocks=..., num_rows=100, schema=<class 'int'>>
             >>> # Group by an Arrow table column and aggregate.
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
             ...     "A").count()
-            Dataset(num_blocks=..., num_rows=3, schema={A: int64, count(): int64})
+            <Dataset num_blocks=..., num_rows=3, schema={A: int64, count(): int64}>
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1974,12 +1974,12 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(100)
             >>> ds.sort()
             Sort
-            +- Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
+            +- <Dataset num_blocks=..., num_rows=100, schema=<class 'int'>>
             >>> # Sort by a single column in descending order.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
             >>> ds.sort("value", descending=True)
-            Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
+            <Dataset num_blocks=..., num_rows=1000, schema={value: int64}>
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
@@ -3155,7 +3155,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
-            Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
+            <Dataset num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64}>
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -3175,7 +3175,7 @@ class Dataset(Generic[T]):
             >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
             >>> ds = preprocessor.transform(ds)
             >>> ds
-            Dataset(num_blocks=1, num_rows=150, schema={target: int64, features: TensorDtype(shape=(4,), dtype=float64)})
+            <Dataset num_blocks=1, num_rows=150, schema={target: int64, features: TensorDtype(shape=(4,), dtype=float64)}>
             >>> ds.to_tf("features", "target")  # doctest: +SKIP
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -4064,7 +4064,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds  # doctest: +SKIP
-            Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)
+            <Dataset num_blocks=20, num_rows=100, schema=<class 'int'>>
             >>> ds.default_batch_format()
             <class 'list'>
             >>> next(ds.iter_batches(batch_size=4))
@@ -4077,7 +4077,7 @@ class Dataset(Generic[T]):
 
             >>> ds = ray.data.range_tensor(100)
             >>> ds  # doctest: +SKIP
-            Dataset(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
+            <Dataset num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}>
             >>> ds.default_batch_format()
             <class 'numpy.ndarray'>
             >>> next(ds.iter_batches(batch_size=4))
@@ -4095,7 +4095,7 @@ class Dataset(Generic[T]):
             >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
             >>> ds = ray.data.from_pandas(df)
             >>> ds  # doctest: +SKIP
-            Dataset(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
+            <Dataset num_blocks=1, num_rows=2, schema={foo: object, bar: int64}>
             >>> ds.default_batch_format()
             <class 'pandas.core.frame.DataFrame'>
             >>> next(ds.iter_batches(batch_size=4))

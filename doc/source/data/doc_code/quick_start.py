@@ -6,7 +6,7 @@ import ray
 
 # Create a Dataset of Python objects.
 ds = ray.data.range(10000)
-# -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
+# -> <Dataset num_blocks=200, num_rows=10000, schema=<class 'int'>>
 
 ds.take(5)
 # -> [0, 1, 2, 3, 4]

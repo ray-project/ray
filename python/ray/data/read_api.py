@@ -81,7 +81,7 @@ def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Dataset(num_blocks=5, num_rows=5, schema=<class 'int'>)
+        <Dataset num_blocks=5, num_rows=5, schema=<class 'int'>>
         >>> ds.take(2) # doctest: +SKIP
         [1, 2]
 
@@ -140,7 +140,7 @@ def range(n: int, *, parallelism: int = -1) -> Dataset[int]:
         >>> import ray
         >>> ds = ray.data.range(10000) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
+        <Dataset num_blocks=200, num_rows=10000, schema=<class 'int'>>
         >>> ds.map(lambda x: x * 2).take(4) # doctest: +SKIP
         [0, 2, 4, 6]
 
@@ -165,7 +165,7 @@ def range_table(n: int, *, parallelism: int = -1) -> Dataset[ArrowRow]:
         >>> import ray
         >>> ds = ray.data.range_table(1000) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
+        <Dataset num_blocks=200, num_rows=1000, schema={value: int64}>
         >>> ds.map(lambda r: {"v2": r["value"] * 2}).take(2) # doctest: +SKIP
         [ArrowRow({'v2': 0}), ArrowRow({'v2': 2})]
 
@@ -464,7 +464,7 @@ def read_parquet(
         ...           ("variety", pa.string())]
         >>> ray.data.read_parquet("example://iris.parquet",
         ...     schema=pa.schema(fields))
-        Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, ...})
+        <Dataset num_blocks=..., num_rows=150, schema={sepal.length: double, ...}>
 
         For further arguments you can pass to pyarrow as a keyword argument, see
         https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
@@ -529,13 +529,13 @@ def read_images(
         >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)})
+        <Dataset num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3)}>
 
         If you need image file paths, set ``include_paths=True``.
 
         >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string})
+        <Dataset num_blocks=200, num_rows=41979, schema={image: ArrowVariableShapedTensorType(dtype=uint8, ndim=3), path: string}>
         >>> ds.take(1)[0]["path"]  # doctest: +SKIP
         'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
 
@@ -558,7 +558,7 @@ def read_images(
         >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
         >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
+        <Dataset num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object}>
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -1472,7 +1472,7 @@ def from_tf(
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
         >>> dataset = ray.data.from_tf(dataset)  # doctest: +SKIP
         >>> dataset  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64})
+        <Dataset num_blocks=200, num_rows=50000, schema={id: binary, image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: int64}>
         >>> dataset.take(1)  # doctest: +SKIP
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
         [141,  96,  72],
@@ -1525,7 +1525,7 @@ def from_torch(
         >>> dataset = datasets.MNIST("data", download=True)  # doctest: +SKIP
         >>> dataset = ray.data.from_torch(dataset)  # doctest: +SKIP
         >>> dataset  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=60000, schema=<class 'tuple'>)
+        <Dataset num_blocks=200, num_rows=60000, schema=<class 'tuple'>>
         >>> dataset.take(1)  # doctest: +SKIP
         [(<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)]
 

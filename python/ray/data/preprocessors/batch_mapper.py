@@ -48,13 +48,13 @@ class BatchMapper(Preprocessor):
         >>>
         >>> preprocessor = BatchMapper(fn, batch_format="pandas")
         >>> preprocessor.transform(ds)  # doctest: +SKIP
-        Dataset(num_blocks=1, num_rows=3, schema={X: int64})
+        <Dataset num_blocks=1, num_rows=3, schema={X: int64}>
         >>>
         >>> def fn_numpy(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         ...     return {"X": batch["X"]}
         >>> preprocessor = BatchMapper(fn_numpy, batch_format="numpy")
         >>> preprocessor.transform(ds)  # doctest: +SKIP
-        Dataset(num_blocks=1, num_rows=3, schema={X: int64})
+        <Dataset num_blocks=1, num_rows=3, schema={X: int64}>
 
     Args:
         fn: The function to apply to data batches.

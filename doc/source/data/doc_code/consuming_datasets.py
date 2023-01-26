@@ -102,11 +102,11 @@ workers = [Worker.remote(i) for i in range(4)]
 # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
 
 ds = ray.data.range(10000)
-# -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
+# -> <Dataset num_blocks=200, num_rows=10000, schema=<class 'int'>>
 
 shards = ds.split(n=4, locality_hints=workers)
-# -> [Dataset(num_blocks=13, num_rows=2500, schema=<class 'int'>),
-#     Dataset(num_blocks=13, num_rows=2500, schema=<class 'int'>), ...]
+# -> [<Dataset num_blocks=13, num_rows=2500, schema=<class 'int'>>,
+#     <Dataset num_blocks=13, num_rows=2500, schema=<class 'int'>>, ...]
 
 ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
 # -> [2500, 2500, 2500, 2500]

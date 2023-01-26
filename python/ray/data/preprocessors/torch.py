@@ -19,7 +19,7 @@ class TorchVisionPreprocessor(Preprocessor):
         >>> import ray
         >>> dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
         >>> dataset  # doctest: +ellipsis
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(..., 3), dtype=float)})
+        <Dataset num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(..., 3), dtype=float)}>
 
         :class:`TorchVisionPreprocessor` passes ndarrays to your transform. To convert
         ndarrays to Torch tensors, add ``ToTensor`` to your pipeline.
@@ -32,7 +32,7 @@ class TorchVisionPreprocessor(Preprocessor):
         ... ])
         >>> preprocessor = TorchVisionPreprocessor(["image"], transform=transform)
         >>> preprocessor.transform(dataset)  # doctest: +ellipsis
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
+        <Dataset num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)}>
 
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
         with a batch-supporting ``Lambda``.
@@ -52,7 +52,7 @@ class TorchVisionPreprocessor(Preprocessor):
         ...     ["image"], transform=transform, batched=True
         ... )
         >>> preprocessor.transform(dataset)  # doctest: +ellipsis
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
+        <Dataset num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)}>
 
     Args:
         columns: The columns to apply the TorchVision transform to.

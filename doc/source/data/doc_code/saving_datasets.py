@@ -5,7 +5,7 @@
 import ray
 
 ds = ray.data.range(1000)
-# -> Dataset(num_blocks=200, num_rows=1000, schema=<class 'int'>)
+# -> <Dataset num_blocks=200, num_rows=1000, schema=<class 'int'>>
 ds.take(5)
 # -> [0, 1, 2, 3, 4]
 
@@ -26,7 +26,7 @@ ds.repartition(3).write_parquet("/tmp/multi_parquet")
 import ray
 
 ds = ray.data.range(1000)
-# -> Dataset(num_blocks=200, num_rows=1000, schema=<class 'int'>)
+# -> <Dataset num_blocks=200, num_rows=1000, schema=<class 'int'>>
 ds.take(5)
 # -> [0, 1, 2, 3, 4]
 
@@ -47,7 +47,7 @@ ds.repartition(3).write_csv("/tmp/multi_csv")
 import ray
 
 ds = ray.data.range(1000)
-# -> Dataset(num_blocks=200, num_rows=1000, schema=<class 'int'>)
+# -> <Dataset num_blocks=200, num_rows=1000, schema=<class 'int'>>
 ds.take(5)
 # -> [0, 1, 2, 3, 4]
 

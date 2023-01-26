@@ -268,14 +268,14 @@ from typing import List
 
 # Load dataset.
 ds = ray.data.read_text("example://sms_spam_collection_subset.txt")
-# -> Dataset(num_blocks=1, num_rows=10, schema=<class 'str'>)
+# -> <Dataset num_blocks=1, num_rows=10, schema=<class 'str'>>
 
 # Convert to Pandas.
 def convert_to_pandas(text: List[str]) -> pd.DataFrame:
     return pd.DataFrame({"text": text})
 
 ds = ds.map_batches(convert_to_pandas)
-# -> Dataset(num_blocks=1, num_rows=10, schema={text: object})
+# -> <Dataset num_blocks=1, num_rows=10, schema={text: object}>
 
 ds.show(2)
 # -> {
@@ -296,14 +296,14 @@ from typing import List
 
 # Load dataset.
 ds = ray.data.read_text("example://sms_spam_collection_subset.txt")
-# -> Dataset(num_blocks=1, num_rows=10, schema=<class 'str'>)
+# -> <Dataset num_blocks=1, num_rows=10, schema=<class 'str'>>
 
 # Convert to Arrow.
 def convert_to_arrow(text: List[str]) -> pa.Table:
     return pa.table({"text": text})
 
 ds = ds.map_batches(convert_to_arrow)
-# -> Dataset(num_blocks=1, num_rows=10, schema={text: object})
+# -> <Dataset num_blocks=1, num_rows=10, schema={text: object}>
 
 ds.show(2)
 # -> {
@@ -425,7 +425,7 @@ def convert_to_list(df: pd.DataFrame) -> List[dict]:
     return df.to_dict("records")
 
 ds = ds.map_batches(convert_to_list)
-# -> Dataset(num_blocks=1, num_rows=150, schema=<class 'dict'>)
+# -> <Dataset num_blocks=1, num_rows=150, schema=<class 'dict'>>
 
 ds.show(2)
 # -> {'sepal.length': 5.1, 'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2,
@@ -443,14 +443,14 @@ from typing import Dict
 
 # Load dataset.
 ds = ray.data.range(10)
-# -> Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
+# -> <Dataset num_blocks=10, num_rows=10, schema=<class 'int'>>
 
 # Convert row to dict.
 def row_to_dict(row: int) -> Dict[str, int]:
     return {"foo": row}
 
 ds = ds.map(row_to_dict)
-# -> Dataset(num_blocks=10, num_rows=10, schema={foo: int64})
+# -> <Dataset num_blocks=10, num_rows=10, schema={foo: int64}>
 
 ds.show(2)
 # -> {'foo': 0}
@@ -514,7 +514,7 @@ from typing import Dict
 
 # Load dataset.
 ds = ray.data.range(10)
-# -> Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
+# -> <Dataset num_blocks=10, num_rows=10, schema=<class 'int'>>
 
 # Convert row to NumPy ndarray.
 def row_to_numpy(row: int) -> np.ndarray:
@@ -559,7 +559,7 @@ def map_row(row: TableRow) -> tuple:
     return tuple(row.items())
 
 ds = ds.map(map_row)
-# -> Dataset(num_blocks=1, num_rows=150, schema=<class 'tuple'>)
+# -> <Dataset num_blocks=1, num_rows=150, schema=<class 'tuple'>>
 
 ds.show(2)
 # -> (('sepal.length', 5.1), ('sepal.width', 3.5), ('petal.length', 1.4),

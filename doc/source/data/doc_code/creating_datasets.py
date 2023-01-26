@@ -10,7 +10,7 @@ import ray
 # __gen_synth_int_range_begin__
 # Create a Dataset of Python objects.
 ds = ray.data.range(10000)
-# -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
+# -> <Dataset num_blocks=200, num_rows=10000, schema=<class 'int'>>
 
 ds.take(5)
 # -> [0, 1, 2, 3, 4]
@@ -21,7 +21,7 @@ ds.take(5)
 # __gen_synth_tabular_range_begin__
 # Create a Dataset of Arrow records.
 ds = ray.data.range_table(10000)
-# -> Dataset(num_blocks=200, num_rows=10000, schema={value: int64})
+# -> <Dataset num_blocks=200, num_rows=10000, schema={value: int64}>
 
 ds.take(5)
 # -> [{'value': 0}, {'value': 1}, {'value': 2}, {'value': 3}, {'value': 4}]
@@ -60,7 +60,7 @@ ds.take(2)
 # __from_items_begin__
 # Create a Dataset of tabular (Arrow) records.
 ds = ray.data.from_items([{"col1": i, "col2": str(i)} for i in range(10000)])
-# -> Dataset(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
+# -> <Dataset num_blocks=200, num_rows=10000, schema={col1: int64, col2: string}>
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -76,7 +76,7 @@ import pandas as pd
 # Create a tabular Dataset from a Pandas DataFrame.
 df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 ds = ray.data.from_pandas(df)
-# -> Dataset(num_blocks=1, num_rows=10000, schema={col1: int64, col2: object})
+# -> <Dataset num_blocks=1, num_rows=10000, schema={col1: int64, col2: object}>
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -99,7 +99,7 @@ dfs = [
 ]
 # Create a tabular Dataset from multiple Pandas DataFrames.
 ds = ray.data.from_pandas(dfs)
-# -> Dataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: object})
+# -> <Dataset num_blocks=10, num_rows=10000, schema={col1: int64, col2: object}>
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -199,7 +199,7 @@ import pyarrow as pa
 # Create a tabular Dataset from an Arrow Table.
 t = pa.table({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 ds = ray.data.from_arrow(t)
-# -> Dataset(num_blocks=1, num_rows=10000, schema={col1: int64, col2: string})
+# -> <Dataset num_blocks=1, num_rows=10000, schema={col1: int64, col2: string}>
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -222,7 +222,7 @@ ts = [
 ]
 # Create a tabular Dataset from multiple Arrow Tables.
 ds = ray.data.from_arrow(ts)
-# -> Dataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: string})
+# -> <Dataset num_blocks=10, num_rows=10000, schema={col1: int64, col2: string}>
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -240,7 +240,7 @@ df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000
 ddf = dd.from_pandas(df, npartitions=4)
 # Create a tabular Dataset from a Dask DataFrame.
 ds = ray.data.from_dask(ddf)
-# -> Dataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: object})
+# -> <Dataset num_blocks=10, num_rows=10000, schema={col1: int64, col2: object}>
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -260,7 +260,7 @@ spark = raydp.init_spark(app_name="Spark -> Datasets Example",
 df = spark.createDataFrame([(i, str(i)) for i in range(10000)], ["col1", "col2"])
 # Create a tabular Dataset from a Spark DataFrame.
 ds = ray.data.from_dask(df)
-# -> Dataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: string})
+# -> <Dataset num_blocks=10, num_rows=10000, schema={col1: int64, col2: string}>
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -277,7 +277,7 @@ df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000
 mdf = md.DataFrame(df)
 # Create a tabular Dataset from a Modin DataFrame.
 ds = ray.data.from_modin(mdf)
-# -> Dataset(num_blocks=8, num_rows=10000, schema={col1: int64, col2: object})
+# -> <Dataset num_blocks=8, num_rows=10000, schema={col1: int64, col2: object}>
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -297,7 +297,7 @@ df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000
 mdf = md.DataFrame(df, num_partitions=8)
 # Create a tabular Dataset from a Mars DataFrame.
 ds = ray.data.from_mars(mdf)
-# -> Dataset(num_blocks=8, num_rows=10000, schema={col1: int64, col2: object})
+# -> <Dataset num_blocks=8, num_rows=10000, schema={col1: int64, col2: object}>
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -351,7 +351,7 @@ ds = ray.data.read_parquet(
     columns=["sepal.length", "variety"],
     filter=pa.dataset.field("sepal.length") > 5.0,
 ).fully_executed()  # Force a full read of the file.
-# -> Dataset(num_blocks=1, num_rows=118, schema={sepal.length: double, variety: string})
+# -> <Dataset num_blocks=1, num_rows=118, schema={sepal.length: double, variety: string}>
 
 ds.show(2)
 # -> {'sepal.length': 5.1, 'variety': 'Setosa'}
@@ -446,7 +446,7 @@ ds.show(2)
 # __read_text_begin__
 # Create a tabular Dataset by reading a text file.
 ds = ray.data.read_text("example://sms_spam_collection_subset.txt")
-# -> Dataset(num_blocks=1, num_rows=10, schema=<class 'str'>)
+# -> <Dataset num_blocks=1, num_rows=10, schema=<class 'str'>>
 
 ds.show(3)
 # -> ham     Go until jurong point, crazy.. Available only in bugis n great world la e
@@ -465,7 +465,7 @@ import PIL
 
 # Create a tabular Dataset by reading a binary file.
 ds = ray.data.read_binary_files("example://mnist_subset_partitioned/0/1.png")
-# -> Dataset(num_blocks=1, num_rows=1, schema=<class 'bytes'>)
+# -> <Dataset num_blocks=1, num_rows=1, schema=<class 'bytes'>>
 
 ds = ds.map(lambda bytes_: np.asarray(PIL.Image.open(BytesIO(bytes_)).convert("L")))
 # -> Dataset(
