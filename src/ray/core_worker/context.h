@@ -110,8 +110,8 @@ class WorkerContext {
  private:
   WorkerExecContext &GetExecContext() const;
 
-  std::shared_ptr<WorkerExecContext> GetExecContextInternal()
-      SHARED_LOCKS_REQUIRED(mutex_) const;
+  std::shared_ptr<WorkerExecContext> GetExecContextInternal() const
+      SHARED_LOCKS_REQUIRED(mutex_);
 
   void InitExecContext(const TaskID &task_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
