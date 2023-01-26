@@ -62,7 +62,7 @@ void GcsHealthCheckManager::RemoveNode(const NodeID &node_id) {
 void GcsHealthCheckManager::FailNode(const NodeID &node_id) {
   RAY_LOG(WARNING) << "Node " << node_id << " is dead because the health check failed.";
   auto iter = health_check_contexts_.find(node_id);
-  if(iter != health_check_contexts_.end()) {
+  if (iter != health_check_contexts_.end()) {
     on_node_death_callback_(node_id);
     health_check_contexts_.erase(iter);
   }
