@@ -5,7 +5,10 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import BlockTransform
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
-from ray.data._internal.shuffle_and_partition import PushBasedShufflePartitionOp, SimpleShufflePartitionOp
+from ray.data._internal.shuffle_and_partition import (
+    PushBasedShufflePartitionOp,
+    SimpleShufflePartitionOp,
+)
 from ray.data.context import DatasetContext
 
 
@@ -57,9 +60,7 @@ def shuffle(
         shuffle_op_cls = PushBasedShufflePartitionOp
     else:
         shuffle_op_cls = SimpleShufflePartitionOp
-    random_shuffle_op = shuffle_op_cls(
-        block_udf, random_shuffle=True, random_seed=seed
-    )
+    random_shuffle_op = shuffle_op_cls(block_udf, random_shuffle=True, random_seed=seed)
     return random_shuffle_op.execute(
         blocks,
         output_num_blocks or num_blocks,

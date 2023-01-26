@@ -47,8 +47,7 @@ class AbstractAllToAll(LogicalOperator):
 
 
 def plan_all_to_all_op(
-    op: AbstractAllToAll,
-    input_physical_dag: PhysicalOperator
+    op: AbstractAllToAll, input_physical_dag: PhysicalOperator
 ) -> AllToAllOperator:
     """Get the corresponding physical operators DAG for AbstractAllToAll operators."""
     fn = op._fn
