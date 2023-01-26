@@ -246,6 +246,9 @@ TEST_F(GcsHealthCheckManagerTest, NoRegister) {
 }
 
 TEST_F(GcsHealthCheckManagerTest, StressTest) {
+#if defined(__has_feature) && __has_feature(thread_sanitizer)
+  GTEST_SKIP() << "Disabled in tsan because of performance";
+#endif
   boost::asio::io_service::work work(io_service);
   std::srand(std::time(nullptr));
   auto t = std::make_unique<std::thread>([this]() { this->io_service.run(); });
