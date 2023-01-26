@@ -73,8 +73,8 @@ class DreamerTorchPolicy(TorchPolicyV2):
         features = self.model.dynamics.get_feature(post)
         image_pred = self.model.decoder(features)
         reward_pred = self.model.reward(features)
-        image_loss = -torch.mean(image_pred.log_prob(train_batch["obs"]))
-        reward_loss = -torch.mean(reward_pred.log_prob(train_batch["rewards"]))
+        image_loss = -torch.mean(image_pred.log_prob(train_batch["obs"].unsqueeze(1)))
+        reward_loss = -torch.mean(reward_pred.log_prob(train_batch["rewards"].unsqueeze(1)))
         prior_dist = self.model.dynamics.get_dist(prior[0], prior[1])
         post_dist = self.model.dynamics.get_dist(post[0], post[1])
         div = torch.mean(
