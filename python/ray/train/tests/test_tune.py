@@ -300,6 +300,16 @@ def test_run_config_in_trainer_and_tuner(
     )
 
 
+def test_run_config_in_param_space():
+    trainer = DataParallelTrainer(
+        lambda config: None,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    with pytest.raises(ValueError):
+        Tuner(trainer, param_space={"run_config": RunConfig(name="ignored")})
+
+
 if __name__ == "__main__":
     import sys
 
