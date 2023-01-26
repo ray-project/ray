@@ -68,6 +68,8 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, self._stats = build_streaming_topology(dag, self._options)
+        _validate_topology(self._topology, self._get_or_refresh_resource_limits())
+
         self._output_node: OpState = self._topology[dag]
         self.start()
 
@@ -86,12 +88,9 @@ class StreamingExecutor(Executor, threading.Thread):
         Results are returned via the `self._runner_thread_out` queue.
         """
 
-        topology = self._topology
         try:
-            _validate_topology(topology, self._get_or_refresh_resource_limits())
-
             # Run scheduling loop until complete.
-            while self._scheduling_loop_step(topology):
+            while self._scheduling_loop_step(self._topology):
                 while self._output_node.outqueue:
                     self._runner_thread_out.put(self._output_node.outqueue.pop(0))
 
@@ -99,10 +98,12 @@ class StreamingExecutor(Executor, threading.Thread):
             while self._output_node.outqueue:
                 self._runner_thread_out.put(self._output_node.outqueue.pop(0))
         except Exception as e:
+            # Propagate it to the result iterator.
             self._runner_thread_out.put(e)
         finally:
+            # Signal end of results.
             self._runner_thread_out.put(None)
-            for op in topology:
+            for op in self._topology:
                 op.shutdown()
             if self._global_info:
                 self._global_info.close()
