@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "src/ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
 namespace gcs {
