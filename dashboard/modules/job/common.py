@@ -94,8 +94,6 @@ class JobInfo:
     #: The node id that driver running on. It will be None only when the job status
     # is PENDING, and this field will not be deleted or modified even if the driver dies
     driver_node_id: Optional[str] = None
-    #: The ID of the job, either provided by the user or randomly generated.
-    submission_id: Optional[str] = None
 
     def __post_init__(self):
         if isinstance(self.status, str):

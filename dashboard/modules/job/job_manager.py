@@ -815,7 +815,6 @@ class JobManager:
             entrypoint_num_cpus=entrypoint_num_cpus,
             entrypoint_num_gpus=entrypoint_num_gpus,
             entrypoint_resources=entrypoint_resources,
-            submission_id=submission_id,
         )
         await self._job_info_client.put_info(submission_id, job_info)
 

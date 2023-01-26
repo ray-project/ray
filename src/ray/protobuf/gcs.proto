@@ -329,8 +329,6 @@ message JobsAPIInfo {
   // The node id that driver running on. It will be None only when the job status
   // is PENDING, and this field will not be deleted or modified even if the driver dies
   string driver_node_id = 13;
-  // The ID of the job, either provided by the user or randomly generated.
-  string submission_id = 14;
 }
 
 message JobTableData {

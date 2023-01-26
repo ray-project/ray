@@ -230,6 +230,7 @@ async def find_job_by_ids(
         driver = submission_job_drivers.get(submission_id)
         job = JobDetails(
             **dataclasses.asdict(job_info),
+            submission_id=submission_id,
             job_id=driver.id if driver else None,
             driver_info=driver,
             type=JobType.SUBMISSION,
