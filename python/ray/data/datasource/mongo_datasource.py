@@ -95,6 +95,10 @@ class _MongoDatasourceReader(Reader):
         self._client = pymongo.MongoClient(uri)
         _validate_database_collection_exist(self._client, database, collection)
 
+        self._avg_obj_size = self._client[database].command("collstats", collection)[
+            "avgObjSize"
+        ]
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # TODO(jian): Add memory size estimation to improve auto-tune of parallelism.
         return None
@@ -154,7 +158,7 @@ class _MongoDatasourceReader(Reader):
         for i, partition in enumerate(partitions_ids):
             metadata = BlockMetadata(
                 num_rows=partition["count"],
-                size_bytes=None,
+                size_bytes=partition["count"] * self._avg_obj_size,
                 schema=None,
                 input_files=None,
                 exec_stats=None,
