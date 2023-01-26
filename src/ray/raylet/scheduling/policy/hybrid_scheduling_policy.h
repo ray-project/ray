@@ -35,6 +35,7 @@ namespace raylet_scheduling_policy {
 /// In order to solve these problems, we use the following scheduling policy.
 ///   1. Generate a traversal.
 ///   2. Run a priority scheduler.
+///   3. Randomly choose one node from top-k nodes according to the priority.
 ///
 /// A node's priorities are determined by the following factors:
 ///   * Always skip infeasible nodes
