@@ -31,15 +31,15 @@ class PPOTfRLModule(TfRLModule):
         self.pi = TfMLP(
             input_dim=self.config.encoder_config.output_dim,
             output_dim=self.config.pi_config.output_dim,
-            hidden_layers=self.config.pi_config.hidden_layers,
-            activation=self.config.pi_config.activation,
+            hidden_layer_dims=self.config.pi_config.hidden_layer_dims,
+            hidden_layer_activation=self.config.pi_config.hidden_layer_activation,
         )
 
         self.vf = TfMLP(
             input_dim=self.config.encoder_config.output_dim,
             output_dim=1,
-            hidden_layers=self.config.vf_config.hidden_layers,
-            activation=self.config.vf_config.activation,
+            hidden_layer_dims=self.config.vf_config.hidden_layer_dims,
+            hidden_layer_activation=self.config.vf_config.hidden_layer_activation,
         )
 
         self._is_discrete = isinstance(
@@ -162,8 +162,8 @@ class PPOTfRLModule(TfRLModule):
         if vf_share_layers:
             encoder_config = MLPConfig(
                 input_dim=obs_dim,
-                hidden_layers=fcnet_hiddens,
-                activation=activation,
+                hidden_layer_dims=fcnet_hiddens,
+                hidden_layer_activation=activation,
                 output_dim=model_config["fcnet_hiddens"][-1],
             )
         else:
@@ -183,14 +183,14 @@ class PPOTfRLModule(TfRLModule):
         vf_config = MLPConfig()
         encoder_config.input_dim = observation_space.shape[0]
         pi_config.input_dim = encoder_config.output_dim
-        pi_config.hidden_layers = fcnet_hiddens
+        pi_config.hidden_layer_dims = fcnet_hiddens
         if isinstance(action_space, gym.spaces.Discrete):
             pi_config.output_dim = action_space.n
         else:
             pi_config.output_dim = action_space.shape[0] * 2
         # build vf network
         vf_config.input_dim = encoder_config.output_dim
-        vf_config.hidden_layers = fcnet_hiddens
+        vf_config.hidden_layer_dims = fcnet_hiddens
         vf_config.output_dim = 1
         config_ = PPOModuleConfig(
             pi_config=pi_config,

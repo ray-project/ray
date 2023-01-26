@@ -31,9 +31,9 @@ class TfFCEncoder(Encoder, TfMLPModel):
 
         self.net = TfMLP(
             input_dim=config.input_dim,
-            hidden_layers=config.hidden_layers,
+            hidden_layer_dims=config.hidden_layer_dims,
             output_dim=config.output_dim,
-            activation=config.activation,
+            hidden_layer_activation=config.hidden_layer_activation,
         )
 
     @property

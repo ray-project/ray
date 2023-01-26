@@ -7,6 +7,7 @@ from ray.rllib.models.specs.checker import (
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.models.experimental.base import Model
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.models.utils import get_activation_fn
 from typing import Tuple
 
 _, tf, _ = try_import_tf()
@@ -50,35 +51,47 @@ class TfMLP(tf.Module):
 
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
-        hidden_layers: The sizes of the hidden layers.
+        hidden_layer_dims: The sizes of the hidden layers.
         output_dim: The output dimension of the network.
-        activation: The activation function to use after each layer.
+        hidden_layer_activation: The activation function to use after each layer.
             Currently "Linear" (no activation) and "ReLU" are supported.
+        output_activation: The activation function to use for the output layer.
     """
 
     def __init__(
         self,
         input_dim: int,
-        hidden_layers: List[int],
+        hidden_layer_dims: List[int],
         output_dim: int,
-        activation: str = "linear",
+        hidden_layer_activation: str = "linear",
+        output_activation: str = "linear",
     ):
         super().__init__()
 
-        assert activation in ("linear", "ReLU", "Tanh"), (
+        assert hidden_layer_activation in ("linear", "ReLU", "Tanh"), (
             "Activation function not " "supported"
         )
         assert input_dim is not None, "Input dimension must not be None"
         assert output_dim is not None, "Output dimension must not be None"
         layers = []
-        activation = activation.lower()
+        hidden_layer_activation = hidden_layer_activation.lower()
         # input = tf.keras.layers.Dense(input_dim, activation=activation)
         layers.append(tf.keras.Input(shape=(input_dim,)))
-        for i in range(len(hidden_layers)):
+        for i in range(len(hidden_layer_dims)):
             layers.append(
-                tf.keras.layers.Dense(hidden_layers[i], activation=activation)
+                tf.keras.layers.Dense(
+                    hidden_layer_dims[i], activation=hidden_layer_activation
+                )
             )
-        layers.append(tf.keras.layers.Dense(output_dim))
+        if output_activation != "linear":
+            output_activation = get_activation_fn(output_activation, framework="torch")
+            final_layer = tf.keras.layers.Dense(
+                output_dim, activation=output_activation
+            )
+        else:
+            final_layer = tf.keras.layers.Dense(output_dim)
+
+        layers.append(final_layer)
         self.network = tf.keras.Sequential(layers)
 
     def __call__(self, inputs):

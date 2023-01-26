@@ -126,20 +126,20 @@ class PPOTorchRLModule(TorchRLModule):
         else:
             encoder_config = MLPEncoderConfig(
                 input_dim=obs_dim,
-                hidden_layers=fcnet_hiddens[:-1],
-                activation=activation,
+                hidden_layer_dims=fcnet_hiddens[:-1],
+                hidden_layer_activation=activation,
                 output_dim=fcnet_hiddens[-1],
             )
 
         pi_config = MLPConfig(
             input_dim=encoder_config.output_dim,
-            hidden_layers=[32],
-            activation="ReLU",
+            hidden_layer_dims=[32],
+            hidden_layer_activation="ReLU",
         )
         vf_config = MLPConfig(
             input_dim=encoder_config.output_dim,
-            hidden_layers=[32, 1],
-            activation="ReLU",
+            hidden_layer_dims=[32, 1],
+            hidden_layer_activation="ReLU",
             output_dim=1,
         )
 

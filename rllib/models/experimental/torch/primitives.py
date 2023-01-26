@@ -10,6 +10,7 @@ from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.models.experimental.base import ModelConfig
+from ray.rllib.models.utils import get_activation_fn
 
 torch, nn = try_import_torch()
 
@@ -53,44 +54,45 @@ class TorchMLP(nn.Module):
 
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
+        hidden_layer_dims: The sizes of the hidden layers.
         output_dim: The output dimension of the network. if None, the last layer would
             be the last hidden layer.
-        hidden_layers: The sizes of the hidden layers.
-        activation: The activation function to use after each layer.
+        hidden_layer_activation: The activation function to use after each layer.
+        output_activation: The activation function to use for the output layer.
     """
 
     def __init__(
         self,
         input_dim: int,
-        hidden_layers: List[int],
+        hidden_layer_dims: List[int],
         output_dim: Optional[int] = None,
-        activation: str = "linear",
+        hidden_layer_activation: str = "linear",
+        output_activation: str = "linear",
     ):
         super().__init__()
         self.input_dim = input_dim
-        self.hidden_layers = hidden_layers
+        hidden_layer_dims = hidden_layer_dims
 
-        activation_class = getattr(nn, activation, lambda: None)()
-        self.layers = []
-        self.layers.append(nn.Linear(self.input_dim, self.hidden_layers[0]))
-        for i in range(len(self.hidden_layers) - 1):
-            if activation != "linear":
-                self.layers.append(activation_class)
-            self.layers.append(
-                nn.Linear(self.hidden_layers[i], self.hidden_layers[i + 1])
-            )
+        activation_class = getattr(nn, hidden_layer_activation, lambda: None)()
+        layers = []
+        layers.append(nn.Linear(input_dim, hidden_layer_dims[0]))
+        for i in range(len(hidden_layer_dims) - 1):
+            if hidden_layer_activation != "linear":
+                layers.append(activation_class)
+            layers.append(nn.Linear(hidden_layer_dims[i], hidden_layer_dims[i + 1]))
 
         if output_dim is not None:
-            if activation != "linear":
-                self.layers.append(activation_class)
-            self.layers.append(nn.Linear(self.hidden_layers[-1], output_dim))
-
-        if output_dim is None:
-            self.output_dim = hidden_layers[-1]
-        else:
+            if hidden_layer_activation != "linear":
+                layers.append(activation_class)
+            layers.append(nn.Linear(hidden_layer_dims[-1], output_dim))
             self.output_dim = output_dim
+        else:
+            self.output_dim = hidden_layer_dims[-1]
 
-        self.layers = nn.Sequential(*self.layers)
+        if output_activation != "linear":
+            layers.append(get_activation_fn(output_activation, framework="torch"))
+
+        self.mlp = nn.Sequential(*layers)
 
     def forward(self, x):
-        return self.layers(x)
+        return self.mlp(x)

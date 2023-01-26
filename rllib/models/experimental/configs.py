@@ -45,16 +45,16 @@ class MLPConfig(ModelConfig):
 
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
-        hidden_layers: The sizes of the hidden layers.
-        activation: The activation function to use after each layer (except for the
-            output).
+        hidden_layer_dims: The sizes of the hidden layers.
+        hidden_layer_activation: The activation function to use after each layer (
+        except for the output).
         output_activation: The activation function to use for the output layer.
     """
 
     input_dim: int = None
-    hidden_layers: List[int] = field(default_factory=lambda: [256, 256])
-    activation: str = "ReLU"
-    output_activation: str = "ReLU"
+    hidden_layer_dims: List[int] = field(default_factory=lambda: [256, 256])
+    hidden_layer_activation: str = "ReLU"
+    output_activation: str = "linear"
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
@@ -88,6 +88,7 @@ class LSTMEncoderConfig(ModelConfig):
     hidden_dim: int = None
     num_layers: int = None
     batch_first: bool = True
+    output_activation: str = "linear"
 
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch"):

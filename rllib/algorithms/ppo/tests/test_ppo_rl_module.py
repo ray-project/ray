@@ -58,20 +58,20 @@ def get_expected_model_config(
     else:
         encoder_config = MLPEncoderConfig(
             input_dim=obs_dim,
-            hidden_layers=[32],
-            activation="ReLU",
+            hidden_layer_dims=[32],
+            hidden_layer_activation="ReLU",
             output_dim=32,
         )
 
     pi_config = MLPConfig(
         input_dim=32,
-        hidden_layers=[32],
-        activation="ReLU",
+        hidden_layer_dims=[32],
+        hidden_layer_activation="ReLU",
     )
     vf_config = MLPConfig(
         input_dim=32,
-        hidden_layers=[32, 1],
-        activation="ReLU",
+        hidden_layer_dims=[32, 1],
+        hidden_layer_activation="ReLU",
     )
 
     if isinstance(env.action_space, gym.spaces.Discrete):
