@@ -1,4 +1,4 @@
-from typing import Dict, Any, Iterator, Callable, Union, List
+from typing import Union, List
 
 import ray
 from ray.data.block import Block
@@ -13,21 +13,6 @@ from ray._raylet import ObjectRefGenerator
 
 class TaskPoolSubmitter(MapTaskSubmitter):
     """A task submitter for MapOperator that uses normal Ray tasks."""
-
-    def __init__(
-        self,
-        transform_fn_ref: ObjectRef[Callable[[Iterator[Block]], Iterator[Block]]],
-        ray_remote_args: Dict[str, Any],
-    ):
-        """Create a TaskPoolSubmitter instance.
-
-        Args:
-            transform_fn_ref: The function to apply to a block bundle in the submitted
-                map task.
-            ray_remote_args: Remote arguments for the Ray tasks to be launched.
-        """
-        self._transform_fn_ref = transform_fn_ref
-        self._ray_remote_args = ray_remote_args
 
     def submit(
         self, input_blocks: List[ObjectRef[Block]]

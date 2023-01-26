@@ -1,7 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import List, Union, Tuple, Callable, Iterator
+from typing import Dict, Any, List, Union, Tuple, Callable, Iterator
+
+import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+)
 from ray.types import ObjectRef
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._raylet import ObjectRefGenerator
 
 
@@ -13,14 +19,35 @@ class MapTaskSubmitter(ABC):
     submission is done.
     """
 
-    def start(self):
+    def __init__(
+        self,
+        transform_fn_ref: ObjectRef[Callable[[Iterator[Block]], Iterator[Block]]],
+        ray_remote_args: Dict[str, Any],
+    ):
+        """Create a TaskPoolSubmitter instance.
+
+        Args:
+            transform_fn_ref: The function to apply to a block bundle in the submitted
+                map task.
+            ray_remote_args: Remote arguments for the Ray tasks to be launched.
+        """
+        self._transform_fn_ref = transform_fn_ref
+        self._ray_remote_args = ray_remote_args
+
+    def start(self, options: ExecutionOptions):
         """Start the task submitter so it's ready to submit tasks.
 
         This is called when execution of the map operator actually starts, and is where
         the submitter can initialize expensive state, reserve resources, start workers,
         etc.
         """
-        pass
+        if options.locality_with_output:
+            self._ray_remote_args[
+                "scheduling_strategy"
+            ] = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=True,
+            )
 
     @abstractmethod
     def submit(

@@ -76,7 +76,7 @@ class MapOperatorState:
         self._output_queue: Optional[_OutputQueue] = None
 
     def start(self, options: ExecutionOptions) -> None:
-        self._task_submitter.start()
+        self._task_submitter.start(options)
         if options.preserve_order:
             self._output_queue = _OrderedOutputQueue()
         else:

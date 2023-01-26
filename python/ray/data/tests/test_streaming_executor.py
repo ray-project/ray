@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from typing import List, Any
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -27,6 +28,7 @@ from ray.data._internal.execution.operators.all_to_all_operator import AllToAllO
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 @ray.remote
@@ -289,6 +291,75 @@ def test_pipelined_execution():
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)][::-1]
     assert output == expected, (output, expected)
+
+
+def test_e2e_option_propagation():
+    DatasetContext.get_current().new_execution_backend = True
+    DatasetContext.get_current().use_streaming_executor = True
+
+    def run():
+        ray.data.range(5, parallelism=5).map(
+            lambda x: x, compute=ray.data.ActorPoolStrategy(2, 2)
+        ).take_all()
+
+    DatasetContext.get_current().execution_options.resource_limits = (
+        ExecutionResources()
+    )
+    run()
+
+    DatasetContext.get_current().execution_options.resource_limits.cpu = 1
+    with pytest.raises(ValueError):
+        run()
+
+
+def test_configure_spread_e2e():
+    from ray import remote_function
+
+    tasks = []
+
+    def _test_hook(fn, args, strategy):
+        if "map_task" in str(fn):
+            tasks.append(strategy)
+
+    remote_function._task_launch_hook = _test_hook
+    DatasetContext.get_current().use_streaming_executor = True
+    DatasetContext.get_current().execution_options.preserve_order = True
+
+    # Simple 2-stage pipeline.
+    ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
+
+    # Read tasks get SPREAD by default, subsequent ones use default policy.
+    tasks = sorted(tasks)
+    assert tasks == ["DEFAULT", "DEFAULT", "SPREAD", "SPREAD"]
+
+
+def test_configure_output_locality():
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(inputs)
+    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator(
+        make_transform(lambda block: [b * 2 for b in block]),
+        o2,
+        compute_strategy=ray.data.ActorPoolStrategy(1, 1),
+    )
+    topo, _ = build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))
+    assert (
+        o2._execution_state._task_submitter._ray_remote_args.get("scheduling_strategy")
+        is None
+    )
+    assert (
+        o3._execution_state._task_submitter._ray_remote_args.get("scheduling_strategy")
+        is None
+    )
+    topo, _ = build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
+    assert isinstance(
+        o2._execution_state._task_submitter._ray_remote_args["scheduling_strategy"],
+        NodeAffinitySchedulingStrategy,
+    )
+    assert isinstance(
+        o3._execution_state._task_submitter._ray_remote_args["scheduling_strategy"],
+        NodeAffinitySchedulingStrategy,
+    )
 
 
 if __name__ == "__main__":
