@@ -1,11 +1,13 @@
+import asyncio
 from collections import Counter
 import json
-import os
-import time
-
 import numpy as np
+import os
 import pickle
+import time
+from typing import Dict, Optional
 
+import ray
 from ray import tune
 from ray.tune.callback import Callback
 from ray._private.test_utils import safe_write_to_results_json
@@ -203,3 +205,114 @@ def timed_tune_run(
             f"--- PASSED: {name.upper()} ::: "
             f"{time_taken:.2f} <= {max_runtime:.2f} ---"
         )
+
+
+def get_and_run_exp_folder_observer(
+    experiment_dir: str,
+    trainable_name: str,
+    output_path,
+    check_interval_min: Optional[int] = 15,
+    kickoff_delay_min: Optional[int] = 5,
+):
+    """Observer to the tune experiment result folder.
+
+    Logs every `check_interval_min` the checkpoint id situation of each trial.
+
+    Args:
+        experiement_dir: The experiment folder path on the head node.
+        trainable_name: The name of the trainable. Used for identifying trial folders.
+            For AIR trainers, this should be the name of Trainer class. For example,
+            ``TorchTrainer``.
+        output_path: Output artifact path, this will be ultimately available in
+            buildkite runner.
+        check_interval_min: Interval for checking in minutes.
+        kickoff_delay_min: The initial delay after which the run starts. This is to
+            give Tune experiment some time to be populated.
+
+    This logic is intended to be invoked periodically on the head node,
+    while a long running tune release test is running.
+    """
+
+    @ray.remote(num_cpus=0)
+    class ExperimentFolderObserver:
+        def __init__(
+            self,
+            experiment_dir: str,
+            trainable_name: str,
+            output_path: str,
+            check_interval_min: int,
+            kickoff_delay_min: int,
+        ):
+            self._last_check_time = None
+            self._start_time = None
+            self._experiment_dir = experiment_dir
+            self._trainable_name = trainable_name
+            self._output_path = output_path
+            self._check_interval_min = check_interval_min
+            self._kickoff_delay_min = kickoff_delay_min
+
+        def _parse_exp_folder(self) -> Dict:
+            # first walk the experiment folder.
+            # mapping between trial_id and trial_dir.
+            trial_id_to_dir = {}
+            for _, dirs, _ in os.walk(self.experiment_dir):
+                for (
+                    dir
+                ) in (
+                    dirs
+                ):  # for example, `TorchTrainer_8b00d_00000_0_2023-01-20_16-14-17`
+                    if dir.startswith(self.trainable_name):
+                        tokens = dir.split("_")
+                        trial_id = int(tokens[2])
+                        trial_id_to_dir[trial_id] = dir
+                break  # non-recursive
+
+            # next walk each individual trial folder
+            # mapping between trial_id and a list of checkpoint numbers persisted.
+            trial_id_to_checkpoint_ids = {}
+            for trial_id, trial_dir in trial_id_to_dir.items():
+                trial_id_to_checkpoint_ids[trial_id] = []
+                for _, dirs, _ in os.walk(os.path.join(self.experiment_dir, trial_dir)):
+                    for dir in dirs:
+                        if dir.startswith("checkpoint_"):  # checkpoint_000001
+                            ckpt_id = int(dir.split("_")[1])
+                            trial_id_to_checkpoint_ids[trial_id].append(ckpt_id)
+                    break  # non-recursive
+
+            return trial_id_to_checkpoint_ids
+
+        async def run(self):
+            self._start_time = time.monotonic()
+            while True:
+                if time.monotonic() - self._start_time < self._kickoff_delay_min * 60:
+                    await asyncio.sleep(1 * 60)
+                elif (
+                    self._last_check_time
+                    and time.monotonic() - self._last_check_time
+                    < self._check_internal_min * 60
+                ):
+                    await asyncio.sleep(1 * 60)
+                else:
+                    result = self._parse_exp_folder()
+                    result["timestamp"] = time.time()
+                    with open(self._output_path, "a") as f:
+                        json.dump(result, f)
+                    self._last_check_time = time.monotonic()
+
+    head_node_ip = ray._private.worker.global_worker.node_ip_address
+    # Schedule the actor on the current node.
+    observer = ExperimentFolderObserver.options(
+        resources={f"node:{head_node_ip}": 0.001},
+        name="exp_folder_observer",
+    ).remote(
+        experiment_dir=experiment_dir,
+        trainable_name=trainable_name,
+        output_path=output_path,
+        check_interval_min=check_interval_min,
+        kickoff_delay_min=kickoff_delay_min,
+    )
+    print("Waiting for experiment folder observer actor to be ready...")
+    ray.get(observer.ready.remote())
+    print("experiment folder observer actor is ready now.")
+    observer.run.remote()
+    return observer

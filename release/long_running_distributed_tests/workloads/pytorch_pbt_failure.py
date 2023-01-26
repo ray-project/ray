@@ -1,4 +1,5 @@
 import argparse
+import os.path
 import sys
 
 import numpy as np
@@ -68,12 +69,21 @@ tuner = Tuner(
         num_samples=4, metric="loss", mode="min", scheduler=pbt_scheduler
     ),
     run_config=RunConfig(
+        name="torch_pbt_failure",
         stop={"training_iteration": 1} if args.smoke_test else None,
         failure_config=FailureConfig(max_failures=-1),
         callbacks=[FailureInjectorCallback(time_between_checks=90), ProgressCallback()],
     ),
 )
 
+# set up the background observer to write checkpoint ids to a file periodically.
+from ray.tune.utils.release_test_util import get_and_run_exp_folder_observer
+
+observer = get_and_run_exp_folder_observer(
+    experiment_dir=os.path.expanduser("~/ray_results/torch_pbt_failure"),
+    trainable_name="TorchTrainer",
+    output_path="/tmp/ckpt_ids.txt",
+)
 results = tuner.fit()
 
 print(results.get_best_result(metric="loss", mode="min"))

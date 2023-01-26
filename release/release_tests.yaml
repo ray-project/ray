@@ -2136,6 +2136,7 @@
     timeout: 86400
     script: python workloads/pytorch_pbt_failure.py
     long_running: true
+    artifact_path: /tmp/ckpt_ids.txt
 
   smoke_test:
     frequency: disabled

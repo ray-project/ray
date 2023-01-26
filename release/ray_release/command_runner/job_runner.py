@@ -127,6 +127,11 @@ class JobRunner(CommandRunner):
             raise LogsError(f"Could not get last logs: {e}") from e
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:
+        """Fetch json data from the path on Anyscale cluster head node.
+
+        Args:
+            path: path of the json on Anyscale cluster head node.
+        """
         try:
             tmpfile = tempfile.mkstemp(suffix=".json")[1]
             logger.info(tmpfile)
@@ -145,3 +150,27 @@ class JobRunner(CommandRunner):
 
     def fetch_metrics(self) -> Dict[str, Any]:
         return self._fetch_json(self.metrics_output_json)
+
+    def fetch_artifact(self, path):
+        """Fetch artifact (file) from a given path on Anyscale cluster head node.
+
+        The fetched artifact will be placed under `self._DEFAULT_ARTIFACTS_DIR`,
+        which will ultimately show up in buildkite Artifacts UI tab.
+        The fetched file will have the same filename and extension as the one
+        on Anyscale cluster head node.
+
+        Args:
+            path: path of the artifact file on Anyscale cluster head node.
+        """
+        try:
+            # first make sure that `self._DEFAULT_ARTIFACTS_DIR` exists.
+            if not os.path.exists(self._DEFAULT_ARTIFACTS_DIR):
+                os.makedirs(self._DEFAULT_ARTIFACTS_DIR, 0o755)
+            file_name = os.path.basename(path)
+            self.file_manager.download(
+                path, os.path.join(self._DEFAULT_ARTIFACTS_DIR, file_name)
+            )
+        except Exception as e:
+            raise ResultsError(
+                f"Could not fetch artifact file from session: {e}"
+            ) from e

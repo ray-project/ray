@@ -154,7 +154,10 @@
 				},
 				"long_running": {
 					"type": "boolean"
-				}
+				},
+                "artifact_path": {
+                    "type": "string"
+                }
 			},
 			"required": [
 				"script",

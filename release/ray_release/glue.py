@@ -304,6 +304,8 @@ def run_release_test(
 
         is_long_running = test["run"].get("long_running", False)
 
+        artifact_path = test["run"].get("artifact_path")
+
         start_time_unix = time.time()
 
         try:
@@ -324,6 +326,13 @@ def run_release_test(
             logger.error("Could not fetch results for test command")
             logger.exception(e)
             command_results = {}
+
+        if artifact_path:
+            try:
+                command_runner.fetch_artifact(artifact_path)
+            except Exception as e:
+                logger.error("Could not fetch artifact for test command")
+                logger.exception(e)
 
         # Postprocess result:
         if "last_update" in command_results:

@@ -17,6 +17,8 @@ METRICS_RESULT_FILE = "metrics.json.gz"
 
 
 class ArtifactsReporter(Reporter):
+    """This is called upon on buildkite runners."""
+
     def __init__(self, artifacts_dir: str = DEFAULT_ARTIFACTS_DIR):
         self.artifacts_dir = artifacts_dir
 

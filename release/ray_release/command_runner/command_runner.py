@@ -3,9 +3,17 @@ from typing import Dict, Any, Optional
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.file_manager.file_manager import FileManager
+from ray_release.reporter.artifacts import DEFAULT_ARTIFACTS_DIR
 
 
 class CommandRunner(abc.ABC):
+    """This is run on Buildkite runners."""
+
+    # the directory for runners to dump files to (on buildkite runner instances).
+    # Write to this directory. run_release_tests.sh will ensure that the content
+    # shows up under buildkite job's "Artifacts" UI tab.
+    _DEFAULT_ARTIFACTS_DIR = DEFAULT_ARTIFACTS_DIR
+
     def __init__(
         self,
         cluster_manager: ClusterManager,
@@ -94,4 +102,7 @@ class CommandRunner(abc.ABC):
         raise NotImplementedError
 
     def fetch_metrics(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def fetch_artifact(self, artifact_path):
         raise NotImplementedError
