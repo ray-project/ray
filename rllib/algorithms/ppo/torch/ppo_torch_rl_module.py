@@ -76,8 +76,8 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.vf_config, "vf_config must be provided."
         assert self.config.encoder_config, "shared encoder config must be " "provided."
 
-        # TODO(Artur): Unify to tf and torch setup(framework)
-        self.shared_encoder = self.config.encoder_config.build(framework="torch")
+        # TODO(Artur): Unify to tf and torch setup with ModelBuilder
+        self.encoder = self.config.encoder_config.build(framework="torch")
         self.pi = self.config.pi_config.build(framework="torch")
         self.vf = self.config.vf_config.build(framework="torch")
 
@@ -176,8 +176,8 @@ class PPOTorchRLModule(TorchRLModule):
         return module
 
     def get_initial_state(self) -> NestedDict:
-        if hasattr(self.shared_encoder, "get_initial_state"):
-            return self.shared_encoder.get_initial_state()
+        if hasattr(self.encoder, "get_initial_state"):
+            return self.encoder.get_initial_state()
         else:
             return NestedDict({})
 
@@ -193,7 +193,7 @@ class PPOTorchRLModule(TorchRLModule):
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
-        encoder_out = self.shared_encoder(batch)
+        encoder_out = self.encoder(batch)
         if STATE_OUT in encoder_out:
             output[STATE_OUT] = encoder_out[STATE_OUT]
 
@@ -210,7 +210,7 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return self.shared_encoder.input_spec
+        return self.encoder.input_spec
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
@@ -238,7 +238,7 @@ class PPOTorchRLModule(TorchRLModule):
         output = {}
 
         # Shared encoder
-        encoder_out = self.shared_encoder(batch)
+        encoder_out = self.encoder(batch)
         if STATE_OUT in encoder_out:
             output[STATE_OUT] = encoder_out[STATE_OUT]
 
@@ -269,7 +269,7 @@ class PPOTorchRLModule(TorchRLModule):
             action_dim = self.config.action_space.shape[0]
             action_spec = TorchTensorSpec("b, h", h=action_dim)
 
-        spec_dict = self.shared_encoder.input_spec
+        spec_dict = self.encoder.input_spec
         spec_dict.update({SampleBatch.ACTIONS: action_spec})
         if SampleBatch.OBS in spec_dict:
             spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
@@ -293,7 +293,7 @@ class PPOTorchRLModule(TorchRLModule):
         output = {}
 
         # Shared encoder
-        encoder_out = self.shared_encoder(batch)
+        encoder_out = self.encoder(batch)
         if STATE_OUT in encoder_out:
             output[STATE_OUT] = encoder_out[STATE_OUT]
 
