@@ -26,11 +26,8 @@ namespace ray {
 namespace core {
 
 struct WorkerExecContext {
-  explicit WorkerExecContext(const TaskID &task_id, bool is_driver = false)
-      : current_task_id_(task_id),
-        task_index_(0),
-        put_counter_(0),
-        is_driver_(is_driver) {
+  explicit WorkerExecContext(const TaskID &task_id)
+      : current_task_id_(task_id), task_index_(0), put_counter_(0) {
     SetCurrentTaskId(task_id, /* attempt_number */ 0);
   }
 
@@ -139,9 +136,6 @@ struct WorkerExecContext {
 
   /// Whether or not child tasks are captured in the parent's placement group implicitly.
   bool placement_group_capture_child_tasks_ = false;
-
-  // If this is a driver worker.
-  const bool is_driver_;
 };
 
 class WorkerContext {
@@ -229,7 +223,7 @@ class WorkerContext {
 
   std::shared_ptr<WorkerExecContext> GetExecContextInternal() const;
 
-  void InitExecContext(const TaskID &task_id, bool is_driver) LOCKS_EXCLUDED(mutex_);
+  void InitExecContext(const TaskID &task_id) LOCKS_EXCLUDED(mutex_);
 
   const WorkerType worker_type_;
   const WorkerID worker_id_;
