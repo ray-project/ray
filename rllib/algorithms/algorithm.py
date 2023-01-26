@@ -849,6 +849,7 @@ class Algorithm(Trainable):
                 episodes left to run. It's used to find out whether
                 evaluation should continue.
         """
+        print("In: evaluate()")
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
 
@@ -1108,6 +1109,8 @@ class Algorithm(Trainable):
                 episodes left to run. It's used to find out whether
                 evaluation should continue.
         """
+        print("In: _evaluate_async()")
+
         # How many episodes/timesteps do we need to run?
         # In "auto" mode (only for parallel eval + training): Run as long
         # as training lasts.
@@ -2725,14 +2728,7 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the evaluation call.
         """
-
-        eval_results = {
-            "evaluation": {
-                "episode_reward_max": np.nan,
-                "episode_reward_min": np.nan,
-                "episode_reward_mean": np.nan,
-            }
-        }
+        print("In: _run_one_evaluation()")
 
         eval_func_to_use = (
             self._evaluate_async
@@ -2756,6 +2752,7 @@ class Algorithm(Trainable):
             )
         # Run `self.evaluate()` only once per training iteration.
         else:
+            print(f".. calling eval_fun_to_use={eval_func_to_use}")
             eval_results = eval_func_to_use()
 
         if self.evaluation_workers is not None:
@@ -2789,6 +2786,7 @@ class Algorithm(Trainable):
         Returns:
             The accumulated training and evaluation results.
         """
+        print("In: _run_one_training_iteration_and_evaluation_in_parallel()")
         with concurrent.futures.ThreadPoolExecutor() as executor:
             train_future = executor.submit(lambda: self._run_one_training_iteration())
             # Pass the train_future into `self._run_one_evaluation()` to allow it
