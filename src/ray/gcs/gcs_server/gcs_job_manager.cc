@@ -183,7 +183,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                             .ok());
 
               // Load info into the reply.
-              reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(jobs_api_info);
+              reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
+                  jobs_api_info);
             } else {
               RAY_LOG(ERROR)
                   << "Failed to look up Ray Job API JobInfo for job with submission ID "
