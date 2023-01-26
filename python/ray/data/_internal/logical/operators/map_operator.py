@@ -35,7 +35,7 @@ class AbstractMap(LogicalOperator):
         block_fn: The transform function to apply to each input block to produce output
             blocks.
         target_block_size: The target size for blocks outputted by this operator.
-        fn: User provided UDF. `fn` is used as the first input to `block_fn` if
+        fn: User provided UDF. `fn` is used as the first argument to `block_fn` if
             provided.
         fn_args: Arguments to `fn`.
         fn_kwargs: Keyword arguments to `fn`.
@@ -48,7 +48,7 @@ class AbstractMap(LogicalOperator):
 
     # TODO: Replace `fn`, `fn_args`, `fn_kwargs`, `fn_constructor_args`, and
     # `fn_constructor_kwargs` from this API, in favor of `block_fn_args` and
-    # `block_fn_kwargs`. Operators should only be concern with `block_fn`.
+    # `block_fn_kwargs`. Operators should only be concerned with `block_fn`.
     def __init__(
         self,
         name: str,
