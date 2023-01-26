@@ -1,6 +1,7 @@
 import random
 from typing import Optional
 
+import numpy as np
 import pytest
 
 import ray
@@ -292,6 +293,28 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         preprocessor=prep,
         datasets={"train": ds},
         dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=0.5)},
+    )
+    test.fit()
+
+
+def test_stream_transform_config(ray_start_4_cpus):
+    """Tests that the preprocessor's transform config is
+    respected when using the stream API."""
+    batch_size = 2
+
+    def check_batch(batch):
+        assert isinstance(batch, dict)
+        assert isinstance(batch["value"], np.ndarray)
+        assert len(batch["value"]) == batch_size
+        return batch
+
+    prep = BatchMapper(check_batch, batch_format="numpy", batch_size=2)
+    ds = ray.data.range_table(6, parallelism=1)
+
+    test = TestStream(
+        lambda *args: None,
+        preprocessor=prep,
+        datasets={"train": ds},
     )
     test.fit()
 

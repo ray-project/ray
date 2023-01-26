@@ -368,6 +368,8 @@ class ActorState(StateSchema):
     death_cause: Optional[dict] = state_column(filterable=False, detail=True)
     #: True if the actor is detached. False otherwise.
     is_detached: bool = state_column(filterable=False, detail=True)
+    #: The placement group id that's associated with this actor.
+    placement_group_id: str = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=True)
@@ -416,6 +418,12 @@ class NodeState(StateSchema):
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
     resources_total: dict = state_column(filterable=False)
+    #: The time when the node (raylet) starts.
+    start_time_ms: int = state_column(filterable=False, detail=True)
+    #: The time when the node exits. The timestamp could be delayed
+    #: if the node is dead unexpectedly (could be delayed
+    # up to 30 seconds).
+    end_time_ms: int = state_column(filterable=False, detail=True)
 
 
 class JobState(JobInfo, StateSchema):
@@ -464,9 +472,14 @@ class WorkerState(StateSchema):
     #: The ip address of the worker.
     ip: str = state_column(filterable=True)
     #: The pid of the worker.
-    pid: str = state_column(filterable=True)
+    pid: int = state_column(filterable=True)
     #: The exit detail of the worker if the worker is dead.
     exit_detail: Optional[str] = state_column(detail=True, filterable=False)
+    #: The time when the worker is started and initialized.
+    start_time_ms: int = state_column(filterable=False, detail=True)
+    #: The time when the worker exits. The timestamp could be delayed
+    #: if the worker is dead unexpectedly.
+    end_time_ms: int = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=True)
@@ -494,7 +507,7 @@ class TaskState(StateSchema):
     #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
     #: breakdowns and typical state transition flow.
     #:
-    scheduling_state: TypeTaskStatus = state_column(filterable=True)
+    state: TypeTaskStatus = state_column(filterable=True)
     #: The job id of this task.
     job_id: str = state_column(filterable=True)
     #: Id of the node that runs the task. If the task is retried, it could
@@ -523,6 +536,20 @@ class TaskState(StateSchema):
     runtime_env_info: str = state_column(detail=True, filterable=False)
     #: The parent task id.
     parent_task_id: str = state_column(filterable=True)
+    #: The placement group id that's associated with this task.
+    placement_group_id: str = state_column(detail=True, filterable=True)
+    #: The worker id that's associated with this task.
+    worker_id: str = state_column(detail=True, filterable=True)
+    #: The list of events of the given task.
+    #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
+    #: breakdowns and typical state transition flow.
+    events: List[dict] = state_column(detail=True, filterable=False)
+    #: The list of profile events of the given task.
+    profiling_data: List[dict] = state_column(detail=True, filterable=False)
+    #: The time when the task starts to run. A Unix timestamp in ms.
+    start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    #: The time when the task finishes or failed. A Unix timestamp in ms.
+    end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
@@ -740,7 +767,7 @@ class TaskSummaries:
                 )
             task_summary = summary[key]
 
-            state = task["scheduling_state"]
+            state = task["state"]
             if state not in task_summary.state_counts:
                 task_summary.state_counts[state] = 0
             task_summary.state_counts[state] += 1

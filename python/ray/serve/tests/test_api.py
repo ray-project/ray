@@ -5,11 +5,13 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 import requests
 import pytest
 import starlette.responses
+from fastapi import FastAPI
 
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.application import Application
+from ray.serve.drivers import DAGDriver
 
 
 @serve.deployment()
@@ -474,6 +476,112 @@ class TestSetOptions:
 
         with pytest.raises(ValueError):
             f.set_options(max_concurrent_queries=-4)
+
+
+def test_deploy_application(serve_instance):
+    """Test deploy multiple applications"""
+
+    @serve.deployment
+    def f():
+        return "got f"
+
+    @serve.deployment
+    def g():
+        return "got g"
+
+    @serve.deployment(route_prefix="/my_prefix")
+    def h():
+        return "got h"
+
+    @serve.deployment
+    class Model1:
+        def __call__(self):
+            return "got model1"
+
+    app = FastAPI()
+
+    @serve.deployment(route_prefix="/hello")
+    @serve.ingress(app)
+    class MyFastAPIDeployment:
+        @app.get("/")
+        def root(self):
+            return "Hello, world!"
+
+    # Test function deployment with app name
+    f_handle = serve.run(f.bind(), name="app_f")
+    assert ray.get(f_handle.remote()) == "got f"
+    assert requests.get("http://127.0.0.1:8000/").text == "got f"
+
+    # Test function deployment with app name and route_prefix
+    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
+    assert ray.get(g_handle.remote()) == "got g"
+    assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
+
+    # Test function deployment with app name and route_prefix set in deployment
+    # decorator
+    h_handle = serve.run(h.bind(), name="app_h")
+    assert ray.get(h_handle.remote()) == "got h"
+    assert requests.get("http://127.0.0.1:8000/my_prefix").text == "got h"
+
+    # Test deployment graph
+    graph_handle = serve.run(
+        DAGDriver.bind(Model1.bind()), name="graph", route_prefix="/my_graph"
+    )
+    assert ray.get(graph_handle.predict.remote()) == "got model1"
+    assert requests.get("http://127.0.0.1:8000/my_graph").text == '"got model1"'
+
+    # Test FastAPI
+    serve.run(MyFastAPIDeployment.bind(), name="FastAPI")
+    assert requests.get("http://127.0.0.1:8000/hello").text == '"Hello, world!"'
+
+
+def test_delete_application(serve_instance):
+    """Test delete single application"""
+
+    @serve.deployment
+    def f():
+        return "got f"
+
+    @serve.deployment
+    def g():
+        return "got g"
+
+    f_handle = serve.run(f.bind(), name="app_f")
+    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
+    assert ray.get(f_handle.remote()) == "got f"
+    assert requests.get("http://127.0.0.1:8000/").text == "got f"
+
+    serve.delete("app_f")
+    assert "Path '/' not found" in requests.get("http://127.0.0.1:8000/").text
+
+    # delete again, no exception & crash expected.
+    serve.delete("app_f")
+
+    # make sure no affect to app_g
+    assert ray.get(g_handle.remote()) == "got g"
+    assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
+
+
+def test_deployment_name_with_app_name():
+    """Test replica name with app name as prefix"""
+
+    controller = serve.context._global_client._controller
+
+    @serve.deployment
+    def g():
+        return "got g"
+
+    serve.run(g.bind())
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "g" in deployment_info
+
+    @serve.deployment
+    def f():
+        return "got f"
+
+    serve.run(f.bind(), name="app1")
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "app1_f" in deployment_info
 
 
 if __name__ == "__main__":
