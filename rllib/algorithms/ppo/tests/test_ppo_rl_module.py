@@ -18,7 +18,7 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
 )
 from ray.rllib.models.experimental.configs import (
     MLPConfig,
-    FCEncoderConfig,
+    MLPEncoderConfig,
     LSTMEncoderConfig,
 )
 from ray.rllib.models.experimental.torch.encoder import (
@@ -56,7 +56,7 @@ def get_expected_model_config(
             output_dim=32,
         )
     else:
-        encoder_config = FCEncoderConfig(
+        encoder_config = MLPEncoderConfig(
             input_dim=obs_dim,
             hidden_layers=[32],
             activation="ReLU",

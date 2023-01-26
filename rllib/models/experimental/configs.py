@@ -69,7 +69,7 @@ class MLPConfig(ModelConfig):
 
 
 @dataclass
-class FCEncoderConfig(MLPConfig):
+class MLPEncoderConfig(MLPConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch"):
         if framework == "torch":

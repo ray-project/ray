@@ -6,7 +6,7 @@ import gymnasium as gym
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.experimental.encoder import STATE_OUT
-from ray.rllib.models.experimental.configs import MLPConfig, FCEncoderConfig
+from ray.rllib.models.experimental.configs import MLPConfig, MLPEncoderConfig
 from ray.rllib.models.experimental.configs import (
     LSTMEncoderConfig,
 )
@@ -124,7 +124,7 @@ class PPOTorchRLModule(TorchRLModule):
                 output_dim=model_config["lstm_cell_size"],
             )
         else:
-            encoder_config = FCEncoderConfig(
+            encoder_config = MLPEncoderConfig(
                 input_dim=obs_dim,
                 hidden_layers=fcnet_hiddens[:-1],
                 activation=activation,
