@@ -37,9 +37,6 @@ class RayExecutor(Executor):
     the specified tasks over a Ray cluster instead of multiple processes or
     threads.
 
-    It initialises a new RayExecutor instance which distributes tasks over
-    a Ray cluster.
-
     Args:
         max_workers:
             If max_workers=None, the work is distributed over the number of
@@ -57,9 +54,19 @@ class RayExecutor(Executor):
         Note: excluding an address will initialise a local Ray cluster.
     """
 
-    def __init__(self, max_workers: Optional[int] = None, **kwargs):
+    def __init__(
+        self, max_workers: Optional[int] = None, shutdown_ray: bool = True, **kwargs
+    ):
 
         """
+        Initialise a new RayExecutor instance which distributes tasks over
+        a Ray cluster.
+
+        self._shutdown_ray:
+            If False, the Ray cluster is not destroyed when self.shutdown() is
+            called. This prevents initialising a new cluster every time the
+            executor is used in a `with` context. Futures will be
+            destroyed regardless of the value of `_shutdown_ray`.
         self._shutdown_lock:
             This is set to True once self.shutdown() is called. Further task
             submissions are blocked.
@@ -74,6 +81,7 @@ class RayExecutor(Executor):
             initialising the Ray client.
         """
 
+        self._shutdown_ray: bool = shutdown_ray
         self._shutdown_lock: bool = False
         self._futures: List[Future] = []
         self.__actor_pool: Optional[ActorPool] = None
@@ -282,18 +290,22 @@ class RayExecutor(Executor):
                 futures. Futures that are completed or running will not be
                 cancelled.
         """
-        self._shutdown_lock = True
+        if self._shutdown_ray:
+            self._shutdown_lock = True
 
-        if cancel_futures:
-            for future in self._futures:
-                _ = future.cancel()
+            if cancel_futures:
+                for future in self._futures:
+                    _ = future.cancel()
 
-        if wait:
-            for future in self._futures:
-                if future.running():
-                    _ = future.result()
+            if wait:
+                for future in self._futures:
+                    if future.running():
+                        _ = future.result()
 
-        ray.shutdown()
+            ray.shutdown()
+            del self.__actor_pool
+        del self._futures
+        self._futures = []
 
     def _check_shutdown_lock(self) -> None:
         if self._shutdown_lock:

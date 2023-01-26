@@ -73,6 +73,20 @@ def test_cannot_submit_after_shutdown():
         ex.submit(lambda: True).result()
 
 
+def test_can_submit_after_shutdown():
+    ex = RayExecutor(shutdown_ray=False)
+    ex.submit(lambda: True).result()
+    ex.shutdown()
+    try:
+        ex.submit(lambda: True).result()
+    except RuntimeError:
+        assert (
+            False
+        ), "Could not submit after calling shutdown() with shutdown_ray=False"
+    ex._shutdown_ray = True
+    ex.shutdown()
+
+
 def test_cannot_map_after_shutdown():
     ex = RayExecutor()
     ex.submit(lambda: True).result()
