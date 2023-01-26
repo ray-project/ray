@@ -221,6 +221,7 @@ const App = () => {
                       />
                     </Route>
                   </Route>
+                  <Route element={<Actors />} path="actors" />
                   <Route element={<Metrics newIA />} path="metrics" />
                   <Route element={<NewIALogsPage />} path="logs">
                     {/* TODO(aguo): Refactor Logs component to use optional query

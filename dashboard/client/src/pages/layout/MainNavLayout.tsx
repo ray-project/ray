@@ -143,6 +143,11 @@ const NAV_ITEMS = [
     id: "cluster",
   },
   {
+    title: "Actors",
+    path: "/new/actors",
+    id: "actors",
+  },
+  {
     title: "Metrics",
     path: "/new/metrics",
     id: "metrics",

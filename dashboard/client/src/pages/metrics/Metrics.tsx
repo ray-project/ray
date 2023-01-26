@@ -13,6 +13,7 @@ import React, { useContext, useEffect, useState } from "react";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { ClassNameProps } from "../../common/props";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import { MAIN_NAV_HEIGHT } from "../layout/MainNavLayout";
 
 const useStyles = makeStyles((theme) =>
@@ -222,6 +223,13 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
 
   return (
     <div>
+      <MainNavPageInfo
+        pageInfo={{
+          id: "metrics",
+          title: "Metrics",
+          path: "/new/metrics",
+        }}
+      />
       {grafanaHost === undefined ? (
         <GrafanaNotRunningAlert className={classes.alert} />
       ) : (
