@@ -89,7 +89,7 @@ To use this feature, we need to pass in the `RAY_REDIS_ADDRESS` env var and `--r
 
 ## Running Applications on the static Ray Cluster
 
-In this section, we will interact with the static Ray cluster that just be deployed.
+In this section, we will interact with the static Ray cluster that just got deployed.
 
 ### Accessing the cluster with kubectl exec
 
@@ -101,7 +101,7 @@ Firstly, run the command below to get the head pod:
 ! kubectl get pods --selector=app=ray-cluster-head
 ```
 
-Now, we can run a Ray program on the head pod that we just identified. The Ray program in the next cell simply connects to the Ray Cluster, then exits.
+We can now execute a Ray program on the previously identified head pod. The following command connects to the Ray Cluster and then terminates the Ray program.
 
 ```
 # Substitute your output from the last cell in place of "deployment-ray-head-xxxxx"
@@ -111,15 +111,15 @@ Now, we can run a Ray program on the head pod that we just identified. The Ray p
 # 2022-08-10 11:23:17,097 INFO worker.py:1490 -- Connected to Ray cluster.
 ```
 
-While this can be useful for ad-hoc execution on the Ray Cluster, the recommended way to execute an application on a Ray Cluster is to use [Ray Jobs](jobs-quickstart).
+Although the above cell can be useful for occasional execution on the Ray Cluster, the recommended approach for running an application on a Ray Cluster is to use [Ray Jobs](jobs-quickstart).
 
 ### Ray Job submission
 
-To set up your Ray Cluster for Ray Jobs submission, we just need to make sure that the Ray Jobs port is visible to the client.
-Ray listens for Job requests through the head pod's Dashboard server.
+To set up your Ray Cluster for Ray Jobs submission, it is necessary to ensure that the Ray Jobs port is accessible to the client.
+Ray receives job requests through the Dashboard server on the head node.
 
-First, we need to find the location of the Ray head node. The static Ray cluster configuration file configures a
-[Kubernetes service](https://kubernetes.io/docs/concepts/services-networking/service/) targeting the Ray head pod.
+First, we need to identify the Ray head node. The static Ray cluster configuration file sets up a
+[Kubernetes service](https://kubernetes.io/docs/concepts/services-networking/service/) that targets the Ray head pod.
 This service lets us interact with Ray clusters without directly executing commands in the Ray container.
 To identify the Ray head service for our example cluster, run:
 
@@ -139,7 +139,7 @@ Now that we have the name of the service, we can use port-forwarding to access t
 ! kubectl port-forward service/service-ray-cluster 8265:8265
 ```
 
-Now that we have access to the Dashboard port, we can submit jobs to the Ray Cluster:
+Now that we have access to the Dashboard port, we can submit jobs to the Ray Cluster for execution:
 
 ```
 ! ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
