@@ -34,7 +34,7 @@ namespace rpc {
 
 #define MONITOR_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(                       \
-      MonitorService, HANDLER, RayConfig::instance().gcs_max_active_rpcs_per_handler())
+      MonitorGcsService, HANDLER, RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
 #define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(NodeInfoGcsService,      \
@@ -213,9 +213,9 @@ class ActorInfoGrpcService : public GrpcService {
   ActorInfoGcsServiceHandler &service_handler_;
 };
 
-class MonitorServiceHandler {
+class MonitorGcsServiceHandler {
  public:
-  virtual ~MonitorServiceHandler() = default;
+  virtual ~MonitorGcsServiceHandler() = default;
 
   virtual void HandleGetRayVersion(GetRayVersionRequest request,
                                    GetRayVersionReply *reply,
@@ -229,7 +229,7 @@ class MonitorGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit MonitorGrpcService(instrumented_io_context &io_service,
-                              MonitorServiceHandler &handler)
+                              MonitorGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
@@ -243,9 +243,9 @@ class MonitorGrpcService : public GrpcService {
 
  private:
   /// The grpc async service object.
-  MonitorService::AsyncService service_;
+  MonitorGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  MonitorServiceHandler &service_handler_;
+  MonitorGcsServiceHandler &service_handler_;
 };
 
 class NodeInfoGcsServiceHandler {
@@ -620,6 +620,7 @@ class InternalPubSubGrpcService : public GrpcService {
 
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
+using MonitorServiceHandler = MonitorGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;

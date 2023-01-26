@@ -24,7 +24,7 @@ message GetRayVersionReply {
 
 // This service provides a stable interface for a monitor/autoscaler process to interact
 // with Ray.
-service MonitorService {
+service MonitorGcsService {
   // Get the ray version of the service.
   rpc GetRayVersion(GetRayVersionRequest) returns (GetRayVersionReply);
 }
