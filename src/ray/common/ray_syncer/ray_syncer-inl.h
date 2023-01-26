@@ -189,13 +189,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   virtual ~RaySyncerBidiReactorBase() {}
 
   void StartPull() {
-    io_context_.dispatch(
-        [this]() {
-          receiving_message_ = std::make_shared<RaySyncMessage>();
-          RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
-          StartRead(receiving_message_.get());
-        },
-        "");
+    receiving_message_ = std::make_shared<RaySyncMessage>();
+    RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
+    StartRead(receiving_message_.get());
   }
 
  protected:
