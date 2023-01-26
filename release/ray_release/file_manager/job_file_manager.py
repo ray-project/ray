@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 import tempfile
 from typing import Optional
 
@@ -15,12 +16,17 @@ from ray_release.util import exponential_backoff_retry, generate_tmp_s3_path
 
 class JobFileManager(FileManager):
     def __init__(self, cluster_manager: ClusterManager):
+        import anyscale
+
         super(JobFileManager, self).__init__(cluster_manager=cluster_manager)
 
         self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client("s3")
         self.bucket = str(RELEASE_AWS_BUCKET)
         self.job_manager = JobManager(cluster_manager)
+        # Backward compatible
+        if "ANYSCALE_RAY_DIR" in anyscale.__dict__:
+            sys.path.insert(0, f"{anyscale.ANYSCALE_RAY_DIR}/bin")
 
     def _run_with_retry(self, f, initial_retry_delay_s: int = 10):
         assert callable(f)

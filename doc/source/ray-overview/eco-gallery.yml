@@ -180,3 +180,11 @@ projects:
     website: https://github.com/ray-project/lightgbm_ray
     repo: https://github.com/ray-project/lightgbm_ray
     image: ../images/lightgbm_logo.png
+  - name: Volcano Integration
+    section_title: Volcano
+    description: Volcano is system for running high-performance workloads 
+      on Kubernetes. It features powerful batch scheduling capabilities required by ML
+      and other data-intensive workloads.
+    website: https://github.com/volcano-sh/volcano/releases/tag/v1.7.0
+    repo: https://github.com/volcano-sh/volcano/
+    image: ./images/volcano.png

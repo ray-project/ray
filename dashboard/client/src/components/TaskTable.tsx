@@ -13,9 +13,11 @@ import {
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import React, { useState } from "react";
+import { DurationText } from "../common/DurationText";
 import rowStyles from "../common/RowStyles";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
+import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 
 const TaskTable = ({
@@ -36,7 +38,8 @@ const TaskTable = ({
     { label: "ID" },
     { label: "Name" },
     { label: "Job Id" },
-    { label: "Scheduling State" },
+    { label: "State" },
+    { label: "Duration" },
     { label: "Function or Class Name" },
     { label: "Node Id" },
     { label: "Actor_id" },
@@ -59,12 +62,12 @@ const TaskTable = ({
         />
         <Autocomplete
           style={{ margin: 8, width: 120 }}
-          options={Array.from(new Set(tasks.map((e) => e.scheduling_state)))}
+          options={Array.from(new Set(tasks.map((e) => e.state)))}
           onInputChange={(_: any, value: string) => {
-            changeFilter("scheduling_state", value.trim());
+            changeFilter("state", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="Scheduling State" />
+            <TextField {...params} label="State" />
           )}
         />
         <Autocomplete
@@ -121,6 +124,9 @@ const TaskTable = ({
             count={Math.ceil(taskList.length / pageSize)}
           />
         </div>
+        <div>
+          <StateCounter type="task" list={taskList} />
+        </div>
       </div>
       <Table>
         <TableHead>
@@ -140,12 +146,15 @@ const TaskTable = ({
               task_id,
               name,
               job_id,
-              scheduling_state,
+              state,
               func_or_class_name,
               node_id,
               actor_id,
               type,
               required_resources,
+              events,
+              start_time_ms,
+              end_time_ms,
             }) => (
               <TableRow>
                 <TableCell align="center">
@@ -161,7 +170,17 @@ const TaskTable = ({
                 <TableCell align="center">{name ? name : "-"}</TableCell>
                 <TableCell align="center">{job_id}</TableCell>
                 <TableCell align="center">
-                  <StatusChip type="actor" status={scheduling_state} />
+                  <StatusChip type="actor" status={state} />
+                </TableCell>
+                <TableCell align="center">
+                  {start_time_ms && start_time_ms > 0 ? (
+                    <DurationText
+                      startTime={start_time_ms}
+                      endTime={end_time_ms}
+                    />
+                  ) : (
+                    "-"
+                  )}
                 </TableCell>
                 <TableCell align="center">{func_or_class_name}</TableCell>
                 <TableCell align="center">{node_id ? node_id : "-"}</TableCell>
