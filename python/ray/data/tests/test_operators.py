@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from typing import List, Iterable, Any
 import time
 
@@ -11,7 +12,16 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
 )
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_operator import (
+    MapOperator,
+    _BlockRefBundler,
+)
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
@@ -104,11 +114,14 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.inputs_done()
-    for work in op.get_work_refs():
-        ray.get(work)
-        op.notify_work_completed(work)
+    work_refs = op.get_work_refs()
+    while work_refs:
+        for work_ref in work_refs:
+            ray.get(work_ref)
+            op.notify_work_completed(work_ref)
+        work_refs = op.get_work_refs()
     if use_actors:
-        assert op.progress_str() == "0 actors"
+        assert op.progress_str() == "1/inf actors"
     else:
         assert op.progress_str() == ""
 
@@ -146,10 +159,10 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-        for work in op.get_work_refs():
-            ray.get(work)
-            op.notify_work_completed(work)
-        assert op.has_next()
+        while not op.has_next():
+            work_refs = op.get_work_refs()
+            ready, _ = ray.wait(work_refs, num_returns=1, fetch_local=False)
+            op.notify_work_completed(ready[0])
         while op.has_next():
             ref = op.get_next()
             assert ref.owns_blocks, ref
@@ -165,7 +178,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
-def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
+def test_map_operator_min_rows_per_bundle(shutdown_only, use_actors):
     # Simple sanity check of batching behavior.
     def _check_batch(block_iter: Iterable[Block]) -> Iterable[Block]:
         block_iter = list(block_iter)
@@ -189,9 +202,12 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.inputs_done()
-    for work in op.get_work_refs():
-        ray.get(work)
-        op.notify_work_completed(work)
+    work_refs = op.get_work_refs()
+    while work_refs:
+        for work_ref in work_refs:
+            ray.get(work_ref)
+            op.notify_work_completed(work_ref)
+        work_refs = op.get_work_refs()
 
     # Check we return transformed bundles in order.
     assert _take_outputs(op) == [[i] for i in range(10)]
@@ -200,7 +216,6 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_ray_args(shutdown_only, use_actors):
-    ray.shutdown()
     ray.init(num_cpus=0, num_gpus=1)
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
@@ -218,9 +233,12 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.inputs_done()
-    for work in op.get_work_refs():
-        ray.get(work)
-        op.notify_work_completed(work)
+    work_refs = op.get_work_refs()
+    while work_refs:
+        for work_ref in work_refs:
+            ray.get(work_ref)
+            op.notify_work_completed(work_ref)
+        work_refs = op.get_work_refs()
 
     # Check we don't hang and complete with num_gpus=1.
     assert _take_outputs(op) == [[i * 2] for i in range(10)]
@@ -228,8 +246,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
-def test_map_operator_shutdown(use_actors):
-    ray.shutdown()
+def test_map_operator_shutdown(shutdown_only, use_actors):
     ray.init(num_cpus=0, num_gpus=1)
 
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
@@ -254,6 +271,120 @@ def test_map_operator_shutdown(use_actors):
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
+
+
+@pytest.mark.parametrize(
+    "compute,expected",
+    [
+        (TaskPoolStrategy(), TaskPoolMapOperator),
+        (ActorPoolStrategy(), ActorPoolMapOperator),
+    ],
+)
+def test_map_operator_pool_delegation(compute, expected):
+    # Test that the MapOperator constructor delegates to the appropriate pool
+    # implementation.
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    op = MapOperator(
+        _mul2_transform,
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=compute,
+    )
+    assert isinstance(op, expected)
+
+
+def _get_bundles(bundle: RefBundle):
+    output = []
+    for block, _ in bundle.blocks:
+        output.extend(ray.get(block))
+    return output
+
+
+@pytest.mark.parametrize(
+    "target,in_bundles,expected_bundles",
+    [
+        (
+            1,  # Unit target, should leave unchanged.
+            [[1], [2], [3, 4], [5]],
+            [[1], [2], [3, 4], [5]],
+        ),
+        (
+            None,  # No target, should leave unchanged.
+            [[1], [2], [3, 4], [5]],
+            [[1], [2], [3, 4], [5]],
+        ),
+        (
+            2,  # Empty blocks should be handled.
+            [[1], [], [2, 3], []],
+            [[1], [2, 3]],
+        ),
+        (
+            2,  # Test bundling, finalizing, passing, leftovers, etc.
+            [[1], [2], [3, 4, 5], [6], [7], [8], [9, 10], [11]],
+            [[1, 2], [3, 4, 5], [6, 7], [8], [9, 10], [11]],
+        ),
+        (
+            3,  # Test bundling, finalizing, passing, leftovers, etc.
+            [[1], [2, 3], [4, 5, 6, 7], [8, 9], [10, 11]],
+            [[1, 2, 3], [4, 5, 6, 7], [8, 9], [10, 11]],
+        ),
+    ],
+)
+def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
+    # Test that the bundler creates the expected output bundles.
+    bundler = _BlockRefBundler(target)
+    bundles = make_ref_bundles(in_bundles)
+    out_bundles = []
+    for bundle in bundles:
+        bundler.add_bundle(bundle)
+        while bundler.has_bundle():
+            out_bundle = _get_bundles(bundler.get_next_bundle())
+            out_bundles.append(out_bundle)
+    bundler.done_adding_bundles()
+    if bundler.has_bundle():
+        out_bundle = _get_bundles(bundler.get_next_bundle())
+        out_bundles.append(out_bundle)
+    assert len(out_bundles) == len(expected_bundles)
+    print(out_bundles, expected_bundles)
+    for bundle, expected in zip(out_bundles, expected_bundles):
+        assert bundle == expected
+
+
+@pytest.mark.parametrize(
+    "target,n,num_bundles,num_out_bundles,out_bundle_size",
+    [
+        (5, 20, 20, 4, 5),
+        (5, 20, 10, 5, 4),
+        (8, 16, 4, 2, 8),
+    ],
+)
+def test_block_ref_bundler_uniform(
+    target, n, num_bundles, num_out_bundles, out_bundle_size
+):
+    # Test that the bundler creates the expected number of bundles with the expected
+    # size.
+    bundler = _BlockRefBundler(target)
+    data = np.arange(n)
+    pre_bundles = [arr.tolist() for arr in np.array_split(data, num_bundles)]
+    bundles = make_ref_bundles(pre_bundles)
+    out_bundles = []
+    for bundle in bundles:
+        bundler.add_bundle(bundle)
+        while bundler.has_bundle():
+            out_bundles.append(bundler.get_next_bundle())
+    bundler.done_adding_bundles()
+    if bundler.has_bundle():
+        out_bundles.append(bundler.get_next_bundle())
+    assert len(out_bundles) == num_out_bundles
+    for out_bundle in out_bundles:
+        assert out_bundle.num_rows() == out_bundle_size
+    flat_out = [
+        i
+        for bundle in out_bundles
+        for block, _ in bundle.blocks
+        for i in ray.get(block)
+    ]
+    assert flat_out == list(range(n))
 
 
 if __name__ == "__main__":
