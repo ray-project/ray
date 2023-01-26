@@ -12,7 +12,7 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
 
     Args:
         torch: Whether we can build this model with torch.
-        tf2: Whether we can build this model with tf.
+        tf2: Whether we can build this model with tf2.
 
     Returns:
         The decorated function.
@@ -40,7 +40,7 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
 
 
 @dataclass
-class FCConfig(ModelConfig):
+class MLPConfig(ModelConfig):
     """Configuration for a fully connected network.
 
     Attributes:
@@ -69,7 +69,7 @@ class FCConfig(ModelConfig):
 
 
 @dataclass
-class FCEncoderConfig(FCConfig):
+class FCEncoderConfig(MLPConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch"):
         if framework == "torch":

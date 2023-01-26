@@ -3,7 +3,7 @@ import abc
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.utils.typing import TensorType
-from rllib.models.experimental.base import Model, ForwardOutputType
+from ray.rllib.models.experimental.base import Model, ForwardOutputType
 
 STATE_IN: str = "state_in"
 STATE_OUT: str = "state_out"
@@ -13,8 +13,8 @@ class Encoder(Model):
     """The framework-agnostic base class for all encoders RLlib produces.
 
     Encoders are used to encode observations into a latent space in RLModules.
-    Therefore, their input_spec usually contains the observation space dimensions.
-    Their output_spec usually contains the latent space dimensions.
+    Therefore, their input_spec contains the observation space dimensions.
+    Similarly, their output_spec usually the latent space dimensions.
     Encoders can be recurrent, in which case they should also have state_specs.
 
     Encoders encode observations into a latent space that serve as input to heads.
@@ -29,11 +29,12 @@ class Encoder(Model):
     def get_initial_state(self) -> TensorType:
         """Returns the initial state of the encoder.
 
-        This is the initial state of the encoder.
         It can be left empty if this encoder is not stateful.
 
         Examples:
-            >>> ...
+            >>> encoder = Encoder(...)
+            >>> state = encoder.get_initial_state()
+            >>> out = encoder.forward({"obs": ..., STATE_IN: state})
         """
         return {}
 
@@ -53,8 +54,7 @@ class Encoder(Model):
             outputs: A TensorDict containing model outputs
 
         Examples:
-            # This is abstract, see the torch/tf2/jax implementations
-            >>> out = model(TensorDict({"in": np.arange(10)}))
-            >>> out # TensorDict(...)
+            # This is abstract, see the framework implementations
+            >>> out = encoder.forward({"obs": np.arange(10)}))
         """
         raise NotImplementedError

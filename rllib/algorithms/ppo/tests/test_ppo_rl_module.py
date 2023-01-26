@@ -17,7 +17,7 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
 from ray.rllib.models.experimental.configs import (
-    FCConfig,
+    MLPConfig,
     FCEncoderConfig,
     LSTMEncoderConfig,
 )
@@ -63,12 +63,12 @@ def get_expected_model_config(
             output_dim=32,
         )
 
-    pi_config = FCConfig(
+    pi_config = MLPConfig(
         input_dim=32,
         hidden_layers=[32],
         activation="ReLU",
     )
-    vf_config = FCConfig(
+    vf_config = MLPConfig(
         input_dim=32,
         hidden_layers=[32, 1],
         activation="ReLU",

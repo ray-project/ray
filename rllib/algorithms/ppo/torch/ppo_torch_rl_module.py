@@ -6,7 +6,7 @@ import gymnasium as gym
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.experimental.encoder import STATE_OUT
-from ray.rllib.models.experimental.configs import FCConfig, FCEncoderConfig
+from ray.rllib.models.experimental.configs import MLPConfig, FCEncoderConfig
 from ray.rllib.models.experimental.configs import (
     LSTMEncoderConfig,
 )
@@ -59,9 +59,9 @@ class PPOModuleConfig(RLModuleConfig):
             only has an effect is using the default fully connected net.
     """
 
-    encoder_config: FCConfig = None
-    pi_config: FCConfig = None
-    vf_config: FCConfig = None
+    encoder_config: MLPConfig = None
+    pi_config: MLPConfig = None
+    vf_config: MLPConfig = None
     free_log_std: bool = False
 
 
@@ -131,12 +131,12 @@ class PPOTorchRLModule(TorchRLModule):
                 output_dim=fcnet_hiddens[-1],
             )
 
-        pi_config = FCConfig(
+        pi_config = MLPConfig(
             input_dim=encoder_config.output_dim,
             hidden_layers=[32],
             activation="ReLU",
         )
-        vf_config = FCConfig(
+        vf_config = MLPConfig(
             input_dim=encoder_config.output_dim,
             hidden_layers=[32, 1],
             activation="ReLU",

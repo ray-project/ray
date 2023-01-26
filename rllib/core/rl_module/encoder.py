@@ -40,7 +40,7 @@ class IdentityConfig(EncoderConfig):
 
 
 @dataclass
-class FCConfig(EncoderConfig):
+class MLPConfig(EncoderConfig):
     """Configuration for a fully connected network.
     input_dim: The input dimension of the network. It cannot be None.
     hidden_layers: The sizes of the hidden layers.
@@ -94,7 +94,7 @@ class Encoder(nn.Module):
 
 
 class FullyConnectedEncoder(Encoder):
-    def __init__(self, config: FCConfig) -> None:
+    def __init__(self, config: MLPConfig) -> None:
         super().__init__(config)
 
         self.net = FCNet(
