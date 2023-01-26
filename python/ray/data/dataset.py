@@ -915,7 +915,7 @@ class Dataset(Generic[T]):
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def filter(
         self,
