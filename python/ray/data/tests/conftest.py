@@ -302,6 +302,18 @@ def target_max_block_size(request):
     ctx.target_max_block_size = original
 
 
+@pytest.fixture(params=[True])
+def enable_optimizer(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original_backend = ctx.new_execution_backend
+    original_optimizer = ctx.optimizer_enabled
+    ctx.new_execution_backend = request.param
+    ctx.optimizer_enabled = request.param
+    yield request.param
+    ctx.new_execution_backend = original_backend
+    ctx.optimizer_enabled = original_optimizer
+
+
 # ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):
