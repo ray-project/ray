@@ -1,4 +1,8 @@
 services:
   sut:
+    environment:
+      - TSAPIKEY
     build: .
+      devices:
+        - "/dev/net/tun:/dev/net/tun"
     command: run_tests.sh
