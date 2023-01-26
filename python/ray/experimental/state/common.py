@@ -1034,6 +1034,10 @@ class TaskSummaries:
                 # If this is creating a new actor, make sure to put the actor group as
                 # a child.
                 actor_group = get_or_create_actor_task_group(task['actor_id'])
+                # TODO(aguo): Don't do this hacky string parsing to figure out actor name.
+                # Get actor name from actors endpoint instead.
+                [actor_name, *rest] = task["func_or_class_name"]
+                actor_group.name = f"Actor: {actor_name}"
                 task_group_by_id[task_id].children.append(actor_group)
 
 
