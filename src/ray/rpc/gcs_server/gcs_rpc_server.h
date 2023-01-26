@@ -84,6 +84,8 @@ namespace rpc {
 
 class JobInfoGcsServiceHandler {
  public:
+  using JobFinishListenerCallback = std::function<void(const rpc::JobTableData &)>;
+
   virtual ~JobInfoGcsServiceHandler() = default;
 
   virtual void HandleAddJob(AddJobRequest request,
@@ -98,8 +100,7 @@ class JobInfoGcsServiceHandler {
                                    GetAllJobInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
-  virtual void AddJobFinishedListener(
-      std::function<void(std::shared_ptr<JobID>)> listener) = 0;
+  virtual void AddJobFinishedListener(JobFinishListenerCallback listener) = 0;
 
   virtual void HandleReportJobError(ReportJobErrorRequest request,
                                     ReportJobErrorReply *reply,
