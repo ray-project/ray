@@ -94,14 +94,25 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
       float local_node_score) const;
 
   /// \param resource_request: The resource request we're attempting to schedule.
-  /// \param spread_threshold,
-  /// \param force_spillback,
-  /// \param require_available,
+  /// \param spread_threshold: The fraction of resource utilization on a node after
+  /// which the scheduler starts to prefer spreading tasks to other nodes.
+  //// This balances between locality and
+  /// even balancing of load. Low values (min 0.0) encourage more load spreading.
+  /// \param force_spillback: don't schedule on local node if true.
+  /// \param require_available: If true, only schedule on nodes who have resources
+  /// available to fulfill the request. Otherwise, schedule on nodes whose resources
+  /// capacity can fulfill the request, even if the resources are not currently
+  /// available.
   /// \param node_filter: defines the subset of nodes were are allowed to schedule on.
   /// can be one of kAny (can schedule on all nodes), kGPU (can only schedule on kGPU
   /// nodes), kNonGpu (can only schedule on non-GPU nodes.
-  /// \param schedule_top_k_absolute,
-  /// \param schedule_top_k_fraction,
+  /// \param schedule_top_k_absolute: scheduler will randomly pick
+  /// one node from the top k in the cluster to improve load balancing. The
+  /// scheduler guarantees k is at least equal to schedule_top_k_absolute.
+  /// \param schedule_top_k_fraction: The scheduler will randomly pick
+  /// one node from the top k in the cluster to improve load balancing. The
+  /// scheduler guarantees k is at least equal to this fraction * the number of
+  /// nodes in the cluster.
   ///
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
