@@ -17,7 +17,8 @@ import { useJobProgress } from "./hook/useJobProgress";
 import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
 import { TaskProgressBar } from "./TaskProgressBar";
 
-const ORIGIN = "https://ui.perfetto.dev";
+// const PERFETTO_URL = "https://ui.perfetto.dev";
+const PERFETTO_URL = "chrome://tracing"
 
 const useStyle = makeStyles((theme) => ({
   root: {
@@ -28,33 +29,30 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
+let timer: null | any = undefined;
+
 const onClick = (job_id: string | null) => {
   getTaskTimeline(job_id).then((resp) => {
-    console.log(resp);
     openTrace(resp.data);
   });
 };
 
-let timer: null | any = undefined;
-
+// Code from https://perfetto.dev/docs/visualization/deep-linking-to-perfetto-ui
 const openTrace = (arrayBuffer: any) => {
-  const win = window.open(ORIGIN);
+  const win = window.open(PERFETTO_URL);
   window.addEventListener("message", (evt) => onMessage(evt, win, arrayBuffer));
   if (win) {
-    timer = setInterval(() => win.postMessage("PING", ORIGIN), 50);
+    timer = setInterval(() => win.postMessage("PING", PERFETTO_URL), 50);
   }
 };
 
 const onMessage = (evt: any, win: any, arrayBuffer: any) => {
-  console.log("ping");
   if (evt.data !== "PONG") {
-    console.log("ping not done");
     return;
   }
-  console.log("ping done");
   window.clearInterval(timer);
-  console.log(arrayBuffer);
-  win.postMessage(arrayBuffer, ORIGIN);
+  timer = null;
+  win.postMessage(arrayBuffer, PERFETTO_URL);
 };
 
 type JobDetailChartsPageProps = {

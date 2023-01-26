@@ -8,7 +8,7 @@ from typing import List, Tuple, Optional
 from datetime import datetime
 
 from ray._private.ray_constants import env_integer
-from ray._private.profiling import get_perfetto_output
+from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
@@ -392,7 +392,7 @@ class StateAPIManager:
             task_state = {}
             task_info = task_attempt.get("task_info", {})
             state_updates = task_attempt.get("state_updates", [])
-            profiling_data = task_attempt.get("profiling_data", {})
+            profiling_data = task_attempt.get("profile_events", {})
             if profiling_data:
                 for event in profiling_data["events"]:
                     # End/start times are recorded in ns. We convert them to ms.
@@ -764,7 +764,7 @@ class StateAPIManager:
         result = await self.list_tasks(
             option=ListApiOptions(detail=True, filters=filters, limit=10000)
         )
-        return get_perfetto_output(result.result)
+        return chrome_tracing_dump(result.result)
 
     def _message_to_dict(
         self,
