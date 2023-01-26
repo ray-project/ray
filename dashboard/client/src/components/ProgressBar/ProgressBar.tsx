@@ -7,7 +7,7 @@ import {
 } from "@material-ui/core";
 import React from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
-import { StyledTooltip } from "../Tooltip";
+import { HelpInfo, StyledTooltip } from "../Tooltip";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -37,6 +37,9 @@ const useStyles = makeStyles((theme) =>
       height: 16,
       borderRadius: 4,
       marginRight: theme.spacing(1),
+    },
+    hint: {
+      marginLeft: theme.spacing(0.5),
     },
     progressBarContainer: {
       display: "flex",
@@ -81,6 +84,10 @@ export type ProgressBarSegment = {
    * Name of this segment
    */
   label: string;
+  /**
+   * Text to show to explain the segment better.
+   */
+  hint?: string;
   /**
    * A CSS color used to represent the segment.
    */
@@ -152,7 +159,8 @@ export const ProgressBar = ({
           ...progress,
           {
             value: finalTotal - segmentTotal,
-            label: unaccountedLabel ?? "unaccounted",
+            label: unaccountedLabel ?? "Unaccounted",
+            hint: "Unaccounted tasks can happen when there are too many tasks. Ray drops older tasks to conserve memory.",
             color: "#EEEEEE",
           },
         ]
@@ -171,7 +179,7 @@ export const ProgressBar = ({
             />
             <Typography>Total: {finalTotal}</Typography>
           </div>
-          {filteredSegments.map(({ value, label, color }) => (
+          {filteredSegments.map(({ value, label, hint, color }) => (
             <div key={label} className={classes.legendItemContainer}>
               <div
                 className={classes.colorLegend}
@@ -180,6 +188,7 @@ export const ProgressBar = ({
               <Typography>
                 {label}: {value}
               </Typography>
+              {hint && <HelpInfo className={classes.hint}>{hint}</HelpInfo>}
             </div>
           ))}
         </div>

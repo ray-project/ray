@@ -923,6 +923,7 @@ class TaskSummaries:
                         parent_task_group = task_group_by_key[parent_key]
                         parent_task_group.children.append(task_group_by_key[key])
                     else:
+                        logger.debug(f"We're missing data about {parent_task_id}")
                         # We're missing data about this parent. So we're dropping the whole
                         # tree at that node.
                         pass
@@ -1058,6 +1059,7 @@ class TaskSummaries:
                     parent_task_group = task_group_by_id[parent_task_id]
                     parent_task_group.children.append(task_group_by_id[task_id])
                 else:
+                    logger.debug(f"We're missing data about {parent_task_id}")
                     # We're missing data about this parent. So we're dropping the whole
                     # tree at that node.
                     pass

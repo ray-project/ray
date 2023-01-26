@@ -59,6 +59,7 @@ const useFetchStateApiProgressByTaskName = (
     {
       refreshInterval:
         isRefreshing && !disableRefresh ? API_REFRESH_INTERVAL_MS : 0,
+      revalidateOnFocus: false,
     },
   );
 };
@@ -261,9 +262,10 @@ export const useJobProgressByLineage = (
 
       if (rsp.data.result) {
         setLatestFetchTimestamp(new Date().getTime());
-        return formatNestedJobProgressToJobProgressGroup(
+        const summary = formatNestedJobProgressToJobProgressGroup(
           rsp.data.data.result.result,
         );
+        return { summary, totalTasks: rsp.data.data.result.num_filtered };
       } else {
         setError(true);
         setRefresh(false);
@@ -272,12 +274,16 @@ export const useJobProgressByLineage = (
     {
       refreshInterval:
         isRefreshing && !disableRefresh ? API_REFRESH_INTERVAL_MS : 0,
+      revalidateOnFocus: false,
     },
   );
 
+  console.log("totalTasks: " + data?.totalTasks);
+
   return {
-    progressGroups: data?.progressGroups,
-    total: data?.total,
+    progressGroups: data?.summary?.progressGroups,
+    total: data?.summary?.total,
+    totalTasks: data?.totalTasks,
     msg,
     error,
     latestFetchTimestamp,

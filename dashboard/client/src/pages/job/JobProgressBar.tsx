@@ -48,6 +48,7 @@ export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
   const {
     progressGroups,
     total,
+    totalTasks,
     latestFetchTimestamp: totalTimestamp,
   } = useJobProgressByLineage(
     advancedProgressBarRendered ? jobId : undefined,
@@ -61,7 +62,10 @@ export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
   const { status } = job;
   // Use whichever data was received the most recently
   // Note these values may disagree in some way. It might better to consistently use one endpoint.
-  const totalProgress = progressTimestamp > totalTimestamp ? progress : total;
+  const [totalProgress, finalTotalTasks] =
+    progressTimestamp > totalTimestamp
+      ? [progress, undefined]
+      : [total, totalTasks];
 
   return (
     <div>
@@ -80,6 +84,7 @@ export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
       </Typography>
       <TaskProgressBar
         {...totalProgress}
+        total={finalTotalTasks}
         showAsComplete={status === "SUCCEEDED" || status === "FAILED"}
         showTooltip={false}
         expanded={advancedProgressBarExpanded}

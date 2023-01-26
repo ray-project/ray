@@ -165,6 +165,7 @@ export type StateApiNestedJobProgressRsp = {
   data: {
     result: {
       result: StateApiNestedJobProgress;
+      num_filtered: number;
     };
   };
   msg: string;
