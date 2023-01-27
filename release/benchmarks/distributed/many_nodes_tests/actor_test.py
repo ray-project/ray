@@ -29,8 +29,10 @@ def parse_script_args():
 
 def scale_cluster_up(num_cpus):
     print(f"Start to scale up to {num_cpus} cpus")
+
     def get_curr_cpus():
         return int(sum([r.get("Resources", {}).get("CPU", 0) for r in ray.nodes()]))
+
     step = 1000
     curr_cpus = get_curr_cpus()
     target_cpus = curr_cpus
@@ -83,21 +85,24 @@ def run_one(total_actors, cpus_per_actor, no_wait):
         "total_time": actor_launch_time + actor_ready_time,
         "num_actors": total_actors,
         "success": "1",
-        "throughput": throughput
+        "throughput": throughput,
     }
+
 
 def main():
     args, unknown = parse_script_args()
     args.total_actors.sort()
 
-    addr = ray.init(address="auto")
+    ray.init(address="auto")
 
     dashboard_test = None
     # Enable it once v2 support prometheus
     # dashboard_test = DashboardTestAtScale(addr)
     result = {}
     for i in args.total_actors:
-        result[f"many_nodes_actor_tests_{i}"] = run_one(i, args.cpus_per_actor, args.no_wait)
+        result[f"many_nodes_actor_tests_{i}"] = run_one(
+            i, args.cpus_per_actor, args.no_wait
+        )
 
     if "TEST_OUTPUT_JSON" in os.environ and not args.no_report:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
@@ -111,7 +116,7 @@ def main():
                 for (name, r) in result.items()
             ]
             result["perf_metrics"] = perf
-            dashboard_test.update_release_test_result(results)
+            dashboard_test.update_release_test_result(result)
 
         json.dump(result, out_file)
 
