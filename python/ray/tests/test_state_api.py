@@ -2361,10 +2361,10 @@ def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
 
     def verify(task_attempts):
         assert len(task_attempts) == 3
-        for task_attempt in task_attempts[:-1]:
+        for task_attempt in task_attempts[1:]:
             assert task_attempt["state"] == "FAILED"
 
-        task_attempts[-1]["state"] == "FINISHED"
+        task_attempts[0]["state"] == "FINISHED"
 
         assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
             0,
