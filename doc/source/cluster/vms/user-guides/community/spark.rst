@@ -101,3 +101,5 @@ Ray on Spark APIs
 .. autofunction:: ray.util.spark.setup_ray_cluster
 
 .. autofunction:: ray.util.spark.shutdown_ray_cluster
+
+.. autofunction:: ray.util.spark.load_spark_dataset
