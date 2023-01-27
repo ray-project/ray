@@ -7,11 +7,13 @@ from ray.air._internal.remote_storage import get_fs_and_path
 
 
 def test_get_fs_and_path_hdfs():
-    # set up the correct CLASSPATH for pyarrow to work.
-    with open("/tmp/hdfs_classpath_env", "r") as f:
-        os.environ["CLASSPATH"] = f.readline()
-    with open("/tmp/hdfs_path_env", "r") as f:
-        os.environ["PATH"] = f.readline()
+    # the following file is written in `install-hdfs.sh`.
+    with open("/tmp/hdfs_env", "r") as f:
+        for line in f.readlines():
+            line = line.rstrip("\n")
+            tokens = line.split("=")  # assuming that vars don't have "="
+            os.environ[tokens[0]] = tokens[1]
+    sys.path.insert(0, os.path.join(os.environ["HADOOP_HOME"], "bin"))
     hostname = os.getenv("CONTAINER_ID")
     hdfs_uri = f"hdfs://{hostname}:8020/test/"
     # do it twice should yield the same result

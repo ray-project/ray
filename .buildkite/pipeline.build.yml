@@ -608,8 +608,7 @@
     - ./ci/env/env_info.sh
     - cat /tmp/hdfs_env
     - cat /tmp/hdfs_classpath_env
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=hdfs $(while read l; do echo "--test_env=$l"; done < /tmp/hdfs_env) python/ray/air/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_tag_filters=hdfs python/ray/air/...
 
 
 # Test to see if Train can be used without torch, tf, etc. installed

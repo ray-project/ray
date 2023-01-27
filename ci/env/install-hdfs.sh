@@ -79,9 +79,5 @@ done
 # Needed for unit test to specify hdfs uri.
 echo "CONTAINER_ID=$(hostname)" >> $destdir
 
-# make it a separate file to be set directly in the unit test.
-# the variable is too big to be supplied through command line.
 # Needed for pyarrow to work.
-hadoop classpath --glob >> /tmp/hdfs_classpath_env
-
-echo "$PATH" >> /tmp/hdfs_path_env
+echo "CLASSPATH=$(hadoop classpath --glob)" >> /tmp/hdfs_classpath_env
