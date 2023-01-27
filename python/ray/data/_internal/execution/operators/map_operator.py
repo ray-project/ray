@@ -34,10 +34,12 @@ class MapOperator(PhysicalOperator, ABC):
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         input_op: PhysicalOperator,
-        name: str = "Map",
-        min_rows_per_bundle: Optional[int] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
+        name: str,
+        min_rows_per_bundle: Optional[int],
+        ray_remote_args: Optional[Dict[str, Any]],
     ):
+        # NOTE: This constructor should not be called directly; use MapOperator.create()
+        # instead.
         # NOTE: This constructor must be called by subclasses.
 
         # Put the function def in the object store to avoid repeated serialization
@@ -389,17 +391,26 @@ class _BlockRefBundler:
         leftover = []
         output_buffer = []
         output_buffer_size = 0
+        buffer_filled = False
         for bundle in self._bundle_buffer:
             bundle_size = self._get_bundle_size(bundle)
-            if (
+            if buffer_filled:
+                # Buffer has been filled, save it in the leftovers.
+                leftover.append(bundle)
+            elif (
                 output_buffer_size + bundle_size <= self._min_rows_per_bundle
-                or not output_buffer  # Always add at least one bundle to the output.
+                or output_buffer_size == 0
             ):
+                # Bundle fits in buffer, or bundle doesn't fit but the buffer still
+                # needs a non-empty bundle.
                 output_buffer.append(bundle)
                 output_buffer_size += bundle_size
             else:
-                # Bundle doesn't fit, save it in the leftovers.
+                # Bundle doesn't fit in a buffer that already has at least one non-empty
+                # bundle, so we add it to the leftovers.
                 leftover.append(bundle)
+                # Add all remaining bundles to the leftovers.
+                buffer_filled = True
         self._bundle_buffer = leftover
         self._bundle_buffer_size = sum(
             self._get_bundle_size(bundle) for bundle in leftover

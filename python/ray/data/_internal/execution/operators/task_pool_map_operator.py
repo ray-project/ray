@@ -24,7 +24,7 @@ class TaskPoolMapOperator(MapOperator):
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         input_op: PhysicalOperator,
-        name: str = "Map",
+        name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):

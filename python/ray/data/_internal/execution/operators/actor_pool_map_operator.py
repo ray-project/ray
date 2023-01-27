@@ -26,7 +26,7 @@ class ActorPoolMapOperator(MapOperator):
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         input_op: PhysicalOperator,
-        name: str = "Map",
+        name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         pool_size: int = 1,
