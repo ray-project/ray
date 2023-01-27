@@ -15,7 +15,7 @@ import copy
 import platform
 import random
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray._private.dict import merge_dicts
@@ -42,6 +42,7 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
+    PartialAlgorithmConfigDict,
     ResultDict,
     SampleBatchType,
 )
@@ -700,10 +701,16 @@ class ApexDQN(DQN):
 
     @classmethod
     @override(Algorithm)
-    def default_resource_request(cls, config):
-        cf = dict(cls.get_default_config(), **config)
+    def default_resource_request(
+        cls,
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+    ):
+        if isinstance(config, AlgorithmConfig):
+            cf: ApexDQNConfig = config
+        else:
+            cf: ApexDQNConfig = cls.get_default_config().update_from_dict(config)
 
-        eval_config = cf["evaluation_config"]
+        eval_config = cf.get_evaluation_config_object()
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -715,19 +722,19 @@ class ApexDQN(DQN):
                     # data bandwidth between buffers and the learner (driver).
                     # Replay buffer actors each contain one shard of the total
                     # replay buffer and use 1 CPU each.
-                    "CPU": cf["num_cpus_for_driver"]
-                    + cf["optimizer"]["num_replay_buffer_shards"],
-                    "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+                    "CPU": cf.num_cpus_for_local_worker
+                    + cf.optimizer["num_replay_buffer_shards"],
+                    "GPU": 0 if cf._fake_gpus else cf.num_gpus,
                 }
             ]
             + [
                 {
                     # RolloutWorkers.
-                    "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"],
-                    **cf["custom_resources_per_worker"],
+                    "CPU": cf.num_cpus_per_worker,
+                    "GPU": cf.num_gpus_per_worker,
+                    **cf.custom_resources_per_worker,
                 }
-                for _ in range(cf["num_workers"])
+                for _ in range(cf.num_rollout_workers)
             ]
             + (
                 [
@@ -735,23 +742,16 @@ class ApexDQN(DQN):
                         # Evaluation workers.
                         # Note: The local eval worker is located on the driver
                         # CPU.
-                        "CPU": eval_config.get(
-                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                        ),
-                        "GPU": eval_config.get(
-                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
-                        ),
-                        **eval_config.get(
-                            "custom_resources_per_worker",
-                            cf["custom_resources_per_worker"],
-                        ),
+                        "CPU": eval_config.num_cpus_per_worker,
+                        "GPU": eval_config.num_gpus_per_worker,
+                        **eval_config.custom_resources_per_worker,
                     }
-                    for _ in range(cf["evaluation_num_workers"])
+                    for _ in range(cf.evaluation_num_workers)
                 ]
-                if cf["evaluation_interval"]
+                if cf.evaluation_interval
                 else []
             ),
-            strategy=config.get("placement_strategy", "PACK"),
+            strategy=cf.placement_strategy,
         )
 
 

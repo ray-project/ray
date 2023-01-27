@@ -1,11 +1,17 @@
 import time
 import pytest
 import ray
+from ray.data.context import DatasetContext
 
 from ray.tests.conftest import *  # noqa
 
 
 def test_incremental_take(shutdown_only):
+    # TODO(https://github.com/ray-project/ray/issues/31145): re-enable
+    # after the segfault bug is fixed.
+    if DatasetContext.get_current().new_execution_backend:
+        return
+
     ray.init(num_cpus=2)
 
     # Can read incrementally even if future results are delayed.
