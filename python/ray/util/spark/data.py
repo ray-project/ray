@@ -13,8 +13,10 @@ def load_spark_dataset(path, saved_format="delta"):
             'delta' format are supported.
     """
     spark = get_spark_session()
-    assert saved_format in ["parquet", "delta"], \
-        f"Unsupported saved format {saved_format}"
+    assert saved_format in [
+        "parquet",
+        "delta",
+    ], f"Unsupported saved format {saved_format}"
 
     # NB: The delta format dataset directory might contain some parquet files
     # that holds old version data, so we must call `inputFiles()` API to get
@@ -33,8 +35,5 @@ def load_spark_dataset(path, saved_format="delta"):
         # to local filesystem path "/dbfs/xx/yy",
         # so that here we convert the dbfs path to the corresponding
         # local "/dbfs/..." path.
-        file_paths = [
-            "/dbfs" + urlparse(p).path
-            for p in file_paths
-        ]
+        file_paths = ["/dbfs" + urlparse(p).path for p in file_paths]
     return ray.data.read_parquet(file_paths)
