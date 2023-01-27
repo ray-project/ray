@@ -184,12 +184,12 @@ if __name__ == "__main__":
         # run manual test loop: 1 iteration until done
         print("Finished training. Running manual test/inference loop.")
         env = CorrelatedActionsEnv(_)
-        obs = env.reset()
+        obs, info = env.reset()
         done = False
         total_reward = 0
         while not done:
             a1, a2 = algo.compute_single_action(obs)
-            next_obs, reward, done, _ = env.step((a1, a2))
+            next_obs, reward, done, truncated, _ = env.step((a1, a2))
             print(f"Obs: {obs}, Action: a1={a1} a2={a2}, Reward: {reward}")
             obs = next_obs
             total_reward += reward

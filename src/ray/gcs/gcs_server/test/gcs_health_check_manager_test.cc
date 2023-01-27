@@ -19,9 +19,13 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/optional.hpp>
 #include <boost/thread.hpp>
+#include <cstdlib>
 #include <unordered_map>
 
 using namespace boost;
+using namespace boost::asio;
+using namespace boost::asio::ip;
+
 #include <ray/rpc/grpc_server.h>
 
 #include <chrono>
@@ -29,6 +33,20 @@ using namespace boost;
 
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
+
+int GetFreePort() {
+  io_service io_service;
+  tcp::acceptor acceptor(io_service);
+  tcp::endpoint endpoint;
+
+  // try to bind to port 0 to find a free port
+  acceptor.open(tcp::v4());
+  acceptor.bind(tcp::endpoint(tcp::v4(), 0));
+  endpoint = acceptor.local_endpoint();
+  auto port = endpoint.port();
+  acceptor.close();
+  return port;
+}
 
 using namespace ray;
 using namespace std::literals::chrono_literals;
@@ -46,7 +64,6 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
         timeout_ms,
         period_ms,
         failure_threshold);
-    port = 10000;
   }
 
   void TearDown() override {
@@ -62,18 +79,21 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     boost::this_thread::sleep_for(boost::chrono::seconds(2));
   }
 
-  NodeID AddServer() {
+  NodeID AddServer(bool alive = true) {
     std::promise<int> port_promise;
     auto node_id = NodeID::FromRandom();
-
+    auto port = GetFreePort();
+    RAY_LOG(INFO) << "Get port " << port;
     auto server = std::make_shared<rpc::GrpcServer>(node_id.Hex(), port, true);
 
     auto channel = grpc::CreateChannel("localhost:" + std::to_string(port),
                                        grpc::InsecureChannelCredentials());
     server->Run();
+    if (alive) {
+      server->GetServer().GetHealthCheckService()->SetServingStatus(node_id.Hex(), true);
+    }
     servers.emplace(node_id, server);
     health_check->AddNode(node_id, channel);
-    ++port;
     return node_id;
   }
 
@@ -112,14 +132,13 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     }
   }
 
-  int port;
   instrumented_io_context io_service;
   std::unique_ptr<gcs::GcsHealthCheckManager> health_check;
   std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;
-  const int64_t initial_delay_ms = 1000;
-  const int64_t timeout_ms = 1000;
-  const int64_t period_ms = 1000;
+  const int64_t initial_delay_ms = 100;
+  const int64_t timeout_ms = 10;
+  const int64_t period_ms = 10;
   const int64_t failure_threshold = 5;
 };
 
@@ -139,8 +158,6 @@ TEST_F(GcsHealthCheckManagerTest, TestBasic) {
   for (auto i = 0; i < failure_threshold; ++i) {
     Run(2);  // One for starting RPC and one for the RPC callback.
   }
-
-  Run();  // For failure callback.
 
   ASSERT_EQ(1, dead_nodes.size());
   ASSERT_TRUE(dead_nodes.count(node_id));
@@ -166,8 +183,6 @@ TEST_F(GcsHealthCheckManagerTest, StoppedAndResume) {
     }
   }
 
-  Run();  // For failure callback.
-
   ASSERT_EQ(0, dead_nodes.size());
 }
 
@@ -192,8 +207,6 @@ TEST_F(GcsHealthCheckManagerTest, Crashed) {
   for (auto i = 0; i < failure_threshold; ++i) {
     Run(2);  // One for starting RPC and one for the RPC callback.
   }
-
-  Run();  // For failure callback.
 
   ASSERT_EQ(1, dead_nodes.size());
   ASSERT_TRUE(dead_nodes.count(node_id));
@@ -221,7 +234,55 @@ TEST_F(GcsHealthCheckManagerTest, NodeRemoved) {
   ASSERT_EQ(0, health_check->GetAllNodes().size());
 }
 
+TEST_F(GcsHealthCheckManagerTest, NoRegister) {
+  auto node_id = AddServer(false);
+  for (auto i = 0; i < failure_threshold; ++i) {
+    Run(2);  // One for starting RPC and one for the RPC callback.
+  }
+
+  Run(1);
+  ASSERT_EQ(1, dead_nodes.size());
+  ASSERT_TRUE(dead_nodes.count(node_id));
+}
+
+TEST_F(GcsHealthCheckManagerTest, StressTest) {
+#ifdef _RAY_TSAN_BUILD
+  GTEST_SKIP() << "Disabled in tsan because of performance";
+#endif
+  boost::asio::io_service::work work(io_service);
+  std::srand(std::time(nullptr));
+  auto t = std::make_unique<std::thread>([this]() { this->io_service.run(); });
+
+  std::vector<NodeID> alive_nodes;
+
+  for (int i = 0; i < 200; ++i) {
+    alive_nodes.emplace_back(AddServer(true));
+    std::this_thread::sleep_for(10ms);
+  }
+
+  for (size_t i = 0; i < 20000UL; ++i) {
+    RAY_LOG(INFO) << "Progress: " << i << "/20000";
+    auto iter = alive_nodes.begin() + std::rand() % alive_nodes.size();
+    health_check->RemoveNode(*iter);
+    DeleteServer(*iter);
+    alive_nodes.erase(iter);
+    alive_nodes.emplace_back(AddServer(true));
+  }
+  RAY_LOG(INFO) << "Finished!";
+  io_service.stop();
+  t->join();
+}
+
 int main(int argc, char **argv) {
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
+
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
+  ray::RayLog::InstallTerminateHandler();
+
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

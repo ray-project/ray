@@ -30,39 +30,21 @@ TEST(ExponentialBackoffTest, TestExponentialIncrease) {
   ASSERT_EQ(ExponentialBackoff::GetBackoffMs(11, 0), 0);
 }
 
-TEST(ExponentialBackoffTest, TestExceedMaxAttemptReturnsMaxAttempt) {
-  auto backoff = ExponentialBackoff::GetBackoffMs(
-      /*attempt*/ 11,
-      /*base_ms*/ 1,
-      /*max_attempt*/ 5,
-      /*max_backoff_ms*/ std::numeric_limits<uint64_t>::max());
-  ASSERT_EQ(backoff, static_cast<uint64_t>(pow(2, 5)));
-}
-
 TEST(ExponentialBackoffTest, TestExceedMaxBackoffReturnsMaxBackoff) {
   auto backoff = ExponentialBackoff::GetBackoffMs(
-      /*attempt*/ 10, /*base_ms*/ 1, /*max_attempt*/ 10, /*max_backoff_ms*/ 5);
+      /*attempt*/ 10, /*base_ms*/ 1, /*max_backoff_ms*/ 5);
   ASSERT_EQ(backoff, 5);
 }
 
-TEST(ExponentialBackoffTest, TestOverflowReturnsMaxAttempt) {
-  // 2 ^ 80 will overflow.
-  auto backoff = ExponentialBackoff::GetBackoffMs(
-      /*attempt*/ 80,
-      /*base_ms*/ 1,
-      /*max_attempt*/ 50,
-      /*max_backoff_ms*/ std::numeric_limits<uint64_t>::max());
-  ASSERT_EQ(backoff, static_cast<uint64_t>(pow(2, 50)));
-}
-
 TEST(ExponentialBackoffTest, TestOverflowReturnsMaxBackoff) {
-  // 2 ^ 80 will overflow.
-  auto backoff = ExponentialBackoff::GetBackoffMs(
-      /*attempt*/ 80,
-      /*base_ms*/ 1,
-      /*max_attempt*/ 80,
-      /*max_backoff_ms*/ 1234);
-  ASSERT_EQ(backoff, 1234);
+  // 2 ^ 64+ will overflow.
+  for (int i = 64; i < 10000; i++) {
+    auto backoff = ExponentialBackoff::GetBackoffMs(
+        /*attempt*/ i,
+        /*base_ms*/ 1,
+        /*max_backoff_ms*/ 1234);
+    ASSERT_EQ(backoff, 1234);
+  }
 }
 
 }  // namespace ray

@@ -3,7 +3,7 @@ import concurrent
 import copy
 from datetime import datetime
 import functools
-import gym
+import gymnasium as gym
 import importlib
 import json
 import logging
@@ -11,8 +11,10 @@ import numpy as np
 import os
 from packaging import version
 import pkg_resources
+import re
 import tempfile
 import time
+import tree  # pip install dm_tree
 from typing import (
     Callable,
     Container,
@@ -25,16 +27,21 @@ from typing import (
     Type,
     Union,
 )
-from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
-import tree
 
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
+
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModuleSpec,
+    MultiAgentRLModule,
+)
+
+from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
@@ -59,6 +66,8 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
+from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
@@ -95,6 +104,7 @@ from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
+    AgentConnectorDataType,
     AgentID,
     AlgorithmConfigDict,
     EnvCreator,
@@ -125,19 +135,12 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
-def with_common_config(extra_config: PartialAlgorithmConfigDict) -> AlgorithmConfigDict:
-    """Returns the given config dict merged with common agent confs.
-
-    Args:
-        extra_config: A user defined partial config
-            which will get merged with a default AlgorithmConfig() object and returned
-            as plain python dict.
-
-    Returns:
-        AlgorithmConfigDict: The merged config dict resulting from AlgorithmConfig()
-            plus `extra_config`.
-    """
+@Deprecated(
+    new="config = AlgorithmConfig().update_from_dict({'a': 1, 'b': 2}); ... ; "
+    "print(config.lr) -> 0.001; if config.a > 0: [do something];",
+    error=False,
+)
+def with_common_config(extra_config):
     return Algorithm.merge_trainer_configs(
         AlgorithmConfig().to_dict(), extra_config, _allow_unknown_configs=True
     )
@@ -386,7 +389,8 @@ class Algorithm(Trainable):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
+            env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
+            logdir_prefix = f"{str(self)}_{env_descr_for_dir}_{timestr}"
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 # Possible race condition if dir is created several times on
                 # rollout workers
@@ -495,16 +499,17 @@ class Algorithm(Trainable):
 
         self._record_usage(self.config)
 
-        self.callbacks = self.config["callbacks"]()
-        log_level = self.config.get("log_level")
-        if log_level in ["WARN", "ERROR"]:
+        # Create the callbacks object.
+        self.callbacks = self.config.callbacks_class()
+
+        if self.config.log_level in ["WARN", "ERROR"]:
             logger.info(
-                "Current log_level is {}. For more information, "
+                f"Current log_level is {self.config.log_level}. For more information, "
                 "set 'log_level': 'INFO' / 'DEBUG' or use the -v and "
-                "-vv flags.".format(log_level)
+                "-vv flags."
             )
-        if self.config.get("log_level"):
-            logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
+        if self.config.log_level:
+            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
 
         # Create local replay buffer if necessary.
         self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
@@ -528,13 +533,13 @@ class Algorithm(Trainable):
             ope_dict = {str(ope): {"type": ope} for ope in input_evaluation}
             deprecation_warning(
                 old="config.input_evaluation={}".format(input_evaluation),
-                new="config.evaluation(evaluation_config={"
-                f"'off_policy_estimation_methods'={ope_dict}"
-                "})",
+                new="config.evaluation(evaluation_config=config.overrides("
+                f"off_policy_estimation_methods={ope_dict}"
+                "))",
                 error=True,
                 help="Running OPE during training is not recommended.",
             )
-            self.config["off_policy_estimation_methods"] = ope_dict
+            self.config.off_policy_estimation_methods = ope_dict
 
         # Deprecated way of implementing Trainer sub-classes (or "templates"
         # via the `build_trainer` utility function).
@@ -568,14 +573,14 @@ class Algorithm(Trainable):
                 validate_env=self.validate_env,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.config,
-                num_workers=self.config["num_workers"],
+                num_workers=self.config.num_rollout_workers,
                 local_worker=True,
                 logdir=self.logdir,
             )
 
             # TODO (avnishn): Remove the execution plan API by q1 2023
             # Function defining one single training iteration's behavior.
-            if self.config["_disable_execution_plan_api"]:
+            if self.config._disable_execution_plan_api:
                 # Ensure remote workers are initially in sync with the local worker.
                 self.workers.sync_weights()
             # LocalIterator-creating "execution plan".
@@ -616,13 +621,13 @@ class Algorithm(Trainable):
                 validate_env=None,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
-                num_workers=self.config["evaluation_num_workers"],
+                num_workers=self.config.evaluation_num_workers,
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
                 logdir=self.logdir,
             )
 
-            if self.config["enable_async_evaluation"]:
+            if self.config.enable_async_evaluation:
                 self._evaluation_weights_seq_number = 0
 
         self.evaluation_dataset = None
@@ -652,7 +657,7 @@ class Algorithm(Trainable):
             "dm": DirectMethod,
             "dr": DoublyRobust,
         }
-        for name, method_config in self.config["off_policy_estimation_methods"].items():
+        for name, method_config in self.config.off_policy_estimation_methods.items():
             method_type = method_config.pop("type")
             if method_type in ope_types:
                 deprecation_warning(
@@ -673,7 +678,7 @@ class Algorithm(Trainable):
                 # offline evaluators.
                 policy = self.get_policy()
                 if issubclass(method_type, OffPolicyEstimator):
-                    method_config["gamma"] = self.config["gamma"]
+                    method_config["gamma"] = self.config.gamma
                 self.reward_estimators[name] = method_type(policy, **method_config)
             else:
                 raise ValueError(
@@ -681,6 +686,34 @@ class Algorithm(Trainable):
                     "either a class path or a sub-class of ray.rllib."
                     "offline.offline_evaluator::OfflineEvaluator"
                 )
+            # TODO (Rohan138): Refactor this and remove deprecated methods
+            # Need to add back method_type in case Algorithm is restored from checkpoint
+            method_config["type"] = method_type
+
+        self.trainer_runner = None
+        if self.config._enable_rl_trainer_api:
+            # TODO (Kourosh): This is an interim solution where policies and modules
+            # co-exist. In this world we have both policy_map and MARLModule that need
+            # to be consistent with one another. To make a consistent parity between
+            # the two we need to loop throught the policy modules and create a simple
+            # MARLModule from the RLModule within each policy.
+            local_worker = self.workers.local_worker()
+            module_specs = {}
+
+            for pid, policy in local_worker.policy_map.items():
+                module_specs[pid] = SingleAgentRLModuleSpec(
+                    module_class=policy.config["rl_module_class"],
+                    observation_space=policy.observation_space,
+                    action_space=policy.action_space,
+                    model_config=policy.config["model"],
+                )
+
+            module_spec = MultiAgentRLModuleSpec(
+                module_class=MultiAgentRLModule, module_specs=module_specs
+            )
+
+            trainer_runner_config = self.config.get_trainer_runner_config(module_spec)
+            self.trainer_runner = trainer_runner_config.build()
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -737,7 +770,7 @@ class Algorithm(Trainable):
         results: ResultDict = {}
 
         # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
-        if evaluate_this_iter and self.config["evaluation_parallel_to_training"]:
+        if evaluate_this_iter and self.config.evaluation_parallel_to_training:
             (
                 results,
                 train_iter_ctx,
@@ -749,12 +782,12 @@ class Algorithm(Trainable):
             results, train_iter_ctx = self._run_one_training_iteration()
 
         # Sequential: Train (already done above), then evaluate.
-        if evaluate_this_iter and not self.config["evaluation_parallel_to_training"]:
+        if evaluate_this_iter and not self.config.evaluation_parallel_to_training:
             results.update(self._run_one_evaluation(train_future=None))
 
         # Attach latest available evaluation results to train results,
         # if necessary.
-        if not evaluate_this_iter and self.config["always_attach_evaluation_results"]:
+        if not evaluate_this_iter and self.config.always_attach_evaluation_results:
             assert isinstance(
                 self.evaluation_metrics, dict
             ), "Trainer.evaluate() needs to return a dict."
@@ -765,17 +798,15 @@ class Algorithm(Trainable):
             self._sync_filters_if_needed(
                 from_worker=self.workers.local_worker(),
                 workers=self.workers,
-                timeout_seconds=self.config[
-                    "sync_filters_on_rollout_workers_timeout_s"
-                ],
+                timeout_seconds=self.config.sync_filters_on_rollout_workers_timeout_s,
             )
             # TODO (avnishn): Remove the execution plan API by q1 2023
             # Collect worker metrics and add combine them with `results`.
-            if self.config["_disable_execution_plan_api"]:
+            if self.config._disable_execution_plan_api:
                 episodes_this_iter = collect_episodes(
                     self.workers,
                     self._remote_worker_ids_for_metrics(),
-                    timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
+                    timeout_seconds=self.config.metrics_episode_collection_timeout_s,
                 )
                 results = self._compile_iteration_results(
                     episodes_this_iter=episodes_this_iter,
@@ -784,8 +815,8 @@ class Algorithm(Trainable):
                 )
 
         # Check `env_task_fn` for possible update of the env's task.
-        if self.config["env_task_fn"] is not None:
-            if not callable(self.config["env_task_fn"]):
+        if self.config.env_task_fn is not None:
+            if not callable(self.config.env_task_fn):
                 raise ValueError(
                     "`env_task_fn` must be None or a callable taking "
                     "[train_results, env, env_ctx] as args!"
@@ -797,7 +828,7 @@ class Algorithm(Trainable):
                 if cur_task != new_task:
                     env.set_task(new_task)
 
-            fn = functools.partial(fn, task_fn=self.config["env_task_fn"])
+            fn = functools.partial(fn, task_fn=self.config.env_task_fn)
             self.workers.foreach_env_with_context(fn)
 
         return results
@@ -832,20 +863,20 @@ class Algorithm(Trainable):
             self._sync_filters_if_needed(
                 from_worker=self.workers.local_worker(),
                 workers=self.evaluation_workers,
-                timeout_seconds=self.config[
-                    "sync_filters_on_rollout_workers_timeout_s"
-                ],
+                timeout_seconds=self.config.sync_filters_on_rollout_workers_timeout_s,
             )
 
         self.callbacks.on_evaluate_start(algorithm=self)
 
-        if self.config["custom_eval_function"]:
+        if self.config.custom_evaluation_function:
             logger.info(
                 "Running custom eval function {}".format(
-                    self.config["custom_eval_function"]
+                    self.config.custom_evaluation_function
                 )
             )
-            metrics = self.config["custom_eval_function"](self, self.evaluation_workers)
+            metrics = self.config.custom_evaluation_function(
+                self, self.evaluation_workers
+            )
             if not metrics or not isinstance(metrics, dict):
                 raise ValueError(
                     "Custom eval function must return "
@@ -870,15 +901,15 @@ class Algorithm(Trainable):
             # How many episodes/timesteps do we need to run?
             # In "auto" mode (only for parallel eval + training): Run as long
             # as training lasts.
-            unit = self.config["evaluation_duration_unit"]
+            unit = self.config.evaluation_duration_unit
             eval_cfg = self.evaluation_config
-            rollout = eval_cfg["rollout_fragment_length"]
-            num_envs = eval_cfg["num_envs_per_worker"]
-            auto = self.config["evaluation_duration"] == "auto"
+            rollout = eval_cfg.rollout_fragment_length
+            num_envs = eval_cfg.num_envs_per_worker
+            auto = self.config.evaluation_duration == "auto"
             duration = (
-                self.config["evaluation_duration"]
+                self.config.evaluation_duration
                 if not auto
-                else (self.config["evaluation_num_workers"] or 1)
+                else (self.config.evaluation_num_workers or 1)
                 * (1 if unit == "episodes" else rollout)
             )
             agent_steps_this_iter = 0
@@ -891,7 +922,7 @@ class Algorithm(Trainable):
                 def duration_fn(num_units_done):
                     return duration - num_units_done
 
-            logger.info(f"Evaluating current policy for {duration} {unit}.")
+            logger.info(f"Evaluating current state of {self} for {duration} {unit}.")
 
             metrics = None
             all_batches = []
@@ -912,8 +943,8 @@ class Algorithm(Trainable):
                         all_batches.append(batch)
                 metrics = collect_metrics(
                     self.workers,
-                    keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
-                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
+                    keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
+                    timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
                 )
 
             # Evaluation worker set only has local worker.
@@ -958,13 +989,13 @@ class Algorithm(Trainable):
                         func=lambda w: w.sample(),
                         local_worker=False,
                         remote_worker_ids=selected_eval_worker_ids,
-                        timeout_seconds=self.config["evaluation_sample_timeout_s"],
+                        timeout_seconds=self.config.evaluation_sample_timeout_s,
                     )
                     if len(batches) != len(selected_eval_worker_ids):
                         logger.warning(
                             "Calling `sample()` on your remote evaluation worker(s) "
                             "resulted in a timeout (after the configured "
-                            f"{self.config['evaluation_sample_timeout_s']} seconds)! "
+                            f"{self.config.evaluation_sample_timeout_s} seconds)! "
                             "Try to set `evaluation_sample_timeout_s` in your config"
                             " to a larger value."
                             + (
@@ -986,7 +1017,7 @@ class Algorithm(Trainable):
                         for ma_batch in batches:
                             ma_batch = ma_batch.as_multi_agent()
                             for batch in ma_batch.policy_batches.values():
-                                assert np.sum(batch[SampleBatch.DONES])
+                                assert batch.is_terminated_or_truncated()
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
@@ -1003,7 +1034,7 @@ class Algorithm(Trainable):
                     env_steps_this_iter += _env_steps
 
                     logger.info(
-                        f"Ran round {_round} of parallel evaluation "
+                        f"Ran round {_round} of non-parallel evaluation "
                         f"({num_units_done}/{duration if not auto else '?'} "
                         f"{unit} done)"
                     )
@@ -1015,8 +1046,8 @@ class Algorithm(Trainable):
             if metrics is None:
                 metrics = collect_metrics(
                     self.evaluation_workers,
-                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
-                    timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
+                    keep_custom_metrics=self.config.keep_per_episode_custom_metrics,
+                    timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
                 )
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
@@ -1030,9 +1061,7 @@ class Algorithm(Trainable):
                 for batch in all_batches:
                     estimate_result = estimator.estimate(
                         batch,
-                        split_batch_by_episode=self.config[
-                            "ope_split_batch_by_episode"
-                        ],
+                        split_batch_by_episode=self.config.ope_split_batch_by_episode,
                     )
                     estimates[name].append(estimate_result)
 
@@ -1082,15 +1111,15 @@ class Algorithm(Trainable):
         # How many episodes/timesteps do we need to run?
         # In "auto" mode (only for parallel eval + training): Run as long
         # as training lasts.
-        unit = self.config["evaluation_duration_unit"]
+        unit = self.config.evaluation_duration_unit
         eval_cfg = self.evaluation_config
-        rollout = eval_cfg["rollout_fragment_length"]
-        num_envs = eval_cfg["num_envs_per_worker"]
-        auto = self.config["evaluation_duration"] == "auto"
+        rollout = eval_cfg.rollout_fragment_length
+        num_envs = eval_cfg.num_envs_per_worker
+        auto = self.config.evaluation_duration == "auto"
         duration = (
-            self.config["evaluation_duration"]
+            self.config.evaluation_duration
             if not auto
-            else (self.config["evaluation_num_workers"] or 1)
+            else (self.config.evaluation_num_workers or 1)
             * (1 if unit == "episodes" else rollout)
         )
 
@@ -1101,17 +1130,17 @@ class Algorithm(Trainable):
         self._sync_filters_if_needed(
             from_worker=self.workers.local_worker(),
             workers=self.evaluation_workers,
-            timeout_seconds=eval_cfg.get("sync_filters_on_rollout_workers_timeout_s"),
+            timeout_seconds=eval_cfg.sync_filters_on_rollout_workers_timeout_s,
         )
 
-        if self.config["custom_eval_function"]:
+        if self.config.custom_evaluation_function:
             raise ValueError(
-                "`custom_eval_function` not supported in combination "
+                "`config.custom_evaluation_function` not supported in combination "
                 "with `enable_async_evaluation=True` config setting!"
             )
         if self.evaluation_workers is None and (
             self.workers.local_worker().input_reader is None
-            or self.config["evaluation_num_workers"] == 0
+            or self.config.evaluation_num_workers == 0
         ):
             raise ValueError(
                 "Evaluation w/o eval workers (calling Algorithm.evaluate() w/o "
@@ -1124,7 +1153,7 @@ class Algorithm(Trainable):
         agent_steps_this_iter = 0
         env_steps_this_iter = 0
 
-        logger.info(f"Evaluating current policy for {duration} {unit}.")
+        logger.info(f"Evaluating current state of {self} for {duration} {unit}.")
 
         all_batches = []
 
@@ -1196,7 +1225,7 @@ class Algorithm(Trainable):
                 for ma_batch in batches:
                     ma_batch = ma_batch.as_multi_agent()
                     for batch in ma_batch.policy_batches.values():
-                        assert np.sum(batch[SampleBatch.DONES])
+                        assert batch.is_terminated_or_truncated()
             # n timesteps per returned batch.
             else:
                 num_units_done += (
@@ -1281,7 +1310,11 @@ class Algorithm(Trainable):
             # to bring these workers up to date.
             workers.foreach_worker(
                 func=lambda w: w.set_state(ray.get(state)),
+                remote_worker_ids=restored,
                 local_worker=False,
+                timeout_seconds=self.config.worker_restore_timeout_s,
+                # Bring back actor after successful state syncing.
+                mark_healthy=True,
             )
 
     @OverrideToImplementCustomLogic
@@ -1304,11 +1337,11 @@ class Algorithm(Trainable):
         # Collect SampleBatches from sample workers until we have a full batch.
         if self.config.count_steps_by == "agent_steps":
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_agent_steps=self.config.train_batch_size
             )
         else:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_env_steps=self.config.train_batch_size
             )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
@@ -1324,7 +1357,9 @@ class Algorithm(Trainable):
             # cases should use the multi-GPU optimizer, even if only using 1 GPU).
             # TODO: (sven) rename MultiGPUOptimizer into something more
             #  meaningful.
-            if self.config.get("simple_optimizer") is True:
+            if self.config._enable_rl_trainer_api:
+                train_results = self.trainer_runner.update(train_batch)
+            elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:
                 train_results = multi_gpu_train_one_step(self, train_batch)
@@ -1338,7 +1373,14 @@ class Algorithm(Trainable):
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            # TODO (Avnish): Implement this on trainer_runner.get_weights().
+            # TODO (Kourosh): figure out how we are going to sync MARLModule
+            # weights to MARLModule weights under the policy_map objects?
+            from_worker = None
+            if self.config._enable_rl_trainer_api:
+                from_worker = self.trainer_runner
             self.workers.sync_weights(
+                from_worker=from_worker,
                 policies=list(train_results.keys()),
                 global_vars=global_vars,
             )
@@ -1402,17 +1444,17 @@ class Algorithm(Trainable):
             full_fetch: Whether to return extra action fetch results.
                 This is always set to True if `state` is specified.
             explore: Whether to apply exploration to the action.
-                Default: None -> use self.config["explore"].
+                Default: None -> use self.config.explore.
             timestep: The current (sampling) time step.
             episode: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
                 algorithms.
             unsquash_action: Should actions be unsquashed according to the
                 env's/Policy's action space? If None, use the value of
-                self.config["normalize_actions"].
+                self.config.normalize_actions.
             clip_action: Should actions be clipped according to the
                 env's/Policy's action space? If None, use the value of
-                self.config["clip_actions"].
+                self.config.clip_actions.
 
         Keyword Args:
             kwargs: forward compatibility placeholder
@@ -1443,10 +1485,10 @@ class Algorithm(Trainable):
 
         # `unsquash_action` is None: Use value of config['normalize_actions'].
         if unsquash_action is None:
-            unsquash_action = self.config["normalize_actions"]
+            unsquash_action = self.config.normalize_actions
         # `clip_action` is None: Use value of config['clip_actions'].
         elif clip_action is None:
-            clip_action = self.config["clip_actions"]
+            clip_action = self.config.clip_actions
 
         # User provided an input-dict: Assert that `obs`, `prev_a|r`, `state`
         # are all None.
@@ -1475,11 +1517,51 @@ class Algorithm(Trainable):
             )
         local_worker = self.workers.local_worker()
 
-        # Check the preprocessor and preprocess, if necessary.
-        pp = local_worker.preprocessors[policy_id]
-        if pp and type(pp).__name__ != "NoPreprocessor":
-            observation = pp.transform(observation)
-        observation = local_worker.filters[policy_id](observation, update=False)
+        if not self.config.get("enable_connectors"):
+            # Check the preprocessor and preprocess, if necessary.
+            pp = local_worker.preprocessors[policy_id]
+            if pp and type(pp).__name__ != "NoPreprocessor":
+                observation = pp.transform(observation)
+            observation = local_worker.filters[policy_id](observation, update=False)
+        else:
+            # Just preprocess observations, similar to how it used to be done before.
+            pp = policy.agent_connectors[ObsPreprocessorConnector]
+
+            # convert the observation to array if possible
+            if not isinstance(observation, (np.ndarray, dict, tuple)):
+                try:
+                    observation = np.asarray(observation)
+                except Exception:
+                    raise ValueError(
+                        f"Observation type {type(observation)} cannot be converted to "
+                        f"np.ndarray."
+                    )
+            if pp:
+                assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
+                pp = pp[0]
+
+                if not pp.is_identity():
+                    # Note(Kourosh): This call will leave the policy's connector
+                    # in eval mode. would that be a problem?
+                    pp.in_eval()
+                    if observation is not None:
+                        _input_dict = {SampleBatch.OBS: observation}
+                    elif input_dict is not None:
+                        _input_dict = {SampleBatch.OBS: input_dict[SampleBatch.OBS]}
+                    else:
+                        raise ValueError(
+                            "Either observation or input_dict must be provided."
+                        )
+
+                    # TODO (Kourosh): Create a new util method for algorithm that
+                    # computes actions based on raw inputs from env and can keep track
+                    # of its own internal state.
+                    acd = AgentConnectorDataType("0", "0", _input_dict)
+                    # make sure the state is reset since we are only applying the
+                    # preprocessor
+                    pp.reset(env_id="0")
+                    ac_o = pp([acd])[0]
+                    observation = ac_o.data[SampleBatch.OBS]
 
         # Input-dict.
         if input_dict is not None:
@@ -1557,17 +1639,17 @@ class Algorithm(Trainable):
             full_fetch: Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
             explore: Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
+                action (default: None -> use self.config.explore).
             timestep: The current (sampling) time step.
             episodes: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
                 algorithms.
             unsquash_actions: Should actions be unsquashed according
                 to the env's/Policy's action space? If None, use
-                self.config["normalize_actions"].
+                self.config.normalize_actions.
             clip_actions: Should actions be clipped according to the
                 env's/Policy's action space? If None, use
-                self.config["clip_actions"].
+                self.config.clip_actions.
 
         Keyword Args:
             kwargs: forward compatibility placeholder
@@ -1587,10 +1669,10 @@ class Algorithm(Trainable):
 
         # `unsquash_actions` is None: Use value of config['normalize_actions'].
         if unsquash_actions is None:
-            unsquash_actions = self.config["normalize_actions"]
+            unsquash_actions = self.config.normalize_actions
         # `clip_actions` is None: Use value of config['clip_actions'].
         elif clip_actions is None:
-            clip_actions = self.config["clip_actions"]
+            clip_actions = self.config.clip_actions
 
         # Preprocess obs and states.
         state_defined = state is not None
@@ -1718,8 +1800,8 @@ class Algorithm(Trainable):
         Args:
             policy_id: ID of the policy to add.
                 IMPORTANT: Must not contain characters that
-                are also not allowed in Unix/Win filesystems, such as: `<>:"/\|?*`
-                or a dot `.` or space ` ` at the end of the ID.
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
+                or a dot, space or backslash at the end of the ID.
             policy_cls: The Policy class to use for constructing the new Policy.
                 Note: Only one of `policy_cls` or `policy` must be provided.
             policy: The Policy instance to add to this algorithm. If not None, the
@@ -2204,7 +2286,7 @@ class Algorithm(Trainable):
             FilterManager.synchronize(
                 from_worker.filters,
                 workers,
-                update_remote=self.config["synchronize_filters"],
+                update_remote=self.config.synchronize_filters,
                 timeout_seconds=timeout_seconds,
             )
             logger.debug("synchronized filters: {}".format(from_worker.filters))
@@ -2232,6 +2314,28 @@ class Algorithm(Trainable):
             "(each Algorithm has its own subclass of this class) for more info.\n\n"
             f"The config of this Algorithm is: {config}"
         )
+
+    @override(Trainable)
+    def get_auto_filled_metrics(
+        self,
+        now: Optional[datetime] = None,
+        time_this_iter: Optional[float] = None,
+        debug_metrics_only: bool = False,
+    ) -> dict:
+        # Override this method to make sure, the `config` key of the returned results
+        # contains the proper Tune config dict (instead of an AlgorithmConfig object).
+        auto_filled = super().get_auto_filled_metrics(
+            now, time_this_iter, debug_metrics_only
+        )
+        if "config" not in auto_filled:
+            raise KeyError("`config` key not found in auto-filled results dict!")
+
+        # If `config` key is no dict (but AlgorithmConfig object) ->
+        # make sure, it's a dict to not break Tune APIs.
+        if not isinstance(auto_filled["config"], dict):
+            assert isinstance(auto_filled["config"], AlgorithmConfig)
+            auto_filled["config"] = auto_filled["config"].to_dict()
+        return auto_filled
 
     @classmethod
     def merge_trainer_configs(
@@ -2621,15 +2725,6 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the evaluation call.
         """
-
-        eval_results = {
-            "evaluation": {
-                "episode_reward_max": np.nan,
-                "episode_reward_min": np.nan,
-                "episode_reward_mean": np.nan,
-            }
-        }
-
         eval_func_to_use = (
             self._evaluate_async
             if self.config.enable_async_evaluation
@@ -2726,11 +2821,11 @@ class Algorithm(Trainable):
         Returns False if we need to run offline evaluation
         (with ope.estimate_on_dastaset API) or when local worker is to be used for
         evaluation. Note: We only use estimate_on_dataset API with bandits for now.
-        That is when ope_split_batch_by_episode is False. TODO: In future we will do
-        the same for episodic RL OPE.
+        That is when ope_split_batch_by_episode is False.
+        TODO: In future we will do the same for episodic RL OPE.
         """
         run_offline_evaluation = (
-            eval_config.get("off_policy_estimation_methods")
+            eval_config.off_policy_estimation_methods
             and not eval_config.ope_split_batch_by_episode
         )
         return not run_offline_evaluation and (
@@ -2780,7 +2875,7 @@ class Algorithm(Trainable):
         # Calculate how many (if any) of older, historical episodes we have to add to
         # `episodes_this_iter` in order to reach the required smoothing window.
         episodes_for_metrics = episodes_this_iter[:]
-        missing = self.config["metrics_num_episodes_for_smoothing"] - len(
+        missing = self.config.metrics_num_episodes_for_smoothing - len(
             episodes_this_iter
         )
         # We have to add some older episodes to reach the smoothing window size.
@@ -2788,7 +2883,7 @@ class Algorithm(Trainable):
             episodes_for_metrics = self._episode_history[-missing:] + episodes_this_iter
             assert (
                 len(episodes_for_metrics)
-                <= self.config["metrics_num_episodes_for_smoothing"]
+                <= self.config.metrics_num_episodes_for_smoothing
             )
         # Note that when there are more than `metrics_num_episodes_for_smoothing`
         # episodes in `episodes_for_metrics`, leave them as-is. In this case, we'll
@@ -2798,12 +2893,12 @@ class Algorithm(Trainable):
         # needed.
         self._episode_history.extend(episodes_this_iter)
         self._episode_history = self._episode_history[
-            -self.config["metrics_num_episodes_for_smoothing"] :
+            -self.config.metrics_num_episodes_for_smoothing :
         ]
         results["sampler_results"] = summarize_episodes(
             episodes_for_metrics,
             episodes_this_iter,
-            self.config["keep_per_episode_custom_metrics"],
+            self.config.keep_per_episode_custom_metrics,
         )
         # TODO: Don't dump sampler results into top-level.
         results.update(results["sampler_results"])

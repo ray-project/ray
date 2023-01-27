@@ -244,12 +244,9 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         # If there is a response model, FastAPI creates a copy of the fields.
         # But FastAPI creates the field incorrectly by missing the outer_type_.
         if route.response_model:
-            original_resp_fields = route.response_field.outer_type_.__fields__
-            cloned_resp_fields = (
-                route.secure_cloned_response_field.outer_type_.__fields__
+            route.secure_cloned_response_field.outer_type_ = (
+                route.response_field.outer_type_
             )
-            for key, field in cloned_resp_fields.items():
-                field.outer_type_ = original_resp_fields[key].outer_type_
 
         # Remove endpoints that belong to other class based views.
         serve_cls = getattr(route.endpoint, "_serve_cls", None)

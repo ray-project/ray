@@ -4,7 +4,7 @@ Use fully qualified class-path in your configs:
 e.g. "env": "ray.rllib.examples.env.d4rl_env.halfcheetah_random".
 """
 
-import gym
+import gymnasium as gym
 
 try:
     import d4rl

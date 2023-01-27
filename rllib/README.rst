@@ -74,7 +74,7 @@ Model-free On-policy RL:
 - `Importance Weighted Actor-Learner Architecture (IMPALA) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#impala>`__   
 - `Advantage Actor-Critic (A2C, A3C) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#a3c>`__ 
 - `Vanilla Policy Gradient (PG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#pg>`__ 
-- `Model-agnostic Meta-Learning (contrib/MAML) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maml>`__ 
+- `Model-agnostic Meta-Learning (MAML) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maml>`__
 
 Model-free Off-policy RL:
 
@@ -86,7 +86,7 @@ Model-free Off-policy RL:
 
 Model-based RL: 
 
-- `Image-only Dreamer (contrib/Dreamer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dreamer>`__ 
+- `Image-only Dreamer (Dreamer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dreamer>`__
 - `Model-Based Meta-Policy-Optimization (MB-MPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#mbmpo>`__ 
 
 Derivative-free algorithms: 
@@ -113,8 +113,8 @@ Multi-agent:
 Others:  
 
 - `Single-Player Alpha Zero (AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__
-- `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#curiosity>`__ 
-- `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__ 
+- `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#curiosity>`__
+- `Random encoders (RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__
 - `Fully Independent Learning <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#fil>`__ 
 
 A list of all the algorithms can be found `here <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ .  
@@ -125,7 +125,7 @@ Quick First Experiment
 
 .. code-block:: python
 
-    import gym
+    import gymnasium as gym
     from ray.rllib.algorithms.ppo import PPOConfig
 
 
@@ -151,7 +151,7 @@ Quick First Experiment
             self.cur_obs = None
             self.episode_len = 0
 
-        def reset(self):
+        def reset(self, *, seed=None, options=None):
             """Resets the episode and returns the initial observation of the new one.
             """
             # Reset the episode len.
@@ -159,7 +159,7 @@ Quick First Experiment
             # Sample a random number from our observation space.
             self.cur_obs = self.observation_space.sample()
             # Return initial observation.
-            return self.cur_obs
+            return self.cur_obs, {}
 
         def step(self, action):
             """Takes a single step in the episode given `action`
@@ -167,14 +167,15 @@ Quick First Experiment
             Returns:
                 New observation, reward, done-flag, info-dict (empty).
             """
-            # Set `done` flag after 10 steps.
+            # Set `truncated` flag after 10 steps.
             self.episode_len += 1
-            done = self.episode_len >= 10
+            terminated = False
+            truncated = self.episode_len >= 10
             # r = -abs(obs - action)
             reward = -sum(abs(self.cur_obs - action))
             # Set a new observation (random sample).
             self.cur_obs = self.observation_space.sample()
-            return self.cur_obs, reward, done, {}
+            return self.cur_obs, reward, terminated, truncated, {}
 
 
     # Create an RLlib Algorithm instance from a PPOConfig to learn how to
@@ -220,16 +221,16 @@ and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/exampl
     # (hopefully) learned to "just always repeat the observation!".
     env = ParrotEnv({"parrot_shriek_range": gym.spaces.Box(-3.0, 3.0, (1, ))})
     # Get the initial observation (some value between -10.0 and 10.0).
-    obs = env.reset()
-    done = False
+    obs, info = env.reset()
+    terminated = truncated = False
     total_reward = 0.0
     # Play one episode.
-    while not done:
+    while not terminated and not truncated:
         # Compute a single action, given the current observation
         # from the environment.
         action = algo.compute_single_action(obs)
         # Apply the computed action in the environment.
-        obs, reward, done, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         # Sum up rewards for reporting purposes.
         total_reward += reward
     # Report results.

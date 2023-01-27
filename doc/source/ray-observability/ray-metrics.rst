@@ -69,6 +69,10 @@ allows you to create custom dashboards with your favorite metrics. Ray exports s
 configurations which includes a default dashboard showing some of the most valuable metrics
 for debugging ray applications.
 
+
+Deploying Grafana
+~~~~~~~~~~~~~~~~~
+
 First, `download Grafana <https://grafana.com/grafana/download>`_. Follow the instructions on the download page to download the right binary for your operating system.
 
 Then go to to the location of the binary and run grafana using the built in configuration found in `/tmp/ray/session_latest/metrics/grafana` folder.
@@ -87,6 +91,41 @@ You can then see the default dashboard by going to dashboards -> manage -> Ray -
 .. image:: images/graphs.png
     :align: center
 
+Using an existing Grafana instance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When you want to use existing Grafana instance, before starting your Ray cluster you will need to setup environment variable `RAY_GRAFANA_HOST` with an URL of your Grafana. After starting Ray, you can find Grafana dashboard json at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. `Import this dashboard <https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard>`_ to your Grafana.
+
+If Grafana reports that datasource is not found, you can `add a datasource variable <https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable>`_ and using `JSON model view <https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/modify-dashboard-settings/#view-dashboard-json-model>`_ change all values of `datasource` key in the imported `default_grafana_dashboard.json` to the name of the variable. For example, if the variable name is `data_source`, all `"datasource"` mappings should be:
+
+.. code-block:: json
+
+  "datasource": {
+    "type": "prometheus",
+    "uid": "$data_source"
+  }
+
+When existing Grafana instance requires user authentication, the following settings have to be in its `configuration file <https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/>`_ to correctly embed in Ray dashboard:
+
+.. code-block:: ini
+
+  [security]
+  allow_embedding = true
+  cookie_secure = true
+  cookie_samesite = none
+
+If Grafana is exposed via nginx ingress on Kubernetes cluster, the following line should be present in the Grafana ingress annotation:
+
+.. code-block:: yaml
+
+  nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options SAMEORIGIN always;
+
+When both Grafana and Ray cluster are on the same Kubernetes cluster, it is important to set `RAY_GRAFANA_HOST` to the external URL of the Grafana ingress. For successful embedding, `RAY_GRAFANA_HOST` needs to be accessible to both Ray cluster backend and Ray dashboard frontend:
+
+* On the backend, *Ray cluster head* does health checks on Grafana. Hence `RAY_GRAFANA_HOST` needs to be accessible in the Kubernetes pod which is running the head node.
+* When accessing *Ray dashboard* from the browser, frontend embeds Grafana dashboard using the URL specified in `RAY_GRAFANA_HOST`. Hence `RAY_GRAFANA_HOST` needs to be accessible from the browser as well.
+
 .. _system-metrics:
 
 System Metrics
@@ -104,58 +143,61 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - Labels
      - Description
    * - `ray_tasks`
-     - `Name`, `State`
-     - Current number of tasks (both remote functions and actor calls) by state. The State label (e.g., RUNNING, FINISHED, FAILED) describes the state of the task. See `rpc::TaskState <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/common.proto#L583>`_ for more information. The function/method name is available as the Name label.
+     - `Name`, `State`, `IsRetry`
+     - Current number of tasks (both remote functions and actor calls) by state. The State label (e.g., RUNNING, FINISHED, FAILED) describes the state of the task. See `rpc::TaskState <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/common.proto#L583>`_ for more information. The function/method name is available as the Name label. If the task was retried due to failure or reconstruction, the IsRetry label will be set to "1", otherwise "0".
    * - `ray_actors`
      - `Name`, `State`
      - Current number of actors in a particular state. The State label is described by `rpc::ActorTableData <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L85>`_ proto in gcs.proto. The actor class name is available in the Name label.
    * - `ray_resources`
-     - `Name`, `State`
+     - `Name`, `State`, `InstanceId`
      - Logical resource usage for each node of the cluster. Each resource has some quantity that is `in either <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L188>`_ USED state vs AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
    * - `ray_object_store_memory`
-     - `Location`, `ObjectState`
+     - `Location`, `ObjectState`, `InstanceId`
      - Object store memory usage in bytes, `broken down <https://github.com/ray-project/ray/blob/9eab65ed77bdd9907989ecc3e241045954a09cb4/src/ray/stats/metric_defs.cc#L231>`_ by logical Location (SPILLED, IN_MEMORY, etc.), and ObjectState (UNSEALED, SEALED).
    * - `ray_placement_groups`
      - `State`
      - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
    * - `ray_node_cpu_utilization`
-     - N/A
+     - `InstanceId`
      - The CPU utilization per node as a percentage quantity (0..100). This should be scaled by the number of cores per node to convert the units into cores.
    * - `ray_node_cpu_count`
-     - N/A
+     - `InstanceId`
      - The number of CPU cores per node.
    * - `ray_node_gpus_utilization`
-     - N/A
+     - `InstanceId`
      - The GPU utilization per node as a percentage quantity (0..NGPU*100). Note that unlike ray_node_cpu_utilization, this quantity is pre-multiplied by the number of GPUs per node.
    * - `ray_node_disk_usage`
-     - N/A
+     - `InstanceId`
      - The amount of disk space used per node, in bytes.
    * - `ray_node_disk_free`
-     - N/A
+     - `InstanceId`
      - The amount of disk space available per node, in bytes.
    * - `ray_node_disk_io_write_speed`
-     - N/A
+     - `InstanceId`
      - The disk write throughput per node, in bytes per second.
    * - `ray_node_disk_io_read_speed`
-     - N/A
+     - `InstanceId`
      - The disk read throughput per node, in bytes per second.
    * - `ray_node_mem_used`
-     - N/A
+     - `InstanceId`
      - The amount of physical memory used per node, in bytes.
    * - `ray_node_mem_total`
-     - N/A
+     - `InstanceId`
      - The amount of physical memory available per node, in bytes.
    * - `ray_component_uss_mb`
-     - `Component`
-     - The measured unique set size in megabytes, broken down by logical Ray component (e.g., raylet, gcs, workers).
+     - `Component`, `InstanceId`
+     - The measured unique set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_cpu_percentage`
+     - `Component`, `InstanceId`
+     - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_node_gram_used`
-     - N/A
+     - `InstanceId`
      - The amount of GPU memory used per node, in bytes.
    * - `ray_node_network_receive_speed`
-     - N/A
+     - `InstanceId`
      - The network receive throughput per node, in bytes per second.
    * - `ray_node_network_send_speed`
-     - N/A
+     - `InstanceId`
      - The network send throughput per node, in bytes per second.
    * - `ray_cluster_active_nodes`
      - `node_type`
@@ -237,3 +279,9 @@ When downloading binaries from the internet, Mac requires that the binary be sig
 Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
 
 See `these instructions <https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac>`_ on how to override the restriction and install or run the application.
+
+Grafana dashboards are not embedded in the Ray dashboard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you're getting error that `RAY_GRAFANA_HOST` is not setup despite you've set it up, please check:
+That you've included protocol in the URL (e.g. `http://your-grafana-url.com` instead of `your-grafana-url.com`).
+Also, make sure that url doesn't have trailing slash (e.g. `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).

@@ -7,6 +7,7 @@ This section helps you debug and monitor your Serve applications by:
 * viewing the Ray dashboard
 * using Ray logging and Loki
 * inspecting built-in Ray Serve metrics
+* exporting metrics into Arize platform
 
 ## Ray dashboard
 
@@ -97,6 +98,8 @@ This causes the HTTP proxy and deployment replica to print log statements to the
 ```
 
 A copy of these logs are stored at `/tmp/ray/session_latest/logs/serve/`. You can parse these stored logs with a logging stack such as ELK or [Loki](serve-logging-loki) to search them by deployment or replica. 
+
+Serve supports [Log Rotation](ray-log-rotation) of these logs through setting the environment variables `RAY_ROTATION_MAX_BYTES` and `RAY_ROTATION_BACKUP_COUNT`.
 
 To silence the replica-level logs or otherwise configure logging, configure the `"ray.serve"` logger **inside the deployment constructor**:
 
@@ -326,3 +329,10 @@ ray_my_counter{..., deployment="MyDeployment"} 5.0
 ```
 
 See the [Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.
+
+## Exporting metrics into Arize
+Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platforms.
+
+[Arize](https://docs.arize.com/arize/) is a machine learning observability platform which can help you to monitor real-time model performance, root cause model failures/performance degradation using explainability & slice analysis and surface drift, data quality, data consistency issues etc.
+
+To integrate with Arize, you can directly add Arize client code into your Serve deployment code. ([Example code](https://docs.arize.com/arize/integrations/integrations/anyscale-ray-serve))

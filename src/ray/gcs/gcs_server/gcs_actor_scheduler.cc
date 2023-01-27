@@ -49,7 +49,8 @@ GcsActorScheduler::GcsActorScheduler(
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled() &&
+      !actor->GetCreationTaskSpecification().GetRequiredResources().IsEmpty()) {
     ScheduleByGcs(actor);
   } else {
     ScheduleByRaylet(actor);
@@ -93,7 +94,10 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   };
 
   // Queue and schedule the actor locally (gcs).
-  cluster_task_manager_->QueueAndScheduleTask(actor->GetCreationTaskSpecification(),
+  const auto &owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
+  RayTask task(actor->GetCreationTaskSpecification(),
+               owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
+  cluster_task_manager_->QueueAndScheduleTask(task,
                                               /*grant_or_reject*/ false,
                                               /*is_selected_based_on_locality*/ false,
                                               /*reply*/ reply.get(),
@@ -408,6 +412,11 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
                                       actor->GetActorTableData(),
                                       [this, actor, leased_worker](Status status) {
                                         RAY_CHECK_OK(status);
+                                        if (actor->GetState() ==
+                                            rpc::ActorTableData::DEAD) {
+                                          // Actor has already been killed.
+                                          return;
+                                        }
                                         CreateActorOnWorker(actor, leased_worker);
                                       }));
   }
@@ -435,7 +444,6 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   RAY_LOG(INFO) << "Start creating actor " << actor->GetActorID() << " on worker "
                 << worker->GetWorkerID() << " at node " << actor->GetNodeID()
                 << ", job id = " << actor->GetActorID().JobId();
-
   std::unique_ptr<rpc::PushTaskRequest> request(new rpc::PushTaskRequest());
   request->set_intended_worker_id(worker->GetWorkerID().Binary());
   request->mutable_task_spec()->CopyFrom(

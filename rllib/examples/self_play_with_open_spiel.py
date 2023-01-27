@@ -19,62 +19,79 @@ be played by the user against the "main" agent on the command line.
 """
 
 import argparse
-import numpy as np
 import os
-import pyspiel
-from open_spiel.python.rl_environment import Environment
 import sys
+
+import numpy as np
 
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import CLIReporter, register_env
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--framework",
-    choices=["tf", "tf2", "torch"],
-    default="tf",
-    help="The DL framework specifier.",
-)
-parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument("--num-workers", type=int, default=2)
-parser.add_argument(
-    "--from-checkpoint",
-    type=str,
-    default=None,
-    help="Full path to a checkpoint file for restoring a previously saved "
-    "Algorithm state.",
-)
-parser.add_argument(
-    "--env", type=str, default="connect_four", choices=["markov_soccer", "connect_four"]
-)
-parser.add_argument(
-    "--stop-iters", type=int, default=200, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-timesteps", type=int, default=10000000, help="Number of timesteps to train."
-)
-parser.add_argument(
-    "--win-rate-threshold",
-    type=float,
-    default=0.95,
-    help="Win-rate at which we setup another opponent by freezing the "
-    "current main policy and playing against a uniform distribution "
-    "of previously frozen 'main's from here on.",
-)
-parser.add_argument(
-    "--num-episodes-human-play",
-    type=int,
-    default=10,
-    help="How many episodes to play against the user on the command "
-    "line after training has finished.",
-)
-args = parser.parse_args()
+open_spiel = try_import_open_spiel(error=True)
+pyspiel = try_import_pyspiel(error=True)
+
+# Import after try_import_open_spiel, so we can error out with hints
+from open_spiel.python.rl_environment import Environment  # noqa: E402
+
+
+def get_cli_args():
+    """Create CLI parser and return parsed arguments"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--framework",
+        choices=["tf", "tf2", "torch"],
+        default="tf",
+        help="The DL framework specifier.",
+    )
+    parser.add_argument("--num-cpus", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument(
+        "--from-checkpoint",
+        type=str,
+        default=None,
+        help="Full path to a checkpoint file for restoring a previously saved "
+        "Algorithm state.",
+    )
+    parser.add_argument(
+        "--env",
+        type=str,
+        default="connect_four",
+        choices=["markov_soccer", "connect_four"],
+    )
+    parser.add_argument(
+        "--stop-iters", type=int, default=200, help="Number of iterations to train."
+    )
+    parser.add_argument(
+        "--stop-timesteps",
+        type=int,
+        default=10000000,
+        help="Number of timesteps to train.",
+    )
+    parser.add_argument(
+        "--win-rate-threshold",
+        type=float,
+        default=0.95,
+        help="Win-rate at which we setup another opponent by freezing the "
+        "current main policy and playing against a uniform distribution "
+        "of previously frozen 'main's from here on.",
+    )
+    parser.add_argument(
+        "--num-episodes-human-play",
+        type=int,
+        default=10,
+        help="How many episodes to play against the user on the command "
+        "line after training has finished.",
+    )
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+    return args
 
 
 def ask_user_for_action(time_step):
@@ -166,6 +183,8 @@ class SelfPlayCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
+
+    args = get_cli_args()
     ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
     register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))

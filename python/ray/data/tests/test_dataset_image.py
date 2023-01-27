@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Dict
 
 import numpy as np
 import pyarrow as pa
@@ -123,8 +124,8 @@ class TestReadImages:
         dataset = ray.data.read_images("example://image-datasets/simple")
         transform = transforms.ToTensor()
 
-        def preprocess(batch):
-            return np.stack([transform(image) for image in batch])
+        def preprocess(batch: Dict[str, np.ndarray]):
+            return np.stack([transform(image) for image in batch["image"]])
 
         dataset = dataset.map_batches(preprocess, batch_format="numpy")
 

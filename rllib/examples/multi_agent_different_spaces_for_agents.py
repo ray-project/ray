@@ -12,12 +12,13 @@ Run this example with defaults (using Tune):
 """
 
 import argparse
-import gym
+import gymnasium as gym
 import os
 
 import ray
 from ray import air, tune
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 class BasicMultiAgentMultiSpaces(MultiAgentEnv):
@@ -35,36 +36,41 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
         self.agents = {"agent0", "agent1"}
         self._agent_ids = set(self.agents)
 
-        self.dones = set()
+        self.terminateds = set()
+        self.truncateds = set()
 
         # Provide full (preferred format) observation- and action-spaces as Dicts
         # mapping agent IDs to the individual agents' spaces.
-        self._spaces_in_preferred_format = True
+        self._obs_space_in_preferred_format = True
         self.observation_space = gym.spaces.Dict(
             {
                 "agent0": gym.spaces.Box(low=-1.0, high=1.0, shape=(10,)),
                 "agent1": gym.spaces.Box(low=-1.0, high=1.0, shape=(20,)),
             }
         )
+        self._action_space_in_preferred_format = True
         self.action_space = gym.spaces.Dict(
             {"agent0": gym.spaces.Discrete(2), "agent1": gym.spaces.Discrete(3)}
         )
 
         super().__init__()
 
-    def reset(self):
-        self.dones = set()
-        return {i: self.observation_space[i].sample() for i in self.agents}
+    def reset(self, *, seed=None, options=None):
+        self.terminateds = set()
+        self.truncateds = set()
+        return {i: self.observation_space[i].sample() for i in self.agents}, {}
 
     def step(self, action_dict):
-        obs, rew, done, info = {}, {}, {}, {}
+        obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         for i, action in action_dict.items():
             obs[i] = self.observation_space[i].sample()
             rew[i] = 0.0
-            done[i] = False
+            terminated[i] = False
+            truncated[i] = False
             info[i] = {}
-        done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
+        terminated["__all__"] = len(self.terminateds) == len(self.agents)
+        truncated["__all__"] = len(self.truncteds) == len(self.agents)
+        return obs, rew, terminated, truncated, info
 
 
 def get_cli_args():
@@ -73,7 +79,7 @@ def get_cli_args():
 
     # general args
     parser.add_argument(
-        "--run", type=str, default="APPO", help="The RLlib-registered algorithm to use."
+        "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
     )
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
@@ -120,31 +126,34 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
+    config = (
+        AlgorithmConfig()
+        .environment(env=BasicMultiAgentMultiSpaces)
+        .resources(
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        )
+        .training(train_batch_size=1024)
+        .rollouts(num_rollout_workers=1, rollout_fragment_length="auto")
+        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .multi_agent(
+            # Use a simple set of policy IDs. Spaces for the individual policies
+            # will be inferred automatically using reverse lookup via the
+            # `policy_mapping_fn` and the env provided spaces for the different
+            # agents. Alternatively, you could use:
+            # policies: {main0: PolicySpec(...), main1: PolicySpec}
+            policies={"main0", "main1"},
+            # Simple mapping fn, mapping agent0 to main0 and agent1 to main1.
+            policy_mapping_fn=(lambda aid, episode, worker, **kw: f"main{aid[-1]}"),
+            # Only train main0.
+            policies_to_train=["main0"],
+        )
+    )
+
     tune.Tuner(
         args.run,
         run_config=air.RunConfig(
             stop=stop,
         ),
-        param_space={
-            "env": BasicMultiAgentMultiSpaces,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "num_workers": 1,
-            "multiagent": {
-                # Use a simple set of policy IDs. Spaces for the individual policies
-                # will be inferred automatically using reverse lookup via the
-                # `policy_mapping_fn` and the env provided spaces for the different
-                # agents. Alternatively, you could use:
-                # policies: {main0: PolicySpec(...), main1: PolicySpec}
-                "policies": {"main0", "main1"},
-                # Simple mapping fn, mapping agent0 to main0 and agent1 to main1.
-                "policy_mapping_fn": (
-                    lambda aid, episode, worker, **kw: f"main{aid[-1]}"
-                ),
-                # Only train main0.
-                "policies_to_train": ["main0"],
-            },
-            "framework": args.framework,
-            "eager_tracing": args.eager_tracing,
-        },
+        param_space=config,
     ).fit()

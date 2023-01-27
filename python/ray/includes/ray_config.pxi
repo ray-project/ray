@@ -15,20 +15,8 @@ cdef class Config:
         return RayConfig.instance().handler_warning_timeout_ms()
 
     @staticmethod
-    def raylet_heartbeat_period_milliseconds():
-        return RayConfig.instance().raylet_heartbeat_period_milliseconds()
-
-    @staticmethod
     def debug_dump_period_milliseconds():
         return RayConfig.instance().debug_dump_period_milliseconds()
-
-    @staticmethod
-    def num_heartbeats_timeout():
-        return RayConfig.instance().num_heartbeats_timeout()
-
-    @staticmethod
-    def num_heartbeats_warning():
-        return RayConfig.instance().num_heartbeats_warning()
 
     @staticmethod
     def object_timeout_milliseconds():
@@ -138,10 +126,6 @@ cdef class Config:
         return RayConfig.instance().REDIS_SERVER_NAME()
 
     @staticmethod
-    def pull_based_healthcheck():
-        return RayConfig.instance().pull_based_healthcheck()
-
-    @staticmethod
     def health_check_initial_delay_ms():
         return RayConfig.instance().health_check_initial_delay_ms()
 
@@ -158,6 +142,21 @@ cdef class Config:
         return RayConfig.instance().health_check_failure_threshold()
 
     @staticmethod
-    def memory_monitor_interval_ms():
-        return (RayConfig.instance()
-                .memory_monitor_interval_ms())
+    def memory_monitor_refresh_ms():
+        return (RayConfig.instance().memory_monitor_refresh_ms())
+
+    @staticmethod
+    def grpc_keepalive_time_ms():
+        return RayConfig.instance().grpc_keepalive_time_ms()
+
+    @staticmethod
+    def grpc_keepalive_timeout_ms():
+        return RayConfig.instance().grpc_keepalive_timeout_ms()
+
+    @staticmethod
+    def grpc_client_keepalive_time_ms():
+        return RayConfig.instance().grpc_client_keepalive_time_ms()
+
+    @staticmethod
+    def grpc_client_keepalive_timeout_ms():
+        return RayConfig.instance().grpc_client_keepalive_timeout_ms()

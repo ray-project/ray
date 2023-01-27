@@ -44,7 +44,7 @@ def handle_result(
         target_time = 900 if not was_smoke_test else 400
     elif test_name == "result_throughput_cluster":
         target_terminated = 1000
-        target_time = 130
+        target_time = 135
     elif test_name == "result_throughput_single_node":
         target_terminated = 96
         target_time = 120

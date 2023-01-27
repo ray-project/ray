@@ -122,13 +122,13 @@ def get_all_modules(module_type):
         except ModuleNotFoundError as e:
             logger.info(
                 f"Module {name} cannot be loaded because "
-                "we cannot import all dependencies. Download "
-                "`pip install ray[default]` for the full "
+                "we cannot import all dependencies. Install this module using "
+                "`pip install 'ray[default]'` for the full "
                 f"dashboard functionality. Error: {e}"
             )
             if not should_only_load_minimal_modules:
                 logger.info(
-                    "Although `pip install ray[default] is downloaded, "
+                    "Although `pip install 'ray[default]'` is downloaded, "
                     "module couldn't be imported`"
                 )
                 raise e

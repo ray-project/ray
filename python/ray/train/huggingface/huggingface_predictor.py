@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING, List, Optional, Type, Union
 
 import pandas as pd
@@ -11,10 +12,35 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.train.predictor import Predictor
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+try:
+    import torch
+
+    torch_get_gpus = torch.cuda.device_count
+except ImportError:
+
+    def torch_get_gpus():
+        return 0
+
+
+try:
+    import tensorflow
+
+    def tf_get_gpus():
+        return len(tensorflow.config.list_physical_devices("GPU"))
+
+except ImportError:
+
+    def tf_get_gpus():
+        return 0
+
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -27,14 +53,30 @@ class HuggingFacePredictor(Predictor):
         pipeline: The Transformers pipeline to use for inference.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
+        use_gpu: If set, the model will be moved to GPU on instantiation and
+            prediction happens on GPU.
     """
 
     def __init__(
         self,
         pipeline: Optional[Pipeline] = None,
         preprocessor: Optional["Preprocessor"] = None,
+        use_gpu: bool = False,
     ):
         self.pipeline = pipeline
+        self.use_gpu = use_gpu
+
+        num_gpus = max(torch_get_gpus(), tf_get_gpus())
+        if not use_gpu and num_gpus > 0 and log_once("hf_predictor_not_using_gpu"):
+            logger.warning(
+                "You have `use_gpu` as False but there are "
+                f"{num_gpus} GPUs detected on host where "
+                "prediction will only use CPU. Please consider explicitly "
+                "setting `HuggingFacePredictor(use_gpu=True)` or "
+                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                "enable GPU prediction."
+            )
+
         super().__init__(preprocessor)
 
     def __repr__(self):
@@ -65,7 +107,8 @@ class HuggingFacePredictor(Predictor):
             **pipeline_kwargs: Any kwargs to pass to the pipeline
                 initialization. If ``pipeline`` is None, this must contain
                 the 'task' argument. Cannot contain 'model'. Can be used
-                to override the tokenizer with 'tokenizer'.
+                to override the tokenizer with 'tokenizer'. If ``use_gpu`` is
+                True, 'device' will be set to 0 by default.
         """
         if not pipeline_cls and "task" not in pipeline_kwargs:
             raise ValueError(
@@ -85,6 +128,9 @@ class HuggingFacePredictor(Predictor):
     def _predict(
         self, data: Union[list, pd.DataFrame], **pipeline_call_kwargs
     ) -> pd.DataFrame:
+        if self.use_gpu:
+            # default to using the GPU with the first index
+            pipeline_call_kwargs.setdefault("device", 0)
         ret = self.pipeline(data, **pipeline_call_kwargs)
         # Remove unnecessary lists
         try:
@@ -134,7 +180,8 @@ class HuggingFacePredictor(Predictor):
                 data to use as features to predict on. If None, use all
                 columns.
             **pipeline_call_kwargs: additional kwargs to pass to the
-                ``pipeline`` object.
+                ``pipeline`` object. If ``use_gpu`` is True, 'device'
+                will be set to 0 by default.
 
         Examples:
             >>> import pandas as pd

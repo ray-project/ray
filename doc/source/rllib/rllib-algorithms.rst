@@ -93,7 +93,7 @@ with the only difference being the ``beta`` parameter force-set to 0.0. This mak
 BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
 BC requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole-bc.yaml>`__
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole-bc.yaml>`__
 
 **BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -113,7 +113,7 @@ The latter becomes increasingly important during bootstrapping in the bellman eq
 To mitigate these issues, CRR implements a simple and yet powerful idea of "value-filtered regression".
 The key idea is to use a learned critic to filter-out the non-promising transitions from the replay dataset. For more details, please refer to the paper (see link above).
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/cartpole-v0-crr.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/pendulum-v1-crr.yaml>`__
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/cartpole-v1-crr.yaml>`__, `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/crr/pendulum-v1-crr.yaml>`__
 
 .. autoclass:: ray.rllib.algorithms.crr.crr.CRRConfig
    :members: training
@@ -152,7 +152,7 @@ MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for
 When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning (see `BC`_).
 MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-marwil.yaml>`__
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-marwil.yaml>`__
 
 **MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -203,7 +203,7 @@ Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized
 
     DD-PPO architecture (both sampling and learning are done on worker GPUs)
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddppo/cartpole-ddppo.yaml>`__, `BreakoutNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddppo/atari-ddppo.yaml>`__
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddppo/cartpole-ddppo.yaml>`__, `BreakoutNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ddppo/atari-ddppo.yaml>`__
 
 **DDPPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -384,7 +384,7 @@ We include a vanilla policy gradients implementation as an example algorithm.
 
     Policy gradients architecture (same as A2C)
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pg/cartpole-pg.yaml>`__
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pg/cartpole-pg.yaml>`__
 
 **PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -466,7 +466,7 @@ Recurrent Replay Distributed DQN (R2D2)
 `[paper] <https://openreview.net/pdf?id=r1lyTjAqYX>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/r2d2/r2d2.py>`__
 R2D2 can be scaled by increasing the number of workers. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default.
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/r2d2/stateless-cartpole-r2d2.yaml>`__
+Tuned examples: `Stateless CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/r2d2/stateless-cartpole-r2d2.yaml>`__
 
 .. _dqn:
 
@@ -567,7 +567,7 @@ Tuned examples (continuous actions):
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
 `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__,
 Tuned examples (discrete actions):
-`CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/cartpole-sac.yaml>`__
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/cartpole-sac.yaml>`__
 
 **MuJoCo results @3M steps:** `more details <https://github.com/ray-project/rl-experiments>`__
 
@@ -628,7 +628,7 @@ Tuned examples (continuous actions):
 `HalfCheetah <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/halfcheetah-mbmpo.yaml>`__,
 `Hopper <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/hopper-mbmpo.yaml>`__,
 Tuned examples (discrete actions):
-`CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/cartpole-mbmpo.yaml>`__
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/cartpole-mbmpo.yaml>`__
 
 **MuJoCo results @100K steps:** `more details <https://github.com/ray-project/rl-experiments>`__
 
@@ -655,7 +655,7 @@ Augmented Random Search (ARS)
 `[paper] <https://arxiv.org/abs/1803.07055>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ars/ars.py>`__
 ARS is a random search method for training linear policies for continuous control problems. Code here is adapted from https://github.com/modestyachts/ARS to integrate with RLlib APIs.
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ars/cartpole-ars.yaml>`__, `Swimmer-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ars/swimmer-ars.yaml>`__
+Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ars/cartpole-ars.yaml>`__, `Swimmer-v2 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ars/swimmer-ars.yaml>`__
 
 **ARS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 

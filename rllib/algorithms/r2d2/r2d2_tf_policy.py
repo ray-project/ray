@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional, Tuple
 
-import gym
+import gymnasium as gym
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     clip_gradients,
@@ -112,7 +112,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
         policy.target_q_func_vars = policy.target_model.variables()
 
     actions = tf.cast(train_batch[SampleBatch.ACTIONS], tf.int64)
-    dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)
+    dones = tf.cast(train_batch[SampleBatch.TERMINATEDS], tf.float32)
     rewards = train_batch[SampleBatch.REWARDS]
     weights = tf.cast(train_batch[PRIO_WEIGHTS], tf.float32)
 
@@ -236,13 +236,13 @@ class ComputeTDErrorMixin:
 
     def __init__(self):
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             input_dict = self._lazy_tensor_dict({SampleBatch.CUR_OBS: obs_t})
             input_dict[SampleBatch.ACTIONS] = act_t
             input_dict[SampleBatch.REWARDS] = rew_t
             input_dict[SampleBatch.NEXT_OBS] = obs_tp1
-            input_dict[SampleBatch.DONES] = done_mask
+            input_dict[SampleBatch.TERMINATEDS] = terminateds_mask
             input_dict[PRIO_WEIGHTS] = importance_weights
 
             # Do forward pass on loss to update td error attribute

@@ -1,11 +1,18 @@
 import { makeStyles } from "@material-ui/core";
+import { Alert } from "@material-ui/lab";
 import dayjs from "dayjs";
-import React from "react";
+import React, { useContext } from "react";
+import { Link } from "react-router-dom";
+import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import { UnifiedJob } from "../../type/job";
+import ActorList from "../actor/ActorList";
+import PlacementGroupList from "../state/PlacementGroup";
+import TaskList from "../state/task";
 
 import { useJobDetail } from "./hook/useJobDetail";
 import { useJobProgress } from "./hook/useJobProgress";
@@ -21,11 +28,17 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
-const JobDetailPage = () => {
+type JobDetailChartsPageProps = {
+  newIA?: boolean;
+};
+
+export const JobDetailChartsPage = ({
+  newIA = false,
+}: JobDetailChartsPageProps) => {
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
-  const { progress } = useJobProgress(jobId);
+  const { progress, error, driverExists } = useJobProgress(jobId);
 
   if (!job) {
     return (
@@ -39,6 +52,54 @@ const JobDetailPage = () => {
       </div>
     );
   }
+
+  const tasksSectionContents = (() => {
+    if (!driverExists) {
+      return <TaskProgressBar />;
+    }
+    const { status } = job;
+    if (!progress || error) {
+      return (
+        <Alert severity="warning">
+          No tasks visualizations because prometheus is not detected. Please
+          make sure prometheus is running and refresh this page. See:{" "}
+          <a
+            href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
+          </a>
+          .
+          <br />
+          If you are hosting prometheus on a separate machine or using a
+          non-default port, please set the RAY_PROMETHEUS_HOST env var to point
+          to your prometheus server when launching ray.
+        </Alert>
+      );
+    }
+    if (status === "SUCCEEDED" || status === "FAILED") {
+      return (
+        <React.Fragment>
+          <TaskProgressBar {...progress} showAsComplete />
+          <JobTaskNameProgressTable
+            className={classes.taskProgressTable}
+            jobId={jobId}
+          />
+        </React.Fragment>
+      );
+    } else {
+      return (
+        <React.Fragment>
+          <TaskProgressBar {...progress} />
+          <JobTaskNameProgressTable
+            className={classes.taskProgressTable}
+            jobId={jobId}
+          />
+        </React.Fragment>
+      );
+    }
+  })();
 
   return (
     <div className={classes.root}>
@@ -105,21 +166,67 @@ const JobDetailPage = () => {
                   : "-",
               },
             },
+            {
+              label: "Logs",
+              content: <JobLogsLink job={job} newIA />,
+            },
           ]}
         />
       </TitleCard>
-      <TitleCard title="Tasks">
-        <TaskProgressBar
-          {...progress}
-          showAsComplete={job.status === "SUCCEEDED" || job.status === "FAILED"}
-        />
-        <JobTaskNameProgressTable
-          className={classes.taskProgressTable}
-          jobId={jobId}
-        />
+      <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
+      <TitleCard title="Task Table">
+        <TaskList jobId={jobId} />
+      </TitleCard>
+      <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
+      <TitleCard title="Placement Groups">
+        <PlacementGroupList jobId={jobId} />
       </TitleCard>
     </div>
   );
 };
 
-export default JobDetailPage;
+type JobLogsLinkProps = {
+  job: Pick<
+    UnifiedJob,
+    | "driver_agent_http_address"
+    | "driver_info"
+    | "job_id"
+    | "submission_id"
+    | "type"
+  >;
+  newIA?: boolean;
+};
+
+export const JobLogsLink = ({
+  job: { driver_agent_http_address, driver_info, job_id, submission_id, type },
+  newIA = false,
+}: JobLogsLinkProps) => {
+  const { ipLogMap } = useContext(GlobalContext);
+
+  let link: string | undefined;
+
+  const baseLink = newIA ? "/new/logs" : "/log";
+
+  if (driver_agent_http_address) {
+    link = `${baseLink}/${encodeURIComponent(
+      `${driver_agent_http_address}/logs`,
+    )}`;
+  } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
+    link = `${baseLink}/${encodeURIComponent(
+      ipLogMap[driver_info.node_ip_address],
+    )}`;
+  }
+
+  if (link) {
+    link += `?fileName=${
+      type === "DRIVER" ? job_id : `driver-${submission_id}`
+    }`;
+    return (
+      <Link to={link} target="_blank">
+        Log
+      </Link>
+    );
+  }
+
+  return <span>-</span>;
+};

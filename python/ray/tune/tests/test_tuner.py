@@ -13,16 +13,17 @@ from sklearn.utils import shuffle
 
 from ray import tune
 from ray.air import session
-from ray.air.config import RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig, FailureConfig
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
 from ray.data.block import BlockMetadata
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
-from ray.tune import Callback, TuneError, CLIReporter
+from ray.tune import Callback, CLIReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -207,7 +208,7 @@ class TunerTest(unittest.TestCase):
             # As the unit test only has access to 4 CPUs on Buildkite.
             _tuner_kwargs={"max_concurrent_trials": 1},
         )
-        with self.assertRaises(TuneError):
+        with self.assertRaises(RuntimeError):
             tuner.fit()
 
         # Test resume
@@ -233,6 +234,46 @@ class TunerTest(unittest.TestCase):
         assert len(results) == 2
         for i in range(2):
             assert results[i].error
+
+    def test_tuner_fail_fast_true(self):
+        trainer = FailingTrainer()
+        param_space = {
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2]))
+        }
+
+        failure_config = FailureConfig(fail_fast=True)
+
+        tuner = Tuner(
+            trainable=trainer,
+            run_config=RunConfig(
+                name="test_tuner_trainer_fail", failure_config=failure_config
+            ),
+            param_space=param_space,
+            tune_config=TuneConfig(mode="max", metric="iteration"),
+        )
+
+        results = tuner.fit()
+        errors = [result.error for result in results if result.error]
+        assert len(errors) == 1
+
+    def test_tuner_fail_fast_raise(self):
+        trainer = FailingTrainer()
+        param_space = {
+            "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2]))
+        }
+
+        failure_config = FailureConfig(fail_fast="raise")
+
+        tuner = Tuner(
+            trainable=trainer,
+            run_config=RunConfig(
+                name="test_tuner_trainer_fail", failure_config=failure_config
+            ),
+            param_space=param_space,
+            tune_config=TuneConfig(mode="max", metric="iteration"),
+        )
+        with self.assertRaises(RuntimeError):
+            tuner.fit()
 
     def test_tuner_with_torch_trainer(self):
         """Test a successful run using torch trainer."""
@@ -311,15 +352,63 @@ def test_tuner_api_kwargs(shutdown_only, params_expected):
     assert assertion(caught_kwargs)
 
 
-def test_tuner_fn_trainable_checkpoint_at_end_true(shutdown_only):
+def test_tuner_fn_trainable_invalid_checkpoint_config(shutdown_only):
     tuner = Tuner(
-        lambda config, checkpoint_dir: 1,
+        lambda config: 1,
         run_config=ray.air.RunConfig(
             checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=True)
         ),
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(ValueError):
         tuner.fit()
+
+    tuner = Tuner(
+        lambda config: 1,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_frequency=1)
+        ),
+    )
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+
+def test_tuner_trainer_checkpoint_config(shutdown_only):
+    custom_training_loop_trainer = DataParallelTrainer(
+        train_loop_per_worker=lambda config: 1
+    )
+    tuner = Tuner(
+        custom_training_loop_trainer,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=True)
+        ),
+    )
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+    tuner = Tuner(
+        custom_training_loop_trainer,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_frequency=1)
+        ),
+    )
+    with pytest.raises(ValueError):
+        tuner.fit()
+
+    handles_checkpoints_trainer = XGBoostTrainer(
+        label_column="target",
+        params={},
+        datasets={"train": ray.data.from_items(list(range(5)))},
+    )
+    tuner = Tuner(
+        handles_checkpoints_trainer,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(
+                checkpoint_at_end=True, checkpoint_frequency=1
+            )
+        ),
+    )._local_tuner
+    # Check that validation passes for a Trainer that does handle checkpointing
+    tuner._get_tune_run_arguments(tuner.converted_trainable)
 
 
 def test_tuner_fn_trainable_checkpoint_at_end_false(shutdown_only):
@@ -340,6 +429,18 @@ def test_tuner_fn_trainable_checkpoint_at_end_none(shutdown_only):
         ),
     )
     tuner.fit()
+
+
+def test_nonserializable_trainable(capsys):
+    import threading
+
+    lock = threading.Lock()
+    with pytest.raises(TypeError):
+        Tuner(lambda config: print(lock))
+
+    # Check that the `inspect_serializability` trace was printed
+    out, _ = capsys.readouterr()
+    assert "was found to be non-serializable." in out
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])

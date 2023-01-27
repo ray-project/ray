@@ -6,6 +6,7 @@ import { TaskProgress } from "../../type/job";
 
 export type TaskProgressBarProps = TaskProgress & {
   showAsComplete?: boolean;
+  showTooltip?: boolean;
 };
 
 export const TaskProgressBar = ({
@@ -17,6 +18,7 @@ export const TaskProgressBar = ({
   numFailed = 0,
   numUnknown = 0,
   showAsComplete = false,
+  showTooltip = true,
 }: TaskProgressBarProps) => {
   const theme = useTheme<Theme>();
   if (showAsComplete) {
@@ -42,6 +44,7 @@ export const TaskProgressBar = ({
             color: theme.palette.error.main,
           },
         ]}
+        showTooltip={showTooltip}
       />
     );
   } else {

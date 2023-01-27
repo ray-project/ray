@@ -90,22 +90,7 @@ class GrpcServer {
   void Run();
 
   // Shutdown this server
-  void Shutdown() {
-    if (!is_closed_) {
-      // Shutdown the server with an immediate deadline.
-      // TODO(edoakes): do we want to do this in all cases?
-      server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
-      for (const auto &cq : cqs_) {
-        cq->Shutdown();
-      }
-      for (auto &polling_thread : polling_threads_) {
-        polling_thread.join();
-      }
-      is_closed_ = true;
-      RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
-      server_.reset();
-    }
-  }
+  void Shutdown();
 
   /// Get the port of this gRPC server.
   int GetPort() const { return port_; }

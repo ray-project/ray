@@ -1,9 +1,9 @@
-import gym
+import gymnasium as gym
 import logging
 import time
 from typing import Dict
 
-from gym import spaces
+from gymnasium import spaces
 import ray
 from ray.rllib.algorithms.bandit.bandit_tf_model import (
     DiscreteLinearModelThompsonSampling,

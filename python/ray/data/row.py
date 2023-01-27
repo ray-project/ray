@@ -41,5 +41,5 @@ class TableRow(Mapping):
     def _repr_pretty_(self, p, cycle):
         from IPython.lib.pretty import _dict_pprinter_factory
 
-        pprinter = _dict_pprinter_factory(f"{type(self).__name__}({{", "})")
+        pprinter = _dict_pprinter_factory("{", "}")
         return pprinter(self, p, cycle)

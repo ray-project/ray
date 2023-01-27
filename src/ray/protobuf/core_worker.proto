@@ -135,6 +135,8 @@ message PushTaskReply {
   bool is_retryable_error = 5;
   // Whether the result contains an application-level error.
   bool is_application_error = 6;
+  // Whether the task was cancelled before it started running (i.e. while queued).
+  bool was_cancelled_before_running = 7;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -320,8 +322,18 @@ message PlasmaObjectReadyRequest {
 
 message PlasmaObjectReadyReply {}
 
+message DeleteObjectsRequest {
+  // List of object ids to delete.
+  repeated bytes object_ids = 1;
+  // Whether to only free local objects.
+  bool local_only = 2;
+}
+
+message DeleteObjectsReply {}
+
 message SpillObjectsRequest {
   repeated ObjectReference object_refs_to_spill = 1;
+  DeleteObjectsRequest delete_request = 2;
 }
 
 message SpillObjectsReply {
@@ -413,6 +425,8 @@ service CoreWorkerService {
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
   // Trigger local GC on the worker.
   rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Delete objects explicitly.
+  rpc DeleteObjects(DeleteObjectsRequest) returns (DeleteObjectsReply);
   // Spill objects to external storage. Caller: raylet; callee: I/O worker.
   rpc SpillObjects(SpillObjectsRequest) returns (SpillObjectsReply);
   // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.

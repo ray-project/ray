@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import unittest
 
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
@@ -11,12 +11,12 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 class TestRecSimWrapper(unittest.TestCase):
     def test_observation_space(self):
         env = InterestEvolutionRecSimEnv()
-        obs = env.reset()
+        obs, info = env.reset()
         self.assertTrue(
             env.observation_space.contains(obs),
             f"{env.observation_space} doesn't contain {obs}",
         )
-        new_obs, _, _, _ = env.step(env.action_space.sample())
+        new_obs, _, _, _, _ = env.step(env.action_space.sample())
         self.assertTrue(env.observation_space.contains(new_obs))
 
     def test_action_space_conversion(self):
@@ -25,7 +25,7 @@ class TestRecSimWrapper(unittest.TestCase):
         env.reset()
         action = env.action_space.sample()
         self.assertTrue(env.action_space.contains(action))
-        new_obs, _, _, _ = env.step(action)
+        new_obs, _, _, _, _ = env.step(action)
         self.assertTrue(env.observation_space.contains(new_obs))
 
     def test_bandits_observation_space_conversion(self):

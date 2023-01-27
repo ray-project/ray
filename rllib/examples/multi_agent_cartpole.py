@@ -75,12 +75,21 @@ if __name__ == "__main__":
 
     # Each policy can have a different configuration (including custom model).
     def gen_policy(i):
-        config = {
-            "model": {
-                "custom_model": ["model1", "model2"][i % 2],
-            },
-            "gamma": random.choice([0.95, 0.99]),
-        }
+
+        if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
+            # just change the gammas between the two policies.
+            # changing the module is not a critical part of this example.
+            # the important part is that the policies are different.
+            config = {
+                "gamma": random.choice([0.95, 0.99]),
+            }
+        else:
+            config = PPOConfig.overrides(
+                model={
+                    "custom_model": ["model1", "model2"][i % 2],
+                },
+                gamma=random.choice([0.95, 0.99]),
+            )
         return PolicySpec(config=config)
 
     # Setup PPO with an ensemble of `num_policies` different policies.

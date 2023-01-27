@@ -1,5 +1,5 @@
 import numpy as np
-import gym
+import gymnasium as gym
 from typing import List, Optional
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2

@@ -7,7 +7,7 @@ import logging
 import os
 import threading
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -30,7 +30,12 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, TensorType
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    TensorType,
+    TensorStructType,
+)
 from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
@@ -503,16 +508,16 @@ def _build_eager_tf_policy(
         @override(Policy)
         def compute_actions(
             self,
-            obs_batch,
-            state_batches=None,
-            prev_action_batch=None,
-            prev_reward_batch=None,
-            info_batch=None,
-            episodes=None,
-            explore=None,
-            timestep=None,
+            obs_batch: Union[List[TensorStructType], TensorStructType],
+            state_batches: Optional[List[TensorType]] = None,
+            prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
+            prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
+            info_batch: Optional[Dict[str, list]] = None,
+            episodes: Optional[List["Episode"]] = None,
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
             **kwargs,
-        ):
+        ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             # Create input dict to simply pass the entire call to
             # self.compute_actions_from_input_dict().
             input_dict = SampleBatch(
@@ -728,12 +733,15 @@ def _build_eager_tf_policy(
             # Set optimizer vars first.
             optimizer_vars = state.get("_optimizer_variables", None)
             if optimizer_vars and self._optimizer.variables():
-                logger.warning(
-                    "Cannot restore an optimizer's state for tf eager! Keras "
-                    "is not able to save the v1.x optimizers (from "
-                    "tf.compat.v1.train) since they aren't compatible with "
-                    "checkpoints."
-                )
+                if not type(self).__name__.endswith("_traced") and log_once(
+                    "set_state_optimizer_vars_tf_eager_policy_v2"
+                ):
+                    logger.warning(
+                        "Cannot restore an optimizer's state for tf eager! Keras "
+                        "is not able to save the v1.x optimizers (from "
+                        "tf.compat.v1.train) since they aren't compatible with "
+                        "checkpoints."
+                    )
                 for opt_var, value in zip(self._optimizer.variables(), optimizer_vars):
                     opt_var.assign(value)
             # Set exploration's state.

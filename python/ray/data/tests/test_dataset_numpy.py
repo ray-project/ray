@@ -87,7 +87,7 @@ def test_to_numpy_refs(ray_start_regular_shared):
 
     # Table Dataset
     ds = ray.data.range_table(10)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
+    arr = np.concatenate([t["value"] for t in ray.get(ds.to_numpy_refs())])
     np.testing.assert_equal(arr, np.arange(0, 10))
 
     # Test multi-column Arrow dataset.

@@ -1,13 +1,15 @@
-import abc
+import copy
+from dataclasses import dataclass
 import pprint
-from typing import Iterator, Mapping, Any, Union, Dict
+from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type
 
+from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.utils.nested_dict import NestedDict
 
-from ray.rllib.utils.annotations import override
-
-from ray.rllib.models.specs.specs_dict import ModelSpec
+from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.core.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 
 # TODO (Kourosh): change this to module_id later to enforce consistency
 from ray.rllib.utils.policy import validate_policy_id
@@ -15,6 +17,40 @@ from ray.rllib.utils.policy import validate_policy_id
 ModuleID = str
 
 
+@ExperimentalAPI
+@dataclass
+class MultiAgentRLModuleSpec:
+    """A utility spec class to make it constructing RLModules (in multi-agent case) easier.
+
+    Args:
+        module_class: ...
+        module_specs: ...
+    """
+
+    module_class: Optional[Type["MultiAgentRLModule"]] = None
+    module_specs: Optional[Dict[ModuleID, SingleAgentRLModuleSpec]] = None
+
+    def build(self) -> "MultiAgentRLModule":
+        return self.module_class.from_multi_agent_config({"modules": self.module_specs})
+
+
+def _get_module_configs(config: Dict[str, Any]):
+    """Constructs a mapping from module_id to module config.
+
+    It takes care of the inheritance of common configs to individual module configs.
+    See `from_multi_agent_config` for more details.
+    """
+    config = copy.deepcopy(config)
+    module_specs = config.pop("modules", {})
+    for common_spec in config:
+        for module_spec in module_specs.values():
+            if getattr(module_spec, common_spec) is None:
+                setattr(module_spec, common_spec, config[common_spec])
+
+    return module_specs
+
+
+@PublicAPI(stability="alpha")
 class MultiAgentRLModule(RLModule):
     """Base class for multi-agent RLModules.
 
@@ -27,21 +63,112 @@ class MultiAgentRLModule(RLModule):
     the multi-agent module. For example, a multi-agent module can include a shared
     encoder network that is used by all the individual RLModules. It is up to the user
     to decide how to implement this class.
+
+    The default implementation assumes the data communicated as input and output of
+    the APIs in this class are `MultiAgentBatch` types. The `MultiAgentRLModule` simply
+    loops through each `module_id`, and runs the forward pass of the corresponding
+    `RLModule` object with the associated `SampleBatch` within the `MultiAgentBatch`.
+    It also assumes that the underlying RLModules do not share any parameters or
+    communication with one another. The behavior of modules with such advanced
+    communication would be undefined by default. To share parameters or communication
+    between the underlying RLModules, you should implement your own
+    `MultiAgentRLModule`.
     """
 
     def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
         super().__init__()
         self._rl_modules: Mapping[ModuleID, RLModule] = rl_modules or {}
 
-    @abc.abstractclassmethod
-    def from_multi_agent_config(
-        self, config: Mapping[str, Any]
-    ) -> "MultiAgentRLModule":
+    @classmethod
+    def from_multi_agent_config(cls, config: Mapping[str, Any]) -> "MultiAgentRLModule":
         """Creates a MultiAgentRLModule from a multi-agent config.
 
-        No assumption on the config format is made in this base class. The user is
-        responsible for implementing this method.
+        The input config should contain "modules" key that is a mapping from module_id
+        to the module spec for each RLModule which is a SingleAgentRLModuleSpec object.
+        If there are multiple modules that do share the same
+        `observation_space`, `action_space`, or `model_config`, you can specify these
+        keys at the top level of the config, and the module spec will inherit the
+        values from the top level config.
+
+        Examples:
+
+        .. code-block:: python
+
+            config = {
+                "modules": {
+                    "module_1": SingleAgentRLModuleSpec(
+                        module_class="RLModule1",
+                        observation_space=gym.spaces.Box(...),
+                        action_space=gym.spaces.Discrete(...),
+                        model_config={hidden_dim: 256}
+                    )
+                    "module_2": SingleAgentRLModuleSpec(
+                        module_class="RLModule2",
+                        observation_space=gym.spaces.Box(...),
+                    )
+                },
+                "action_space": gym.spaces.Box(...),
+                "model_config": {hidden_dim: 32}
+            }
+
+            # This is equivalent to the following config:
+
+            config = {
+                "modules": {
+                    "module_1": SingleAgentRLModuleSpec(
+                        module_class="RLModule1",
+                        observation_space=gym.spaces.Box(...),
+                        action_space=gym.spaces.Discrete(...),
+                        model_config={hidden_dim: 256}
+                    )
+                    "module_2": SingleAgentRLModuleSpec(
+                        module_class="RLModule2",
+                        observation_space=gym.spaces.Box(...),
+                        action_space=gym.spaces.Box(...), # Inherited
+                        model_config={hidden_dim: 32} # Inherited
+                    }
+                },
+            }
+
+        Args:
+            config: A config dict that contains the module configs. See above for the
+                format required.
+
+            Returns:
+                The MultiAgentRLModule.
         """
+
+        module_configs: Dict[ModuleID, Any] = _get_module_configs(config)
+        cls.__check_module_configs(module_configs)
+
+        multiagent_module = cls()
+
+        for module_id, module_spec in module_configs.items():
+            # module_cls: RLModule = module_spec.pop("module_class")
+            # module = module_cls.from_model_config(**module_spec)
+            module = module_spec.build()
+            multiagent_module.add_module(module_id, module)
+
+        return multiagent_module
+
+    @classmethod
+    def __check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
+        """Checks the module configs for validity.
+
+        The module_configs be a mapping from module_ids to SingleAgentRLModuleSpec
+        objects.
+
+        Args:
+            module_configs: The module configs to check.
+
+        Raises:
+            ValueError: If the module configs are invalid.
+        """
+        for module_id, module_spec in module_configs.items():
+            if not isinstance(module_spec, SingleAgentRLModuleSpec):
+                raise ValueError(
+                    f"Module {module_id} is not a SingleAgentRLModuleSpec object."
+                )
 
     def keys(self) -> Iterator[ModuleID]:
         """Returns an iteratable of module ids."""
@@ -85,7 +212,6 @@ class MultiAgentRLModule(RLModule):
                 f"Module ID {module_id} already exists. If your intention is to "
                 "override, set override=True."
             )
-
         self._rl_modules[module_id] = module
 
     def remove_module(
@@ -128,32 +254,32 @@ class MultiAgentRLModule(RLModule):
         return self._rl_modules[module_id]
 
     @override(RLModule)
-    def output_specs_train(self) -> ModelSpec:
+    def output_specs_train(self) -> SpecDict:
         return self._get_specs_for_modules("output_specs_train")
 
     @override(RLModule)
-    def output_specs_inference(self) -> ModelSpec:
+    def output_specs_inference(self) -> SpecDict:
         return self._get_specs_for_modules("output_specs_inference")
 
     @override(RLModule)
-    def output_specs_exploration(self) -> ModelSpec:
+    def output_specs_exploration(self) -> SpecDict:
         return self._get_specs_for_modules("output_specs_exploration")
 
     @override(RLModule)
-    def input_specs_train(self) -> ModelSpec:
+    def input_specs_train(self) -> SpecDict:
         return self._get_specs_for_modules("input_specs_train")
 
     @override(RLModule)
-    def input_specs_inference(self) -> ModelSpec:
+    def input_specs_inference(self) -> SpecDict:
         return self._get_specs_for_modules("input_specs_inference")
 
     @override(RLModule)
-    def input_specs_exploration(self) -> ModelSpec:
+    def input_specs_exploration(self) -> SpecDict:
         return self._get_specs_for_modules("input_specs_exploration")
 
-    def _get_specs_for_modules(self, method_name: str) -> ModelSpec:
+    def _get_specs_for_modules(self, method_name: str) -> SpecDict:
         """Returns a ModelSpec from the given method_name for all modules."""
-        return ModelSpec(
+        return SpecDict(
             {
                 module_id: getattr(module, method_name)()
                 for module_id, module in self._rl_modules.items()
@@ -162,125 +288,54 @@ class MultiAgentRLModule(RLModule):
 
     @override(RLModule)
     def _forward_train(
-        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+        self, batch: MultiAgentBatch, **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         """Runs the forward_train pass.
+
+        TODO(avnishn, kourosh): Review type hints for forward methods.
 
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
                 SampleBaches).
-            module_id: The module ID to run the forward pass for. If not specified, all
-                modules are run.
 
         Returns:
             The output of the forward_train pass the specified modules.
         """
-        return self._run_forward_pass("forward_train", batch, module_id, **kwargs)
+        return self.__run_forward_pass("forward_train", batch, **kwargs)
 
     @override(RLModule)
     def _forward_inference(
-        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+        self, batch: MultiAgentBatch, **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         """Runs the forward_inference pass.
+
+        TODO(avnishn, kourosh): Review type hints for forward methods.
 
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
                 SampleBaches).
-            module_id: The module ID to run the forward pass for. If not specified, all
-                modules are run.
 
         Returns:
             The output of the forward_inference pass the specified modules.
         """
-        return self._run_forward_pass("forward_inference", batch, module_id, **kwargs)
+        return self.__run_forward_pass("forward_inference", batch, **kwargs)
 
     @override(RLModule)
     def _forward_exploration(
-        self, batch: MultiAgentBatch, module_id: ModuleID = "", **kwargs
+        self, batch: MultiAgentBatch, **kwargs
     ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
         """Runs the forward_exploration pass.
+
+        TODO(avnishn, kourosh): Review type hints for forward methods.
 
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
                 SampleBaches).
-            module_id: The module ID to run the forward pass for. If not specified, all
-                modules are run.
 
         Returns:
             The output of the forward_exploration pass the specified modules.
         """
-        return self._run_forward_pass("forward_exploration", batch, module_id, **kwargs)
-
-    def _run_forward_pass(
-        self,
-        forward_fn_name: str,
-        batch: MultiAgentBatch,
-        module_id: ModuleID = "",
-        **kwargs,
-    ) -> Dict[ModuleID, Mapping[str, Any]]:
-        if module_id:
-            self._check_module_exists(module_id)
-            module_ids = [module_id]
-        else:
-            module_ids = self.keys()
-
-        outputs = {}
-        for module_id in module_ids:
-            rl_module = self._rl_modules[module_id]
-            forward_fn = getattr(rl_module, forward_fn_name)
-            outputs[module_id] = forward_fn(batch[module_id], **kwargs)
-
-        return outputs
-
-    def _check_module_exists(self, module_id: ModuleID) -> None:
-        if module_id not in self._rl_modules:
-            raise ValueError(
-                f"Module with module_id {module_id} not found. "
-                f"Available modules: {set(self.keys())}"
-            )
-
-
-class DefaultMultiAgentRLModule(MultiAgentRLModule):
-    """The default implementation for multi-agent RLModules.
-
-    The default implementation assumes the data communicated as input and output of
-    the APIs in this class are `MultiAgentBatch` types. The `MultiAgentRLModule` simply
-    loops through each `module_id`, and runs the forward pass of the corresponding
-    `RLModule` object with the associated `SampleBatch` within the `MultiAgentBatch`.
-    It also assumes that the underlying RLModules do not share any parameters or
-    communication with one another. The behavior of modules with such advanced
-    communication would be undefined by default. To share parameters or communication
-    between the underlying RLModules, you should implement your own
-    `MultiAgentRLModule`.
-    """
-
-    def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
-        super().__init__(rl_modules)
-
-    @classmethod
-    @override(MultiAgentRLModule)
-    def from_multi_agent_config(cls, config: Mapping[str, Any]) -> "MultiAgentRLModule":
-        """Creates a MultiAgentRLModule from a multi-agent config.
-
-        # TODO (Kourosh): Link to example of custom MultiAgentRLModule once it exists.
-
-        Args:
-            config: A Mapping from module_id to each RLModule config. Each RLModule
-                config value should be a tuple in the following order:
-                `module_class`: The RLModule class Type or full path separate by `.`.
-                    (e.g. `ray.rllib.algoirhms.dqn.torch.DQNTorchRLModule`).
-                `module_config`: The config object for the RLModule.
-
-            Returns:
-                The MultiAgentRLModule.
-        """
-        ma_module = cls()
-
-        for module_id, module_spec in config.items():
-            module = cls._build_module_from_spec(module_spec)
-            ma_module.add_module(module_id, module)
-
-        return ma_module
+        return self.__run_forward_pass("forward_exploration", batch, **kwargs)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
@@ -312,26 +367,87 @@ class DefaultMultiAgentRLModule(MultiAgentRLModule):
         for module_id, module in self._rl_modules.items():
             module.set_state(state_dict[module_id])
 
+    def serialize(self) -> Mapping[str, Any]:
+        """Return the serialized state of the module.
+
+        NOTE: This method needs to be implemented in order to support
+        checkpointing and fault tolerance.
+
+        """
+        return {
+            "class": self.__class__,
+            "rl_modules": {
+                module_id: module.serialize()
+                for module_id, module in self._rl_modules.items()
+            },
+        }
+
     @classmethod
-    def _build_module_from_spec(
-        cls, module_spec: Union[RLModule, Mapping[str, Any]]
-    ) -> RLModule:
-        """Builds a module from the given module spec.
+    def deserialize(cls, state: Mapping[str, Any]) -> "MultiAgentRLModule":
+        """Construct a module from a serialized state.
 
         Args:
-            module_spec: a tuple "module_class" and "module_config".
+            state: The serialized state of the module.
+            The state should contain the keys "class", "kwargs", and "state".
+
+            - "class" is the class of the RLModule to be constructed.
+            - "rl_modules" is a dict mapping module ids of the RLModules to
+                their serialized states. The serialized states can be obtained
+                from `RLModule.serialize()`.
+
+        NOTE: this state is typically obtained from `serialize()`.
+
+        NOTE: This method needs to be implemented in order to support
+            checkpointing and fault tolerance.
+
         Returns:
-            The built module.
-        Raises:
-            ValueError: If the module spec is invalid.
+            A deserialized MultiAgentRLModule.
         """
-        mod_class, mod_config = module_spec
-        if mod_class is None:
-            raise ValueError(
-                "`module_class` is missing in the module spec of the module"
-            )
-        module = mod_class(config=mod_config)
-        return module
+        rl_modules = {}
+        for module_id, module_state in state["rl_modules"].items():
+            rl_modules[module_id] = RLModule.deserialize(module_state)
+        return cls(rl_modules)
 
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
+
+    def __run_forward_pass(
+        self,
+        forward_fn_name: str,
+        batch: NestedDict[Any],
+        **kwargs,
+    ) -> Dict[ModuleID, Mapping[str, Any]]:
+        """This is a helper method that runs the forward pass for the given module.
+
+        It uses forward_fn_name to get the forward pass method from the RLModule
+        (e.g. forward_train vs. forward_exploration) and runs it on the given batch.
+
+        Args:
+            forward_fn_name: The name of the forward pass method to run.
+            batch: The batch of multi-agent data (i.e. mapping from module ids to
+                SampleBaches).
+            **kwargs: Additional keyword arguments to pass to the forward function.
+
+        Returns:
+            The output of the forward pass the specified modules. The output is a
+            mapping from module ID to the output of the forward pass.
+        """
+
+        module_ids = list(batch.shallow_keys())
+        for module_id in module_ids:
+            self._check_module_exists(module_id)
+
+        outputs = {}
+        for module_id in module_ids:
+            rl_module = self._rl_modules[module_id]
+            forward_fn = getattr(rl_module, forward_fn_name)
+            outputs[module_id] = forward_fn(batch[module_id], **kwargs)
+
+        return outputs
+
+    def _check_module_exists(self, module_id: ModuleID) -> None:
+        if module_id not in self._rl_modules:
+            raise KeyError(
+                f"Module with module_id {module_id} not found. "
+                f"Available modules: {set(self.keys())}"
+            )

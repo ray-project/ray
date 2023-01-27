@@ -17,7 +17,7 @@ from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train.trainer import BaseTrainer
+    from ray.train.base_trainer import BaseTrainer
 
 ClientActorHandle = Any
 
@@ -123,12 +123,7 @@ class Tuner:
     def __init__(
         self,
         trainable: Optional[
-            Union[
-                str,
-                Callable,
-                Type[Trainable],
-                "BaseTrainer",
-            ]
+            Union[str, Callable, Type[Trainable], "BaseTrainer"]
         ] = None,
         *,
         param_space: Optional[Dict[str, Any]] = None,
@@ -167,6 +162,9 @@ class Tuner:
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
+        overwrite_trainable: Optional[
+            Union[str, Callable, Type[Trainable], "BaseTrainer"]
+        ] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
@@ -198,7 +196,13 @@ class Tuner:
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them from scratch (no checkpoint will be loaded).
-
+            overwrite_trainable: A newly specified trainable that will overwrite
+                the trainable that was originally saved by Tune. This should
+                only be used to resume an experiment where the original trainable
+                is not fully serializable (e.g. when the trainable has object
+                references attached to it via ``tune.with_parameters``, the objects
+                they point to may not exist if restoring from a new Ray cluster).
+                NOTE: This API is experimental and should be used with caution.
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
@@ -213,13 +217,19 @@ class Tuner:
 
         if not ray.util.client.ray.is_connected():
             tuner_internal = TunerInternal(
-                restore_path=path, resume_config=resume_config
+                restore_path=path,
+                resume_config=resume_config,
+                trainable=overwrite_trainable,
             )
             return Tuner(_tuner_internal=tuner_internal)
         else:
             tuner_internal = _force_on_current_node(
                 ray.remote(num_cpus=0)(TunerInternal)
-            ).remote(restore_path=path, resume_config=resume_config)
+            ).remote(
+                restore_path=path,
+                resume_config=resume_config,
+                trainable=overwrite_trainable,
+            )
             return Tuner(_tuner_internal=tuner_internal)
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
@@ -260,7 +270,7 @@ class Tuner:
         if not self._is_ray_client:
             try:
                 return self._local_tuner.fit()
-            except Exception as e:
+            except TuneError as e:
                 raise TuneError(
                     _TUNER_FAILED_MSG.format(
                         path=self._local_tuner.get_experiment_checkpoint_dir()
@@ -282,7 +292,7 @@ class Tuner:
                     string_queue,
                 )
                 return ray.get(fit_future)
-            except Exception as e:
+            except TuneError as e:
                 raise TuneError(
                     _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
                 ) from e

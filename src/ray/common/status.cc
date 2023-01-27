@@ -58,6 +58,7 @@ namespace ray {
 #define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
 #define STATUS_CODE_OBJECT_NOT_FOUND "ObjectNotFound"
 #define STATUS_CODE_OBJECT_STORE_ALREADY_SEALED "ObjectAlreadySealed"
+#define STATUS_CODE_OBJECT_UNKNOWN_OWNER "ObjectUnknownOwner"
 #define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 #define STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL "TransientObjectStoreFull"
 // grpc status
@@ -107,6 +108,7 @@ std::string Status::CodeAsString() const {
       {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
       {StatusCode::ObjectNotFound, STATUS_CODE_OBJECT_NOT_FOUND},
       {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_STORE_ALREADY_SEALED},
+      {StatusCode::ObjectUnknownOwner, STATUS_CODE_OBJECT_UNKNOWN_OWNER},
       {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
       {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
       {StatusCode::GrpcUnavailable, STATUS_CODE_GRPC_UNAVAILABLE},
@@ -143,6 +145,7 @@ StatusCode Status::StringToCode(const std::string &str) {
       {STATUS_CODE_OBJECT_EXISTS, StatusCode::ObjectExists},
       {STATUS_CODE_OBJECT_NOT_FOUND, StatusCode::ObjectNotFound},
       {STATUS_CODE_OBJECT_STORE_ALREADY_SEALED, StatusCode::ObjectAlreadySealed},
+      {STATUS_CODE_OBJECT_UNKNOWN_OWNER, StatusCode::ObjectUnknownOwner},
       {STATUS_CODE_OBJECT_STORE_FULL, StatusCode::ObjectStoreFull},
       {STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL, StatusCode::TransientObjectStoreFull},
   };

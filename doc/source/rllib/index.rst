@@ -77,7 +77,7 @@ As a last step, we `evaluate` the trained Algorithm:
     :start-after: __rllib-in-60s-begin__
     :end-before: __rllib-in-60s-end__
 
-Note that you can use any OpenAI gym as `env`.
+Note that you can use any OpenAI gym environment as `env`.
 In `rollouts` you can for instance specify the number of parallel workers to collect samples from the environment.
 The `framework` config lets you choose between "tf2", "tf" and "torch" for execution.
 You can also tweak RLlib's default `model` config,and set up a separate config for `evaluation`.
@@ -126,7 +126,7 @@ click on the dropdowns below:
 
     *  Model-based / Meta-learning / Offline
 
-       -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
+       -  |pytorch| :ref:`Single-Player AlphaZero (AlphaZero) <alphazero>`
 
        -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
@@ -139,7 +139,7 @@ click on the dropdowns below:
     *  Multi-agent
 
        -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
-       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
+       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <maddpg>`
 
     *  Offline
 
@@ -147,8 +147,8 @@ click on the dropdowns below:
 
     *  Contextual bandits
 
-       -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <lin-ucb>`
-       -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
+       -  |pytorch| :ref:`Linear Upper Confidence Bound (LinUCB) <lin-ucb>`
+       -  |pytorch| :ref:`Linear Thompson Sampling (LinTS) <lints>`
 
     *  Exploration-based plug-ins (can be combined with any algo)
 
