@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,24 +14,17 @@
 
 syntax = "proto3";
 option cc_enable_arenas = true;
-package ray.rpc.syncer;
+package ray.rpc;
 
-enum MessageType {
-  RESOURCE_VIEW = 0;
-  COMMANDS = 1;
+message GetRayVersionRequest {}
+
+message GetRayVersionReply {
+  string version = 1;
 }
 
-message RaySyncMessage {
-  // The version of the message. -1 means the version is not set.
-  int64 version = 1;
-  // The type of this message.
-  MessageType message_type = 2;
-  // The actual payload.
-  bytes sync_message = 3;
-  // The node id which initially sent this message.
-  bytes node_id = 4;
-}
-
-service RaySyncer {
-  rpc StartSync(stream RaySyncMessage) returns (stream RaySyncMessage);
+// This service provides a stable interface for a monitor/autoscaler process to interact
+// with Ray.
+service MonitorGcsService {
+  // Get the ray version of the service.
+  rpc GetRayVersion(GetRayVersionRequest) returns (GetRayVersionReply);
 }

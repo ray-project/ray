@@ -26,8 +26,28 @@ else:
 class AbstractMap(LogicalOperator):
     """Abstract class for logical operators should be converted to physical
     MapOperator.
+
+    Args:
+        name: Name for this operator. This is the name that will appear when inspecting
+            the logical plan of a Dataset.
+        input_op: The operator preceding this operator in the plan DAG. The outputs of
+            `input_op` will be the inputs to this operator.
+        block_fn: The transform function to apply to each input block to produce output
+            blocks.
+        target_block_size: The target size for blocks outputted by this operator.
+        fn: User provided UDF to be called in `block_fn`.
+        fn_args: Arguments to `fn`.
+        fn_kwargs: Keyword arguments to `fn`.
+        fn_constructor_args: Arguments to provide to the initializor of `fn` if `fn` is
+            a callable class.
+        fn_constructor_kwargs: Keyword Arguments to provide to the initializor of `fn`
+            if `fn` is a callable class.
+        ray_remote_args: Args to provide to ray.remote.
     """
 
+    # TODO: Replace `fn`, `fn_args`, `fn_kwargs`, `fn_constructor_args`, and
+    # `fn_constructor_kwargs` from this API, in favor of `block_fn_args` and
+    # `block_fn_kwargs`. Operators should only be concerned with `block_fn`.
     def __init__(
         self,
         name: str,
@@ -104,6 +124,48 @@ class MapRows(AbstractMap):
     ):
         super().__init__(
             "MapRows",
+            input_op,
+            block_fn,
+            compute=compute,
+            fn=fn,
+            ray_remote_args=ray_remote_args,
+        )
+
+
+class Filter(AbstractMap):
+    """Logical operator for filter."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        block_fn: BlockTransform,
+        fn: RowUDF,
+        compute: Optional[Union[str, ComputeStrategy]] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            "Filter",
+            input_op,
+            block_fn,
+            compute=compute,
+            fn=fn,
+            ray_remote_args=ray_remote_args,
+        )
+
+
+class FlatMap(AbstractMap):
+    """Logical operator for flat_map."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        block_fn: BlockTransform,
+        fn: RowUDF,
+        compute: Optional[Union[str, ComputeStrategy]] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            "FlatMap",
             input_op,
             block_fn,
             compute=compute,
