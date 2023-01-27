@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
+from ray.data.context import DatasetContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask, Reader
 
@@ -44,8 +45,47 @@ class RandomBytesReader(Reader):
         ]
 
 
+def test_enable_in_ray_client(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
+    cluster.add_node(num_cpus=4)
+    cluster.head_node._ray_params.ray_client_server_port = "10004"
+    cluster.head_node.start_ray_client_server()
+    address = "ray://localhost:10004"
+
+    # Import of ray.data.context module, and this triggers the initialization of
+    # default configuration values in DatasetContext.
+    from ray.data.context import DatasetContext
+
+    assert DatasetContext.get_current().block_splitting_enabled
+
+    # Verify Ray client also has dynamic block splitting enabled.
+    ray.init(address)
+    assert DatasetContext.get_current().block_splitting_enabled
+
+
+@pytest.mark.parametrize(
+    "compute",
+    [
+        "tasks",
+        # TODO(Clark): Remove skip for old execution backend once the old execution
+        # backend is removed.
+        pytest.param(
+            "actors",
+            marks=pytest.mark.skipif(
+                not DatasetContext.get_current().new_execution_backend,
+                reason=(
+                    "Dynamic block splitting for the actor compute strategy is only "
+                    "enabled for the new execution backend."
+                ),
+            ),
+        ),
+    ],
+)
 def test_dataset(
-    ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
+    ray_start_regular_shared,
+    enable_dynamic_block_splitting,
+    target_max_block_size,
+    compute,
 ):
     # Test 10 blocks from 10 tasks, each block is 1024 bytes.
     num_blocks = 10
@@ -63,11 +103,16 @@ def test_dataset(
     assert ds.num_blocks() == num_tasks
     assert ds.size_bytes() >= 0.7 * block_size * num_blocks * num_tasks
 
-    map_ds = ds.map_batches(lambda x: x)
+    map_ds = ds.map_batches(lambda x: x, compute=compute)
+    map_ds.fully_executed()
     assert map_ds.num_blocks() == num_tasks
-    map_ds = ds.map_batches(lambda x: x, batch_size=num_blocks * num_tasks)
+    map_ds = ds.map_batches(
+        lambda x: x, batch_size=num_blocks * num_tasks, compute=compute
+    )
+    map_ds.fully_executed()
     assert map_ds.num_blocks() == 1
-    map_ds = ds.map(lambda x: x)
+    map_ds = ds.map(lambda x: x, compute=compute)
+    map_ds.fully_executed()
     assert map_ds.num_blocks() == num_blocks * num_tasks
 
     ds_list = ds.split(5)
@@ -91,6 +136,7 @@ def test_dataset(
     assert ds.groupby("one").count().count() == num_blocks * num_tasks
 
     new_ds = ds.zip(ds)
+    new_ds.fully_executed()
     assert new_ds.num_blocks() == num_blocks * num_tasks
 
     assert len(ds.take(5)) == 5
@@ -143,6 +189,7 @@ def test_lazy_block_list(
         num_blocks=num_blocks,
         block_size=block_size,
     )
+    ds.schema()
 
     # Check internal states of LazyBlockList before execution
     block_list = ds._plan._in_blocks

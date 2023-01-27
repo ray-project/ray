@@ -1,5 +1,5 @@
 """Custom NestedDict datatype."""
-
+from collections import abc
 import itertools
 from typing import (
     AbstractSet,
@@ -121,10 +121,10 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         x = x or {}
         if isinstance(x, NestedDict):
             self._data = x._data
-        elif isinstance(x, Mapping):
+        elif isinstance(x, abc.Mapping):
             for k in x:
                 self[k] = x[k]
-        elif isinstance(x, Iterable):
+        elif isinstance(x, abc.Iterable):
             for k, v in x:
                 self[k] = v
         else:

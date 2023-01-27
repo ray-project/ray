@@ -36,8 +36,8 @@ class RuntimeContext(object):
 
         return context
 
-    @Deprecated(message="Use get_job_id() instead.")
     @property
+    @Deprecated(message="Use get_job_id() instead", warning=True)
     def job_id(self):
         """Get current job ID for this worker or driver.
 
@@ -72,8 +72,8 @@ class RuntimeContext(object):
         job_id = self.worker.current_job_id
         return job_id.hex()
 
-    @Deprecated(message="Use get_node_id() instead.")
     @property
+    @Deprecated(message="Use get_node_id() instead", warning=True)
     def node_id(self):
         """Get current node ID for this worker or driver.
 
@@ -105,8 +105,8 @@ class RuntimeContext(object):
         node_id = self.worker.current_node_id
         return node_id.hex()
 
-    @Deprecated(message="Use get_task_id() instead")
     @property
+    @Deprecated(message="Use get_task_id() instead", warning=True)
     def task_id(self):
         """Get current task ID for this worker or driver.
 
@@ -181,8 +181,8 @@ class RuntimeContext(object):
         task_id = self.worker.current_task_id
         return task_id.hex() if not task_id.is_nil() else None
 
-    @Deprecated(message="Use get_actor_id() instead")
     @property
+    @Deprecated(message="Use get_actor_id() instead", warning=True)
     def actor_id(self):
         """Get the current actor ID in this worker.
 
@@ -243,8 +243,8 @@ class RuntimeContext(object):
         actor_info = ray._private.state.actors(self.actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
-    @Deprecated(message="Use get_placement_group_id() instead")
     @property
+    @Deprecated(message="Use get_placement_group_id() instead", warning=True)
     def current_placement_group_id(self):
         """Get the current Placement group ID of this worker.
 

@@ -320,14 +320,14 @@ E.g., List running tasks
 
     .. code-block:: bash
 
-        ray list tasks -f scheduling_state=RUNNING
+        ray list tasks -f state=RUNNING
 
 .. tabbed:: Python SDK
 
     .. code-block:: python
 
         from ray.experimental.state.api import list_tasks 
-        list_tasks(filters=[("scheduling_state", "=", "RUNNING")])
+        list_tasks(filters=[("state", "=", "RUNNING")])
 
 E.g., List non-running tasks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -336,14 +336,14 @@ E.g., List non-running tasks
 
     .. code-block:: bash
 
-        ray list tasks -f scheduling_state!=RUNNING
+        ray list tasks -f state!=RUNNING
 
 .. tabbed:: Python SDK
 
     .. code-block:: python
 
         from ray.experimental.state.api import list_tasks 
-        list_tasks(filters=[("scheduling_state", "!=", "RUNNING")])
+        list_tasks(filters=[("state", "!=", "RUNNING")])
 
 E.g., List running tasks that have a name func
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -352,14 +352,14 @@ E.g., List running tasks that have a name func
 
     .. code-block:: bash
 
-        ray list tasks -f scheduling_state=RUNNING -f name="task_running_300_seconds()"
+        ray list tasks -f state=RUNNING -f name="task_running_300_seconds()"
 
 .. tabbed:: Python SDK
 
     .. code-block:: python
 
         from ray.experimental.state.api import list_tasks 
-        list_tasks(filters=[("scheduling_state", "=", "RUNNING"), ("name", "=", "task_running_300_seconds()")])
+        list_tasks(filters=[("state", "=", "RUNNING"), ("name", "=", "task_running_300_seconds()")])
 
 E.g., List tasks with more details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

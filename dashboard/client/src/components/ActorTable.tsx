@@ -333,7 +333,7 @@ const ActorTable = ({
                       </Link>
                       <br />
                       <a
-                        href={`/worker/traceback?pid=${pid}&ip=${address?.ipAddress}&native=0`}
+                        href={`worker/traceback?pid=${pid}&ip=${address?.ipAddress}&native=0`}
                         target="_blank"
                         title="Sample the current Python stack trace for this worker."
                         rel="noreferrer"
@@ -342,7 +342,7 @@ const ActorTable = ({
                       </a>
                       <br />
                       <a
-                        href={`/worker/cpu_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5&native=0`}
+                        href={`worker/cpu_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5&native=0`}
                         target="_blank"
                         title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
                         rel="noreferrer"

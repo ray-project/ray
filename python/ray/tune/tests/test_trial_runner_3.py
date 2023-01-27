@@ -905,7 +905,6 @@ class TrialRunnerTest3(unittest.TestCase):
             sync_config=SyncConfig(
                 upload_dir="fake", syncer=CustomSyncer(), sync_period=0
             ),
-            remote_checkpoint_dir="fake",
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
@@ -951,8 +950,8 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
             trial_checkpoint_config=checkpoint_config,
+            checkpoint_period=100,  # Only rely on forced syncing
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
 
@@ -976,9 +975,14 @@ class TrialRunnerTest3(unittest.TestCase):
                 runner.step()
         assert any("syncing has been triggered multiple" in x for x in buffer)
 
-        # we should sync 4 times - every 2 checkpoints, but the last sync will not
-        # happen as the experiment finishes before it is triggered
-        assert syncer.sync_up_counter == 4
+        # We should sync 6 times:
+        # The first checkpoint happens when the experiment starts,
+        # since no checkpoints have happened yet
+        # (This corresponds to the new_trial event in the runner loop)
+        # Then, every num_to_keep=2 checkpoints, we should perform a forced checkpoint
+        # which results in 5 more checkpoints (running for 10 iterations),
+        # giving a total of 6
+        assert syncer.sync_up_counter == 6
 
     def getHangingSyncer(self, sync_period: float, sync_timeout: float):
         def _hanging_sync_up_command(*args, **kwargs):
@@ -1013,7 +1017,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
         )
         # Checkpoint for the first time starts the first sync in the background
         runner.checkpoint(force=True)
@@ -1041,7 +1044,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
         )
 
         with freeze_time() as frozen:

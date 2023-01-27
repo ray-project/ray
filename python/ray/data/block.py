@@ -159,7 +159,7 @@ class BlockExecStats:
     def __init__(self):
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
-        self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
+        self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
         # Max memory usage. May be an overestimate since we do not
         # differentiate from previous tasks on the same worker.
         self.max_rss_bytes: int = 0

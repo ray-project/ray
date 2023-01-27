@@ -146,7 +146,7 @@ ds.write_parquet(path)
 # Read the Parquet files into a new Dataset, with the serialized tensors
 # automatically cast to our tensor column extension type.
 ds = ray.data.read_parquet(
-    path, tensor_column_schema={"two": (np.int, (2, 2, 2))})
+    path, tensor_column_schema={"two": (np.int_, (2, 2, 2))})
 
 # The new column is represented with as a Tensor extension type.
 print(ds.schema())

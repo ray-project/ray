@@ -141,7 +141,7 @@ watch -n 1 kubectl exec -it raycluster-xgboost-benchmark-head-xxxxx -- ray statu
 
 :::{note}
 Under some circumstances and for certain cloud providers,
-the K8s API server may become briefly unavailable during Kuberentes
+the K8s API server may become briefly unavailable during Kubernetes
 cluster resizing events.
 
 Don't worry if that happens -- the Ray workload should be uninterrupted.

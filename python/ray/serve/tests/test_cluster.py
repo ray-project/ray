@@ -219,7 +219,7 @@ def test_replica_spread(ray_cluster):
 
     @serve.deployment(num_replicas=2)
     def get_node_id():
-        return os.getpid(), ray.get_runtime_context().node_id.hex()
+        return os.getpid(), ray.get_runtime_context().get_node_id()
 
     h = serve.run(get_node_id.bind())
 

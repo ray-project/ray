@@ -521,6 +521,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         ):
             tf1.enable_eager_execution()
 
+        if self.config.log_level:
+            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
+
         if self.worker_index > 1:
             disable_log_once_globally()  # only need 1 worker to log
         elif self.config.log_level == "DEBUG":
@@ -2008,7 +2011,10 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 # Also note that we cannot just check the existence of connectors
                 # to decide whether we should create connectors because we may be
                 # restoring a policy that has 0 connectors configured.
-                if not policy and not restore_states:
+                if (
+                    new_policy.agent_connectors is None
+                    or new_policy.action_connectors is None
+                ):
                     # TODO(jungong) : revisit this. It will be nicer to create
                     # connectors as the last step of Policy.__init__().
                     create_connectors_for_policy(new_policy, merged_conf)

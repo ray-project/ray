@@ -154,6 +154,20 @@
       --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-multi_gpu
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
+- label: ":brain: RLlib: RLModule tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
+  parallelism: 4
+  instance_size: large
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=rlm
+      --test_env=RLLIB_ENABLE_RL_MODULE=1 
+      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+
 - label: ":brain: RLlib: Examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   parallelism: 5

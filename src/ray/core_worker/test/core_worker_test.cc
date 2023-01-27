@@ -555,6 +555,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                               function.GetLanguage(),
                               function.GetFunctionDescriptor(),
                               job_id,
+                              rpc::JobConfig(),
                               RandomTaskId(),
                               0,
                               RandomTaskId(),

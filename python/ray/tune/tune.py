@@ -163,6 +163,7 @@ def _setup_signal_catching() -> threading.Event:
 @PublicAPI
 def run(
     run_or_experiment: Union[str, Callable, Type],
+    *,
     name: Optional[str] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
@@ -194,10 +195,11 @@ def run(
     server_port: Optional[int] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
-    trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
+    # Deprecated
+    trial_executor: Optional[RayTrialExecutor] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
@@ -380,7 +382,6 @@ def run(
             requires trials to have the same resource requirements.
             Defaults to ``True`` for function trainables and ``False`` for
             class and registered trainables.
-        trial_executor: Manage the execution of trials.
         raise_on_failed_trial: Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
         callbacks: List of callbacks that will be called at different
@@ -416,6 +417,12 @@ def run(
 
     if _remote is True and trial_executor:
         raise ValueError("cannot use custom trial executor")
+    elif trial_executor:
+        warnings.warn(
+            "Passing a custom `trial_executor` is deprecated and will be removed "
+            "in the future.",
+            DeprecationWarning,
+        )
 
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
         _ray_auto_init()
@@ -689,7 +696,7 @@ def run(
         search_alg=search_alg,
         scheduler=scheduler,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
-        remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
+        experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
         resume=resume,
@@ -736,6 +743,9 @@ def run(
 
     try:
         runner.checkpoint(force=True)
+        # Wait for the final remote directory sync to finish before exiting
+        if runner._syncer:
+            runner._syncer.wait()
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
