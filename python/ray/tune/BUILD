@@ -42,7 +42,7 @@ py_test(
 py_test(
     name = "test_callbacks",
     size = "small",
-    srcs = ["examples/test_callbacks.py"],
+    srcs = ["tests/test_callbacks.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
