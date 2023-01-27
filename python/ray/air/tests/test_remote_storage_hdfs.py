@@ -13,6 +13,8 @@ def test_get_fs_and_path_hdfs():
             line = line.rstrip("\n")
             tokens = line.split("=")  # assuming that vars don't have "="
             os.environ[tokens[0]] = tokens[1]
+    import sys
+
     sys.path.insert(0, os.path.join(os.environ["HADOOP_HOME"], "bin"))
     hostname = os.getenv("CONTAINER_ID")
     hdfs_uri = f"hdfs://{hostname}:8020/test/"
