@@ -4,12 +4,13 @@ import pytest
 import time
 
 import ray
+from ray.experimental.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
     raw_metrics,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.experimental.state.api import list_tasks
+from ray.experimental.state.api import StateApiClient, list_tasks
 
 from ray._private.worker import RayContext
 
@@ -68,7 +69,7 @@ def test_status_task_events_metrics(shutdown_only):
             "At least 10 tasks events should be reported. "
             "Could be more than 10 with multiple flush."
         )
-        assert metric["STORED"] == 10, "10 task's events should be stored."
+        assert metric["STORED"] == 11, "10 task + 1 driver's events should be stored."
 
         return True
 
@@ -121,6 +122,66 @@ def test_fault_tolerance_parent_failed(shutdown_only):
         timeout=10,
         retry_interval_ms=500,
     )
+
+
+def test_handle_driver_tasks(shutdown_only):
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    job_id = ray.get_runtime_context().get_job_id()
+    script = """
+import ray
+import time
+ray.init("auto")
+
+@ray.remote
+def f():
+    time.sleep(3)
+
+
+ray.get(f.remote())
+"""
+    run_string_as_driver_nonblocking(script)
+
+    client = StateApiClient()
+
+    def list_tasks(exclude_driver):
+        return client.list(
+            StateResource.TASKS,
+            # Filter out this driver
+            options=ListApiOptions(
+                exclude_driver=exclude_driver, filters=[("job_id", "!=", job_id)]
+            ),
+            raise_on_missing_output=True,
+        )
+
+    # Check driver running
+    def verify():
+        tasks_with_driver = list_tasks(exclude_driver=False)
+        assert len(tasks_with_driver) == 2, tasks_with_driver
+        task_types = {task["type"] for task in tasks_with_driver}
+        assert task_types == {"NORMAL_TASK", "DRIVER_TASK"}
+
+        for task in tasks_with_driver:
+            if task["type"] == "DRIVER_TASK":
+                assert task["state"] == "RUNNING", task
+
+        return True
+
+    wait_for_condition(verify, timeout=15, retry_interval_ms=1000)
+
+    # Check driver finishes
+    def verify():
+        tasks_with_driver = list_tasks(exclude_driver=False)
+        assert len(tasks_with_driver) == 2, tasks_with_driver
+        for task in tasks_with_driver:
+            if task["type"] == "DRIVER_TASK":
+                assert task["state"] == "FINISHED", task
+
+        tasks_no_driver = list_tasks(exclude_driver=True)
+        assert len(tasks_no_driver) == 1, tasks_no_driver
+        return True
+
+    wait_for_condition(verify)
 
 
 def test_fault_tolerance_job_failed(shutdown_only):
@@ -184,11 +245,11 @@ ray.get(parent.remote())
         for task in tasks:
             if "finished" in task["func_or_class_name"]:
                 assert (
-                    task["scheduling_state"] == "FINISHED"
+                    task["state"] == "FINISHED"
                 ), f"task {task['func_or_class_name']} has wrong state"
             else:
                 assert (
-                    task["scheduling_state"] == "FAILED"
+                    task["state"] == "FAILED"
                 ), f"task {task['func_or_class_name']} has wrong state"
 
         return True
@@ -247,9 +308,9 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
         ), "1 creation task + 1 actor tasks + 2 normal tasks run by the actor tasks"
         for task in tasks:
             if "finish" in task["name"] or "__init__" in task["name"]:
-                assert task["scheduling_state"] == "FINISHED", task
+                assert task["state"] == "FINISHED", task
             else:
-                assert task["scheduling_state"] == "FAILED", task
+                assert task["state"] == "FAILED", task
 
         return True
 
@@ -276,9 +337,9 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
         )
         for task in tasks:
             if "finish" in task["name"] or "__init__" in task["name"]:
-                assert task["scheduling_state"] == "FINISHED", task
+                assert task["state"] == "FINISHED", task
             else:
-                assert task["scheduling_state"] == "FAILED", task
+                assert task["state"] == "FAILED", task
 
         return True
 
@@ -405,9 +466,9 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
 
         for task in target_tasks:
             if task["name"] in dead_tasks:
-                assert task["scheduling_state"] == "FAILED", task["name"]
+                assert task["state"] == "FAILED", task["name"]
             else:
-                assert task["scheduling_state"] == "RUNNING", task["name"]
+                assert task["state"] == "RUNNING", task["name"]
 
         return True
 
