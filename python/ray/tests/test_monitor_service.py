@@ -50,7 +50,7 @@ def test_drain_and_kill_node(monitor_stub_with_cluster):
 
     assert count_live_nodes() == 2
 
-    node_ids = set(node["NodeID"] for node in ray.nodes())
+    node_ids = {node["NodeID"] for node in ray.nodes()}
     worker_nodes = node_ids - {head_node}
     assert len(worker_nodes) == 1
 
@@ -61,5 +61,9 @@ def test_drain_and_kill_node(monitor_stub_with_cluster):
     )
     response = monitor_stub.DrainAndKillNode(request)
 
+    assert response.drained_nodes == request.node_ids
+    assert count_live_nodes() == 1
+
+    response = monitor_stub.DrainAndKillNode(request)
     assert response.drained_nodes == request.node_ids
     assert count_live_nodes() == 1
