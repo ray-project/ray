@@ -1,6 +1,6 @@
 import ray
 from urllib.parse import urlparse
-from utils import get_spark_session, is_in_databricks_runtime
+from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
 
 def load_spark_dataset(path, saved_format="delta"):
