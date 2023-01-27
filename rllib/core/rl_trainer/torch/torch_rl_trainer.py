@@ -30,7 +30,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.core.rl_trainer.rl_trainer_config import (
-        TorchRLTrainerScalingConfig,
+    TorchRLTrainerScalingConfig,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
@@ -43,7 +43,6 @@ torch, nn = try_import_torch()
 if torch:
     from ray.air.config import ScalingConfig
     from ray.train.torch.train_loop_utils import _TorchAccelerator
-
 
 
 logger = logging.getLogger(__name__)

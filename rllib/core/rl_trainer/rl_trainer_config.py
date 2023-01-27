@@ -72,7 +72,6 @@ class TFRLTrainerScalingConfig(RLTrainerScalingConfig):
     enable_tf_function: bool = True
 
 
-
 @dataclass
 class TrainerRunnerScalingConfig:
     """Configuratiom for scaling training actors.
@@ -90,6 +89,7 @@ class TrainerRunnerScalingConfig:
     num_workers: int = 1
     num_cpus_per_worker: int = 1
     num_gpus_per_worker: int = 0
+
 
 @dataclass
 class RLTrainerSpec:

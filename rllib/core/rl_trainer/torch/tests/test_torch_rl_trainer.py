@@ -12,13 +12,13 @@ from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.core.rl_trainer.rl_trainer_config import TorchRLTrainerScalingConfig
 
 from ray.air.config import ScalingConfig
 
 
-def _get_trainer(scaling_config=None, distributed: bool = False) -> RLTrainer:
+def _get_trainer(distributed: bool = False) -> RLTrainer:
     env = gym.make("CartPole-v1")
-    scaling_config = scaling_config or ScalingConfig()
     distributed = False
 
     # TODO: Another way to make RLTrainer would be to construct the module first
@@ -33,9 +33,10 @@ def _get_trainer(scaling_config=None, distributed: bool = False) -> RLTrainer:
             action_space=env.action_space,
             model_config={"hidden_dim": 32},
         ),
-        scaling_config=scaling_config,
+        scaling_config=TorchRLTrainerScalingConfig()
+        .set_distributed(distributed)
+        .set_use_gpu(False),
         optimizer_config={"lr": 1e-3},
-        distributed=distributed,
     )
 
     trainer.build()
@@ -54,7 +55,7 @@ class TestRLTrainer(unittest.TestCase):
 
     def test_end_to_end_update(self):
 
-        trainer = _get_trainer(scaling_config=ScalingConfig(num_workers=2))
+        trainer = _get_trainer()
         reader = get_cartpole_dataset_reader(batch_size=512)
 
         min_loss = float("inf")
@@ -77,7 +78,7 @@ class TestRLTrainer(unittest.TestCase):
         Tests that if we sum all the trainable variables the gradient of output w.r.t.
         the weights is all ones.
         """
-        trainer = _get_trainer(scaling_config=ScalingConfig(num_workers=2))
+        trainer = _get_trainer()
 
         params = trainer.get_parameters(trainer.module[DEFAULT_POLICY_ID])
         loss = {"total_loss": sum([param.sum() for param in params])}
@@ -96,7 +97,7 @@ class TestRLTrainer(unittest.TestCase):
         standard SGD/Adam update rule.
         """
 
-        trainer = _get_trainer(scaling_config=ScalingConfig(num_workers=2))
+        trainer = _get_trainer()
 
         # calculated the expected new params based on gradients of all ones.
         params = trainer.get_parameters(trainer.module[DEFAULT_POLICY_ID])
@@ -120,7 +121,7 @@ class TestRLTrainer(unittest.TestCase):
         all variables the updated parameters follow the SGD update rule.
         """
         env = gym.make("CartPole-v1")
-        trainer = _get_trainer(scaling_config=ScalingConfig(num_workers=2))
+        trainer = _get_trainer()
 
         # add a test module with SGD optimizer with a known lr
         lr = 1e-4
