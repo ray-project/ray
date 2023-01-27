@@ -125,7 +125,10 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                     return
 
                 if idle_time > auto_shutdown_timeout_millis:
+                    from ray.util.spark import cluster_init
                     ray_cluster_handler.shutdown()
+                    if ray_cluster_handler is cluster_init._active_ray_cluster:
+                        cluster_init._active_ray_cluster = None
                     return
 
                 time.sleep(AUTO_SHUTDOWN_POLL_INTERVAL)
