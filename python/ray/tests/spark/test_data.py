@@ -1,4 +1,5 @@
-from ray.util.spark import load_spark_dataset, _convert_dbfs_path_to_local_path
+from ray.util.spark import load_spark_dataset
+from ray.util.spark.data import _convert_dbfs_path_to_local_path
 import pytest
 import os
 from pyspark.sql import SparkSession
