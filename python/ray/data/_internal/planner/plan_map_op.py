@@ -54,7 +54,7 @@ def _plan_map_op(op: AbstractMap, input_physical_dag: PhysicalOperator) -> MapOp
     def do_map(blocks: Iterator[Block]) -> Iterator[Block]:
         yield from block_fn(blocks, *fn_args, **fn_kwargs)
 
-    return MapOperator(
+    return MapOperator.create(
         do_map,
         input_physical_dag,
         name=op.name,

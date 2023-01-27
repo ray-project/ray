@@ -47,4 +47,4 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
         for read_task in blocks:
             yield from read_task()
 
-    return MapOperator(do_read, inputs, name="DoRead")
+    return MapOperator.create(do_read, inputs, name="DoRead")
