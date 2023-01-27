@@ -137,7 +137,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
     /// Get all task events.
     ///
-    /// \return all task events stored.
+    /// This retrieves copies of all task events ordered from the least recently inserted
+    /// to the most recently inserted task events.
+    ///
+    /// \return all task events stored sorted with insertion order.
     std::vector<rpc::TaskEvents> GetTaskEvents() const;
 
     /// Get task events from tasks corresponding to `task_ids`.
