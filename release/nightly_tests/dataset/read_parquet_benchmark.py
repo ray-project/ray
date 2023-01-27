@@ -1,5 +1,3 @@
-import pyarrow as pa
-
 import ray
 from ray.data.dataset import Dataset
 
@@ -39,20 +37,22 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
                 use_threads=use_threads,
             )
 
+    # TODO: Test below is currently excluded, due to failure around
+    # pickling the Dataset involving the filter expression.
     # Test with projection and filter pushdowns.
     # Since we have projection and filter pushdown, we can run the read on the full
     # size of one year data fast enough on a single node.
-    test_name = "read-parquet-nyc-taxi-2018-pushdown"
-    filter_expr = (pa.dataset.field("passenger_count") <= 10) & (
-        pa.dataset.field("passenger_count") > 0
-    )
-    benchmark.run(
-        test_name,
-        read_parquet,
-        root="s3://anonymous@air-example-data/ursa-labs-taxi-data/by_year/2018",
-        columns=["passenger_count", "trip_distance"],
-        filter=filter_expr,
-    )
+    # test_name = "read-parquet-nyc-taxi-2018-pushdown"
+    # filter_expr = (pa.dataset.field("passenger_count") <= 10) & (
+    #     pa.dataset.field("passenger_count") > 0
+    # )
+    # benchmark.run(
+    #     test_name,
+    #     read_parquet,
+    #     root="s3://anonymous@air-example-data/ursa-labs-taxi-data/by_year/2018",
+    #     columns=["passenger_count", "trip_distance"],
+    #     filter=filter_expr,
+    # )
 
     # Test with different number files to handle: from a few to many.
     data_dirs = []

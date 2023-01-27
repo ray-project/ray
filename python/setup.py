@@ -230,7 +230,12 @@ if setup_spec.type == SetupType.RAY:
         data_extras.append("pickle5")
 
     setup_spec.extras = {
-        "data": data_extras,
+        "data": [
+            numpy_dep,
+            pandas_dep,
+            pyarrow_dep,
+            "fsspec",
+        ],
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to dashboard/optional_deps.py as well.
