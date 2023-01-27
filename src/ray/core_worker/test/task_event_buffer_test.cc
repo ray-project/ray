@@ -288,9 +288,11 @@ TEST_F(TaskEventBufferTest, TestForcedFlush) {
 TEST_F(TaskEventBufferTestBatchSend, TestBatchedSend) {
   size_t num_events = 100;
   size_t batch_size = 10;  // Sync with constructor.
+  std::vector<TaskID> task_ids;
   // Adding some events
   for (size_t i = 0; i < num_events; ++i) {
     auto task_id = RandomTaskId();
+    task_ids.push_back(task_id);
     task_event_buffer_->AddTaskEvent(GenStatusTaskEvents(task_id, 0));
   }
 
@@ -298,14 +300,21 @@ TEST_F(TaskEventBufferTestBatchSend, TestBatchedSend) {
       static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
 
+  size_t i = 0;
   // With batch size = 10, there should be 10 flush calls
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
-      .Times(10)
-      .WillRepeatedly([&](std::unique_ptr<rpc::TaskEventData> actual_data,
-                          ray::gcs::StatusCallback callback) {
-        callback(Status::OK());
-        return Status::OK();
-      });
+      .Times(num_events / batch_size)
+      .WillRepeatedly(
+          [&i, &batch_size, &task_ids](std::unique_ptr<rpc::TaskEventData> actual_data,
+                                       ray::gcs::StatusCallback callback) {
+            EXPECT_EQ(actual_data->events_by_task_size(), batch_size);
+            for (const auto &task : actual_data->events_by_task()) {
+              // Assert sent data in order.
+              EXPECT_EQ(task_ids[i++].Binary(), task.task_id());
+            }
+            callback(Status::OK());
+            return Status::OK();
+          });
 
   for (int i = 0; i * batch_size < num_events; i++) {
     task_event_buffer_->FlushEvents(false);

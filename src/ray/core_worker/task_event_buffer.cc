@@ -22,7 +22,8 @@ namespace worker {
 TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(io_service_),
-      gcs_client_(std::move(gcs_client)) {}
+      gcs_client_(std::move(gcs_client)),
+      buffer_() {}
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
@@ -30,8 +31,8 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
 
-  buffer_.reserve(RayConfig::instance().task_events_max_num_task_events_in_buffer());
-
+  buffer_.set_capacity(
+      {RayConfig::instance().task_events_max_num_task_events_in_buffer()});
   // Reporting to GCS, set up gcs client and and events flushing.
   auto status = gcs_client_->Connect(io_service_);
   if (!status.ok()) {
@@ -100,17 +101,13 @@ void TaskEventBufferImpl::AddTaskEvent(rpc::TaskEvents task_events) {
   absl::MutexLock lock(&mutex_);
 
   auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
-  if (limit > 0 && buffer_.size() >= static_cast<size_t>(limit)) {
-    // Too many task events, start overriding older ones.
-    if (buffer_[next_idx_to_overwrite_].has_profile_events()) {
+  if (limit > 0 && buffer_.full()) {
+    const auto &to_evict = buffer_.front();
+    if (to_evict.has_profile_events()) {
       num_profile_task_events_dropped_++;
     } else {
       num_status_task_events_dropped_++;
     }
-
-    buffer_[next_idx_to_overwrite_] = std::move(task_events);
-    next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % limit;
-    return;
   }
   buffer_.push_back(std::move(task_events));
 }
@@ -141,22 +138,10 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
       return;
     }
 
-    if (static_cast<int64_t>(buffer_.size()) >
-        RayConfig::instance().task_events_send_batch_size()) {
-      // We will take a batch from the buffer to send.
-      size_t batch_size = RayConfig::instance().task_events_send_batch_size();
-
-      auto move_start = std::prev(buffer_.end(), batch_size);
-      to_send.insert(to_send.end(),
-                     std::make_move_iterator(move_start),
-                     std::make_move_iterator(buffer_.end()));
-      buffer_.erase(move_start, buffer_.end());
-      // Enough space in the buffer now, reset the next_idx_to_overwrite.
-    } else {
-      // Just send all.
-      to_send.swap(buffer_);
-    }
-    next_idx_to_overwrite_ = 0;
+    size_t num_to_send =
+        std::min(RayConfig::instance().task_events_send_batch_size(), buffer_.size());
+    to_send.insert(to_send.end(), buffer_.begin(), buffer_.begin() + num_to_send);
+    buffer_.erase(buffer_.begin(), buffer_.begin() + num_to_send);
 
     // Send and reset the counters
     num_profile_task_events_dropped = num_profile_task_events_dropped_;
