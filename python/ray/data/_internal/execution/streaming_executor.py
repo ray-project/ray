@@ -149,7 +149,7 @@ class StreamingExecutor(Executor, threading.Thread):
             topology,
             cur_usage,
             limits,
-            ensure_at_least_one_running=self._consumer_blocked(),
+            ensure_at_least_one_running=self._consumer_idling(),
         )
         while op is not None:
             if DEBUG_TRACE_SCHEDULING:
@@ -160,7 +160,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 topology,
                 cur_usage,
                 limits,
-                ensure_at_least_one_running=self._consumer_blocked(),
+                ensure_at_least_one_running=self._consumer_idling(),
             )
 
         # Update the progress bar to reflect scheduling decisions.
@@ -170,7 +170,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
 
-    def _consumer_blocked(self) -> bool:
+    def _consumer_idling(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""
         return len(self._output_node.outqueue) == 0
 
