@@ -224,11 +224,6 @@ if setup_spec.type == SetupType.RAY:
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
         pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
 
-    data_extras = [numpy_dep, pandas_dep, pyarrow_dep, "fsspec"]
-    # Need pickle5 package to override default pickle package for Python < 3.7
-    if sys.version_info < (3, 7):
-        data_extras.append("pickle5")
-
     setup_spec.extras = {
         "data": [
             numpy_dep,
