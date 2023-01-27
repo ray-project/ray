@@ -45,6 +45,30 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 logger = DatasetLogger(__name__)
 
 
+def capfirst(s: str):
+    """Capitalize the first letter of a string
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+       Capitalized string
+    """
+    return s[0].upper() + s[1:]
+
+
+def capitalize(s: str):
+    """Capitalize a string, removing '_' and keeping camelcase.
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+        Capitalized string with no underscores.
+    """
+    return "".join(capfirst(x) for x in s.split("_"))
+
+
 class Stage:
     """Represents a Dataset transform stage (e.g., map or shuffle)."""
 
@@ -157,7 +181,7 @@ class ExecutionPlan:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
                 # Get name of each stage in camel case.
-                stage_name = stage.name.title().replace("_", "")
+                stage_name = capitalize(stage.name)
                 if num_stages == 0:
                     plan_str += f"{stage_name}\n"
                 else:
