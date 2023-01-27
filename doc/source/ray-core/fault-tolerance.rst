@@ -1,3 +1,5 @@
+.. _fault-tolerance:
+
 Fault Tolerance
 ===============
 
