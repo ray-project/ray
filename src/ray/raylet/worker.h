@@ -113,6 +113,8 @@ class WorkerInterface {
   /// Time when the last task was assigned to this worker.
   virtual absl::Time GetAssignedTaskTime() const = 0;
 
+  virtual void SetJobId(const JobID &job_id) = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -234,6 +236,8 @@ class Worker : public WorkerInterface {
     return rpc_client_.get();
   }
 
+  void SetJobId(const JobID &job_id);
+
  protected:
   void SetStartupToken(StartupToken startup_token);
 
@@ -262,7 +266,7 @@ class Worker : public WorkerInterface {
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
-  const JobID assigned_job_id_;
+  JobID assigned_job_id_;
   /// The hash of the worker's assigned runtime env.  We use this in the worker
   /// pool to cache and reuse workers with the same runtime env, because
   /// installing runtime envs from scratch can be slow.

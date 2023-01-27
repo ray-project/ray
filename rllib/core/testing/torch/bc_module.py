@@ -1,16 +1,15 @@
 import gymnasium as gym
 from typing import Any, Mapping, Union
 
-import torch.nn as nn
-import torch
-from torch.distributions import Categorical
-
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
+
+torch, nn = try_import_torch()
 
 
 class DiscreteBCTorchModule(TorchRLModule):
@@ -68,7 +67,7 @@ class DiscreteBCTorchModule(TorchRLModule):
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         action_logits = self.policy(batch["obs"])
-        return {"action_dist": Categorical(logits=action_logits)}
+        return {"action_dist": torch.distributions.Categorical(logits=action_logits)}
 
     @classmethod
     @override(RLModule)

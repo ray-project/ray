@@ -478,7 +478,7 @@ def test_legacy_memory_monitor_disabled_by_oom_killer():
     reason="memory monitor only on linux currently",
 )
 def test_last_task_of_the_group_fail_immediately():
-    @ray.remote(max_retries = -1)
+    @ray.remote(max_retries=-1)
     def infinite_retry_task():
         chunks = []
         bytes_per_chunk = 1024 * 1024 * 1024
@@ -498,6 +498,7 @@ def test_last_task_of_the_group_fail_immediately():
             tag="MemoryManager.TaskEviction.Total",
             value=1.0,
         )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

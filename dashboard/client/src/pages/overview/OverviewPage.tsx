@@ -17,17 +17,23 @@ const useStyles = makeStyles((theme) =>
     overviewCardsContainer: {
       display: "flex",
       flexDirection: "row",
-      flexWrap: "nowrap",
+      flexWrap: "wrap",
       marginBottom: theme.spacing(4),
       gap: theme.spacing(3),
+      [theme.breakpoints.up("md")]: {
+        flexWrap: "nowrap",
+      },
     },
     overviewCard: {
       flex: "1 0 448px",
-      // Calculate max width based on 1/3 of the total width minus padding between cards
-      maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+      maxWidth: "100%",
+      [theme.breakpoints.up("md")]: {
+        // Calculate max width based on 1/3 of the total width minus padding between cards
+        maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+      },
     },
     section: {
-      marginTop: theme.spacing(2),
+      marginTop: theme.spacing(4),
     },
   }),
 );
@@ -59,6 +65,7 @@ export const OverviewPage = () => {
         className={classes.section}
         title="Node metrics"
         startExpanded
+        keepRendered
       >
         <Metrics />
       </CollapsibleSection>
