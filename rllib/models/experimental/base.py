@@ -1,10 +1,6 @@
 from dataclasses import dataclass
 import abc
 
-from ray.rllib.models.specs.checker import (
-    check_input_specs,
-    check_output_specs,
-)
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.utils.annotations import ExperimentalAPI

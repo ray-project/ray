@@ -59,11 +59,11 @@ class MLPConfig(ModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.fcmodel import TorchMLPModel
+            from ray.rllib.models.experimental.torch.mlp import TorchMLPModel
 
             return TorchMLPModel(self)
         else:
-            from ray.rllib.models.experimental.tf.fcmodel import TfMLPModel
+            from ray.rllib.models.experimental.tf.mlp import TfMLPModel
 
             return TfMLPModel(self)
 
