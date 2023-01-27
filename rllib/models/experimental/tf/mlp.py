@@ -17,6 +17,7 @@ class TfMLPModel(TfModel):
             hidden_layer_dims=config.hidden_layer_dims,
             output_dim=config.output_dim,
             hidden_layer_activation=config.hidden_layer_activation,
+            output_activation=config.output_activation,
         )
 
     @property
