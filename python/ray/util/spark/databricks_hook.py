@@ -74,9 +74,9 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         )
 
     def on_cluster_created(self, ray_cluster_handler):
-        dbutils = get_dbutils()
+        db_api_entry = get_dbutils().entry_point
         try:
-            dbutils.entry_point.registerBackgroundSparkJobGroup(
+            db_api_entry.registerBackgroundSparkJobGroup(
                 ray_cluster_handler.spark_job_group_id
             )
         except Exception:
@@ -114,7 +114,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
                 try:
                     idle_time = (
-                        dbutils.entry_point.getIdleTimeMillisSinceLastNotebookExecution()
+                        db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
                     )
                 except Exception:
                     _logger.warning(
