@@ -29,6 +29,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.data.tests.conftest import *  # noqa
 
 
 @ray.remote
@@ -52,11 +53,11 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
     return output
 
 
-def test_build_streaming_topology():
+def test_build_streaming_topology(ray_start_10_cpus_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
     topo, _ = build_streaming_topology(o3, ExecutionOptions())
     assert len(topo) == 3, topo
     assert o1 in topo, topo
@@ -66,21 +67,21 @@ def test_build_streaming_topology():
     assert list(topo) == [o1, o2, o3]
 
 
-def test_disallow_non_unique_operators():
+def test_disallow_non_unique_operators(ray_start_10_cpus_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     # An operator [o1] cannot used in the same DAG twice.
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o4 = PhysicalOperator("test_combine", [o2, o3])
     with pytest.raises(ValueError):
         build_streaming_topology(o4, ExecutionOptions())
 
 
-def test_process_completed_tasks():
+def test_process_completed_tasks(ray_start_10_cpus_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     topo, _ = build_streaming_topology(o2, ExecutionOptions())
 
     # Test processing output bundles.
@@ -109,12 +110,12 @@ def test_process_completed_tasks():
     o2.inputs_done.assert_called_once()
 
 
-def test_select_operator_to_run():
+def test_select_operator_to_run(ray_start_10_cpus_shared):
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
     topo, _ = build_streaming_topology(o3, opt)
 
     # Test empty.
@@ -147,11 +148,11 @@ def test_select_operator_to_run():
     )
 
 
-def test_dispatch_next_task():
+def test_dispatch_next_task(ray_start_10_cpus_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o1_state = OpState(o1, [])
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     op_state = OpState(o2, [o1_state.outqueue])
 
     # TODO: test multiple inqueues with the union operator.
@@ -167,27 +168,27 @@ def test_dispatch_next_task():
     assert o2.add_input.called_once_with("dummy2")
 
 
-def test_debug_dump_topology():
+def test_debug_dump_topology(ray_start_10_cpus_shared):
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
     topo, _ = build_streaming_topology(o3, opt)
     # Just a sanity check to ensure it doesn't crash.
     _debug_dump_topology(topo)
 
 
-def test_validate_topology():
+def test_validate_topology(ray_start_10_cpus_shared):
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(
+    o2 = MapOperator.create(
         make_transform(lambda block: [b * -1 for b in block]),
         o1,
         compute_strategy=ray.data.ActorPoolStrategy(8, 8),
     )
-    o3 = MapOperator(
+    o3 = MapOperator.create(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(4, 4),
@@ -200,7 +201,7 @@ def test_validate_topology():
         _validate_topology(topo, ExecutionResources(cpu=10))
 
 
-def test_execution_allowed():
+def test_execution_allowed(ray_start_10_cpus_shared):
     op = InputDataBuffer([])
 
     # CPU.
@@ -245,15 +246,15 @@ def test_execution_allowed():
     )
 
 
-def test_select_ops_ensure_at_least_one_live_operator():
+def test_select_ops_ensure_at_least_one_live_operator(ray_start_10_cpus_shared):
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(
+    o2 = MapOperator.create(
         make_transform(lambda block: [b * -1 for b in block]),
         o1,
     )
-    o3 = MapOperator(
+    o3 = MapOperator.create(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
     )
@@ -275,12 +276,12 @@ def test_select_ops_ensure_at_least_one_live_operator():
     )
 
 
-def test_pipelined_execution():
+def test_pipelined_execution(ray_start_10_cpus_shared):
     executor = StreamingExecutor(ExecutionOptions())
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
 
     def reverse_sort(inputs: List[RefBundle]):
         reversed_list = inputs[::-1]
@@ -293,7 +294,7 @@ def test_pipelined_execution():
     assert output == expected, (output, expected)
 
 
-def test_e2e_option_propagation():
+def test_e2e_option_propagation(ray_start_10_cpus_shared):
     DatasetContext.get_current().new_execution_backend = True
     DatasetContext.get_current().use_streaming_executor = True
 
@@ -312,7 +313,7 @@ def test_e2e_option_propagation():
         run()
 
 
-def test_configure_spread_e2e():
+def test_configure_spread_e2e(ray_start_10_cpus_shared):
     from ray import remote_function
 
     tasks = []
@@ -333,31 +334,24 @@ def test_configure_spread_e2e():
     assert tasks == ["DEFAULT", "DEFAULT", "SPREAD", "SPREAD"]
 
 
-def test_configure_output_locality():
+def test_configure_output_locality(ray_start_10_cpus_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(
+    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o3 = MapOperator.create(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(1, 1),
     )
     topo, _ = build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))
-    assert (
-        o2._execution_state._task_submitter._ray_remote_args.get("scheduling_strategy")
-        is None
-    )
-    assert (
-        o3._execution_state._task_submitter._ray_remote_args.get("scheduling_strategy")
-        is None
-    )
+    assert o2._ray_remote_args.get("scheduling_strategy") is None
+    assert o3._ray_remote_args.get("scheduling_strategy") == "SPREAD"
     topo, _ = build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
     assert isinstance(
-        o2._execution_state._task_submitter._ray_remote_args["scheduling_strategy"],
-        NodeAffinitySchedulingStrategy,
+        o2._ray_remote_args["scheduling_strategy"], NodeAffinitySchedulingStrategy
     )
     assert isinstance(
-        o3._execution_state._task_submitter._ray_remote_args["scheduling_strategy"],
+        o3._ray_remote_args["scheduling_strategy"],
         NodeAffinitySchedulingStrategy,
     )
 

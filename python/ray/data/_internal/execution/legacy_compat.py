@@ -151,7 +151,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for read_task in blocks:
                 yield from read_task()
 
-        return MapOperator(do_read, inputs, name="DoRead")
+        return MapOperator.create(do_read, inputs, name="DoRead")
     else:
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
         for i in output:
@@ -217,7 +217,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         def do_map(blocks: Iterator[Block]) -> Iterator[Block]:
             yield from block_fn(blocks, *fn_args, **fn_kwargs)
 
-        return MapOperator(
+        return MapOperator.create(
             do_map,
             input_op,
             name=stage.name,
