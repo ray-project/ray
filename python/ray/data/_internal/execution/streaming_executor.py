@@ -1,5 +1,4 @@
 import logging
-import queue
 import threading
 import os
 from typing import Iterator, Optional
@@ -48,16 +47,6 @@ class StreamingExecutor(Executor, threading.Thread):
         # Internal execution state shared across thread boundaries. We run the control
         # loop on a separate thread so that it doesn't become stalled between
         # generator `yield`s.
-        #
-        # The dataflow here is as follows:
-        #
-        #   output_node.outqueue ---> runner_thread_out ---> consumer_generator
-        #
-        # Note that the "real" queue is held in `output_node.outqueue`. The memory used
-        # in `output_node.outqueue` counts towards execution resources limits. In
-        # contrast, the runner_thread_out queue is limited to 1 item and is only used
-        # to handoff bundles between the executor and consumer thread.
-        self._runner_thread_out = queue.Queue(maxsize=1)
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
 
@@ -88,14 +77,14 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Drain items from the runner thread until completion.
         try:
-            item = self._runner_thread_out.get()
+            item = self._output_node.get_output_blocking()
             while item is not None:
                 if isinstance(item, Exception):
                     raise item
                 else:
                     self._output_info.update(1)
                     yield item
-                item = self._runner_thread_out.get()
+                item = self._output_node.get_output_blocking()
         finally:
             for op in self._topology:
                 op.shutdown()
@@ -107,31 +96,18 @@ class StreamingExecutor(Executor, threading.Thread):
     def run(self):
         """Run the control loop in a helper thread.
 
-        Results are returned via the `self._runner_thread_out` queue.
+        Results are returned via the output node's outqueue.
         """
         try:
             # Run scheduling loop until complete.
             while self._scheduling_loop_step(self._topology):
-                try:
-                    while self._output_node.outqueue:
-                        # Do a non-blocking put on the output queue. Output
-                        # backpressure is handled via the resource limit, not by
-                        # blocking here--- which would stall the control loop.
-                        item = self._output_node.outqueue[0]
-                        self._runner_thread_out.put_nowait(item)
-                        self._output_node.outqueue.pop(0)
-                except queue.Full:
-                    pass
-
-            # Handle any leftover outputs.
-            while self._output_node.outqueue:
-                self._runner_thread_out.put(self._output_node.outqueue.pop(0))
+                pass
         except Exception as e:
             # Propagate it to the result iterator.
-            self._runner_thread_out.put(e)
+            self._output_node.outqueue.append(e)
         finally:
             # Signal end of results.
-            self._runner_thread_out.put(None)
+            self._output_node.outqueue.append(None)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -192,7 +168,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _consumer_blocked(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""
-        return self._runner_thread_out.qsize() == 0
+        return len(self._output_node.outqueue) == 0
 
     def _get_or_refresh_resource_limits(self) -> ExecutionResources:
         """Return concrete limits for use at the current time.
