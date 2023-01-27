@@ -199,7 +199,6 @@ class DataParallelIngestSpec:
                     else:
                         preprocessor = config.per_epoch_preprocessor
 
-                    prep = preprocessor.transform_batch
                     dataset = preprocessor._transform_pipeline(dataset)
 
                 # Always re-randomize each window; this doesn't help with reducing
@@ -213,8 +212,6 @@ class DataParallelIngestSpec:
                 # Reapply the per epoch preprocessor on each epoch.
                 if isinstance(dataset, Dataset):
                     dataset = dataset.repeat()
-                # TODO: Replace with preprocessor.transform when possible.
-                per_epoch_prep = config.per_epoch_preprocessor.transform_batch
                 dataset = config.per_epoch_preprocessor._transform_pipeline(dataset)
 
             if config.global_shuffle:
