@@ -15,12 +15,12 @@ class TaskPoolSubmitter(MapTaskSubmitter):
     """A task submitter for MapOperator that uses normal Ray tasks."""
 
     def submit(
-        self, input_blocks: List[ObjectRef[Block]]
+        self, input_blocks: List[ObjectRef[Block]], task_idx: int
     ) -> ObjectRef[ObjectRefGenerator]:
         # Submit the task as a normal Ray task.
         map_task = cached_remote_fn(_map_task, num_returns="dynamic")
         return map_task.options(**self._ray_remote_args).remote(
-            self._transform_fn_ref, *input_blocks
+            self._transform_fn_ref, task_idx, *input_blocks
         )
 
     def shutdown(self, task_refs: List[ObjectRef[Union[ObjectRefGenerator, Block]]]):

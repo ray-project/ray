@@ -10,6 +10,7 @@ from ray.data.block import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
+from typing import Iterable
 
 if TYPE_CHECKING:
     import pymongoarrow.api
@@ -36,6 +37,33 @@ class MongoDatasource(Datasource):
 
     def create_reader(self, **kwargs) -> Reader:
         return _MongoDatasourceReader(**kwargs)
+
+    def sync_write(
+        self,
+        blocks: Iterable[Block],
+        task_idx: int,
+        uri: str,
+        database: str,
+        collection: str,
+    ) -> List[ObjectRef[WriteResult]]:
+        import pymongo
+
+        _validate_database_collection_exist(
+            pymongo.MongoClient(uri), database, collection
+        )
+
+        def write_block(uri: str, database: str, collection: str, block: Block):
+            from pymongoarrow.api import write
+
+            block = BlockAccessor.for_block(block).to_arrow()
+            client = pymongo.MongoClient(uri)
+            write(client[database][collection], block)
+
+        write_tasks = []
+        for block in blocks:
+            write_task = write_block(uri, database, collection, block)
+            write_tasks.append(write_task)
+        return write_tasks
 
     def do_write(
         self,

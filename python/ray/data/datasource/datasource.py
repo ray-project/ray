@@ -316,6 +316,8 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
             def __init__(self):
                 self.rows_written = 0
                 self.enabled = True
+                self.num_ok = 0
+                self.num_failed = 0
 
             def write(self, block: Block) -> str:
                 block = BlockAccessor.for_block(block)
@@ -330,9 +332,30 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
             def set_enabled(self, enabled):
                 self.enabled = enabled
 
+            def increment_ok(self):
+                self.num_ok += 1
+
+            def get_num_ok(self):
+                return self.num_ok
+
+            def increment_failed(self):
+                self.num_failed += 1
+
+            def get_num_failed(self):
+                return self.num_failed
+
         self.data_sink = DataSink.remote()
-        self.num_ok = 0
-        self.num_failed = 0
+
+    def sync_write(
+        self,
+        blocks: Iterable[Block],
+        task_idx: int,
+        **write_args,
+    ):
+        tasks = []
+        for b in blocks:
+            tasks.append(self.data_sink.write.remote(b))
+        return ray.get(tasks)
 
     def do_write(
         self,
@@ -348,12 +371,12 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
         assert all(w == "ok" for w in write_results), write_results
-        self.num_ok += 1
+        self.data_sink.increment_ok.remote()
 
     def on_write_failed(
         self, write_results: List[ObjectRef[WriteResult]], error: Exception
     ) -> None:
-        self.num_failed += 1
+        self.data_sink.increment_failed.remote()
 
 
 @DeveloperAPI

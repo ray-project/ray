@@ -880,6 +880,7 @@ class OneToOneStage(Stage):
 
         def block_fn(
             blocks: Iterable[Block],
+            task_idx: int,
             fn: UDF,
             *fn_args,
             **fn_kwargs,
@@ -897,8 +898,8 @@ class OneToOneStage(Stage):
             prev_fn_args = (
                 prev_fn_args if prev_fn_ is None else (prev_fn_,) + prev_fn_args
             )
-            blocks = block_fn1(blocks, *prev_fn_args, **prev_fn_kwargs)
-            return block_fn2(blocks, *self_fn_args, **self_fn_kwargs)
+            blocks = block_fn1(blocks, task_idx, *prev_fn_args, **prev_fn_kwargs)
+            return block_fn2(blocks, task_idx, *self_fn_args, **self_fn_kwargs)
 
         return OneToOneStage(
             name,
@@ -991,19 +992,22 @@ class AllToAllStage(Stage):
         prev_block_fn = prev.block_fn
         if self.block_udf is None:
 
-            def block_udf(blocks: Iterable[Block]) -> Iterable[Block]:
-                yield from prev_block_fn(blocks, *prev_fn_args, **prev_fn_kwargs)
+            def block_udf(blocks: Iterable[Block], task_idx: int) -> Iterable[Block]:
+                yield from prev_block_fn(
+                    blocks, task_idx, *prev_fn_args, **prev_fn_kwargs
+                )
 
         else:
             self_block_udf = self.block_udf
 
-            def block_udf(blocks: Iterable[Block]) -> Iterable[Block]:
+            def block_udf(blocks: Iterable[Block], task_idx) -> Iterable[Block]:
                 blocks = prev_block_fn(
                     blocks,
+                    task_idx,
                     *prev_fn_args,
                     **prev_fn_kwargs,
                 )
-                yield from self_block_udf(blocks)
+                yield from self_block_udf(blocks, task_idx)
 
         return AllToAllStage(
             name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
@@ -1079,7 +1083,9 @@ def _rewrite_read_stage(
     )
 
     @_adapt_for_multiple_blocks
-    def block_fn(read_fn: Callable[[], Iterator[Block]]) -> Iterator[Block]:
+    def block_fn(
+        read_fn: Callable[[], Iterator[Block]], task_idx: int
+    ) -> Iterator[Block]:
         for block in read_fn():
             yield block
 
@@ -1198,8 +1204,8 @@ def _adapt_for_multiple_blocks(
     fn: Callable[..., Iterable[Block]],
 ) -> Callable[..., Iterable[Block]]:
     @functools.wraps(fn)
-    def wrapper(blocks: Iterable[Block], *args, **kwargs):
+    def wrapper(blocks: Iterable[Block], task_idx, *args, **kwargs):
         for block in blocks:
-            yield from fn(block, *args, **kwargs)
+            yield from fn(block, task_idx, *args, **kwargs)
 
     return wrapper

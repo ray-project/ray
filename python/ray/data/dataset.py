@@ -1,7 +1,6 @@
 import collections
 import itertools
 import logging
-import os
 import sys
 import time
 import html
@@ -69,7 +68,6 @@ from ray.data._internal.stage_impl import (
     ZipStage,
     SortStage,
 )
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
@@ -108,7 +106,6 @@ from ray.data.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
-    _unwrap_arrow_serialization_workaround,
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -318,7 +315,7 @@ class Dataset(Generic[T]):
         context = DatasetContext.get_current()
 
         @_adapt_for_multiple_blocks
-        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
+        def transform(block: Block, task_idx: int, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -595,6 +592,7 @@ class Dataset(Generic[T]):
 
         def transform(
             blocks: Iterable[Block],
+            task_idx: int,
             batch_fn: BatchUDF,
             *fn_args,
             **fn_kwargs,
@@ -888,7 +886,7 @@ class Dataset(Generic[T]):
         context = DatasetContext.get_current()
 
         @_adapt_for_multiple_blocks
-        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
+        def transform(block: Block, task_idx, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -968,7 +966,7 @@ class Dataset(Generic[T]):
         context = DatasetContext.get_current()
 
         @_adapt_for_multiple_blocks
-        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
+        def transform(block: Block, task_idx, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = block.builder()
@@ -2661,8 +2659,6 @@ class Dataset(Generic[T]):
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             write_args: Additional write args to pass to the datasource.
         """
-
-        ctx = DatasetContext.get_current()
         if ray_remote_args is None:
             ray_remote_args = {}
         path = write_args.get("path", None)
@@ -2676,37 +2672,26 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
+        def transform(blocks: Iterable[Block], task_idx, fn) -> []:
+            try:
+                datasource.sync_write(blocks, task_idx, **write_args)
+                datasource.on_write_complete([])
+            except Exception as e:
+                datasource.on_write_failed([], e)
+                raise
+            return []
 
-        # TODO(ekl) remove this feature flag.
-        if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
-            write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
-                blocks, metadata, ray_remote_args=ray_remote_args, **write_args
+        plan = self._plan.with_stage(
+            OneToOneStage(
+                "write",
+                transform,
+                "tasks",
+                ray_remote_args,
+                fn=lambda x: x,
             )
-        else:
-            # Prepare write in a remote task so that in Ray client mode, we
-            # don't do metadata resolution from the client machine.
-            do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
-            write_results: List[ObjectRef[WriteResult]] = ray.get(
-                do_write.remote(
-                    datasource,
-                    ctx,
-                    blocks,
-                    metadata,
-                    ray_remote_args,
-                    _wrap_arrow_serialization_workaround(write_args),
-                )
-            )
-
-        progress = ProgressBar("Write Progress", len(write_results))
-        try:
-            progress.block_until_complete(write_results)
-            datasource.on_write_complete(ray.get(write_results))
-        except Exception as e:
-            datasource.on_write_failed(write_results, e)
-            raise
-        finally:
-            progress.close()
+        )
+        ds = Dataset(plan, self._epoch, self._lazy)
+        ds.fully_executed()
 
     def iterator(self) -> DatasetIterator:
         """Return a :class:`~ray.data.DatasetIterator` that

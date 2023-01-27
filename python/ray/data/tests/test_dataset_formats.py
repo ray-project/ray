@@ -172,23 +172,20 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
     ds0 = ray.data.range(10, parallelism=2)
     ds = maybe_pipeline(ds0, pipelined)
     ds.write_datasource(output)
-    if pipelined:
-        assert output.num_ok == 2
-    else:
-        assert output.num_ok == 1
-    assert output.num_failed == 0
+    assert ray.get(output.data_sink.get_num_ok.remote()) == 2
+    assert ray.get(output.data_sink.get_num_failed.remote()) == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
     ray.get(output.data_sink.set_enabled.remote(False))
     ds = maybe_pipeline(ds0, pipelined)
     with pytest.raises(ValueError):
-        ds.write_datasource(output)
-    if pipelined:
-        assert output.num_ok == 2
-    else:
-        assert output.num_ok == 1
-    assert output.num_failed == 1
+        ds.write_datasource(output, ray_remote_args={"max_retries": 0})
+    assert ray.get(output.data_sink.get_num_ok.remote()) == 2
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
+    if pipelined:
+        assert ray.get(output.data_sink.get_num_failed.remote()) == 1
+    else:
+        assert ray.get(output.data_sink.get_num_failed.remote()) == 2
 
 
 def test_from_tf(ray_start_regular_shared):

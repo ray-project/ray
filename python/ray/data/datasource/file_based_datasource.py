@@ -17,6 +17,7 @@ from typing import (
 
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockMetadata
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
@@ -60,7 +61,7 @@ class BlockWritePathProvider:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         dataset_uuid: Optional[str] = None,
-        block: Optional[ObjectRef[Block]] = None,
+        block: Optional[Block] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
@@ -77,7 +78,7 @@ class BlockWritePathProvider:
                 write a file out to the write path returned.
             dataset_uuid: Unique identifier for the dataset that this block
                 belongs to.
-            block: Object reference to the block to write.
+            block: The block to write.
             block_index: Ordered index of the block to write within its parent
                 dataset.
             file_format: File format string for the block that can be used as
@@ -94,7 +95,7 @@ class BlockWritePathProvider:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         dataset_uuid: Optional[str] = None,
-        block: Optional[ObjectRef[Block]] = None,
+        block: Optional[Block] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
@@ -256,6 +257,73 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             "If your `_read_file` or `_read_stream` implementation returns a list, "
             "then you need to implement `_convert_block_to_tabular_block."
         )
+
+    # This doesn't launch Ray tasks to write.
+    def sync_write(
+        self,
+        blocks: Iterable[Block],
+        task_idx: int,
+        path: str,
+        dataset_uuid: str,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        _block_udf: Optional[Callable[[Block], Block]] = None,
+        **write_args,
+    ):
+        """Creates and returns write tasks for a file-based datasource."""
+        path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
+        path = path[0]
+        if try_create_dir:
+            # Arrow's S3FileSystem doesn't allow creating buckets by default, so we add
+            # a query arg enabling bucket creation if an S3 URI is provided.
+            tmp = _add_creatable_buckets_param_if_s3_uri(path)
+            filesystem.create_dir(tmp, recursive=True)
+        filesystem = _wrap_s3_serialization_workaround(filesystem)
+
+        _write_block_to_file = self._write_block
+
+        if open_stream_args is None:
+            open_stream_args = {}
+
+        def write_block(write_path: str, block: Block):
+            logger.debug(f"Writing {write_path} file.")
+            fs = filesystem
+            if isinstance(fs, _S3FileSystemWrapper):
+                fs = fs.unwrap()
+            if _block_udf is not None:
+                block = _block_udf(block)
+
+            with fs.open_output_stream(write_path, **open_stream_args) as f:
+                _write_block_to_file(
+                    f,
+                    BlockAccessor.for_block(block),
+                    writer_args_fn=write_args_fn,
+                    **write_args,
+                )
+
+        file_format = self._FILE_EXTENSION
+        if isinstance(file_format, list):
+            file_format = file_format[0]
+
+        builder = DelegatingBlockBuilder()
+        for block in blocks:
+            builder.add_block(block)
+        block = builder.build()
+
+        if not block_path_provider:
+            block_path_provider = DefaultBlockWritePathProvider()
+        write_path = block_path_provider(
+            path,
+            filesystem=filesystem,
+            dataset_uuid=dataset_uuid,
+            block=block,
+            block_index=task_idx,
+            file_format=file_format,
+        )
+        write_block(write_path, block)
 
     def do_write(
         self,

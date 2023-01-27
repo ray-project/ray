@@ -31,7 +31,11 @@ class RepartitionStage(AllToAllStage):
         if shuffle:
 
             def do_shuffle(
-                block_list, clear_input_blocks: bool, block_udf, remote_args
+                block_list,
+                task_idx: int,
+                clear_input_blocks: bool,
+                block_udf,
+                remote_args,
             ):
                 if clear_input_blocks:
                     blocks = block_list.copy()
@@ -94,7 +98,9 @@ class RandomShuffleStage(AllToAllStage):
         output_num_blocks: Optional[int],
         remote_args: Optional[Dict[str, Any]] = None,
     ):
-        def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
+        def do_shuffle(
+            block_list, task_idx: int, clear_input_blocks: bool, block_udf, remote_args
+        ):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}

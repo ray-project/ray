@@ -63,6 +63,9 @@ class MapOperatorState:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
         self._task_submitter: MapTaskSubmitter = task_submitter
 
+        # Increment task index by one each time we submit a new task.
+        self._next_task_idx = 0
+
         # The temporary block bundle used to accumulate inputs until they meet the
         # min_rows_per_bundle requirement.
         self._block_bundle: Optional[RefBundle] = None
@@ -182,7 +185,10 @@ class MapOperatorState:
         # TODO fix for Ray client: https://github.com/ray-project/ray/issues/30458
         if not DatasetContext.get_current().block_splitting_enabled:
             raise NotImplementedError("New backend requires block splitting")
-        ref: ObjectRef[ObjectRefGenerator] = self._task_submitter.submit(input_blocks)
+        ref: ObjectRef[ObjectRefGenerator] = self._task_submitter.submit(
+            input_blocks, self._next_task_idx
+        )
+        self._next_task_idx += 1
         task = _TaskState(bundle)
         self._tasks[ref] = task
         self._output_queue.notify_pending_task(task)

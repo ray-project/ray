@@ -50,13 +50,13 @@ class ActorPoolSubmitter(MapTaskSubmitter):
             self._actor_pool.add_actor(cls_.remote())
 
     def submit(
-        self, input_blocks: List[ObjectRef[Block]]
+        self, input_blocks: List[ObjectRef[Block]], task_idx
     ) -> ObjectRef[ObjectRefGenerator]:
         # Pick an actor from the pool.
         actor = self._actor_pool.pick_actor()
         # Submit the map task.
         ref = actor.submit.options(num_returns="dynamic").remote(
-            self._transform_fn_ref, *input_blocks
+            task_idx, self._transform_fn_ref, *input_blocks
         )
         self._active_actors[ref] = actor
         return ref
@@ -94,9 +94,12 @@ class MapWorker:
         return "ok"
 
     def submit(
-        self, fn: Callable[[Iterator[Block]], Iterator[Block]], *blocks: Block
+        self,
+        task_idx: int,
+        fn: Callable[[Iterator[Block]], Iterator[Block]],
+        *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(fn, *blocks)
+        yield from _map_task(fn, task_idx, *blocks)
 
 
 class ActorPool:
