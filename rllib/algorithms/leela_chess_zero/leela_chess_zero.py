@@ -409,6 +409,3 @@ class LeelaChessZero(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-DEFAULT_CONFIG = LeelaChessZeroConfig().to_dict()

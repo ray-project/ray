@@ -71,11 +71,14 @@ class MultiAgentChess(MultiAgentEnv):
     def __init__(
         self,
         config: Dict[Any, Any] = None,
-        env: AECEnv = chess_v5(),
+        env: AECEnv = None,
     ):
         super().__init__()
-        self.env = env
-        env.reset()
+        if env is None:
+            self.env = chess_v5()
+        else:
+            self.env = env
+        self.env.reset()
         # TODO (avnishn): Remove this after making petting zoo env compatible with
         #  check_env.
         self._skip_env_checking = True
