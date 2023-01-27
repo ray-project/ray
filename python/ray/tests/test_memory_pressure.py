@@ -505,12 +505,7 @@ def test_last_task_of_the_group_fail_immediately():
             time.sleep(5)
 
     # TODO(clarng): remove once these becomes the default
-    with ray.init(
-        _system_config={
-            "task_oom_retries": -1,
-            "worker_killing_policy": "group_by_owner",
-        },
-    ) as addr:
+    with ray.init() as addr:
         with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
             ray.get(infinite_retry_task.remote())
 
