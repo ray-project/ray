@@ -284,22 +284,16 @@ class Dataset(Generic[T]):
         .. seealso::
 
             :meth:`~Dataset.flat_map`:
-                Call this method to create new records from existing ones. Unlike 
-                :meth:`~Dataset.map`, a function passed to :meth:`~Dataset.flat_map` 
-                can return multiple records. 
+                Call this method to create new records from existing ones. Unlike
+                :meth:`~Dataset.map`, a function passed to :meth:`~Dataset.flat_map`
+                can return multiple records.
 
-                :meth:`~Dataset.flat_map` isn't recommended because it's slow; call 
+                :meth:`~Dataset.flat_map` isn't recommended because it's slow; call
                 :meth:`~Dataset.map_batches` instead.
 
             :meth:`~Dataset.map_batches`
-                Call this method to transform batches of data. It's faster and more 
+                Call this method to transform batches of data. It's faster and more
                 flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
-                
-            :meth:`~Dataset.map`
-                Call this method to transform one record at time. 
-                
-                This method isn't recommended because it's slow; call 
-                :meth:`~Dataset.map_batches` instead.
         """
         if isinstance(fn, CallableClass) and (
             compute is None
@@ -501,6 +495,20 @@ class Dataset(Generic[T]):
 
             :meth:`~Dataset.default_batch_format`
                 Call this function to determine the default batch type.
+
+            :meth:`~Dataset.flat_map`:
+                Call this method to create new records from existing ones. Unlike
+                :meth:`~Dataset.map`, a function passed to :meth:`~Dataset.flat_map`
+                can return multiple records.
+
+                :meth:`~Dataset.flat_map` isn't recommended because it's slow; call
+                :meth:`~Dataset.map_batches` instead.
+
+            :meth:`~Dataset.map`
+                Call this method to transform one record at time.
+
+                This method isn't recommended because it's slow; call
+                :meth:`~Dataset.map_batches` instead.
         """  # noqa: E501
         import pandas as pd
         import pyarrow as pa
@@ -790,6 +798,18 @@ class Dataset(Generic[T]):
                 must be used.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+
+        .. seealso::
+
+            :meth:`~Dataset.map_batches`
+                Call this method to transform batches of data. It's faster and more
+                flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
+
+            :meth:`~Dataset.map`
+                Call this method to transform one record at time.
+
+                This method isn't recommended because it's slow; call
+                :meth:`~Dataset.map_batches` instead.
         """
         if isinstance(fn, CallableClass) and (
             compute is None
