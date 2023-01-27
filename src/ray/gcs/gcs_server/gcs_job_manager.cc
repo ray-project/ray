@@ -154,6 +154,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     if (result.empty()) {
       RAY_LOG(INFO) << "Finished getting all job info.";
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      return;
     }
 
     for (auto &data : result) {
@@ -167,16 +168,18 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       const auto &metadata = reply->job_info_list(i).config().metadata();
       auto iter = metadata.find("job_submission_id");
       if (iter == metadata.end()) {
+        // This job was not submitted by the Ray Job API so it has no JobInfo.
         // Send reply if all jobs have been processed.
         if (num_processed_jobs->fetch_add(1) == reply->job_info_list_size() - 1) {
           RAY_LOG(INFO) << "Finished getting all job info.";
           GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+          return;
         }
         continue;
       }
 
       const auto &job_submission_id = iter->second;
-
+      // Get the JobInfo for this job.
       auto kv_get_callback =
           [reply, send_reply_callback, num_processed_jobs, i, &job_submission_id](
               std::optional<std::string> job_info_json) {
