@@ -9,6 +9,38 @@ Although the KubeRay operator can function within a single namespace, the use of
 If the necessary Kubernetes admin permissions are not available for deploying KubeRay, this doc introduces a way to deploy a static Ray cluster to Kubernetes without using KubeRay. However, it should be noted that this deployment method lacks the built-in
 autoscaling feature that KubeRay provides.
 
+## Preparation
+
+### Install the latest Ray release
+
+This step is necessary for interacting with remote clusters using {ref}`Ray Job Submission <jobs-overview>`.
+
+```
+! pip install -U "ray[default]"
+```
+
+See {ref}`installation` for more details.
+
+### Install kubectl
+
+To interact with Kubernetes, we will use kubectl. Installation instructions can be found in the [Kubernetes documentation](https://kubernetes.io/docs/tasks/tools/#kubectl).
+
+### Access a Kubernetes cluster
+
+We will need access to a Kubernetes cluster. There are two options:
+
+1. Configure access to a remote Kubernetes cluster
+**OR**
+
+2. Run the examples locally by [installing kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation). Start your [kind](https://kind.sigs.k8s.io/) cluster by running the following command:
+
+```
+! kind create cluster
+```
+
+To execute the example in this guide, ensure that your Kubernetes cluster (or local Kind cluster) can handle additional resource requests of 3 CPU and 3Gi memory.
+Also, ensure that both your Kubernetes cluster and Kubectl are at least version 1.19.
+
 ## Deploying a static Ray cluster
 
 In this section, we will deploy a static Ray cluster into the `default` namespace without using KubeRay. To use another
