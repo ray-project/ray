@@ -3872,7 +3872,7 @@
       num_nodes: 32
 
 
-- name: many_nodes_actor_test
+- name: many_nodes_actor_test_on_v2
   group: core-daily-test
   working_dir: benchmarks
   legacy:
