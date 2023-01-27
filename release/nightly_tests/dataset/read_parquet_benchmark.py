@@ -39,6 +39,11 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
 
     # TODO: Test below is currently excluded, due to failure around
     # pickling the Dataset involving the filter expression.
+    # The error is present on Python < 3.8, and involves the pickle/pickle5
+    # libraries. `pickle` is included as a default library from Python 3.8+,
+    # whereas Python versions before this must import the backported `pickle5` library
+    # to maintain the same functionality.
+
     # Test with projection and filter pushdowns.
     # Since we have projection and filter pushdown, we can run the read on the full
     # size of one year data fast enough on a single node.
