@@ -99,6 +99,8 @@ This causes the HTTP proxy and deployment replica to print log statements to the
 
 A copy of these logs are stored at `/tmp/ray/session_latest/logs/serve/`. You can parse these stored logs with a logging stack such as ELK or [Loki](serve-logging-loki) to search them by deployment or replica. 
 
+Serve supports [Log Rotation](ray-log-rotation) of these logs through setting the environment variables `RAY_ROTATION_MAX_BYTES` and `RAY_ROTATION_BACKUP_COUNT`.
+
 To silence the replica-level logs or otherwise configure logging, configure the `"ray.serve"` logger **inside the deployment constructor**:
 
 ```python
