@@ -863,16 +863,33 @@ class TaskSummaries:
                 grand_parent_lineage = find_lineage(grand_parent_task)
                 if not grand_parent_lineage:
                     return None
-                return [*grand_parent_lineage, actor_name, func_name]
+                # The lineage should be the same lineage of the creation task
+                logger.info(f"lineage A: {[*grand_parent_lineage[0:-1], actor_name, func_name]}")
+                return [*grand_parent_lineage[0:-1], func_name]
             else:
                 parent_task_id = task["parent_task_id"]
                 if not parent_task_id or parent_task_id.startswith(DRIVER_TASK_ID_PREFIX):
-                    return [func_name]
+                    if type_enum == TaskType.ACTOR_CREATION_TASK:
+                        # Actor creation tasks need to be put under the actor
+                        # TODO(aguo): Get actor name from actors state-api.
+                        [actor_name, *rest] = task["func_or_class_name"].split(".")
+                        logger.info(f"lineage B: {[actor_name, func_name]}")
+                        return [actor_name, func_name]
+                    else:
+                        return [func_name]
                 else:
                     parent_lineage = find_lineage(parent_task_id)
                     if not parent_lineage:
                         return None
-                    return [*parent_lineage, func_name]
+                    if type_enum == TaskType.ACTOR_CREATION_TASK:
+                        # Actor creation tasks need to be put under the actor
+                        # TODO(aguo): Get actor name from actors state-api.
+                        [actor_name, *rest] = task["func_or_class_name"].split(".")
+                        logger.info(f"lineage C: {[*parent_lineage, actor_name, func_name]}")
+                        return [*parent_lineage, actor_name, func_name]
+                    else:
+                        logger.info(f"lineage D: {[*parent_lineage, func_name]}")
+                        return [*parent_lineage, func_name]
 
         def get_or_create_actor_task_group(actor_lineage, actor_id):
             key = ",".join(actor_lineage)
@@ -882,15 +899,20 @@ class TaskSummaries:
                     key=key,
                     type=TaskType.DESCRIPTOR.values_by_number[TaskType.ACTOR_CREATION_TASK].name,
                 )
-                parent_lineage = actor_lineage[0:-1]
-                parent_key = ",".join(parent_lineage)
-                if parent_key not in task_group_by_key:
-                    parent_task_id = actor_creation_task_id_for_actor_id[actor_id]
-                    parent_task = tasks_by_id[parent_task_id]
-                    create_task_group(parent_lineage, parent_key, parent_task)
+                if len(actor_lineage) == 1:
+                    summary[key] = task_group_by_key[key]
+                else:
+                    logger.info(f"lineage: {actor_lineage}")
+                    parent_lineage = actor_lineage[0:-1]
+                    parent_key = ",".join(parent_lineage)
+                    if parent_key not in task_group_by_key:
+                        actor_creation_task_id = actor_creation_task_id_for_actor_id[actor_id]
+                        actor_creation_task = tasks_by_id[actor_creation_task_id]
+                        parent_task = tasks_by_id[actor_creation_task["parent_task_id"]]
+                        create_task_group(parent_lineage, parent_key, parent_task)
 
-                parent_task_group = task_group_by_key[parent_key]
-                parent_task_group.children.append(task_group_by_key[key])
+                    parent_task_group = task_group_by_key[parent_key]
+                    parent_task_group.children.append(task_group_by_key[key])
             
             return task_group_by_key[key]
 
@@ -906,7 +928,7 @@ class TaskSummaries:
                 summary[key] = task_group_by_key[key]
             else:
                 type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
-                if type_enum == TaskType.ACTOR_TASK:
+                if type_enum == TaskType.ACTOR_TASK or type_enum == TaskType.ACTOR_CREATION_TASK:
                     parent_lineage = lineage[0:-1]
                     parent_task_group = get_or_create_actor_task_group(parent_lineage, task["actor_id"])
                     parent_task_group.children.append(task_group_by_key[key])
@@ -1038,7 +1060,7 @@ class TaskSummaries:
                 # TODO(aguo): Don't do this hacky string parsing to figure out actor name.
                 # Get actor name from actors endpoint instead.
                 [actor_name, *rest] = task["func_or_class_name"]
-                actor_group.name = f"Actor: {actor_name}"
+                actor_group.name = actor_name
                 task_group_by_id[task_id].children.append(actor_group)
 
 
