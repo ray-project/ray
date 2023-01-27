@@ -33,6 +33,7 @@ class ApplicationStatus(str, Enum):
     DEPLOYING = "DEPLOYING"
     RUNNING = "RUNNING"
     DEPLOY_FAILED = "DEPLOY_FAILED"
+    DELETING = "DELETING"
 
 
 @dataclass(eq=True)
@@ -92,6 +93,7 @@ class DeploymentStatusInfo:
 @dataclass(eq=True)
 class StatusOverview:
     app_status: ApplicationStatusInfo
+    name: str = ""
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
 
     def debug_string(self):
@@ -131,6 +133,7 @@ class StatusOverview:
 
         # Return protobuf encapsulating application and deployment protos
         return StatusOverviewProto(
+            name=self.name,
             app_status=app_status_proto,
             deployment_statuses=deployment_status_proto_list,
         )
@@ -147,7 +150,11 @@ class StatusOverview:
             deployment_statuses.append(DeploymentStatusInfo.from_proto(info_proto))
 
         # Recreate StatusInfo
-        return cls(app_status=app_status, deployment_statuses=deployment_statuses)
+        return cls(
+            app_status=app_status,
+            deployment_statuses=deployment_statuses,
+            name=proto.name,
+        )
 
 
 HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"
@@ -162,7 +169,7 @@ class DeploymentInfo:
         deployment_config: DeploymentConfig,
         replica_config: ReplicaConfig,
         start_time_ms: int,
-        deployer_job_id: "ray._raylet.JobID",
+        deployer_job_id: str,
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
@@ -225,7 +232,7 @@ class DeploymentInfo:
             "actor_name": proto.actor_name if proto.actor_name != "" else None,
             "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
-            "deployer_job_id": ray.get_runtime_context().job_id,
+            "deployer_job_id": ray.get_runtime_context().get_job_id(),
         }
 
         return cls(**data)
