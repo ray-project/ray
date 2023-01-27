@@ -1,7 +1,7 @@
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.all_to_all_operator import (
-    AbstractAllToAll,
+    RandomizeBlocks,
     plan_all_to_all_op,
 )
 from ray.data._internal.logical.operators.read_operator import Read, plan_read_op
@@ -31,7 +31,7 @@ class Planner:
         elif isinstance(logical_dag, AbstractMap):
             assert len(physical_children) == 1
             physical_dag = plan_map_op(logical_dag, physical_children[0])
-        elif isinstance(logical_dag, AbstractAllToAll):
+        elif isinstance(logical_dag, RandomizeBlocks):
             assert len(physical_children) == 1
             physical_dag = plan_all_to_all_op(logical_dag, physical_children[0])
         else:

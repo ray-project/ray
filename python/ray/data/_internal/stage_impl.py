@@ -1,10 +1,7 @@
 from typing import Any, Dict, Optional, TYPE_CHECKING
-from functools import partial
 
 import ray
 from ray.data._internal.fast_repartition import fast_repartition
-from ray.data._internal.logical.operators.random_shuffle_operator import shuffle
-from ray.data._internal.logical.operators.randomize_blocks_operator import randomize
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle_and_partition import (
     PushBasedShufflePartitionOp,
@@ -76,10 +73,16 @@ class RandomizeBlocksStage(AllToAllStage):
     """Implementation of `Dataset.randomize_blocks()`."""
 
     def __init__(self, seed: Optional[int]):
-        fn = partial(randomize, seed)
         self._seed = seed
 
-        super().__init__("randomize_block_order", None, fn)
+        super().__init__("randomize_block_order", None, self.do_randomize)
+
+    def do_randomize(self, block_list, *_):
+        num_blocks = block_list.initial_num_blocks()
+        if num_blocks == 0:
+            return block_list, {}
+        randomized_block_list = block_list.randomize_block_order(self._seed)
+        return randomized_block_list, {}
 
 
 class RandomShuffleStage(AllToAllStage):
@@ -91,11 +94,39 @@ class RandomShuffleStage(AllToAllStage):
         output_num_blocks: Optional[int],
         remote_args: Optional[Dict[str, Any]] = None,
     ):
-        fn = partial(shuffle, seed, output_num_blocks)
+        def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
+            num_blocks = block_list.executed_num_blocks()  # Blocking.
+            if num_blocks == 0:
+                return block_list, {}
+            if clear_input_blocks:
+                blocks = block_list.copy()
+                block_list.clear()
+            else:
+                blocks = block_list
+            context = DatasetContext.get_current()
+            if context.use_push_based_shuffle:
+                if output_num_blocks is not None:
+                    raise NotImplementedError(
+                        "Push-based shuffle doesn't support setting num_blocks yet."
+                    )
+                shuffle_op_cls = PushBasedShufflePartitionOp
+            else:
+                shuffle_op_cls = SimpleShufflePartitionOp
+            random_shuffle_op = shuffle_op_cls(
+                block_udf, random_shuffle=True, random_seed=seed
+            )
+            return random_shuffle_op.execute(
+                blocks,
+                output_num_blocks or num_blocks,
+                clear_input_blocks,
+                map_ray_remote_args=remote_args,
+                reduce_ray_remote_args=remote_args,
+            )
+
         super().__init__(
             "random_shuffle",
             output_num_blocks,
-            fn,
+            do_shuffle,
             supports_block_udf=True,
             remote_args=remote_args,
         )

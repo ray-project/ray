@@ -30,8 +30,7 @@ import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
-from ray.data._internal.logical.operators.random_shuffle_operator import RandomShuffle
-from ray.data._internal.logical.operators.randomize_blocks_operator import (
+from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
 )
 from ray.data._internal.logical.optimizers import LogicalPlan
@@ -1074,17 +1073,7 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
         )
-
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = RandomShuffle(
-                logical_plan.dag,
-                seed=seed,
-                output_num_blocks=num_blocks,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, self._epoch, self._lazy)
 
     def randomize_block_order(
         self,
