@@ -86,10 +86,14 @@ class StreamingExecutor(Executor, threading.Thread):
                     yield item
                 item = self._output_node.get_output_blocking()
         finally:
-            for op in self._topology:
-                op.shutdown()
+            # Close the progress bars from top to bottom to avoid them jumping
+            # around in the console after completion.
             if self._global_info:
                 self._global_info.close()
+            for op, state in self._topology.items():
+                op.shutdown()
+                if state.progress_bar:
+                    state.progress_bar.close()
             if self._output_info:
                 self._output_info.close()
 
