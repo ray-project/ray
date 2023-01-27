@@ -964,6 +964,36 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, use_air_trai
     assert [ckpt.to_dict()["it"] for ckpt in checkpoints] == [2, 3, 4, 5]
 
 
+@pytest.mark.parametrize("upload_dir", [None, "memory:///test/"])
+def test_tuner_can_restore(ray_start_2_cpus, tmpdir, upload_dir):
+    """Make sure that `can_restore` detects an existing experiment at a
+    local/remote path and only returns True if it's at the experiment dir root.
+    """
+    name = "exp_name"
+    path = tmpdir / name
+    if upload_dir:
+        path = Path(upload_dir) / name
+
+    assert not Tuner.can_restore(path)
+    Tuner(
+        lambda config: None,
+        run_config=RunConfig(
+            name=name,
+            local_dir=str(tmpdir),
+            sync_config=tune.SyncConfig(upload_dir=upload_dir),
+        ),
+        tune_config=TuneConfig(trial_dirname_creator=lambda t: "trial_dir"),
+    ).fit()
+    assert Tuner.can_restore(path)
+    # Can't restore from the trial level
+    assert not Tuner.can_restore(path / "trial_dir")
+
+    if upload_dir:
+        assert not Tuner.can_restore(Path(upload_dir) / "new_exp")
+    else:
+        assert not Tuner.can_restore(tmpdir / "new_exp")
+
+
 if __name__ == "__main__":
     import sys
 
