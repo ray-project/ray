@@ -192,9 +192,16 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         timeout = int(req.query.get("timeout", 30))
         filters = self._get_filters_from_req(req)
         detail = convert_string_to_type(req.query.get("detail", False), bool)
+        show_dead_jobs = convert_string_to_type(
+            req.query.get("show_dead_jobs", False), bool
+        )
 
         return ListApiOptions(
-            limit=limit, timeout=timeout, filters=filters, detail=detail
+            limit=limit,
+            timeout=timeout,
+            filters=filters,
+            detail=detail,
+            show_dead_jobs=show_dead_jobs,
         )
 
     def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:

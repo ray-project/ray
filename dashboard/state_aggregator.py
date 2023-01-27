@@ -202,7 +202,9 @@ class StateAPIManager:
 
         """
         try:
-            reply = await self._client.get_all_actor_info(timeout=option.timeout)
+            reply = await self._client.get_all_actor_info(
+                timeout=option.timeout, show_dead_jobs=option.show_dead_jobs
+            )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 

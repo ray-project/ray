@@ -19,6 +19,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
+    run_string_as_driver,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
 )
@@ -88,6 +89,7 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     ActorState,
     ListApiOptions,
+    StateResource,
     SummaryApiOptions,
     NodeState,
     ObjectState,
@@ -1922,6 +1924,45 @@ class TestListActors:
         x_actors = list_actors(filters=[("ray_namespace", "=", "x")])
         assert len(x_actors) == 1
         assert x_actors[0]["ray_namespace"] == "x"
+
+
+def test_list_all_actors_from_dead_jobs(ray_start_regular):
+    script = """
+import ray
+import time
+
+ray.init("auto")
+
+@ray.remote
+class Actor():
+    def ready(self):
+        pass
+
+a = Actor.remote()
+ray.get(a.ready.remote())
+"""
+    run_string_as_driver(script)
+
+    client = StateApiClient()
+
+    def list_actors(show_dead_jobs: bool):
+        return client.list(
+            StateResource.ACTORS,
+            options=ListApiOptions(show_dead_jobs=show_dead_jobs),
+            raise_on_missing_output=True,
+        )
+
+    def verify():
+        actors_with_dead_jobs = list_actors(show_dead_jobs=True)
+        assert len(actors_with_dead_jobs) == 1
+        assert actors_with_dead_jobs[0]["state"] == "DEAD"
+
+        actors_no_dead_jobs = list_actors(show_dead_jobs=False)
+        assert len(actors_no_dead_jobs) == 0
+
+        return True
+
+    wait_for_condition(verify)
 
 
 @pytest.mark.skipif(
