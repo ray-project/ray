@@ -22,10 +22,6 @@ class Encoder(Model):
     That is, for time-series data, we encode into the latent space for each time step.
     This should be reflected in the output_spec.
     """
-
-    def __init__(self, config: dict):
-        super().__init__(config)
-
     def get_initial_state(self) -> TensorType:
         """Returns the initial state of the encoder.
 
