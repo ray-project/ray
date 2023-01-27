@@ -1651,9 +1651,21 @@ cc_test(
     ],
     copts = COPTS,
     tags = ["team:core"],
-    target_compatible_with = [
-        "@platforms//os:linux",
+    deps = [
+        ":ray_common",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_test(
+    name = "worker_killing_policy_group_by_owner_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/worker_killing_policy_group_by_owner_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":ray_common",
         ":raylet_lib",

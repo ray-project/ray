@@ -28,14 +28,18 @@ scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
     float spread_threshold,
     bool force_spillback,
     bool require_node_available,
+    const std::string &preferred_node,
     NodeFilter node_filter) {
-  // Step 1: Generate the traversal order. We guarantee that the first node is local, to
-  // encourage local scheduling. The rest of the traversal order should be globally
-  // consistent, to encourage using "warm" workers.
+  // Step 1: Generate the traversal order. We guarantee that the first node is local (or
+  // the preferred node, if provided), to encourage local/preferred scheduling. The rest
+  // of the traversal order should be globally consistent, to encourage using "warm"
+  // workers.
   std::vector<scheduling::NodeID> round;
   round.reserve(nodes_.size());
-  const auto local_it = nodes_.find(local_node_id_);
-  RAY_CHECK(local_it != nodes_.end());
+  auto preferred_node_id =
+      preferred_node.empty() ? local_node_id_ : scheduling::NodeID(preferred_node);
+  auto preferred_it = nodes_.find(preferred_node_id);
+  RAY_CHECK(preferred_it != nodes_.end());
   auto predicate = [this, node_filter](scheduling::NodeID node_id,
                                        const NodeResources &node_resources) {
     if (!is_node_available_(node_id)) {
@@ -52,18 +56,18 @@ scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
     return !has_gpu;
   };
 
-  const auto &local_node_view = local_it->second.GetLocalView();
-  // If we should include local node at all, make sure it is at the front of the list
-  // so that
+  const auto &preferred_node_view = preferred_it->second.GetLocalView();
+  // If we should include local/preferred node at all, make sure it is at the front of the
+  // list so that
   // 1. It's first in traversal order.
   // 2. It's easy to avoid sorting it.
-  if (predicate(local_node_id_, local_node_view) && !force_spillback) {
-    round.push_back(local_node_id_);
+  if (predicate(preferred_node_id, preferred_node_view) && !force_spillback) {
+    round.push_back(preferred_node_id);
   }
 
   const auto start_index = round.size();
   for (const auto &pair : nodes_) {
-    if (pair.first != local_node_id_ &&
+    if (pair.first != preferred_node_id &&
         predicate(pair.first, pair.second.GetLocalView())) {
       round.push_back(pair.first);
     }
@@ -144,7 +148,8 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
     return HybridPolicyWithFilter(resource_request,
                                   options.spread_threshold,
                                   options.avoid_local_node,
-                                  options.require_node_available);
+                                  options.require_node_available,
+                                  options.preferred_node_id);
   }
 
   // Try schedule on non-GPU nodes.
@@ -152,6 +157,7 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
                                              options.spread_threshold,
                                              options.avoid_local_node,
                                              /*require_node_available*/ true,
+                                             options.preferred_node_id,
                                              NodeFilter::kNonGpu);
   if (!best_node_id.IsNil()) {
     return best_node_id;
@@ -162,7 +168,8 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
   return HybridPolicyWithFilter(resource_request,
                                 options.spread_threshold,
                                 options.avoid_local_node,
-                                options.require_node_available);
+                                options.require_node_available,
+                                options.preferred_node_id);
 }
 
 }  // namespace raylet_scheduling_policy

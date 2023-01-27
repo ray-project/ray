@@ -2631,6 +2631,7 @@ class AlgorithmConfig:
                 optimizer_config={"lr": self.lr},
             )
             .resources(num_gpus=self.num_gpus, fake_gpus=self._fake_gpus)
+            .algorithm(algorithm_config=self)
         )
 
         return config

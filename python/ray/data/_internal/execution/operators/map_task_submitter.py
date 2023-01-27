@@ -50,6 +50,10 @@ class MapTaskSubmitter(ABC):
         """Indicates that no more tasks will be submitter."""
         pass
 
+    def progress_str(self) -> str:
+        """Pass through progress string for operators."""
+        raise NotImplementedError
+
     @abstractmethod
     def shutdown(self, task_refs: List[ObjectRef[Union[ObjectRefGenerator, Block]]]):
         """Shutdown the submitter, i.e. release any reserved resources.
