@@ -80,4 +80,4 @@ done
 echo "CONTAINER_ID=$(hostname)" >> $destdir
 
 # Needed for pyarrow to work.
-echo "CLASSPATH=$(hadoop classpath --glob)" >> /tmp/hdfs_classpath_env
+echo "CLASSPATH=$(hadoop classpath --glob)" >> $destdir

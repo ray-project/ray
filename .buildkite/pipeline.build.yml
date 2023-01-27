@@ -607,7 +607,6 @@
     - INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - cat /tmp/hdfs_env
-    - cat /tmp/hdfs_classpath_env
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_tag_filters=hdfs python/ray/air/...
 
 
