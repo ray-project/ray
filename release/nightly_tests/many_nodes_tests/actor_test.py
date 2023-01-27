@@ -6,6 +6,8 @@ import json
 import ray
 import psutil
 
+from dashboard_test import DashboardTestAtScale
+
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
     @ray.remote(num_cpus=cpus_per_actor)
@@ -50,7 +52,9 @@ def scale_cluster_up(num_cpus):
 def main():
     args, unknown = parse_script_args()
 
-    ray.init(address="auto")
+    addr = ray.init(address="auto")
+    dashboard_test = DashboardTestAtScale(addr)
+
     total_cpus = args.cpus_per_actor * args.total_actors + psutil.cpu_count()
     total_cpus = int(math.ceil(total_cpus))
     scale_cluster_up(total_cpus)
@@ -67,7 +71,7 @@ def main():
     objs = [actor.foo.remote() for actor in actors]
 
     while len(objs) != 0:
-        objs_ready, objs = ray.wait(objs, timeout=10)
+        objs_ready, objs = ray.wait(objs, timeout=30)
         print(
             f"Status: {total_actors - len(objs)}/{total_actors}, "
             f"{perf_counter() - actor_ready_start}"
@@ -83,6 +87,7 @@ def main():
     )
 
     if "TEST_OUTPUT_JSON" in os.environ and not args.no_report:
+        rate = args.total_actors / (actor_ready_time + actor_launch_time)
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
         results = {
             "actor_launch_time": actor_launch_time,
@@ -91,6 +96,15 @@ def main():
             "num_actors": args.total_actors,
             "success": "1",
         }
+        results["perf_metrics"] = [
+            {
+                "perf_metric_name": f"actors_per_second_{args.total_actors}",
+                "perf_metric_value": rate,
+                "perf_metric_type": "THROUGHPUT",
+            }
+        ]
+        dashboard_test.update_release_test_result(results)
+
         json.dump(results, out_file)
 
 
