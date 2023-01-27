@@ -10,14 +10,14 @@ class TrackedActorTask:
     the task resolves, errors, or times out.
 
     Note:
-        Objects of this class are returned by the :class:`RayEventManager`.
+        Objects of this class are returned by the :class:`RayActorManager`.
         This class should not be instantiated manually.
 
     Example:
 
         .. code-block:: python
 
-            tracked_futures = event_manager.schedule_actor_tasks(
+            tracked_futures = actor_manager.schedule_actor_tasks(
                 actor_manager.live_actors,
                 "foo")
             tracked_futures.on_result(lambda actor, result: print(result))
@@ -68,15 +68,15 @@ class TrackedActorTaskCollection:
     actor task.
 
     Note:
-        Objects of this class are returned by the :class:`RayEventManager`.
+        Objects of this class are returned by the :class:`RayActorManager`.
         This class should not be instantiated manually.
 
     Example:
 
         .. code-block:: python
 
-            tracked_actor_tasks = event_manager.schedule_actor_tasks(
-                event_manager.live_actors,
+            tracked_actor_tasks = actor_manager.schedule_actor_tasks(
+                actor_manager.live_actors,
                 "foo")
             tracked_actor_tasks.on_result(lambda actor, result: print(result))
 

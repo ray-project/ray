@@ -6,7 +6,7 @@ import pytest
 import ray
 from ray.air import ResourceRequest
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
-from ray.air.execution._internal.event_manager import RayEventManager
+from ray.air.execution._internal.actor_manager import RayActorManager
 from ray.air.execution._internal.tracked_actor import TrackedActor
 from ray.exceptions import RayActorError
 
@@ -69,8 +69,8 @@ class TuneFlow:
     - When a task fails, stop actor, and restart
     """
 
-    def __init__(self, event_manager: RayEventManager, errors: Optional[str] = None):
-        self._event_manager = event_manager
+    def __init__(self, actor_manager: RayActorManager, errors: Optional[str] = None):
+        self._actor_manager = actor_manager
         self._finished = False
 
         self._actors_to_run = 10
@@ -87,7 +87,7 @@ class TuneFlow:
         if self._actors_started >= self._actors_to_run:
             return
 
-        if self._event_manager.num_pending_actors >= self._max_pending:
+        if self._actor_manager.num_pending_actors >= self._max_pending:
             return
 
         error_kwargs = {}
@@ -96,7 +96,7 @@ class TuneFlow:
 
         actor_id = self._actors_started
         tracked_actor = (
-            self._event_manager.add_actor(
+            self._actor_manager.add_actor(
                 cls=Actor,
                 kwargs={"id": actor_id, **error_kwargs},
                 resource_request=ResourceRequest([{"CPU": 1}]),
@@ -110,7 +110,7 @@ class TuneFlow:
         self._actors_started += 1
 
     def actor_started(self, tracked_actor: TrackedActor):
-        self._event_manager.schedule_actor_task(
+        self._actor_manager.schedule_actor_task(
             tracked_actor, "run", kwargs={"value": 0}
         ).on_error(self.task_error).on_result(self.task_result)
 
@@ -122,7 +122,7 @@ class TuneFlow:
         actor_id = self._actor_to_id.pop(tracked_actor)
 
         replacement_actor = (
-            self._event_manager.add_actor(
+            self._actor_manager.add_actor(
                 cls=Actor,
                 kwargs={
                     "id": actor_id,
@@ -144,9 +144,9 @@ class TuneFlow:
         self._results[actor_id].append(result)
 
         if result == 10:
-            self._event_manager.remove_actor(tracked_actor)
+            self._actor_manager.remove_actor(tracked_actor)
         else:
-            self._event_manager.schedule_actor_task(
+            self._actor_manager.schedule_actor_task(
                 tracked_actor, "run", kwargs={"value": result + 1}
             ).on_error(self.task_error).on_result(self.task_result)
 
@@ -155,11 +155,11 @@ class TuneFlow:
             return
 
         self._actors_stopped -= 1  # account for extra stop
-        self._event_manager.remove_actor(tracked_actor, resolve_futures=False)
+        self._actor_manager.remove_actor(tracked_actor, resolve_futures=False)
         actor_id = self._actor_to_id.pop(tracked_actor)
 
         replacement_actor = (
-            self._event_manager.add_actor(
+            self._actor_manager.add_actor(
                 cls=Actor,
                 kwargs={
                     "id": actor_id,
@@ -178,7 +178,7 @@ class TuneFlow:
     def run(self):
         while not self._finished:
             self.maybe_add_actors()
-            self._event_manager.wait(num_events=1, timeout=1)
+            self._actor_manager.wait(num_events=1, timeout=1)
 
     def get_results(self) -> Dict[int, List[float]]:
         return self._results
@@ -191,9 +191,9 @@ class TuneFlow:
     "errors", [None, "actor_error_init", "actor_error_task", "task_error"]
 )
 def test_e2e(ray_start_4_cpus, resource_manager_cls, errors):
-    event_manager = RayEventManager(resource_manager=resource_manager_cls())
+    actor_manager = RayActorManager(resource_manager=resource_manager_cls())
 
-    flow = TuneFlow(event_manager=event_manager, errors=errors)
+    flow = TuneFlow(actor_manager=actor_manager, errors=errors)
     flow.run()
 
     results = flow.get_results()

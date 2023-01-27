@@ -6,7 +6,7 @@ import pytest
 import ray
 from ray.air import ResourceRequest
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
-from ray.air.execution._internal.event_manager import RayEventManager, EventType
+from ray.air.execution._internal.actor_manager import RayActorManager, EventType
 
 
 def _raise(exception_type: Type[Exception] = RuntimeError, msg: Optional[str] = None):
@@ -70,11 +70,11 @@ def test_start_stop_actor(ray_start_4_cpus, resource_manager_cls, actor_cls, kil
     - Schedule remote fn that takes up all cluster resources. This should resolve,
       meaning that the actor was stopped successfully.
     """
-    event_manager = RayEventManager(resource_manager=resource_manager_cls())
+    actor_manager = RayActorManager(resource_manager=resource_manager_cls())
 
     # Start actor, set callbacks
     tracked_actor = (
-        event_manager.add_actor(
+        actor_manager.add_actor(
             cls=actor_cls,
             kwargs={"key": "val"},
             resource_request=ResourceRequest([{"CPU": 4}]),
@@ -86,15 +86,15 @@ def test_start_stop_actor(ray_start_4_cpus, resource_manager_cls, actor_cls, kil
 
     # Actor should be started
     with pytest.raises(Started):
-        event_manager.wait(num_events=1, timeout=5)
+        actor_manager.wait(num_events=1, timeout=5)
 
     # Schedule task on actor which should resolve (actor successfully started)
-    event_manager.schedule_actor_task(tracked_actor, "task", (1,)).on_result(
+    actor_manager.schedule_actor_task(tracked_actor, "task", (1,)).on_result(
         _raise(Result)
     )
 
     with pytest.raises(Result):
-        event_manager.wait(num_events=1, event_type=EventType.TASKS)
+        actor_manager.wait(num_events=1, event_type=EventType.TASKS)
 
     # Now we can assert that there are no CPUS resources available anymore.
     # Note that actor starting is asynchronous, so we can't assert this right away
@@ -102,10 +102,10 @@ def test_start_stop_actor(ray_start_4_cpus, resource_manager_cls, actor_cls, kil
     assert ray.available_resources().get("CPU", 0.0) == 0, ray.available_resources()
 
     # Stop actor
-    event_manager.remove_actor(tracked_actor, kill=kill)
+    actor_manager.remove_actor(tracked_actor, kill=kill)
 
     with pytest.raises(Stopped):
-        event_manager.wait(num_events=1, timeout=5)
+        actor_manager.wait(num_events=1, timeout=5)
 
     # This task takes up all the cluster resources. It should resolve now that
     # the actor was terminated.
@@ -123,7 +123,7 @@ def test_start_many_actors(ray_start_4_cpus, resource_manager_cls):
     - Stop 2
     - Assert 2 are stopped and 2 new ones are started
     """
-    event_manager = RayEventManager(resource_manager=resource_manager_cls())
+    actor_manager = RayActorManager(resource_manager=resource_manager_cls())
 
     running_actors = []
     # stats keeps track of started/stopped actors
@@ -139,14 +139,14 @@ def test_start_many_actors(ray_start_4_cpus, resource_manager_cls):
 
     # start 10 actors
     for i in range(10):
-        event_manager.add_actor(
+        actor_manager.add_actor(
             cls=Actor,
             kwargs={"key": "val"},
             resource_request=ResourceRequest([{"CPU": 1}]),
         ).on_start(start_callback).on_stop(stop_callback).on_error(_raise(Failed))
 
     # wait for some actor starts
-    event_manager.wait(timeout=5)
+    actor_manager.wait(timeout=5)
 
     # we should now have 4 started actors
     assert stats["started"] == 4
@@ -154,12 +154,12 @@ def test_start_many_actors(ray_start_4_cpus, resource_manager_cls):
     assert len(running_actors) == 4
 
     # stop 2 actors
-    event_manager.remove_actor(running_actors[0])
-    event_manager.remove_actor(running_actors[1])
+    actor_manager.remove_actor(running_actors[0])
+    actor_manager.remove_actor(running_actors[1])
 
     # Wait two times, once for termination, once for start
-    event_manager.wait(num_events=2, timeout=5)
-    event_manager.wait(num_events=2, timeout=5)
+    actor_manager.wait(num_events=2, timeout=5)
+    actor_manager.wait(num_events=2, timeout=5)
 
     # we should have 4 running actors, 6 started and 2 stopped
     assert stats["started"] == 6
@@ -178,7 +178,7 @@ def test_actor_fail(ray_start_4_cpus, resource_manager_cls, where):
     - Schedule task on actor
     - Assert that the correct callbacks are called
     """
-    event_manager = RayEventManager(resource_manager=resource_manager_cls())
+    actor_manager = RayActorManager(resource_manager=resource_manager_cls())
 
     # keep track of failed tasks and actors
     stats = Counter()
@@ -203,23 +203,23 @@ def test_actor_fail(ray_start_4_cpus, resource_manager_cls, where):
         stats["failed_task"] += 1
 
     # Start actor
-    tracked_actor = event_manager.add_actor(
+    tracked_actor = actor_manager.add_actor(
         cls=FailingActor,
         kwargs={"where": where},
         resource_request=ResourceRequest([{"CPU": 1}]),
     ).on_error(fail_callback_actor)
 
     # Wait until it is started. This won't invoke any callback, yet
-    event_manager.wait(timeout=5)
+    actor_manager.wait(timeout=5)
 
     assert stats["failed_actor"] == 0
     assert stats["failed_task"] == 0
 
     # Schedule task
-    event_manager.schedule_actor_task(tracked_actor, "fn").on_error(fail_callback_task)
+    actor_manager.schedule_actor_task(tracked_actor, "fn").on_error(fail_callback_task)
 
     # Yield control and wait for task resolution. This will invoke the callback.
-    event_manager.wait(timeout=5)
+    actor_manager.wait(timeout=5)
 
     assert stats["failed_actor"] == 1
     assert stats["failed_task"] == 1

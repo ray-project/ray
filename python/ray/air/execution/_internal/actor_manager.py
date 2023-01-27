@@ -21,10 +21,10 @@ from ray.exceptions import RayTaskError, RayActorError
 
 
 class EventType(enum.Enum):
-    """Event type to specify when yielding control to the :class:`RayEventManager`.
+    """Event type to specify when yielding control to the :class:`RayActorManager`.
 
     This enum can be passed to
-    :meth:`RayEventManager.wait() <RayEventManager.wait>`
+    :meth:`RayActorManager.wait() <RayActorManager.wait>`
     to specify which kind of events to await.
 
     Attributes:
@@ -39,7 +39,7 @@ class EventType(enum.Enum):
     ACTORS = 2
 
 
-class RayEventManager:
+class RayActorManager:
     """Management class for Ray actors, tasks, and actor tasks.
 
     This class provides an event-based management interface for actors, tasks, and
@@ -50,7 +50,7 @@ class RayEventManager:
     The manager will then invoke callbacks related to the tracked entities.
 
     For instance, when an actor is added with
-    :meth:`add_actor() <RayEventManager.add_actor>`,
+    :meth:`add_actor() <RayActorManager.add_actor>`,
     a :ref:`TrackedActor <ray.air.execution._internal.tracked_actor.TrackedActor`
     object is returned.
     The :meth:`TrackedActor.on_start()
@@ -64,7 +64,7 @@ class RayEventManager:
 
     Similarly, when scheduling an actor task using
     :meth:`schedule_actor_task()
-    <ray.air.execution._internal.event_manager.RayEventManager.schedule_actor_task>`,
+    <ray.air.execution._internal.actor_manager.RayActorManager.schedule_actor_task>`,
     a :ref:`TrackedActorTask <TrackedActorTask>`
     object is returned.
     The :meth:`TrackedActorTask.on_result()
@@ -76,9 +76,9 @@ class RayEventManager:
     method can then be used to specify a callback that is invoked when the task
     fails.
 
-    The RayEventManager does not implement any true asynchronous processing. Control
-    has to be explicitly yielded to the event manager via :meth:`RayEventManager.wait`.
-    Callbacks will only be invoked when control is with the RayEventManager, and
+    The RayActorManager does not implement any true asynchronous processing. Control
+    has to be explicitly yielded to the event manager via :meth:`RayActorManager.wait`.
+    Callbacks will only be invoked when control is with the RayActorManager, and
     callbacks will always be executed sequentially in order of arriving events.
 
     Args:
@@ -89,12 +89,12 @@ class RayEventManager:
         .. code-block:: python
 
             from ray.air.execution import ResourceRequest
-            from ray.air.execution._internal import EventType, RayEventManager
+            from ray.air.execution._internal import EventType, RayActorManager
 
-            event_manager = RayEventManager()
+            actor_manager = RayActorManager()
 
             # Request an actor
-            tracked_actor = event_manager.add_actor(
+            tracked_actor = actor_manager.add_actor(
                 ActorClass,
                 kwargs={},
                 resource_request=ResourceRequest([{"CPU": 1}])
@@ -104,10 +104,10 @@ class RayEventManager:
             tracked_actor.on_fail(actor_fail_callback)
 
             # Yield control to event manager to start actor
-            event_manager.wait(timeout=1)
+            actor_manager.wait(timeout=1)
 
             # Start task on the actor (ActorClass.foo.remote())
-            tracked_actor_task = event_manager.schedule_actor_task(
+            tracked_actor_task = actor_manager.schedule_actor_task(
                 tracked_actor,
                 method_name="foo"
             )
@@ -115,7 +115,7 @@ class RayEventManager:
             tracked_actor_task.on_error(task_error_callback)
 
             # Again yield control to event manager to process task futures
-            event_manager.wait(event_type=EventType.TASKS)
+            actor_manager.wait(event_type=EventType.TASKS)
 
     """
 
@@ -357,7 +357,7 @@ class RayEventManager:
             # a usage error.
             raise ValueError(
                 f"num_events cannot be greater than the number of events "
-                f"currently pending by the RayEventManager. "
+                f"currently pending by the RayActorManager. "
                 f"Got num_events={num_returns} and {len(all_futures)} tracked events "
                 f"for event_type={event_type}."
             )

@@ -10,7 +10,7 @@ class TrackedActor:
     Actor state can be inquired from the actor manager tracking the Ray actor.
 
     Note:
-        Objects of this class are returned by the :class:`RayEventManager`.
+        Objects of this class are returned by the :class:`RayActorManager`.
         This class should not be instantiated manually.
 
     Attributes:
