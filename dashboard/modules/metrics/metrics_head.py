@@ -171,7 +171,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             )
 
     @routes.get("/api/prometheus_health")
-    async def prometheus_health(self, req) -> bool:
+    async def prometheus_health(self, req):
         try:
             path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
 
