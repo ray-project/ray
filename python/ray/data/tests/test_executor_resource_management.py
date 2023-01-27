@@ -1,5 +1,6 @@
 import pytest
 
+import ray
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     ExecutionOptions,
@@ -44,7 +45,7 @@ def test_resource_utils():
 
 def test_resource_canonicalization():
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    op = MapOperator(
+    op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -54,7 +55,7 @@ def test_resource_canonicalization():
     assert op.incremental_resource_usage() == ExecutionResources(cpu=1, gpu=0)
     assert op._ray_remote_args == {"num_cpus": 1}
 
-    op = MapOperator(
+    op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -66,7 +67,7 @@ def test_resource_canonicalization():
     assert op._ray_remote_args == {"num_gpus": 2}
 
     with pytest.raises(ValueError):
-        MapOperator(
+        MapOperator.create(
             _mul2_transform,
             input_op=input_op,
             name="TestMapper",
@@ -77,7 +78,7 @@ def test_resource_canonicalization():
 
 def test_task_pool_resource_reporting():
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    op = MapOperator(
+    op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -97,7 +98,7 @@ def test_task_pool_resource_reporting():
 
 def test_actor_pool_resource_reporting():
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    op = MapOperator(
+    op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -106,27 +107,62 @@ def test_actor_pool_resource_reporting():
     op.start(ExecutionOptions())
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
     assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
+    # Actors are pending creation, but they still count against CPU utilization.
     assert op.current_resource_usage() == ExecutionResources(
         cpu=2, gpu=0, object_store_memory=0
     )
 
-    # Pool is idle.
-    assert op.current_resource_usage() == ExecutionResources(
-        cpu=2, gpu=0, object_store_memory=0
-    )
-
-    # Pool is active running tasks.
+    # Add inputs.
     for _ in range(4):
         assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
         op.add_input(input_op.get_next(), 0)
+    # Pool is still idle while waiting for actors to start.
+    assert op.current_resource_usage() == ExecutionResources(
+        cpu=2, gpu=0, object_store_memory=0
+    )
+
+    # Wait for actors to start.
+    work_refs = op.get_work_refs()
+    assert len(work_refs) == 2
+    for work_ref in work_refs:
+        ray.get(work_ref)
+        op.notify_work_completed(work_ref)
+    # Actors have now started and the pool is actively running tasks.
     usage = op.current_resource_usage()
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
+    # Now that tasks have been submitted, object store memory is accounted for.
     assert usage.object_store_memory == pytest.approx(256, abs=100), usage
 
-    # Any further inputs would require adding new actors.
     # TODO: test autoscaling resource reporting.
     # assert op.incremental_resource_usage() == ExecutionResources(cpu=1, gpu=0)
+
+    # Indicate that no more inputs will arrive.
+    op.inputs_done()
+
+    # Wait until tasks are done.
+    work_refs = op.get_work_refs()
+    while work_refs:
+        for work_ref in work_refs:
+            ray.get(work_ref)
+            op.notify_work_completed(work_ref)
+        work_refs = op.get_work_refs()
+
+    # Work is done and the pool has been scaled down.
+    usage = op.current_resource_usage()
+    assert usage.cpu == 0, usage
+    assert usage.gpu == 0, usage
+    assert usage.object_store_memory == pytest.approx(416, abs=100), usage
+
+    # Consume task outputs.
+    while op.has_next():
+        op.get_next()
+
+    # Work is done, pool has been scaled down, and outputs have been consumed.
+    usage = op.current_resource_usage()
+    assert usage.cpu == 0, usage
+    assert usage.gpu == 0, usage
+    assert usage.object_store_memory == 0, usage
 
 
 if __name__ == "__main__":
