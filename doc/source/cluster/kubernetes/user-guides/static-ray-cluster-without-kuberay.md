@@ -41,6 +41,11 @@ We will need access to a Kubernetes cluster. There are two options:
 To execute the example in this guide, ensure that your Kubernetes cluster (or local Kind cluster) can handle additional resource requests of 3 CPU and 3Gi memory.
 Also, ensure that both your Kubernetes cluster and Kubectl are at least version 1.19.
 
+### Deploying a Redis for fault tolerance
+
+Note that [the Kubernetes deployment config file](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.with-fault-tolerance.yaml) has a section to deploy a Redis to Kubernetes so that the Ray head can write through the GCS metadata.
+If a Redis has already been deployed on Kubernetes, this section can be omitted.
+
 ## Deploying a static Ray cluster
 
 In this section, we will deploy a static Ray cluster into the `default` namespace without using KubeRay. To use another
