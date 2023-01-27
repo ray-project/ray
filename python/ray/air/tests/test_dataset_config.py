@@ -399,49 +399,61 @@ def test_make_local_dataset_iterator(ray_start_4_cpus):
     test.fit()
 
 
-def test_deterministic_per_epoch_preprocessor(ray_start_4_cpus):
+@pytest.mark.parametrize("max_object_store_memory_fraction", [None, 1, 0.3])
+def test_deterministic_per_epoch_preprocessor(
+    ray_start_4_cpus, max_object_store_memory_fraction
+):
     ds = ray.data.range_table(5)
 
     def multiply(x):
         return x * 2
 
-    for max_object_store_memory_fraction in [None, 1, 0.3]:
-        it = make_local_dataset_iterator(
-            ds,
-            preprocessor=BatchMapper(
-                lambda x: x * int(10 * random.random()), batch_format="pandas"
-            ),
-            dataset_config=DatasetConfig(
-                randomize_block_order=False,
-                max_object_store_memory_fraction=max_object_store_memory_fraction,
-                per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
-            ),
-        )
+    it = make_local_dataset_iterator(
+        ds,
+        # Add some random noise to each integer.
+        preprocessor=BatchMapper(
+            lambda x: x + 0.1 * random.random(), batch_format="pandas"
+        ),
+        dataset_config=DatasetConfig(
+            randomize_block_order=False,
+            max_object_store_memory_fraction=max_object_store_memory_fraction,
+            per_epoch_preprocessor=BatchMapper(multiply, batch_format="pandas"),
+        ),
+    )
 
-        def checker(shard, results):
-            assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
-            if max_object_store_memory_fraction is None:
-                assert results[0] == results[1], (
-                    max_object_store_memory_fraction,
-                    results,
-                )
-            else:
-                # Windowed pipelined ingest also reapplies the base
-                # preprocessor on every epoch, so we get a random dataset each
-                # time.
-                assert results[0] != results[1], (
-                    max_object_store_memory_fraction,
-                    results,
-                )
-            assert all(x % 2 == 0 for x in results[0]), (
+    def checker(shard, results):
+        assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
+        if max_object_store_memory_fraction is None:
+            assert results[0] == results[1], (
                 max_object_store_memory_fraction,
                 results,
             )
+        else:
+            # Windowed pipelined ingest also reapplies the base
+            # preprocessor on every epoch, so we get a random dataset each
+            # time.
+            assert results[0] != results[1], (
+                max_object_store_memory_fraction,
+                results,
+            )
+        # Per-epoch preprocessor was applied at least once.
+        assert all(int(x) % 2 == 0 for x in results[0]), (
+            max_object_store_memory_fraction,
+            results,
+        )
+        # Per-epoch preprocessor was applied no more than once.
+        assert any(int(x) % 4 != 0 for x in results[0]), (
+            max_object_store_memory_fraction,
+            results,
+        )
 
-        TestStream.train_loop_per_worker(it, checker)
+    TestStream.train_loop_per_worker(it, checker)
 
 
-def test_nondeterministic_per_epoch_preprocessor(ray_start_4_cpus):
+@pytest.mark.parametrize("max_object_store_memory_fraction", [None, 1, 0.3])
+def test_nondeterministic_per_epoch_preprocessor(
+    ray_start_4_cpus, max_object_store_memory_fraction
+):
     ds = ray.data.range_table(5)
 
     # Use randomized per-epoch preprocessor to check that it gets applied once
@@ -449,24 +461,23 @@ def test_nondeterministic_per_epoch_preprocessor(ray_start_4_cpus):
     def rand(x):
         return x * random.random()
 
-    for max_object_store_memory_fraction in [None, 1, 0.3]:
-        it = make_local_dataset_iterator(
-            ds,
-            preprocessor=None,
-            dataset_config=DatasetConfig(
-                randomize_block_order=False,
-                max_object_store_memory_fraction=max_object_store_memory_fraction,
-                per_epoch_preprocessor=BatchMapper(rand, batch_format="pandas"),
-            ),
-        )
+    it = make_local_dataset_iterator(
+        ds,
+        preprocessor=None,
+        dataset_config=DatasetConfig(
+            randomize_block_order=False,
+            max_object_store_memory_fraction=max_object_store_memory_fraction,
+            per_epoch_preprocessor=BatchMapper(rand, batch_format="pandas"),
+        ),
+    )
 
-        def checker(shard, results):
-            assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
-            # Per-epoch preprocessor is randomized, so we should get a random
-            # dataset on each epoch.
-            assert results[0] != results[1], (max_object_store_memory_fraction, results)
+    def checker(shard, results):
+        assert len(results[0]) == 5, (max_object_store_memory_fraction, results)
+        # Per-epoch preprocessor is randomized, so we should get a random
+        # dataset on each epoch.
+        assert results[0] != results[1], (max_object_store_memory_fraction, results)
 
-        TestStream.train_loop_per_worker(it, checker)
+    TestStream.train_loop_per_worker(it, checker)
 
 
 def test_validate_per_epoch_preprocessor(ray_start_4_cpus):
@@ -486,6 +497,7 @@ def test_validate_per_epoch_preprocessor(ray_start_4_cpus):
     )
 
     with pytest.raises(ValueError):
+        # Must specify a ray.data.Preprocessor.
         dataset_config = DatasetConfig(per_epoch_preprocessor=multiply)
         DatasetConfig.validated(
             {
@@ -495,6 +507,7 @@ def test_validate_per_epoch_preprocessor(ray_start_4_cpus):
         )
 
     with pytest.raises(ValueError):
+        # Must specify a non-fittable ray.data.Preprocessor.
         dataset_config = DatasetConfig(per_epoch_preprocessor=Preprocessor())
         DatasetConfig.validated(
             {

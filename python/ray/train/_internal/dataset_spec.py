@@ -210,7 +210,7 @@ class DataParallelIngestSpec:
                     # TODO(swang): Should randomize block order across the
                     # original dataset, not the window.
                     dataset = dataset.randomize_block_order_each_window()
-            if config.per_epoch_preprocessor is not None:
+            elif config.per_epoch_preprocessor is not None:
                 # Reapply the per epoch preprocessor on each epoch.
                 if isinstance(dataset, Dataset):
                     dataset = dataset.repeat()
