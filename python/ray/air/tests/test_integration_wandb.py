@@ -1,10 +1,6 @@
 import os
 import tempfile
-import threading
-from collections import namedtuple
-from dataclasses import dataclass
-from queue import Queue
-from typing import Tuple, Dict
+
 from unittest.mock import (
     Mock,
     patch,
@@ -14,12 +10,12 @@ import numpy as np
 import pytest
 
 import ray
+
 from ray.tune import Trainable
+from ray.tune.integration.wandb import WandbTrainableMixin
+
 from ray.tune.trainable import wrap_function
-from ray.tune.integration.wandb import (
-    WandbTrainableMixin,
-    wandb_mixin,
-)
+from ray.tune.integration.wandb import wandb_mixin
 from ray.air.integrations.wandb import (
     WandbLoggerCallback,
     _QueueItem,
@@ -35,106 +31,13 @@ from ray.air.integrations.wandb import (
 from ray.tune.result import TRIAL_INFO
 from ray.tune.experiment.trial import _TrialInfo
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from wandb.util import json_dumps_safer
 
-
-class Trial(
-    namedtuple(
-        "MockTrial",
-        [
-            "config",
-            "trial_id",
-            "trial_name",
-            "experiment_dir_name",
-            "placement_group_factory",
-            "logdir",
-        ],
-    )
-):
-    def __hash__(self):
-        return hash(self.trial_id)
-
-    def __str__(self):
-        return self.trial_name
-
-
-@dataclass
-class _MockWandbConfig:
-    args: Tuple
-    kwargs: Dict
-
-
-class _FakeConfig:
-    def update(self, config, *args, **kwargs):
-        for key, value in config.items():
-            setattr(self, key, value)
-
-    def __iter__(self):
-        return iter(self.__dict__)
-
-
-class _MockWandbAPI:
-    def __init__(self):
-        self.logs = Queue()
-        self.config = _FakeConfig()
-
-    def init(self, *args, **kwargs):
-        mock = Mock()
-        mock.args = args
-        mock.kwargs = kwargs
-
-        if "config" in kwargs:
-            self.config.update(kwargs["config"])
-
-        return mock
-
-    def log(self, data):
-        try:
-            json_dumps_safer(data)
-        except Exception:
-            self.logs.put("serialization error")
-        else:
-            self.logs.put(data)
-
-    def finish(self):
-        pass
-
-
-class _MockWandbLoggingActor(_WandbLoggingActor):
-    def __init__(self, logdir, queue, exclude, to_config, *args, **kwargs):
-        super(_MockWandbLoggingActor, self).__init__(
-            logdir, queue, exclude, to_config, *args, **kwargs
-        )
-        self._wandb = _MockWandbAPI()
-
-
-class WandbTestExperimentLogger(WandbLoggerCallback):
-    @property
-    def trial_processes(self):
-        return self._trial_logging_actors
-
-    def _start_logging_actor(self, trial, exclude_results, **wandb_init_kwargs):
-        self._trial_queues[trial] = Queue()
-        local_actor = _MockWandbLoggingActor(
-            logdir=trial.logdir,
-            queue=self._trial_queues[trial],
-            exclude=exclude_results,
-            to_config=self.AUTO_CONFIG_KEYS,
-            **wandb_init_kwargs,
-        )
-        self._trial_logging_actors[trial] = local_actor
-
-        thread = threading.Thread(target=local_actor.run)
-        self._trial_logging_futures[trial] = thread
-        thread.start()
-
-    def _stop_logging_actor(self, trial: "Trial", timeout: int = 10):
-        self._trial_queues[trial].put((_QueueItem.END, None))
-
-        del self._trial_queues[trial]
-        del self._trial_logging_actors[trial]
-        self._trial_logging_futures[trial].join(timeout=2)
-        del self._trial_logging_futures[trial]
+from ray.air.tests.mocked_wandb_integration import (
+    _MockWandbAPI,
+    _MockWandbLoggingActor,
+    Trial,
+    WandbTestExperimentLogger,
+)
 
 
 class _MockWandbTrainableMixin(WandbTrainableMixin):
@@ -372,10 +275,14 @@ class TestWandbLogger:
     def test_wandb_logger_auto_config_keys(self, trial):
         logger = WandbTestExperimentLogger(project="test_project", api_key="1234")
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
-        config = logger.trial_processes[trial]._wandb.config
+        config = logger.trial_processes[trial]._wandb.config.queue.get(timeout=10)
 
         result = {key: 0 for key in WandbLoggerCallback.AUTO_CONFIG_KEYS}
         logger.on_trial_result(0, [], trial, result)
+        config_increment = logger.trial_processes[trial]._wandb.config.queue.get(
+            timeout=10
+        )
+        config.update(config_increment)
 
         logger.on_trial_complete(0, [], trial)
         # The results in `AUTO_CONFIG_KEYS` should be saved as training configuration
@@ -397,11 +304,15 @@ class TestWandbLogger:
             excludes=(["param2"] + WandbLoggerCallback.AUTO_CONFIG_KEYS),
         )
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
-        config = logger.trial_processes[trial]._wandb.config
+        config = logger.trial_processes[trial]._wandb.config.queue.get(timeout=10)
 
         # We need to test that `excludes` also applies to `AUTO_CONFIG_KEYS`.
         result = {key: 0 for key in WandbLoggerCallback.AUTO_CONFIG_KEYS}
         logger.on_trial_result(0, [], trial, result)
+        config_increment = logger.trial_processes[trial]._wandb.config.queue.get(
+            timeout=10
+        )
+        config.update(config_increment)
 
         logger.on_trial_complete(0, [], trial)
         assert set(config) == {"param1"}

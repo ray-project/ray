@@ -50,8 +50,12 @@ class NevergradSearch(Searcher):
         $ pip install nevergrad
 
     Parameters:
-        optimizer: Optimizer provided
-            from Nevergrad. Alter
+        optimizer: Optimizer class provided from Nevergrad.
+            See here for available optimizers:
+            https://facebookresearch.github.io/nevergrad/optimizers_ref.html#optimizers
+            This can also be an instance of a `ConfiguredOptimizer`. See the
+            section on configured optimizers in the above link.
+        optimizer_kwargs: Kwargs passed in when instantiating the `optimizer`
         space: Nevergrad parametrization
             to be passed to optimizer on instantiation, or list of parameter
             names if you passed an optimizer object.
@@ -120,11 +124,11 @@ class NevergradSearch(Searcher):
         optimizer: Optional[
             Union[Optimizer, Type[Optimizer], ConfiguredOptimizer]
         ] = None,
+        optimizer_kwargs: Optional[Dict] = None,
         space: Optional[Union[Dict, Parameter]] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         points_to_evaluate: Optional[List[Dict]] = None,
-        **kwargs,
     ):
         assert (
             ng is not None
@@ -134,11 +138,12 @@ class NevergradSearch(Searcher):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
-        super(NevergradSearch, self).__init__(metric=metric, mode=mode, **kwargs)
+        super(NevergradSearch, self).__init__(metric=metric, mode=mode)
 
         self._space = None
         self._opt_factory = None
         self._nevergrad_opt = None
+        self._optimizer_kwargs = optimizer_kwargs or {}
 
         if points_to_evaluate is None:
             self._points_to_evaluate = None
@@ -166,6 +171,13 @@ class NevergradSearch(Searcher):
                     "pass a list of parameter names or None as the `space` "
                     "parameter."
                 )
+            if self._optimizer_kwargs:
+                raise ValueError(
+                    "If you pass in optimizer kwargs, either pass "
+                    "an `Optimizer` subclass or an instance of "
+                    "`ConfiguredOptimizer`."
+                )
+
             self._parameters = space
             self._nevergrad_opt = optimizer
         elif (
@@ -187,7 +199,9 @@ class NevergradSearch(Searcher):
 
     def _setup_nevergrad(self):
         if self._opt_factory:
-            self._nevergrad_opt = self._opt_factory(self._space)
+            self._nevergrad_opt = self._opt_factory(
+                self._space, **self._optimizer_kwargs
+            )
 
         # nevergrad.tell internally minimizes, so "max" => -1
         if self._mode == "max":

@@ -46,11 +46,6 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   std::unordered_map<TaskID, Group> group_map;
   for (auto worker : workers) {
     bool retriable = worker->GetAssignedTask().GetTaskSpecification().IsRetriable();
-    /// TODO(clarng): The Nil value is not stable / unique, and cannot be used
-    /// as the grouping key. Make Nil stable / unique.
-    if (non_retriable_owner_id == TaskID::Nil()) {
-      non_retriable_owner_id = TaskID::FromRandom(worker->GetAssignedJobId());
-    }
     TaskID owner_id =
         retriable ? worker->GetAssignedTask().GetTaskSpecification().ParentTaskId()
                   : non_retriable_owner_id;

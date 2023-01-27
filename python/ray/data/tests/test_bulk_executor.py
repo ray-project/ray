@@ -1,5 +1,6 @@
 import pytest
 
+import time
 from typing import List, Any
 
 import ray
@@ -29,11 +30,20 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
     return output
 
 
-def test_multi_stage_execution():
-    executor = BulkExecutor(ExecutionOptions())
+@pytest.mark.parametrize("preserve_order", [False, True])
+def test_multi_stage_execution(preserve_order):
+    executor = BulkExecutor(ExecutionOptions(preserve_order=preserve_order))
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+
+    def delay_first(block):
+        if block[0] == 0:
+            print("Delaying first block to force de-ordering")
+            time.sleep(2)
+        result = [b * -1 for b in block]
+        return result
+
+    o2 = MapOperator(make_transform(delay_first), o1)
     o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
 
     def reverse_sort(inputs: List[RefBundle]):
@@ -44,7 +54,11 @@ def test_multi_stage_execution():
     it = executor.execute(o4)
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)][::-1]
-    assert output == expected, (output, expected)
+    if preserve_order:
+        assert output == expected, (output, expected)
+    else:
+        assert output != expected, (output, expected)
+        assert sorted(output) == sorted(expected), (output, expected)
 
 
 def test_basic_stats():
@@ -95,6 +109,17 @@ def test_actor_strategy():
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)]
     assert sorted(output) == sorted(expected), (output, expected)
+
+
+def test_new_execution_backend_invocation():
+    DatasetContext.get_current().new_execution_backend = True
+    # Read-only: will use legacy executor for now.
+    ds = ray.data.range(10)
+    assert ds.take_all() == list(range(10))
+    # read->randomize_block_order: will use new executor, although it's also
+    # a read-equivalent once fused.
+    ds = ray.data.range(10).randomize_block_order()
+    assert set(ds.take_all()) == set(range(10))
 
 
 if __name__ == "__main__":
