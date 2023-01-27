@@ -16,7 +16,7 @@ def generate_randomize_blocks_fn(
         for ref_bundle in refs:
             for block, meta in ref_bundle.blocks:
                 blocks_with_metadata.append((block, meta))
-        
+
         if len(blocks_with_metadata) == 0:
             return refs, {}
         else:
@@ -26,7 +26,8 @@ def generate_randomize_blocks_fn(
             random.shuffle(blocks_with_metadata)
             output = []
             for block, meta in blocks_with_metadata:
-                output.append(RefBundle(
+                output.append(
+                    RefBundle(
                         [
                             (
                                 block,
