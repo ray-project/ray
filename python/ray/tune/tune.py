@@ -107,8 +107,9 @@ def _check_mixin(run_identifier: Union[Experiment, str, Type, Callable]) -> bool
     from ray.tune.integration.mlflow import MLflowTrainableMixin
 
     try:
-        return hasattr(trainable_cls, "__mixins__") or issubclass(
-            trainable_cls, (MLflowTrainableMixin, WandbTrainableMixin)
+        return hasattr(trainable_cls, "__mixins__") or (
+            isinstance(trainable_cls, type)
+            and issubclass(trainable_cls, (MLflowTrainableMixin, WandbTrainableMixin))
         )
     except Exception:
         # Default to True e.g. on TypeError (if it's not function or class)
