@@ -31,7 +31,7 @@
 /src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
 
 # All C++ code.
-# /src/ray @ray-project/ray-core-cpp
+/src/ray @ray-project/ray-core
 
 # Dependencies
 /python/setup.py @richardliaw @ericl @edoakes
