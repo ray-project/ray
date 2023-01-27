@@ -28,7 +28,10 @@ using namespace testing;
 namespace ray {
 class GcsMonitorServerTest : public ::testing::Test {
  public:
-  GcsMonitorServerTest() : mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()), monitor_server_(mock_node_manager_) {}
+  GcsMonitorServerTest()
+      : mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
+        monitor_server_(mock_node_manager_) {}
+
  protected:
   std::shared_ptr<gcs::MockGcsNodeManager> mock_node_manager_;
   gcs::GcsMonitorServer monitor_server_;
@@ -45,12 +48,11 @@ TEST_F(GcsMonitorServerTest, TestRayVersion) {
   ASSERT_EQ(reply.version(), kRayVersion);
 }
 
-
 TEST_F(GcsMonitorServerTest, TestDrainAndKillNode) {
   rpc::DrainAndKillNodeRequest request;
   rpc::DrainAndKillNodeReply reply;
   auto send_reply_callback =
-    [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
 
   *request.add_node_ids() = NodeID::FromRandom().Binary();
   *request.add_node_ids() = NodeID::FromRandom().Binary();
@@ -59,7 +61,6 @@ TEST_F(GcsMonitorServerTest, TestDrainAndKillNode) {
   monitor_server_.HandleDrainAndKillNode(request, &reply, send_reply_callback);
 
   ASSERT_EQ(reply.drained_nodes().size(), 2);
-
 }
 
 }  // namespace ray

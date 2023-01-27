@@ -224,8 +224,8 @@ class MonitorGcsServiceHandler {
                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleDrainAndKillNode(DrainAndKillNodeRequest request,
-                                   DrainAndKillNodeReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
+                                      DrainAndKillNodeReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `MonitorServer`.

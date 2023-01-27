@@ -19,7 +19,8 @@
 namespace ray {
 namespace gcs {
 
-GcsMonitorServer::GcsMonitorServer(std::shared_ptr<GcsNodeManager> gcs_node_manager) : gcs_node_manager_(gcs_node_manager) {}
+GcsMonitorServer::GcsMonitorServer(std::shared_ptr<GcsNodeManager> gcs_node_manager)
+    : gcs_node_manager_(gcs_node_manager) {}
 
 void GcsMonitorServer::HandleGetRayVersion(rpc::GetRayVersionRequest request,
                                            rpc::GetRayVersionReply *reply,
@@ -28,14 +29,14 @@ void GcsMonitorServer::HandleGetRayVersion(rpc::GetRayVersionRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-
-void GcsMonitorServer::HandleDrainAndKillNode(rpc::DrainAndKillNodeRequest request,
-                                            rpc::DrainAndKillNodeReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
+void GcsMonitorServer::HandleDrainAndKillNode(
+    rpc::DrainAndKillNodeRequest request,
+    rpc::DrainAndKillNodeReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   for (const auto &node_id_bytes : request.node_ids()) {
     const auto node_id = NodeID::FromBinary(node_id_bytes);
-      gcs_node_manager_->DrainNode(node_id);
-      *reply->add_drained_nodes() = node_id_bytes;
+    gcs_node_manager_->DrainNode(node_id);
+    *reply->add_drained_nodes() = node_id_bytes;
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
