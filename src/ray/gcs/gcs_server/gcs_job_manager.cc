@@ -193,7 +193,6 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
             }
           };
-      RAY_LOG(ERROR) << "Calling internal kv get";
       internal_kv_.Get("job", JobDataKey(job_submission_id), kv_get_callback);
     }
   };
