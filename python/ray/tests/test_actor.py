@@ -1108,6 +1108,20 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
     os.unlink(tmpfile.name)
 
 
+def test_actor_ready(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        pass
+
+    actor = Actor.remote()
+
+    with pytest.raises(TypeError):
+        # Method can't be called directly
+        actor.__ray_ready__()
+
+    assert ray.get(actor.__ray_ready__.remote())
+
+
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
     @ray.remote
     class Inner:
