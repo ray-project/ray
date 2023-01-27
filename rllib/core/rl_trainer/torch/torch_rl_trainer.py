@@ -29,6 +29,9 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     HyperparamType,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
+from ray.rllib.core.rl_trainer.rl_trainer_config import (
+        TorchRLTrainerScalingConfig,
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
@@ -40,9 +43,7 @@ torch, nn = try_import_torch()
 if torch:
     from ray.air.config import ScalingConfig
     from ray.train.torch.train_loop_utils import _TorchAccelerator
-    from ray.rllib.core.rl_trainer.trainer_runner_config import (
-        TorchRLTrainerScalingConfig,
-    )
+
 
 
 logger = logging.getLogger(__name__)

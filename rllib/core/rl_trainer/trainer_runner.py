@@ -19,11 +19,10 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_trainer.rl_trainer import (
-    RLTrainer,
     ParamOptimizerPairs,
     Optimizer,
-    RLTrainerSpec,
 )
+from ray.rllib.core.rl_trainer.rl_trainer_config import RLTrainerSpec
 
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -32,12 +31,8 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 
-if TYPE_CHECKING:
-    from ray.rllib.core.rl_trainer.trainer_runner_config import (
-        TrainerRunnerScalingConfig,
-        TorchRLTrainerScalingConfig,
-        TFRLTrainerScalingConfig,
-    )
+from ray.rllib.core.rl_trainer.rl_trainer_config import TorchRLTrainerScalingConfig, TFRLTrainerScalingConfig, TrainerRunnerScalingConfig
+
 
 
 class TrainerRunner:

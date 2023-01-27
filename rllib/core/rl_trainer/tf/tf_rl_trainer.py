@@ -35,7 +35,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.core.rl_trainer.trainer_runner_config import TFRLTrainerScalingConfig
+from ray.rllib.core.rl_trainer.rl_trainer_config import TFRLTrainerScalingConfig
 
 if TYPE_CHECKING:
     from ray.air.config import ScalingConfig

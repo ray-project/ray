@@ -1,5 +1,5 @@
 import abc
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Type, Union, TYPE_CHECKING
 
 from ray.rllib.utils.params import Hyperparams
@@ -72,22 +72,42 @@ class TFRLTrainerScalingConfig(RLTrainerScalingConfig):
     enable_tf_function: bool = True
 
 
+
+@dataclass
+class TrainerRunnerScalingConfig:
+    """Configuratiom for scaling training actors.
+
+    Attributes:
+        local: If True, create a trainer in the current process. This is useful for
+            debugging to be able to use breakpoints. If False, the trainers are created
+            as Ray actors.
+        num_workers: The number of workers to use for training.
+        num_cpus_per_worker: The number of CPUs to allocate per worker.
+        num_gpus_per_worker: The number of GPUs to allocate per worker.
+    """
+
+    local: bool = True
+    num_workers: int = 1
+    num_cpus_per_worker: int = 1
+    num_gpus_per_worker: int = 0
+
+@dataclass
 class RLTrainerSpec:
     # The RLTrainer class to use.
     rl_trainer_class: Type["RLTrainer"] = None
     # The underlying (MA)RLModule spec to completely define the module
-    module_spec: Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec] = None
+    module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     # Alternatively the RLModule instance can be passed in directly (won't work if
     # RLTrainer is an actor)
-    module: Optional[RLModule] = (None,)
+    module: Optional["RLModule"] = (None,)
     # The scaling config for properly distributing the RLModule
-    scaling_config: RLTrainerScalingConfig = None
+    scaling_config: "RLTrainerScalingConfig" = None
     # The optimizer setting to apply during training
-    optimizer_config: Dict[str, Any] = {}
+    optimizer_config: Dict[str, Any] = field(default_factory=dict)
     # The extra config for the loss/additional update specific hyper-parameters
     # for now we assume we can get both algorithm config or a dict that contains the
     # hyper-parameters
-    trainer_hyperparameters: HyperparamType = {}
+    trainer_hyperparameters: HyperparamType = field(default_factory=dict)
 
     def __post_init__(self):
         if isinstance(self.trainer_hyperparameters, abc.Mapping):
