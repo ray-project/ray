@@ -129,7 +129,23 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
 
   ASSERT_EQ(all_job_info_reply.job_info_list().size(), 100);
 
-  // Manually put sample JobInfo into the internal kv.
+  // Add a job with a submission id (simulate a job being "submitted via the Ray Job
+  // API.")
+  auto job_api_job_id = JobID::FromInt(100);
+  std::string submission_id = "submission_id_100";
+  auto add_job_request =
+      Mocker::GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
+  rpc::AddJobReply empty_reply;
+  std::promise<bool> promise;
+  gcs_job_manager.HandleAddJob(
+      *add_job_request,
+      &empty_reply,
+      [&promise](Status, std::function<void()>, std::function<void()>) {
+        promise.set_value(true);
+      });
+  promise.get_future().get();
+
+  // Manually put sample JobInfo for that job into the internal kv.
   // This is ordinarily done in Python by the Ray Job API.
   std::string job_info_json = R"(
     {
@@ -144,8 +160,6 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
     }
   )";
 
-  std::string submission_id = "submission_id_100";
-
   std::promise<bool> kv_promise;
   fake_kv_->Put("job",
                 gcs::JobDataKey(submission_id),
@@ -153,19 +167,6 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
                 /*overwrite=*/true,
                 [&kv_promise](auto) { kv_promise.set_value(true); });
   kv_promise.get_future().get();
-
-  // Add a job with a submission id.
-  auto job_id = JobID::FromInt(100);
-  auto add_job_request = Mocker::GenAddJobRequest(job_id, "namespace_100", submission_id);
-  rpc::AddJobReply empty_reply;
-  std::promise<bool> promise;
-  gcs_job_manager.HandleAddJob(
-      *add_job_request,
-      &empty_reply,
-      [&promise](Status, std::function<void()>, std::function<void()>) {
-        promise.set_value(true);
-      });
-  promise.get_future().get();
 
   // Get all job info again.
   rpc::GetAllJobInfoRequest all_job_info_request2;
@@ -181,6 +182,25 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   all_job_info_promise2.get_future().get();
 
   ASSERT_EQ(all_job_info_reply2.job_info_list().size(), 101);
+
+  // From the reply, get the job info for the job "submitted via the Ray Job API."
+  rpc::JobTableData job_table_data_for_api_job;
+  for (auto job_info : all_job_info_reply2.job_info_list()) {
+    if (job_info.job_id() == job_api_job_id.Binary()) {
+      job_table_data_for_api_job = job_info;
+      break;
+    }
+  }
+
+  // Verify the contents of the job info proto from the reply.
+  auto job_info = job_table_data_for_api_job.job_info();
+  ASSERT_EQ(job_info.status(), "PENDING");
+  ASSERT_EQ(job_info.entrypoint(), "echo hi");
+  ASSERT_EQ(job_info.entrypoint_num_cpus(), 1);
+  ASSERT_EQ(job_info.entrypoint_num_gpus(), 1);
+  ASSERT_EQ(job_info.entrypoint_resources().size(), 1);
+  ASSERT_EQ(job_info.entrypoint_resources().at("Custom"), 1);
+  ASSERT_EQ(job_info.runtime_env_json(), "{\"pip\": [\"pkg\"]}");
 }
 
 TEST_F(GcsJobManagerTest, TestGetJobConfig) {
