@@ -59,10 +59,12 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
 
 
 AUTO_SHUTDOWN_POLL_INTERVAL = 3
-DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES = 'DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES'
+DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES = (
+    "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES"
+)
+
 
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
-
     def get_default_temp_dir(self):
         return "/local_disk0/tmp"
 
@@ -103,16 +105,17 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "variable, setting it to 0 means infinite timeout."
             )
 
-        auto_shutdown_timeout_millis = auto_shutdown_timeout_minutes * 60 * 1000
-
         def auto_shutdown_watcher():
+            auto_shutdown_timeout_millis = auto_shutdown_timeout_minutes * 60 * 1000
             while True:
                 if ray_cluster_handler.is_shutdown:
                     # The cluster is shut down. The watcher thread exits.
                     return
 
                 try:
-                    idle_time = dbutils.entry_point.getIdleTimeMillisSinceLastNotebookExecution()
+                    idle_time = (
+                        dbutils.entry_point.getIdleTimeMillisSinceLastNotebookExecution()
+                    )
                 except Exception:
                     _logger.warning(
                         "Your current Databricks Runtime version does not support API "
@@ -126,6 +129,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
                 if idle_time > auto_shutdown_timeout_millis:
                     from ray.util.spark import cluster_init
+
                     ray_cluster_handler.shutdown()
                     if ray_cluster_handler is cluster_init._active_ray_cluster:
                         cluster_init._active_ray_cluster = None
@@ -133,6 +137,5 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
                 time.sleep(AUTO_SHUTDOWN_POLL_INTERVAL)
 
-        threading.Thread(
-            target=auto_shutdown_watcher, args=(), daemon=True
-        ).start()
+        if auto_shutdown_timeout_minutes > 0:
+            threading.Thread(target=auto_shutdown_watcher, args=(), daemon=True).start()
