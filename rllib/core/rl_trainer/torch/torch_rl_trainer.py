@@ -8,7 +8,6 @@ from typing import (
     Hashable,
     Optional,
     Callable,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.core.rl_module.rl_module import (
@@ -41,7 +40,6 @@ from ray.rllib.utils.framework import try_import_torch
 torch, nn = try_import_torch()
 
 if torch:
-    from ray.air.config import ScalingConfig
     from ray.train.torch.train_loop_utils import _TorchAccelerator
 
 

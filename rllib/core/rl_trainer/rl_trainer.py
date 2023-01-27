@@ -14,7 +14,6 @@ from typing import (
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch

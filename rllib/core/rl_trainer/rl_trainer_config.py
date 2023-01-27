@@ -1,8 +1,8 @@
-import abc
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Type, Union, TYPE_CHECKING
 
 from ray.rllib.utils.params import Hyperparams
+from ray.rllib.core.rl_module.torch import TorchRLModule
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
@@ -56,7 +56,8 @@ class TorchRLTrainerScalingConfig(RLTrainerScalingConfig):
         """Set the use_gpu flag.
 
         _use_gpu attribute should not be set directly at the time of constuction,
-        the caller should explicitly decide whether the torch rl_trainer should be using gpu or not
+        the caller should explicitly decide whether the torch rl_trainer should be
+        using gpu or not
 
         Args:
             use_gpu: If True, the rl trainer will be setup to use the gpu.
@@ -77,16 +78,17 @@ class TrainerRunnerScalingConfig:
     """Configuratiom for scaling training actors.
 
     Attributes:
-        local: If True, create a trainer in the current process. This is useful for
-            debugging to be able to use breakpoints. If False, the trainers are created
-            as Ray actors.
-        num_workers: The number of workers to use for training.
-        num_cpus_per_worker: The number of CPUs to allocate per worker.
-        num_gpus_per_worker: The number of GPUs to allocate per worker.
+        num_workers: The number of workers to use for training. num_workers=0 means you
+            have only one local worker (either on 1 CPU or 1 GPU)
+        num_cpus_per_worker: The number of CPUs to allocate per worker. If
+            num_workers=0 and num_gpus_per_worker=0, regardless of this value, the
+            training will run on a single CPU.
+        num_gpus_per_worker: The number of GPUs to allocate per worker. If
+            num_workers=0, any number greater than 0 will run the training on a single
+            GPU. A value of zero will run the training on a single CPU.
     """
 
-    local: bool = True
-    num_workers: int = 1
+    num_workers: int = 0
     num_cpus_per_worker: int = 1
     num_gpus_per_worker: int = 0
 
@@ -99,7 +101,7 @@ class RLTrainerSpec:
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     # Alternatively the RLModule instance can be passed in directly (won't work if
     # RLTrainer is an actor)
-    module: Optional["RLModule"] = (None,)
+    module: Optional["RLModule"] = None
     # The scaling config for properly distributing the RLModule
     scaling_config: "RLTrainerScalingConfig" = None
     # The optimizer setting to apply during training
@@ -110,8 +112,21 @@ class RLTrainerSpec:
     trainer_hyperparameters: HyperparamType = field(default_factory=dict)
 
     def __post_init__(self):
-        if isinstance(self.trainer_hyperparameters, abc.Mapping):
+        if isinstance(self.trainer_hyperparameters, dict):
             self.trainer_hyperparameters = Hyperparams(self.trainer_hyperparameters)
+
+        if self.scaling_config is None:
+            if self.module is not None:
+                if isinstance(self.module, TorchRLModule):
+                    self.scaling_config = TorchRLTrainerScalingConfig()
+                else:
+                    self.scaling_config = TFRLTrainerScalingConfig()
+
+            if self.module_spec is not None:
+                if issubclass(self.module_spec.module_class, TorchRLModule):
+                    self.scaling_config = TorchRLTrainerScalingConfig()
+                else:
+                    self.scaling_config = TFRLTrainerScalingConfig()
 
     def get_params_dict(self) -> Dict[str, Any]:
         return {

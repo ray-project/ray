@@ -9,7 +9,6 @@ from typing import (
     Dict,
     Sequence,
     Hashable,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.core.rl_trainer.rl_trainer import (
@@ -36,10 +35,6 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.core.rl_trainer.rl_trainer_config import TFRLTrainerScalingConfig
-
-if TYPE_CHECKING:
-    from ray.air.config import ScalingConfig
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 tf1, tf, tfv = try_import_tf()

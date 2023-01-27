@@ -7,8 +7,6 @@ from typing import (
     Optional,
     Callable,
     Dict,
-    TYPE_CHECKING,
-    cast,
 )
 
 import ray
@@ -28,12 +26,9 @@ from ray.rllib.core.rl_trainer.rl_trainer_config import RLTrainerSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 
 
-from ray.air.config import ScalingConfig
 from ray.train._internal.backend_executor import BackendExecutor
 
 from ray.rllib.core.rl_trainer.rl_trainer_config import (
-    TorchRLTrainerScalingConfig,
-    TFRLTrainerScalingConfig,
     TrainerRunnerScalingConfig,
 )
 
@@ -68,9 +63,17 @@ class TrainerRunner:
         scaling_config: Optional[TrainerRunnerScalingConfig] = None,
     ):
         scaling_config = scaling_config or TrainerRunnerScalingConfig()
-        rl_trainer_class = rl_trainer_spec.trainer_class
+        rl_trainer_class = rl_trainer_spec.rl_trainer_class
 
-        self._is_local = scaling_config.local
+        # setup wether the worker should use gpu or not
+        if rl_trainer_class.framework == "torch":
+            trainer_should_use_gpu = scaling_config.num_gpus_per_worker > 0
+            rl_trainer_spec.scaling_config.set_use_gpu(trainer_should_use_gpu)
+        else:
+            # TODO (Avnish) How do I run TF on one GPU?
+            pass
+
+        self._is_local = scaling_config.num_workers == 0
         if self._is_local:
             # in local mode the trainer is always not distributed
             rl_trainer_spec.scaling_config.set_distributed(False)
@@ -86,20 +89,10 @@ class TrainerRunner:
                 from ray.train.torch import TorchConfig
 
                 backend_config = TorchConfig()
-                trainer_scaling_config = cast(
-                    TorchRLTrainerScalingConfig, rl_trainer_spec.scaling_config
-                )
-
-                trainer_should_use_gpu = scaling_config.num_gpus_per_worker > 0
-                trainer_scaling_config.set_use_gpu(trainer_should_use_gpu)
-
             elif rl_trainer_class.framework == "tf":
                 from ray.train.tensorflow import TensorflowConfig
 
                 backend_config = TensorflowConfig()
-                trainer_scaling_config = cast(
-                    TFRLTrainerScalingConfig, rl_trainer_spec.scaling_config
-                )
             else:
                 raise ValueError("framework must be either torch or tf")
 

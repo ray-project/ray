@@ -14,8 +14,6 @@ from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.core.rl_trainer.rl_trainer_config import TorchRLTrainerScalingConfig
 
-from ray.air.config import ScalingConfig
-
 
 def _get_trainer(distributed: bool = False) -> RLTrainer:
     env = gym.make("CartPole-v1")

@@ -1,35 +1,19 @@
 from typing import Type, Optional, TYPE_CHECKING, Union, Dict
-from dataclasses import dataclass
 
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.from_config import NotProvided
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
+from ray.rllib.core.rl_trainer.rl_trainer_config import (
+    RLTrainerSpec,
+    TrainerRunnerScalingConfig,
+)
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.core.rl_trainer import RLTrainer
 
 ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
-
-
-@dataclass
-class TrainerRunnerScalingConfig:
-    """Configuratiom for scaling training actors.
-
-    Attributes:
-        local: If True, create a trainer in the current process. This is useful for
-            debugging to be able to use breakpoints. If False, the trainers are created
-            as Ray actors.
-        num_workers: The number of workers to use for training.
-        num_cpus_per_worker: The number of CPUs to allocate per worker.
-        num_gpus_per_worker: The number of GPUs to allocate per worker.
-    """
-
-    local: bool = True
-    num_workers: int = 1
-    num_cpus_per_worker: int = 1
-    num_gpus_per_worker: int = 0
 
 
 # TODO (Kourosh): We should make all configs come from a standard base class that
@@ -51,8 +35,9 @@ class TrainerRunnerConfig:
         self.optimizer_config = None
 
         # `self.resources()`
-        self.num_gpus = 0
-        self.fake_gpus = False
+        self.num_gpus_per_trainer_worker = 0
+        self.num_cpus_per_trainer_worker = 1
+        self.num_trainer_workers = 1
 
         # `self.algorithm()`
         self.algorithm_config = None
@@ -82,34 +67,21 @@ class TrainerRunnerConfig:
             # TODO (Kourosh): Change the optimizer config to a dataclass object.
             self.optimizer_config = {"lr": 1e-3}
 
-        if self.fake_gpus and self.num_gpus <= 0:
-            raise ValueError("If fake_gpus is True, num_gpus must be greater than 0.")
-
     def build(self) -> TrainerRunner:
         self.validate()
 
-        # If the module class is a multi agent class it will override the default
-        # MultiAgentRLModule class. otherwise, it will be a single agent wrapped with
-        # mutliagent
-        # TODO (Kourosh): What should be scaling_config? it's not clear what
-        # should be passed in as trainer_config and what will be inferred
-        return self.trainer_runner_class(
-            trainer_class=self.trainer_class,
-            trainer_config={
-                "module_spec": self.module_spec,
-                # TODO (Kourosh): should this be inferred inside the constructor?
-                "distributed": self.num_gpus > 1,
-                # TODO (Avnish): add this
-                # "enable_tf_function": self.eager_tracing,
-                "optimizer_config": self.optimizer_config,
-                "algorithm_config": self.algorithm_config,
-            },
-            compute_config={
-                "num_gpus": self.num_gpus,
-                # TODO (Avnish): add this
-                # "fake_gpus": self.fake_gpus,
-            },
+        rl_trainer_spec = RLTrainerSpec(
+            rl_trainer_class=self.trainer_class,
+            module_spec=self.module_spec,
+            optimizer_config=self.optimizer_config,
+            trainer_hyperparameters=self.algorithm_config,
         )
+        scaling_config = TrainerRunnerScalingConfig(
+            num_workers=self.num_trainer_workers,
+            num_gpus_per_worker=self.num_gpus_per_trainer_worker,
+            num_cpus_per_worker=self.num_cpus_per_trainer_worker,
+        )
+        return self.trainer_runner_class(rl_trainer_spec, scaling_config)
 
     def algorithm(
         self, algorithm_config: Optional["AlgorithmConfig"] = NotProvided
@@ -130,14 +102,17 @@ class TrainerRunnerConfig:
 
     def resources(
         self,
-        num_gpus: Optional[Union[float, int]] = NotProvided,
-        fake_gpus: Optional[bool] = NotProvided,
+        num_trainer_workers: Optional[int] = NotProvided,
+        num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
+        num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
     ) -> "TrainerRunnerConfig":
 
-        if num_gpus is not NotProvided:
-            self.num_gpus = num_gpus
-        if fake_gpus is not NotProvided:
-            self.fake_gpus = fake_gpus
+        if num_trainer_workers is not NotProvided:
+            self.num_trainer_workers = num_trainer_workers
+        if num_gpus_per_trainer_worker is not NotProvided:
+            self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
+        if num_cpus_per_trainer_worker is not NotProvided:
+            self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
 
         return self
 

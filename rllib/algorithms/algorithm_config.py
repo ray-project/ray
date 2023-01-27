@@ -242,6 +242,9 @@ class AlgorithmConfig:
         self.num_gpus_per_worker = 0
         self._fake_gpus = False
         self.num_cpus_for_local_worker = 1
+        self.num_trainer_workers = 0
+        self.num_gpus_per_trainer_worker = 0
+        self.num_cpus_per_trainer_worker = 1
         self.custom_resources_per_worker = {}
         self.placement_strategy = "PACK"
 
@@ -946,6 +949,9 @@ class AlgorithmConfig:
         num_cpus_per_worker: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_worker: Optional[Union[float, int]] = NotProvided,
         num_cpus_for_local_worker: Optional[int] = NotProvided,
+        num_trainer_workers: Optional[int] = NotProvided,
+        num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
+        num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_worker: Optional[dict] = NotProvided,
         placement_strategy: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -1004,6 +1010,13 @@ class AlgorithmConfig:
             self.custom_resources_per_worker = custom_resources_per_worker
         if placement_strategy is not NotProvided:
             self.placement_strategy = placement_strategy
+
+        if num_trainer_workers is not NotProvided:
+            self.num_trainer_workers = num_trainer_workers
+        if num_cpus_per_trainer_worker is not NotProvided:
+            self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
+        if num_gpus_per_trainer_worker is not NotProvided:
+            self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
 
         return self
 
@@ -2637,7 +2650,11 @@ class AlgorithmConfig:
                 # TODO (Kourosh): optimizer config can now be more complicated.
                 optimizer_config={"lr": self.lr},
             )
-            .resources(num_gpus=self.num_gpus, fake_gpus=self._fake_gpus)
+            .resources(
+                num_trainer_workers=self.num_trainer_workers,
+                num_cpus_per_trainer_worker=self.num_cpus_per_trainer_worker,
+                num_gpus_per_trainer_worker=self.num_gpus_per_trainer_worker,
+            )
             .algorithm(algorithm_config=self)
         )
 
