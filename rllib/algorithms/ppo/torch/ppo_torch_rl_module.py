@@ -77,9 +77,9 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.encoder_config, "shared encoder config must be " "provided."
 
         # TODO(Artur): Unify to tf and torch setup with ModelBuilder
-        self.encoder = self.config.encoder_config.build(framework="torch")
-        self.pi = self.config.pi_config.build(framework="torch")
-        self.vf = self.config.vf_config.build(framework="torch")
+        self.encoder = self.config.model_builder.build_encoder(framework="torch")
+        self.pi = self.config.model_builder.build_pi(framework="torch")
+        self.vf = self.config.model_builder.build_vf(framework="torch")
 
         self._is_discrete = isinstance(
             convert_old_gym_space_to_gymnasium_space(self.config.action_space),
@@ -96,52 +96,7 @@ class PPOTorchRLModule(TorchRLModule):
         model_config: Mapping[str, Any],
     ) -> Union["RLModule", Mapping[str, Any]]:
 
-        # TODO: use the new catalog to perform this logic and construct the final config
 
-        activation = model_config["fcnet_activation"]
-        if activation == "tanh":
-            activation = "Tanh"
-        elif activation == "relu":
-            activation = "ReLU"
-        elif activation == "linear":
-            activation = "linear"
-        else:
-            raise ValueError(f"Unsupported activation: {activation}")
-
-        obs_dim = observation_space.shape[0]
-        fcnet_hiddens = model_config["fcnet_hiddens"]
-        free_log_std = model_config["free_log_std"]
-        assert (
-            model_config.get("vf_share_layers") is False
-        ), "`vf_share_layers=False` is no longer supported."
-
-        if model_config["use_lstm"]:
-            encoder_config = LSTMEncoderConfig(
-                input_dim=obs_dim,
-                hidden_dim=model_config["lstm_cell_size"],
-                batch_first=not model_config["_time_major"],
-                num_layers=1,
-                output_dim=model_config["lstm_cell_size"],
-            )
-        else:
-            encoder_config = MLPEncoderConfig(
-                input_dim=obs_dim,
-                hidden_layer_dims=fcnet_hiddens[:-1],
-                hidden_layer_activation=activation,
-                output_dim=fcnet_hiddens[-1],
-            )
-
-        pi_config = MLPConfig(
-            input_dim=encoder_config.output_dim,
-            hidden_layer_dims=[32],
-            hidden_layer_activation="ReLU",
-        )
-        vf_config = MLPConfig(
-            input_dim=encoder_config.output_dim,
-            hidden_layer_dims=[32, 1],
-            hidden_layer_activation="ReLU",
-            output_dim=1,
-        )
 
         assert isinstance(
             observation_space, gym.spaces.Box
