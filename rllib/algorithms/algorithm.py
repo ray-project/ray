@@ -35,6 +35,12 @@ from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModuleSpec,
+    MultiAgentRLModule,
+)
+
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
@@ -685,12 +691,27 @@ class Algorithm(Trainable):
 
         self.trainer_runner = None
         if self.config._enable_rl_trainer_api:
-            policy = self.get_policy()
-            observation_space = policy.observation_space
-            action_space = policy.action_space
-            trainer_runner_config = self.config.get_trainer_runner_config(
-                observation_space, action_space
+            # TODO (Kourosh): This is an interim solution where policies and modules
+            # co-exist. In this world we have both policy_map and MARLModule that need
+            # to be consistent with one another. To make a consistent parity between
+            # the two we need to loop throught the policy modules and create a simple
+            # MARLModule from the RLModule within each policy.
+            local_worker = self.workers.local_worker()
+            module_specs = {}
+
+            for pid, policy in local_worker.policy_map.items():
+                module_specs[pid] = SingleAgentRLModuleSpec(
+                    module_class=policy.config["rl_module_class"],
+                    observation_space=policy.observation_space,
+                    action_space=policy.action_space,
+                    model_config=policy.config["model"],
+                )
+
+            module_spec = MultiAgentRLModuleSpec(
+                module_class=MultiAgentRLModule, module_specs=module_specs
             )
+
+            trainer_runner_config = self.config.get_trainer_runner_config(module_spec)
             self.trainer_runner = trainer_runner_config.build()
 
         # Run `on_algorithm_init` callback after initialization is done.

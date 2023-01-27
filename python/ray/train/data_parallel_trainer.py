@@ -241,6 +241,10 @@ class DataParallelTrainer(BaseTrainer):
         WILDCARD_KEY: DatasetConfig(split=False),
     }
 
+    _fields_for_tuner_param_space = BaseTrainer._fields_for_tuner_param_space + [
+        "train_loop_config"
+    ]
+
     def __init__(
         self,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
