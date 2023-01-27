@@ -142,9 +142,6 @@ class TfIdentityEncoder(TfModel):
     We use this so that we avoid having many if/else statements in the RLModule.
     """
 
-    def __init__(self, config: ModelConfig) -> None:
-        super().__init__(config)
-
     @property
     def input_spec(self):
         return SpecDict(

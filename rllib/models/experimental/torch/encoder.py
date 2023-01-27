@@ -143,8 +143,10 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
 
 class TorchIdentityEncoder(TorchModel):
-    def __init__(self, config: ModelConfig) -> None:
-        super().__init__(config)
+    """An encoder that does nothing but passing on inputs.
+
+    We use this so that we avoid having many if/else statements in the RLModule.
+    """
 
     @property
     def input_spec(self) -> SpecDict:
