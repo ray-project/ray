@@ -192,7 +192,7 @@ spec:
           env:
             # RAY_REDIS_ADDRESS lets ray use external Redis for fault tolerance
             - name: RAY_REDIS_ADDRESS
-              value: <REDIS IP ADDRESS> # ip address for the external Redis
+              value: <REDIS IP ADDRESS:PORT NUMBER> # ip address for the external Redis
             # This is used in the ray start command so that Ray can spawn the
             # correct number of processes. Omitting this may lead to degraded
             # performance.
@@ -223,7 +223,7 @@ metadata:
     app: ray-cluster-worker
 spec:
   # Change this to scale the number of worker nodes started in the Ray cluster.
-  replicas: 4
+  replicas: 2
   selector:
     matchLabels:
       component: ray-worker

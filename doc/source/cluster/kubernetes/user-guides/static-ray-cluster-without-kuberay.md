@@ -131,6 +131,9 @@ Firstly, run the command below to get the head pod:
 
 ```
 ! kubectl get pods --selector=app=ray-cluster-head
+
+# NAME                                             READY   STATUS    RESTARTS   AGE
+# deployment-ray-head-xxxxx                        1/1     Running   0          XXs
 ```
 
 We can now execute a Ray program on the previously identified head pod. The following command connects to the Ray Cluster and then terminates the Ray program.
@@ -138,9 +141,9 @@ We can now execute a Ray program on the previously identified head pod. The foll
 ```
 # Substitute your output from the last cell in place of "deployment-ray-head-xxxxx"
 
-! kubectl exec deployment-ray-head-xxxxx -it -c ray-head -- python -c "import ray; ray.init()"
+! kubectl exec deployment-ray-head-xxxxx -it -c ray-head -- python -c "import ray; ray.init('auto')"
 # 2022-08-10 11:23:17,093 INFO worker.py:1312 -- Connecting to existing Ray cluster at address: <IP address>:6379...
-# 2022-08-10 11:23:17,097 INFO worker.py:1490 -- Connected to Ray cluster.
+# 2022-08-10 11:23:17,097 INFO worker.py:1490 -- Connected to Ray cluster. View the dashboard at ...
 ```
 
 Although the above cell can be useful for occasional execution on the Ray Cluster, the recommended approach for running an application on a Ray Cluster is to use [Ray Jobs](jobs-quickstart).
