@@ -106,7 +106,7 @@ If the current node's object store does not contain the object, the object is do
           return 1;
         }
       }
-      Assert.assertThrows(RayTimeoutException.class, 
+      Assert.assertThrows(RayTimeoutException.class,
         () -> Ray.get(Ray.task(MyRayApp::slowFunction).remote(), 3000));
 
 .. tabbed:: C++
@@ -173,6 +173,14 @@ Ray also supports nested object references. This allows you to build composite o
     # alive via reference counting until all outer object references are deleted.
     object_ref_2 = ray.put([object_ref])
 
+Fault Tolerance
+---------------
+
+Ray can automatically recover from object data loss
+via :ref:`lineage reconstruction <fault-tolerance-objects-reconstruction>`
+but not :ref:`owner <fault-tolerance-ownership>` failure.
+See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
+
 More about Ray Objects
 ----------------------
 
@@ -181,4 +189,3 @@ More about Ray Objects
 
     objects/serialization.rst
     objects/object-spilling.rst
-    objects/fault-tolerance.rst
