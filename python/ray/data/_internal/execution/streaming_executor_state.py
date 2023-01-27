@@ -24,6 +24,9 @@ from ray.data._internal.stats import DatasetStats
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
 
+# A RefBundle or an exception / end of stream indicator.
+MaybeRefBundle = Union[RefBundle, Exception, None]
+
 
 class OpState:
     """The execution state tracked for each PhysicalOperator.
@@ -35,13 +38,13 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[Deque[RefBundle]]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[Deque[MaybeRefBundle]]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
-        self.inqueues: List[Deque[RefBundle]] = inqueues
+        self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
-        self.outqueue: Deque[RefBundle] = deque()
+        self.outqueue: Deque[MaybeRefBundle] = deque()
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
@@ -89,7 +92,12 @@ class OpState:
                 return
         assert False, "Nothing to dispatch"
 
-    def get_output_blocking(self) -> Union[RefBundle, Exception, None]:
+    def get_output_blocking(self) -> MaybeRefBundle:
+        """Get an item from this node's output queue, blocking as needed.
+
+        Returns:
+            The RefBundle from the output queue, or an error / end of stream indicator.
+        """
         while not self.outqueue:
             time.sleep(0.01)
         return self.outqueue.popleft()
