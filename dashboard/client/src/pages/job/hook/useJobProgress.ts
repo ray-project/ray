@@ -3,7 +3,6 @@ import { useState } from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import {
-  getStateApiJobProgressByLineage,
   getStateApiJobProgressByLineageAndName,
   getStateApiJobProgressByTaskName,
 } from "../../../service/job";
@@ -240,24 +239,16 @@ export const formatNestedJobProgressToJobProgressGroup = (
 export const useJobProgressByLineage = (
   jobId: string | undefined,
   disableRefresh = false,
-  summaryType: "lineage" | "lineage_and_name" = "lineage",
 ) => {
   const [msg, setMsg] = useState("Loading progress...");
   const [error, setError] = useState(false);
   const [isRefreshing, setRefresh] = useState(true);
   const [latestFetchTimestamp, setLatestFetchTimestamp] = useState(0);
-  const [fetchKey, fetchFunc] =
-    summaryType === "lineage"
-      ? ["useJobProgressByLineage", getStateApiJobProgressByLineage]
-      : [
-          "useJobProgressByLineageAndName",
-          getStateApiJobProgressByLineageAndName,
-        ];
 
   const { data } = useSWR(
-    jobId ? [fetchKey, jobId] : null,
+    jobId ? ["useJobProgressByLineageAndName", jobId] : null,
     async (_, jobId) => {
-      const rsp = await fetchFunc(jobId);
+      const rsp = await getStateApiJobProgressByLineageAndName(jobId);
       setMsg(rsp.data.msg);
 
       if (rsp.data.result) {
@@ -277,8 +268,6 @@ export const useJobProgressByLineage = (
       revalidateOnFocus: false,
     },
   );
-
-  console.log("totalTasks: " + data?.totalTasks);
 
   return {
     progressGroups: data?.summary?.progressGroups,
