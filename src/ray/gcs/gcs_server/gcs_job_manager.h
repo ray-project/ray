@@ -24,6 +24,8 @@
 namespace ray {
 namespace gcs {
 
+using JobFinishListenerCallback = rpc::JobInfoHandler::JobFinishListenerCallback;
+
 /// This implementation class of `JobInfoHandler`.
 class GcsJobManager : public rpc::JobInfoHandler {
  public:
@@ -58,8 +60,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
                           rpc::GetNextJobIDReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  void AddJobFinishedListener(
-      std::function<void(std::shared_ptr<JobID>)> listener) override;
+  void AddJobFinishedListener(JobFinishListenerCallback listener) override;
 
   std::shared_ptr<rpc::JobConfig> GetJobConfig(const JobID &job_id) const;
 
@@ -68,14 +69,14 @@ class GcsJobManager : public rpc::JobInfoHandler {
   std::shared_ptr<GcsPublisher> gcs_publisher_;
 
   /// Listeners which monitors the finish of jobs.
-  std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
+  std::vector<JobFinishListenerCallback> job_finished_listeners_;
 
   /// A cached mapping from job id to job config.
   absl::flat_hash_map<JobID, std::shared_ptr<rpc::JobConfig>> cached_job_configs_;
 
   ray::RuntimeEnvManager &runtime_env_manager_;
   GcsFunctionManager &function_manager_;
-  void ClearJobInfos(const JobID &job_id);
+  void ClearJobInfos(const rpc::JobTableData &job_data);
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,
                          std::function<void(Status)> done_callback);

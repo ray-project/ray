@@ -1,6 +1,7 @@
 import abc
 
 import logging
+import numpy as np
 from typing import (
     Any,
     Callable,
@@ -13,15 +14,27 @@ from typing import (
     Tuple,
     Type,
     Union,
+    TYPE_CHECKING,
 )
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.core.rl_module.rl_module import (
+    RLModule,
+    ModuleID,
+    SingleAgentRLModuleSpec,
+)
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
+
+if TYPE_CHECKING:
+    from ray.air.config import ScalingConfig
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -94,22 +107,42 @@ class RLTrainer:
 
     """
 
-    TOTAL_LOSS_KEY = "total_loss"
+    framework: str = None
+    TOTAL_LOSS_KEY: str = "total_loss"
 
     def __init__(
         self,
-        module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
-        module_kwargs: Mapping[str, Any],
-        optimizer_config: Mapping[str, Any],
+        *,
+        module_spec: Optional[
+            Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
+        ] = None,
+        module: Optional[RLModule] = None,
+        optimizer_config: Mapping[str, Any] = None,
         distributed: bool = False,
-        in_test: bool = False,
+        scaling_config: Optional["ScalingConfig"] = None,
+        algorithm_config: Optional["AlgorithmConfig"] = None,
     ):
-        # TODO: convert scaling and optimizer configs to dataclasses
-        self.module_class = module_class
-        self.module_kwargs = module_kwargs
+        # TODO (Kourosh): Having the entire algorithm_config inside trainer may not be
+        # the best idea in the world, but it's easy to implement and user will
+        # understand it. If we can find a better way to make subset of the config
+        # available to the trainer, that would be great.
+        # TODO (Kourosh): convert optimizer configs to dataclasses
+        if module_spec is not None and module is not None:
+            raise ValueError(
+                "Only one of module spec or module can be provided to RLTrainer."
+            )
+
+        if module_spec is None and module is None:
+            raise ValueError(
+                "Either module_spec or module should be provided to RLTrainer."
+            )
+
+        self.module_spec = module_spec
+        self.module_obj = module
         self.optimizer_config = optimizer_config
         self.distributed = distributed
-        self.in_test = in_test
+        self.scaling_config = scaling_config
+        self.config = algorithm_config
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
@@ -142,7 +175,6 @@ class RLTrainer:
 
         """
 
-    @abc.abstractmethod
     def compute_loss(
         self,
         *,
@@ -170,12 +202,54 @@ class RLTrainer:
             must contain one protected key "total_loss" which will be used for
             computing gradients through.
         """
-        # TODO: This method is built for multi-agent. While it is still possible to
-        # write single-agent losses, it may become confusing to users. We should find a
-        # way to allow them to specify single-agent losses as well, without having to
-        # think about one extra layer of hierarchy for module ids.
+        # TODO (Kourosh): This method is built for multi-agent. While it is still
+        # possible to write single-agent losses, it may become confusing to users. We
+        # should find a way to allow them to specify single-agent losses as well,
+        # without having to think about one extra layer of hierarchy for module ids.
 
-    def on_after_compute_gradients(
+        loss_total = None
+        results_all_modules = {}
+        for module_id in fwd_out:
+            module_batch = batch[module_id]
+            module_fwd_out = fwd_out[module_id]
+
+            module_results = self._compute_loss_per_module(
+                module_id, module_batch, module_fwd_out
+            )
+            results_all_modules[module_id] = module_results
+            loss = module_results[self.TOTAL_LOSS_KEY]
+
+            if loss_total is None:
+                loss_total = loss
+            else:
+                loss_total += loss
+
+        results_all_modules[self.TOTAL_LOSS_KEY] = loss_total
+
+        return results_all_modules
+
+    def _compute_loss_per_module(
+        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    ) -> Mapping[str, Any]:
+        """Computes the loss for a single module.
+
+        Think of this as computing loss for a
+        single agent. For multi-agent use-cases that require more complicated
+        computation for loss, consider overriding the `compute_loss` method instead.
+
+        Args:
+            module_id: The id of the module.
+            batch: The sample batch for this particular module.
+            fwd_out: The output of the forward pass for this particular module.
+
+        Returns:
+            A dictionary of losses. NOTE that the dictionary
+            must contain one protected key "total_loss" which will be used for
+            computing gradients through.
+        """
+        raise NotImplementedError
+
+    def postprocess_gradients(
         self, gradients_dict: Mapping[str, Any]
     ) -> Mapping[str, Any]:
         """Called after gradients have been computed.
@@ -187,8 +261,8 @@ class RLTrainer:
             fwd_out = forward_train(batch)
             loss = compute_loss(batch, fwd_out)
             gradients = compute_gradients(loss)
-            ---> post_processed_gradients = on_after_compute_gradients(gradients)
-            apply_gradients(post_processed_gradients)
+            ---> postprocessed_gradients = postprocess_gradients(gradients)
+            apply_gradients(postprocessed_gradients)
 
         Returns:
             Mapping[str, Any]: A dictionary of gradients.
@@ -200,7 +274,7 @@ class RLTrainer:
         batch: NestedDict,
         fwd_out: Mapping[str, Any],
         postprocessed_loss: Mapping[str, Any],
-        post_processed_gradients: Mapping[str, Any],
+        postprocessed_gradients: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Compile results from the update.
 
@@ -208,18 +282,25 @@ class RLTrainer:
             batch: The batch that was used for the update.
             fwd_out: The output of the forward train pass.
             postprocessed_loss: The loss after postprocessing.
-            post_processed_gradients: The gradients after postprocessing.
+            postprocessed_gradients: The gradients after postprocessing.
 
         Returns:
             A dictionary of results.
         """
+        # TODO (Kourosh): This method assumes that all the modules with in the
+        # marl_module are accessible via looping through it rl_modules. This may not be
+        # true for centralized critic for example. Therefore we need a better
+        # generalization of this base-class implementation.
         loss_numpy = convert_to_numpy(postprocessed_loss)
-        rewards = batch["rewards"]
-        rewards = convert_to_numpy(rewards)
-        return {
-            "avg_reward": rewards.mean(),
-            **loss_numpy,
+        mean_grads = [
+            np.mean(grad) for grad in convert_to_numpy(postprocessed_gradients.values())
+        ]
+        ret = {
+            "loss": loss_numpy,
+            "mean_gradient": np.mean(mean_grads),
         }
+
+        return ret
 
     def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         """Perform an update on this Trainer.
@@ -232,14 +313,34 @@ class RLTrainer:
         """
         self.__check_if_build_called()
         if not self.distributed:
-            fwd_out = self._module.forward_train(batch)
-            loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
-            gradients = self.compute_gradients(loss)
-            post_processed_gradients = self.on_after_compute_gradients(gradients)
-            self.apply_gradients(post_processed_gradients)
+            return self._update(batch)
         else:
-            self.do_distributed_update(batch)
-        return self.compile_results(batch, fwd_out, loss, post_processed_gradients)
+            return self.do_distributed_update(batch)
+
+    def _update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
+        # NestedDict from the base class.
+        batch = self._convert_batch_type(batch)
+        fwd_out = self._module.forward_train(batch)
+        loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        gradients = self.compute_gradients(loss)
+        postprocessed_gradients = self.postprocess_gradients(gradients)
+        self.apply_gradients(postprocessed_gradients)
+        return self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+
+    @abc.abstractmethod
+    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
+        """Converts a MultiAgentBatch to a NestedDict of Tensors.
+
+        This should convert the input batch from a MultiAgentBatch format to framework
+        specific tensor format located on the correct device.
+
+        Args:
+            batch: A MultiAgentBatch.
+
+        Returns:
+            A NestedDict.
+        """
 
     def additional_update(self, *args, **kwargs) -> Mapping[str, Any]:
         """Apply additional non-gradient based updates to this Trainer.
@@ -258,6 +359,29 @@ class RLTrainer:
         Returns:
             A dictionary of results from the update
         """
+        results_all_modules = {}
+        for module_id in self._module.keys():
+            module_results = self._additional_update_per_module(
+                module_id, *args, **kwargs
+            )
+            results_all_modules[module_id] = module_results
+
+        return results_all_modules
+
+    def _additional_update_per_module(
+        self, module_id: str, *args, **kwargs
+    ) -> Mapping[str, Any]:
+        """Apply additional non-gradient based updates for a single module.
+
+        Args:
+            module_id: The id of the module to update.
+            *args: Arguments to use for the update.
+            **kwargs: Keyword arguments to use for the additional update.
+
+        Returns:
+            A dictionary of results from the update
+        """
+
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -311,12 +435,11 @@ class RLTrainer:
         self,
         *,
         module_id: ModuleID,
-        module_cls: Type[RLModule],
-        module_kwargs: Mapping[str, Any],
+        module_spec: SingleAgentRLModuleSpec,
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
-        """Add a module to the trainer.
+        """Add a module to the underlying MultiAgentRLModule and the trainer.
 
         Args:
             module_id: The id of the module to add.
@@ -331,7 +454,7 @@ class RLTrainer:
                 should be provided.
         """
         self.__check_if_build_called()
-        module = module_cls.from_model_config(**module_kwargs)
+        module = module_spec.build()
 
         # construct a default set_optimizer_fn if not provided
         if set_optimizer_fn is None:
@@ -388,25 +511,17 @@ class RLTrainer:
         Returns:
             The constructed module.
         """
-
-        if issubclass(self.module_class, MultiAgentRLModule):
-            module = self.module_class.from_multi_agent_config(**self.module_kwargs)
-        elif issubclass(self.module_class, RLModule):
-            module = self.module_class.from_model_config(
-                **self.module_kwargs
-            ).as_multi_agent()
+        if self.module_obj is not None:
+            module = self.module_obj
         else:
-            raise ValueError(
-                f"Module class {self.module_class} is not a subclass of "
-                f"RLModule or MultiAgentRLModule."
-            )
-
+            module = self.module_spec.build()
+        module = module.as_multi_agent()
         return module
 
     def build(self) -> None:
         """Initialize the model."""
         if self.distributed:
-            self._module = self._make_distributed()
+            self._module = self._make_distributed_module()
         else:
             self._module = self._make_module()
 
@@ -429,7 +544,7 @@ class RLTrainer:
         """
         raise NotImplementedError
 
-    def _make_distributed(self) -> MultiAgentRLModule:
+    def _make_distributed_module(self) -> MultiAgentRLModule:
         """Initialize this trainer in a distributed training setting.
 
         This method should be overriden in the framework specific trainer. It is
@@ -470,6 +585,8 @@ class RLTrainer:
         Returns:
             The parameters of the module.
         """
+        # TODO (Kourosh): Make this method a classmethod. This function's purpose is to
+        # get the parameters of a module based on what the underlying framework is.
 
     @abc.abstractmethod
     def get_optimizer_obj(
