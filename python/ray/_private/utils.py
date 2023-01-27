@@ -1352,6 +1352,17 @@ def init_grpc_channel(
     asynchronous: bool = False,
 ):
     grpc_module = aiogrpc if asynchronous else grpc
+
+    options = options or []
+    options_dict = dict(options)
+    options_dict["grpc.keepalive_time_ms"] = options_dict.get(
+        "grpc.keepalive_time_ms", ray._config.grpc_client_keepalive_time_ms()
+    )
+    options_dict["grpc.keepalive_timeout_ms"] = options_dict.get(
+        "grpc.keepalive_timeout_ms", ray._config.grpc_client_keepalive_timeout_ms()
+    )
+    options = options_dict.items()
+
     if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(

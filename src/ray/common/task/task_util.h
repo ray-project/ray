@@ -257,15 +257,12 @@ class TaskSpecBuilder {
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorTaskSpec(const ActorID &actor_id,
                                     const ObjectID &actor_creation_dummy_object_id,
-                                    const ObjectID &previous_actor_task_dummy_object_id,
                                     uint64_t actor_counter) {
     message_->set_type(TaskType::ACTOR_TASK);
     auto actor_spec = message_->mutable_actor_task_spec();
     actor_spec->set_actor_id(actor_id.Binary());
     actor_spec->set_actor_creation_dummy_object_id(
         actor_creation_dummy_object_id.Binary());
-    actor_spec->set_previous_actor_task_dummy_object_id(
-        previous_actor_task_dummy_object_id.Binary());
     actor_spec->set_actor_counter(actor_counter);
     return *this;
   }

@@ -89,6 +89,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
                                             float spread_threshold,
                                             bool force_spillback,
                                             bool require_available,
+                                            const std::string &preferred_node,
                                             NodeFilter node_filter = NodeFilter::kAny);
 };
 }  // namespace raylet_scheduling_policy

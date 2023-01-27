@@ -3,18 +3,16 @@ from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
 
 import numpy as np
 
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
+from ray.data._internal.util import _is_tensor_schema
 
 if TYPE_CHECKING:
     from ray.data._internal.sort import SortKeyT
 
-
-# The internal column name used for pure-tensor datasets, represented as
-# single-tensor-column tables.
-VALUE_COL_NAME = "__value__"
 
 T = TypeVar("T")
 
@@ -42,7 +40,7 @@ class TableBlockBuilder(BlockBuilder[T]):
         if isinstance(item, TableRow):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
-            item = {VALUE_COL_NAME: item}
+            item = {TENSOR_COLUMN_NAME: item}
         if not isinstance(item, dict):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
@@ -157,7 +155,7 @@ class TableBlockAccessor(BlockAccessor):
         return self._table
 
     def is_tensor_wrapper(self) -> bool:
-        return self.column_names() == [VALUE_COL_NAME]
+        return _is_tensor_schema(self.column_names())
 
     def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:
         outer = self

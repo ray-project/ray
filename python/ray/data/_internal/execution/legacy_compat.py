@@ -4,16 +4,24 @@ It should be deleted once we fully move to the new executor backend.
 """
 
 import ray.cloudpickle as cloudpickle
-from typing import Iterator, Tuple
+from typing import Iterator, Tuple, Any
 
 import ray
+from ray.data._internal.logical.optimizers import get_execution_dag
+from ray.data.context import DatasetContext
+from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
 from ray.data.datasource import ReadTask
 from ray.data._internal.stats import StatsDict, DatasetStats
 from ray.data._internal.stage_impl import RandomizeBlocksStage
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.compute import get_compute
+from ray.data._internal.compute import (
+    get_compute,
+    CallableClass,
+    TaskPoolStrategy,
+    ActorPoolStrategy,
+)
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage, Stage
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -24,6 +32,31 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+
+
+def execute_to_legacy_block_iterator(
+    executor: Executor,
+    plan: ExecutionPlan,
+    allow_clear_input_blocks: bool,
+    dataset_uuid: str,
+) -> Iterator[ObjectRef[Block]]:
+    """Execute a plan with the new executor and return a block iterator.
+
+    Args:
+        executor: The executor to use.
+        plan: The legacy plan to execute.
+        allow_clear_input_blocks: Whether the executor may consider clearing blocks.
+        dataset_uuid: UUID of the dataset for this execution.
+
+    Returns:
+        The output as a block iterator.
+    """
+    dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    bundle_iter = executor.execute(dag, initial_stats=stats)
+
+    for bundle in bundle_iter:
+        for block, _ in bundle.blocks:
+            yield block
 
 
 def execute_to_legacy_block_list(
@@ -43,7 +76,10 @@ def execute_to_legacy_block_list(
     Returns:
         The output as a legacy block list.
     """
-    dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    if DatasetContext.get_current().optimizer_enabled:
+        dag, stats = get_execution_dag(plan._logical_plan.dag), None
+    else:
+        dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
     bundles = executor.execute(dag, initial_stats=stats)
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
     return _bundles_to_block_list(bundles)
@@ -136,14 +172,44 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
     """
 
     if isinstance(stage, OneToOneStage):
-        if stage.fn_constructor_args or stage.fn_constructor_kwargs:
-            raise NotImplementedError
-        if stage.compute != "tasks":
-            raise NotImplementedError
+        compute = get_compute(stage.compute)
 
         block_fn = stage.block_fn
-        # TODO: implement arg packing and passing for test_map_batches_extra_args
-        fn_args = (stage.fn,) if stage.fn else ()
+        if stage.fn:
+            if isinstance(stage.fn, CallableClass):
+                if isinstance(compute, TaskPoolStrategy):
+                    raise ValueError(
+                        "``compute`` must be specified when using a callable class, "
+                        "and must specify the actor compute strategy. "
+                        'For example, use ``compute="actors"`` or '
+                        "``compute=ActorPoolStrategy(min, max)``."
+                    )
+                assert isinstance(compute, ActorPoolStrategy)
+
+                fn_constructor_args = stage.fn_constructor_args or ()
+                fn_constructor_kwargs = stage.fn_constructor_kwargs or {}
+                fn_ = stage.fn
+
+                def fn(item: Any) -> Any:
+                    # Wrapper providing cached instantiation of stateful callable class
+                    # UDFs.
+                    if ray.data._cached_fn is None:
+                        ray.data._cached_cls = fn_
+                        ray.data._cached_fn = fn_(
+                            *fn_constructor_args, **fn_constructor_kwargs
+                        )
+                    else:
+                        # A worker is destroyed when its actor is killed, so we
+                        # shouldn't have any worker reuse across different UDF
+                        # applications (i.e. different map operators).
+                        assert ray.data._cached_cls == fn_
+                    return ray.data._cached_fn(item)
+
+            else:
+                fn = stage.fn
+            fn_args = (fn,)
+        else:
+            fn_args = ()
         if stage.fn_args:
             fn_args += stage.fn_args
         fn_kwargs = stage.fn_kwargs or {}
@@ -155,7 +221,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             do_map,
             input_op,
             name=stage.name,
-            compute_strategy=get_compute(stage.compute),
+            compute_strategy=compute,
             min_rows_per_bundle=stage.target_block_size,
             ray_remote_args=stage.ray_remote_args,
         )

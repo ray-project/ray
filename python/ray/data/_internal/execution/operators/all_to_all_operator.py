@@ -38,16 +38,21 @@ class AllToAllOperator(PhysicalOperator):
         super().__init__(name, [input_op])
 
     def num_outputs_total(self) -> Optional[int]:
-        return self._num_outputs
+        return (
+            self._num_outputs
+            if self._num_outputs
+            else self.input_dependencies[0].num_outputs_total()
+        )
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
+        assert not self.completed()
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
 
-    def inputs_done(self, input_index: int) -> None:
-        assert input_index == 0, input_index
+    def inputs_done(self) -> None:
         self._output_buffer, self._stats = self._bulk_fn(self._input_buffer)
         self._input_buffer.clear()
+        super().inputs_done()
 
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0

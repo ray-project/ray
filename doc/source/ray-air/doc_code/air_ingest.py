@@ -88,7 +88,7 @@ print(my_trainer.get_dataset_config())
 # __config_4__
 import ray
 from ray.air import session
-from ray.data import Dataset
+from ray.data import DatasetIterator
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
 
@@ -97,8 +97,8 @@ preprocessor = BatchMapper(lambda df: df * 2, batch_format="pandas")
 
 
 def train_loop_per_worker():
-    # Get a handle to the worker's assigned Dataset shard.
-    data_shard: Dataset = session.get_dataset_shard("train")
+    # Get a handle to the worker's assigned DatasetIterator shard.
+    data_shard: DatasetIterator = session.get_dataset_shard("train")
 
     # Manually iterate over the data 10 times (10 epochs).
     for _ in range(10):
@@ -123,7 +123,7 @@ my_trainer.fit()
 # __config_5__
 import ray
 from ray.air import session
-from ray.data import DatasetPipeline
+from ray.data import DatasetIterator
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig, DatasetConfig
 
@@ -132,20 +132,16 @@ preprocessor = BatchMapper(lambda df: df * 2, batch_format="pandas")
 
 
 def train_loop_per_worker():
-    # A DatasetPipeline object is returned when `use_stream_api` is set.
-    data_shard: DatasetPipeline = session.get_dataset_shard("train")
+    data_shard: DatasetIterator = session.get_dataset_shard("train")
 
-    # Use iter_epochs(10) to iterate over 10 epochs of data.
-    for epoch in data_shard.iter_epochs(10):
-        for batch in epoch.iter_batches():
+    # Iterate over 10 epochs of data.
+    for _ in range(10):
+        for batch in data_shard.iter_batches():
             print("Do some training on batch", batch)
 
     # View the stats for performance debugging.
     print(data_shard.stats())
 
-
-# Set N = 200 bytes for this toy example. Typically, you'd set N >= 1GiB.
-N = 200
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
@@ -154,7 +150,8 @@ my_trainer = TorchTrainer(
         "train": ray.data.range_tensor(1000),
     },
     dataset_config={
-        "train": DatasetConfig(use_stream_api=True, stream_window_size=N),
+        # Use 20% of object store memory.
+        "train": DatasetConfig(max_object_store_memory_fraction=0.2),
     },
     preprocessor=preprocessor,
 )
@@ -164,13 +161,13 @@ my_trainer.fit()
 # __global_shuffling_start__
 import ray
 from ray.air import session
-from ray.data import Dataset
+from ray.data import DatasetIterator
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig, ScalingConfig
 
 
 def train_loop_per_worker():
-    data_shard: Dataset = session.get_dataset_shard("train")
+    data_shard: DatasetIterator = session.get_dataset_shard("train")
 
     # Iterate over 10 epochs of data.
     for epoch in range(10):
@@ -197,13 +194,13 @@ my_trainer.fit()
 # __local_shuffling_start__
 import ray
 from ray.air import session
-from ray.data import Dataset
+from ray.data import DatasetIterator
 from ray.train.torch import TorchTrainer
 from ray.air.config import DatasetConfig, ScalingConfig
 
 
 def train_loop_per_worker():
-    data_shard: Dataset = session.get_dataset_shard("train")
+    data_shard: DatasetIterator = session.get_dataset_shard("train")
 
     # Iterate over 10 epochs of data.
     for epoch in range(10):

@@ -5,9 +5,20 @@ window.addEventListener('load', () => {
 
     $("div.tag").css("margin-bottom", "10px");
 
+    const pageUrl = window.location.href
+    const res = pageUrl.split("/");
+
+    let jsonUrl;
+    // In production, the JSON file is relative to /en/version/ of the root.
+    if (res[2] === "docs.ray.io") {
+        jsonUrl = "https://docs.ray.io/en/" +  res[4] + "/_static/tag-mapping.json";
+    } else {
+        jsonUrl = "/_static/tag-mapping.json";
+    }
+
     // Fetch the mapping of panel IDs to their respective tags from a static
     // JSON file.
-    fetch('/_static/tag-mapping.json')
+    fetch(jsonUrl)
       .then(response => response.json())
       .then(panelTagMap => {
 

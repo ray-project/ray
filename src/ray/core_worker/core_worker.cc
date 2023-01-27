@@ -360,11 +360,27 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     builder.SetDriverTaskSpec(task_id,
                               options_.language,
                               worker_context_.GetCurrentJobID(),
-                              TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
+                              // Driver has no parent task
+                              /* parent_task_id */ TaskID::Nil(),
                               GetCallerId(),
                               rpc_address_);
     // Drivers are never re-executed.
     SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
+
+    // Add the driver task info.
+    if (task_event_buffer_->Enabled()) {
+      rpc::TaskEvents task_event;
+      const auto spec = builder.Build();
+      auto task_info = task_manager_->MakeTaskInfoEntry(spec);
+      task_event.set_task_id(task_id.Binary());
+      task_event.set_job_id(spec.JobId().Binary());
+      task_event.set_attempt_number(0);
+      task_event.mutable_task_info()->Swap(&task_info);
+      gcs::FillTaskStatusUpdateTime(rpc::TaskStatus::RUNNING,
+                                    absl::GetCurrentTimeNanos(),
+                                    task_event.mutable_state_updates());
+      task_event_buffer_->AddTaskEvent(std::move(task_event));
+    }
   }
 
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
@@ -643,6 +659,19 @@ void CoreWorker::Disconnect(
   // Force stats export before exiting the worker.
   RecordMetrics();
 
+  // Driver exiting.
+  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
+    // Mark Driver as finished.
+    rpc::TaskEvents task_event;
+    task_event.set_task_id(worker_context_.GetCurrentTaskID().Binary());
+    task_event.set_job_id(worker_context_.GetCurrentJobID().Binary());
+    task_event.set_attempt_number(0);
+    gcs::FillTaskStatusUpdateTime(rpc::TaskStatus::FINISHED,
+                                  absl::GetCurrentTimeNanos(),
+                                  task_event.mutable_state_updates());
+    task_event_buffer_->AddTaskEvent(std::move(task_event));
+  }
+
   // Force task state events push before exiting the worker.
   task_event_buffer_->FlushEvents(/* forced */ true);
 
@@ -790,11 +819,16 @@ void CoreWorker::RegisterToGcs() {
   }
 
   auto worker_data = std::make_shared<rpc::WorkerTableData>();
+  worker_data->mutable_worker_address()->set_raylet_id(rpc_address_.raylet_id());
+  worker_data->mutable_worker_address()->set_ip_address(rpc_address_.ip_address());
+  worker_data->mutable_worker_address()->set_port(rpc_address_.port());
   worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
   worker_data->set_worker_type(options_.worker_type);
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
+
   worker_data->set_is_alive(true);
   worker_data->set_pid(getpid());
+  worker_data->set_start_time_ms(current_sys_time_ms());
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
@@ -2071,9 +2105,6 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   // number of connections. The method is idempotent.
   actor_manager_->SubscribeActorState(actor_id);
 
-  // Add one for actor cursor object id for tasks.
-  const int num_returns = task_options.num_returns + 1;
-
   // Build common task spec.
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
@@ -2100,7 +2131,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       rpc_address_,
                       function,
                       args,
-                      num_returns,
+                      task_options.num_returns,
                       task_options.resources,
                       required_resources,
                       "",    /* debugger_breakpoint */
@@ -2111,10 +2142,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
-  // TODO(swang): Do we actually need to set this ObjectID?
-  const ObjectID new_cursor = ObjectID::FromIndex(actor_task_id, num_returns);
-  actor_handle->SetActorTaskSpec(builder, new_cursor);
-
+  actor_handle->SetActorTaskSpec(builder, ObjectID::Nil());
   // Submit task.
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
@@ -2457,8 +2485,6 @@ Status CoreWorker::ExecuteTask(
     }
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
-    RAY_CHECK(return_objects->size() > 0);
-    return_objects->pop_back();
     task_type = TaskType::ACTOR_TASK;
   }
 
@@ -2653,9 +2679,6 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
 
   std::vector<rpc::ObjectReference> returned_refs;
   size_t num_returns = task_spec.NumReturns();
-  if (task_spec.IsActorTask()) {
-    num_returns--;
-  }
   for (size_t i = 0; i < num_returns; i++) {
     if (!task_spec.IsActorCreationTask()) {
       reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
@@ -2790,9 +2813,9 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   }
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
-    worker_context_.MaybeInitializeJobInfo(
-        JobID::FromBinary(request.task_spec().job_id()),
-        request.task_spec().job_config());
+    auto job_id = JobID::FromBinary(request.task_spec().job_id());
+    worker_context_.MaybeInitializeJobInfo(job_id, request.task_spec().job_config());
+    task_counter_.SetJobId(job_id);
   }
   // Increment the task_queue_length and per function counter.
   task_queue_length_ += 1;
