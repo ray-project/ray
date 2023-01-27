@@ -223,7 +223,6 @@ if setup_spec.type == SetupType.RAY:
         # pyarrow dropped python 3.6 support in 7.0.0.
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
         pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
-
     setup_spec.extras = {
         "data": [
             numpy_dep,
