@@ -671,8 +671,16 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
+        # breakpoint()
+        if hasattr(fn, "__self__") and isinstance(
+            fn.__self__, ray.data.preprocessor.Preprocessor
+        ):
+            stage_name = fn.__self__.__class__.__name__
+        else:
+            stage_name = f'MapBatches({getattr(fn, "__name__", type(fn))})'
+
         stage = OneToOneStage(
-            "map_batches",
+            stage_name,
             transform,
             compute,
             ray_remote_args,
