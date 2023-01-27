@@ -318,7 +318,7 @@ def summarize_worker_startup_time():
         launched_time = worker.get("worker_launched_time_ms")
         start_time = worker.get("start_time_ms")
 
-        if launched_time:
+        if launched_time > 0:
             time_to_launch.append(launched_time - launch_time)
         if start_time:
             time_to_initialize.append(start_time - launched_time)
