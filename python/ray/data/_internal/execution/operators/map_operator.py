@@ -5,7 +5,6 @@ from typing import List, Iterator, Any, Dict, Callable, Optional, Union
 
 import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
-from ray.data.context import DatasetContext
 from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
@@ -30,53 +29,6 @@ class MapOperator(PhysicalOperator, ABC):
     This operator implements the distributed map operation, supporting both task
     and actor compute strategies.
     """
-
-    # Constructor-based-factory for delegating to the correct pool-based operator
-    # implementation.
-    def __new__(
-        cls,
-        transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
-        input_op: PhysicalOperator,
-        name: str = "Map",
-        # TODO(ekl): slim down ComputeStrategy to only specify the compute
-        # config and not contain implementation code.
-        compute_strategy: Optional[ComputeStrategy] = None,
-        min_rows_per_bundle: Optional[int] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        """Create a MapOperator.
-
-        Args:
-            transform_fn: The function to apply to each ref bundle input.
-            input_op: Operator generating input data for this op.
-            name: The name of this operator.
-            compute_strategy: Customize the compute strategy for this op.
-            min_rows_per_bundle: The number of rows to gather per batch passed to the
-                transform_fn, or None to use the block size. Setting the batch size is
-                important for the performance of GPU-accelerated transform functions.
-                The actual rows passed may be less if the dataset is small.
-            ray_remote_args: Customize the ray remote args for this op's tasks.
-        """
-        # We use MapOperator.__new__ as a factory, delegating to the appropriate
-        # subclasses based on the compute arg.
-        # NOTE: This constructor-as-factory pattern requires that the subclasses have
-        # the exact same constructor signature.
-        if isinstance(compute_strategy, (TaskPoolStrategy, type(None))):
-            from ray.data._internal.execution.operators.task_pool_map_operator import (
-                TaskPoolMapOperator,
-            )
-
-            # Delegate to task pool map operator.
-            return super().__new__(TaskPoolMapOperator)
-        elif isinstance(compute_strategy, ActorPoolStrategy):
-            from ray.data._internal.execution.operators.actor_pool_map_operator import (
-                ActorPoolMapOperator,
-            )
-
-            # Delegate to actor pool map operator.
-            return super().__new__(ActorPoolMapOperator)
-        else:
-            raise ValueError(f"Unsupported execution strategy {compute_strategy}")
 
     def __init__(
         self,
@@ -105,6 +57,66 @@ class MapOperator(PhysicalOperator, ABC):
 
         super().__init__(name, [input_op])
 
+    @classmethod
+    def from_compute(
+        cls,
+        transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
+        input_op: PhysicalOperator,
+        name: str = "Map",
+        # TODO(ekl): slim down ComputeStrategy to only specify the compute
+        # config and not contain implementation code.
+        compute_strategy: Optional[ComputeStrategy] = None,
+        min_rows_per_bundle: Optional[int] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ) -> "MapOperator":
+        """Create a MapOperator.
+
+        Args:
+            transform_fn: The function to apply to each ref bundle input.
+            input_op: Operator generating input data for this op.
+            name: The name of this operator.
+            compute_strategy: Customize the compute strategy for this op.
+            min_rows_per_bundle: The number of rows to gather per batch passed to the
+                transform_fn, or None to use the block size. Setting the batch size is
+                important for the performance of GPU-accelerated transform functions.
+                The actual rows passed may be less if the dataset is small.
+            ray_remote_args: Customize the ray remote args for this op's tasks.
+        """
+        if compute_strategy is None:
+            compute_strategy = TaskPoolStrategy()
+
+        if isinstance(compute_strategy, TaskPoolStrategy):
+            from ray.data._internal.execution.operators.task_pool_map_operator import (
+                TaskPoolMapOperator,
+            )
+
+            return TaskPoolMapOperator(
+                transform_fn,
+                input_op,
+                name=name,
+                min_rows_per_bundle=min_rows_per_bundle,
+                ray_remote_args=ray_remote_args,
+            )
+        elif isinstance(compute_strategy, ActorPoolStrategy):
+            from ray.data._internal.execution.operators.actor_pool_map_operator import (
+                ActorPoolMapOperator,
+            )
+
+            pool_size = compute_strategy.max_size
+            if pool_size == float("inf"):
+                # Use min_size if max_size is unbounded (default).
+                pool_size = compute_strategy.min_size
+            return ActorPoolMapOperator(
+                transform_fn,
+                input_op,
+                name=name,
+                min_rows_per_bundle=min_rows_per_bundle,
+                ray_remote_args=ray_remote_args,
+                pool_size=pool_size,
+            )
+        else:
+            raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+
     def start(self, options: "ExecutionOptions"):
         if options.preserve_order:
             self._output_queue = _OrderedOutputQueue()
@@ -121,9 +133,6 @@ class MapOperator(PhysicalOperator, ABC):
 
     def add_input(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
-        # TODO fix for Ray client: https://github.com/ray-project/ray/issues/30458
-        if not DatasetContext.get_current().block_splitting_enabled:
-            raise NotImplementedError("New backend requires block splitting")
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         if self._block_ref_bundler.has_bundle():
@@ -362,8 +371,7 @@ class _BlockRefBundler:
 
     def get_next_bundle(self) -> RefBundle:
         """Gets the next bundle."""
-        if not self.has_bundle():
-            raise ValueError("Does not have full bundle.")
+        assert self.has_bundle()
         if self._min_rows_per_bundle is None:
             # Short-circuit if no bundle row target was defined.
             assert len(self._bundle_buffer) == 1

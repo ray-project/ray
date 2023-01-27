@@ -4,7 +4,6 @@ from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
-from ray.data._internal.compute import ComputeStrategy, ActorPoolStrategy
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -28,9 +27,9 @@ class ActorPoolMapOperator(MapOperator):
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         input_op: PhysicalOperator,
         name: str = "Map",
-        compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        pool_size: int = 1,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -38,25 +37,18 @@ class ActorPoolMapOperator(MapOperator):
             transform_fn: The function to apply to each ref bundle input.
             input_op: Operator generating input data for this op.
             name: The name of this operator.
-            compute_strategy: Customize the compute strategy for this op.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
+            pool_size: The desired size of the actor pool.
         """
         super().__init__(
             transform_fn, input_op, name, min_rows_per_bundle, ray_remote_args
         )
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
 
-        assert isinstance(compute_strategy, ActorPoolStrategy)
-        # TODO(Clark): Better mapping from configured min/max pool size to static
-        # pool size?
-        pool_size = compute_strategy.max_size
-        if pool_size == float("inf"):
-            # Use min_size if max_size is unbounded (default).
-            pool_size = compute_strategy.min_size
         self._pool_size = pool_size
         # A map from task output futures to task state and the actor on which its
         # running.
@@ -131,7 +123,6 @@ class ActorPoolMapOperator(MapOperator):
             # ref is a future for a now-ready actor; move actor from pending to the
             # active actor pool.
             self._actor_pool.pending_to_running(ref)
-            # TODO(Clark): Add idle timeouts?
         # Try to dispatch queued tasks.
         self._dispatch_tasks()
 
@@ -160,7 +151,10 @@ class ActorPoolMapOperator(MapOperator):
         return len(self._tasks)
 
     def progress_str(self) -> str:
-        return f"{self._actor_pool.num_total_actors()}/" f"{self._pool_size} actors"
+        return (
+            f"{self._actor_pool.num_running_actors()} "
+            f"({self._actor_pool.num_pending_actors()} pending)"
+        )
 
     def base_resource_usage(self) -> ExecutionResources:
         min_workers = self._pool_size
@@ -265,13 +259,8 @@ class _ActorPool:
 
     def return_actor(self, actor: ray.actor.ActorHandle):
         """Returns the provided actor to the pool."""
-        if actor not in self._num_tasks_in_flight:
-            raise ValueError(
-                f"Actor {actor} doesn't exist in pool: "
-                f"{list(self._num_tasks_in_flight.keys())}"
-            )
-        if self._num_tasks_in_flight[actor] == 0:
-            raise ValueError(f"Actor {actor} has already been returned by all pickers.")
+        assert actor in self._num_tasks_in_flight
+        assert self._num_tasks_in_flight[actor] > 0
 
         self._num_tasks_in_flight[actor] -= 1
         if self._should_kill_idle_actors and self._num_tasks_in_flight[actor] == 0:
@@ -308,7 +297,7 @@ class _ActorPool:
             for num_tasks_in_flight in self._num_tasks_in_flight.values()
         )
 
-    def drain(self):
+    def kill_all_inactive(self):
         """Kills all currently inactive actors and ensures that all actors that become
         idle in the future will be eagerly killed.
 

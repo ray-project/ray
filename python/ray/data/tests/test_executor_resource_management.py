@@ -44,7 +44,7 @@ def test_resource_utils():
 
 def test_resource_canonicalization():
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    op = MapOperator(
+    op = MapOperator.from_compute(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -54,7 +54,7 @@ def test_resource_canonicalization():
     assert op.incremental_resource_usage() == ExecutionResources(cpu=1, gpu=0)
     assert op._ray_remote_args == {"num_cpus": 1}
 
-    op = MapOperator(
+    op = MapOperator.from_compute(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -66,7 +66,7 @@ def test_resource_canonicalization():
     assert op._ray_remote_args == {"num_gpus": 2}
 
     with pytest.raises(ValueError):
-        MapOperator(
+        MapOperator.from_compute(
             _mul2_transform,
             input_op=input_op,
             name="TestMapper",
@@ -77,7 +77,7 @@ def test_resource_canonicalization():
 
 def test_task_pool_resource_reporting():
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    op = MapOperator(
+    op = MapOperator.from_compute(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -97,7 +97,7 @@ def test_task_pool_resource_reporting():
 
 def test_actor_pool_resource_reporting():
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    op = MapOperator(
+    op = MapOperator.from_compute(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",

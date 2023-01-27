@@ -2,7 +2,6 @@ from typing import List, Optional, Callable, Iterator, Dict, Any
 
 import ray
 from ray.data.block import Block
-from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -26,7 +25,6 @@ class TaskPoolMapOperator(MapOperator):
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         input_op: PhysicalOperator,
         name: str = "Map",
-        compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -36,7 +34,6 @@ class TaskPoolMapOperator(MapOperator):
             transform_fn: The function to apply to each ref bundle input.
             input_op: Operator generating input data for this op.
             name: The name of this operator.
-            compute_strategy: Customize the compute strategy for this op.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -46,7 +43,6 @@ class TaskPoolMapOperator(MapOperator):
         super().__init__(
             transform_fn, input_op, name, min_rows_per_bundle, ray_remote_args
         )
-        assert isinstance(compute_strategy, (TaskPoolStrategy, type(None)))
         self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
 
     def _add_bundled_input(self, bundle: RefBundle):

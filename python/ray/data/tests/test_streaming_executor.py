@@ -55,8 +55,12 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
 def test_build_streaming_topology():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.from_compute(
+        make_transform(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.from_compute(
+        make_transform(lambda block: [b * 2 for b in block]), o2
+    )
     topo, _ = build_streaming_topology(o3, ExecutionOptions())
     assert len(topo) == 3, topo
     assert o1 in topo, topo
@@ -70,8 +74,12 @@ def test_disallow_non_unique_operators():
     inputs = make_ref_bundles([[x] for x in range(20)])
     # An operator [o1] cannot used in the same DAG twice.
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o2 = MapOperator.from_compute(
+        make_transform(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.from_compute(
+        make_transform(lambda block: [b * -1 for b in block]), o1
+    )
     o4 = PhysicalOperator("test_combine", [o2, o3])
     with pytest.raises(ValueError):
         build_streaming_topology(o4, ExecutionOptions())
@@ -80,7 +88,9 @@ def test_disallow_non_unique_operators():
 def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o2 = MapOperator.from_compute(
+        make_transform(lambda block: [b * -1 for b in block]), o1
+    )
     topo, _ = build_streaming_topology(o2, ExecutionOptions())
 
     # Test processing output bundles.
@@ -113,8 +123,12 @@ def test_select_operator_to_run():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.from_compute(
+        make_transform(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.from_compute(
+        make_transform(lambda block: [b * 2 for b in block]), o2
+    )
     topo, _ = build_streaming_topology(o3, opt)
 
     # Test empty.
@@ -151,7 +165,9 @@ def test_dispatch_next_task():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o1_state = OpState(o1, [])
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o2 = MapOperator.from_compute(
+        make_transform(lambda block: [b * -1 for b in block]), o1
+    )
     op_state = OpState(o2, [o1_state.outqueue])
 
     # TODO: test multiple inqueues with the union operator.
@@ -171,8 +187,12 @@ def test_debug_dump_topology():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.from_compute(
+        make_transform(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.from_compute(
+        make_transform(lambda block: [b * 2 for b in block]), o2
+    )
     topo, _ = build_streaming_topology(o3, opt)
     # Just a sanity check to ensure it doesn't crash.
     _debug_dump_topology(topo)
@@ -182,12 +202,12 @@ def test_validate_topology():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(
+    o2 = MapOperator.from_compute(
         make_transform(lambda block: [b * -1 for b in block]),
         o1,
         compute_strategy=ray.data.ActorPoolStrategy(8, 8),
     )
-    o3 = MapOperator(
+    o3 = MapOperator.from_compute(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(4, 4),
@@ -249,11 +269,11 @@ def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(
+    o2 = MapOperator.from_compute(
         make_transform(lambda block: [b * -1 for b in block]),
         o1,
     )
-    o3 = MapOperator(
+    o3 = MapOperator.from_compute(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
     )
@@ -279,8 +299,12 @@ def test_pipelined_execution():
     executor = StreamingExecutor(ExecutionOptions())
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.from_compute(
+        make_transform(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.from_compute(
+        make_transform(lambda block: [b * 2 for b in block]), o2
+    )
 
     def reverse_sort(inputs: List[RefBundle]):
         reversed_list = inputs[::-1]
@@ -336,8 +360,10 @@ def test_configure_spread_e2e():
 def test_configure_output_locality():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(
+    o2 = MapOperator.from_compute(
+        make_transform(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.from_compute(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(1, 1),

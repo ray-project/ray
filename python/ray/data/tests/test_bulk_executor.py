@@ -43,8 +43,10 @@ def test_multi_stage_execution(preserve_order):
         result = [b * -1 for b in block]
         return result
 
-    o2 = MapOperator(make_transform(delay_first), o1)
-    o3 = MapOperator(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.from_compute(make_transform(delay_first), o1)
+    o3 = MapOperator.from_compute(
+        make_transform(lambda block: [b * 2 for b in block]), o2
+    )
 
     def reverse_sort(inputs: List[RefBundle]):
         reversed_list = inputs[::-1]
@@ -66,10 +68,10 @@ def test_basic_stats():
     prev_stats = ray.data.range(10)._plan.stats()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(
+    o2 = MapOperator.from_compute(
         make_transform(lambda block: [b * 2 for b in block]), o1, name="Foo"
     )
-    o3 = MapOperator(
+    o3 = MapOperator.from_compute(
         make_transform(lambda block: [b * 2 for b in block]), o2, name="Bar"
     )
     it = executor.execute(o3, initial_stats=prev_stats)
@@ -97,8 +99,10 @@ def test_actor_strategy():
     executor = BulkExecutor(ExecutionOptions())
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator(
+    o2 = MapOperator.from_compute(
+        make_transform(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.from_compute(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
         compute_strategy=ActorPoolStrategy(1, 2),

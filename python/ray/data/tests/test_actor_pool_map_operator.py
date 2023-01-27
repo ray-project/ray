@@ -72,9 +72,9 @@ class TestActorPool:
         # Return the actor as many times as it was picked.
         for _ in range(10):
             pool.return_actor(picked_actor)
-        # Returning the actor more times than it has been picked should raise a
-        # ValueError.
-        with pytest.raises(ValueError):
+        # Returning the actor more times than it has been picked should raise an
+        # AssertionError.
+        with pytest.raises(AssertionError):
             pool.return_actor(picked_actor)
         # Check that the per-state pool sizes are as expected.
         assert pool.num_total_actors() == 1
@@ -125,14 +125,14 @@ class TestActorPool:
         # Check that actor 2 is the next actor that's picked.
         assert pool.pick_actor() == actor2
 
-    def test_drain_pending_actor_killed(self, ray_start_regular_shared):
-        # Test that pending actors are killed on the drain() call.
+    def test_kill_all_inactive_pending_actor_killed(self, ray_start_regular_shared):
+        # Test that pending actors are killed on the kill_all_inactive() call.
         pool = _ActorPool()
         actor = PoolWorker.remote()
         ready_ref = actor.ready.remote()
         pool.add_pending_actor(actor, ready_ref)
         # Kill inactive actors.
-        pool.drain()
+        pool.kill_all_inactive()
         # Check that actor is not in pool.
         assert pool.get_pending_actor_refs() == []
         # Check that actor was killed.
@@ -147,12 +147,12 @@ class TestActorPool:
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
 
-    def test_drain_idle_actor_killed(self, ray_start_regular_shared):
-        # Test that idle actors are killed on the drain() call.
+    def test_kill_all_inactive_idle_actor_killed(self, ray_start_regular_shared):
+        # Test that idle actors are killed on the kill_all_inactive() call.
         pool = _ActorPool()
         actor = self._add_ready_worker(pool)
         # Kill inactive actors.
-        pool.drain()
+        pool.kill_all_inactive()
         # Check that actor is not in pool.
         assert pool.pick_actor() is None
         # Check that actor was killed.
@@ -167,25 +167,27 @@ class TestActorPool:
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
 
-    def test_drain_active_actor_not_killed(self, ray_start_regular_shared):
-        # Test that active actors are NOT killed on the drain() call.
+    def test_kill_all_inactive_active_actor_not_killed(self, ray_start_regular_shared):
+        # Test that active actors are NOT killed on the kill_all_inactive() call.
         pool = _ActorPool()
         actor = self._add_ready_worker(pool)
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actors.
-        pool.drain()
+        pool.kill_all_inactive()
         # Check that the active actor is still in the pool.
         assert pool.pick_actor() == actor
 
-    def test_drain_future_idle_actors_killed(self, ray_start_regular_shared):
-        # Test that future idle actors are killed after the drain() call.
+    def test_kill_all_inactive_future_idle_actors_killed(
+        self, ray_start_regular_shared
+    ):
+        # Test that future idle actors are killed after the kill_all_inactive() call.
         pool = _ActorPool()
         actor = self._add_ready_worker(pool)
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actors, of which there are currently none.
-        pool.drain()
+        pool.kill_all_inactive()
         # Check that the active actor is still in the pool.
         assert pool.pick_actor() == actor
         # Return the actor to the pool twice, which should set it as idle and cause it
