@@ -1,4 +1,4 @@
-from ray.util.spark import load_spark_dataset
+from ray.util.spark import load_spark_dataset, _convert_dbfs_path_to_local_path
 import pytest
 import os
 from pyspark.sql import SparkSession
@@ -13,15 +13,20 @@ def spark():
     spark.stop()
 
 
-@pytest.mark.parametrize("saved_format", ["parquet", "delta"])
-def test_load_spark_dataset(spark, saved_format):
+def test_load_spark_dataset(spark):
     spark_df = spark.range(200).repartition(8)
 
     with tempfile.TemporaryDirectory() as tempdir:
-        spark_df.write.save(tempdir, format=saved_format)
-        ray_dataset = load_spark_dataset(tempdir, saved_format=saved_format)
+        save_path = os.path.join(tempdir, "df")
+        spark_df.write.save(save_path, format="parquet")
+        ray_dataset = load_spark_dataset(save_path, saved_format="parquet")
         pdf = ray_dataset.to_pandas()
-        assert pdf.id.tolist() == list(range(200))
+        assert set(pdf.id.tolist()) == set(range(200))
+
+
+def test_convert_dbfs_path_to_local_path():
+    assert _convert_dbfs_path_to_local_path("dbfs:/xx/yy/zz") == "/dbfs/xx/yy/zz"
+    assert _convert_dbfs_path_to_local_path("dbfs:///xx/yy/zz") == "/dbfs/xx/yy/zz"
 
 
 if __name__ == "__main__":

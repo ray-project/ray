@@ -3,14 +3,21 @@ from urllib.parse import urlparse
 from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
 
-def load_spark_dataset(path, saved_format="delta"):
+def _convert_dbfs_path_to_local_path(dbfs_path):
+    parsed_path = urlparse(dbfs_path)
+    assert parsed_path.scheme.lower() == "dbfs", "dbfs path is required."
+    return "/dbfs" + parsed_path.path
+
+
+def load_spark_dataset(path, saved_format):
     """
     Returns a Ray dataset that loads data from a saved spark dataset path.
 
     Args:
         path: The path to the saved spark dataset.
         saved_format: The format of the saved dataset, only 'parquet' and
-            'delta' format are supported.
+            'delta' format are supported. 'delta' format is only supported
+            on Databricks runtime.
     """
     spark = get_spark_session()
     assert saved_format in [
@@ -35,5 +42,5 @@ def load_spark_dataset(path, saved_format="delta"):
         # to local filesystem path "/dbfs/xx/yy",
         # so that here we convert the dbfs path to the corresponding
         # local "/dbfs/..." path.
-        file_paths = ["/dbfs" + urlparse(p).path for p in file_paths]
+        file_paths = [_convert_dbfs_path_to_local_path(p) for p in file_paths]
     return ray.data.read_parquet(file_paths)
