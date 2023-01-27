@@ -158,7 +158,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
 
     for (int i = 0; i < reply->job_info_list_size(); i++) {
       const auto &metadata = reply->job_info_list(i).config().metadata();
-      if (metadata.find("job_submission_id") == metadata.end()) {
+      auto iter = metadata.find("job_submission_id");
+      if (iter == metadata.end()) {
         // Send reply if all jobs have been processed.
         if (num_processed_jobs->fetch_add(1) == reply->job_info_list_size() - 1) {
           RAY_LOG(INFO) << "Finished getting all job info.";
@@ -167,7 +168,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         continue;
       }
 
-      const auto &job_submission_id = metadata.at("job_submission_id");
+      const auto &job_submission_id = iter->second;
 
       auto kv_get_callback =
           [reply, send_reply_callback, num_processed_jobs, i, &job_submission_id](
