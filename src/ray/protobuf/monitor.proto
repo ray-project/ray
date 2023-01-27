@@ -39,5 +39,5 @@ service MonitorGcsService {
   rpc GetRayVersion(GetRayVersionRequest) returns (GetRayVersionReply);
   // Request that GCS drain and kill a node. This call is idempotent, and could
   // need to be retried if the head node fails.
-  // rpc DrainAndKillNode(DrainAndKillNodeRequest) returns (DrainAndKillNodeReply);
+  rpc DrainAndKillNode(DrainAndKillNodeRequest) returns (DrainAndKillNodeReply);
 }
