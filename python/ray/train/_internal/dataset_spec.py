@@ -115,7 +115,6 @@ class DataParallelIngestSpec:
         self,
         prep: "Preprocessor",
         datasets: Dict[str, "Dataset"],
-        should_fit_preprocessor: bool = True,
     ) -> Dict[str, "Dataset"]:
         """Preprocess the given datasets.
 
@@ -144,7 +143,10 @@ class DataParallelIngestSpec:
                     continue
                 if conf.fit:
                     ds_to_fit = datasets[k]
-            if ds_to_fit and should_fit_preprocessor:
+            if ds_to_fit and prep.fit_status() in (
+                Preprocessor.FitStatus.NOT_FITTED,
+                Preprocessor.FitStatus.PARTIALLY_FITTED,
+            ):
                 prep.fit(ds_to_fit)
             assert prep.fit_status() in [
                 Preprocessor.FitStatus.FITTED,

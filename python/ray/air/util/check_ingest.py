@@ -46,10 +46,10 @@ class DummyTrainer(DataParallelTrainer):
             **kwargs
         )
 
-    def preprocess_datasets(self, should_fit_preprocessor: bool = True):
+    def preprocess_datasets(self):
         print("Starting dataset preprocessing")
         start = time.perf_counter()
-        super().preprocess_datasets(should_fit_preprocessor=True)
+        super().preprocess_datasets()
         print("Preprocessed datasets in", time.perf_counter() - start, "seconds")
         if self.preprocessor:
             print("Preprocessor", self.preprocessor)

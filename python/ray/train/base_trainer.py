@@ -337,7 +337,7 @@ class BaseTrainer(abc.ABC):
         """
         pass
 
-    def preprocess_datasets(self, should_fit_preprocessor: bool = True) -> None:
+    def preprocess_datasets(self) -> None:
         """Called during fit() to preprocess dataset attributes with preprocessor.
 
         .. note:: This method is run on a remote process.
@@ -359,7 +359,10 @@ class BaseTrainer(abc.ABC):
 
         if self.preprocessor:
             train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
-            if train_dataset and should_fit_preprocessor:
+            if train_dataset and self.preprocessor.fit_status in (
+                Preprocessor.FitStatus.NOT_FITTED,
+                Preprocessor.FitStatus.PARTIALLY_FITTED,
+            ):
                 self.preprocessor.fit(train_dataset)
 
             # Execute dataset transformations serially for now.
@@ -481,19 +484,15 @@ class BaseTrainer(abc.ABC):
             trainer = trainer_cls(**config)
 
             # Get the checkpoint from the Tune session, and use it to initialize
-            # the restored trainer
+            # the restored trainer.
+            # This handles recovery from both trial-level and experiment-level failures.
             checkpoint = session.get_checkpoint()
-            loaded_preprocessor = False
             if checkpoint:
                 trainer.resume_from_checkpoint = checkpoint
-                if not trainer.preprocessor:
-                    trainer.preprocessor = checkpoint.get_preprocessor()
-                    loaded_preprocessor = True
+                trainer.preprocessor = checkpoint.get_preprocessor()
 
             trainer.setup()
-            # Don't re-fit the preprocessor if it's loaded from the checkpoint
-            should_fit_preprocessor = not checkpoint or not loaded_preprocessor
-            trainer.preprocess_datasets(should_fit_preprocessor=should_fit_preprocessor)
+            trainer.preprocess_datasets()
             trainer.training_loop()
 
         # Change the name of the training function to match the name of the Trainer

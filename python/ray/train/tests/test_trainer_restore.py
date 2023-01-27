@@ -226,10 +226,11 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir):
 
     class MyPreprocessor(Preprocessor):
         def __init__(self):
-            self.num_fits_ = 0
+            self._num_fits = 0
 
         def _fit(self, dataset):
-            self.num_fits_ += 1
+            self.fitted_ = True
+            self._num_fits += 1
             return self
 
         def _transform_numpy(self, np_data):
@@ -250,10 +251,11 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
     preprocessor = result.checkpoint.get_preprocessor()
-    assert preprocessor and preprocessor.num_fits_ == 1, (
+    assert result.metrics["training_iteration"] == 2
+    assert preprocessor and preprocessor._num_fits == 1, (
         "The preprocessor should have been loaded from the checkpoint, "
         "and it should not have been fit again. "
-        f"Fit {trainer.preprocessor.num_fits_} times instead of once."
+        f"Fit {preprocessor._num_fits} times instead of once."
     )
 
 
