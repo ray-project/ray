@@ -1,10 +1,5 @@
 from typing import Any, Dict, Optional
 
-from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
-from ray.data._internal.execution.operators.functions.randomize_blocks import (
-    generate_randomize_blocks_fn,
-)
 from ray.data._internal.logical.interfaces import LogicalOperator
 
 
@@ -48,25 +43,3 @@ class RandomizeBlocks(AbstractAllToAll):
             input_op,
         )
         self._seed = seed
-
-
-def plan_all_to_all_op(
-    op: AbstractAllToAll,
-    input_physical_dag: PhysicalOperator,
-) -> AllToAllOperator:
-    """Get the corresponding physical operators DAG for `op` logical operator.
-
-    Note this method only converts the given `op`, but not its input dependencies.
-    See Planner.plan() for more details.
-    """
-    if isinstance(op, RandomizeBlocks):
-        fn = generate_randomize_blocks_fn(op._seed)
-    else:
-        raise ValueError(f"Found unknown logical operator during planning: {op}")
-
-    return AllToAllOperator(
-        fn,
-        input_physical_dag,
-        num_outputs=op._num_outputs,
-        name=op.name,
-    )

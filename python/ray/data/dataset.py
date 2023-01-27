@@ -30,9 +30,7 @@ import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
-from ray.data._internal.logical.operators.all_to_all_operator import (
-    RandomizeBlocks,
-)
+from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import (
     Filter,

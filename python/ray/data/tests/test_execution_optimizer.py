@@ -2,11 +2,9 @@ import pytest
 
 import ray
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.logical.operators.all_to_all_operator import (
-    AllToAllOperator,
-    RandomizeBlocks,
-)
+from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.map_operator import (
     MapRows,
@@ -14,7 +12,7 @@ from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
 )
-from ray.data._internal.logical.planner import Planner
+from ray.data._internal.planner.planner import Planner
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
 from ray.tests.conftest import *  # noqa
