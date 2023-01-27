@@ -166,7 +166,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         }
         continue;
       }
-      any_jobs_with_submission_id = true;
+
       const auto &job_submission_id = metadata.at("job_submission_id");
 
       auto kv_get_callback =

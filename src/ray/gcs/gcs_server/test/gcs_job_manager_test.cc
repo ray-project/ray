@@ -52,6 +52,7 @@ class GcsJobManagerTest : public ::testing::Test {
     store_client_ = std::make_shared<MockInMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
+    fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
   }
 
@@ -68,9 +69,119 @@ class GcsJobManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
+  std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
 };
+
+TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
+  fake_kv_->Put("ns", "key", "value", /*overwrite=*/true, /*callback=*/[](auto) {});
+
+  std::string value;
+  std::promise<bool> promise;
+  auto kv_get_callback = [&value, &promise](std::optional<std::string> v) {
+    value = v.value();
+    promise.set_value(true);
+  };
+  fake_kv_->Get("ns", "key", kv_get_callback);
+  promise.get_future().get();
+  ASSERT_EQ(value, "value");
+}
+
+TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
+  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
+                                     gcs_publisher_,
+                                     runtime_env_manager_,
+                                     *function_manager_,
+                                     *fake_kv_);
+
+  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+
+  // Add 100 jobs.
+  for (int i = 0; i < 100; ++i) {
+    auto job_id = JobID::FromInt(i);
+    auto add_job_request =
+        Mocker::GenAddJobRequest(job_id, "namespace_" + std::to_string(i));
+    rpc::AddJobReply empty_reply;
+    std::promise<bool> promise;
+    gcs_job_manager.HandleAddJob(
+        *add_job_request,
+        &empty_reply,
+        [&promise](Status, std::function<void()>, std::function<void()>) {
+          promise.set_value(true);
+        });
+    promise.get_future().get();
+  }
+
+  // Get all jobs.
+  rpc::GetAllJobInfoRequest all_job_info_request;
+  rpc::GetAllJobInfoReply all_job_info_reply;
+  std::promise<bool> all_job_info_promise;
+
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request,
+      &all_job_info_reply,
+      [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
+        all_job_info_promise.set_value(true);
+      });
+  all_job_info_promise.get_future().get();
+
+  ASSERT_EQ(all_job_info_reply.job_info_list().size(), 100);
+
+  // Manually put sample JobInfo into the internal kv.
+  // This is ordinarily done in Python by the Ray Job API.
+  std::string job_info_json = R"(
+    {
+      "status": "PENDING",
+      "entrypoint": "echo hi",
+      "entrypoint_num_cpus": 1,
+      "entrypoint_num_gpus": 1,
+      "entrypoint_resources": {
+        "Custom": 1
+      },
+      "runtime_env_json": "{\"pip\": [\"pkg\"]}"
+    }
+  )";
+
+  std::string submission_id = "submission_id_100";
+
+  std::promise<bool> kv_promise;
+  fake_kv_->Put("job",
+                gcs::JobDataKey(submission_id),
+                job_info_json,
+                /*overwrite=*/true,
+                [&kv_promise](auto) { kv_promise.set_value(true); });
+  kv_promise.get_future().get();
+
+  // Add a job with a submission id.
+  auto job_id = JobID::FromInt(100);
+  auto add_job_request = Mocker::GenAddJobRequest(job_id, "namespace_100", submission_id);
+  rpc::AddJobReply empty_reply;
+  std::promise<bool> promise;
+  gcs_job_manager.HandleAddJob(
+      *add_job_request,
+      &empty_reply,
+      [&promise](Status, std::function<void()>, std::function<void()>) {
+        promise.set_value(true);
+      });
+  promise.get_future().get();
+
+  // Get all job info again.
+  rpc::GetAllJobInfoRequest all_job_info_request2;
+  rpc::GetAllJobInfoReply all_job_info_reply2;
+  std::promise<bool> all_job_info_promise2;
+
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request2,
+      &all_job_info_reply2,
+      [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
+        all_job_info_promise2.set_value(true);
+      });
+  all_job_info_promise2.get_future().get();
+
+  ASSERT_EQ(all_job_info_reply2.job_info_list().size(), 101);
+}
 
 TEST_F(GcsJobManagerTest, TestGetJobConfig) {
   gcs::GcsJobManager gcs_job_manager(
