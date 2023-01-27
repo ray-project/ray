@@ -17,7 +17,22 @@ from ray._private.utils import _get_pyarrow_version
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import _ray_start
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(scope="module")
+def ray_start_2_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_10_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=10, **param) as res:
+        yield res
 
 
 @pytest.fixture(scope="function")
