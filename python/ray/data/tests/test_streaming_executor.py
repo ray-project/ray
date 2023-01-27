@@ -382,7 +382,51 @@ def test_scheduling_progress_when_output_blocked():
     assert list(it) == [[x] for x in range(1, 100)]
 
 
-def test_e2e_liveness_with_output_backpressure():
+def test_backpressure_from_output():
+    # Here we set the memory limit low enough so the output getting blocked will
+    # actually stall execution.
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.i = 0
+
+        def inc(self):
+            self.i += 1
+
+        def get(self):
+            return self.i
+
+    counter = Counter.remote()
+
+    def func(x):
+        ray.get(counter.inc.remote())
+        return x
+
+    ctx = DatasetContext.get_current()
+    try:
+        ctx.use_streaming_executor = True
+        ctx.execution_options.resource_limits.object_store_memory = 10000
+
+        # Only take the first item from the iterator.
+        it = iter(
+            ray.data.range(100000, parallelism=100)
+            .map_batches(func, batch_size=None)
+            .iter_batches(batch_size=None)
+        )
+        next(it)
+        num_finished = ray.get(counter.get.remote())
+        assert num_finished < 5, num_finished
+
+        # Check we can get the rest.
+        for rest in it:
+            pass
+        assert ray.get(counter.get.remote()) == 100
+    finally:
+        ctx.execution_options.resource_limits.object_store_memory = None
+
+
+def test_e2e_liveness_with_output_backpressure_edge_case():
     # At least one operator is ensured to be running, if the output becomes idle.
     ctx = DatasetContext.get_current()
     ctx.use_streaming_executor = True

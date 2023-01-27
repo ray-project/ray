@@ -98,9 +98,11 @@ class OpState:
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.
         """
-        while not self.outqueue:
-            time.sleep(0.01)
-        return self.outqueue.popleft()
+        while True:
+            try:
+                return self.outqueue.popleft()
+            except IndexError:
+                time.sleep(0.01)
 
 
 def build_streaming_topology(
