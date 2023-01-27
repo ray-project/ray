@@ -140,7 +140,9 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
 
     size_t num_to_send =
         std::min(RayConfig::instance().task_events_send_batch_size(), buffer_.size());
-    to_send.insert(to_send.end(), buffer_.begin(), buffer_.begin() + num_to_send);
+    to_send.insert(to_send.end(),
+                   std::make_move_iterator(buffer_.begin()),
+                   std::make_move_iterator(buffer_.begin() + num_to_send));
     buffer_.erase(buffer_.begin(), buffer_.begin() + num_to_send);
 
     // Send and reset the counters
