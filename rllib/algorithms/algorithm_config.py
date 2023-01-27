@@ -971,22 +971,20 @@ class AlgorithmConfig:
                 fractional. This is usually needed only if your env itself requires a
                 GPU (i.e., it is a GPU-intensive video game), or model inference is
                 unusually expensive.
-            num_trainer_workers: The number of workers to use for training.
-                num_workers=0 means you have only one local worker (either on 1 CPU or
-                1 GPU which depends on the value and `num_gpus_per_trainer_worker`).
-                For multi-gpu training you have to set the number of workers to
-                something greater than 0, and set the number of gpus per worker
-                accordingly. For example, if a cluster has 4 GPUs total, and my model
-                needs 2 GPUs to fit, I can set num_train_workers=2 and
-                num_gpus_per_trainer_worker=2 to train on 2 GPUs per worker.
-            num_cpus_per_trainer_worker: The number of CPUs to allocate per worker. If
-                num_trainer_workers=0, num_gpus_per_trainer_worker = 0 , the training
-                will run on a single CPU and if num_gpus_per_trainer_worker > 0 it will
-                run on a single GPU (i.e. this value will be ignored)
-            num_gpus_per_trainer_worker: The number of GPUs to allocate per worker. If
-                num_workers=0, any number greater than 0 will run the training on a
-                single GPU. A value of zero will run the training on a single
-                CPU.
+            num_trainer_workers: Number of workers used for training. A value of 0
+                means training will take place on a local worker on head node CPUs or 1
+                GPU (determined by `num_gpus_per_trainer_worker`). For multi-gpu
+                training, set number of workers greater than 1 and set
+                `num_gpus_per_trainer_worker` accordingly (e.g. 4 GPUs total, and model
+                needs 2 GPUs: `num_trainer_workers = 2` and
+                `num_gpus_per_trainer_worker = 2`)
+            num_cpus_per_trainer_worker: Number of CPUs allocated per trainer worker.
+                Only necessary for custom processing pipeline inside each RLTrainer
+                requiring multiple CPU cores. Ignored if `num_trainer_workers = 0`.
+            num_gpus_per_trainer_worker: Number of GPUs allocated per worker. If
+                `num_trainer_workers = 0`, any value greater than 0 will run the
+                training on a single GPU on the head node, while a value of 0 will run
+                the training on head node CPU cores.
             custom_resources_per_worker: Any custom Ray resources to allocate per
                 worker.
             num_cpus_for_local_worker: Number of CPUs to allocate for the algorithm.
