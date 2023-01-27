@@ -5,8 +5,8 @@ parts:
     chapters:
       - file: ray-overview/index
         title: "Getting Started"
-        sections:
-          - file: ray-overview/installation
+      - file: ray-overview/installation
+        title: "Installation"
       - file: ray-overview/use-cases
         title: "Use Cases"
       - file: ray-overview/ray-libraries
