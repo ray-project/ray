@@ -1,82 +1,76 @@
-import { Button, CircularProgress, Grid, makeStyles } from "@material-ui/core";
-import dayjs from "dayjs";
-import React, { useState } from "react";
-import { DownloadTaskTimeline } from "../../service/task";
+import {
+  Button,
+  createStyles,
+  makeStyles,
+  Typography,
+} from "@material-ui/core";
+import React from "react";
+import { RiDownload2Line } from "react-icons/ri";
+import { ClassNameProps } from "../../common/props";
+import { downloadTaskTimelineHref } from "../../service/task";
 
 const useStyle = makeStyles((theme) => ({
   root: {
-    padding: theme.spacing(2),
+    padding: theme.spacing(2, 0, 0),
   },
-  taskProgressTable: {
+  button: {
     marginTop: theme.spacing(2),
   },
 }));
 
-export const TaskTimeline = ({ jobId = null }: { jobId: string | null }) => {
+type TaskTimelineProps = {
+  jobId: string;
+};
+
+export const TaskTimeline = ({ jobId }: TaskTimelineProps) => {
   const classes = useStyle();
-
-  const TimelineDownloadButton = ({
-    jobId = null,
-  }: {
-    jobId: string | null;
-  }) => {
-    const [loading, setLoading] = useState(false);
-
-    const onClick = () => {
-      // Download the chrome tracing file.
-      if (!loading) {
-        setLoading(true);
-        // blob response type is necessary to
-        DownloadTaskTimeline(jobId)
-          .then((blob) => {
-            const url = window.URL.createObjectURL(blob.data);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `timeline-${dayjs().format()}-${jobId}.json`;
-            a.click();
-            a.remove();
-          })
-          .catch((error) => {
-            console.log(
-              `Failed to fetch data for the timeline. Error: ${error}`,
-            );
-          })
-          .finally(() => {
-            setLoading(false);
-          });
-      }
-    };
-
-    if (loading) {
-      return (
-        <Button variant="outlined" disabled={loading}>
-          Download Timeline <CircularProgress color="primary" size={16} />
-        </Button>
-      );
-    } else {
-      return (
-        <Button variant="outlined" disabled={loading} onClick={onClick}>
-          Download Timeline
-        </Button>
-      );
-    }
-  };
 
   return (
     <div className={classes.root}>
-      <Grid container alignItems="center" spacing={4}>
-        <Grid item>
-          Timeline view shows how tasks are executed across differnt nodes and
-          worker processes. Download the trace file and analyze it by uploading
-          it to <a href="https://ui.perfetto.dev/">Perfetto UI</a> or{" "}
-          <a href="chrome://tracing">chrome://tracing</a>.
-        </Grid>
-      </Grid>
-      <Grid container alignItems="center" spacing={4}>
-        <Grid item>
-          <TimelineDownloadButton jobId={jobId} />
-        </Grid>
-      </Grid>
+      {/* TODO(aguo): Add link to external documentation about Timeline view. */}
+      <Typography>
+        Timeline view shows how tasks are executed across different nodes and
+        worker processes.
+        <br />
+        Download the trace file and analyze it by uploading it to{" "}
+        <a href="https://ui.perfetto.dev/" target="_blank" rel="noreferrer">
+          Perfetto UI
+        </a>{" "}
+        or if you are using chrome,{" "}
+        <a href="chrome://tracing">chrome://tracing</a>. You must copy and paste
+        "chrome://tracing" into your address bar.
+      </Typography>
+      <TimelineDownloadButton className={classes.button} jobId={jobId} />
     </div>
+  );
+};
+
+const useTimelineDownloadButtonStyles = makeStyles((theme) =>
+  createStyles({
+    label: {
+      color: "black",
+    },
+  }),
+);
+
+type TimelineDownloadButtonProps = {
+  jobId: string;
+} & ClassNameProps;
+
+const TimelineDownloadButton = ({
+  jobId,
+  className,
+}: TimelineDownloadButtonProps) => {
+  const classes = useTimelineDownloadButtonStyles();
+  return (
+    <Button
+      className={className}
+      variant="outlined"
+      startIcon={<RiDownload2Line />}
+      href={downloadTaskTimelineHref(jobId)}
+      classes={{ label: classes.label }}
+    >
+      Download trace file
+    </Button>
   );
 };
