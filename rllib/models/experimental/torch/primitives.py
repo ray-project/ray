@@ -11,16 +11,12 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.models.experimental.base import ModelConfig
 from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.models.specs.checker import (
+    check_input_specs,
+    check_output_specs,
+)
 
 torch, nn = try_import_torch()
-
-
-def _forward_not_decorated(input_or_output):
-    return (
-        f"forward not decorated with {input_or_output} specification. Decorate "
-        f"with @check_{input_or_output}_specs() to define a specification. See "
-        f"BaseModel for examples."
-    )
 
 
 class TorchModel(nn.Module, Model):
@@ -34,9 +30,16 @@ class TorchModel(nn.Module, Model):
     def __init__(self, config: ModelConfig):
         nn.Module.__init__(self)
         Model.__init__(self, config)
-        assert is_input_decorated(self.forward), _forward_not_decorated("input")
-        assert is_output_decorated(self.forward), _forward_not_decorated("output")
+        # automatically apply spec checking
+        if not is_input_decorated(self.forward):
+            self.forward = check_input_specs("input_spec", filter=True, cache=True)(
+                self.forward
+            )
+        if not is_output_decorated(self.forward):
+            self.forward = check_output_specs("output_spec", cache=True)(self.forward)
 
+    @check_input_specs("input_spec", cache=True)
+    @check_output_specs("output_spec", cache=True)
     def forward(self, input_dict: TensorDict) -> Tuple[TensorDict, List[TensorType]]:
         """Returns the output of this model for the given input.
 

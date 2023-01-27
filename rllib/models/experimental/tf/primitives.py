@@ -9,6 +9,10 @@ from ray.rllib.models.experimental.base import Model
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.models.utils import get_activation_fn
 from typing import Tuple
+from ray.rllib.models.specs.checker import (
+    check_input_specs,
+    check_output_specs,
+)
 
 _, tf, _ = try_import_tf()
 
@@ -21,7 +25,7 @@ def _call_not_decorated(input_or_output):
     )
 
 
-class TfMLPModel(Model, tf.Module):
+class TfModel(Model, tf.Module):
     """Base class for RLlib models.
 
     This class is used to define the general interface for RLlib models and checks
@@ -31,9 +35,16 @@ class TfMLPModel(Model, tf.Module):
 
     def __init__(self, config):
         super().__init__(config)
-        assert is_input_decorated(self.__call__), _call_not_decorated("input")
-        assert is_output_decorated(self.__call__), _call_not_decorated("output")
+        # automatically apply spec checking
+        if not is_input_decorated(self.__call__):
+            self.__call__ = check_input_specs("input_spec", filter=True, cache=True)(
+                self.__call__
+            )
+        if not is_output_decorated(self.__call__):
+            self.__call__ = check_output_specs("output_spec", cache=True)(self.__call__)
 
+    @check_input_specs("input_spec", cache=True)
+    @check_output_specs("output_spec", cache=True)
     def __call__(self, input_dict: TensorDict) -> Tuple[TensorDict, List[TensorType]]:
         """Returns the output of this model for the given input.
 

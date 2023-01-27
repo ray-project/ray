@@ -19,15 +19,15 @@ from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.models.experimental.torch.encoder import ENCODER_OUT
-from ray.rllib.models.experimental.tf.primitives import TfMLPModel
+from ray.rllib.models.experimental.tf.primitives import TfModel
 
 
-class TfFCEncoder(Encoder, TfMLPModel):
+class TfFCEncoder(Encoder, TfModel):
     """A fully connected encoder."""
 
     def __init__(self, config: ModelConfig) -> None:
         Encoder.__init__(self, config)
-        TfMLPModel.__init__(self, config)
+        TfModel.__init__(self, config)
 
         self.net = TfMLP(
             input_dim=config.input_dim,
@@ -52,12 +52,12 @@ class TfFCEncoder(Encoder, TfMLPModel):
         return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
-class LSTMEncoder(Encoder, TfMLPModel):
+class LSTMEncoder(Encoder, TfModel):
     """An encoder that uses an LSTM cell and a linear layer."""
 
     def __init__(self, config: ModelConfig) -> None:
         Encoder.__init__(self, config)
-        TfMLPModel.__init__(self, config)
+        TfModel.__init__(self, config)
 
         self.lstm = nn.LSTM(
             config.input_dim,
@@ -136,7 +136,7 @@ class LSTMEncoder(Encoder, TfMLPModel):
         }
 
 
-class TfIdentityEncoder(TfMLPModel):
+class TfIdentityEncoder(TfModel):
     """An encoder that does nothing but passing on inputs.
 
     We use this so that we avoid having many if/else statements in the RLModule.
