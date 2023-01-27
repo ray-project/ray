@@ -32,13 +32,13 @@ export const TaskTimeline = ({ jobId }: TaskTimelineProps) => {
         Timeline view shows how tasks are executed across different nodes and
         worker processes.
         <br />
-        Download the trace file and analyze it by uploading it to{" "}
+        Download the trace file and analyze it by uploading it to tools like{" "}
         <a href="https://ui.perfetto.dev/" target="_blank" rel="noreferrer">
           Perfetto UI
         </a>{" "}
         or if you are using chrome,{" "}
-        <a href="chrome://tracing">chrome://tracing</a>. You must copy and paste
-        "chrome://tracing" into your address bar.
+        <a href="chrome://tracing">chrome://tracing</a>. You can use the tool by
+        visiting chrome://tracing using your address bar.
       </Typography>
       <TimelineDownloadButton className={classes.button} jobId={jobId} />
     </div>
