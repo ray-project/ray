@@ -5,6 +5,7 @@ import time
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
+from ray.rllib.core.rl_trainer.rl_trainer_config import TrainerRunnerScalingConfig
 from ray.rllib.core.testing.utils import (
     get_trainer_runner,
     add_module_to_runner_or_trainer,
@@ -18,11 +19,11 @@ class TestTrainerRunner(unittest.TestCase):
     # multi-node multi-gpu, etc.
 
     @classmethod
-    def setUp(cls) -> None:
+    def setUpClass(cls) -> None:
         ray.init()
 
     @classmethod
-    def tearDown(cls) -> None:
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_update_multigpu(self):
@@ -32,7 +33,10 @@ class TestTrainerRunner(unittest.TestCase):
             ray.init(ignore_reinit_error=True)
             print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
-            runner = get_trainer_runner(fw, env, compute_config=dict(num_gpus=2))
+            scaling_config = TrainerRunnerScalingConfig(
+                num_workers=2, num_gpus_per_worker=1
+            )
+            runner = get_trainer_runner(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=500)
 
             min_loss = float("inf")
@@ -64,7 +68,10 @@ class TestTrainerRunner(unittest.TestCase):
             ray.init(ignore_reinit_error=True)
             print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
-            runner = get_trainer_runner(fw, env, compute_config=dict(num_gpus=2))
+            scaling_config = TrainerRunnerScalingConfig(
+                num_workers=2, num_gpus_per_worker=1
+            )
+            runner = get_trainer_runner(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=500)
             batch = reader.next()
 
