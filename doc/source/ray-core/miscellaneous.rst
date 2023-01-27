@@ -309,7 +309,7 @@ The Ray setup:
 
 Test workload:
 
-- Test script: `code <https://github.com/ray-project/ray/blob/master/release/nightly_tests/many_nodes_tests/actor_test.py>`_
+- Test script: `code <https://github.com/ray-project/ray/blob/master/release/benchmarks/distributed/many_nodes_tests/actor_test.py>`_
 
 
 
