@@ -2786,7 +2786,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 256,
+        batch_size: Optional[int] = None,
         batch_format: str = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -2807,7 +2807,7 @@ class Dataset(Generic[T]):
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
-                ``drop_last`` is ``False``. Defaults to 256.
+                ``drop_last`` is ``False``. Defaults to None.
             batch_format: The format in which to return each batch.
                 Specify "default" to use the default block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
