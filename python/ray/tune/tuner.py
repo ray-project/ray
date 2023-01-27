@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import ray
@@ -233,7 +234,7 @@ class Tuner:
             return Tuner(_tuner_internal=tuner_internal)
 
     @classmethod
-    def can_restore(cls, path: str) -> bool:
+    def can_restore(cls, path: Union[str, Path]) -> bool:
         """Checks whether a given directory contains a restorable Tune experiment.
 
         Usage Pattern:
@@ -262,7 +263,7 @@ class Tuner:
             else:
                 tuner = Tuner(
                     "PPO",
-                    run_config=RunConfig(name="exp_name", local_dir="~/ray_results"),
+                    run_config=RunConfig(name=name, local_dir=local_dir),
                 )
             tuner.fit()
 

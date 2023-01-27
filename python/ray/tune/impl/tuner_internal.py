@@ -290,7 +290,7 @@ class TunerInternal:
         )
 
     @classmethod
-    def can_restore(cls, path: str) -> bool:
+    def can_restore(cls, path: Union[str, Path]) -> bool:
         """Checks whether a given directory contains a restorable Tune experiment.
 
         Args:
@@ -302,10 +302,11 @@ class TunerInternal:
             can_restore: Whether or not this path exists and contains the pickled Tuner,
                 to load on restore.
         """
+        path = str(path)
         if is_non_local_path_uri(path):
             dir_contents = list_at_uri(path)
         else:
-            dir_contents = list(Path(path).glob("*"))
+            dir_contents = [] if not os.path.exists(path) else os.listdir(path)
         return bool(dir_contents) and _TUNER_PKL in dir_contents
 
     def _restore_from_path_or_uri(
