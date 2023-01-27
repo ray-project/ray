@@ -5,6 +5,7 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         MODIN_RAY_CLUSTER=True \
         RAY_IGNORE_UNHANDLED_ERRORS=1 \
         RAY_ADDRESS="nexus.chimp-beta.ts.net:6379" \
+        RAY_CLIENT_RECONNECT_GRACE_PERIOD=60 \
         TZ=America/Los_Angeles \
         NODETYPE=edge \
         TSKEY="" \
