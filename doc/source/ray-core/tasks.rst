@@ -227,12 +227,23 @@ Ray tasks can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel
 
 Scheduling
 ----------
+
 For each task, Ray will choose a node to run it
 and the scheduling decision is based on a few factors like
 :ref:`the task's resource requirements <ray-scheduling-resources>`,
 :ref:`the specified scheduling strategy <ray-scheduling-strategies>`
 and :ref:`locations of task arguments <ray-scheduling-locality>`.
 See :ref:`Ray scheduling <ray-scheduling>` for more details.
+
+Fault Tolerance
+---------------
+
+By default, Ray will :ref:`retry <task-retries>` failed tasks
+due to system failures and specified application-level failures.
+You can change this behavior by setting
+``max_retries`` and ``retry_exceptions`` options
+in :ref:`ray.remote() <ray-remote-ref>` and :ref:`.options() <ray-options-ref>`.
+See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
 
 
 More about Ray Tasks
@@ -243,4 +254,3 @@ More about Ray Tasks
 
     tasks/nested-tasks.rst
     tasks/generators.rst
-    tasks/fault-tolerance.rst
