@@ -149,6 +149,13 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
   RAY_LOG(INFO) << "Getting all job info.";
   auto on_done = [this, reply, send_reply_callback](
                      const absl::flat_hash_map<JobID, JobTableData> &result) {
+    // We send a reply upon processing the last job; if there are no jobs, we
+    // must send the reply here.
+    if (result.empty()) {
+      RAY_LOG(INFO) << "Finished getting all job info.";
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    }
+
     for (auto &data : result) {
       reply->add_job_info_list()->CopyFrom(data.second);
     }
