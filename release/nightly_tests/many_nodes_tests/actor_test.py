@@ -26,27 +26,26 @@ def parse_script_args():
     parser.add_argument("--total-actors", type=int, default=5000)
     parser.add_argument("--no-report", default=False, action="store_true")
     parser.add_argument("--fail", default=False, action="store_true")
+    parser.add_argument("--no-wait", default=False, action="store_true")
     return parser.parse_known_args()
-
-
-def wait_until_nodes_ready(target):
-    while True:
-        curr_cpus = sum([r.get("Resources", {}).get("CPU", 0) for r in ray.nodes()])
-        if curr_cpus >= target:
-            return
-        print(f"Waiting nodes to be ready: {curr_cpus}/{target}")
-        sleep(5)
 
 
 def scale_cluster_up(num_cpus):
     print(f"Start to scale up to {num_cpus} cpus")
+    def get_curr_cpus():
+        return int(sum([r.get("Resources", {}).get("CPU", 0) for r in ray.nodes()]))
     step = 1000
-    curr_cpus = int(sum([r.get("Resources", {}).get("CPU", 0) for r in ray.nodes()]))
-    for i in range(curr_cpus, num_cpus, step):
-        target = min(num_cpus, i + step)
-        print(f"Start to scale up to {target} cpus")
-        ray.autoscaler.sdk.request_resources(num_cpus=target)
-        wait_until_nodes_ready(target)
+    curr_cpus = get_curr_cpus()
+    target_cpus = curr_cpus
+
+    while curr_cpus < num_cpus:
+        curr_cpus = get_curr_cpus()
+        new_target_cpus = min(curr_cpus + step, num_cpus)
+        if new_target_cpus != target_cpus:
+            target_cpus = new_target_cpus
+            ray.autoscaler.sdk.request_resources(num_cpus=target)
+        print(f"Waiting for cluster to be up: {curr_cpus}->{target_cpus}->{num_cpus}")
+        sleep(10)
 
 
 def main():
@@ -71,7 +70,8 @@ def main():
     objs = [actor.foo.remote() for actor in actors]
 
     while len(objs) != 0:
-        objs_ready, objs = ray.wait(objs, timeout=30)
+        timeout = None if args.no_wait else 30
+        objs_ready, objs = ray.wait(objs, timeout=timeout)
         print(
             f"Status: {total_actors - len(objs)}/{total_actors}, "
             f"{perf_counter() - actor_ready_start}"
