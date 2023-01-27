@@ -57,10 +57,6 @@ type GlobalContextType = {
    */
   prometheusHealth: boolean | undefined;
   /**
-   * Whether both prometheus and grafana are running.
-   */
-  metricsHealth: boolean | undefined;
-  /**
    * The name of the currently running ray session.
    */
   sessionName: string | undefined;
@@ -72,7 +68,6 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   namespaceMap: {},
   grafanaHost: undefined,
   prometheusHealth: undefined,
-  metricsHealth: undefined,
   sessionName: undefined,
 });
 
@@ -90,7 +85,6 @@ const App = () => {
     namespaceMap: {},
     grafanaHost: undefined,
     prometheusHealth: undefined,
-    metricsHealth: undefined,
     sessionName: undefined,
   });
   const getTheme = (name: string) => {
@@ -138,7 +132,6 @@ const App = () => {
         grafanaHost,
         sessionName,
         prometheusHealth,
-        metricsHealth: prometheusHealth && grafanaHost !== undefined,
       }));
     };
     doEffect();

@@ -275,6 +275,7 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
           <div className={classes.metricsRoot}>
             {METRICS_CONFIG.map(({ title, contents }) => (
               <CollapsibleSection
+                key={title}
                 title={title}
                 startExpanded
                 className={classes.metricsSection}
@@ -283,6 +284,7 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
                 <div className={classes.grafanaEmbedsContainer}>
                   {contents.map(({ title, path }) => (
                     <Paper
+                      key={path}
                       className={classes.chart}
                       elevation={1}
                       variant="outlined"
