@@ -1,18 +1,20 @@
 import { TableCell, TableRow, Tooltip } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import dayjs from "dayjs";
-import React, { useContext } from "react";
+import React from "react";
 import { Link } from "react-router-dom";
-import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
+import { StatusChip } from "../../components/StatusChip";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
+import { JobLogsLink } from "./JobDetail";
 import { MiniTaskProgressBar } from "./TaskProgressBar";
 
 const useStyles = makeStyles((theme) => ({
   overflowCell: {
     display: "block",
-    width: "150px",
+    margin: "auto",
+    maxWidth: 360,
     textOverflow: "ellipsis",
     overflow: "hidden",
     whiteSpace: "nowrap",
@@ -24,21 +26,16 @@ type JobRowProps = {
   newIA?: boolean;
 };
 
-export const JobRow = ({
-  job: {
+export const JobRow = ({ job, newIA = false }: JobRowProps) => {
+  const {
     job_id,
     submission_id,
     driver_info,
-    type,
     status,
     start_time,
     end_time,
     entrypoint,
-    driver_agent_http_address,
-  },
-  newIA = false,
-}: JobRowProps) => {
-  const { ipLogMap } = useContext(GlobalContext);
+  } = job;
   const { progress, error, driverExists } = useJobProgress(job_id ?? undefined);
   const classes = useStyles();
 
@@ -55,30 +52,6 @@ export const JobRow = ({
     } else {
       return <MiniTaskProgressBar {...progress} />;
     }
-  })();
-
-  const logsLink = (() => {
-    let link: string | undefined;
-    if (driver_agent_http_address) {
-      link = `/log/${encodeURIComponent(`${driver_agent_http_address}/logs`)}`;
-    } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
-      link = `/log/${encodeURIComponent(
-        ipLogMap[driver_info.node_ip_address],
-      )}`;
-    }
-
-    if (link) {
-      link += `?fileName=${
-        type === "DRIVER" ? job_id : `driver-${submission_id}`
-      }`;
-      return (
-        <Link to={link} target="_blank">
-          Log
-        </Link>
-      );
-    }
-
-    return "-";
   })();
 
   return (
@@ -101,7 +74,9 @@ export const JobRow = ({
           <div>{entrypoint}</div>
         </Tooltip>
       </TableCell>
-      <TableCell align="center">{status}</TableCell>
+      <TableCell align="center">
+        <StatusChip type="job" status={job.status} />
+      </TableCell>
       <TableCell align="center">
         {start_time && start_time > 0 ? (
           <DurationText startTime={start_time} endTime={end_time} />
@@ -113,7 +88,7 @@ export const JobRow = ({
       <TableCell align="center">
         {/* TODO(aguo): Also show logs for the job id instead
       of just the submission's logs */}
-        {logsLink}
+        <JobLogsLink job={job} newIA={newIA} />
       </TableCell>
       <TableCell align="center">
         {dayjs(Number(start_time)).format("YYYY/MM/DD HH:mm:ss")}

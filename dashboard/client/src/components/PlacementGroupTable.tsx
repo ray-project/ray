@@ -148,7 +148,7 @@ const PlacementGroupTable = ({
                 <TableCell align="center">{name ? name : "-"}</TableCell>
                 <TableCell align="center">{creator_job_id}</TableCell>
                 <TableCell align="center">
-                  <StatusChip type="actor" status={state} />
+                  <StatusChip type="placementGroup" status={state} />
                 </TableCell>
                 <TableCell align="center">
                   {stats ? stats.scheduling_state : "-"}
