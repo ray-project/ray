@@ -300,7 +300,8 @@ message GcsNodeInfo {
   uint64 end_time_ms = 24;
 }
 
-// Please keep this in sync with the definition of JobInfo in dashboard/modules/job/common.py
+// Please keep this in sync with the definition of JobInfo in 
+// dashboard/modules/job/common.py
 message JobsAPIInfo {
   // The status of the job.
   string status = 1;
