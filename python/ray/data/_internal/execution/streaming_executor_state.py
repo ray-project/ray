@@ -210,6 +210,10 @@ def select_operator_to_run(
     This is currently implemented by applying backpressure on operators that are
     producing outputs faster than they are consuming them `len(outqueue)`, as well as
     operators with a large number of running tasks `num_active_tasks()`.
+
+    Note that memory limits also apply to the outqueue of the output operator. This
+    provides backpressure if the consumer is slow. However, once a bundle is returned
+    to the user, it is no longer tracked.
     """
 
     # Filter to ops that are eligible for execution.
@@ -219,7 +223,8 @@ def select_operator_to_run(
         if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
     ]
 
-    # To ensure liveness, allow at least 1 op to run regardless of limits.
+    # To ensure liveness, allow at least 1 op to run regardless of limits. This is
+    # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
     if (
         ensure_at_least_one_running
         and not ops
