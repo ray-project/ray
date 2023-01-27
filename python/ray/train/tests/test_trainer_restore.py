@@ -189,7 +189,7 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     assert tmpdir / exp_name in result.log_dir.parents
 
 
-def test_restore_with_datasets(tmpdir):
+def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
     datasets = {
         "train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(8)]),
         "valid": ray.data.from_items([{"x": x, "y": x + 1} for x in range(8)]),
@@ -207,7 +207,7 @@ def test_restore_with_datasets(tmpdir):
     with pytest.raises(ValueError):
         DataParallelTrainer.restore(str(tmpdir))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(AssertionError):
         DataParallelTrainer.restore(str(tmpdir), datasets={"train": datasets["train"]})
 
     with pytest.raises(AssertionError):

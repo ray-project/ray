@@ -258,9 +258,6 @@ class DataParallelTrainer(BaseTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        if not ray.is_initialized():
-            ray.init()
-
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
 
