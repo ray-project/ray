@@ -410,7 +410,9 @@ GRAFANA_PANELS = [
 ids = []
 for panel in GRAFANA_PANELS:
     ids.append(panel.id)
-assert len(ids) == len(set(ids)), ids
+assert len(ids) == len(
+    set(ids)
+), f"Duplicated id found. Use unique id for each panel. {ids}"
 
 
 TARGET_TEMPLATE = {
@@ -558,6 +560,7 @@ GLOBAL_FILTERS = ['SessionName="$SessionName"']
 
 
 def gen_incrementing_alphabets(length):
+    assert 65 + length < 96, "we only support up to 26 targets at a time."
     # 65: ascii code of 'A'.
     return list(map(chr, range(65, 65 + length)))
 
