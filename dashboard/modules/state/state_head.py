@@ -464,7 +464,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         result = await self._state_api.generate_task_timeline(job_id)
         if download == "1":
             # Support download if specified.
-            headers = {"Content-Disposition": "attachment; filename=quot.json;"}
+            headers = {"Content-Disposition": "attachment;"}
         else:
             headers = None
         return Response(text=result, content_type="application/json", headers=headers)
