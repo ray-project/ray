@@ -20,7 +20,6 @@ from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
-from ray.util.check_object_refs import contains_object_refs
 from ray.widgets import Template
 from ray.widgets.util import ensure_notebook_deps
 
@@ -302,19 +301,9 @@ class DataParallelTrainer(BaseTrainer):
             preprocessor=preprocessor,
             scaling_config=scaling_config,
         )
-        if (
-            contains_object_refs(trainer._train_loop_per_worker)
-            and not train_loop_per_worker
-        ):
-            raise ValueError()
         if train_loop_per_worker:
             trainer._train_loop_per_worker = train_loop_per_worker
-
-        if contains_object_refs(trainer._train_loop_config) and not train_loop_config:
-            raise ValueError()
         if train_loop_config:
-            old_config = trainer._train_loop_config or {}
-            assert set(old_config.keys()) == set(train_loop_config.keys())
             trainer._train_loop_config = train_loop_config
         return trainer
 

@@ -257,89 +257,6 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir):
     )
 
 
-def test_obj_ref_in_train_loop_scope(tmpdir):
-    obj_ref = ray.put({"test": 1})
-
-    def train_fn(config):
-        print(ray.get(obj_ref))
-
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=train_fn,
-        datasets={},
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="obj_ref_in_train_loop_test", local_dir=tmpdir),
-    )
-    trainer._save(tmpdir)
-
-    # Restore should complain, since the training loop captures an object ref.
-    with pytest.raises(ValueError):
-        DataParallelTrainer.restore(str(tmpdir))
-
-    trainer = DataParallelTrainer.restore(str(tmpdir), train_loop_per_worker=train_fn)
-
-
-def test_obj_ref_in_train_loop_config(tmpdir):
-    obj_ref = ray.put({"test": 1})
-
-    def train_fn(config):
-        session.report({"score": 1})
-
-    train_loop_config = {"obj_ref": obj_ref}
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=train_fn,
-        train_loop_config=train_loop_config,
-        datasets={},
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="obj_ref_in_train_config_test", local_dir=tmpdir),
-    )
-    trainer._save(tmpdir)
-
-    # Restore should complain, since the training config contains an object ref.
-    with pytest.raises(ValueError):
-        DataParallelTrainer.restore(str(tmpdir))
-
-    trainer = DataParallelTrainer.restore(
-        str(tmpdir), train_loop_config=train_loop_config
-    )
-
-
-def test_train_loop_config_validation(tmpdir):
-    train_loop_config = {"a": 1, "b": 2, "c": 3}
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: session.report({"score": 1}),
-        train_loop_config=train_loop_config,
-        scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(name="train_loop_config_validation_1", local_dir=tmpdir),
-    )
-    trainer._save(tmpdir)
-
-    with pytest.raises(AssertionError):
-        DataParallelTrainer.restore(str(tmpdir), train_loop_config={"a": 1, "b": 2})
-
-    trainer = DataParallelTrainer.restore(
-        str(tmpdir), train_loop_config=train_loop_config
-    )
-
-    datasets = {"train": ray.data.from_items([{"x": i} for i in range(8)])}
-    trainer = HuggingFaceTrainer(
-        trainer_init_per_worker=lambda a, b, c: None,
-        datasets=datasets,
-        trainer_init_config=train_loop_config,
-        scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(name="train_loop_config_validation_2", local_dir=tmpdir),
-    )
-    trainer._save(tmpdir)
-
-    with pytest.raises(AssertionError):
-        HuggingFaceTrainer.restore(
-            str(tmpdir), datasets=datasets, trainer_init_config={"a": 1, "b": 2}
-        )
-
-    trainer = HuggingFaceTrainer.restore(
-        str(tmpdir), datasets=datasets, trainer_init_config=train_loop_config
-    )
-
-
 def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
     class ModelPreprocessor:
         def transform(self, x):
@@ -367,11 +284,6 @@ def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
         preprocessor=preprocessor,
     )
     trainer._save(tmpdir)
-
-    # Restore should complain, since the preprocessor UDF captures an object ref
-    # TODO: get this to work
-    # with pytest.raises(ValueError):
-    #     DataParallelTrainer.restore(str(tmpdir), datasets=datasets)
 
     trainer = DataParallelTrainer.restore(
         str(tmpdir), datasets=datasets, preprocessor=preprocessor
