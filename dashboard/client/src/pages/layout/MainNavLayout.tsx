@@ -117,8 +117,12 @@ const useMainNavBarStyles = makeStyles((theme) =>
       marginRight: theme.spacing(2),
     },
     backToOld: {
-      marginRight: theme.spacing(1),
+      marginRight: theme.spacing(1.5),
       textDecoration: "none",
+    },
+    backToOldText: {
+      letterSpacing: 0.25,
+      fontWeight: 500,
     },
     actionItem: {
       color: "#5F6469",
@@ -188,8 +192,12 @@ const MainNavBar = () => {
           className={classNames(classes.actionItem, classes.backToOld)}
           to="/"
         >
-          <Typography variant="body2" component="span">
-            Back to old dashboard
+          <Typography
+            variant="body2"
+            component="span"
+            className={classes.backToOldText}
+          >
+            Back to old UI
           </Typography>
         </Link>
         <Tooltip title="Docs">

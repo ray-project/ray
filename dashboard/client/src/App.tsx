@@ -53,6 +53,14 @@ type GlobalContextType = {
    */
   grafanaHost: string | undefined;
   /**
+   * Whether prometheus is runing or not
+   */
+  prometheusHealth: boolean | undefined;
+  /**
+   * Whether both prometheus and grafana are running.
+   */
+  metricsHealth: boolean | undefined;
+  /**
    * The name of the currently running ray session.
    */
   sessionName: string | undefined;
@@ -63,6 +71,8 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   ipLogMap: {},
   namespaceMap: {},
   grafanaHost: undefined,
+  prometheusHealth: undefined,
+  metricsHealth: undefined,
   sessionName: undefined,
 });
 
@@ -79,6 +89,8 @@ const App = () => {
     ipLogMap: {},
     namespaceMap: {},
     grafanaHost: undefined,
+    prometheusHealth: undefined,
+    metricsHealth: undefined,
     sessionName: undefined,
   });
   const getTheme = (name: string) => {
@@ -119,11 +131,14 @@ const App = () => {
   // Detect if grafana is running
   useEffect(() => {
     const doEffect = async () => {
-      const { grafanaHost, sessionName } = await getMetricsInfo();
+      const { grafanaHost, sessionName, prometheusHealth } =
+        await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
         grafanaHost,
         sessionName,
+        prometheusHealth,
+        metricsHealth: prometheusHealth && grafanaHost !== undefined,
       }));
     };
     doEffect();

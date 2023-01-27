@@ -9,6 +9,7 @@ import {
 import { Alert } from "@material-ui/lab";
 import classNames from "classnames";
 import React, { useContext, useEffect, useState } from "react";
+import { RiExternalLinkLine } from "react-icons/ri";
 
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -27,15 +28,15 @@ const useStyles = makeStyles((theme) =>
       flexDirection: "row",
       flexWrap: "wrap",
       gap: theme.spacing(3),
+      marginTop: theme.spacing(2),
     },
     chart: {
-      flex: "1 0 448px",
-      maxWidth: "100%",
+      width: "100%",
       height: 300,
       overflow: "hidden",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus padding between cards
-        maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+        width: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
       },
     },
     grafanaEmbed: {
@@ -53,6 +54,7 @@ const useStyles = makeStyles((theme) =>
       padding: theme.spacing(1),
       boxShadow: "0px 1px 0px #D2DCE6",
       zIndex: 1,
+      height: 36,
     },
     topBarNewIA: {
       top: MAIN_NAV_HEIGHT,
@@ -203,7 +205,8 @@ type MetricsProps = {
 
 export const Metrics = ({ newIA = false }: MetricsProps) => {
   const classes = useStyles();
-  const { grafanaHost, sessionName } = useContext(GlobalContext);
+  const { grafanaHost, sessionName, prometheusHealth } =
+    useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.THIRTY_MINS,
@@ -230,7 +233,7 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
           path: "/new/metrics",
         }}
       />
-      {grafanaHost === undefined ? (
+      {grafanaHost === undefined || !prometheusHealth ? (
         <GrafanaNotRunningAlert className={classes.alert} />
       ) : (
         <div>
@@ -243,6 +246,7 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
               href={grafanaHost}
               target="_blank"
               rel="noopener noreferrer"
+              endIcon={<RiExternalLinkLine />}
             >
               View in Grafana
             </Button>
@@ -250,7 +254,6 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
               className={classes.timeRangeButton}
               select
               size="small"
-              variant="outlined"
               style={{ width: 120 }}
               value={timeRangeOption}
               onChange={({ target: { value } }) => {
@@ -275,6 +278,7 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
                 title={title}
                 startExpanded
                 className={classes.metricsSection}
+                keepRendered
               >
                 <div className={classes.grafanaEmbedsContainer}>
                   {contents.map(({ title, path }) => (
@@ -303,11 +307,11 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
 };
 
 export const GrafanaNotRunningAlert = ({ className }: ClassNameProps) => {
-  const { grafanaHost } = useContext(GlobalContext);
-  return grafanaHost === undefined ? (
+  const { grafanaHost, prometheusHealth } = useContext(GlobalContext);
+  return grafanaHost === undefined || !prometheusHealth ? (
     <Alert className={className} severity="warning">
-      Grafana server not detected. Please make sure the grafana server is
-      running and refresh this page. See:{" "}
+      Grafana or prometheus server not detected. Please make sure both services
+      are running and refresh this page. See:{" "}
       <a
         href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
         target="_blank"

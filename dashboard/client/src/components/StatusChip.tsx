@@ -42,11 +42,12 @@ const colorMap = {
   },
   job: {
     INIT: grey,
-    SUBMITTED: blue,
+    SUBMITTED: "#cfcf08",
     DISPATCHED: lightBlue,
-    RUNNING: green,
-    COMPLETED: cyan,
-    FINISHED: cyan,
+    RUNNING: blue,
+    COMPLETED: green,
+    SUCCEEDED: green,
+    FINISHED: green,
     FAILED: red,
   },
   placementGroup: {

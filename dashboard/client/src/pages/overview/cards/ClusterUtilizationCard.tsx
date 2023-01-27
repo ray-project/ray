@@ -26,7 +26,7 @@ const useStyles = makeStyles((theme) =>
       display: "flex",
       flexDirection: "row",
       flexWrap: "nowrap",
-      margin: theme.spacing(0, 3, 2),
+      margin: theme.spacing(1, 3, 2),
     },
   }),
 );
@@ -40,7 +40,8 @@ export const ClusterUtilizationCard = ({
 }: ClusterUtilizationCardProps) => {
   const classes = useStyles();
 
-  const { grafanaHost, sessionName } = useContext(GlobalContext);
+  const { grafanaHost, prometheusHealth, sessionName } =
+    useContext(GlobalContext);
   const path =
     "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2";
   const timeRangeParams = "&from=now-30m&to=now";
@@ -49,7 +50,7 @@ export const ClusterUtilizationCard = ({
     <OverviewCard className={classNames(classes.root, className)}>
       {/* TODO (aguo): Switch this to overall utilization graph */}
       {/* TODO (aguo): Handle grafana not running */}
-      {grafanaHost === undefined ? (
+      {grafanaHost === undefined || !prometheusHealth ? (
         <div className={classes.noGraph}>
           <Typography variant="h3">Cluster utilization</Typography>
           <GrafanaNotRunningAlert className={classes.alert} />

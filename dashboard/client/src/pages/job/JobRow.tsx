@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import React from "react";
 import { Link } from "react-router-dom";
 import { DurationText } from "../../common/DurationText";
+import { StatusChip } from "../../components/StatusChip";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
 import { JobLogsLink } from "./JobDetail";
@@ -12,7 +13,8 @@ import { MiniTaskProgressBar } from "./TaskProgressBar";
 const useStyles = makeStyles((theme) => ({
   overflowCell: {
     display: "block",
-    width: "150px",
+    margin: "auto",
+    maxWidth: 360,
     textOverflow: "ellipsis",
     overflow: "hidden",
     whiteSpace: "nowrap",
@@ -72,7 +74,9 @@ export const JobRow = ({ job, newIA = false }: JobRowProps) => {
           <div>{entrypoint}</div>
         </Tooltip>
       </TableCell>
-      <TableCell align="center">{status}</TableCell>
+      <TableCell align="center">
+        <StatusChip type="job" status={job.status} />
+      </TableCell>
       <TableCell align="center">
         {start_time && start_time > 0 ? (
           <DurationText startTime={start_time} endTime={end_time} />
