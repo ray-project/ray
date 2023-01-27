@@ -103,17 +103,9 @@ def _check_mixin(run_identifier: Union[Experiment, str, Type, Callable]) -> bool
         # Default to True
         return True
 
-    from ray.tune.integration.wandb import WandbTrainableMixin
-    from ray.tune.integration.mlflow import MLflowTrainableMixin
-
-    try:
-        return hasattr(trainable_cls, "__mixins__") or (
-            isinstance(trainable_cls, type)
-            and issubclass(trainable_cls, (MLflowTrainableMixin, WandbTrainableMixin))
-        )
-    except Exception:
-        # Default to True e.g. on TypeError (if it's not function or class)
-        return True
+    return hasattr(trainable_cls, "__mixins__") or getattr(
+        trainable_cls, "_is_mixin", False
+    )
 
 
 def _check_gpus_in_resources(
