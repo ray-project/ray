@@ -75,7 +75,7 @@ class TrialRunnerTest3(unittest.TestCase):
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             self.pre_step = cnt + 1
 
-        def on_step_end(self):
+        def on_step_end(self, search_ended: bool = False):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
             self.post_step = 1 + cnt
 
