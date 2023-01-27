@@ -111,6 +111,33 @@ topNavContentLeft.append(learnMenu)
 
 topNavContent.append(topNavContentLeft)
 
+// Create a new Algolia v3 search container
+let docSearchContainer = document.createElement("div");
+docSearchContainer.setAttribute("id", "docsearch");
+topNavContent.append(docSearchContainer);
+
+// Only after the container is loaded, we can add the Algolia search scripts
+let docSearchSource = document.createElement("script");
+docSearchSource.src = "https://cdn.jsdelivr.net/npm/@docsearch/js@3";
+document.body.appendChild(docSearchSource);
+
+const page = window.location.href
+const res = page.split("/");
+
+let docsearchJsFile = "/_static/js/docsearch.js";
+if (res[2] === "docs.ray.io") {
+    docsearchJsFile = "https://docs.ray.io/en/" + res[4] + docsearchJsFile;
+}
+
+// Remove the built-in search bar
+const oldSearch = document.getElementById("search-input");
+oldSearch.parentNode.remove();
+
+let docSearchScript = document.createElement("script");
+docSearchScript.src = docsearchJsFile;
+document.body.appendChild(docSearchScript);
+
+
 // The right part that contains the Anyscale trial button
 anyscaleButton = document.createElement("button");
 anyscaleButton.setAttribute("class", "try-anyscale");

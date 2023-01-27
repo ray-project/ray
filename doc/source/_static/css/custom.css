@@ -13,6 +13,11 @@
   align-items: center;
 }
 
+/* Hide all elements relative to the Algolia search popup */
+.DocSearch-Container {
+    z-index: 3000 !important;
+}
+
 /* Content wrapper for the unified nav link / menus */
 .top-nav-content {
   max-width: 1400px;

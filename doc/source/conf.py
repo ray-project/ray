@@ -370,19 +370,10 @@ def setup(app):
 
     # Custom CSS
     app.add_css_file("css/custom.css", priority=800)
-    app.add_css_file(
-        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css"
-    )
     # https://github.com/ines/termynal
     app.add_css_file("css/termynal.css")
 
     # Custom JS
-    app.add_js_file(
-        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
-        defer="defer",
-    )
-    app.add_js_file("js/docsearch.js", defer="defer")
-
     # https://github.com/medmunds/rate-the-docs for allowing users
     # to give thumbs up / down and feedback on existing docs pages.
     app.add_js_file("js/rate-the-docs.es.min.js")
