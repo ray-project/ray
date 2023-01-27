@@ -23,15 +23,15 @@ class TorchMLPModel(TorchModel, nn.Module):
 
     @property
     @override(Model)
-    def input_spec(self):
+    def input_spec(self) -> TorchTensorSpec:
         return TorchTensorSpec("b, h", h=self.config.input_dim)
 
     @property
     @override(Model)
-    def output_spec(self):
+    def output_spec(self) -> TorchTensorSpec:
         return TorchTensorSpec("b, h", h=self.config.output_dim)
 
-    @check_input_specs("input_spec", filter=True, cache=False)
+    @check_input_specs("input_spec", cache=False)
     @check_output_specs("output_spec", cache=False)
     @override(TorchModel)
     def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:

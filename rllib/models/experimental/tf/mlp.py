@@ -27,7 +27,7 @@ class TfMLPModel(TfModel):
     def output_spec(self):
         return TFTensorSpecs("b, h", h=self.config.output_dim)
 
-    @check_input_specs("input_spec", filter=True, cache=False)
+    @check_input_specs("input_spec", cache=False)
     @check_output_specs("output_spec", cache=False)
     def __call__(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         return self.net(inputs)

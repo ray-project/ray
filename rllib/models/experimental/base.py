@@ -11,11 +11,10 @@ ForwardOutputType = TensorDict
 @ExperimentalAPI
 @dataclass
 class ModelConfig(abc.ABC):
-    """Configuration for a model.
+    """Base class for model configurations.
 
     Attributes:
-        output_dim: The output dimension of the network. If None, the output_dim will
-            be the number of nodes in the last hidden layer.
+        output_dim: The output dimension of the network.
     """
 
     output_dim: int = None

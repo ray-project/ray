@@ -37,9 +37,7 @@ class TfModel(Model, tf.Module):
         super().__init__(config)
         # automatically apply spec checking
         if not is_input_decorated(self.__call__):
-            self.__call__ = check_input_specs("input_spec", filter=True, cache=True)(
-                self.__call__
-            )
+            self.__call__ = check_input_specs("input_spec", cache=True)(self.__call__)
         if not is_output_decorated(self.__call__):
             self.__call__ = check_output_specs("output_spec", cache=True)(self.__call__)
 

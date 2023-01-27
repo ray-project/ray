@@ -22,7 +22,7 @@ from ray.rllib.models.experimental.torch.encoder import ENCODER_OUT
 from ray.rllib.models.experimental.tf.primitives import TfModel
 
 
-class TfFCEncoder(Encoder, TfModel):
+class TfMLPEncoder(Encoder, TfModel):
     """A fully connected encoder."""
 
     def __init__(self, config: ModelConfig) -> None:
@@ -110,7 +110,7 @@ class LSTMEncoder(Encoder, TfModel):
             }
         )
 
-    @check_input_specs("input_spec", filter=True, cache=False)
+    @check_input_specs("input_spec", cache=False)
     @check_output_specs("output_spec", cache=False)
     def __call__(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         x = inputs[SampleBatch.OBS]

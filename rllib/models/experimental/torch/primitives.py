@@ -32,9 +32,7 @@ class TorchModel(nn.Module, Model):
         Model.__init__(self, config)
         # automatically apply spec checking
         if not is_input_decorated(self.forward):
-            self.forward = check_input_specs("input_spec", filter=True, cache=True)(
-                self.forward
-            )
+            self.forward = check_input_specs("input_spec", cache=True)(self.forward)
         if not is_output_decorated(self.forward):
             self.forward = check_output_specs("output_spec", cache=True)(self.forward)
 

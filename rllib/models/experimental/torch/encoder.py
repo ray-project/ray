@@ -39,19 +39,19 @@ class TorchMLPEncoder(TorchModel, Encoder):
 
     @property
     @override(TorchModel)
-    def input_spec(self):
+    def input_spec(self) -> SpecDict:
         return SpecDict(
             {SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dim)}
         )
 
     @property
     @override(TorchModel)
-    def output_spec(self):
+    def output_spec(self) -> SpecDict:
         return SpecDict(
             {ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim)}
         )
 
-    @check_input_specs("input_spec", filter=True, cache=False)
+    @check_input_specs("input_spec", cache=False)
     @check_output_specs("output_spec", cache=False)
     def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
@@ -80,7 +80,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
     @property
     @override(TorchModel)
-    def input_spec(self):
+    def input_spec(self) -> SpecDict:
         config = self.config
         return SpecDict(
             {
@@ -100,7 +100,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
     @property
     @override(TorchModel)
-    def output_spec(self):
+    def output_spec(self) -> SpecDict:
         config = self.config
         return SpecDict(
             {
@@ -147,14 +147,14 @@ class TorchIdentityEncoder(TorchModel):
         super().__init__(config)
 
     @property
-    def input_spec(self):
+    def input_spec(self) -> SpecDict:
         return SpecDict(
             # Use the output dim as input dim because identity.
             {SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.output_dim)}
         )
 
     @property
-    def output_spec(self):
+    def output_spec(self) -> SpecDict:
         return SpecDict(
             {ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim)}
         )
