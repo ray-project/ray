@@ -58,7 +58,7 @@ class MapOperator(PhysicalOperator, ABC):
         super().__init__(name, [input_op])
 
     @classmethod
-    def from_compute(
+    def create(
         cls,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         input_op: PhysicalOperator,
@@ -70,6 +70,11 @@ class MapOperator(PhysicalOperator, ABC):
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
+
+        This factory creates the MapOperator pool implementation that corresponds to the
+        compute argument:
+            - If None or TaskPoolStrategy -> TaskPoolMapOperator
+            - If ActorPoolStrategy -> ActorPoolMapOperator
 
         Args:
             transform_fn: The function to apply to each ref bundle input.
@@ -118,11 +123,13 @@ class MapOperator(PhysicalOperator, ABC):
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
 
     def start(self, options: "ExecutionOptions"):
+        # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = _OrderedOutputQueue()
         else:
             self._output_queue = _UnorderedOutputQueue()
         if options.locality_with_output:
+            # Try to schedule tasks locally.
             self._ray_remote_args[
                 "scheduling_strategy"
             ] = NodeAffinitySchedulingStrategy(
@@ -471,7 +478,6 @@ class _UnorderedOutputQueue(_OutputQueue):
         self._completed_tasks: List[_TaskState] = []
 
     def notify_task_completed(self, task: _TaskState):
-        print("notify task completed")
         self._completed_tasks.append(task)
 
     def has_next(self) -> bool:

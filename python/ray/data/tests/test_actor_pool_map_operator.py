@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray.tests.conftest import *  # noqa
-from ray.data._internal.execution.operators.actor_pool_submitter import _ActorPool
+from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 
 
 @ray.remote
@@ -21,7 +21,8 @@ class TestActorPool:
         # Wait until actor has started.
         ray.get(ready_ref)
         # Mark actor as running.
-        pool.pending_to_running(ready_ref)
+        has_actor = pool.pending_to_running(ready_ref)
+        assert has_actor
         return actor
 
     def test_add_pending(self, ray_start_regular_shared):
@@ -126,15 +127,18 @@ class TestActorPool:
         assert pool.pick_actor() == actor2
 
     def test_kill_all_inactive_pending_actor_killed(self, ray_start_regular_shared):
-        # Test that pending actors are killed on the kill_all_inactive() call.
+        # Test that pending actors are killed on the kill_all_inactive_actors() call.
         pool = _ActorPool()
         actor = PoolWorker.remote()
         ready_ref = actor.ready.remote()
         pool.add_pending_actor(actor, ready_ref)
         # Kill inactive actors.
-        pool.kill_all_inactive()
+        pool.kill_all_inactive_actors()
         # Check that actor is not in pool.
         assert pool.get_pending_actor_refs() == []
+        # Check that actor is no longer in the pool as pending, to protect against
+        # ready/killed races.
+        assert not pool.pending_to_running(ready_ref)
         # Check that actor was killed.
         # Wait a few seconds to let actor killing happen.
         time.sleep(1)
@@ -148,11 +152,11 @@ class TestActorPool:
         assert pool.num_idle_actors() == 0
 
     def test_kill_all_inactive_idle_actor_killed(self, ray_start_regular_shared):
-        # Test that idle actors are killed on the kill_all_inactive() call.
+        # Test that idle actors are killed on the kill_all_inactive_actors() call.
         pool = _ActorPool()
         actor = self._add_ready_worker(pool)
         # Kill inactive actors.
-        pool.kill_all_inactive()
+        pool.kill_all_inactive_actors()
         # Check that actor is not in pool.
         assert pool.pick_actor() is None
         # Check that actor was killed.
@@ -168,26 +172,27 @@ class TestActorPool:
         assert pool.num_idle_actors() == 0
 
     def test_kill_all_inactive_active_actor_not_killed(self, ray_start_regular_shared):
-        # Test that active actors are NOT killed on the kill_all_inactive() call.
+        # Test that active actors are NOT killed on the kill_all_inactive_actors() call.
         pool = _ActorPool()
         actor = self._add_ready_worker(pool)
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actors.
-        pool.kill_all_inactive()
+        pool.kill_all_inactive_actors()
         # Check that the active actor is still in the pool.
         assert pool.pick_actor() == actor
 
     def test_kill_all_inactive_future_idle_actors_killed(
         self, ray_start_regular_shared
     ):
-        # Test that future idle actors are killed after the kill_all_inactive() call.
+        # Test that future idle actors are killed after the kill_all_inactive_actors()
+        # call.
         pool = _ActorPool()
         actor = self._add_ready_worker(pool)
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actors, of which there are currently none.
-        pool.kill_all_inactive()
+        pool.kill_all_inactive_actors()
         # Check that the active actor is still in the pool.
         assert pool.pick_actor() == actor
         # Return the actor to the pool twice, which should set it as idle and cause it
@@ -201,6 +206,55 @@ class TestActorPool:
         time.sleep(1)
         with pytest.raises(ray.exceptions.RayActorError):
             ray.get(actor.ready.remote())
+        # Check that the per-state pool sizes are as expected.
+        assert pool.num_total_actors() == 0
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 0
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 0
+
+    def test_kill_all_inactive_mixture(self, ray_start_regular_shared):
+        # Test that in a mixture of pending, idle, and active actors, only the pending
+        # and idle actors are killed on the kill_all_inactive_actors() call.
+        pool = _ActorPool()
+        # Add active actor.
+        actor1 = self._add_ready_worker(pool)
+        # Pick actor (and double-check that the actor was picked).
+        assert pool.pick_actor() == actor1
+        # Add idle actor.
+        self._add_ready_worker(pool)
+        # Add pending actor.
+        actor3 = PoolWorker.remote()
+        ready_ref = actor3.ready.remote()
+        pool.add_pending_actor(actor3, ready_ref)
+        # Check that the per-state pool sizes are as expected.
+        assert pool.num_total_actors() == 3
+        assert pool.num_pending_actors() == 1
+        assert pool.num_running_actors() == 2
+        assert pool.num_active_actors() == 1
+        assert pool.num_idle_actors() == 1
+        # Kill inactive actors.
+        pool.kill_all_inactive_actors()
+        # Check that the active actor is still in the pool.
+        assert pool.pick_actor() == actor1
+        # Check that adding a pending actor raises an error.
+        with pytest.raises(AssertionError):
+            pool.add_pending_actor(actor3, ready_ref)
+        # Check that kill_all_inactive_actors() is idempotent.
+        pool.kill_all_inactive_actors()
+        # Check that the active actor is still in the pool.
+        assert pool.pick_actor() == actor1
+        # Return the actor to the pool thrice, which should set it as idle and cause it
+        # to be killed.
+        for _ in range(3):
+            pool.return_actor(actor1)
+        # Check that actor is not in pool.
+        assert pool.pick_actor() is None
+        # Check that actor was killed.
+        # Wait a few seconds to let actor killing happen.
+        time.sleep(1)
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(actor1.ready.remote())
         # Check that the per-state pool sizes are as expected.
         assert pool.num_total_actors() == 0
         assert pool.num_pending_actors() == 0

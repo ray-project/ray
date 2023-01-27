@@ -83,7 +83,7 @@ def test_all_to_all_operator():
 
 def test_num_outputs_total():
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    op1 = MapOperator.from_compute(
+    op1 = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -102,7 +102,7 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
-    op = MapOperator.from_compute(
+    op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -111,6 +111,9 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
 
     # Feed data and block on exec.
     op.start(ExecutionOptions())
+    if use_actors:
+        # Actor will be pending after starting the operator.
+        assert op.progress_str() == "0 (1 pending)"
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.inputs_done()
@@ -120,8 +123,13 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
             ray.get(work_ref)
             op.notify_work_completed(work_ref)
         work_refs = op.get_work_refs()
+        if use_actors and work_refs:
+            # After actor is ready (first work ref resolved), actor will remain ready
+            # while there is work to do.
+            assert op.progress_str() == "1 (0 pending)"
     if use_actors:
-        assert op.progress_str() == "1 (0 pending)"
+        # After all work is done, actor will have been killed to free up resources..
+        assert op.progress_str() == "0 (0 pending)"
     else:
         assert op.progress_str() == ""
 
@@ -147,7 +155,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
-    op = MapOperator.from_compute(
+    op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -189,7 +197,7 @@ def test_map_operator_min_rows_per_bundle(shutdown_only, use_actors):
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
-    op = MapOperator.from_compute(
+    op = MapOperator.create(
         _check_batch,
         input_op=input_op,
         name="TestMapper",
@@ -220,7 +228,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
-    op = MapOperator.from_compute(
+    op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -255,7 +263,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
-    op = MapOperator.from_compute(
+    op = MapOperator.create(
         _sleep,
         input_op=input_op,
         name="TestMapper",
@@ -284,7 +292,7 @@ def test_map_operator_pool_delegation(compute, expected):
     # Test that the MapOperator factory delegates to the appropriate pool
     # implementation.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    op = MapOperator.from_compute(
+    op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
@@ -345,7 +353,6 @@ def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
         out_bundle = _get_bundles(bundler.get_next_bundle())
         out_bundles.append(out_bundle)
     assert len(out_bundles) == len(expected_bundles)
-    print(out_bundles, expected_bundles)
     for bundle, expected in zip(out_bundles, expected_bundles):
         assert bundle == expected
 

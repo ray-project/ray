@@ -107,6 +107,9 @@ class ActorPoolMapOperator(MapOperator):
             self._tasks[ref] = (task, actor)
             self._handle_task_submitted(task)
 
+        # Kill inactive workers if there's no more work to do.
+        self._kill_inactive_workers_if_done()
+
     def notify_work_completed(
         self, ref: Union[ObjectRef[ObjectRefGenerator], ray.ObjectRef]
     ):
@@ -122,19 +125,31 @@ class ActorPoolMapOperator(MapOperator):
         else:
             # ref is a future for a now-ready actor; move actor from pending to the
             # active actor pool.
-            self._actor_pool.pending_to_running(ref)
-        # Try to dispatch queued tasks.
+            has_actor = self._actor_pool.pending_to_running(ref)
+            if not has_actor:
+                # Actor has already been killed.
+                return
+        # For either a completed task or ready worker, we try to dispatch queued tasks.
         self._dispatch_tasks()
 
     def inputs_done(self):
-        # Call base implementation to handle any leftover bundles.
+        # Call base implementation to handle any leftover bundles. This may or may not
+        # trigger task dispatch.
         super().inputs_done()
 
+        # Mark inputs as done so future task dispatch will kill all inactive workers
+        # once the bundle queue is exhausted.
         self._inputs_done = True
-        if not self._bundle_queue:
+
+        # Manually trigger inactive worker termination in case the bundle queue is
+        # alread exhausted.
+        self._kill_inactive_workers_if_done()
+
+    def _kill_inactive_workers_if_done(self):
+        if self._inputs_done and not self._bundle_queue:
             # No more tasks will be submitted, so we kill all current and future
             # inactive workers.
-            self._actor_pool.drain()
+            self._actor_pool.kill_all_inactive_actors()
 
     def shutdown(self):
         # We kill all actors in the pool on shutdown, even if they are busy doing work.
@@ -163,13 +178,13 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * min_workers,
         )
 
-    def current_resource_usage(self, obj_store_mem_cur: int) -> ExecutionResources:
+    def current_resource_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
         num_active_workers = self._actor_pool.num_total_actors()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=obj_store_mem_cur,
+            object_store_memory=self._metrics.cur,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
@@ -227,18 +242,30 @@ class _ActorPool:
             actor: The not-yet-ready actor to add as pending to the pool.
             ready_ref: The ready future for the actor.
         """
+        # The caller shouldn't add new actors to the pool after invoking
+        # kill_inactive_actors().
+        assert not self._should_kill_idle_actors
         self._pending_actors[ready_ref] = actor
 
-    def pending_to_running(self, ready_ref: ray.ObjectRef):
+    def pending_to_running(self, ready_ref: ray.ObjectRef) -> bool:
         """Mark the actor corresponding to the provided ready future as running, making
         the actor pickable.
 
         Args:
             ready_ref: The ready future for the actor that we wish to mark as running.
+
+        Returns:
+            Whether the actor was still pending. This can return False if the actor had
+            already been killed.
         """
-        assert ready_ref in self._pending_actors
+        if ready_ref not in self._pending_actors:
+            # We assume that there was a race between killing the actor and the actor
+            # ready future resolving. Since we can rely on ray.kill() eventually killing
+            # the actor, we can safely drop this reference.
+            return False
         actor = self._pending_actors.pop(ready_ref)
         self._num_tasks_in_flight[actor] = 0
+        return True
 
     def pick_actor(self) -> Optional[ray.actor.ActorHandle]:
         """Provides the least heavily loaded running actor in the pool for task
@@ -297,11 +324,13 @@ class _ActorPool:
             for num_tasks_in_flight in self._num_tasks_in_flight.values()
         )
 
-    def kill_all_inactive(self):
+    def kill_all_inactive_actors(self):
         """Kills all currently inactive actors and ensures that all actors that become
         idle in the future will be eagerly killed.
 
-        This is called once the operator is done submitting work to the pool.
+        This is called once the operator is done submitting work to the pool, and this
+        function is idempotent. Adding new pending actors after calling this function
+        will raise an error.
         """
         self._kill_all_pending_actors()
         self._kill_all_idle_actors()

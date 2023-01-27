@@ -89,12 +89,12 @@ class TaskPoolMapOperator(MapOperator):
     def base_resource_usage(self) -> ExecutionResources:
         return ExecutionResources()
 
-    def current_resource_usage(self, obj_store_mem_cur: int) -> ExecutionResources:
+    def current_resource_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_work_refs()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=obj_store_mem_cur,
+            object_store_memory=self._metrics.cur,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
