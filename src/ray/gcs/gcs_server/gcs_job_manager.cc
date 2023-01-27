@@ -156,19 +156,16 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     std::shared_ptr<std::atomic<int>> num_processed_jobs =
         std::make_shared<std::atomic<int>>(0);
 
-    // For each job with a submission id, we query the internal KV store to get the Ray
-    // Job API JobInfo, and send the gRPC reply in the KV callback. If there are *no* jobs
-    // with a submission id, we must send the gRPC reply in the current function instead.
-    // Use this flag to track it.
-    bool any_jobs_with_submission_id = false;
-
     for (int i = 0; i < reply->job_info_list_size(); i++) {
       const auto &metadata = reply->job_info_list(i).config().metadata();
       if (metadata.find("job_submission_id") == metadata.end()) {
-        num_processed_jobs->fetch_add(1);
+        // Send reply if all jobs have been processed.
+        if (num_processed_jobs->fetch_add(1) == reply->job_info_list_size() - 1) {
+          RAY_LOG(INFO) << "Finished getting all job info.";
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        }
         continue;
       }
-
       any_jobs_with_submission_id = true;
       const auto &job_submission_id = metadata.at("job_submission_id");
 
@@ -181,7 +178,6 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               RAY_CHECK(google::protobuf::util::JsonStringToMessage(*job_info_json,
                                                                     &jobs_api_info)
                             .ok());
-
               // Load info into the reply.
               reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
                   jobs_api_info);
@@ -197,15 +193,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
             }
           };
-
+      RAY_LOG(ERROR) << "Calling internal kv get";
       internal_kv_.Get("job", JobDataKey(job_submission_id), kv_get_callback);
-    }
-
-    // If there were no jobs with a submission id, we must send the reply here because no
-    // callbacks will execute.
-    if (!any_jobs_with_submission_id) {
-      RAY_LOG(INFO) << "Finished getting all job info.";
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     }
   };
   Status status = gcs_table_storage_->JobTable().GetAll(on_done);
