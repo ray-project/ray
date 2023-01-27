@@ -1,10 +1,17 @@
-from typing import Dict, Any, Iterator, Callable, List, Tuple
+from typing import Dict, Any, Iterator, Callable, List, Union
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.operators.map_task_submitter import MapTaskSubmitter
+from ray.data.block import Block, BlockMetadata
+from ray.data.context import DatasetContext
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+)
+from ray.data._internal.execution.operators.map_task_submitter import (
+    MapTaskSubmitter,
+    _map_task,
+)
 from ray.types import ObjectRef
+from ray._raylet import ObjectRefGenerator
 
 
 class ActorPoolSubmitter(MapTaskSubmitter):
@@ -24,15 +31,18 @@ class ActorPoolSubmitter(MapTaskSubmitter):
             ray_remote_args: Remote arguments for the Ray actors to be created.
             pool_size: The size of the actor pool.
         """
-        self._transform_fn_ref = transform_fn_ref
-        self._ray_remote_args = ray_remote_args
+        super().__init__(transform_fn_ref, ray_remote_args)
         self._pool_size = pool_size
         # A map from task output futures to the actors on which they are running.
         self._active_actors: Dict[ObjectRef[Block], ray.actor.ActorHandle] = {}
         # The actor pool on which we are running map tasks.
         self._actor_pool = ActorPool()
 
-    def start(self):
+    def progress_str(self) -> str:
+        return f"{self._actor_pool.size()} actors"
+
+    def start(self, options: ExecutionOptions):
+        super().start(options)
         # Create the actor workers and add them to the pool.
         ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         cls_ = ray.remote(**ray_remote_args)(MapWorker)
@@ -41,17 +51,17 @@ class ActorPoolSubmitter(MapTaskSubmitter):
 
     def submit(
         self, input_blocks: List[ObjectRef[Block]]
-    ) -> Tuple[ObjectRef[Block], ObjectRef[BlockMetadata]]:
+    ) -> ObjectRef[ObjectRefGenerator]:
         # Pick an actor from the pool.
         actor = self._actor_pool.pick_actor()
         # Submit the map task.
-        block, block_metadata = actor.submit.options(num_returns=2).remote(
+        ref = actor.submit.options(num_returns="dynamic").remote(
             self._transform_fn_ref, *input_blocks
         )
-        self._active_actors[block] = actor
-        return block, block_metadata
+        self._active_actors[ref] = actor
+        return ref
 
-    def task_done(self, ref: ObjectRef[Block]):
+    def task_done(self, ref: ObjectRef[ObjectRefGenerator]):
         # Return the actor that was running the task to the pool.
         actor = self._active_actors.pop(ref)
         self._actor_pool.return_actor(actor)
@@ -68,8 +78,6 @@ class ActorPoolSubmitter(MapTaskSubmitter):
     def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
         """Apply defaults to the actor creation remote args."""
         ray_remote_args = ray_remote_args.copy()
-        if "num_cpus" not in ray_remote_args:
-            ray_remote_args["num_cpus"] = 1
         if "scheduling_strategy" not in ray_remote_args:
             ctx = DatasetContext.get_current()
             if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
@@ -87,19 +95,8 @@ class MapWorker:
 
     def submit(
         self, fn: Callable[[Iterator[Block]], Iterator[Block]], *blocks: Block
-    ) -> Tuple[Block, BlockMetadata]:
-        # Coalesce all fn output blocks.
-        # TODO(Clark): Remove this coalescing once dynamic block splitting is supported
-        # for actors.
-        # yield from _map_task(fn, *blocks)
-        stats = BlockExecStats.builder()
-        builder = DelegatingBlockBuilder()
-        for block in fn(iter(blocks)):
-            builder.add_block(block)
-        block = builder.build()
-        block_metadata = BlockAccessor.for_block(block).get_metadata([], None)
-        block_metadata.exec_stats = stats.build()
-        return block, block_metadata
+    ) -> Iterator[Union[Block, List[BlockMetadata]]]:
+        yield from _map_task(fn, *blocks)
 
 
 class ActorPool:
@@ -116,6 +113,10 @@ class ActorPool:
         # Whether actors that become idle should be eagerly killed. This is False until
         # the first call to kill_idle_actors().
         self._should_kill_idle_actors = False
+
+    def size(self) -> int:
+        """Return the current actor pool size."""
+        return len(self._num_tasks_in_flight)
 
     def add_actor(self, actor: ray.actor.ActorHandle):
         """Adds an actor to the pool."""

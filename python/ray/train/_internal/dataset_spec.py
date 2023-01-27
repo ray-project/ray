@@ -199,9 +199,8 @@ class DataParallelIngestSpec:
                     else:
                         preprocessor = config.per_epoch_preprocessor
 
-                    # TODO: Replace with self.preprocessor.transform when possible.
                     prep = preprocessor.transform_batch
-                    dataset = dataset.map_batches(prep, batch_format="pandas")
+                    dataset = preprocessor._transform_pipeline(dataset)
 
                 # Always re-randomize each window; this doesn't help with reducing
                 # cluster hot-spots since we already randomized the based blocks, but
@@ -216,7 +215,7 @@ class DataParallelIngestSpec:
                     dataset = dataset.repeat()
                 # TODO: Replace with preprocessor.transform when possible.
                 per_epoch_prep = config.per_epoch_preprocessor.transform_batch
-                dataset = dataset.map_batches(per_epoch_prep)
+                dataset = config.per_epoch_preprocessor._transform_pipeline(dataset)
 
             if config.global_shuffle:
                 # If global shuffle is requested, then we should try to overlap

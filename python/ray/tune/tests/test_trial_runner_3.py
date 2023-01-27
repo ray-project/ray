@@ -75,7 +75,7 @@ class TrialRunnerTest3(unittest.TestCase):
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             self.pre_step = cnt + 1
 
-        def on_step_end(self):
+        def on_step_end(self, search_ended: bool = False):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
             self.post_step = 1 + cnt
 
@@ -905,7 +905,6 @@ class TrialRunnerTest3(unittest.TestCase):
             sync_config=SyncConfig(
                 upload_dir="fake", syncer=CustomSyncer(), sync_period=0
             ),
-            remote_checkpoint_dir="fake",
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
@@ -951,7 +950,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
             trial_checkpoint_config=checkpoint_config,
             checkpoint_period=100,  # Only rely on forced syncing
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
@@ -1019,7 +1017,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
         )
         # Checkpoint for the first time starts the first sync in the background
         runner.checkpoint(force=True)
@@ -1047,7 +1044,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
-            remote_checkpoint_dir="fake",
         )
 
         with freeze_time() as frozen:

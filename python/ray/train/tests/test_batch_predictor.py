@@ -13,6 +13,7 @@ import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.tests.conftest import *  # noqa
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import Predictor
@@ -150,13 +151,13 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
         _ = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
 
 
-def test_batch_prediction_simple():
+def test_batch_prediction():
     batch_predictor = BatchPredictor.from_checkpoint(
         Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
         DummyPredictor,
     )
 
-    test_dataset = ray.data.range(4)
+    test_dataset = ray.data.range_table(4)
     ds = batch_predictor.predict(test_dataset)
     # Check fusion occurred.
     assert "read->map_batches" in ds.stats(), ds.stats()
@@ -167,15 +168,36 @@ def test_batch_prediction_simple():
         12.0,
     ]
 
-    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
+    test_dataset = ray.data.range_table(4)
     assert next(
         batch_predictor.predict_pipelined(
             test_dataset, blocks_per_window=2
         ).iter_datasets()
     ).to_pandas().to_numpy().squeeze().tolist() == [
+        0.0,
         4.0,
-        8.0,
     ]
+
+
+def test_batch_prediction_simple():
+    """Tests that simple dataset is not supported with"""
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
+        DummyPredictor,
+    )
+
+    test_dataset = ray.data.range(4)
+
+    with pytest.raises(ValueError):
+        batch_predictor.predict(test_dataset)
+
+    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
+    with pytest.raises(ValueError):
+        assert next(
+            batch_predictor.predict_pipelined(
+                test_dataset, blocks_per_window=2
+            ).iter_datasets()
+        )
 
 
 def test_batch_prediction_various_combination():
@@ -191,62 +213,57 @@ def test_batch_prediction_various_combination():
             DummyPreprocessor(),
             DummyPredictor,
             ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
-            # Pandas dataset format should be preserved in output.
+            # Pandas predictor outputs Pandas dataset.
             "pandas",
         ),
         (
             DummyWithNumpyPreprocessor(),
             DummyPredictor,
             ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
-            # Pandas dataset format should be preserved in output.
+            # Pandas predictor outputs Pandas dataset.
             "pandas",
         ),
         (
             DummyPreprocessor(),
             DummyWithNumpyPredictor,
             ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
-            # Pandas dataset format should be preserved in output.
-            "pandas",
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
         ),
         (
             DummyWithNumpyPreprocessor(),
             DummyWithNumpyPredictor,
             ray.data.from_pandas(pd.DataFrame({"x": [1, 2, 3]})),
-            # Preprocessing and prediction is done in numpy, but preprocessor
-            # batch format is still pandas, thus output is casted back.
-            "pandas",
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
         ),
         (
             DummyPreprocessor(),
             DummyWithNumpyPredictor,
             ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
-            # Output dataset format should be pandas given only pandas
-            # preprocessor is available.
-            "pandas",
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
         ),
         (
             DummyWithNumpyPreprocessor(),
             DummyWithNumpyPredictor,
             ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
-            # Output dataset format should be arrow given numpy path is taken
-            # for both preprocessor and predictor.
+            # Numpy predictor outputs Arrow dataset.
             "arrow",
         ),
         (
             DummyPreprocessor(),
             DummyPredictor,
             ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
-            # Output dataset format should be pandas given only pandas
-            # preprocessor is available.
+            # Pandas predictor outputs Pandas dataset.
             "pandas",
         ),
         (
             DummyWithNumpyPreprocessor(),
             DummyPredictor,
             ray.data.from_arrow(pa.Table.from_pydict({"x": [1, 2, 3]})),
-            # Preprocessing and prediction is done in pandas, but preprocessor
-            # batch format is still numpy, thus output is casted back.
-            "arrow",
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
         ),
     ]
 
@@ -259,6 +276,7 @@ def test_batch_prediction_various_combination():
         )
 
         ds = batch_predictor.predict(input_dataset)
+        print(ds.stats())
         # Check no fusion needed since we're not doing a dataset read.
         assert "Stage 1 map_batches" in ds.stats(), ds.stats()
         assert ds.to_pandas().to_numpy().squeeze().tolist() == [
@@ -267,7 +285,7 @@ def test_batch_prediction_various_combination():
             12.0,
         ]
 
-        assert ds.dataset_format() == dataset_format
+        assert ds.dataset_format() == dataset_format, test_case
 
 
 def test_batch_prediction_fs():
@@ -276,7 +294,9 @@ def test_batch_prediction_fs():
         DummyPredictorFS,
     )
 
-    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0] * 32).repartition(8)
+    test_dataset = ray.data.from_pandas(
+        pd.DataFrame({"x": [1.0, 2.0, 3.0, 4.0] * 32})
+    ).repartition(8)
     assert (
         batch_predictor.predict(test_dataset, min_scoring_workers=4)
         .to_pandas()
@@ -323,6 +343,76 @@ def test_batch_prediction_feature_cols():
     ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
 
 
+def test_batch_prediction_feature_cols_after_preprocess():
+    """Tests that feature cols are applied after preprocessing the dataset."""
+
+    # Pandas path
+    class DummyPreprocessorWithColumn(DummyPreprocessor):
+        def _transform_pandas(self, df):
+            df["c"] = df["a"]
+            return super()._transform_pandas(df)
+
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict(
+            {"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessorWithColumn()}
+        ),
+        DummyPredictor,
+    )
+    test_dataset = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+
+    assert batch_predictor.predict(
+        test_dataset, feature_columns=["c"]
+    ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
+
+    # Numpy path
+    class DummyNumpyPreprocessorWithColumn(DummyWithNumpyPreprocessor):
+        def _transform_numpy(self, np_dict):
+            np_dict["c"] = np.copy(np_dict["a"])
+            return super()._transform_numpy(np_dict)
+
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict(
+            {"factor": 2.0, PREPROCESSOR_KEY: DummyNumpyPreprocessorWithColumn()}
+        ),
+        DummyWithNumpyPredictor,
+    )
+
+    test_dataset = ray.data.from_arrow(
+        pa.Table.from_pydict({"a": [1, 2, 3], "b": [4, 5, 6]})
+    )
+
+    assert batch_predictor.predict(
+        test_dataset, feature_columns=["a"]
+    ).to_pandas().to_numpy().squeeze().tolist() == [4.0, 8.0, 12.0]
+
+
+def test_batch_predictor_transform_config():
+    """Tests that the preprocessor's transform config is
+    respected when using BatchPredictor."""
+    batch_size = 2
+
+    def check_batch(batch):
+        assert isinstance(batch, dict)
+        assert isinstance(batch["value"], np.ndarray)
+        assert len(batch["value"]) == batch_size
+        return batch
+
+    prep = BatchMapper(check_batch, batch_format="numpy", batch_size=2)
+    ds = ray.data.range_table(6, parallelism=1)
+
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: prep}),
+        DummyWithNumpyPredictor,
+    )
+
+    batch_predictor.predict(ds)
+
+    # Pipelined case.
+    ds = ray.data.range_table(6, parallelism=1)
+
+    batch_predictor.predict_pipelined(ds, blocks_per_window=1)
+
+
 def test_batch_prediction_keep_cols():
     # Pandas path
     batch_predictor = BatchPredictor.from_checkpoint(
@@ -341,7 +431,7 @@ def test_batch_prediction_keep_cols():
     assert set(output_df.columns) == {"a", "b"}
 
     assert output_df["a"].tolist() == [4.0, 8.0, 12.0]
-    assert output_df["b"].tolist() == [4, 5, 6]
+    assert output_df["b"].tolist() == [8, 10, 12]
 
     # Numpy path
     batch_predictor = BatchPredictor.from_checkpoint(
@@ -362,7 +452,7 @@ def test_batch_prediction_keep_cols():
     assert set(output_df.columns) == {"a", "b"}
 
     assert output_df["a"].tolist() == [4.0, 8.0, 12.0]
-    assert output_df["b"].tolist() == [4, 5, 6]
+    assert output_df["b"].tolist() == [8, 10, 12]
 
 
 def test_batch_prediction_from_pandas_udf():
@@ -394,7 +484,7 @@ def test_get_and_set_preprocessor():
     )
     assert batch_predictor.get_preprocessor() == preprocessor
 
-    test_dataset = ray.data.range(4)
+    test_dataset = ray.data.range_table(4)
     output_ds = batch_predictor.predict(test_dataset)
     assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
         0.0,

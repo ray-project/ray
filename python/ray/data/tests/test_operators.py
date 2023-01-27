@@ -5,7 +5,11 @@ import time
 import ray
 from ray.data.block import Block
 from ray.data._internal.compute import TaskPoolStrategy, ActorPoolStrategy
-from ray.data._internal.execution.interfaces import RefBundle, PhysicalOperator
+from ray.data._internal.execution.interfaces import (
+    RefBundle,
+    PhysicalOperator,
+    ExecutionOptions,
+)
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -39,7 +43,9 @@ def test_input_data_buffer(ray_start_regular_shared):
     op = InputDataBuffer(inputs)
 
     # Check we return all bundles in order.
+    assert not op.completed()
     assert _take_outputs(op) == [[1, 2], [3], [4, 5]]
+    assert op.completed()
 
 
 def test_all_to_all_operator():
@@ -52,14 +58,33 @@ def test_all_to_all_operator():
     )
 
     # Feed data.
+    op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done(0)
+    op.inputs_done()
 
     # Check we return transformed bundles.
+    assert not op.completed()
     assert _take_outputs(op) == [[1, 2], [3, 4]]
     stats = op.get_stats()
     assert "FooStats" in stats
+    assert op.completed()
+
+
+def test_num_outputs_total():
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    op1 = MapOperator(
+        _mul2_transform,
+        input_op=input_op,
+        name="TestMapper",
+    )
+    assert op1.num_outputs_total() == 100
+
+    def dummy_all_transform(bundles: List[RefBundle]):
+        return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
+
+    op2 = AllToAllOperator(dummy_all_transform, input_op=op1, name="TestAll")
+    assert op2.num_outputs_total() == 100
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
@@ -75,15 +100,22 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     )
 
     # Feed data and block on exec.
+    op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done(0)
+    op.inputs_done()
     for work in op.get_work_refs():
         ray.get(work)
         op.notify_work_completed(work)
+    if use_actors:
+        assert op.progress_str() == "0 actors"
+    else:
+        assert op.progress_str() == ""
 
     # Check we return transformed bundles in order.
+    assert not op.completed()
     assert _take_outputs(op) == [[i * 2] for i in range(100)]
+    assert op.completed()
 
     # Check dataset stats.
     stats = op.get_stats()
@@ -111,6 +143,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 
     # Feed data and implement streaming exec.
     output = []
+    op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
         for work in op.get_work_refs():
@@ -128,6 +161,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
+    assert not op.completed()
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
@@ -151,19 +185,17 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     )
 
     # Feed data and block on exec.
+    op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done(0)
+    op.inputs_done()
     for work in op.get_work_refs():
         ray.get(work)
         op.notify_work_completed(work)
 
     # Check we return transformed bundles in order.
-    if use_actors:
-        # TODO(Clark): Remove this once dynamic block splitting is supported for actors.
-        assert _take_outputs(op) == [list(range(5)), list(range(5, 10))]
-    else:
-        assert _take_outputs(op) == [[i] for i in range(10)]
+    assert _take_outputs(op) == [[i] for i in range(10)]
+    assert op.completed()
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
@@ -182,15 +214,17 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     )
 
     # Feed data and block on exec.
+    op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done(0)
+    op.inputs_done()
     for work in op.get_work_refs():
         ray.get(work)
         op.notify_work_completed(work)
 
     # Check we don't hang and complete with num_gpus=1.
     assert _take_outputs(op) == [[i * 2] for i in range(10)]
+    assert op.completed()
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
@@ -213,6 +247,7 @@ def test_map_operator_shutdown(use_actors):
     )
 
     # Start one task and then cancel.
+    op.start(ExecutionOptions())
     op.add_input(input_op.get_next(), 0)
     assert len(op.get_work_refs()) == 1
     op.shutdown()
