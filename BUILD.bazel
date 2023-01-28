@@ -833,7 +833,6 @@ cc_library(
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
-        "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
