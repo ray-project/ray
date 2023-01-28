@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from dataclasses import asdict
+from datetime import datetime
 from typing import Callable, List, Tuple, Optional
 
 import aiohttp.web
@@ -193,9 +194,16 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         timeout = int(req.query.get("timeout", 30))
         filters = self._get_filters_from_req(req)
         detail = convert_string_to_type(req.query.get("detail", False), bool)
+        exclude_driver = convert_string_to_type(
+            req.query.get("exclude_driver", True), bool
+        )
 
         return ListApiOptions(
-            limit=limit, timeout=timeout, filters=filters, detail=detail
+            limit=limit,
+            timeout=timeout,
+            filters=filters,
+            detail=detail,
+            exclude_driver=exclude_driver,
         )
 
     def _summary_options_from_req(self, req: aiohttp.web.Request) -> SummaryApiOptions:
@@ -464,7 +472,11 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         result = await self._state_api.generate_task_timeline(job_id)
         if download == "1":
             # Support download if specified.
-            headers = {"Content-Disposition": "attachment;"}
+            now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            content_disposition = (
+                f'attachment; filename="timeline-{job_id}-{now_str}.json"'
+            )
+            headers = {"Content-Disposition": content_disposition}
         else:
             headers = None
         return Response(text=result, content_type="application/json", headers=headers)

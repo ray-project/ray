@@ -283,6 +283,7 @@ def create_api_options(
     limit: int = DEFAULT_LIMIT,
     filters: List[Tuple[str, SupportedFilterType]] = None,
     detail: bool = False,
+    exclude_driver: bool = True,
 ):
     if not filters:
         filters = []
@@ -292,6 +293,7 @@ def create_api_options(
         filters=filters,
         _server_timeout_multiplier=1.0,
         detail=detail,
+        exclude_driver=exclude_driver,
     )
 
 
@@ -804,7 +806,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     ]
     result = await state_api_manager.list_tasks(option=create_api_options())
     data_source_client.get_all_task_info.assert_any_await(
-        timeout=DEFAULT_RPC_TIMEOUT, job_id=None
+        timeout=DEFAULT_RPC_TIMEOUT, job_id=None, exclude_driver=True
     )
     data = result.result
     data = data
