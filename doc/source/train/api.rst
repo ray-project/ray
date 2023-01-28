@@ -2,6 +2,7 @@
 
 Ray Train API
 =============
+
 This page covers framework specific integrations with Ray Train and Ray Train Developer APIs.
 
 For core Ray AIR APIs, take a look at the :ref:`AIR Trainer package reference <air-trainer-ref>`.
@@ -14,12 +15,17 @@ Trainer and Predictor Integrations
 XGBoost
 ~~~~~~~
 
+``XGBoostTrainer``
+******************
+
 .. autoclass:: ray.train.xgboost.XGBoostTrainer
     :members:
     :show-inheritance:
 
     .. automethod:: __init__
 
+``XGBoostPredictor``
+********************
 
 .. automodule:: ray.train.xgboost
     :members:
@@ -29,11 +35,17 @@ XGBoost
 LightGBM
 ~~~~~~~~
 
+``LightGBMTrainer``
+*******************
+
 .. autoclass:: ray.train.lightgbm.LightGBMTrainer
     :members:
     :show-inheritance:
 
     .. automethod:: __init__
+
+``LightGBMPredictor``
+*********************
 
 
 .. automodule:: ray.train.lightgbm
@@ -44,12 +56,17 @@ LightGBM
 TensorFlow
 ~~~~~~~~~~
 
+``TensorflowTrainer``
+*********************
+
 .. autoclass:: ray.train.tensorflow.TensorflowTrainer
     :members:
     :show-inheritance:
 
     .. automethod:: __init__
 
+``TensorflowPredictor`` and ``TensorflowCheckpoint``
+****************************************************
 
 .. automodule:: ray.train.tensorflow
     :members:
@@ -59,12 +76,18 @@ TensorFlow
 PyTorch
 ~~~~~~~
 
+``TorchTrainer``
+****************
+
 .. autoclass:: ray.train.torch.TorchTrainer
     :members:
     :show-inheritance:
 
     .. automethod:: __init__
 
+
+``TorchPredictor``
+******************
 
 .. automodule:: ray.train.torch
     :members:
@@ -74,12 +97,17 @@ PyTorch
 Horovod
 ~~~~~~~
 
+``HorovodTrainer``
+******************
+
 .. autoclass:: ray.train.horovod.HorovodTrainer
     :members:
     :show-inheritance:
 
     .. automethod:: __init__
 
+``HorovodConfig``
+*****************
 
 .. automodule:: ray.train.horovod
     :members:
@@ -89,12 +117,17 @@ Horovod
 HuggingFace
 ~~~~~~~~~~~
 
+``HuggingFaceTrainer``
+**********************
+
 .. autoclass:: ray.train.huggingface.HuggingFaceTrainer
     :members:
     :show-inheritance:
 
     .. automethod:: __init__
 
+``HuggingFacePredictor`` and ``HuggingFaceCheckpoint``
+******************************************************
 
 .. automodule:: ray.train.huggingface
     :members:
@@ -104,12 +137,17 @@ HuggingFace
 Scikit-Learn
 ~~~~~~~~~~~~
 
+``SklearnTrainer``
+******************
+
 .. autoclass:: ray.train.sklearn.SklearnTrainer
     :members:
     :show-inheritance:
 
     .. automethod:: __init__
 
+``SklearnPredictor`` and ``SklearnCheckpoint``
+**********************************************
 
 .. automodule:: ray.train.sklearn
     :members:
@@ -118,6 +156,9 @@ Scikit-Learn
 
 Mosaic
 ~~~~~~
+
+``MosaicTrainer``
+*****************
 
 .. autoclass:: ray.train.mosaic.MosaicTrainer
     :members:
@@ -132,16 +173,32 @@ Mosaic
     :show-inheritance:
 
 
-Reinforcement Learning (RLlib)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Reinforcement Learning with RLlib
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``RLTrainer``
+*************
+
+.. autoclass:: ray.train.rl.RLTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+``RLPredictor`` and ``RLCheckpoint``
+************************************
 
 .. automodule:: ray.train.rl
     :members:
+    :exclude-members: RLTrainer
     :show-inheritance:
 
 
 Base Classes (Developer APIs)
 -----------------------------
+
+.. _train-base-trainer:
+
 .. autoclass:: ray.train.trainer.BaseTrainer
     :members:
     :noindex:
@@ -165,8 +222,12 @@ Base Classes (Developer APIs)
     .. automethod:: __init__
         :noindex:
 
+.. _train-backend:
+
 .. autoclass:: ray.train.backend.Backend
     :members:
+
+.. _train-backend-config:
 
 .. autoclass:: ray.train.backend.BackendConfig
     :members:

@@ -1,7 +1,7 @@
 .. _train-dl-guide:
 
-Deep Learning User Guide
-========================
+Distributed Deep Learning with Ray Train User Guide
+===================================================
 
 This guide explains how to use Train to scale PyTorch, TensorFlow and Horovod.
 
@@ -16,8 +16,8 @@ In this guide, we cover examples for the following use cases:
 
 .. _train-backends:
 
-Backends
---------
+Using Deep Learning Frameworks as Backends
+------------------------------------------
 
 Ray Train provides a thin API around different backend frameworks for
 distributed deep learning. At the moment, Ray Train allows you to perform
@@ -38,15 +38,15 @@ training with:
 
 .. _train-porting-code:
 
-Porting code to Ray Train
--------------------------
+Porting code from PyTorch, TensorFlow, or Horovod to Ray Train
+--------------------------------------------------------------
 
 The following instructions assume you have a training function
 that can already be run on a single worker for one of the supported
 :ref:`backend <train-backends>` frameworks.
 
-Update training function
-~~~~~~~~~~~~~~~~~~~~~~~~
+Updating your training function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 First, you'll want to update your training function to support distributed
 training.
@@ -173,8 +173,8 @@ training.
     To onboard onto Horovod, please visit the `Horovod guide
     <https://horovod.readthedocs.io/en/stable/index.html#get-started>`_.
 
-Create Ray Train Trainer
-~~~~~~~~~~~~~~~~~~~~~~~~
+Creating a Ray Train Trainer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``Trainer``\s are the primary Ray Train classes that are used to manage state and
 execute training. You can create a simple ``Trainer`` for the backend of choice
@@ -273,8 +273,8 @@ To customize the backend setup, you can use the :ref:`framework-specific config 
 
 For more configurability, please reference the :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
 
-Run training function
-~~~~~~~~~~~~~~~~~~~~~
+Running your training function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 With a distributed training function and a Ray Train ``Trainer``, you are now
 ready to start training!
@@ -407,8 +407,8 @@ of the :py:class:`~ray.air.result.Result` object returned by ``Trainer.fit()``.
 
 .. _train-datasets:
 
-Distributed Data Ingest with Ray Datasets
------------------------------------------
+Distributed Data Ingest with Ray Datasets and Ray Train
+-------------------------------------------------------
 
 :ref:`Ray Datasets <datasets>` are the recommended way to work with large datasets in Ray Train. Datasets provides automatic loading, sharding, and pipelined ingest (optional) of Data across multiple Train workers.
 To get started, pass in one or more datasets under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
@@ -444,8 +444,8 @@ For more details on how to configure data ingest for Train, please refer to :ref
 
 .. _train-monitoring:
 
-Logging, Checkpointing and Callbacks
-------------------------------------
+Logging, Checkpointing and Callbacks in Ray Train
+-------------------------------------------------
 
 Ray Train has mechanisms to easily collect intermediate results from the training workers during the training run
 and also has a :ref:`Callback interface <train-callbacks>` to perform actions on these intermediate results (such as logging, aggregations, etc.).
