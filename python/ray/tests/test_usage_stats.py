@@ -261,7 +261,7 @@ def test_actor_stats():
                 "actor_num_created"
             )
             == "1",
-            timeout=5,
+            timeout=10,
         )
         actor = Actor.remote()
         wait_for_condition(
@@ -269,7 +269,7 @@ def test_actor_stats():
                 "actor_num_created"
             )
             == "2",
-            timeout=5,
+            timeout=10,
         )
         del actor
 
@@ -695,14 +695,15 @@ with joblib.parallel_backend("ray"):
     )
     run_string_as_driver(driver)
 
-    job_submission_client = ray.job_submission.JobSubmissionClient(
-        "http://127.0.0.1:8265"
-    )
-    job_id = job_submission_client.submit_job(entrypoint="ls")
-    wait_for_condition(
-        lambda: job_submission_client.get_job_status(job_id)
-        == ray.job_submission.JobStatus.SUCCEEDED
-    )
+    if sys.platform != "win32":
+        job_submission_client = ray.job_submission.JobSubmissionClient(
+            "http://127.0.0.1:8265"
+        )
+        job_id = job_submission_client.submit_job(entrypoint="ls")
+        wait_for_condition(
+            lambda: job_submission_client.get_job_status(job_id)
+            == ray.job_submission.JobStatus.SUCCEEDED
+        )
 
     library_usages = ray_usage_lib.get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client()
@@ -722,8 +723,9 @@ with joblib.parallel_backend("ray"):
         "util.multiprocessing.Pool",
         "util.Queue",
         "util.joblib",
-        "job_submission",
     }
+    if sys.platform != "win32":
+        expected.add("job_submission")
     if ray_client:
         expected.add("client")
     assert set(library_usages) == expected

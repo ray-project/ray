@@ -57,12 +57,17 @@ struct SchedulingOptions {
   }
 
   // construct option for hybrid scheduling policy.
-  static SchedulingOptions Hybrid(bool avoid_local_node, bool require_node_available) {
+  static SchedulingOptions Hybrid(bool avoid_local_node,
+                                  bool require_node_available,
+                                  const std::string &preferred_node_id = std::string()) {
     return SchedulingOptions(SchedulingType::HYBRID,
                              RayConfig::instance().scheduler_spread_threshold(),
                              avoid_local_node,
                              require_node_available,
-                             RayConfig::instance().scheduler_avoid_gpu_nodes());
+                             RayConfig::instance().scheduler_avoid_gpu_nodes(),
+                             /*max_cpu_fraction_per_node*/ 1.0,
+                             /*scheduling_context*/ nullptr,
+                             preferred_node_id);
   }
 
   static SchedulingOptions NodeAffinity(bool avoid_local_node,
@@ -152,6 +157,9 @@ struct SchedulingOptions {
   std::shared_ptr<SchedulingContext> scheduling_context;
   std::string node_affinity_node_id;
   bool node_affinity_soft = false;
+  // The node where the task is preferred to be placed. By default, this node id
+  // is empty, which means no preferred node.
+  std::string preferred_node_id;
 
  private:
   SchedulingOptions(SchedulingType type,
@@ -160,14 +168,16 @@ struct SchedulingOptions {
                     bool require_node_available,
                     bool avoid_gpu_nodes,
                     double max_cpu_fraction_per_node = 1.0,
-                    std::shared_ptr<SchedulingContext> scheduling_context = nullptr)
+                    std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
+                    const std::string &preferred_node_id = std::string())
       : scheduling_type(type),
         spread_threshold(spread_threshold),
         avoid_local_node(avoid_local_node),
         require_node_available(require_node_available),
         avoid_gpu_nodes(avoid_gpu_nodes),
         max_cpu_fraction_per_node(max_cpu_fraction_per_node),
-        scheduling_context(std::move(scheduling_context)) {}
+        scheduling_context(std::move(scheduling_context)),
+        preferred_node_id(preferred_node_id) {}
 
   friend class ::ray::raylet::SchedulingPolicyTest;
 };

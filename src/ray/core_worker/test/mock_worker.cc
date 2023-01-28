@@ -49,8 +49,37 @@ class MockWorker {
     options.node_ip_address = "127.0.0.1";
     options.node_manager_port = node_manager_port;
     options.raylet_ip_address = "127.0.0.1";
-    options.task_execution_callback = std::bind(
-        &MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11);
+    options.task_execution_callback =
+        [this](
+            const rpc::Address &caller_address,
+            TaskType task_type,
+            const std::string task_name,
+            const RayFunction &ray_function,
+            const std::unordered_map<std::string, double> &required_resources,
+            const std::vector<std::shared_ptr<RayObject>> &args,
+            const std::vector<rpc::ObjectReference> &arg_refs,
+            const std::string &debugger_breakpoint,
+            const std::string &serialized_retry_exception_allowlist,
+            std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
+            std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
+            std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
+            bool *is_retryable_error,
+            bool *is_application_error,
+            const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
+            const std::string name_of_concurrency_group_to_execute,
+            bool is_reattempt) {
+          return ExecuteTask(caller_address,
+                             task_type,
+                             task_name,
+                             ray_function,
+                             required_resources,
+                             args,
+                             arg_refs,
+                             debugger_breakpoint,
+                             serialized_retry_exception_allowlist,
+                             returns,
+                             dynamic_returns);
+        };
     options.metrics_agent_port = -1;
     options.startup_token = startup_token;
     CoreWorkerProcess::Initialize(options);

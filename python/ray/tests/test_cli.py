@@ -330,6 +330,34 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"),
+)
+def test_ray_start_worker_cannot_specify_temp_dir(
+    configure_lang, tmp_path, cleanup_ray
+):
+    """
+    Verify ray start --temp-dir raises an exception when it is used without --head.
+    """
+    runner = CliRunner()
+    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
+    result = runner.invoke(
+        scripts.start,
+        [
+            "--head",
+        ],
+    )
+    print(result.output)
+    _die_on_error(result)
+    result = runner.invoke(
+        scripts.start,
+        [f"--address=localhost:{ray_constants.DEFAULT_PORT}", f"--temp-dir={temp_dir}"],
+    )
+    assert result.exit_code == 0
+    assert "--head` is a required flag to use `--temp-dir`" in str(result.output)
+
+
 def _ray_start_hook(ray_params, head):
     os.makedirs(ray_params.temp_dir, exist_ok=True)
     with open(os.path.join(ray_params.temp_dir, "ray_hook_ok"), "w") as f:

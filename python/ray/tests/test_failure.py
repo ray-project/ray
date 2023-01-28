@@ -133,6 +133,20 @@ def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
             raise Exception("Function to run failed.")
 
     ray._private.worker.global_worker.run_function_on_all_workers(f)
+
+    @ray.remote
+    class Actor:
+        def foo(self):
+            pass
+
+    # Functions scheduled through run_function_on_all_workers only
+    # executes on workers binded with current driver's job_id.
+    # Since the 2 prestarted workers lazily bind to job_id until the first
+    # task/actor executed, we need to schedule two actors to trigger
+    # prestart functions.
+    actors = [Actor.remote() for _ in range(2)]
+    ray.get([actor.foo.remote() for actor in actors])
+
     # Check that the error message is in the task info.
     errors = get_error_message(p, 2, ray_constants.FUNCTION_TO_RUN_PUSH_ERROR)
     assert len(errors) == 2
@@ -562,17 +576,6 @@ def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only, sync:
         {
             "num_cpus": 0,
             "_system_config": {
-                "pull_based_healthcheck": False,
-                "raylet_death_check_interval_milliseconds": 10 * 1000,
-                "num_heartbeats_timeout": 10,
-                "raylet_heartbeat_period_milliseconds": 100,
-                "timeout_ms_task_wait_for_death_info": 100,
-            },
-        },
-        {
-            "num_cpus": 0,
-            "_system_config": {
-                "pull_based_healthcheck": True,
                 "raylet_death_check_interval_milliseconds": 10 * 1000,
                 "health_check_initial_delay_ms": 0,
                 "health_check_failure_threshold": 10,

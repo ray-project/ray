@@ -99,8 +99,8 @@ def ray_deps_setup():
         name = "com_github_antirez_redis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",
         patch_args = ["-p1"],
-        url = "https://github.com/redis/redis/archive/refs/tags/7.0.5.tar.gz",
-        sha256 = "40827fcaf188456ad9b3be8e27a4f403c43672b6bb6201192dc15756af6f1eae",
+        url = "https://github.com/redis/redis/archive/refs/tags/7.0.8.tar.gz",
+        sha256 = "0e439cbc19f6db5a4c63d355519ab73bf6ac2ecd47df806c14b19564b3d0c593",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
         ],
@@ -194,8 +194,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "cython",
         build_file = True,
-        url = "https://github.com/cython/cython/archive/3028e8c7ac296bc848d996e397c3354b3dbbd431.tar.gz",
-        sha256 = "31ea23c2231ddee8572a2a5effd54952e16a1b44e9a4cb3eb645418f8accf20d",
+        url = "https://github.com/cython/cython/archive/c48361d0a0969206e227ec016f654c9d941c2b69.tar.gz",
+        sha256 = "37c466fea398da9785bc37fe16f1455d2645d21a72e402103991d9e2fa1c6ff3",
     )
 
     auto_http_archive(

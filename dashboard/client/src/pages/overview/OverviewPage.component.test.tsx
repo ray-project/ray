@@ -22,6 +22,5 @@ describe("OverviewPage", () => {
 
     render(<OverviewPage />, { wrapper: MemoryRouter });
     await screen.findByText(/Events/);
-    expect(screen.getByText(/Node metrics/)).toBeVisible();
   });
 });

@@ -9,7 +9,7 @@ def _get_current_node_resource_key() -> str:
     Returns:
         (str) A string of the format node:<CURRENT-NODE-IP-ADDRESS>
     """
-    current_node_id = ray.get_runtime_context().node_id.hex()
+    current_node_id = ray.get_runtime_context().get_node_id()
     for node in ray.nodes():
         if node["NodeID"] == current_node_id:
             # Found the node.

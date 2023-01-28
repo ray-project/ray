@@ -1,7 +1,7 @@
 .. _tune-search-space:
 
-Search Space API
-================
+Tune Search Space API
+=====================
 
 .. _tune-sample-docs:
 

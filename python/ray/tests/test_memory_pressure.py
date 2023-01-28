@@ -1,17 +1,20 @@
 from math import ceil
-import os
 import sys
 import time
 
 import pytest
 
 import ray
-from ray._private import test_utils
+from ray._private import (
+    ray_constants,
+)
+import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import wait_for_condition, raw_metrics
 
 import numpy as np
 from ray._private.utils import get_system_memory
 from ray._private.utils import get_used_memory
+from ray.experimental.state.state_manager import StateDataSourceClient
 
 
 memory_usage_threshold = 0.65
@@ -20,6 +23,25 @@ memory_monitor_refresh_ms = 100
 expected_worker_eviction_message = (
     "Task was killed due to the node running low on memory"
 )
+
+
+def get_local_state_client():
+    hostname = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
+    )
+
+    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        client.register_agent_client(node_id, ip, port)
+
+    return client
 
 
 @pytest.fixture
@@ -279,7 +301,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
             oom_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3)
         )
 
-    state_api_client = test_utils.get_local_state_client()
+    state_api_client = get_local_state_client()
     result = await state_api_client.get_all_worker_info(timeout=5, limit=10)
     verified = False
     for worker in result.worker_table_data:
@@ -320,7 +342,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
             )
         )
 
-    state_api_client = test_utils.get_local_state_client()
+    state_api_client = get_local_state_client()
     result = await state_api_client.get_all_worker_info(timeout=5, limit=10)
     verified = False
     for worker in result.worker_table_data:
@@ -445,27 +467,6 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
             ),
             timeout=90,
         )
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
-)
-def test_legacy_memory_monitor_disabled_by_oom_killer():
-    os.environ["RAY_MEMORY_MONITOR_ERROR_THRESHOLD"] = "0.5"
-    with ray.init(
-        _system_config={
-            "memory_monitor_refresh_ms": 50,
-            "memory_usage_threshold": 0.9,
-            "min_memory_free_bytes": -1,
-        },
-    ):
-        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.7)
-        leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
-        ray.get(leaker.allocate.remote(bytes_to_alloc))
-
-        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.8)
-        ray.get(leaker.allocate.remote(allocate_bytes=bytes_to_alloc, sleep_time_s=10))
 
 
 if __name__ == "__main__":

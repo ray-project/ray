@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 import ray  # noqa F401
 import psutil
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
@@ -376,8 +376,7 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
 
         if samples:
             # We assume all samples are of same type
-            sample_type = type(samples[0])
-            out = sample_type.concat_samples(samples)
+            out = concat_samples(samples)
         else:
             out = SampleBatch()
         out.decompress_if_needed()

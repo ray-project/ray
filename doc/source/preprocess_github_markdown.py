@@ -8,7 +8,7 @@ def preprocess_github_markdown_file(source_path: str, dest_path: Optional[str] =
     """
     Preprocesses GitHub Markdown files by:
         - Uncommenting all ``<!-- -->`` comments in which opening tag is immediately
-          succeded by ``$UNCOMMENT``(eg. ``<!--$UNCOMMENTthis will be uncommented-->``)
+          succeeded by ``$UNCOMMENT``(eg. ``<!--$UNCOMMENTthis will be uncommented-->``)
         - Removing text between ``<!--$REMOVE-->`` and ``<!--$END_REMOVE-->``
 
     This is to enable translation between GitHub Markdown and MyST Markdown used
