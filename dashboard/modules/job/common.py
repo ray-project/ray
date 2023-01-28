@@ -143,7 +143,7 @@ class JobInfo:
         json_dict["status"] = str(json_dict["status"])
 
         # Convert runtime_env to a JSON-serialized string.
-        if json_dict["runtime_env"] is not None:
+        if json_dict.get("runtime_env") is not None:
             json_dict["runtime_env_json"] = json.dumps(json_dict["runtime_env"])
             del json_dict["runtime_env"]
 
@@ -166,7 +166,7 @@ class JobInfo:
         json_dict["status"] = JobStatus(json_dict["status"])
 
         # Convert runtime_env from a JSON-serialized string to a dictionary.
-        if json_dict["runtime_env_json"] is not None:
+        if json_dict.get("runtime_env_json") is not None:
             json_dict["runtime_env"] = json.loads(json_dict["runtime_env_json"])
             del json_dict["runtime_env_json"]
 
