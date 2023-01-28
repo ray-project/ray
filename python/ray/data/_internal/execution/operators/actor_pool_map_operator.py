@@ -63,6 +63,7 @@ class ActorPoolMapOperator(MapOperator):
         self._cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
+        self._next_task_idx = 0
 
     def start(self, options: ExecutionOptions):
         super().start(options)
@@ -101,8 +102,9 @@ class ActorPoolMapOperator(MapOperator):
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
             ref = actor.submit.options(num_returns="dynamic").remote(
-                self._transform_fn_ref, *input_blocks
+                self._transform_fn_ref, *input_blocks, self._next_task_idx
             )
+            self._next_task_idx += 1
             task = _TaskState(bundle)
             self._tasks[ref] = (task, actor)
             self._handle_task_submitted(task)
@@ -210,9 +212,9 @@ class _MapWorker:
         return "ok"
 
     def submit(
-        self, fn: Callable[[Iterator[Block]], Iterator[Block]], *blocks: Block
+        self, fn: Callable[[Iterator[Block]], Iterator[Block]], task_idx, *blocks: Block
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(fn, *blocks)
+        yield from _map_task(fn, task_idx, *blocks)
 
 
 class _ActorPool:
