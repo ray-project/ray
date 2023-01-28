@@ -4,7 +4,17 @@ import ray
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.logical.operators.map_operator import AbstractMap
+from ray.data._internal.logical.operators.map_operator import (
+    AbstractMap,
+    Filter,
+    FlatMap,
+    MapBatches,
+    MapRows,
+)
+from ray.data._internal.planner.filter import generate_filter_fn
+from ray.data._internal.planner.flat_map import generate_flat_map_fn
+from ray.data._internal.planner.map_batches import generate_map_batches_fn
+from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data.block import Block, CallableClass
 
 
@@ -14,8 +24,23 @@ def _plan_map_op(op: AbstractMap, input_physical_dag: PhysicalOperator) -> MapOp
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
+    if isinstance(op, MapBatches):
+        transform_fn = generate_map_batches_fn(
+            batch_size=op._batch_size,
+            batch_format=op._batch_format,
+            prefetch_batches=op._prefetch_batches,
+            zero_copy_batch=op._zero_copy_batch,
+        )
+    elif isinstance(op, MapRows):
+        transform_fn = generate_map_rows_fn()
+    elif isinstance(op, FlatMap):
+        transform_fn = generate_flat_map_fn()
+    elif isinstance(op, Filter):
+        transform_fn = generate_filter_fn()
+    else:
+        raise ValueError(f"Found unknown logical operator during planning: {op}")
+
     compute = get_compute(op._compute)
-    block_fn = op._block_fn
 
     if isinstance(op._fn, CallableClass):
         if isinstance(compute, TaskPoolStrategy):
@@ -52,7 +77,7 @@ def _plan_map_op(op: AbstractMap, input_physical_dag: PhysicalOperator) -> MapOp
     fn_kwargs = op._fn_kwargs or {}
 
     def do_map(blocks: Iterator[Block]) -> Iterator[Block]:
-        yield from block_fn(blocks, *fn_args, **fn_kwargs)
+        yield from transform_fn(blocks, *fn_args, **fn_kwargs)
 
     return MapOperator.create(
         do_map,
