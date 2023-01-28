@@ -45,15 +45,15 @@ def get_ppo_loss(fwd_in, fwd_out):
 
 @ExperimentalAPI
 @dataclass
-class PPOModuleConfig(RLModuleConfig):
-    """Configuration for the PPO RLModule.
+class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to Torch-unspecific file
+    """Configuration for the PPORLModule.
 
     Attributes:
         observation_space: The observation space of the environment.
         action_space: The action space of the environment.
         encoder_config: The configuration for the encoder network.
-        pi_config: The configuration for the policy network.
-        vf_config: The configuration for the value network.
+        pi_config: The configuration for the policy head.
+        vf_config: The configuration for the value function head.
         free_log_std: For DiagGaussian action distributions, make the second half of
             the model outputs floating bias variables instead of state-dependent. This
             only has an effect is using the default fully connected net.
@@ -76,7 +76,7 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.vf_config, "vf_config must be provided."
         assert self.config.encoder_config, "shared encoder config must be " "provided."
 
-        # TODO(Artur): Unify to tf and torch setup with ModelBuilder
+        # TODO(Artur): Unify to tf and torch setup with Catalog
         self.encoder = self.config.model_builder.build_encoder(framework="torch")
         self.pi = self.config.model_builder.build_pi(framework="torch")
         self.vf = self.config.model_builder.build_vf(framework="torch")

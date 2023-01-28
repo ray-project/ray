@@ -1,10 +1,6 @@
 from dataclasses import dataclass
 import abc
 
-from ray.rllib.models.specs.checker import (
-    check_input_specs,
-    check_output_specs,
-)
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.utils.annotations import ExperimentalAPI
@@ -15,11 +11,10 @@ ForwardOutputType = TensorDict
 @ExperimentalAPI
 @dataclass
 class ModelConfig(abc.ABC):
-    """Configuration for a model.
+    """Base class for model configurations.
 
     Attributes:
-        output_dim: The output dimension of the network. If None, the output_dim will
-            be the number of nodes in the last hidden layer.
+        output_dim: The output dimension of the network.
     """
 
     output_dim: int = None
@@ -38,14 +33,14 @@ class Model:
     """Framework-agnostic base class for RLlib models.
 
     Models are low-level neural network components that offer input- and
-    output-specification, a forward method, and a get_initial_state method. They are
-    therefore not algorithm-specific. Models are composed in RLModules, where tensors
-    are passed through them.
+    output-specification, a forward method, and a get_initial_state method. Models
+    are composed in RLModules.
     """
 
     def __init__(self, config: ModelConfig):
         self.config = config
 
+    @abc.abstractmethod
     def get_initial_state(self):
         """Returns the initial state of the model."""
         return {}
@@ -75,22 +70,3 @@ class Model:
         """
         # If no checking is needed, we can simply return an empty spec.
         return SpecDict()
-
-    @check_input_specs("input_spec", filter=True, cache=True)
-    @check_output_specs("output_spec", cache=True)
-    @abc.abstractmethod
-    def forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
-        """Computes the output of this module for each timestep.
-
-        Outputs and inputs should be subject to spec checking.
-
-        Args:
-            inputs: A TensorDict containing model inputs
-            kwargs: For forwards compatibility
-
-        Examples:
-            # This is abstract, see the torch/tf2/jax implementations
-            >>> out = model(TensorDict({"in": np.arange(10)}))
-            >>> out # TensorDict(...)
-        """
-        raise NotImplementedError

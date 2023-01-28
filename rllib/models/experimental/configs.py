@@ -3,6 +3,7 @@ from typing import List, Callable
 import functools
 
 from ray.rllib.models.experimental.base import ModelConfig, Model
+from ray.rllib.models.experimental.encoder import Encoder
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
@@ -59,11 +60,11 @@ class MLPConfig(ModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.fcmodel import TorchMLPModel
+            from ray.rllib.models.experimental.torch.mlp import TorchMLPModel
 
             return TorchMLPModel(self)
         else:
-            from ray.rllib.models.experimental.tf.fcmodel import TfMLPModel
+            from ray.rllib.models.experimental.tf.mlp import TfMLPModel
 
             return TfMLPModel(self)
 
@@ -71,15 +72,15 @@ class MLPConfig(ModelConfig):
 @dataclass
 class MLPEncoderConfig(MLPConfig):
     @_framework_implemented()
-    def build(self, framework: str = "torch"):
+    def build(self, framework: str = "torch") -> Encoder:
         if framework == "torch":
             from ray.rllib.models.experimental.torch.encoder import TorchMLPEncoder
 
             return TorchMLPEncoder(self)
         else:
-            from ray.rllib.models.experimental.tf.encoder import TfFCEncoder
+            from ray.rllib.models.experimental.tf.encoder import TfMLPEncoder
 
-            return TfFCEncoder(self)
+            return TfMLPEncoder(self)
 
 
 @dataclass
@@ -91,7 +92,7 @@ class LSTMEncoderConfig(ModelConfig):
     output_activation: str = "linear"
 
     @_framework_implemented(tf2=False)
-    def build(self, framework: str = "torch"):
+    def build(self, framework: str = "torch") -> Encoder:
         if framework == "torch":
             from ray.rllib.models.experimental.torch.encoder import TorchLSTMEncoder
 
@@ -103,7 +104,7 @@ class IdentityConfig(ModelConfig):
     """Configuration for an identity encoder."""
 
     @_framework_implemented()
-    def build(self, framework: str = "torch"):
+    def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
             from ray.rllib.models.experimental.torch.encoder import TorchIdentityEncoder
 
