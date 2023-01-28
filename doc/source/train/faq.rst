@@ -14,8 +14,8 @@ distributed training communication is done with Torch's ``DistributedDataParalle
 
 Take a look at the :ref:`Pytorch <pytorch-training-parity>` and :ref:`Tensorflow <tf-training-parity>` benchmarks to check performance parity.
 
-How do I set resources?
------------------------
+How do I set training resources in Ray Train?
+---------------------------------------------
 
 By default, each worker will reserve 1 CPU resource, and an additional 1 GPU resource if ``use_gpu=True``.
 
@@ -28,8 +28,9 @@ you can initialize the ``Trainer`` with ``resources_per_worker`` specified in ``
    can still be run with Ray Train today without these functions.
 
 
-My multi-node  PyTorch GPU training is hanging or giving me obscure NCCL errors. What do I do?
-----------------------------------------------------------------------------------------------
+My multi-node PyTorch GPU training is hanging or giving me obscure NCCL errors. What do I do?
+---------------------------------------------------------------------------------------------
+
 If you are on a multi-node GPU training setup and training is hanging, or you get errors like
 `RuntimeError: NCCL error in: /pytorch/torch/lib/c10d/ProcessGroupNCCL.cpp:911, unhandled system error`
 it could be that there is some networking misconfiguration in your cluster.
