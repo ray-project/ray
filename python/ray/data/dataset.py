@@ -30,8 +30,11 @@ import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
+from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import (
+    Filter,
+    FlatMap,
     MapRows,
     MapBatches,
 )
@@ -189,7 +192,7 @@ class Dataset(Generic[T]):
         >>> ds = ray.data.range(1000)
         >>> # Transform in parallel with map_batches().
         >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
-        MapBatches
+        MapBatches(<lambda>)
         +- Dataset(num_blocks=17, num_rows=1000, schema=<class 'int'>)
         >>> # Compute max.
         >>> ds.max()
@@ -669,8 +672,16 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
+        # breakpoint()
+        if hasattr(fn, "__self__") and isinstance(
+            fn.__self__, ray.data.preprocessor.Preprocessor
+        ):
+            stage_name = fn.__self__.__class__.__name__
+        else:
+            stage_name = f'MapBatches({getattr(fn, "__name__", type(fn))})'
+
         stage = OneToOneStage(
-            "map_batches",
+            stage_name,
             transform,
             compute,
             ray_remote_args,
@@ -902,7 +913,18 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             OneToOneStage("flat_map", transform, compute, ray_remote_args, fn=fn)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = FlatMap(
+                input_op=logical_plan.dag,
+                block_fn=transform,
+                fn=fn,
+                compute=compute,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def filter(
         self,
@@ -967,7 +989,19 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             OneToOneStage("filter", transform, compute, ray_remote_args, fn=fn)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = Filter(
+                input_op=logical_plan.dag,
+                block_fn=transform,
+                fn=fn,
+                compute=compute,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(op)
+
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
@@ -1063,7 +1097,15 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = RandomizeBlocks(
+                logical_plan.dag,
+                seed=seed,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
