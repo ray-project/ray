@@ -138,8 +138,8 @@ term_handler(){
     if [ -z hostnames ]; then
         hostnames="nexus.chimp-beta.ts.net"
     fi
-
-    /usr/local/bin/crash --hosts $hostnames -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
+    export hostnames=$hostnames
+    /usr/local/bin/crash --hosts ${hostnames} -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
 
 
 
