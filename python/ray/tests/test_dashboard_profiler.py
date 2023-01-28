@@ -3,13 +3,17 @@ import subprocess
 import os
 import requests
 import sys
+import time
 
+import numpy as np
 import ray
+import memray
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
+from ray.dashboard.modules.reporter.profile_manager import MemoryProfilingManager
 
 
 @pytest.mark.skipif(
@@ -151,6 +155,130 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+async def test_memory_profiler(shutdown_only, tmp_path):
+    # Sanity check py-spy is installed.
+    subprocess.check_call(["memray", "--help"])
+    ray.init()
+
+    profile_path = tmp_path
+    p = MemoryProfilingManager(tmp_path)
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.a = []
+
+        def getpid(self):
+            return os.getpid()
+
+        def do_stuff_infinite(self):
+            while True:
+                time.sleep(1)
+                self.a.append(np.random.rand(1024)) # 1KB/s
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    a.do_stuff_infinite.remote()
+
+    print("Failure test.")
+    # Random pid should fail.
+    result, output = await p.attach(pid=123123123)
+    assert result is False
+    print(output)
+
+    print("Successful test.")
+    # Should be able to attach to the running proc
+    result, output = await p.attach(pid=pid)
+    assert result is True
+    print(output)
+
+    print("Reattachment test.")
+    # Reattachment should fail.
+    result, output = await p.attach(pid=pid)
+    assert result is False
+    print(output)
+
+    print("Profiling test, flamegraph format.")
+    result, output = await p.memory_profile(pid=pid, format="flamegraph")
+    assert result is True
+
+    print("Profiling test, table format.")
+    result, output = await p.memory_profile(pid=pid, format="table")
+    assert result is True
+
+    # Create a new actor.
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+
+    print("Profiling without attach")
+    # profilng without attach should still work.
+    result, output = await p.memory_profile(pid=pid)
+    assert result is True
+
+
+# @pytest.mark.skipif(
+#     os.environ.get("RAY_MINIMAL") == "1",
+#     reason="This test is not supposed to work for minimal installation.",
+# )
+# @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+# def test_memory_profiler_e2e(ray_start_with_dashboard):
+#     # Sanity check py-spy is installed.
+#     subprocess.check_call(["memray", "--version"])
+
+#     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+#     address_info = ray_start_with_dashboard
+#     webui_url = address_info["webui_url"]
+#     webui_url = format_web_url(webui_url)
+
+#     @ray.remote
+#     class Actor:
+#         def getpid(self):
+#             return os.getpid()
+
+#         def do_stuff_infinite(self):
+#             while True:
+#                 pass
+
+#     a = Actor.remote()
+#     pid = ray.get(a.getpid.remote())
+#     a.do_stuff_infinite.remote()
+
+#     def get_actor_stack():
+#         response = requests.get(f"{webui_url}/worker/traceback?pid={pid}")
+#         response.raise_for_status()
+#         content = response.content.decode("utf-8")
+#         print("CONTENT", content)
+#         assert "do_stuff_infinite" in content, content
+
+#     # First ensure dashboard is up, before we test for failure cases.
+#     assert wait_until_succeeded_without_exception(
+#         get_actor_stack,
+#         (requests.RequestException, AssertionError),
+#         timeout_ms=20000,
+#         retry_interval_ms=1000,
+#     )
+
+#     # Check we return the right status code and error message on failure.
+#     response = requests.get(f"{webui_url}/worker/traceback?pid=1234567")
+#     content = response.content.decode("utf-8")
+#     print(content)
+#     assert "text/plain" in response.headers["Content-Type"], response.headers
+#     assert "Failed to execute" in content, content
+
+#     # Check we return the right status code and error message on failure.
+#     response = requests.get(f"{webui_url}/worker/cpu_profile?pid=1234567")
+#     content = response.content.decode("utf-8")
+#     print(content)
+#     assert "text/plain" in response.headers["Content-Type"], response.headers
+#     assert "Failed to execute" in content, content
 
 
 if __name__ == "__main__":

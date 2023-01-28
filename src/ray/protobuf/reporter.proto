@@ -63,15 +63,26 @@ message CpuProfilingReply {
 }
 
 message MemoryProfilingRequest {
+  // The pid of the worker to run memory profiling.
   uint32 pid = 1;
-  optional string format = 2;
-  optional uint32 duration = 3;
-  // If using native flag for py-spy
-  optional bool native = 4;
+  // If using native flag for memray
+  // (it includes C + Cpp level allocations).
+  bool native = 2;
+  // The format of memory profiling. It follows the memray format.
+  // https://bloomberg.github.io/memray/flamegraph.html
+  // Currently, only flamegraph and table is supported.
+  // If not provided, it only attaches to the process.
+  // (but not returning the result).
+  optional string format = 3;
 }
 
 message MemoryProfilingReply {
+  // Whether or not the profiling succeeded.
   bool success = 1;
+  // Output file.
+  // If success == False, it includes the error message.
+  // TODO(sang): Instead of sending directly, use
+  // ray logs API.
   string output = 2;
 }
 

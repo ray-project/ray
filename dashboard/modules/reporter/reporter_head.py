@@ -164,30 +164,52 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
+    @routes.get("/worker/memory_profiled_workers")
+    async def get_memory_profiled_workers(self, req) -> aiohttp.web.Response:
+        return aiohttp.web.Response(
+            body=DataSource.mem_profiled_workers,
+            headers={"Content-Type": "application/json"},
+        )
+
     @routes.get("/worker/memory_profile")
-    async def mem_profile(self, req) -> aiohttp.web.Response:
-        if "ip" in req.query:
-            reporter_stub = self._stubs[req.query["ip"]]
-        else:
-            reporter_stub = list(self._stubs.values())[0]
+    async def get_memory_profiling_result(self, req) -> aiohttp.web.Response:
+        """Get the memory profilng result of a given process.
+
+        This API will fail if it is called on a process that hasn't
+        received the POST /api/v0/memory_profile API.
+
+        Args:
+            ip: Node IP address.
+            pid: The pid of the process to run memory profiler.
+            format: The format of the result. Either flamegraph
+                or table.
+        """
+        if "ip" not in req.query or "pid" not in req.query:
+            return aiohttp.web.HTTPInternalServerError(
+                text=("ip address and pid has to be provided "
+                      "for memory profiling endpoint.")
+            )
+
+        ip = req.query["ip"]
+        reporter_stub = self._stubs[ip]
         pid = int(req.query["pid"])
-        duration = int(req.query.get("duration", 5))
-        if duration > 60:
-            raise ValueError(f"The max duration allowed is 60: {duration}.")
         format = req.query.get("format", "flamegraph")
 
-        # Default not using `--native` for profiling
-        native = req.query.get("native", False) == "1"
-        logger.info(
-            "Sending memory profiling request to {}:{} with native={}".format(
-                req.query.get("ip"), pid, native
+        ip_to_workers = dict(DataSource.mem_profiled_workers)
+        if ip not in ip_to_workers or pid not in ip_to_workers[ip]:
+            return aiohttp.web.HTTPInternalServerError(
+                text=(
+                    "Cannot get the result from the worker that "
+                    "memory profiler wasn't attached. Call POST "
+                    "/worker/memory_profile API first.")
             )
-        )
+
         reply = await reporter_stub.MemoryProfiling(
             reporter_pb2.MemoryProfilingRequest(
-                pid=pid, duration=duration, format=format, native=native
+                pid=pid, format=format
             )
         )
+
         if reply.success:
             logger.info(
                 "Returning profiling response, size {}".format(len(reply.output))
@@ -196,6 +218,57 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 body=reply.output,
                 headers={"Content-Type": "text/html"},
             )
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+
+    @routes.post("/worker/memory_profile")
+    async def attach_memory_profiler(self, req) -> aiohttp.web.Response:
+        """Attach the memory profiler on a running process.
+
+        Once this endpoint is called, the process will be memory
+        profiled until the end of its lifetime. The memory profiler
+        files will be still available even after the process shutsdown
+        and you can access them via the GET /api/v0/memory_profile
+        endpoint.
+        
+        Args:
+            ip: Node IP address.
+            pid: The pid of the process to run memory profiler.
+            native: Whether or not the result will include native
+                (C or Cpp symbols) code.
+
+        """
+        if "ip" not in req.query or "pid" not in req.query:
+            return aiohttp.web.HTTPInternalServerError(
+                text=("ip address and pid has to be provided "
+                      "for memory profiling endpoint.")
+            )
+
+        ip = req.query["ip"]
+        reporter_stub = self._stubs[ip]
+        pid = int(req.query["pid"])
+
+        # Default not using `--native` for profiling
+        # Right now, native cannot be supported from the UI.
+        native = req.query.get("native", False) == "1"
+        logger.info(
+            "Sending memory profiling request to {}:{} with native={}".format(
+                req.query.get("ip"), pid, native
+            )
+        )
+        reply = await reporter_stub.MemoryProfiling(
+            reporter_pb2.MemoryProfilingRequest(
+                pid=pid, native=native
+            )
+        )
+        if reply.success:
+            logger.info("Succeed to attach the memory profiler.")
+            # Update the memory profiled workers.
+            ip_to_workers = dict(DataSource.mem_profiled_workers)
+            if ip not in ip_to_workers:
+                ip_to_workers[ip] = set()
+            ip_to_workers[ip].add(pid)
+            return aiohttp.web.Response()
         else:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 

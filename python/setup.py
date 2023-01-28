@@ -237,7 +237,7 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0",
-            "memray >= 1.5.0",
+            "memray >= 1.5.0; python_version >= '3.7'",
             "requests",
             "gpustat >= 1.0.0",  # for windows
             "opencensus",
