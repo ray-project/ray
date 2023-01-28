@@ -10,9 +10,10 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.tests.test_operators import _mul2_transform
+from ray.data.tests.conftest import *  # noqa
 
 
-def test_resource_utils():
+def test_resource_utils(ray_start_10_cpus_shared):
     r1 = ExecutionResources()
     r2 = ExecutionResources(cpu=1)
     r3 = ExecutionResources(gpu=1)
@@ -43,7 +44,7 @@ def test_resource_utils():
     assert not r5.satisfies_limit(r4)
 
 
-def test_resource_canonicalization():
+def test_resource_canonicalization(ray_start_10_cpus_shared):
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = MapOperator.create(
         _mul2_transform,
@@ -76,7 +77,7 @@ def test_resource_canonicalization():
         )
 
 
-def test_task_pool_resource_reporting():
+def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = MapOperator.create(
         _mul2_transform,
@@ -96,16 +97,18 @@ def test_task_pool_resource_reporting():
     assert usage.object_store_memory == pytest.approx(128, abs=50), usage
 
 
-def test_actor_pool_resource_reporting():
+def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
-        compute_strategy=ActorPoolStrategy(2, 2),
+        compute_strategy=ActorPoolStrategy(2, 10),
     )
     op.start(ExecutionOptions())
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
+    # All actors are idle (pending creation), therefore shouldn't need to scale up when
+    # submitting a new task, so incremental resource usage should be 0.
     assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
     # Actors are pending creation, but they still count against CPU utilization.
     assert op.current_resource_usage() == ExecutionResources(
@@ -114,6 +117,8 @@ def test_actor_pool_resource_reporting():
 
     # Add inputs.
     for _ in range(4):
+        # Pool is still idle while waiting for actors to start, so additional tasks
+        # shouldn't trigger scale-up, so incremental resource usage should still be 0.
         assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
         op.add_input(input_op.get_next(), 0)
     # Pool is still idle while waiting for actors to start.
@@ -127,15 +132,19 @@ def test_actor_pool_resource_reporting():
     for work_ref in work_refs:
         ray.get(work_ref)
         op.notify_work_completed(work_ref)
+
+    # Now that both actors have started, a new task would trigger scale-up, so
+    # incremental resource usage should be 1 CPU.
+    inc_usage = op.incremental_resource_usage()
+    assert inc_usage.cpu == 1, inc_usage
+    assert inc_usage.gpu == 0, inc_usage
+
     # Actors have now started and the pool is actively running tasks.
     usage = op.current_resource_usage()
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
     # Now that tasks have been submitted, object store memory is accounted for.
     assert usage.object_store_memory == pytest.approx(256, abs=100), usage
-
-    # TODO: test autoscaling resource reporting.
-    # assert op.incremental_resource_usage() == ExecutionResources(cpu=1, gpu=0)
 
     # Indicate that no more inputs will arrive.
     op.inputs_done()

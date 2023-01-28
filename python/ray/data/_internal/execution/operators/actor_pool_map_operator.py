@@ -1,9 +1,11 @@
 import collections
+from dataclasses import dataclass
 from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 
 import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -26,30 +28,32 @@ class ActorPoolMapOperator(MapOperator):
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
         input_op: PhysicalOperator,
+        autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        pool_size: int = 1,
     ):
         """Create an ActorPoolMapOperator instance.
 
         Args:
             transform_fn: The function to apply to each ref bundle input.
             input_op: Operator generating input data for this op.
+            autoscaling_policy: A policy controlling when the actor pool should be
+                scaled up and scaled down.
             name: The name of this operator.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
-            pool_size: The desired size of the actor pool.
         """
         super().__init__(
             transform_fn, input_op, name, min_rows_per_bundle, ray_remote_args
         )
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
 
-        self._pool_size = pool_size
+        # Create autoscaling policy from compute strategy.
+        self._autoscaling_policy = autoscaling_policy
         # A map from task output futures to task state and the actor on which its
         # running.
         self._tasks: Dict[
@@ -69,7 +73,7 @@ class ActorPoolMapOperator(MapOperator):
 
         # Create the actor workers and add them to the pool.
         self._cls = ray.remote(**self._ray_remote_args)(_MapWorker)
-        for _ in range(self._pool_size):
+        for _ in range(self._autoscaling_policy.min_workers):
             self._start_actor()
 
     def _start_actor(self):
@@ -107,8 +111,36 @@ class ActorPoolMapOperator(MapOperator):
             self._tasks[ref] = (task, actor)
             self._handle_task_submitted(task)
 
+        if self._bundle_queue:
+            # Try to scale up if work remains in the work queue.
+            self._scale_up_if_needed()
+        else:
+            # Only try to scale down if the work queue has been fully consumed.
+            self._scale_down_if_needed()
+
+    def _scale_up_if_needed(self):
+        """Try to scale up the pool if the autoscaling policy allows it."""
+        while self._autoscaling_policy.should_scale_up(
+            num_total_workers=self._actor_pool.num_total_actors(),
+            num_running_workers=self._actor_pool.num_running_actors(),
+        ):
+            self._start_actor()
+
+    def _scale_down_if_needed(self):
+        """Try to scale down the pool if the autoscaling policy allows it."""
         # Kill inactive workers if there's no more work to do.
         self._kill_inactive_workers_if_done()
+
+        while self._autoscaling_policy.should_scale_down(
+            num_total_workers=self._actor_pool.num_total_actors(),
+            num_idle_workers=self._actor_pool.num_idle_actors(),
+        ):
+            killed = self._actor_pool.kill_inactive_actor()
+            if not killed:
+                # This scaledown is best-effort, only killing an inactive worker if an
+                # inactive worker exists. If there are no inactive workers to kill, we
+                # break out of the scale-down loop.
+                break
 
     def notify_work_completed(
         self, ref: Union[ObjectRef[ObjectRefGenerator], ray.ObjectRef]
@@ -141,9 +173,8 @@ class ActorPoolMapOperator(MapOperator):
         # once the bundle queue is exhausted.
         self._inputs_done = True
 
-        # Manually trigger inactive worker termination in case the bundle queue is
-        # alread exhausted.
-        self._kill_inactive_workers_if_done()
+        # Try to scale pool down.
+        self._scale_down_if_needed()
 
     def _kill_inactive_workers_if_done(self):
         if self._inputs_done and not self._bundle_queue:
@@ -172,7 +203,7 @@ class ActorPoolMapOperator(MapOperator):
         )
 
     def base_resource_usage(self) -> ExecutionResources:
-        min_workers = self._pool_size
+        min_workers = self._autoscaling_policy.min_workers
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * min_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * min_workers,
@@ -188,7 +219,22 @@ class ActorPoolMapOperator(MapOperator):
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources(cpu=0, gpu=0)
+        # We would only have nonzero incremental CPU/GPU resources if a new task would
+        # require scale-up to run.
+        if self._autoscaling_policy.should_scale_up(
+            num_total_workers=self._actor_pool.num_total_actors(),
+            num_running_workers=self._actor_pool.num_running_actors(),
+        ):
+            # A new task would trigger scale-up, so we include the actor resouce
+            # requests in the incremental resources.
+            num_cpus = self._ray_remote_args.get("num_cpus", 0)
+            num_gpus = self._ray_remote_args.get("num_gpus", 0)
+        else:
+            # A new task wouldn't trigger scale-up, so we consider the incremental
+            # compute resources to be 0.
+            num_cpus = 0
+            num_gpus = 0
+        return ExecutionResources(cpu=num_cpus, gpu=num_gpus)
 
     @staticmethod
     def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
@@ -215,6 +261,128 @@ class _MapWorker:
         yield from _map_task(fn, *blocks)
 
 
+# TODO(Clark): Promote this to a public config once we deprecate the legacy compute
+# strategies.
+@dataclass
+class AutoscalingConfig:
+    """Configuration for an autoscaling actor pool."""
+
+    # Minimum number of workers in the actor pool.
+    min_workers: int
+    # Maximum number of workers in the actor pool.
+    max_workers: int
+    # Maximum number of tasks that can be in flight for a single worker.
+    # TODO(Clark): Have this informed by the prefetch_batches configuration, once async
+    # prefetching has been ported to this new actor pool.
+    max_tasks_in_flight: int = 2
+    # Minimum ratio of ready workers to the total number of workers. If the pool is
+    # above this ratio, it will be allowed to be scaled up.
+    ready_to_total_workers_ratio: float = 0.8
+    # Maximum ratio of idle workers to the total number of workers. If the pool goes
+    # above this ratio, the pool will be scaled down.
+    idle_to_total_workers_ratio: float = 0.5
+
+    def __post_init__(self):
+        if self.min_workers < 1:
+            raise ValueError("min_workers must be >= 1, got: ", self.min_workers)
+        if self.max_workers is not None and self.min_workers > self.max_workers:
+            raise ValueError(
+                "min_workers must be <= max_workers, got: ",
+                self.min_workers,
+                self.max_workers,
+            )
+        if self.max_tasks_in_flight < 1:
+            raise ValueError(
+                "max_tasks_in_flight must be >= 1, got: ",
+                self.max_tasks_in_flight,
+            )
+
+    @classmethod
+    def from_compute_strategy(cls, compute_strategy: ActorPoolStrategy):
+        """Convert a legacy ActorPoolStrategy to an AutoscalingConfig."""
+        # TODO(Clark): Remove this once the legacy compute strategies are deprecated.
+        assert isinstance(compute_strategy, ActorPoolStrategy)
+        return cls(
+            min_workers=compute_strategy.min_size,
+            max_workers=compute_strategy.max_size,
+            max_tasks_in_flight=compute_strategy.max_tasks_in_flight_per_actor,
+            ready_to_total_workers_ratio=compute_strategy.ready_to_total_workers_ratio,
+        )
+
+
+class AutoscalingPolicy:
+    """Autoscaling policy for an actor pool, determining when the pool should be scaled
+    up and when it should be scaled down.
+    """
+
+    def __init__(self, autoscaling_config: "AutoscalingConfig"):
+        self._config = autoscaling_config
+
+    @property
+    def min_workers(self) -> int:
+        """The minimum number of actors that must be in the actor pool."""
+        return self._config.min_workers
+
+    @property
+    def max_workers(self) -> int:
+        """The maximum number of actors that can be added to the actor pool."""
+        return self._config.max_workers
+
+    def should_scale_up(self, num_total_workers: int, num_running_workers: int) -> bool:
+        """Whether the actor pool should scale up by adding a new actor.
+
+        Args:
+            num_total_workers: Total number of workers in actor pool.
+            num_running_workers: Number of currently running workers in actor pool.
+
+        Returns:
+            Whether the actor pool should be scaled up by one actor.
+        """
+        # TODO(Clark): Replace the ready-to-total-ratio heuristic with a a work queue
+        # heuristic such that scale-up is only triggered if the current pool doesn't
+        # have enough worker slots to process the work queue.
+        # TODO(Clark): Use profiling of the bundle arrival rate, worker startup
+        # time, and task execution time to tailor the work queue heuristic to the
+        # running workload and observed Ray performance. E.g. this could be done via an
+        # augmented EMA using a queueing model
+        return (
+            # 1. The actor pool will not exceed the configured maximum size.
+            num_total_workers < self._config.max_workers
+            # TODO(Clark): Remove this once we have a good work queue heuristic and our
+            # resource-based backpressure is working well.
+            # 2. At least 80% of the workers in the pool have already started. This will
+            # ensure that workers will be launched in parallel while bounding the worker
+            # pool to requesting 125% of the cluster's available resources.
+            and num_running_workers / num_total_workers
+            > self._config.ready_to_total_workers_ratio
+        )
+
+    def should_scale_down(
+        self,
+        num_total_workers: int,
+        num_idle_workers: int,
+    ) -> bool:
+        """Whether the actor pool should scale down by terminating an inactive actor.
+
+        Args:
+            num_total_workers: Total number of workers in actor pool.
+            num_idle_workers: Number of currently idle workers in the actor pool.
+
+        Returns:
+            Whether the actor pool should be scaled down by one actor.
+        """
+        # TODO(Clark): Add an idleness timeout-based scale-down.
+        # TODO(Clark): Make the idleness timeout dynamically determined by bundle
+        # arrival rate, worker startup time, and task execution time.
+        return (
+            # 1. The actor pool will not go below the configured minimum size.
+            num_total_workers > self._config.min_workers
+            # 2. The actor pool contains more than 50% idle workers.
+            and num_idle_workers / num_total_workers
+            > self._config.idle_to_total_workers_ratio
+        )
+
+
 class _ActorPool:
     """A pool of actors for map task execution.
 
@@ -223,7 +391,8 @@ class _ActorPool:
     actors when the operator is done submitting work to the pool.
     """
 
-    def __init__(self):
+    def __init__(self, max_tasks_in_flight: int = float("inf")):
+        self._max_tasks_in_flight = max_tasks_in_flight
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
         # Actors that are not yet ready (still pending creation).
@@ -271,7 +440,8 @@ class _ActorPool:
         """Provides the least heavily loaded running actor in the pool for task
         submission.
 
-        None will be returned if all actors are still pending.
+        None will be returned if all actors are either at capacity (according to
+        max_tasks_in_flight) or are still pending.
         """
         if not self._num_tasks_in_flight:
             # Actor pool is empty or all actors are still pending.
@@ -281,8 +451,12 @@ class _ActorPool:
             self._num_tasks_in_flight.keys(),
             key=lambda actor: self._num_tasks_in_flight[actor],
         )
-        self._num_tasks_in_flight[actor] += 1
-        return actor
+        if self._num_tasks_in_flight[actor] >= self._max_tasks_in_flight:
+            # All actors are at capacity.
+            return None
+        else:
+            self._num_tasks_in_flight[actor] += 1
+            return actor
 
     def return_actor(self, actor: ray.actor.ActorHandle):
         """Returns the provided actor to the pool."""
@@ -323,6 +497,36 @@ class _ActorPool:
             1 if num_tasks_in_flight > 0 else 0
             for num_tasks_in_flight in self._num_tasks_in_flight.values()
         )
+
+    def kill_inactive_actor(self) -> bool:
+        """Kills a single pending or idle actor, if any actors are pending/idle.
+
+        Returns whether an inactive actor was actually killed.
+        """
+        # We prioritize killing pending actors over idle actors to reduce actor starting
+        # churn.
+        killed = self._maybe_kill_pending_actor()
+        if not killed:
+            # If no pending actor was killed, so kill actor.
+            killed = self._maybe_kill_idle_actor()
+        return killed
+
+    def _maybe_kill_pending_actor(self) -> bool:
+        if self._pending_actors:
+            # At least one pending actor, so kill first one.
+            self._kill_pending_actor(next(iter(self._pending_actors.keys())))
+            return True
+        # No pending actors, so indicate to the caller that no actors were killed.
+        return False
+
+    def _maybe_kill_idle_actor(self) -> bool:
+        for actor, tasks_in_flight in self._num_tasks_in_flight.items():
+            if tasks_in_flight == 0:
+                # At least one idle actor, so kill first one found.
+                self._kill_running_actor(actor)
+                return True
+        # No idle actors, so indicate to the caller that no actors were killed.
+        return False
 
     def kill_all_inactive_actors(self):
         """Kills all currently inactive actors and ensures that all actors that become
