@@ -115,6 +115,37 @@ def test_flat_map_e2e(ray_start_cluster_enabled, enable_optimizer):
     assert ds.take_all() == [0, 0, 1, 1], ds
 
 
+def test_column_ops_e2e(ray_start_cluster_enabled, enable_optimizer):
+    ds = ray.data.range(2)
+    ds = ds.add_column(fn=lambda df: df.iloc[:, 0], col="new_col")
+    assert ds.take_all() == [{"value": 0, "new_col": 0}, {"value": 1, "new_col": 1}], ds
+
+    select_ds = ds.select_columns(cols=["new_col"])
+    assert select_ds.take_all() == [{"new_col": 0}, {"new_col": 1}]
+
+    ds = ds.drop_columns(cols=["new_col"])
+    assert ds.take_all() == [{"value": 0}, {"value": 1}], ds
+
+
+def test_random_sample_e2e(ray_start_cluster_enabled, enable_optimizer):
+    import math
+
+    def ensure_sample_size_close(dataset, sample_percent=0.5):
+        r1 = ds.random_sample(sample_percent)
+        assert math.isclose(
+            r1.count(), int(ds.count() * sample_percent), rel_tol=2, abs_tol=2
+        )
+
+    ds = ray.data.range(10, parallelism=2)
+    ensure_sample_size_close(ds)
+
+    ds = ray.data.range_table(10, parallelism=2)
+    ensure_sample_size_close(ds)
+
+    ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
+    ensure_sample_size_close(ds)
+
+
 if __name__ == "__main__":
     import sys
 
