@@ -7,7 +7,7 @@ from ray.air._internal.remote_storage import get_fs_and_path
 
 
 @pytest.fixture
-def set_hdfs_env_var():
+def set_hdfs_env_var_and_get_hostname():
     """Set env vars required by pyarrow to talk to hdfs correctly.
 
     Returns hostname that is needed for the hdfs uri."""
@@ -25,8 +25,8 @@ def set_hdfs_env_var():
     yield hostname
 
 
-def test_get_fs_and_path_hdfs(set_hdfs_env_var):
-    hostname = set_hdfs_env_var()
+def test_get_fs_and_path_hdfs(set_hdfs_env_var_and_get_hostname):
+    hostname = set_hdfs_env_var_and_get_hostname
     hdfs_uri = f"hdfs://{hostname}:8020/test/"
     # do it twice should yield the same result
     _, path = get_fs_and_path(hdfs_uri)
