@@ -996,8 +996,12 @@ class TaskSummaries:
             min_timestamp = None
 
             for child in siblings:
-                child.children, child_min_timestamp = merge_sibings_for_task_group(child.children)
-                if child_min_timestamp and child_min_timestamp < (child.timestamp or sys.maxsize):
+                child.children, child_min_timestamp = merge_sibings_for_task_group(
+                    child.children
+                )
+                if child_min_timestamp and child_min_timestamp < (
+                    child.timestamp or sys.maxsize
+                ):
                     child.timestamp = child_min_timestamp
 
                 if child.name not in groups:
@@ -1007,7 +1011,9 @@ class TaskSummaries:
                         type="GROUP",
                     )
                 groups[child.name].children.append(child)
-                if child.timestamp and child.timestamp < (groups[child.name].timestamp or sys.maxsize):
+                if child.timestamp and child.timestamp < (
+                    groups[child.name].timestamp or sys.maxsize
+                ):
                     groups[child.name].timestamp = child.timestamp
                     if child.timestamp < (min_timestamp or sys.maxsize):
                         min_timestamp = child.timestamp

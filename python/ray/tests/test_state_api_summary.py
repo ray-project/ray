@@ -499,8 +499,9 @@ def test_summarize_by_lineage():
                     state_counts={
                         "FINISHED": 1,
                     },
-                ) for i in range(10)
-            ]
+                )
+                for i in range(10)
+            ],
         ),
         NestedTaskSummary(
             name="TuneActor",
@@ -559,15 +560,21 @@ def test_summarize_by_lineage():
                                             state_counts={
                                                 "FINISHED": 10,
                                             },
-                                            children=[NestedTaskSummary(
-                                                name="TrainActor.train_step_map",
-                                                key=f"train-actor-train-step-map-{i}-{j}",
-                                                type="ACTOR_TASK",
-                                                timestamp=2100 + j,
-                                                state_counts={
-                                                    "FINISHED": 1,
-                                                },
-                                            ) for j in range(10)],
+                                            children=[
+                                                NestedTaskSummary(
+                                                    name="TrainActor.train_step_map",
+                                                    key=(
+                                                        "train-actor-train-step-map-"
+                                                        f"{i}-{j}"
+                                                    ),
+                                                    type="ACTOR_TASK",
+                                                    timestamp=2100 + j,
+                                                    state_counts={
+                                                        "FINISHED": 1,
+                                                    },
+                                                )
+                                                for j in range(10)
+                                            ],
                                         ),
                                         NestedTaskSummary(
                                             name="TrainActor.train_step_reduce",
@@ -577,39 +584,44 @@ def test_summarize_by_lineage():
                                             state_counts={
                                                 "RUNNING": 1,
                                             },
-                                        )
-                                    ]
-                                ) for i in range(10)
-                            ]
+                                        ),
+                                    ],
+                                )
+                                for i in range(10)
+                            ],
                         )
-                    ]
+                    ],
                 )
-            ]
-        )
+            ],
+        ),
     ]
 
     tasks = []
 
-    def grab_tasks_from_task_group(task_group: NestedTaskSummary, actor_id=None, parent_task_id=None):
+    def grab_tasks_from_task_group(
+        task_group: NestedTaskSummary, actor_id=None, parent_task_id=None
+    ):
         if task_group.type != "ACTOR" and task_group.type != "GROUP":
             # "Virtual" groups don't have underlying tasks.
             task = {
                 "name": task_group.name,
                 "task_id": task_group.key,
                 "parent_task_id": parent_task_id,
-                "state": "RUNNING" if task_group.name == "TrainActor.train_step_reduce" else "FINISHED",
+                "state": "RUNNING"
+                if task_group.name == "TrainActor.train_step_reduce"
+                else "FINISHED",
                 "actor_id": actor_id,
                 "creation_time_ms": task_group.timestamp,
                 "func_or_class_name": task_group.name,
                 "type": task_group.type,
             }
             tasks.append(task)
-        
-        actor_id_for_child= None
+
+        actor_id_for_child = None
         parent_task_id_for_child = None
 
         if task_group.type == "ACTOR":
-            [_,actor_id_for_child] = task_group.key.split(":")
+            [_, actor_id_for_child] = task_group.key.split(":")
             parent_task_id_for_child = parent_task_id
         elif task_group.type == "GROUP":
             actor_id_for_child = actor_id
@@ -618,7 +630,11 @@ def test_summarize_by_lineage():
             parent_task_id_for_child = task_group.key
 
         for child in task_group.children:
-            grab_tasks_from_task_group(child, actor_id=actor_id_for_child, parent_task_id=parent_task_id_for_child)
+            grab_tasks_from_task_group(
+                child,
+                actor_id=actor_id_for_child,
+                parent_task_id=parent_task_id_for_child,
+            )
 
     for group in expected_summary:
         grab_tasks_from_task_group(group, None, f"{DRIVER_TASK_ID_PREFIX}01000000")
