@@ -120,7 +120,7 @@ Once the network policy has been deployed, you can view the network policy for t
 Ray by default uses an internal key-value store, called the Global Control Store (GCS). The GCS runs on the head node and stores cluster
 metadata. One drawback of this approach is that the head node loses the metadata if it crashes.
 Ray can also write this metadata to an external Redis for reliability and high availability.
-With this setup, the static Ray cluster can recover from head node crasehs and tolerate GCS failures without losing connections to worker nodes.
+With this setup, the static Ray cluster can recover from head node crashes and tolerate GCS failures without losing connections to worker nodes.
 
 To use this feature, we need to pass in the `RAY_REDIS_ADDRESS` env var and `--redis-password` in the Ray head node section of [the Kubernetes deployment config file](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.with-fault-tolerance.yaml).
 
