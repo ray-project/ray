@@ -28,9 +28,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     HyperparamType,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
-from ray.rllib.core.rl_trainer.rl_trainer_config import (
-    TorchRLTrainerScalingConfig,
-)
+from ray.rllib.core.rl_trainer.rl_trainer_config import TorchRLModuleBackendConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
@@ -58,22 +56,22 @@ class TorchRLTrainer(RLTrainer):
         ] = None,
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
-        scaling_config: Optional[TorchRLTrainerScalingConfig] = None,
+        module_backend_config: Optional[TorchRLModuleBackendConfig] = None,
         trainer_hyperparameters: Optional[HyperparamType] = None,
     ):
         super().__init__(
             module_spec=module_spec,
             module=module,
             optimizer_config=optimizer_config,
-            scaling_config=scaling_config,
+            module_backend_config=module_backend_config,
             trainer_hyperparameters=trainer_hyperparameters,
         )
 
         # pick the stuff that we need from the scaling config
-        scaling_config = scaling_config or TorchRLTrainerScalingConfig()
-        self._use_gpu = scaling_config.use_gpu
+        module_backend_config = module_backend_config or TorchRLModuleBackendConfig()
+        self._use_gpu = module_backend_config.use_gpu
 
-        # These attributes are set in the `build` method.
+        # These attributes are set in the `TorchRLModuleBackendConfig
         self._device = None
 
     @property

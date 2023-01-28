@@ -31,7 +31,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.core.rl_trainer.rl_trainer_config import (
-    RLTrainerScalingConfig,
+    RLModuleBackendConfig,
     HyperparamType,
 )
 
@@ -118,7 +118,7 @@ class RLTrainer:
         ] = None,
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
-        scaling_config: Optional[RLTrainerScalingConfig] = None,
+        module_backend_config: Optional[RLModuleBackendConfig] = None,
         trainer_hyperparameters: Optional[HyperparamType] = None,
     ):
         # TODO (Kourosh): Having the entire algorithm_config inside trainer may not be
@@ -142,8 +142,8 @@ class RLTrainer:
         self.config = trainer_hyperparameters
 
         # pick the configs that we need for the trainer from scaling config
-        scaling_config = scaling_config or RLTrainerScalingConfig()
-        self._distributed = scaling_config.distributed
+        module_backend_config = module_backend_config or RLModuleBackendConfig()
+        self._distributed = module_backend_config.distributed
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None

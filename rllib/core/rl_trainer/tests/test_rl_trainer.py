@@ -11,7 +11,7 @@ from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.core.rl_trainer.rl_trainer_config import TfRLTrainerScalingConfig
+from ray.rllib.core.rl_trainer.rl_trainer_config import TfRLModuleBackendConfig
 
 
 def get_trainer(distributed=False) -> RLTrainer:
@@ -22,6 +22,9 @@ def get_trainer(distributed=False) -> RLTrainer:
     # out the serialization of RLModules we can simply pass the module the trainer
     # and internally it will serialize and deserialize the module for distributed
     # construction.
+    backend = TfRLModuleBackendConfig(enable_tf_function=False).set_distributed(
+        distributed
+    )
     trainer = BCTfRLTrainer(
         module_spec=SingleAgentRLModuleSpec(
             module_class=DiscreteBCTFModule,
@@ -30,9 +33,7 @@ def get_trainer(distributed=False) -> RLTrainer:
             model_config={"hidden_dim": 32},
         ),
         optimizer_config={"lr": 1e-3},
-        scaling_config=TfRLTrainerScalingConfig(
-            enable_tf_function=False,
-        ).set_distributed(distributed),
+        module_backend_config=backend,
     )
 
     trainer.build()

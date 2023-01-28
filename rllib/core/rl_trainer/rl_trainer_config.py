@@ -15,7 +15,7 @@ HyperparamType = Union["AlgorithmConfig", Hyperparams]
 
 
 @dataclass
-class RLTrainerScalingConfig:
+class RLModuleBackendConfig:
     """Base class for scaling config relevant to RLTrainer.
 
     Attributes:
@@ -36,7 +36,7 @@ class RLTrainerScalingConfig:
     def distributed(self) -> bool:
         return self._distributed
 
-    def set_distributed(self, distributed: bool) -> "RLTrainerScalingConfig":
+    def set_distributed(self, distributed: bool) -> "RLModuleBackendConfig":
         """Set the distributed flag.
 
         _distibuted attribute should not be set directly at the time of constuction,
@@ -52,7 +52,7 @@ class RLTrainerScalingConfig:
 
 
 @dataclass
-class TorchRLTrainerScalingConfig(RLTrainerScalingConfig):
+class TorchRLModuleBackendConfig(RLModuleBackendConfig):
     """Torch-specific scaling config relevant to TorchRLTrainer.
 
     Attributes:
@@ -72,7 +72,7 @@ class TorchRLTrainerScalingConfig(RLTrainerScalingConfig):
     def use_gpu(self) -> bool:
         return self._use_gpu
 
-    def set_use_gpu(self, use_gpu: bool) -> "TorchRLTrainerScalingConfig":
+    def set_use_gpu(self, use_gpu: bool) -> "TorchRLModuleBackendConfig":
         """Set the use_gpu flag.
 
         _use_gpu attribute should not be set directly at the time of constuction,
@@ -87,7 +87,7 @@ class TorchRLTrainerScalingConfig(RLTrainerScalingConfig):
 
 
 @dataclass
-class TfRLTrainerScalingConfig(RLTrainerScalingConfig):
+class TfRLModuleBackendConfig(RLModuleBackendConfig):
     """Tf-specific scaling config relevant to TFRLTrainer.
 
     Args:
@@ -100,7 +100,7 @@ class TfRLTrainerScalingConfig(RLTrainerScalingConfig):
 
 
 @dataclass
-class TrainerRunnerScalingConfig:
+class TrainerScalingConfig:
     """Configuratiom for scaling training actors.
 
     Attributes:
@@ -128,7 +128,7 @@ class RLTrainerSpec:
         module_spec: The underlying (MA)RLModule spec to completely define the module.
         module: Alternatively the RLModule instance can be passed in directly. This
             only works if the RLTrainer is not an actor.
-        scaling_config: The scaling config for properly distributing the RLModule.
+        backend_config: The backend config for properly distributing the RLModule.
         optimizer_config: The optimizer setting to apply during training.
         trainer_hyperparameters: The extra config for the loss/additional update. The
             items within this object should be accessible via a dot notation. For
@@ -141,33 +141,35 @@ class RLTrainerSpec:
     rl_trainer_class: Type["RLTrainer"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     module: Optional["RLModule"] = None
-    scaling_config: "RLTrainerScalingConfig" = None
+    module_backend_config: "RLModuleBackendConfig" = None
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
     trainer_hyperparameters: HyperparamType = field(default_factory=dict)
 
     def __post_init__(self):
+        # convert to hyper params object if needed
         if isinstance(self.trainer_hyperparameters, dict):
             self.trainer_hyperparameters = Hyperparams(self.trainer_hyperparameters)
 
-        if self.scaling_config is None:
+        # if module_backend_config is not set, we will create a dafault.
+        if self.module_backend_config is None:
             if self.module is not None:
                 if isinstance(self.module, TorchRLModule):
-                    self.scaling_config = TorchRLTrainerScalingConfig()
+                    self.module_backend_config = TorchRLModuleBackendConfig()
                 else:
-                    self.scaling_config = TfRLTrainerScalingConfig()
+                    self.module_backend_config = TfRLModuleBackendConfig()
 
             if self.module_spec is not None:
                 if issubclass(self.module_spec.module_class, TorchRLModule):
-                    self.scaling_config = TorchRLTrainerScalingConfig()
+                    self.module_backend_config = TorchRLModuleBackendConfig()
                 else:
-                    self.scaling_config = TfRLTrainerScalingConfig()
+                    self.module_backend_config = TfRLModuleBackendConfig()
 
     def get_params_dict(self) -> Dict[str, Any]:
         """Returns the parameters than be passed to the RLTrainer constructor."""
         return {
             "module": self.module,
             "module_spec": self.module_spec,
-            "scaling_config": self.scaling_config,
+            "scaling_config": self.module_backend_config,
             "optimizer_config": self.optimizer_config,
             "trainer_hyperparameters": self.trainer_hyperparameters,
         }
