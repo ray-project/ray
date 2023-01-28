@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 const useStyles = makeStyles((theme) =>
   createStyles({
     root: {
-      height: 294,
+      height: 400,
       overflow: "hidden",
     },
   }),

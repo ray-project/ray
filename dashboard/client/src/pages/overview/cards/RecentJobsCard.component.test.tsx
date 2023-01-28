@@ -37,6 +37,16 @@ describe("RecentJobsCard", () => {
           submission_id: "raysubmit_45678",
           status: "RUNNING",
         },
+        {
+          job_id: "06000000",
+          submission_id: "raysubmit_56789",
+          status: "RUNNING",
+        },
+        {
+          job_id: "07000000",
+          submission_id: "raysubmit_67890",
+          status: "RUNNING",
+        },
       ],
     } as any);
 
@@ -46,6 +56,8 @@ describe("RecentJobsCard", () => {
     expect(screen.getByText("02000000")).toBeVisible();
     expect(screen.getByText("raysubmit_23456")).toBeVisible();
     expect(screen.getByText("04000000")).toBeVisible();
-    expect(screen.queryByText("05000000")).toBeNull();
+    expect(screen.getByText("05000000")).toBeVisible();
+    expect(screen.getByText("06000000")).toBeVisible();
+    expect(screen.queryByText("07000000")).toBeNull();
   });
 });

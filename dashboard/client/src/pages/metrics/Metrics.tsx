@@ -32,7 +32,7 @@ const useStyles = makeStyles((theme) =>
     },
     chart: {
       width: "100%",
-      height: 300,
+      height: 400,
       overflow: "hidden",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus padding between cards
