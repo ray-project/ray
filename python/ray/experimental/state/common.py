@@ -983,19 +983,23 @@ class TaskSummaries:
 
         def merge_sibings_for_task_group(
             siblings: List[NestedTaskSummary],
-        ) -> NestedTaskSummary:
+        ) -> Tuple[NestedTaskSummary, Optional[int]]:
             """
             Merges children with the same name into a group if there are more than
             one child with that name.
             """
             if not len(siblings):
-                return siblings
+                return siblings, None
 
             # Group by name
             groups = {}
+            min_timestamp = None
 
             for child in siblings:
-                child.children = merge_sibings_for_task_group(child.children)
+                child.children, child_min_timestamp = merge_sibings_for_task_group(child.children)
+                if child_min_timestamp and child_min_timestamp < (child.timestamp or sys.maxsize):
+                    child.timestamp = child_min_timestamp
+
                 if child.name not in groups:
                     groups[child.name] = NestedTaskSummary(
                         name=child.name,
@@ -1003,20 +1007,19 @@ class TaskSummaries:
                         type="GROUP",
                     )
                 groups[child.name].children.append(child)
-                if child.timestamp and (
-                    not groups[child.name].timestamp
-                    or child.timestamp < groups[child.name].timestamp
-                ):
+                if child.timestamp and child.timestamp < (groups[child.name].timestamp or sys.maxsize):
                     groups[child.name].timestamp = child.timestamp
+                    if child.timestamp < (min_timestamp or sys.maxsize):
+                        min_timestamp = child.timestamp
 
             # Return merged siblings
             return [
                 group if len(group.children) > 1 else group.children[0]
                 for group in groups.values()
-            ]
+            ], min_timestamp
 
         # Step 3
-        summary = merge_sibings_for_task_group(summary)
+        summary, _ = merge_sibings_for_task_group(summary)
 
         def sort_task_groups(task_groups: List[NestedTaskSummary]):
             # Sort by timestamp

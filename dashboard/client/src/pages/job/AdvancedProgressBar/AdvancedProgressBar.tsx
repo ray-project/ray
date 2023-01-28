@@ -94,7 +94,7 @@ export type AdvancedProgressBarSegmentProps = {
   onParentCollapseButtonPressed?: () => void;
 };
 
-const AdvancedProgressBarSegment = ({
+export const AdvancedProgressBarSegment = ({
   jobProgressGroup: { name, progress, children, type },
   startExpanded = false,
   nestedIndex = 1,
@@ -134,12 +134,14 @@ const AdvancedProgressBarSegment = ({
           >
             {showParentCollapseButton && (
               <RiSubtractLine
+                title="Collapse group"
                 onClick={onParentCollapseButtonPressed}
                 className={classNames(classes.icon)}
                 style={{ marginLeft: 24 * (nestedIndex - 1) }}
               />
             )}
             <IconComponent
+              title={expanded ? "Collapse" : "Expand"}
               className={classNames(classes.icon, {
                 [classes.iconHidden]: children.length === 0,
               })}
