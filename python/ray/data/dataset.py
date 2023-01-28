@@ -671,7 +671,7 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
-        # breakpoint()
+        # TODO(chengsu): pass function name to MapBatches logical operator.
         if hasattr(fn, "__self__") and isinstance(
             fn.__self__, ray.data.preprocessor.Preprocessor
         ):
