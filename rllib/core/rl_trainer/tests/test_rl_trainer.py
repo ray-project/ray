@@ -11,7 +11,7 @@ from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.core.rl_trainer.rl_trainer_config import TfRLModuleBackendConfig
+from ray.rllib.core.rl_trainer.scaling_config import TfRLModuleBackendConfig
 
 
 def get_trainer(distributed=False) -> RLTrainer:

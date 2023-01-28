@@ -1,5 +1,6 @@
 import abc
 
+from dataclasses import dataclass, field
 import logging
 import numpy as np
 from typing import (
@@ -14,6 +15,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    TYPE_CHECKING,
 )
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -22,6 +24,9 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
@@ -30,10 +35,17 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.core.rl_trainer.rl_trainer_config import (
+from ray.rllib.core.rl_trainer.scaling_config import RLModuleBackendConfig
+
+from ray.rllib.core.rl_trainer.scaling_config import (
     RLModuleBackendConfig,
-    HyperparamType,
+    TorchRLModuleBackendConfig,
+    TfRLModuleBackendConfig,
 )
+
+if TYPE_CHECKING:
+    from ray.rllib.utils.params import Hyperparams
+    from ray.rllib.algorithms import AlgorithmConfig
 
 
 torch, _ = try_import_torch()
@@ -46,6 +58,7 @@ ParamType = Union["torch.Tensor", "tf.Variable"]
 ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
+HyperparamType = Union["AlgorithmConfig", Hyperparams]
 
 
 class RLTrainer:
@@ -616,3 +629,63 @@ class RLTrainer:
                 "RLTrainer.build() must be called after constructing a "
                 "RLTrainer and before calling any methods on it."
             )
+
+
+@dataclass
+class RLTrainerSpec:
+    """The spec for construcitng RLTrainer actors.
+
+    Args:
+        rl_trainer_class: The RLTrainer class to use.
+        module_spec: The underlying (MA)RLModule spec to completely define the module.
+        module: Alternatively the RLModule instance can be passed in directly. This
+            only works if the RLTrainer is not an actor.
+        backend_config: The backend config for properly distributing the RLModule.
+        optimizer_config: The optimizer setting to apply during training.
+        trainer_hyperparameters: The extra config for the loss/additional update. The
+            items within this object should be accessible via a dot notation. For
+            example, if the trainer_hyperparameters contains {"coeff": 0.001}, then the
+            learning rate can be accessed via trainer_hyperparameters.coeff. This is
+            useful for passing in algorithm config or a HyperParams that contains the
+            hyper-parameters.
+    """
+
+    rl_trainer_class: Type["RLTrainer"]
+    module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
+    module: Optional["RLModule"] = None
+    module_backend_config: "RLModuleBackendConfig" = None
+    optimizer_config: Dict[str, Any] = field(default_factory=dict)
+    trainer_hyperparameters: HyperparamType = field(default_factory=dict)
+
+    def __post_init__(self):
+        # convert to hyper params object if needed
+        if isinstance(self.trainer_hyperparameters, dict):
+            self.trainer_hyperparameters = Hyperparams(self.trainer_hyperparameters)
+
+        # if module_backend_config is not set, we will create a dafault.
+        if self.module_backend_config is None:
+            if self.module is not None:
+                if isinstance(self.module, TorchRLModule):
+                    self.module_backend_config = TorchRLModuleBackendConfig()
+                else:
+                    self.module_backend_config = TfRLModuleBackendConfig()
+
+            if self.module_spec is not None:
+                if issubclass(self.module_spec.module_class, TorchRLModule):
+                    self.module_backend_config = TorchRLModuleBackendConfig()
+                else:
+                    self.module_backend_config = TfRLModuleBackendConfig()
+
+    def get_params_dict(self) -> Dict[str, Any]:
+        """Returns the parameters than be passed to the RLTrainer constructor."""
+        return {
+            "module": self.module,
+            "module_spec": self.module_spec,
+            "module_backend_config": self.module_backend_config,
+            "optimizer_config": self.optimizer_config,
+            "trainer_hyperparameters": self.trainer_hyperparameters,
+        }
+
+    def build(self) -> "RLTrainer":
+        """Builds the RLTrainer instance."""
+        return self.rl_trainer_class(**self.get_params_dict())

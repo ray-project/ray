@@ -12,7 +12,7 @@ from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.core.rl_trainer.rl_trainer_config import TorchRLModuleBackendConfig
+from ray.rllib.core.rl_trainer.scaling_config import TorchRLModuleBackendConfig
 
 
 def _get_trainer(distributed: bool = False) -> RLTrainer:

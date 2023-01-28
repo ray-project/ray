@@ -17,18 +17,13 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_trainer.rl_trainer import (
+    RLTrainerSpec,
     ParamOptimizerPairs,
     Optimizer,
 )
-from ray.rllib.core.rl_trainer.rl_trainer_config import RLTrainerSpec
-
-
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-
-
 from ray.train._internal.backend_executor import BackendExecutor
-
-from ray.rllib.core.rl_trainer.rl_trainer_config import TrainerScalingConfig
 
 
 class TrainerRunner:

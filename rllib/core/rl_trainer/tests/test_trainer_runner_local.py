@@ -11,7 +11,7 @@ from ray.rllib.core.testing.utils import (
     get_trainer_runner,
     get_rl_trainer,
 )
-from ray.rllib.core.rl_trainer.rl_trainer_config import TrainerScalingConfig
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 
 tf1, tf, tfv = try_import_tf()

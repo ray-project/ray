@@ -28,7 +28,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     HyperparamType,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
-from ray.rllib.core.rl_trainer.rl_trainer_config import TorchRLModuleBackendConfig
+from ray.rllib.core.rl_trainer.scaling_config import TorchRLModuleBackendConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType

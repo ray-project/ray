@@ -4,10 +4,8 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.rl_trainer_config import (
-    RLTrainerSpec,
-    TrainerScalingConfig,
-)
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,

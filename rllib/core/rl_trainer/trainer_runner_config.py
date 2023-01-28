@@ -2,12 +2,11 @@ from typing import Type, Optional, TYPE_CHECKING, Union, Dict
 
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.utils.from_config import NotProvided
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.rl_trainer_config import (
-    RLTrainerSpec,
-    TrainerScalingConfig,
-)
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec
+from ray.rllib.utils.from_config import NotProvided
+
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig

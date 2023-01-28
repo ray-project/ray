@@ -34,7 +34,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.core.rl_trainer.rl_trainer_config import TfRLModuleBackendConfig
+from ray.rllib.core.rl_trainer.scaling_config import TfRLModuleBackendConfig
 
 
 tf1, tf, tfv = try_import_tf()
