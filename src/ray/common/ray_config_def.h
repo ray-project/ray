@@ -455,9 +455,14 @@ RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
 /// Max number of task events stored in the buffer on workers. Any additional events
-/// will be dropped.
-/// Setting the value to -1 allows for unlimited task events buffered on workers.
-RAY_CONFIG(int64_t, task_events_max_num_task_events_in_buffer, 10000)
+/// will be dropped. This is set to a large value to avoid worker side data loss.
+/// For now, avg size of task event is 200Bytes, 1M task events would incur 200MiB
+/// overhead.
+RAY_CONFIG(uint64_t, task_events_max_num_task_events_in_buffer, 1 * 1000 * 1000)
+
+/// Max number of task events to be send in a single message to GCS. This caps both
+/// the message size, and also the processing work on GCS.
+RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 
 /// Max number of profile events allowed for a single task when sent to GCS.
 /// NOTE: this limit only applies to the profile events per task in a single
@@ -685,6 +690,10 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
 /// grpc keepalive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
+
+/// grpc streaming buffer size
+/// Set it to 512kb
+RAY_CONFIG(int64_t, grpc_stream_buffer_size, 512 * 1024);
 
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
