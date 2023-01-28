@@ -876,7 +876,7 @@ class TaskSummaries:
             if task_id in task_group_by_id:
                 return task_group_by_id[task_id]
 
-            task = tasks_by_id[task_id]
+            task = tasks_by_id.get(task_id)
             if not task:
                 logger.debug(f"We're missing data about {task_id}")
                 # We're missing data about this parent. So we're dropping the whole
