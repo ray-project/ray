@@ -103,7 +103,6 @@ from ray.data.datasource import (
     ParquetDatasource,
     ReadTask,
     TFRecordDatasource,
-    WriteResult,
 )
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
@@ -2677,7 +2676,7 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        def transform(blocks: Iterable[Block], task_idx, fn) -> []:
+        def transform(blocks: Iterable[Block], task_idx, fn):
             try:
                 datasource.do_write(blocks, task_idx, **write_args)
                 datasource.on_write_complete([])
