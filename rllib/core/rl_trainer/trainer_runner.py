@@ -28,9 +28,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 
 from ray.train._internal.backend_executor import BackendExecutor
 
-from ray.rllib.core.rl_trainer.rl_trainer_config import (
-    TrainerRunnerScalingConfig,
-)
+from ray.rllib.core.rl_trainer.rl_trainer_config import TrainerRunnerScalingConfig
 
 
 class TrainerRunner:

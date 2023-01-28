@@ -16,9 +16,20 @@ HyperparamType = Union["AlgorithmConfig", Hyperparams]
 
 @dataclass
 class RLTrainerScalingConfig:
-    """Base class for scaling config relevant to RLTrainer."""
+    """Base class for scaling config relevant to RLTrainer.
+
+    Attributes:
+        distributed: If True, the rl_trainer will be instantiated in distributed mode.
+
+    Methods:
+        set_distributed: Set the distributed flag. _distibuted attribute should not be
+            set to True at the time of constructing the config. The caller should
+            explicitly decide whether the rl_trainer should be instiantiated in
+            distributed mode or not.
+    """
 
     def __post_init__(self):
+        super().__post_init__()
         self._distributed: bool = False
 
     @property
@@ -42,7 +53,16 @@ class RLTrainerScalingConfig:
 
 @dataclass
 class TorchRLTrainerScalingConfig(RLTrainerScalingConfig):
-    """Torch-specific scaling config relevant to TorchRLTrainer."""
+    """Torch-specific scaling config relevant to TorchRLTrainer.
+
+    Attributes:
+        use_gpu: If True, the torch rl_trainer will be setup to use the gpu.
+
+    Methods:
+        set_use_gpu: Set the use_gpu flag. _use_gpu attribute should not be set to True
+            at the time of constructing the config. The caller should explicitly decide
+            whether the torch rl_trainer should be using gpu or not.
+    """
 
     def __post_init__(self):
         super().__post_init__()
@@ -67,8 +87,14 @@ class TorchRLTrainerScalingConfig(RLTrainerScalingConfig):
 
 
 @dataclass
-class TFRLTrainerScalingConfig(RLTrainerScalingConfig):
-    """Place holder for TF-specific scaling config relevant to TFRLTrainer."""
+class TfRLTrainerScalingConfig(RLTrainerScalingConfig):
+    """Tf-specific scaling config relevant to TFRLTrainer.
+
+    Args:
+        enable_tf_function: If True, the tf.function decorator will be used to
+            decorate the train_step function. This is recommended to boost performance
+            via tracing the graph.
+    """
 
     enable_tf_function: bool = True
 
@@ -95,20 +121,28 @@ class TrainerRunnerScalingConfig:
 
 @dataclass
 class RLTrainerSpec:
-    # The RLTrainer class to use.
-    rl_trainer_class: Type["RLTrainer"] = None
-    # The underlying (MA)RLModule spec to completely define the module
+    """The spec for construcitng RLTrainer actors.
+
+    Args:
+        rl_trainer_class: The RLTrainer class to use.
+        module_spec: The underlying (MA)RLModule spec to completely define the module.
+        module: Alternatively the RLModule instance can be passed in directly. This
+            only works if the RLTrainer is not an actor.
+        scaling_config: The scaling config for properly distributing the RLModule.
+        optimizer_config: The optimizer setting to apply during training.
+        trainer_hyperparameters: The extra config for the loss/additional update. The
+            items within this object should be accessible via a dot notation. For
+            example, if the trainer_hyperparameters contains {"coeff": 0.001}, then the
+            learning rate can be accessed via trainer_hyperparameters.coeff. This is
+            useful for passing in algorithm config or a HyperParams that contains the
+            hyper-parameters.
+    """
+
+    rl_trainer_class: Type["RLTrainer"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
-    # Alternatively the RLModule instance can be passed in directly (won't work if
-    # RLTrainer is an actor)
     module: Optional["RLModule"] = None
-    # The scaling config for properly distributing the RLModule
     scaling_config: "RLTrainerScalingConfig" = None
-    # The optimizer setting to apply during training
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
-    # The extra config for the loss/additional update specific hyper-parameters
-    # for now we assume we can get both algorithm config or a dict that contains the
-    # hyper-parameters
     trainer_hyperparameters: HyperparamType = field(default_factory=dict)
 
     def __post_init__(self):
@@ -120,15 +154,16 @@ class RLTrainerSpec:
                 if isinstance(self.module, TorchRLModule):
                     self.scaling_config = TorchRLTrainerScalingConfig()
                 else:
-                    self.scaling_config = TFRLTrainerScalingConfig()
+                    self.scaling_config = TfRLTrainerScalingConfig()
 
             if self.module_spec is not None:
                 if issubclass(self.module_spec.module_class, TorchRLModule):
                     self.scaling_config = TorchRLTrainerScalingConfig()
                 else:
-                    self.scaling_config = TFRLTrainerScalingConfig()
+                    self.scaling_config = TfRLTrainerScalingConfig()
 
     def get_params_dict(self) -> Dict[str, Any]:
+        """Returns the parameters than be passed to the RLTrainer constructor."""
         return {
             "module": self.module,
             "module_spec": self.module_spec,
@@ -137,5 +172,6 @@ class RLTrainerSpec:
             "trainer_hyperparameters": self.trainer_hyperparameters,
         }
 
-    def build(self):
+    def build(self) -> "RLTrainer":
+        """Builds the RLTrainer instance."""
         return self.rl_trainer_class(**self.get_params_dict())
