@@ -102,7 +102,7 @@ class ActorPoolMapOperator(MapOperator):
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
             ref = actor.submit.options(num_returns="dynamic").remote(
-                self._transform_fn_ref, *input_blocks, self._next_task_idx
+                self._transform_fn_ref, self._next_task_idx, *input_blocks
             )
             self._next_task_idx += 1
             task = _TaskState(bundle)
