@@ -2,7 +2,9 @@ import pytest
 
 import ray
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.map_operator import (
     MapRows,
@@ -10,7 +12,7 @@ from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
 )
-from ray.data._internal.logical.planner import Planner
+from ray.data._internal.planner.planner import Planner
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
 from ray.tests.conftest import *  # noqa
@@ -144,6 +146,27 @@ def test_random_sample_e2e(ray_start_cluster_enabled, enable_optimizer):
 
     ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
     ensure_sample_size_close(ds)
+
+
+def test_randomize_blocks_operator(ray_start_cluster_enabled, enable_optimizer):
+    planner = Planner()
+    read_op = Read(ParquetDatasource())
+    op = RandomizeBlocks(
+        read_op,
+        seed=0,
+    )
+    physical_op = planner.plan(op)
+
+    assert op.name == "RandomizeBlocks"
+    assert isinstance(physical_op, AllToAllOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+
+def test_randomize_blocks_e2e(ray_start_cluster_enabled, enable_optimizer):
+    ds = ray.data.range(12, parallelism=4)
+    ds = ds.randomize_block_order(seed=0)
+    assert ds.take_all() == [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11], ds
 
 
 if __name__ == "__main__":

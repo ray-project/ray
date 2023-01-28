@@ -2,7 +2,7 @@ from typing import List
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.logical.interfaces import Rule, Optimizer, LogicalOperator
-from ray.data._internal.logical.planner import Planner
+from ray.data._internal.planner.planner import Planner
 
 
 class LogicalOptimizer(Optimizer):
