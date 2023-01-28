@@ -105,9 +105,6 @@ from ray.data.datasource import (
     TFRecordDatasource,
     WriteResult,
 )
-from ray.data.datasource.file_based_datasource import (
-    _wrap_arrow_serialization_workaround,
-)
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
@@ -2674,7 +2671,7 @@ class Dataset(Generic[T]):
 
         def transform(blocks: Iterable[Block], task_idx, fn) -> []:
             try:
-                datasource.sync_write(blocks, task_idx, **write_args)
+                datasource.do_write(blocks, task_idx, **write_args)
                 datasource.on_write_complete([])
             except Exception as e:
                 datasource.on_write_failed([], e)
@@ -4414,16 +4411,3 @@ def _sliding_window(iterable: Iterable, n: int):
     for elem in it:
         window.append(elem)
         yield tuple(window)
-
-
-def _do_write(
-    ds: Datasource,
-    ctx: DatasetContext,
-    blocks: List[Block],
-    meta: List[BlockMetadata],
-    ray_remote_args: Dict[str, Any],
-    write_args: Dict[str, Any],
-) -> List[ObjectRef[WriteResult]]:
-    write_args = _unwrap_arrow_serialization_workaround(write_args)
-    DatasetContext._set_current(ctx)
-    return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)

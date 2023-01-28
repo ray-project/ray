@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Generic, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -52,22 +52,17 @@ class Datasource(Generic[T]):
 
     def do_write(
         self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        ray_remote_args: Dict[str, Any],
+        blocks: Iterable[Block],
         **write_args,
-    ) -> List[ObjectRef[WriteResult]]:
-        """Launch Ray tasks for writing blocks out to the datasource.
+    ) -> WriteResult:
+        """Write blocks out to the datasource. This is used by a single write task.
 
         Args:
-            blocks: List of data block references. It is recommended that one
-                write task be generated per block.
-            metadata: List of block metadata.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            blocks: List of data blocks.
             write_args: Additional kwargs to pass to the datasource impl.
 
         Returns:
-            A list of the output of the write tasks.
+            The output of the write tasks.
         """
         raise NotImplementedError
 
@@ -346,7 +341,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
         self.data_sink = DataSink.remote()
 
-    def sync_write(
+    def do_write(
         self,
         blocks: Iterable[Block],
         task_idx: int,
@@ -356,18 +351,6 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         for b in blocks:
             tasks.append(self.data_sink.write.remote(b))
         return ray.get(tasks)
-
-    def do_write(
-        self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        ray_remote_args: Dict[str, Any],
-        **write_args,
-    ) -> List[ObjectRef[WriteResult]]:
-        tasks = []
-        for b in blocks:
-            tasks.append(self.data_sink.write.remote(b))
-        return tasks
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
         assert all(w == "ok" for w in write_results), write_results
