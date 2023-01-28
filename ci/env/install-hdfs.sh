@@ -65,9 +65,7 @@ fi
 
 hdfs dfs -mkdir /test
 
-# Generate an env file to be used in bazel's `test_env=foo=bar` command.
-# The file should not have any empty space in it.
-
+# Generate an env file to be used in `test_remote_storage_hdfs` unit test.
 destdir=/tmp/hdfs_env
 touch $destdir
 for key in "JAVA_HOME" "HADOOP_HOME" "HADOOP_CONF_DIR" "USER"
@@ -76,7 +74,7 @@ do
   echo "$key=${!key}" >> $destdir
 done
 
-# Needed for unit test to specify hdfs uri.
+# Needed for `test_remote_storage_hdfs` unit test to specify hdfs uri.
 echo "CONTAINER_ID=$(hostname)" >> $destdir
 
 # Needed for pyarrow to work.
