@@ -1,4 +1,3 @@
-import gym
 import numpy as np
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -21,8 +20,8 @@ def convert_to_tensor(arr):
 class LeelaChessZeroModel(TorchModelV2, nn.Module):
     def __init__(
         self,
-        obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
+        obs_space,
+        action_space,
         num_outputs: int,
         model_config: ModelConfigDict,
         name: str,
