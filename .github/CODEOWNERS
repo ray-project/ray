@@ -34,7 +34,7 @@
 # /src/ray @ray-project/ray-core-cpp
 
 # GCS
-/src/ray/gcs/ @iycheng @scv @rkooo567 @ericl
+/src/ray/gcs/ @iycheng @scv119 @rkooo567 @ericl
 
 # Dependencies
 /python/setup.py @richardliaw @ericl @edoakes
