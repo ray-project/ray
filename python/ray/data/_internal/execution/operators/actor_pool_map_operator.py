@@ -197,10 +197,11 @@ class ActorPoolMapOperator(MapOperator):
         return len(self._tasks)
 
     def progress_str(self) -> str:
-        return (
-            f"{self._actor_pool.num_running_actors()} actors "
-            f"({self._actor_pool.num_pending_actors()} pending)"
-        )
+        base = f"{self._actor_pool.num_running_actors()} actors"
+        pending = self._actor_pool.num_pending_actors()
+        if pending:
+            base += f" ({pending} pending)"
+        return base
 
     def base_resource_usage(self) -> ExecutionResources:
         min_workers = self._autoscaling_policy.min_workers

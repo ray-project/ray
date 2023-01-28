@@ -128,10 +128,10 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
         if use_actors and work_refs:
             # After actor is ready (first work ref resolved), actor will remain ready
             # while there is work to do.
-            assert op.progress_str() == "1 actors (0 pending)"
+            assert op.progress_str() == "1 actors"
     if use_actors:
         # After all work is done, actor will have been killed to free up resources..
-        assert op.progress_str() == "0 actors (0 pending)"
+        assert op.progress_str() == "0 actors"
     else:
         assert op.progress_str() == ""
 
