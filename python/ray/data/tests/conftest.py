@@ -17,7 +17,22 @@ from ray._private.utils import _get_pyarrow_version
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import _ray_start
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(scope="module")
+def ray_start_2_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_10_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=10, **param) as res:
+        yield res
 
 
 @pytest.fixture(scope="function")
@@ -300,6 +315,18 @@ def target_max_block_size(request):
     ctx.target_max_block_size = request.param
     yield request.param
     ctx.target_max_block_size = original
+
+
+@pytest.fixture(params=[True])
+def enable_optimizer(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original_backend = ctx.new_execution_backend
+    original_optimizer = ctx.optimizer_enabled
+    ctx.new_execution_backend = request.param
+    ctx.optimizer_enabled = request.param
+    yield request.param
+    ctx.new_execution_backend = original_backend
+    ctx.optimizer_enabled = original_optimizer
 
 
 # ===== Pandas dataset formats =====

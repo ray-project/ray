@@ -1,11 +1,14 @@
 import { makeStyles } from "@material-ui/core";
 import dayjs from "dayjs";
-import React from "react";
+import React, { useContext } from "react";
+import { Link } from "react-router-dom";
+import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import { UnifiedJob } from "../../type/job";
 import ActorList from "../actor/ActorList";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
@@ -108,6 +111,10 @@ export const JobDetailChartsPage = ({
                   : "-",
               },
             },
+            {
+              label: "Logs",
+              content: <JobLogsLink job={job} newIA />,
+            },
           ]}
         />
       </TitleCard>
@@ -123,4 +130,50 @@ export const JobDetailChartsPage = ({
       </TitleCard>
     </div>
   );
+};
+
+type JobLogsLinkProps = {
+  job: Pick<
+    UnifiedJob,
+    | "driver_agent_http_address"
+    | "driver_info"
+    | "job_id"
+    | "submission_id"
+    | "type"
+  >;
+  newIA?: boolean;
+};
+
+export const JobLogsLink = ({
+  job: { driver_agent_http_address, driver_info, job_id, submission_id, type },
+  newIA = false,
+}: JobLogsLinkProps) => {
+  const { ipLogMap } = useContext(GlobalContext);
+
+  let link: string | undefined;
+
+  const baseLink = newIA ? "/new/logs" : "/log";
+
+  if (driver_agent_http_address) {
+    link = `${baseLink}/${encodeURIComponent(
+      `${driver_agent_http_address}/logs`,
+    )}`;
+  } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
+    link = `${baseLink}/${encodeURIComponent(
+      ipLogMap[driver_info.node_ip_address],
+    )}`;
+  }
+
+  if (link) {
+    link += `?fileName=${
+      type === "DRIVER" ? job_id : `driver-${submission_id}`
+    }`;
+    return (
+      <Link to={link} target="_blank">
+        Log
+      </Link>
+    );
+  }
+
+  return <span>-</span>;
 };

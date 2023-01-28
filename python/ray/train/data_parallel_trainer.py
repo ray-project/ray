@@ -114,7 +114,7 @@ class DataParallelTrainer(BaseTrainer):
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
 
-    **How do I use ``DataParallelTrainer`` or any of its subclasses?**
+    **How do I use DataParallelTrainer or any of its subclasses?**
 
     Example:
 
@@ -136,7 +136,7 @@ class DataParallelTrainer(BaseTrainer):
         )
         result = trainer.fit()
 
-    **How do I develop on top of ``DataParallelTrainer``?**
+    **How do I develop on top of DataParallelTrainer?**
 
     In many cases, using DataParallelTrainer directly is sufficient to execute
     functions on multiple actors.

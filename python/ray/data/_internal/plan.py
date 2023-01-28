@@ -45,6 +45,30 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 logger = DatasetLogger(__name__)
 
 
+def capfirst(s: str):
+    """Capitalize the first letter of a string
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+       Capitalized string
+    """
+    return s[0].upper() + s[1:]
+
+
+def capitalize(s: str):
+    """Capitalize a string, removing '_' and keeping camelcase.
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+        Capitalized string with no underscores.
+    """
+    return "".join(capfirst(x) for x in s.split("_"))
+
+
 class Stage:
     """Represents a Dataset transform stage (e.g., map or shuffle)."""
 
@@ -157,7 +181,7 @@ class ExecutionPlan:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
                 # Get name of each stage in camel case.
-                stage_name = stage.name.title().replace("_", "")
+                stage_name = capitalize(stage.name)
                 if num_stages == 0:
                     plan_str += f"{stage_name}\n"
                 else:
@@ -449,12 +473,11 @@ class ExecutionPlan:
             )
 
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
-        from ray.data._internal.execution.interfaces import ExecutionOptions
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_block_iterator,
         )
 
-        executor = StreamingExecutor(ExecutionOptions())
+        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,
@@ -500,12 +523,11 @@ class ExecutionPlan:
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
-                from ray.data._internal.execution.interfaces import ExecutionOptions
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )
 
-                executor = BulkExecutor(ExecutionOptions())
+                executor = BulkExecutor(copy.deepcopy(context.execution_options))
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
