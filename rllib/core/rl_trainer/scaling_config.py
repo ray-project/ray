@@ -1,14 +1,4 @@
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Type, Union, TYPE_CHECKING
-
-from ray.rllib.utils.params import Hyperparams
-from ray.rllib.core.rl_module.torch import TorchRLModule
-
-if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
-    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-    from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
-    from ray.rllib.algorithms.algorithm import AlgorithmConfig
+from dataclasses import dataclass
 
 
 @dataclass

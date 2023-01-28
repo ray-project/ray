@@ -34,9 +34,8 @@ from ray.rllib.core.rl_module.marl_module import (
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.params import Hyperparams
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.core.rl_trainer.scaling_config import RLModuleBackendConfig
-
 from ray.rllib.core.rl_trainer.scaling_config import (
     RLModuleBackendConfig,
     TorchRLModuleBackendConfig,
@@ -44,7 +43,6 @@ from ray.rllib.core.rl_trainer.scaling_config import (
 )
 
 if TYPE_CHECKING:
-    from ray.rllib.utils.params import Hyperparams
     from ray.rllib.algorithms import AlgorithmConfig
 
 
