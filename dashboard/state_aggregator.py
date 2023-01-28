@@ -4,10 +4,11 @@ import json
 
 from dataclasses import asdict, fields
 from itertools import islice
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from datetime import datetime
 
 from ray._private.ray_constants import env_integer
+from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
@@ -393,7 +394,7 @@ class StateAPIManager:
             task_state = {}
             task_info = task_attempt.get("task_info", {})
             state_updates = task_attempt.get("state_updates", [])
-            profiling_data = task_attempt.get("profiling_data", {})
+            profiling_data = task_attempt.get("profile_events", {})
             if profiling_data:
                 for event in profiling_data["events"]:
                     # End/start times are recorded in ns. We convert them to ms.
@@ -433,7 +434,8 @@ class StateAPIManager:
             for state in common_pb2.TaskStatus.keys():
                 key = f"{state.lower()}_ts"
                 if key in state_updates:
-                    # timestamp is recorded in ns.
+                    # timestamp is recorded as nanosecond from the backend.
+                    # We need to convert it to the second.
                     ts_ms = int(state_updates[key]) // 1e6
                     events.append(
                         {
@@ -758,6 +760,13 @@ class StateAPIManager:
             num_after_truncation=result.num_after_truncation,
             num_filtered=result.num_filtered,
         )
+
+    async def generate_task_timeline(self, job_id: Optional[str]) -> List[dict]:
+        filters = [("job_id", "=", job_id)] if job_id else None
+        result = await self.list_tasks(
+            option=ListApiOptions(detail=True, filters=filters, limit=10000)
+        )
+        return chrome_tracing_dump(result.result)
 
     def _message_to_dict(
         self,
