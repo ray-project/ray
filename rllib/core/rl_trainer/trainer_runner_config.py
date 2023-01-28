@@ -6,7 +6,7 @@ from ray.rllib.utils.from_config import NotProvided
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 from ray.rllib.core.rl_trainer.rl_trainer_config import (
     RLTrainerSpec,
-    TrainerRunnerScalingConfig,
+    TrainerScalingConfig,
 )
 
 if TYPE_CHECKING:
@@ -76,7 +76,7 @@ class TrainerRunnerConfig:
             optimizer_config=self.optimizer_config,
             trainer_hyperparameters=self.algorithm_config,
         )
-        scaling_config = TrainerRunnerScalingConfig(
+        scaling_config = TrainerScalingConfig(
             num_workers=self.num_trainer_workers,
             num_gpus_per_worker=self.num_gpus_per_trainer_worker,
             num_cpus_per_worker=self.num_cpus_per_trainer_worker,

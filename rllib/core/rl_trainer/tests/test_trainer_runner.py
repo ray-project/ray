@@ -5,7 +5,7 @@ import time
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
-from ray.rllib.core.rl_trainer.rl_trainer_config import TrainerRunnerScalingConfig
+from ray.rllib.core.rl_trainer.rl_trainer_config import TrainerScalingConfig
 from ray.rllib.core.testing.utils import (
     get_trainer_runner,
     add_module_to_runner_or_trainer,
@@ -33,9 +33,7 @@ class TestTrainerRunner(unittest.TestCase):
             ray.init(ignore_reinit_error=True)
             print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
-            scaling_config = TrainerRunnerScalingConfig(
-                num_workers=2, num_gpus_per_worker=1
-            )
+            scaling_config = TrainerScalingConfig(num_workers=2, num_gpus_per_worker=1)
             runner = get_trainer_runner(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=500)
 
@@ -68,9 +66,7 @@ class TestTrainerRunner(unittest.TestCase):
             ray.init(ignore_reinit_error=True)
             print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
-            scaling_config = TrainerRunnerScalingConfig(
-                num_workers=2, num_gpus_per_worker=1
-            )
+            scaling_config = TrainerScalingConfig(num_workers=2, num_gpus_per_worker=1)
             runner = get_trainer_runner(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=500)
             batch = reader.next()

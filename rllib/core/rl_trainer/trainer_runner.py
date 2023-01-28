@@ -28,7 +28,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 
 from ray.train._internal.backend_executor import BackendExecutor
 
-from ray.rllib.core.rl_trainer.rl_trainer_config import TrainerRunnerScalingConfig
+from ray.rllib.core.rl_trainer.rl_trainer_config import TrainerScalingConfig
 
 
 class TrainerRunner:
@@ -58,9 +58,9 @@ class TrainerRunner:
     def __init__(
         self,
         rl_trainer_spec: RLTrainerSpec,
-        scaling_config: Optional[TrainerRunnerScalingConfig] = None,
+        scaling_config: Optional[TrainerScalingConfig] = None,
     ):
-        scaling_config = scaling_config or TrainerRunnerScalingConfig()
+        scaling_config = scaling_config or TrainerScalingConfig()
         rl_trainer_class = rl_trainer_spec.rl_trainer_class
 
         # setup wether the worker should use gpu or not
