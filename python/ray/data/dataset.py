@@ -31,7 +31,12 @@ from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.logical.optimizers import LogicalPlan
-from ray.data._internal.logical.operators.map_operator import MapBatches
+from ray.data._internal.logical.operators.map_operator import (
+    Filter,
+    FlatMap,
+    MapRows,
+    MapBatches,
+)
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs, batch_blocks
 from ray.data._internal.block_list import BlockList
@@ -334,7 +339,18 @@ class Dataset(Generic[T]):
                 fn=fn,
             )
         )
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            map_op = MapRows(
+                logical_plan.dag,
+                transform,
+                fn,
+                compute=compute,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(map_op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def map_batches(
         self,
@@ -655,8 +671,16 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
+        # breakpoint()
+        if hasattr(fn, "__self__") and isinstance(
+            fn.__self__, ray.data.preprocessor.Preprocessor
+        ):
+            stage_name = fn.__self__.__class__.__name__
+        else:
+            stage_name = f'MapBatches({getattr(fn, "__name__", type(fn))})'
+
         stage = OneToOneStage(
-            "map_batches",
+            stage_name,
             transform,
             compute,
             ray_remote_args,
@@ -676,16 +700,16 @@ class Dataset(Generic[T]):
                 logical_plan.dag,
                 transform,
                 fn,
-                batch_size,
-                compute,
-                batch_format,
-                zero_copy_batch,
-                target_block_size,
-                fn_args,
-                fn_kwargs,
-                fn_constructor_args,
-                fn_constructor_kwargs,
-                ray_remote_args,
+                batch_size=batch_size,
+                compute=compute,
+                batch_format=batch_format,
+                zero_copy_batch=zero_copy_batch,
+                target_block_size=target_block_size,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
+                fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
+                ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(map_batches_op)
 
@@ -888,7 +912,18 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             OneToOneStage("flat_map", transform, compute, ray_remote_args, fn=fn)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = FlatMap(
+                input_op=logical_plan.dag,
+                block_fn=transform,
+                fn=fn,
+                compute=compute,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def filter(
         self,
@@ -953,7 +988,19 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             OneToOneStage("filter", transform, compute, ray_remote_args, fn=fn)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = Filter(
+                input_op=logical_plan.dag,
+                block_fn=transform,
+                fn=fn,
+                compute=compute,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(op)
+
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
