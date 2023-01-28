@@ -1,10 +1,16 @@
+import collections
 import time
 
 import pytest
 
 import ray
 from ray.tests.conftest import *  # noqa
-from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
+from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    _ActorPool,
+    AutoscalingConfig,
+    AutoscalingPolicy,
+)
 
 
 @ray.remote
@@ -84,6 +90,15 @@ class TestActorPool:
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1  # Actor should now be idle.
 
+    def test_pick_max_tasks_in_flight(self, ray_start_regular_shared):
+        # Test that we can't pick an actor beyond the max_tasks_in_flight cap.
+        pool = _ActorPool(max_tasks_in_flight=2)
+        actor = self._add_ready_worker(pool)
+        assert pool.pick_actor() == actor
+        assert pool.pick_actor() == actor
+        # Check that the 3rd pick doesn't return the actor.
+        assert pool.pick_actor() is None
+
     def test_pick_ordering_lone_idle(self, ray_start_regular_shared):
         # Test that a lone idle actor is the one that's picked.
         pool = _ActorPool()
@@ -113,6 +128,21 @@ class TestActorPool:
         assert pool.num_active_actors() == 4
         assert pool.num_idle_actors() == 0
 
+    def test_pick_all_max_tasks_in_flight(self, ray_start_regular_shared):
+        # Test that max_tasks_in_flight cap applies to all actors in pool.
+        pool = _ActorPool(max_tasks_in_flight=2)
+        # Add 4 actors to the pool.
+        actors = [self._add_ready_worker(pool) for _ in range(4)]
+        picked_actors = [pool.pick_actor() for _ in range(8)]
+        pick_counts = collections.Counter(picked_actors)
+        # Check that picks were evenly distributed over the pool.
+        assert len(pick_counts) == 4
+        for actor, count in pick_counts.items():
+            assert actor in actors
+            assert count == 2
+        # Check that the next pick doesn't return an ctor.
+        assert pool.pick_actor() is None
+
     def test_pick_ordering_with_returns(self, ray_start_regular_shared):
         # Test that pick ordering works with returns.
         pool = _ActorPool()
@@ -125,6 +155,96 @@ class TestActorPool:
         pool.return_actor(actor2)
         # Check that actor 2 is the next actor that's picked.
         assert pool.pick_actor() == actor2
+
+    def test_kill_inactive_pending_actor(self, ray_start_regular_shared):
+        # Test that a pending actor is killed on the kill_inactive_actor() call.
+        pool = _ActorPool()
+        actor = PoolWorker.remote()
+        ready_ref = actor.ready.remote()
+        pool.add_pending_actor(actor, ready_ref)
+        # Kill inactive actor.
+        killed = pool.kill_inactive_actor()
+        # Check that an actor was killed.
+        assert killed
+        # Check that actor is not in pool.
+        assert pool.get_pending_actor_refs() == []
+        # Check that actor was killed.
+        # Wait a second to let actor killing happen.
+        time.sleep(1)
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(actor.ready.remote())
+        # Check that the per-state pool sizes are as expected.
+        assert pool.num_total_actors() == 0
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 0
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 0
+
+    def test_kill_inactive_idle_actor(self, ray_start_regular_shared):
+        # Test that a idle actor is killed on the kill_inactive_actor() call.
+        pool = _ActorPool()
+        actor = self._add_ready_worker(pool)
+        # Kill inactive actor.
+        killed = pool.kill_inactive_actor()
+        # Check that an actor was killed.
+        assert killed
+        # Check that actor is not in pool.
+        assert pool.pick_actor() is None
+        # Check that actor was killed.
+        # Wait a second to let actor killing happen.
+        time.sleep(1)
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(actor.ready.remote())
+        # Check that the per-state pool sizes are as expected.
+        assert pool.num_total_actors() == 0
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 0
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 0
+
+    def test_kill_inactive_active_actor_not_killed(self, ray_start_regular_shared):
+        # Test that active actors are NOT killed on the kill_inactive_actor() call.
+        pool = _ActorPool()
+        actor = self._add_ready_worker(pool)
+        # Pick actor (and double-check that the actor was picked).
+        assert pool.pick_actor() == actor
+        # Kill inactive actor.
+        killed = pool.kill_inactive_actor()
+        # Check that an actor was NOT killed.
+        assert not killed
+        # Check that the active actor is still in the pool.
+        assert pool.pick_actor() == actor
+
+    def test_kill_inactive_pending_over_idle(self, ray_start_regular_shared):
+        # Test that a killing pending actors is prioritized over killing idle actors on
+        # the kill_inactive_actor() call.
+        pool = _ActorPool()
+        # Add pending worker.
+        pending_actor = PoolWorker.remote()
+        ready_ref = pending_actor.ready.remote()
+        pool.add_pending_actor(pending_actor, ready_ref)
+        # Add idle worker.
+        idle_actor = self._add_ready_worker(pool)
+        # Kill inactive actor.
+        killed = pool.kill_inactive_actor()
+        # Check that an actor was killed.
+        assert killed
+        # Check that the idle actor is still in the pool.
+        assert pool.pick_actor() == idle_actor
+        pool.return_actor(idle_actor)
+        # Check that the pending actor is not in pool.
+        assert pool.get_pending_actor_refs() == []
+        # Check that actor was killed.
+        # Wait a second to let actor killing happen.
+        time.sleep(1)
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(pending_actor.ready.remote())
+        # Check that the per-state pool sizes are as expected.
+        assert pool.num_total_actors() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 1
 
     def test_kill_all_inactive_pending_actor_killed(self, ray_start_regular_shared):
         # Test that pending actors are killed on the kill_all_inactive_actors() call.
@@ -286,6 +406,129 @@ class TestActorPool:
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
+
+
+class TestAutoscalingConfig:
+    def test_min_workers_validation(self):
+        # Test min_workers positivity validation.
+        with pytest.raises(ValueError):
+            AutoscalingConfig(min_workers=0, max_workers=2)
+
+    def test_max_workers_validation(self):
+        # Test max_workers not being less than min_workers validation.
+        with pytest.raises(ValueError):
+            AutoscalingConfig(min_workers=3, max_workers=2)
+
+    def test_max_tasks_in_flight_validation(self):
+        # Test max_tasks_in_flight positivity validation.
+        with pytest.raises(ValueError):
+            AutoscalingConfig(min_workers=1, max_workers=2, max_tasks_in_flight=0)
+
+    def test_full_specification(self):
+        # Basic regression test for full specification.
+        config = AutoscalingConfig(
+            min_workers=2,
+            max_workers=100,
+            max_tasks_in_flight=3,
+            ready_to_total_workers_ratio=0.8,
+            idle_to_total_workers_ratio=0.25,
+        )
+        assert config.min_workers == 2
+        assert config.max_workers == 100
+        assert config.max_tasks_in_flight == 3
+        assert config.ready_to_total_workers_ratio == 0.8
+        assert config.idle_to_total_workers_ratio == 0.25
+
+    def test_from_compute(self):
+        # Test that construction from ActorPoolStrategy works as expected.
+        compute = ActorPoolStrategy(
+            min_size=2, max_size=5, max_tasks_in_flight_per_actor=3
+        )
+        config = AutoscalingConfig.from_compute_strategy(compute)
+        assert config.min_workers == 2
+        assert config.max_workers == 5
+        assert config.max_tasks_in_flight == 3
+        assert config.ready_to_total_workers_ratio == 0.8
+        assert config.idle_to_total_workers_ratio == 0.5
+
+
+class TestAutoscalingPolicy:
+    def test_min_workers(self):
+        # Test that the autoscaling policy forwards the config's min_workers.
+        config = AutoscalingConfig(min_workers=1, max_workers=4)
+        policy = AutoscalingPolicy(config)
+        assert policy.min_workers == 1
+
+    def test_max_workers(self):
+        # Test that the autoscaling policy forwards the config's max_workers.
+        config = AutoscalingConfig(min_workers=1, max_workers=4)
+        policy = AutoscalingPolicy(config)
+        assert policy.max_workers == 4
+
+    def test_should_scale_up_over_max_workers(self):
+        # Test that scale-up is blocked if the pool would go over the configured max
+        # workers.
+        config = AutoscalingConfig(min_workers=1, max_workers=4)
+        policy = AutoscalingPolicy(config)
+        num_total_workers = 4
+        num_running_workers = 4
+        # Shouldn't scale up due to pool max workers.
+        assert not policy.should_scale_up(num_total_workers, num_running_workers)
+
+        num_total_workers = 3
+        num_running_workers = 3
+        # Should scale up since under pool max workers.
+        assert policy.should_scale_up(num_total_workers, num_running_workers)
+
+    def test_should_scale_up_ready_to_total_ratio(self):
+        # Test that scale-up is blocked if under the ready workers to total workers
+        # ratio.
+        config = AutoscalingConfig(
+            min_workers=1, max_workers=4, ready_to_total_workers_ratio=0.5
+        )
+        policy = AutoscalingPolicy(config)
+
+        num_total_workers = 2
+        num_running_workers = 1
+        # Shouldn't scale up due to being under ready workers to total workers ratio.
+        assert not policy.should_scale_up(num_total_workers, num_running_workers)
+
+        num_total_workers = 3
+        num_running_workers = 2
+        # Shouldn scale up due to being over ready workers to total workers ratio.
+        assert policy.should_scale_up(num_total_workers, num_running_workers)
+
+    def test_should_scale_down_min_workers(self):
+        # Test that scale-down is blocked if the pool would go under the configured min
+        # workers.
+        config = AutoscalingConfig(min_workers=2, max_workers=4)
+        policy = AutoscalingPolicy(config)
+        num_total_workers = 2
+        num_idle_workers = 2
+        # Shouldn't scale down due to pool min workers.
+        assert not policy.should_scale_down(num_total_workers, num_idle_workers)
+
+        num_total_workers = 3
+        num_idle_workers = 3
+        # Should scale down since over pool min workers.
+        assert policy.should_scale_down(num_total_workers, num_idle_workers)
+
+    def test_should_scale_down_idle_to_total_ratio(self):
+        # Test that scale-down is blocked if under the idle workers to total workers
+        # ratio.
+        config = AutoscalingConfig(
+            min_workers=1, max_workers=4, idle_to_total_workers_ratio=0.5
+        )
+        policy = AutoscalingPolicy(config)
+        num_total_workers = 4
+        num_idle_workers = 1
+        # Shouldn't scale down due to being under idle workers to total workers ratio.
+        assert not policy.should_scale_down(num_total_workers, num_idle_workers)
+
+        num_total_workers = 4
+        num_idle_workers = 3
+        # Should scale down due to being over idle workers to total workers ratio.
+        assert policy.should_scale_down(num_total_workers, num_idle_workers)
 
 
 if __name__ == "__main__":
