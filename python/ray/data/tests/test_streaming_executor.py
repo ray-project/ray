@@ -127,26 +127,26 @@ def test_select_operator_to_run():
     )
 
     # Test backpressure includes num active tasks as well.
-    topo[o3].num_active_tasks = MagicMock(return_value=2)
+    o3.num_active_work_refs = MagicMock(return_value=2)
     o3.internal_queue_size = MagicMock(return_value=0)
     assert (
         select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
         == o2
     )
-    # Internal queue size is added to num active tasks.
-    topo[o3].num_active_tasks = MagicMock(return_value=0)
+    # nternal queue size is added to num active tasks.
+    o3.num_active_work_refs = MagicMock(return_value=0)
     o3.internal_queue_size = MagicMock(return_value=2)
     assert (
         select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
         == o2
     )
-    topo[o2].num_active_tasks = MagicMock(return_value=2)
+    o2.num_active_work_refs = MagicMock(return_value=2)
     o2.internal_queue_size = MagicMock(return_value=0)
     assert (
         select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
         == o3
     )
-    topo[o2].num_active_tasks = MagicMock(return_value=0)
+    o2.num_active_work_refs = MagicMock(return_value=0)
     o2.internal_queue_size = MagicMock(return_value=2)
     assert (
         select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)

@@ -60,9 +60,9 @@ class OpState:
         """Return the number of queued bundles across all inqueues."""
         return sum(len(q) for q in self.inqueues)
 
-    def num_active_tasks(self):
-        """Return the number of Ray futures pending for this operator."""
-        return self.op.num_active_work_refs()
+    def num_processing(self):
+        """Return the number of bundles currently in processing for this operator."""
+        return self.op.num_active_work_refs() + self.op.internal_queue_size()
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -78,7 +78,8 @@ class OpState:
 
     def summary_str(self) -> str:
         queued = self.num_queued() + self.op.internal_queue_size()
-        desc = f"{self.op.name}: {self.num_active_tasks()} active, {queued} queued"
+        active = self.op.num_active_work_refs()
+        desc = f"{self.op.name}: {active} active, {queued} queued"
         suffix = self.op.progress_str()
         if suffix:
             desc += f", {suffix}"
@@ -209,7 +210,7 @@ def select_operator_to_run(
 
     This is currently implemented by applying backpressure on operators that are
     producing outputs faster than they are consuming them `len(outqueue)`, as well as
-    operators with a large number of running tasks `num_active_tasks()`.
+    operators with a large number of running tasks `num_processing()`.
 
     Note that memory limits also apply to the outqueue of the output operator. This
     provides backpressure if the consumer is slow. However, once a bundle is returned
@@ -237,14 +238,9 @@ def select_operator_to_run(
     if not ops:
         return None
 
-    # Equally penalize outqueue length and active tasks for backpressure. Note that
-    # for actor pool ops, we must also include the internal queue size, since
-    # num_active_tasks() does not reflect tasks pending submission to the actor pool.
+    # Equally penalize outqueue length and num bundles processing for backpressure.
     return min(
-        ops,
-        key=lambda op: len(topology[op].outqueue)
-        + topology[op].num_active_tasks()
-        + op.internal_queue_size(),
+        ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_processing()
     )
 
 
