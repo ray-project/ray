@@ -346,7 +346,7 @@ def run_release_test(
             )
 
         try:
-            # Logic duplicated in ray_release/command_runner/_anyscale_job_wrapper.sh
+            # Logic duplicated in ray_release/command_runner/_anyscale_job_wrapper.py
             # Timeout is the time the test took divided by 200
             # (~7 minutes for a 24h test) but no less than 30s
             # and no more than 900s

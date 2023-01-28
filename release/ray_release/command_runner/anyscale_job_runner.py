@@ -51,11 +51,11 @@ class AnyscaleJobRunner(JobRunner):
 
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
-        job_script = os.path.join(os.path.dirname(__file__), "_anyscale_job_wrapper.sh")
+        job_script = os.path.join(os.path.dirname(__file__), "_anyscale_job_wrapper.py")
         # Copy prometheus metrics script to working dir
-        if os.path.exists("anyscale_job_wrapper.sh"):
-            os.unlink("anyscale_job_wrapper.sh")
-        os.link(job_script, "anyscale_job_wrapper.sh")
+        if os.path.exists("anyscale_job_wrapper.py"):
+            os.unlink("anyscale_job_wrapper.py")
+        os.link(job_script, "anyscale_job_wrapper.py")
 
         super().prepare_remote_env()
 
@@ -98,10 +98,10 @@ class AnyscaleJobRunner(JobRunner):
         else:
             env_str = ""
 
-        is_long_running_str = "true" if is_long_running else "false"
+        is_long_running_str = " --test-long-running "
         full_command = (
-            f"{prepare_command_str}{env_str}bash anyscale_job_wrapper.sh '{command}' "
-            f"'{timeout}' '{is_long_running_str}' "
+            f"{prepare_command_str}{env_str}python anyscale_job_wrapper.py '{command}' "
+            f"--test-workload-timeout {timeout}{is_long_running_str}"
             f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}'"
         )
