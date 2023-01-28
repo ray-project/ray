@@ -22,7 +22,7 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
-    MemoryProfilingManager
+    MemoryProfilingManager,
 )
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
@@ -359,9 +359,15 @@ class ReporterAgent(
         format = request.format
         native = request.native
         p = MemoryProfilingManager(self._log_dir)
-        success, output = await p.memory_profile(
-            pid, format=format, duration=duration, native=native
-        )
+        success, output = await p.attach(pid, native=native)
+
+        # If the attachment failed, respond.
+        if not success:
+            return reporter_pb2.MemoryProfilingReply(output=output, success=success)
+
+        # Wait as much as duration before getting the result.
+        await asyncio.sleep(duration)
+        success, output = await p.memory_profile(pid, format=format)
         return reporter_pb2.MemoryProfilingReply(output=output, success=success)
 
     async def ReportOCMetrics(self, request, context):

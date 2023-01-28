@@ -206,12 +206,12 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 # _head_node_registration_time_s == None if head node is not
                 # registered.
                 head_node_not_registered = not self._head_node_registration_time_s
-                # Until the head node is registered, we update the
+                # Until the head node / head node's agent is registered, we update the
                 # node status more frequently.
                 # If the head node is not updated after 10 seconds, it just stops
                 # doing frequent update to avoid unexpected edge case.
                 if (
-                    head_node_not_registered
+                    (head_node_not_registered or len(DataSource.agents) < 1)
                     and self._node_update_cnt * FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS
                     < FREQUENT_UPDATE_TIMEOUT_SECONDS
                 ):

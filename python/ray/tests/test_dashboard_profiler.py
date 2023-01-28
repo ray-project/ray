@@ -7,11 +7,11 @@ import time
 
 import numpy as np
 import ray
-import memray
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
+    wait_for_condition,
 )
 from ray.dashboard.modules.reporter.profile_manager import MemoryProfilingManager
 
@@ -162,13 +162,11 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
 async def test_memory_profiler(shutdown_only, tmp_path):
     # Sanity check py-spy is installed.
     subprocess.check_call(["memray", "--help"])
     ray.init()
 
-    profile_path = tmp_path
     p = MemoryProfilingManager(tmp_path)
 
     @ray.remote
@@ -182,7 +180,7 @@ async def test_memory_profiler(shutdown_only, tmp_path):
         def do_stuff_infinite(self):
             while True:
                 time.sleep(1)
-                self.a.append(np.random.rand(1024)) # 1KB/s
+                self.a.append(np.random.rand(1024))  # 1KB/s
 
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
@@ -201,9 +199,9 @@ async def test_memory_profiler(shutdown_only, tmp_path):
     print(output)
 
     print("Reattachment test.")
-    # Reattachment should fail.
+    # Reattachment should work (no-op).
     result, output = await p.attach(pid=pid)
-    assert result is False
+    assert result is True
     print(output)
 
     print("Profiling test, flamegraph format.")
@@ -224,61 +222,81 @@ async def test_memory_profiler(shutdown_only, tmp_path):
     assert result is True
 
 
-# @pytest.mark.skipif(
-#     os.environ.get("RAY_MINIMAL") == "1",
-#     reason="This test is not supposed to work for minimal installation.",
-# )
-# @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
-# def test_memory_profiler_e2e(ray_start_with_dashboard):
-#     # Sanity check py-spy is installed.
-#     subprocess.check_call(["memray", "--version"])
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_memory_profiler_e2e(ray_start_with_dashboard):
+    # Sanity check py-spy is installed.
+    subprocess.check_call(["memray", "--help"])
 
-#     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
-#     address_info = ray_start_with_dashboard
-#     webui_url = address_info["webui_url"]
-#     webui_url = format_web_url(webui_url)
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    address_info = ray_start_with_dashboard
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+    ip = address_info.address_info["node_ip_address"]
+    # Ensure dashboard is up using state API.
+    wait_for_condition(lambda: len(ray.experimental.state.api.list_nodes()) == 1)
 
-#     @ray.remote
-#     class Actor:
-#         def getpid(self):
-#             return os.getpid()
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
 
-#         def do_stuff_infinite(self):
-#             while True:
-#                 pass
+        def do_stuff_infinite(self):
+            while True:
+                pass
 
-#     a = Actor.remote()
-#     pid = ray.get(a.getpid.remote())
-#     a.do_stuff_infinite.remote()
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    a.do_stuff_infinite.remote()
 
-#     def get_actor_stack():
-#         response = requests.get(f"{webui_url}/worker/traceback?pid={pid}")
-#         response.raise_for_status()
-#         content = response.content.decode("utf-8")
-#         print("CONTENT", content)
-#         assert "do_stuff_infinite" in content, content
+    # If the ip is not provided, the request should fail.
+    response = requests.get(f"{webui_url}/worker/memory_profile?pid={pid}")
+    with pytest.raises(requests.exceptions.HTTPError):
+        assert "ip address and pid has to be provided" in response.text
+        response.raise_for_status()
 
-#     # First ensure dashboard is up, before we test for failure cases.
-#     assert wait_until_succeeded_without_exception(
-#         get_actor_stack,
-#         (requests.RequestException, AssertionError),
-#         timeout_ms=20000,
-#         retry_interval_ms=1000,
-#     )
+    # Run profiler
+    # SANG-TODO native, format, duration
+    def request_mem_profile(pid, ip, duration, format, native):
+        response = requests.get(
+            f"{webui_url}/worker/memory_profile?"
+            f"pid={pid}&ip={ip}&duration={duration}"
+            f"&format={format}&native={native}"
+        )
+        return response
 
-#     # Check we return the right status code and error message on failure.
-#     response = requests.get(f"{webui_url}/worker/traceback?pid=1234567")
-#     content = response.content.decode("utf-8")
-#     print(content)
-#     assert "text/plain" in response.headers["Content-Type"], response.headers
-#     assert "Failed to execute" in content, content
+    def run_profiler(pid, ip, duration, format, native):
+        response = request_mem_profile(pid, ip, duration, format, native)
+        response.raise_for_status()
+        content = response.content.decode("utf-8")
+        assert "text/html" in response.headers["Content-Type"], response.headers
+        return content
 
-#     # Check we return the right status code and error message on failure.
-#     response = requests.get(f"{webui_url}/worker/cpu_profile?pid=1234567")
-#     content = response.content.decode("utf-8")
-#     print(content)
-#     assert "text/plain" in response.headers["Content-Type"], response.headers
-#     assert "Failed to execute" in content, content
+    # incorrect format
+    response = request_mem_profile(pid, ip, 5, "random", "0")
+    with pytest.raises(requests.exceptions.HTTPError):
+        assert "Unsupported format random is given." in response.text
+        response.raise_for_status()
+
+    # Run memory profiler
+    start = time.time()
+    result = run_profiler(pid, ip, 1, "flamegraph", "0")
+    # Test duration.
+    assert time.time() - start >= 1
+    # Verify the result is a html file.
+    assert "</html>" in result
+
+    # Running it again still should work.
+    result = run_profiler(pid, ip, 0, "flamegraph", "0")
+    assert "</html>" in result
+
+    # Test table.
+    b = Actor.remote()
+    pid = ray.get(b.getpid.remote())
+    result = run_profiler(pid, ip, 1, "table", "0")
+    assert "</html>" in result
 
 
 if __name__ == "__main__":

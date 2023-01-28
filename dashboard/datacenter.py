@@ -45,9 +45,6 @@ class DataSource:
     core_worker_stats = Dict()
     # {job id hex(str): {event id(str): event dict}}
     events = Dict()
-    # {ip (str): pid (int)}
-    # A set of worker ids that have been memory profiled.
-    mem_profiled_workers = MutableNotificationDict()
 
 
 class DataOrganizer:

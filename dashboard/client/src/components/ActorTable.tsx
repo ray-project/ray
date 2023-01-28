@@ -351,12 +351,12 @@ const ActorTable = ({
                       </a>
                       <br />
                       <a
-                        href={`/worker/memory_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5&native=0`}
+                        href={`/worker/memory_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5&native=0&format=flamegraph`}
                         target="_blank"
-                        title="Profile the Python worker for 5 seconds (default) and display a memory flame graph."
+                        title="Profile the Python worker for 10 seconds (default) and display a memory profiling result. Once the profiler is attached, it will be attached until the process exits. Whenever you click a button, you get the result of [first time button was clicked ~ now]."
                         rel="noreferrer"
                       >
-                        Memory&nbsp;Flame&nbsp;Graph
+                        Memory&nbsp;Flame&nbsp;Graph (Experimental)
                       </a>
                       <br />
                     </React.Fragment>

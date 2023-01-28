@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Tuple
+
 try:
     import memray
 except ImportError:
@@ -135,9 +136,7 @@ class MemoryProfilingManager:
                 "memray >= 1.5.0. Try pip install memray==1.5.0."
             )
         if sys.version_info < (3, 7):
-            return False, (
-                "Memray is not supported for python version < 3.7."
-            )
+            return False, ("Memray is not supported for python version < 3.7.")
         return True, ""
 
     async def attach(self, pid: int, native: bool = False) -> Tuple[bool, str]:
@@ -145,9 +144,7 @@ class MemoryProfilingManager:
         if not version_correct:
             return False, err
 
-        profile_file_path = (
-            self.profile_dir_path / f"{pid}_memory_profiling.bin"
-        )
+        profile_file_path = self.profile_dir_path / f"{pid}_memory_profiling.bin"
 
         if not profile_file_path.exists():
             cmd = f"$(which memray) attach " f"-o {profile_file_path} {pid}"
@@ -167,23 +164,20 @@ class MemoryProfilingManager:
                 return False, _format_failed_memray_command(cmd, stdout, stderr)
             return True, "Succeed"
         else:
-            return False, (
+            return True, (
                 "Memory profiler has already attached "
                 f"to the process with pid {pid}."
             )
 
-    async def memory_profile(
-        self, pid: int, format="flamegraph",
-    ) -> Tuple[bool, str]:
+    async def memory_profile(self, pid: int, format="flamegraph") -> Tuple[bool, str]:
         version_correct, err = self.check_memray_python_version()
         if not version_correct:
             return False, err
 
-        profile_file_path = (
-            self.profile_dir_path / f"{pid}_memory_profiling.bin"
-        )
+        profile_file_path = self.profile_dir_path / f"{pid}_memory_profiling.bin"
         # If the file doesn't exist, attach it.
         if not profile_file_path.exists():
+            logger.info(f"Attaching a memory profiler to a pid {pid}.")
             result, output = await self.attach(pid=pid)
             # If the attach fails, fail the API.
             if not result:
@@ -193,8 +187,12 @@ class MemoryProfilingManager:
             self.profile_dir_path / f"{pid}_{format}_memory_profiling.html"
         )
         cmd = (
-            f"$(which memray) flamegraph -o {result_file_path} "
+            f"$(which memray) {format} -o {result_file_path} "
             f"--force {profile_file_path}"
+        )
+        logger.info(
+            f"Getting the result of memory profiling from a pid {pid}. "
+            f"Command: {cmd}"
         )
         if await _can_passwordless_sudo():
             cmd = "sudo -n " + cmd
