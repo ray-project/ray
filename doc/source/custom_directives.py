@@ -313,9 +313,9 @@ def build_gallery(app):
         ---
         :img-top: {item["image"]}
 
-        {item["description"]}
-
         {gh_stars}
+
+        {item["description"]}
 
         +++
         .. link-button:: {item["website"]}
