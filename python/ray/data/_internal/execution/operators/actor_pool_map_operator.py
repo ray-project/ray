@@ -60,7 +60,7 @@ class ActorPoolMapOperator(MapOperator):
             ObjectRef[ObjectRefGenerator], Tuple[_TaskState, ray.actor.ActorHandle]
         ] = {}
         # A pool of running actors on which we can execute mapper tasks.
-        self._actor_pool = _ActorPool()
+        self._actor_pool = _ActorPool(autoscaling_policy._config.max_tasks_in_flight)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = collections.deque()
         # Cached actor class.
@@ -198,7 +198,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def progress_str(self) -> str:
         return (
-            f"{self._actor_pool.num_running_actors()} "
+            f"{self._actor_pool.num_running_actors()} actors "
             f"({self._actor_pool.num_pending_actors()} pending)"
         )
 

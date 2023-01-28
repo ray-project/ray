@@ -101,7 +101,9 @@ def test_num_outputs_total():
 def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
-    compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
+    compute_strategy = (
+        ActorPoolStrategy(max_size=1) if use_actors else TaskPoolStrategy()
+    )
     op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
@@ -113,7 +115,7 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     op.start(ExecutionOptions())
     if use_actors:
         # Actor will be pending after starting the operator.
-        assert op.progress_str() == "0 (1 pending)"
+        assert op.progress_str() == "0 actors (1 pending)"
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.inputs_done()
@@ -126,10 +128,10 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
         if use_actors and work_refs:
             # After actor is ready (first work ref resolved), actor will remain ready
             # while there is work to do.
-            assert op.progress_str() == "1 (0 pending)"
+            assert op.progress_str() == "1 actors (0 pending)"
     if use_actors:
         # After all work is done, actor will have been killed to free up resources..
-        assert op.progress_str() == "0 (0 pending)"
+        assert op.progress_str() == "0 actors (0 pending)"
     else:
         assert op.progress_str() == ""
 
@@ -227,7 +229,9 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     ray.init(num_cpus=0, num_gpus=1)
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
-    compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
+    compute_strategy = (
+        ActorPoolStrategy(max_size=1) if use_actors else TaskPoolStrategy()
+    )
     op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
