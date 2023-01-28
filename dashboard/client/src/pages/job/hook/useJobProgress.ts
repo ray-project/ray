@@ -3,7 +3,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import {
-  getStateApiJobProgressByLineageAndName,
+  getStateApiJobProgressByLineage,
   getStateApiJobProgressByTaskName,
 } from "../../../service/job";
 import {
@@ -207,6 +207,7 @@ const formatToJobProgressGroup = (
     key: nestedJobProgress.key,
     progress: formattedProgress,
     children: nestedJobProgress.children.map(formatToJobProgressGroup),
+    type: nestedJobProgress.type,
   };
 };
 
@@ -248,7 +249,7 @@ export const useJobProgressByLineage = (
   const { data } = useSWR(
     jobId ? ["useJobProgressByLineageAndName", jobId] : null,
     async (_, jobId) => {
-      const rsp = await getStateApiJobProgressByLineageAndName(jobId);
+      const rsp = await getStateApiJobProgressByLineage(jobId);
       setMsg(rsp.data.msg);
 
       if (rsp.data.result) {

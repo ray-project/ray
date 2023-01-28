@@ -1,4 +1,5 @@
 import { Actor } from "./actor";
+import { TypeTaskType } from "./task";
 import { Worker } from "./worker";
 
 export type Job = {
@@ -142,6 +143,7 @@ export type NestedJobProgress = {
     [stateName: string]: number;
   };
   children: NestedJobProgress[];
+  type: TypeTaskType | "GROUP" | "ACTOR";
 };
 
 export type JobProgressGroup = {
@@ -149,6 +151,7 @@ export type JobProgressGroup = {
   key: string;
   progress: TaskProgress;
   children: JobProgressGroup[];
+  type: TypeTaskType | "GROUP" | "ACTOR";
 };
 
 export type StateApiNestedJobProgress = {
