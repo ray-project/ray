@@ -11,6 +11,7 @@ from ray.rllib.core.testing.utils import (
     get_trainer_runner,
     get_rl_trainer,
 )
+from ray.rllib.core.rl_trainer.rl_trainer_config import TrainerScalingConfig
 
 
 tf1, tf, tfv = try_import_tf()
@@ -33,7 +34,8 @@ class TestTrainerRunnerLocal(unittest.TestCase):
     def test_trainer_runner_no_gpus(self):
         env = gym.make("CartPole-v1")
         for fw in ["tf", "torch"]:
-            runner = get_trainer_runner(fw, env, compute_config=dict(num_gpus=0))
+            scaling_config = TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0)
+            runner = get_trainer_runner(fw, env, scaling_config)
             local_trainer = get_rl_trainer(fw, env)
             local_trainer.build()
 

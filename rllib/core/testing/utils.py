@@ -6,7 +6,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 from ray.rllib.core.rl_trainer.rl_trainer_config import (
     RLTrainerSpec,
-    TrainerRunnerScalingConfig,
+    TrainerScalingConfig,
 )
 
 from ray.rllib.core.rl_module.marl_module import (
@@ -105,7 +105,7 @@ def get_rl_trainer(
 def get_trainer_runner(
     framework: str,
     env: "gym.Env",
-    trainer_runner_scaling_config: TrainerRunnerScalingConfig,
+    trainer_runner_scaling_config: TrainerScalingConfig,
     is_multi_agent: bool = False,
 ) -> TrainerRunner:
 

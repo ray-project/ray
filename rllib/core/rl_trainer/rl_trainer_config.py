@@ -29,7 +29,6 @@ class RLModuleBackendConfig:
     """
 
     def __post_init__(self):
-        super().__post_init__()
         self._distributed: bool = False
 
     @property
@@ -169,7 +168,7 @@ class RLTrainerSpec:
         return {
             "module": self.module,
             "module_spec": self.module_spec,
-            "scaling_config": self.module_backend_config,
+            "module_backend_config": self.module_backend_config,
             "optimizer_config": self.optimizer_config,
             "trainer_hyperparameters": self.trainer_hyperparameters,
         }

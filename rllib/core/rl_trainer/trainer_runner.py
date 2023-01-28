@@ -66,7 +66,7 @@ class TrainerRunner:
         # setup wether the worker should use gpu or not
         if rl_trainer_class.framework == "torch":
             trainer_should_use_gpu = scaling_config.num_gpus_per_worker > 0
-            rl_trainer_spec.scaling_config.set_use_gpu(trainer_should_use_gpu)
+            rl_trainer_spec.module_backend_config.set_use_gpu(trainer_should_use_gpu)
         else:
             # TODO (Avnish) How do I run TF on one GPU?
             pass
@@ -74,14 +74,18 @@ class TrainerRunner:
         self._is_local = scaling_config.num_workers == 0
         if self._is_local:
             # in local mode the trainer is always not distributed
-            rl_trainer_spec.scaling_config.set_distributed(False)
+            rl_trainer_spec.module_backend_config.set_distributed(False)
             self._trainer = rl_trainer_class(**rl_trainer_spec.get_params_dict())
             self._trainer.build()
         else:
             # in remote mode the trainer is distributed only if there are more than 1
             # workers
             is_trainer_distributed = scaling_config.num_workers > 1
-            rl_trainer_spec.scaling_config.set_distributed(is_trainer_distributed)
+            (
+                rl_trainer_spec.module_backend_config.set_distributed(
+                    is_trainer_distributed
+                )
+            )
 
             if rl_trainer_class.framework == "torch":
                 from ray.train.torch import TorchConfig
