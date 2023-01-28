@@ -5,6 +5,14 @@
   padding: 0pt;
 }
 
+.toctree-l1.has-children {
+    font-weight: bold;
+}
+
+.toctree-l2 {
+    font-weight: normal;
+}
+
 .topnav {
   background-color: white;
   border-bottom: 1px solid rgba(0, 0, 0, .1);
