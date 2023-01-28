@@ -56,24 +56,15 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
 
     assert list(df["int64"]) == [1]
     assert np.array_equal(df["int64_list"][0], np.array([1, 2, 3, 4]))
+    assert list(df["int64_empty"]) == [pd.NA]
+
     assert list(df["float"]) == [1.0]
     assert np.array_equal(df["float_list"][0], np.array([1.0, 2.0, 3.0, 4.0]))
+    assert list(df["float_empty"]) == [pd.NA]
+
     assert list(df["bytes"]) == [b"abc"]
     assert np.array_equal(df["bytes_list"][0], np.array([b"abc", b"1234"]))
-
-    # For pa.binary() type, a null value will result in `None` in numpy for
-    # `pa.binary()` type, while it will be `pd.NA` for `pa.int64()` and `pa.float32()`.
-    # >>> x = pa.Table.from_pydict({"a": pa.array([None], type=pa.binary())})
-    # >>> x.to_pandas()
-    #     a
-    # 0  None
-    # >>> y = pa.Table.from_pydict({"a": pa.array([None], type=pa.int64())})
-    # >>> y.to_pandas()
-    #     a
-    # 0 NaN
-    assert list(df["int64_empty"]) == [pd.NA]
-    assert list(df["float_empty"]) == [pd.NA]
-    assert list(df["bytes_empty"]) == [None]
+    assert list(df["bytes_empty"]) == [pd.NA]
 
 
 def test_write_tfrecords(ray_start_regular_shared, tmp_path):

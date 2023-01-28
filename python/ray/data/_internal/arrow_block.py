@@ -224,30 +224,64 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
         import pandas as pd
+        from ray.data.extensions.tensor_extension import (
+            ArrowTensorType,
+            ArrowVariableShapedTensorType,
+        )
+
+        def convert_dtype_pa_to_pd(input_type):
+            # Catch unhashable `pa.PyExtensionType`s before calling `.get()` of dict
+            if isinstance(input_type, (ArrowTensorType, ArrowVariableShapedTensorType)):
+                return None
+            types_mapping = {
+                pyarrow.int64(): pd.Int64Dtype(),
+                pyarrow.float32(): pd.Float32Dtype(),
+            }
+            return types_mapping.get(input_type, None)
 
         # If the Table contains at least one null value, a custom `types_mapper` is
         # needed to handle nullable types during conversion to a Pandas DataFrame.
         # For more details: https://arrow.apache.org/docs/python/pandas.html#nullable-types  # noqa: E501
-        df: pd.DataFrame = self._table.to_pandas(
-            types_mapper={
-                pyarrow.int64(): pd.Int64Dtype(),
-                pyarrow.float32(): pd.Float32Dtype(),
-            }.get
-        )
+        df: pd.DataFrame = self._table.to_pandas(types_mapper=convert_dtype_pa_to_pd)
+        # Replace np.NaN with pd.NA to represent nullable values which
+        # can be typed as nullable pandas Dtypes.
+        df = df.fillna(pd.NA)
 
-        # Downcast from nullable to non-nullable/primitive data types if
-        # the columns don't have null values.
+        # Maps pyarrow type -> (default numpy type, corresponding nullable pandas type).
         nullable_types_mapping = {
-            pd.Int64Dtype(): np.int64,
-            pd.Float32Dtype(): np.float32,
+            pyarrow.int64(): (np.int64, pd.Int64Dtype()),
+            pyarrow.float32(): (np.float32, pd.Float32Dtype()),
         }
-        for col in df:
-            col_type = df[col].dtype
-            if col_type in nullable_types_mapping:
-                try:
-                    df[col] = df[col].astype(nullable_types_mapping.get(col_type))
-                except ValueError:
-                    continue
+
+        for col_field in self._table.schema:
+            col_name, col_type = col_field.name, col_field.type
+            if pyarrow.types.is_list(col_type):
+                value_type = col_type.value_type
+                # If the column contains pd.NA values (indicating missing feature
+                # value), use the corresponding nullable type to represent the column
+                # with the missing values.
+                if any(pd.isna(df[col_name])) and value_type in nullable_types_mapping:
+                    _, nullable_type = nullable_types_mapping.get(value_type)
+                    df[col_name] = df[col_name].astype(nullable_type)
+            else:
+                # Get the underlying data type for Tensor types.
+                if isinstance(
+                    col_type, (ArrowTensorType, ArrowVariableShapedTensorType)
+                ):
+                    value_type = col_type.to_pandas_dtype()
+                else:
+                    value_type = col_type
+                if value_type in nullable_types_mapping:
+                    # Downcast from nullable to non-nullable/primitive data types if
+                    # the columns don't have null values. First, try to downcast from
+                    # nullable to non-nullable/primitive data type. If the column does
+                    # have at least one pd.NA value, fall back to using the already
+                    # assigned nullable type.
+                    native_type, _ = nullable_types_mapping.get(value_type)
+                    try:
+                        df[col_name] = df[col_name].astype(native_type)
+                    except ValueError:
+                        pass
 
         ctx = DatasetContext.get_current()
         if ctx.enable_tensor_extension_casting:

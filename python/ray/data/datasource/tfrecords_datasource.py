@@ -158,20 +158,13 @@ def _get_feature_value_and_type(
     if feature.int64_list.value:
         return list(feature.int64_list.value), pa.int64()
 
-    # If a Feature has no values, regardless of the Feature object's dtype,
-    # it will have empty lists for all three list attributes:
-    # int64_list, float_list, and bytes_list.
-    # Therefore, in order to determine the type of a Feature object
-    # with no feature values, we examine the string, which only contains
-    # one of the three list attributes.
-    feature_stringified = str(feature)
-    if "int64_list" in feature_stringified:
-        return [], pa.int64()
-    elif "float_list" in feature_stringified:
-        return [], pa.float32()
-    elif "bytes_list" in feature_stringified:
-        return [], pa.binary()
-    return [], pa.null()
+    if feature.HasField("int64_list"):
+        return [], pa.list_(pa.int64())
+    elif feature.HasField("float_list"):
+        return [], pa.list_(pa.float32())
+    elif feature.HasField("bytes_list"):
+        return [], pa.list_(pa.binary())
+    return [], pa.list_(pa.null())
 
 
 def _value_to_feature(value: Union[bytes, float, int, List]) -> "tf.train.Feature":

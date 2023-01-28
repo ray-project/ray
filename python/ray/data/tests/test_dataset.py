@@ -3886,8 +3886,17 @@ def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     nan_agg_ds = ds.groupby("A").std("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
     result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
-    expected = pd.Series([None] * 3)
-    np.testing.assert_array_equal(result, expected)
+
+    if ds_format == "arrow":
+        # Arrow supports nullable types, which is represented as pd.NA in Pandas
+        # during the Arrow to Pandas conversion.
+        # Checking that result == pd.Series([pd.NA, pd.NA, pd.NA]).
+        # Equality checks between two `pd.NA` values are ambiguous, so
+        # `pd.NA == pd.NA` evaluate to `pd.NA`.
+        assert len(result) == 3 and all(pd.isna(result))
+    else:
+        expected = pd.Series([None] * 3)
+        np.testing.assert_array_equal(result, expected)
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
