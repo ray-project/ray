@@ -704,6 +704,7 @@ def _setup_ray_cluster(
 
 
 _active_ray_cluster = None
+_active_ray_cluster_rwlock = threading.RLock()
 
 
 def _create_resource_profile(num_cpus_per_node, num_gpus_per_node):
@@ -1012,23 +1013,24 @@ def setup_ray_cluster(
         else:
             _logger.warning("\n".join(insufficient_resources))
 
-    cluster = _setup_ray_cluster(
-        num_worker_nodes=num_worker_nodes,
-        num_cpus_per_node=num_cpus_per_node,
-        num_gpus_per_node=num_gpus_per_node,
-        using_stage_scheduling=using_stage_scheduling,
-        heap_memory_per_node=ray_worker_node_heap_mem_bytes,
-        object_store_memory_per_node=ray_worker_node_object_store_mem_bytes,
-        head_node_options=head_node_options,
-        worker_node_options=worker_node_options,
-        ray_temp_root_dir=ray_temp_root_dir,
-        collect_log_to_path=collect_log_to_path,
-    )
-    cluster.wait_until_ready()  # NB: this line might raise error.
+    with _active_ray_cluster_rwlock:
+        cluster = _setup_ray_cluster(
+            num_worker_nodes=num_worker_nodes,
+            num_cpus_per_node=num_cpus_per_node,
+            num_gpus_per_node=num_gpus_per_node,
+            using_stage_scheduling=using_stage_scheduling,
+            heap_memory_per_node=ray_worker_node_heap_mem_bytes,
+            object_store_memory_per_node=ray_worker_node_object_store_mem_bytes,
+            head_node_options=head_node_options,
+            worker_node_options=worker_node_options,
+            ray_temp_root_dir=ray_temp_root_dir,
+            collect_log_to_path=collect_log_to_path,
+        )
+        cluster.wait_until_ready()  # NB: this line might raise error.
 
-    # If connect cluster successfully, set global _active_ray_cluster to be the started
-    # cluster.
-    _active_ray_cluster = cluster
+        # If connect cluster successfully, set global _active_ray_cluster to be the started
+        # cluster.
+        _active_ray_cluster = cluster
     return cluster.address
 
 
@@ -1038,8 +1040,10 @@ def shutdown_ray_cluster() -> None:
     Shut down the active ray cluster.
     """
     global _active_ray_cluster
-    if _active_ray_cluster is None:
-        raise RuntimeError("No active ray cluster to shut down.")
 
-    _active_ray_cluster.shutdown()
-    _active_ray_cluster = None
+    with _active_ray_cluster_rwlock:
+        if _active_ray_cluster is None:
+            raise RuntimeError("No active ray cluster to shut down.")
+
+        _active_ray_cluster.shutdown()
+        _active_ray_cluster = None

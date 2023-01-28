@@ -58,7 +58,7 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
     )
 
 
-AUTO_SHUTDOWN_POLL_INTERVAL = 3
+AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS = 3
 DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES = (
     "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES"
 )
@@ -130,12 +130,12 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 if idle_time > auto_shutdown_timeout_millis:
                     from ray.util.spark import cluster_init
 
-                    ray_cluster_handler.shutdown()
-                    if ray_cluster_handler is cluster_init._active_ray_cluster:
-                        cluster_init._active_ray_cluster = None
+                    with cluster_init._active_ray_cluster_rwlock:
+                        if ray_cluster_handler is cluster_init._active_ray_cluster:
+                            cluster_init.shutdown_ray_cluster()
                     return
 
-                time.sleep(AUTO_SHUTDOWN_POLL_INTERVAL)
+                time.sleep(AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
 
         if auto_shutdown_timeout_minutes > 0:
             threading.Thread(target=auto_shutdown_watcher, args=(), daemon=True).start()
