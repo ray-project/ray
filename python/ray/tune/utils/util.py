@@ -16,6 +16,7 @@ import psutil
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.remote_storage import delete_at_uri
+from ray.air.util.node import _get_node_id_from_node_ip
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.air._internal.json import SafeFallbackEncoder  # noqa
 from ray.air._internal.util import (  # noqa: F401
@@ -171,19 +172,24 @@ def _serialize_checkpoint(checkpoint_path) -> bytes:
 def _get_checkpoint_from_remote_node(
     checkpoint_path: str, node_ip: str, timeout: float = 300.0
 ) -> Optional[Checkpoint]:
-    if not any(
-        node["NodeManagerAddress"] == node_ip and node["Alive"] for node in ray.nodes()
-    ):
+    node_id = _get_node_id_from_node_ip(node_ip)
+
+    if node_id is None:
         logger.warning(
             f"Could not fetch checkpoint with path {checkpoint_path} from "
             f"node with IP {node_ip} because the node is not available "
             f"anymore."
         )
         return None
+
+    scheduling_strategy = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+        node_id=node_id,
+        soft=False,
+    )
+
     fut = _serialize_checkpoint.options(
-        resources={f"node:{node_ip}": 0.01},
         num_cpus=0,
-        scheduling_strategy="DEFAULT",
+        scheduling_strategy=scheduling_strategy,
     ).remote(checkpoint_path)
     try:
         checkpoint_data = ray.get(fut, timeout=timeout)

@@ -9,8 +9,14 @@ import ray
 from typing import Any, List, Dict, Union, Callable
 
 
-def _schedule_remote_fn_on_node(node_ip: str, remote_fn, *args, **kwargs):
-    return remote_fn.options(resources={f"node:{node_ip}": 0.01}).remote(
+def _schedule_remote_fn_on_node(node_id: str, remote_fn, *args, **kwargs):
+
+    scheduling_strategy = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+        node_id=node_id,
+        soft=False,
+    )
+
+    return remote_fn.options(scheduling_strategy=scheduling_strategy).remote(
         *args,
         **kwargs,
     )
@@ -31,7 +37,9 @@ def schedule_remote_fn_on_all_nodes(
         if exclude_head and node_ip == head_ip:
             continue
 
-        future = _schedule_remote_fn_on_node(node_ip, remote_fn, *args, **kwargs)
+        node_id = node["NodeID"]
+
+        future = _schedule_remote_fn_on_node(node_id, remote_fn, *args, **kwargs)
         futures.append(future)
     return futures
 

@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 import ray
 
 from ray.air.config import RunConfig
+from ray.air.util.node import _force_on_current_node
 from ray.tune import TuneError
 from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
@@ -13,7 +14,6 @@ from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
     _stream_client_output,
 )
-from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
