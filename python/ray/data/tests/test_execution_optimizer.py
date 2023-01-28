@@ -56,7 +56,6 @@ def test_map_rows_operator(ray_start_cluster_enabled, enable_optimizer):
     read_op = Read(ParquetDatasource())
     op = MapRows(
         read_op,
-        lambda it: (x for x in it),
         lambda x: x,
     )
     physical_op = planner.plan(op)
@@ -78,7 +77,6 @@ def test_filter_operator(ray_start_cluster_enabled, enable_optimizer):
     read_op = Read(ParquetDatasource())
     op = Filter(
         read_op,
-        lambda it: (x for x in it),
         lambda x: x,
     )
     physical_op = planner.plan(op)
@@ -100,7 +98,6 @@ def test_flat_map(ray_start_cluster_enabled, enable_optimizer):
     read_op = Read(ParquetDatasource())
     op = FlatMap(
         read_op,
-        lambda it: ([x, x] for x in it),
         lambda x: x,
     )
     physical_op = planner.plan(op)

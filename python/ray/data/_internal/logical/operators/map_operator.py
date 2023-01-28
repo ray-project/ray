@@ -1,13 +1,13 @@
 import sys
 from typing import Any, Dict, Iterable, Optional, Union
 
-from ray.data._internal.compute import BlockTransform
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.compute import (
     UDF,
     ComputeStrategy,
 )
 from ray.data.block import BatchUDF, RowUDF
+from ray.data.context import DEFAULT_BATCH_SIZE
 
 
 if sys.version_info >= (3, 8):
@@ -21,21 +21,17 @@ class AbstractMap(LogicalOperator):
     MapOperator.
     """
 
-    # TODO: Replace `fn`, `fn_args`, `fn_kwargs`, `fn_constructor_args`, and
-    # `fn_constructor_kwargs` from this API, in favor of `block_fn_args` and
-    # `block_fn_kwargs`. Operators should only be concerned with `block_fn`.
     def __init__(
         self,
         name: str,
         input_op: LogicalOperator,
-        block_fn: BlockTransform,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
-        target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: UDF,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        target_block_size: Optional[int] = None,
+        compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -44,27 +40,26 @@ class AbstractMap(LogicalOperator):
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
-            block_fn: The transform function to apply to each input block to produce
-                output blocks.
-            target_block_size: The target size for blocks outputted by this operator.
-            fn: User provided UDF to be called in `block_fn`.
+            fn: User-defined function to be called.
             fn_args: Arguments to `fn`.
             fn_kwargs: Keyword arguments to `fn`.
             fn_constructor_args: Arguments to provide to the initializor of `fn` if
                 `fn` is a callable class.
             fn_constructor_kwargs: Keyword Arguments to provide to the initializor of
                 `fn` if `fn` is a callable class.
+            target_block_size: The target size for blocks outputted by this operator.
+            compute: The compute strategy, either ``"tasks"`` (default) to use Ray
+                tasks, or ``"actors"`` to use an autoscaling actor pool.
             ray_remote_args: Args to provide to ray.remote.
         """
         super().__init__(name, [input_op])
-        self._block_fn = block_fn
-        self._compute = compute or "tasks"
-        self._target_block_size = target_block_size
         self._fn = fn
         self._fn_args = fn_args
         self._fn_kwargs = fn_kwargs
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
+        self._target_block_size = target_block_size
+        self._compute = compute or "tasks"
         self._ray_remote_args = ray_remote_args or {}
 
 
@@ -74,34 +69,34 @@ class MapBatches(AbstractMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        block_fn: BlockTransform,
         fn: BatchUDF,
-        batch_size: Optional[Union[int, Literal["default"]]] = "default",
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
-        target_block_size: Optional[int] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        target_block_size: Optional[int] = None,
+        compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             "MapBatches",
             input_op,
-            block_fn,
-            compute=compute,
-            target_block_size=target_block_size,
-            fn=fn,
+            fn,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
+            target_block_size=target_block_size,
+            compute=compute,
             ray_remote_args=ray_remote_args,
         )
         self._batch_size = batch_size
         self._batch_format = batch_format
+        self._prefetch_batches = prefetch_batches
         self._zero_copy_batch = zero_copy_batch
 
 
@@ -111,7 +106,6 @@ class MapRows(AbstractMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        block_fn: BlockTransform,
         fn: RowUDF,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -119,9 +113,8 @@ class MapRows(AbstractMap):
         super().__init__(
             "MapRows",
             input_op,
-            block_fn,
+            fn,
             compute=compute,
-            fn=fn,
             ray_remote_args=ray_remote_args,
         )
 
@@ -132,7 +125,6 @@ class Filter(AbstractMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        block_fn: BlockTransform,
         fn: RowUDF,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -140,9 +132,8 @@ class Filter(AbstractMap):
         super().__init__(
             "Filter",
             input_op,
-            block_fn,
+            fn,
             compute=compute,
-            fn=fn,
             ray_remote_args=ray_remote_args,
         )
 
@@ -153,7 +144,6 @@ class FlatMap(AbstractMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        block_fn: BlockTransform,
         fn: RowUDF,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -161,8 +151,7 @@ class FlatMap(AbstractMap):
         super().__init__(
             "FlatMap",
             input_op,
-            block_fn,
+            fn,
             compute=compute,
-            fn=fn,
             ray_remote_args=ray_remote_args,
         )
