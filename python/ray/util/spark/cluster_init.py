@@ -1028,8 +1028,8 @@ def setup_ray_cluster(
         )
         cluster.wait_until_ready()  # NB: this line might raise error.
 
-        # If connect cluster successfully, set global _active_ray_cluster to be the started
-        # cluster.
+        # If connect cluster successfully, set global _active_ray_cluster to be the
+        # started cluster.
         _active_ray_cluster = cluster
     return cluster.address
 
