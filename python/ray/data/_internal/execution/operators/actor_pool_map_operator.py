@@ -68,6 +68,9 @@ class ActorPoolMapOperator(MapOperator):
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
 
+    def internal_queue_size(self) -> int:
+        return len(self._bundle_queue)
+
     def start(self, options: ExecutionOptions):
         super().start(options)
 

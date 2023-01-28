@@ -77,7 +77,7 @@ class OpState:
             self.progress_bar.set_description(self.summary_str())
 
     def summary_str(self) -> str:
-        queued = self.num_queued()
+        queued = self.num_queued() + self.op.internal_queue_size()
         desc = f"{self.op.name}: {self.num_active_tasks()} active, {queued} queued"
         suffix = self.op.progress_str()
         if suffix:
@@ -237,9 +237,14 @@ def select_operator_to_run(
     if not ops:
         return None
 
-    # Equally penalize outqueue length and active tasks for backpressure.
+    # Equally penalize outqueue length and active tasks for backpressure. Note that
+    # for actor pool ops, we must also include the internal queue size, since
+    # num_active_tasks() does not reflect tasks pending submission to the actor pool.
     return min(
-        ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_active_tasks()
+        ops,
+        key=lambda op: len(topology[op].outqueue)
+        + topology[op].num_active_tasks()
+        + op.internal_queue_size(),
     )
 
 
