@@ -102,7 +102,9 @@ class AnyscaleJobRunner(JobRunner):
         full_command = (
             f"{prepare_command_str}{env_str}python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{is_long_running_str}"
+            "--results-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
+            "--metrics-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}'"
         )
         status_code, time_taken, error = self.job_manager.run_and_wait(
