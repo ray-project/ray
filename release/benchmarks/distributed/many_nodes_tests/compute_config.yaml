@@ -1,4 +1,4 @@
-cloud_id: cld_4F7k8814aZzGG8TNUGPKnc
+cloud_id: cld_kvedZWag2qA8i5BjxUevf5i7
 
 region: us-west-2
 
@@ -8,7 +8,7 @@ head_node_type:
 
 worker_node_types:
    - name: worker_node
-     instance_type: m5.xlarge
-     min_workers: 250
-     max_workers: 250
+     instance_type: m5.large
+     min_workers: 500
+     max_workers: 2000
      use_spot: false
