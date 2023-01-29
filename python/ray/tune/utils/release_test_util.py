@@ -245,7 +245,7 @@ def get_and_run_exp_folder_observer(
         ):
             self._last_check_time = None
             self._start_time = None
-            self._experiment_dir = experiment_dir
+            self._experiment_dir = os.path.expanduser(experiment_dir)
             self._trainable_name = trainable_name
             self._output_path = output_path
             self._check_interval_min = check_interval_min
@@ -298,6 +298,9 @@ def get_and_run_exp_folder_observer(
                     with open(self._output_path, "a") as f:
                         json.dump(result, f)
                     self._last_check_time = time.monotonic()
+
+        def ready(self):
+            pass
 
     head_node_ip = ray._private.worker.global_worker.node_ip_address
     # Schedule the actor on the current node.

@@ -2134,6 +2134,7 @@
 
   run:
     timeout: 86400
+    prepare: python tune_tests/setup_exp_folder_observer.py --experiment-dir "~/ray_results/torch_pbt_failure" --trainable-name "TorchTrainer" --output-path "/tmp/ckpt_ids.txt"
     script: python workloads/pytorch_pbt_failure.py
     long_running: true
     artifact_path: /tmp/ckpt_ids.txt
