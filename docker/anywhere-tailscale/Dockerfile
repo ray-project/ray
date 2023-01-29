@@ -42,7 +42,9 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     sympy \
     numba \
     numpy \
-    scikit-learn-intelex
+    datetime \
+    icecream \
+    psycopg2-binary
 
     # dask version compatible with ray and modin
 
