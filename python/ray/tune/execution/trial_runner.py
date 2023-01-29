@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import DefaultDict, List, Optional, Union, Tuple, Set
+from typing import Any, DefaultDict, Dict, List, Optional, Union, Tuple, Set
 
 import click
 from datetime import datetime
@@ -20,6 +20,7 @@ from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_da
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList, Callback
+from ray.tune.search.placeholder import resolve_placeholders
 from ray.tune.experiment import Experiment
 from ray.tune.execution.insufficient_resources_manager import (
     _InsufficientResourcesManager,
@@ -332,6 +333,7 @@ class TrialRunner:
     def __init__(
         self,
         search_alg: Optional[SearchAlgorithm] = None,
+        replaced_ref_map: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
         local_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
@@ -349,6 +351,7 @@ class TrialRunner:
         driver_sync_trial_checkpoints: bool = False,
     ):
         self._search_alg = search_alg or BasicVariantGenerator()
+        self._replaced_ref_map = replaced_ref_map
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
         self._callbacks = CallbackList(callbacks or [])
@@ -1085,6 +1088,11 @@ class TrialRunner:
         Args:
             trial: Trial to queue.
         """
+        # If the config map has had all the references replaced,
+        # resolve them before adding the trial.
+        if self._replaced_ref_map:
+            resolve_placeholders(trial.config, self._replaced_ref_map)
+
         self._trials.append(trial)
         if trial.status != Trial.TERMINATED:
             self._live_trials.add(trial)

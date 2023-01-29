@@ -36,6 +36,7 @@ from ray.tune.schedulers import (
 from ray.tune.schedulers.util import (
     _set_search_properties_backwards_compatible as scheduler_set_search_props,
 )
+from ray.tune.search.placeholder import replace_references
 from ray.tune.stopper import Stopper
 from ray.tune.search import (
     BasicVariantGenerator,
@@ -596,6 +597,16 @@ def run(
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
 
+    # We first clean up the passed in Config dictionary by replacing
+    # all the non-primitive config values with placeholders.
+    # This serves two purposes:
+    # 1. we can replace and "fix" these objects if a Trial is restored.
+    # 2. the config dictionary will then be compatible with all supported
+    #   search algorithms, since a lot of them do not support non-primitive
+    #   config values.
+    replaced_ref_map = {}
+    config = replace_references(config, replaced_ref_map, prefix=())
+
     if isinstance(search_alg, str):
         search_alg = create_searcher(search_alg)
 
@@ -711,6 +722,7 @@ def run(
     )
     runner = TrialRunner(
         search_alg=search_alg,
+        replaced_ref_map=replaced_ref_map,
         scheduler=scheduler,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         experiment_dir_name=experiments[0].dir_name,
