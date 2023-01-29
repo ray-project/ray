@@ -22,6 +22,41 @@ class TestTrainerRunner(unittest.TestCase):
     def setUpClass(cls) -> None:
         ray.init()
 
+        # Settings to test
+        # 1. base: local_mode on cpu
+        # scaling_config = TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0)
+        # 2. base-gpu: local_mode on gpu, e.g. only 1 gpu should be used despite
+        #     having 2 gpus on the machine and defining fractional gpus.
+        # scaling_config = TrainerScalingConfig(
+        #     num_workers=0, num_gpus_per_worker=0.5 # this would be get ignored
+        # )
+        # 3. async-cpu: e.g. 1 remote trainer on cpu
+        # scaling_config = TrainerScalingConfig(num_workers=1)
+        # 4. async-gpu: e.g. 1 remote trainer on 0.5 gpu
+        # scaling_config = TrainerScalingConfig(
+        #     num_workers=1, num_gpus_per_worker=0.5
+        # )
+        # 5. multi-gpu-ddp: e.g. 2 remote trainers on 1 gpu each with ddp
+        # scaling_config = TrainerScalingConfig(num_workers=2, num_gpus_per_worker=1)
+        # 6. multi-cpu-ddp: e.g. 2 remote trainers on 2 cpu each with ddp, This
+        #     imitates multi-gpu-ddp for debugging purposes when GPU is not available
+        #     in dev cycle
+        # scaling_config = TrainerScalingConfig(num_workers=2, num_cpus_per_worker=1)
+        # 7. multi-gpu-ddp-pipeline (skip for now): e.g. 2 remote trainers on 2 gpu
+        #     each with pipeline parallelism
+        # scaling_config = TrainerScalingConfig(num_workers=2, num_gpus_per_worker=2)
+        cls.scaling_configs = {
+            "base": TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0),
+            "base-gpu": TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
+            "async-cpu": TrainerScalingConfig(num_workers=1),
+            "async-gpu": TrainerScalingConfig(num_workers=1, num_gpus_per_worker=0.5),
+            "multi-gpu-ddp": TrainerScalingConfig(num_workers=2, num_gpus_per_worker=1),
+            "multi-cpu-ddp": TrainerScalingConfig(num_workers=2, num_cpus_per_worker=2),
+            # "multi-gpu-ddp-pipeline": TrainerScalingConfig(
+            #     num_workers=2, num_gpus_per_worker=2
+            # ),
+        }
+
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
@@ -33,7 +68,8 @@ class TestTrainerRunner(unittest.TestCase):
             ray.init(ignore_reinit_error=True)
             print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
-            scaling_config = TrainerScalingConfig(num_workers=2, num_gpus_per_worker=1)
+
+            scaling_config = self.scaling_configs["multi-gpu-ddp"]
             runner = get_trainer_runner(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=500)
 
