@@ -26,12 +26,15 @@ using namespace ray::gcs;
 namespace ray {
 namespace core {
 
-rpc::RayErrorInfo CoreWorkerDirectActorTaskSubmitter::ClientQueue::GetErrorInfoForActorDeath() {
+rpc::RayErrorInfo
+CoreWorkerDirectActorTaskSubmitter::ClientQueue::GetErrorInfoForActorDeath() {
   return worker_failure_error_info.value_or(GetErrorInfoFromActorDeathCause(death_cause));
 }
 
-rpc::ErrorType CoreWorkerDirectActorTaskSubmitter::ClientQueue::GetErrorTypeForActorDeath() {
-  return worker_failure_error_info ? worker_failure_error_info->error_type() : GenErrorTypeFromDeathCause(death_cause);
+rpc::ErrorType
+CoreWorkerDirectActorTaskSubmitter::ClientQueue::GetErrorTypeForActorDeath() {
+  return worker_failure_error_info ? worker_failure_error_info->error_type()
+                                   : GenErrorTypeFromDeathCause(death_cause);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
@@ -157,8 +160,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
     // dead.
-    GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
-        task_id, error_type, &status, &error_info, mark_task_object_failed, fail_immediately);
+    GetTaskFinisherWithoutMu().FailOrRetryPendingTask(task_id,
+                                                      error_type,
+                                                      &status,
+                                                      &error_info,
+                                                      mark_task_object_failed,
+                                                      fail_immediately);
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -270,87 +277,105 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
           << actor_id;
       return;
     }
-    
+
     const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
         [this, actor_id, num_restarts, dead, death_cause, address, queue](
             const Status &get_task_failure_cause_reply_status,
             const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
-              rpc::WorkerAddress worker_address(address);
-              std::optional<rpc::RayErrorInfo> worker_error = GetErrorInfoFromGetTaskFailureCauseReply(worker_address, get_task_failure_cause_reply_status, get_task_failure_cause_reply);
-              RAY_LOG(ERROR) << " get task failure for actor " << actor_id;
-              RAY_LOG(ERROR) << "Task failure cause for actor "
-                   << ray::gcs::RayErrorInfoToString(
-                          get_task_failure_cause_reply.failure_cause());
-              absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>> inflight_task_callbacks;
-              std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
-              std::vector<TaskID> task_ids_to_fail;
-              {
-                absl::MutexLock lock(&mu_);
+          rpc::WorkerAddress worker_address(address);
+          std::optional<rpc::RayErrorInfo> worker_error =
+              GetErrorInfoFromGetTaskFailureCauseReply(
+                  worker_address,
+                  get_task_failure_cause_reply_status,
+                  get_task_failure_cause_reply);
+          RAY_LOG(ERROR) << " get task failure for actor " << actor_id;
+          RAY_LOG(ERROR) << "Task failure cause for actor "
+                         << ray::gcs::RayErrorInfoToString(
+                                get_task_failure_cause_reply.failure_cause());
+          absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+              inflight_task_callbacks;
+          std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
+          std::vector<TaskID> task_ids_to_fail;
+          {
+            absl::MutexLock lock(&mu_);
 
-                // The actor failed, so erase the client for now. Either the actor is
-                // permanently dead or the new client will be inserted once the actor is
-                // restarted.
-                DisconnectRpcClient(queue->second);
-                inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
-                queue->second.inflight_task_callbacks.clear();
+            // The actor failed, so erase the client for now. Either the actor is
+            // permanently dead or the new client will be inserted once the actor is
+            // restarted.
+            DisconnectRpcClient(queue->second);
+            inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
+            queue->second.inflight_task_callbacks.clear();
 
-                if (dead) {
-                  queue->second.state = rpc::ActorTableData::DEAD;
-                  queue->second.death_cause = death_cause;
-                  queue->second.worker_failure_error_info = worker_error;
-                  queue->second.should_retry = get_task_failure_cause_reply.fail_task_immediately();
-                  // If there are pending requests, treat the pending tasks as failed.
-                  RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
-                                << " because the actor is already dead.";
+            if (dead) {
+              queue->second.state = rpc::ActorTableData::DEAD;
+              queue->second.death_cause = death_cause;
+              queue->second.worker_failure_error_info = worker_error;
+              queue->second.should_retry =
+                  get_task_failure_cause_reply.fail_task_immediately();
+              // If there are pending requests, treat the pending tasks as failed.
+              RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
+                            << " because the actor is already dead.";
 
-                  task_ids_to_fail = queue->second.actor_submit_queue->ClearAllTasks();
-                  // We need to execute this outside of the lock to prevent deadlock.
-                  wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
-                  // Reset the queue
-                  queue->second.wait_for_death_info_tasks =
-                      std::deque<std::pair<int64_t, TaskSpecification>>();
-                } else if (queue->second.state != rpc::ActorTableData::DEAD) {
-                  // Only update the actor's state if it is not permanently dead. The actor
-                  // will eventually get restarted or marked as permanently dead.
-                  queue->second.state = rpc::ActorTableData::RESTARTING;
-                  queue->second.num_restarts = num_restarts;
-                }
+              task_ids_to_fail = queue->second.actor_submit_queue->ClearAllTasks();
+              // We need to execute this outside of the lock to prevent deadlock.
+              wait_for_death_info_tasks =
+                  std::move(queue->second.wait_for_death_info_tasks);
+              // Reset the queue
+              queue->second.wait_for_death_info_tasks =
+                  std::deque<std::pair<int64_t, TaskSpecification>>();
+            } else if (queue->second.state != rpc::ActorTableData::DEAD) {
+              // Only update the actor's state if it is not permanently dead. The actor
+              // will eventually get restarted or marked as permanently dead.
+              queue->second.state = rpc::ActorTableData::RESTARTING;
+              queue->second.num_restarts = num_restarts;
+            }
+          }
+
+          if (task_ids_to_fail.size() + wait_for_death_info_tasks.size() != 0) {
+            // Failing tasks has to be done without mu_ hold because the callback
+            // might require holding mu_ which will lead to a deadlock.
+            auto status = Status::IOError("cancelling all pending tasks of dead actor");
+            const rpc::ErrorType error_type = queue->second.GetErrorTypeForActorDeath();
+            const rpc::RayErrorInfo error_info =
+                queue->second.GetErrorInfoForActorDeath();
+            const bool fail_immediately = !queue->second.should_retry;
+
+            for (auto &task_id : task_ids_to_fail) {
+              // No need to increment the number of completed tasks since the actor is
+              // dead.
+              task_finisher_.MarkTaskCanceled(task_id);
+              // This task may have been waiting for dependency resolution, so cancel
+              // this first.
+              resolver_.CancelDependencyResolution(task_id);
+
+              GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
+                  task_id,
+                  error_type,
+                  &status,
+                  &error_info,
+                  /*mark_task_object_failed*/ true,
+                  fail_immediately);
+            }
+            if (!wait_for_death_info_tasks.empty()) {
+              RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
+                             << wait_for_death_info_tasks.size()
+                             << ", actor_id=" << actor_id;
+              for (auto &net_err_task : wait_for_death_info_tasks) {
+                RAY_UNUSED(GetTaskFinisherWithoutMu().FailPendingTask(
+                    net_err_task.second.TaskId(), error_type, nullptr, &error_info));
               }
+            }
+          }
+          // NOTE(kfstorm): We need to make sure the lock is released before invoking
+          // callbacks.
+          FailInflightTasks(inflight_task_callbacks);
+        };
 
-              if (task_ids_to_fail.size() + wait_for_death_info_tasks.size() != 0) {
-                // Failing tasks has to be done without mu_ hold because the callback
-                // might require holding mu_ which will lead to a deadlock.
-                auto status = Status::IOError("cancelling all pending tasks of dead actor");
-                const rpc::ErrorType error_type = queue->second.GetErrorTypeForActorDeath();
-                const rpc::RayErrorInfo error_info = queue->second.GetErrorInfoForActorDeath();
-                const bool fail_immediately = !queue->second.should_retry;
-
-                for (auto &task_id : task_ids_to_fail) {
-                  // No need to increment the number of completed tasks since the actor is
-                  // dead.
-                  task_finisher_.MarkTaskCanceled(task_id);
-                  // This task may have been waiting for dependency resolution, so cancel
-                  // this first.
-                  resolver_.CancelDependencyResolution(task_id);
-                  
-                  GetTaskFinisherWithoutMu().FailOrRetryPendingTask(task_id, error_type, &status, &error_info, /*mark_task_object_failed*/ true, fail_immediately);
-                }
-                if (!wait_for_death_info_tasks.empty()) {
-                  RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
-                                << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
-                  for (auto &net_err_task : wait_for_death_info_tasks) {
-                    RAY_UNUSED(GetTaskFinisherWithoutMu().FailPendingTask(
-                        net_err_task.second.TaskId(), error_type, nullptr, &error_info));
-                  }
-                }
-              }
-              // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
-              FailInflightTasks(inflight_task_callbacks);
-            };
-    
-    RAY_LOG(DEBUG) << "Getting error from raylet for worker " << WorkerID::FromBinary(address.worker_id());
+    RAY_LOG(DEBUG) << "Getting error from raylet for worker "
+                   << WorkerID::FromBinary(address.worker_id());
     auto worker_client = GetOrConnectWorkerClient(address);
-    worker_client->GetTaskFailureCause(WorkerID::FromBinary(address.worker_id()), callback);
+    worker_client->GetTaskFailureCause(WorkerID::FromBinary(address.worker_id()),
+                                       callback);
   }
 }
 
@@ -635,7 +660,7 @@ CoreWorkerDirectActorTaskSubmitter::GetOrConnectWorkerClient(
       it = remote_worker_clients_
                .emplace(raylet_id,
                         worker_client_factory_(raylet_address.ip_address(),
-                                              raylet_address.port()))
+                                               raylet_address.port()))
                .first;
     }
     worker_client = it->second;

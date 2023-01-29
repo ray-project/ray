@@ -578,8 +578,9 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
        addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
         {
-          RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker Getting error from "
-                         << addr.worker_id << " of raylet " << addr.raylet_id;
+          RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker. "
+                         << "Getting error from " << addr.worker_id << " of raylet "
+                         << addr.raylet_id;
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
 
@@ -647,7 +648,8 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
     const rpc::WorkerAddress &addr,
     const Status &get_task_failure_cause_reply_status,
     const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
-  auto worker_error = GetErrorInfoFromGetTaskFailureCauseReply(addr, get_task_failure_cause_reply_status, get_task_failure_cause_reply);
+  auto worker_error = GetErrorInfoFromGetTaskFailureCauseReply(
+      addr, get_task_failure_cause_reply_status, get_task_failure_cause_reply);
   rpc::ErrorType error_type = rpc::ErrorType::WORKER_DIED;
   rpc::RayErrorInfo error_info;
   if (worker_error) {

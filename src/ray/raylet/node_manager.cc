@@ -2906,9 +2906,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           rpc::RayErrorInfo task_failure_reason;
           task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-          SetTaskFailureReason(worker_to_kill->WorkerId(),
-                               std::move(task_failure_reason),
-                               should_retry);
+          SetTaskFailureReason(
+              worker_to_kill->WorkerId(), std::move(task_failure_reason), should_retry);
 
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.

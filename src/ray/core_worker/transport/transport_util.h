@@ -4,9 +4,9 @@ namespace ray {
 namespace core {
 
 inline std::optional<rpc::RayErrorInfo> GetErrorInfoFromGetTaskFailureCauseReply(
-      const rpc::WorkerAddress &addr,
-      const Status &get_task_failure_cause_reply_status,
-      const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
+    const rpc::WorkerAddress &addr,
+    const Status &get_task_failure_cause_reply_status,
+    const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
   if (get_task_failure_cause_reply_status.ok()) {
     RAY_LOG(DEBUG) << "Task failure cause for worker " << addr.worker_id << ": "
                    << ray::gcs::RayErrorInfoToString(

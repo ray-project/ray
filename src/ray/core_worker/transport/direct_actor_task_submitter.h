@@ -77,14 +77,15 @@ class CoreWorkerDirectActorTaskSubmitter
       instrumented_io_context &io_service,
       NodeID local_raylet_id,
       std::shared_ptr<WorkerLeaseInterface> local_worker_client,
-      std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &, int)> worker_client_factory)
+      std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &, int)>
+          worker_client_factory)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher, actor_creator),
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing),
         io_service_(io_service),
         local_raylet_id_(local_raylet_id),
-        local_worker_client_(local_worker_client), 
+        local_worker_client_(local_worker_client),
         worker_client_factory_(worker_client_factory) {
     next_queueing_warn_threshold_ =
         ::RayConfig::instance().actor_excess_queueing_warn_threshold();
@@ -201,7 +202,8 @@ class CoreWorkerDirectActorTaskSubmitter
     /// The reason why this worker is dead.
     /// If this is set, prefer using this over death_cause.
     std::optional<rpc::RayErrorInfo> worker_failure_error_info;
-    /// Whether to retry upon failure, as informed by the server that is returning the error info.
+    /// Whether to retry upon failure, as informed by the server that is returning the
+    /// error info.
     bool should_retry = true;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
@@ -256,14 +258,8 @@ class CoreWorkerDirectActorTaskSubmitter
     }
 
     rpc::RayErrorInfo GetErrorInfoForActorDeath();
-    //  {
-    //   return worker_failure_error_info.value_or(ray::gcs::GetErrorInfoFromActorDeathCause(death_cause));
-    // }
 
     rpc::ErrorType GetErrorTypeForActorDeath();
-    //  {
-    //   return worker_failure_error_info ? worker_failure_error_info->error_type() : ray::gcs::GenErrorTypeFromDeathCause(death_cause);
-    // }
   };
 
   /// Push a task to a remote actor via the given client.
@@ -347,11 +343,14 @@ class CoreWorkerDirectActorTaskSubmitter
   std::shared_ptr<WorkerLeaseInterface> local_worker_client_;
 
   /// Factory to produce new worker clients to request task failures from the raylet.
-  std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address, int port)> worker_client_factory_;
+  std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
+                                                      int port)>
+      worker_client_factory_;
 
   /// Cache of gRPC clients to remote raylets.
-  absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>> remote_worker_clients_ GUARDED_BY(mu_);
-      
+  absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>>
+      remote_worker_clients_ GUARDED_BY(mu_);
+
   friend class CoreWorkerTest;
 };
 
