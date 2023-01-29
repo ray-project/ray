@@ -6,10 +6,12 @@ import numpy as np
 import itertools
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
-from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
+from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 from ray.rllib.core.testing.utils import (
     get_trainer_runner,
+    get_rl_trainer,
     add_module_to_runner_or_trainer,
 )
 
@@ -35,6 +37,48 @@ class TestTrainerRunner(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
+
+    def test_trainer_runner_local(self):
+
+        tf1, tf, tfv = try_import_tf()
+        tf1.executing_eagerly()
+
+        fws = ["tf", "torch"]
+        scaling_modes = ["local-cpu", "local-gpu"]
+        test_iterator = itertools.product(fws, scaling_modes)
+
+        env = gym.make("CartPole-v1")
+        for fw, scaling_mode in test_iterator:
+            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
+            scaling_config = self.scaling_configs[scaling_mode]
+            runner = get_trainer_runner(fw, env, scaling_config)
+            local_trainer = get_rl_trainer(fw, env)
+            local_trainer.build()
+
+            # make the state of the trainer and the local runner identical
+            local_trainer.set_state(runner.get_state()[0])
+
+            reader = get_cartpole_dataset_reader(batch_size=500)
+            batch = reader.next()
+            batch = batch.as_multi_agent()
+            check(local_trainer.update(batch), runner.update(batch)[0])
+
+            new_module_id = "test_module"
+
+            add_module_to_runner_or_trainer(fw, env, new_module_id, runner)
+            add_module_to_runner_or_trainer(fw, env, new_module_id, local_trainer)
+
+            # make the state of the trainer and the local runner identical
+            local_trainer.set_state(runner.get_state()[0])
+
+            # do another update
+            batch = reader.next()
+            ma_batch = MultiAgentBatch(
+                {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
+            )
+            check(local_trainer.update(ma_batch), runner.update(ma_batch)[0])
+
+            check(local_trainer.get_state(), runner.get_state()[0])
 
     def test_update_multigpu(self):
 

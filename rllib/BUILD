@@ -1843,13 +1843,6 @@ py_test(
 )
 
 py_test(
-    name = "test_trainer_runner_local",
-    tags = ["team:rllib", "core", "exclusive"],
-    size = "medium",
-    srcs = ["core/rl_trainer/tests/test_trainer_runner_local.py"]
-)
-
-py_test(
     name = "test_trainer_runner_config",
     tags = ["team:rllib", "core"],
     size = "medium",
