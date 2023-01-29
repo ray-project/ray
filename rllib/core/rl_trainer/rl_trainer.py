@@ -24,7 +24,6 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
@@ -35,11 +34,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.params import Hyperparams
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.core.rl_trainer.scaling_config import (
-    RLModuleBackendConfig,
-    TorchRLModuleBackendConfig,
-    TfRLModuleBackendConfig,
-)
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms import AlgorithmConfig
@@ -128,7 +123,7 @@ class RLTrainer:
         ] = None,
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
-        module_backend_config: Optional[RLModuleBackendConfig] = None,
+        trainer_scaling_config: Optional[TrainerScalingConfig] = None,
         trainer_hyperparameters: Optional[HyperparamType] = None,
     ):
         # TODO (Kourosh): Having the entire algorithm_config inside trainer may not be
@@ -152,8 +147,7 @@ class RLTrainer:
         self.config = trainer_hyperparameters
 
         # pick the configs that we need for the trainer from scaling config
-        module_backend_config = module_backend_config or RLModuleBackendConfig()
-        self._distributed = module_backend_config.distributed
+        self._distributed = trainer_scaling_config.num_workers > 1
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
@@ -650,7 +644,7 @@ class RLTrainerSpec:
     rl_trainer_class: Type["RLTrainer"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     module: Optional["RLModule"] = None
-    module_backend_config: "RLModuleBackendConfig" = None
+    trainer_scaling_config: Optional[TrainerScalingConfig] = None
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
     trainer_hyperparameters: HyperparamType = field(default_factory=dict)
 
@@ -659,25 +653,15 @@ class RLTrainerSpec:
         if isinstance(self.trainer_hyperparameters, dict):
             self.trainer_hyperparameters = Hyperparams(self.trainer_hyperparameters)
 
-        # if module_backend_config is not set, we will create a dafault.
-        if self.module_backend_config is None:
-            if self.module is not None:
-                if isinstance(self.module, TorchRLModule):
-                    self.module_backend_config = TorchRLModuleBackendConfig()
-                else:
-                    self.module_backend_config = TfRLModuleBackendConfig()
-            elif self.module_spec is not None:
-                if issubclass(self.module_spec.module_class, TorchRLModule):
-                    self.module_backend_config = TorchRLModuleBackendConfig()
-                else:
-                    self.module_backend_config = TfRLModuleBackendConfig()
+        if self.trainer_scaling_config is None:
+            self.trainer_scaling_config = TrainerScalingConfig()
 
     def get_params_dict(self) -> Dict[str, Any]:
         """Returns the parameters than be passed to the RLTrainer constructor."""
         return {
             "module": self.module,
             "module_spec": self.module_spec,
-            "module_backend_config": self.module_backend_config,
+            "trainer_scaling_config": self.trainer_scaling_config,
             "optimizer_config": self.optimizer_config,
             "trainer_hyperparameters": self.trainer_hyperparameters,
         }

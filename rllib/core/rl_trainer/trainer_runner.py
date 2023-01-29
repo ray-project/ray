@@ -1,13 +1,5 @@
 import math
-from typing import (
-    Any,
-    List,
-    Mapping,
-    Type,
-    Optional,
-    Callable,
-    Dict,
-)
+from typing import Any, List, Mapping, Type, Optional, Callable, Dict, TYPE_CHECKING
 
 import ray
 
@@ -21,9 +13,26 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamOptimizerPairs,
     Optimizer,
 )
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.train._internal.backend_executor import BackendExecutor
+
+if TYPE_CHECKING:
+    from ray.rllib.core.rl_trainer.rl_trainer import RLTrainer
+
+
+def _get_backend_config(rl_trainer_class: Type["RLTrainer"]) -> str:
+    if rl_trainer_class.framework == "torch":
+        from ray.train.torch import TorchConfig
+
+        backend_config = TorchConfig()
+    elif rl_trainer_class.framework == "tf":
+        from ray.train.tensorflow import TensorflowConfig
+
+        backend_config = TensorflowConfig()
+    else:
+        raise ValueError("framework must be either torch or tf")
+
+    return backend_config
 
 
 class TrainerRunner:
@@ -53,18 +62,9 @@ class TrainerRunner:
     def __init__(
         self,
         rl_trainer_spec: RLTrainerSpec,
-        scaling_config: Optional[TrainerScalingConfig] = None,
     ):
-        scaling_config = scaling_config or TrainerScalingConfig()
+        scaling_config = rl_trainer_spec.trainer_scaling_config
         rl_trainer_class = rl_trainer_spec.rl_trainer_class
-
-        # setup wether the worker should use gpu or not
-        if rl_trainer_class.framework == "torch":
-            trainer_should_use_gpu = scaling_config.num_gpus_per_worker > 0
-            rl_trainer_spec.module_backend_config.set_use_gpu(trainer_should_use_gpu)
-        else:
-            # TODO (Avnish) How do I run TF on one GPU?
-            pass
 
         # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
         # explicit
@@ -73,31 +73,10 @@ class TrainerRunner:
         self._workers = None
 
         if self._is_local:
-            # in local mode the trainer is always not distributed
-            rl_trainer_spec.module_backend_config.set_distributed(False)
             self._trainer = rl_trainer_class(**rl_trainer_spec.get_params_dict())
             self._trainer.build()
         else:
-            # in remote mode the trainer is distributed only if there are more than 1
-            # workers
-            is_trainer_distributed = scaling_config.num_workers > 1
-            (
-                rl_trainer_spec.module_backend_config.set_distributed(
-                    is_trainer_distributed
-                )
-            )
-
-            if rl_trainer_class.framework == "torch":
-                from ray.train.torch import TorchConfig
-
-                backend_config = TorchConfig()
-            elif rl_trainer_class.framework == "tf":
-                from ray.train.tensorflow import TensorflowConfig
-
-                backend_config = TensorflowConfig()
-            else:
-                raise ValueError("framework must be either torch or tf")
-
+            backend_config = _get_backend_config(rl_trainer_class)
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
                 num_workers=scaling_config.num_workers,

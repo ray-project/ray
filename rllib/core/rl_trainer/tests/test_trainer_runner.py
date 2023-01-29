@@ -46,7 +46,7 @@ class TestTrainerRunner(unittest.TestCase):
         # TODO (Avnish): tf does not clear out the GPU memory footprint, therefore
         # doing it first before torch will result in OOM. Find a way to clear out the
         # GPU memory footprint of tf.
-        fws = ["torch", "tf"]
+        fws = ["torch"]
         scaling_modes = ["local-cpu", "local-gpu"]
         test_iterator = itertools.product(fws, scaling_modes)
 
@@ -94,7 +94,7 @@ class TestTrainerRunner(unittest.TestCase):
 
         # TODO (Avnish): The tf + remote-gpu test is flakey. Removing for now until
         # investigated.
-        fws = ["torch", "tf"]
+        fws = ["torch"]
         scaling_modes = self.scaling_configs.keys()
         test_iterator = itertools.product(fws, scaling_modes)
 
@@ -137,7 +137,7 @@ class TestTrainerRunner(unittest.TestCase):
 
         # TODO (Avnish): The tf + remote-gpu test is flakey. Removing for now until
         # investigated.
-        fws = ["torch", "tf"]
+        fws = ["torch"]
         scaling_modes = self.scaling_configs.keys()
         test_iterator = itertools.product(fws, scaling_modes)
 

@@ -12,21 +12,12 @@ from ray.rllib.core.testing.torch.bc_rl_trainer import BCTorchRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.core.rl_trainer.scaling_config import TorchRLModuleBackendConfig
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 
-def _get_trainer(distributed: bool = False) -> RLTrainer:
+def _get_trainer() -> RLTrainer:
     env = gym.make("CartPole-v1")
-    distributed = False
 
-    # TODO: Another way to make RLTrainer would be to construct the module first
-    # and then apply trainer to it. We should also allow that. In fact if we figure
-    # out the serialization of RLModules we can simply pass the module the trainer
-    # and internally it will serialize and deserialize the module for distributed
-    # construction.
-    backend = (
-        TorchRLModuleBackendConfig().set_distributed(distributed).set_use_gpu(False)
-    )
     trainer = BCTorchRLTrainer(
         module_spec=SingleAgentRLModuleSpec(
             module_class=DiscreteBCTorchModule,
@@ -34,8 +25,8 @@ def _get_trainer(distributed: bool = False) -> RLTrainer:
             action_space=env.action_space,
             model_config={"hidden_dim": 32},
         ),
-        module_backend_config=backend,
         optimizer_config={"lr": 1e-3},
+        trainer_scaling_config=TrainerScalingConfig(),
     )
 
     trainer.build()

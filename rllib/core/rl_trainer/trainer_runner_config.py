@@ -69,18 +69,20 @@ class TrainerRunnerConfig:
     def build(self) -> TrainerRunner:
         self.validate()
 
-        rl_trainer_spec = RLTrainerSpec(
-            rl_trainer_class=self.trainer_class,
-            module_spec=self.module_spec,
-            optimizer_config=self.optimizer_config,
-            trainer_hyperparameters=self.algorithm_config,
-        )
         scaling_config = TrainerScalingConfig(
             num_workers=self.num_trainer_workers,
             num_gpus_per_worker=self.num_gpus_per_trainer_worker,
             num_cpus_per_worker=self.num_cpus_per_trainer_worker,
         )
-        return self.trainer_runner_class(rl_trainer_spec, scaling_config)
+        rl_trainer_spec = RLTrainerSpec(
+            rl_trainer_class=self.trainer_class,
+            module_spec=self.module_spec,
+            optimizer_config=self.optimizer_config,
+            trainer_scaling_config=scaling_config,
+            trainer_hyperparameters=self.algorithm_config,
+        )
+
+        return self.trainer_runner_class(rl_trainer_spec)
 
     def algorithm(
         self, algorithm_config: Optional["AlgorithmConfig"] = NotProvided

@@ -103,7 +103,7 @@ def get_rl_trainer(
 def get_trainer_runner(
     framework: str,
     env: "gym.Env",
-    trainer_runner_scaling_config: TrainerScalingConfig,
+    scaling_config: TrainerScalingConfig,
     is_multi_agent: bool = False,
 ) -> TrainerRunner:
 
@@ -113,8 +113,9 @@ def get_trainer_runner(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
         optimizer_config={"lr": 0.1},
+        trainer_scaling_config=scaling_config,
     )
-    runner = TrainerRunner(rl_trainer_spec, trainer_runner_scaling_config)
+    runner = TrainerRunner(rl_trainer_spec)
 
     return runner
 
