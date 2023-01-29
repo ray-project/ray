@@ -25,7 +25,6 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
@@ -667,8 +666,7 @@ class RLTrainerSpec:
                     self.module_backend_config = TorchRLModuleBackendConfig()
                 else:
                     self.module_backend_config = TfRLModuleBackendConfig()
-
-            if self.module_spec is not None:
+            elif self.module_spec is not None:
                 if issubclass(self.module_spec.module_class, TorchRLModule):
                     self.module_backend_config = TorchRLModuleBackendConfig()
                 else:
