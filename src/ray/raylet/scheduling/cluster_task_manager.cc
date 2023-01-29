@@ -269,7 +269,8 @@ void ClusterTaskManager::CancelTaskForOwner(
     while (work_it != work_queue.end()) {
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().ParentTaskId() == owner_task_id) {
-        RAY_LOG(DEBUG) << "Canceling task for owner " << owner_task_id << " from schedule queue.";
+        RAY_LOG(DEBUG) << "Canceling task for owner " << owner_task_id
+                       << " from schedule queue.";
         ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
@@ -288,7 +289,8 @@ void ClusterTaskManager::CancelTaskForOwner(
     while (work_it != work_queue.end()) {
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().ParentTaskId() == owner_task_id) {
-        RAY_LOG(DEBUG) << "Canceling task for owner " << owner_task_id << " from infeasible queue.";
+        RAY_LOG(DEBUG) << "Canceling task for owner " << owner_task_id
+                       << " from infeasible queue.";
         ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
