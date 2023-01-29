@@ -70,7 +70,6 @@ class TorchRLTrainer(RLTrainer):
         # pick the stuff that we need from the scaling config
         self._use_gpu = trainer_scaling_config.num_gpus_per_worker > 0
 
-        # These attributes are set in the `TorchRLModuleBackendConfig
         self._device = None
 
     @property
