@@ -177,8 +177,7 @@ class CoreWorkerDirectActorTaskSubmitter
     return task_finisher_;
   }
 
-  class ClientQueue {
-   public:
+  struct ClientQueue {
     ClientQueue(ActorID actor_id,
                 bool execute_out_of_order,
                 int32_t max_pending_calls,
@@ -199,12 +198,11 @@ class CoreWorkerDirectActorTaskSubmitter
     /// The reason why this actor is dead.
     /// If the context is not set, it means the actor is not dead.
     rpc::ActorDeathCause death_cause;
-    /// The reason why this worker is dead.
-    /// If this is set, prefer using this over death_cause.
+    /// The reason why the task failed, which may be set if the actor was executing a task.
+    /// If this is set, prefer using this over the death cause of the actor.
     std::optional<rpc::RayErrorInfo> worker_failure_error_info;
-    /// Whether to retry upon failure, as informed by the server that is returning the
-    /// error info.
-    bool should_retry = true;
+    /// Whether to retry the task upon failure.
+    bool should_retry_task = true;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
@@ -308,6 +306,9 @@ class CoreWorkerDirectActorTaskSubmitter
   bool IsActorAlive(const ActorID &actor_id) const;
 
   /// Get an existing worker client or connect a new one.
+  /// TODO(clarng): refactor connection pool to be shared between classes
+  /// to reduce the number of clients and connections that share the same
+  /// address.
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectWorkerClient(
       const rpc::Address &raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

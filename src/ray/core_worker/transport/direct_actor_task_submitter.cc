@@ -155,7 +155,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       const auto queue_it = client_queues_.find(task_spec.ActorId());
       error_type = queue_it->second.GetErrorTypeForActorDeath();
       error_info = queue_it->second.GetErrorInfoForActorDeath();
-      fail_immediately = !queue_it->second.should_retry;
+      fail_immediately = !queue_it->second.should_retry_task;
     }
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
@@ -310,7 +310,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
               queue->second.state = rpc::ActorTableData::DEAD;
               queue->second.death_cause = death_cause;
               queue->second.worker_failure_error_info = worker_error;
-              queue->second.should_retry =
+              queue->second.should_retry_task =
                   get_task_failure_cause_reply.fail_task_immediately();
               // If there are pending requests, treat the pending tasks as failed.
               RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
@@ -338,7 +338,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
             const rpc::ErrorType error_type = queue->second.GetErrorTypeForActorDeath();
             const rpc::RayErrorInfo error_info =
                 queue->second.GetErrorInfoForActorDeath();
-            const bool fail_immediately = !queue->second.should_retry;
+            const bool fail_immediately = !queue->second.should_retry_task;
 
             for (auto &task_id : task_ids_to_fail) {
               // No need to increment the number of completed tasks since the actor is
@@ -569,7 +569,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       is_actor_dead = queue.state == rpc::ActorTableData::DEAD;
       error_type = queue.GetErrorTypeForActorDeath();
       error_info = queue.GetErrorInfoForActorDeath();
-      fail_immediately = !queue.should_retry;
+      fail_immediately = !queue.should_retry_task;
     }
 
     // This task may have been waiting for dependency resolution, so cancel

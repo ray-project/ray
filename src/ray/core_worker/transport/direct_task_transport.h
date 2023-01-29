@@ -143,7 +143,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// Get an existing worker client or connect a new one. raylet_address must
   /// not be null.
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
-      const rpc::Address *raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      const rpc::Address &raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Report worker backlog information to the local raylet
   void ReportWorkerBacklogInternal() EXCLUSIVE_LOCKS_REQUIRED(mu_);

@@ -233,7 +233,7 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
 
   for (auto &pending_lease_request : scheduling_key_entry.pending_lease_requests) {
     // There is an in-flight lease request. Cancel it.
-    auto lease_client = GetOrConnectLeaseClient(&pending_lease_request.second);
+    auto lease_client = GetOrConnectLeaseClient(pending_lease_request.second);
     auto &task_id = pending_lease_request.first;
     RAY_LOG(DEBUG) << "Canceling lease request " << task_id;
     lease_client->CancelWorkerLease(
@@ -258,19 +258,18 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
 
 std::shared_ptr<WorkerLeaseInterface>
 CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
-    const rpc::Address *raylet_address) {
+    const rpc::Address &raylet_address) {
   std::shared_ptr<WorkerLeaseInterface> lease_client;
-  RAY_CHECK(raylet_address != nullptr);
-  if (NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
+  if (NodeID::FromBinary(raylet_address.raylet_id()) != local_raylet_id_) {
     // A remote raylet was specified. Connect to the raylet if needed.
-    NodeID raylet_id = NodeID::FromBinary(raylet_address->raylet_id());
+    NodeID raylet_id = NodeID::FromBinary(raylet_address.raylet_id());
     auto it = remote_lease_clients_.find(raylet_id);
     if (it == remote_lease_clients_.end()) {
       RAY_LOG(INFO) << "Connecting to raylet " << raylet_id;
       it = remote_lease_clients_
                .emplace(raylet_id,
-                        lease_client_factory_(raylet_address->ip_address(),
-                                              raylet_address->port()))
+                        lease_client_factory_(raylet_address.ip_address(),
+                                              raylet_address.port()))
                .first;
     }
     lease_client = it->second;
@@ -371,7 +370,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     raylet_address = &best_node_address;
   }
 
-  auto lease_client = GetOrConnectLeaseClient(raylet_address);
+  auto lease_client = GetOrConnectLeaseClient(*raylet_address);
   const TaskID task_id = resource_spec.TaskId();
   const std::string task_name = resource_spec.GetName();
   RAY_LOG(DEBUG) << "Requesting lease from raylet "
@@ -396,7 +395,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           absl::MutexLock lock(&mu_);
 
           auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-          auto lease_client = GetOrConnectLeaseClient(&raylet_address);
+          auto lease_client = GetOrConnectLeaseClient(raylet_address);
           scheduling_key_entry.pending_lease_requests.erase(task_id);
 
           if (status.ok()) {
