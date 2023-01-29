@@ -175,7 +175,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   }
 
   void GetTaskFailureCause(
-      const TaskID &task_id,
+      const WorkerID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override {
     ray::rpc::GetTaskFailureCauseReply reply;

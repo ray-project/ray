@@ -55,7 +55,8 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void DisconnectActor(const ActorID &actor_id,
                                int64_t num_restarts,
                                bool dead,
-                               const rpc::ActorDeathCause &death_cause) = 0;
+                               const rpc::ActorDeathCause &death_cause,
+                               const rpc::Address &address) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual void CheckTimeoutTasks() = 0;
@@ -73,12 +74,18 @@ class CoreWorkerDirectActorTaskSubmitter
       TaskFinisherInterface &task_finisher,
       ActorCreatorInterface &actor_creator,
       std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
-      instrumented_io_context &io_service)
+      instrumented_io_context &io_service,
+      NodeID local_raylet_id,
+      std::shared_ptr<WorkerLeaseInterface> local_worker_client,
+      std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &, int)> worker_client_factory)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher, actor_creator),
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing),
-        io_service_(io_service) {
+        io_service_(io_service),
+        local_raylet_id_(local_raylet_id),
+        local_worker_client_(local_worker_client), 
+        worker_client_factory_(worker_client_factory) {
     next_queueing_warn_threshold_ =
         ::RayConfig::instance().actor_excess_queueing_warn_threshold();
   }
@@ -133,10 +140,12 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] dead Whether the actor is permanently dead. In this case, all
   /// pending tasks for the actor should be failed.
   /// \param[in] death_cause Context about why this actor is dead.
+  /// \param[in] address raylet address of the actor.
   void DisconnectActor(const ActorID &actor_id,
                        int64_t num_restarts,
                        bool dead,
-                       const rpc::ActorDeathCause &death_cause);
+                       const rpc::ActorDeathCause &death_cause,
+                       const rpc::Address &address);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
@@ -167,7 +176,8 @@ class CoreWorkerDirectActorTaskSubmitter
     return task_finisher_;
   }
 
-  struct ClientQueue {
+  class ClientQueue {
+   public:
     ClientQueue(ActorID actor_id,
                 bool execute_out_of_order,
                 int32_t max_pending_calls,
@@ -188,6 +198,11 @@ class CoreWorkerDirectActorTaskSubmitter
     /// The reason why this actor is dead.
     /// If the context is not set, it means the actor is not dead.
     rpc::ActorDeathCause death_cause;
+    /// The reason why this worker is dead.
+    /// If this is set, prefer using this over death_cause.
+    std::optional<rpc::RayErrorInfo> worker_failure_error_info;
+    /// Whether to retry upon failure, as informed by the server that is returning the error info.
+    bool should_retry = true;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
@@ -239,6 +254,16 @@ class CoreWorkerDirectActorTaskSubmitter
              << " cur_pending_calls=" << cur_pending_calls;
       return stream.str();
     }
+
+    rpc::RayErrorInfo GetErrorInfoForActorDeath();
+    //  {
+    //   return worker_failure_error_info.value_or(ray::gcs::GetErrorInfoFromActorDeathCause(death_cause));
+    // }
+
+    rpc::ErrorType GetErrorTypeForActorDeath();
+    //  {
+    //   return worker_failure_error_info ? worker_failure_error_info->error_type() : ray::gcs::GenErrorTypeFromDeathCause(death_cause);
+    // }
   };
 
   /// Push a task to a remote actor via the given client.
@@ -286,6 +311,10 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
+  /// Get an existing worker client or connect a new one.
+  std::shared_ptr<WorkerLeaseInterface> GetOrConnectWorkerClient(
+      const rpc::Address &raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;
 
@@ -310,6 +339,19 @@ class CoreWorkerDirectActorTaskSubmitter
   /// The event loop where the actor task events are handled.
   instrumented_io_context &io_service_;
 
+  /// The local raylet ID. Used to make sure that we use the local worker client
+  /// if it needs to contact the local raylet.
+  const NodeID local_raylet_id_;
+
+  /// Client that can be used for worker-related calls to the local raylet.
+  std::shared_ptr<WorkerLeaseInterface> local_worker_client_;
+
+  /// Factory to produce new worker clients to request task failures from the raylet.
+  std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address, int port)> worker_client_factory_;
+
+  /// Cache of gRPC clients to remote raylets.
+  absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>> remote_worker_clients_ GUARDED_BY(mu_);
+      
   friend class CoreWorkerTest;
 };
 

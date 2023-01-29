@@ -796,7 +796,7 @@ void NodeManager::HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
 void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
                                             rpc::GetTaskFailureCauseReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  const TaskID task_id = TaskID::FromBinary(request.task_id());
+  const WorkerID task_id = WorkerID::FromBinary(request.task_id());
   RAY_LOG(DEBUG) << "Received a HandleGetTaskFailureCause request for task " << task_id;
 
   auto it = task_failure_reasons_.find(task_id);
@@ -2906,7 +2906,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           rpc::RayErrorInfo task_failure_reason;
           task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-          SetTaskFailureReason(worker_to_kill->GetAssignedTaskId(),
+          SetTaskFailureReason(worker_to_kill->WorkerId(),
                                std::move(task_failure_reason),
                                should_retry);
 
@@ -3004,16 +3004,16 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
   return oom_kill_suggestions_ss.str();
 }
 
-void NodeManager::SetTaskFailureReason(const TaskID &task_id,
+void NodeManager::SetTaskFailureReason(const WorkerID &worker_id,
                                        const rpc::RayErrorInfo &failure_reason,
                                        bool should_retry) {
-  RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
+  RAY_LOG(DEBUG) << "set failure reason for task " << worker_id;
   ray::TaskFailureEntry entry(failure_reason, should_retry);
-  auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
+  auto result = task_failure_reasons_.emplace(worker_id, std::move(entry));
   if (!result.second) {
     RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
                         "task, the previous failure will be removed. Task id: "
-                     << task_id;
+                     << worker_id;
   }
 }
 

@@ -106,7 +106,7 @@ class WorkerLeaseInterface {
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
 
   virtual void GetTaskFailureCause(
-      const TaskID &task_id,
+      const WorkerID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) = 0;
 
   virtual ~WorkerLeaseInterface(){};
@@ -414,7 +414,7 @@ class RayletClient : public RayletClientInterface {
                            bool worker_exiting) override;
 
   void GetTaskFailureCause(
-      const TaskID &task_id,
+      const WorkerID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override;
 

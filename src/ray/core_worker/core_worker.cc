@@ -395,7 +395,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              *task_manager_,
                                              *actor_creator_,
                                              on_excess_queueing,
-                                             io_service_));
+                                             io_service_,
+                                             local_raylet_id,
+                                             local_raylet_client_,
+                                             raylet_client_factory));
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;

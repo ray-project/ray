@@ -664,7 +664,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
-  void SetTaskFailureReason(const TaskID &task_id,
+  void SetTaskFailureReason(const WorkerID &worker_id,
                             const rpc::RayErrorInfo &failure_reason,
                             bool should_retry);
 
@@ -742,7 +742,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   /// Optional extra information about why the task failed.
-  absl::flat_hash_map<TaskID, ray::TaskFailureEntry> task_failure_reasons_;
+  absl::flat_hash_map<WorkerID, ray::TaskFailureEntry> task_failure_reasons_;
 
   /// Whether to trigger global GC in the next resource usage report. This will broadcast
   /// a global GC message to all raylets except for this one.

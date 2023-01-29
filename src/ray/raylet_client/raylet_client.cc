@@ -385,7 +385,7 @@ Status raylet::RayletClient::ReturnWorker(int worker_port,
 }
 
 void raylet::RayletClient::GetTaskFailureCause(
-    const TaskID &task_id,
+    const WorkerID &task_id,
     const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) {
   rpc::GetTaskFailureCauseRequest request;
   request.set_task_id(task_id.Binary());

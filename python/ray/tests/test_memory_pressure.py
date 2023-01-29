@@ -152,7 +152,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold + 0.1
     )
-    with pytest.raises(ray.exceptions.RayActorError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
     wait_for_condition(
@@ -178,7 +178,7 @@ def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold + 0.1
     )
-    with pytest.raises(ray.exceptions.RayActorError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
     wait_for_condition(
@@ -297,7 +297,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
     actor_id = ray.get(oom_actor.get_actor_id.remote())
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
-    with pytest.raises(ray.exceptions.RayActorError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(
             oom_actor.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3)
         )

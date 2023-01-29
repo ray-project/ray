@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 
 #include "ray/core_worker/transport/dependency_resolver.h"
+#include "ray/core_worker/transport/transport_util.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -577,7 +578,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
        addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
         {
-          RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker "
+          RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker Getting error from "
                          << addr.worker_id << " of raylet " << addr.raylet_id;
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);
@@ -609,7 +610,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                 };
             auto &lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(lease_entry.lease_client);
-            lease_entry.lease_client->GetTaskFailureCause(lease_entry.task_id, callback);
+            lease_entry.lease_client->GetTaskFailureCause(addr.worker_id, callback);
           }
 
           if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
@@ -646,41 +647,19 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
     const rpc::WorkerAddress &addr,
     const Status &get_task_failure_cause_reply_status,
     const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
-  rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
-  std::unique_ptr<rpc::RayErrorInfo> error_info;
-  bool fail_immediately = false;
-  if (get_task_failure_cause_reply_status.ok()) {
-    RAY_LOG(DEBUG) << "Task failure cause for task " << task_id << ": "
-                   << ray::gcs::RayErrorInfoToString(
-                          get_task_failure_cause_reply.failure_cause());
-    if (get_task_failure_cause_reply.has_failure_cause()) {
-      task_error_type = get_task_failure_cause_reply.failure_cause().error_type();
-      error_info = std::make_unique<rpc::RayErrorInfo>(
-          get_task_failure_cause_reply.failure_cause());
-      // TODO(clarng): track and append task retry history to the error message.
-    }
-  } else {
-    RAY_LOG(DEBUG) << "Failed to fetch task result with status "
-                   << get_task_failure_cause_reply_status.ToString()
-                   << " node id: " << addr.raylet_id << " ip: " << addr.ip_address;
-    task_error_type = rpc::ErrorType::NODE_DIED;
-    std::stringstream buffer;
-    buffer << "Task failed due to the node dying.\n\nThe node (IP: " << addr.ip_address
-           << ", node ID: " << addr.raylet_id
-           << ") where this task was running crashed unexpectedly. "
-           << "This can happen if: (1) the instance where the node was running failed, "
-              "(2) raylet crashes unexpectedly (OOM, preempted node, etc).\n\n"
-           << "To see more information about the crash, use `ray logs raylet.out -ip "
-           << addr.ip_address << "`";
-    error_info = std::make_unique<rpc::RayErrorInfo>();
-    error_info->set_error_message(buffer.str());
-    error_info->set_error_type(rpc::ErrorType::NODE_DIED);
+  auto worker_error = GetErrorInfoFromGetTaskFailureCauseReply(addr, get_task_failure_cause_reply_status, get_task_failure_cause_reply);
+  rpc::ErrorType error_type = rpc::ErrorType::WORKER_DIED;
+  rpc::RayErrorInfo error_info;
+  if (worker_error) {
+    error_info = worker_error.value();
+    error_type = worker_error.value().error_type();
   }
+  bool fail_immediately = get_task_failure_cause_reply.fail_task_immediately();
   RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
       task_id,
-      is_actor ? rpc::ErrorType::ACTOR_DIED : task_error_type,
+      is_actor ? rpc::ErrorType::ACTOR_DIED : error_type,
       &task_execution_status,
-      error_info.get(),
+      &error_info,
       /*mark_task_object_failed*/ true,
       fail_immediately));
 }

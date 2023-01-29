@@ -207,6 +207,8 @@ class ActorManager {
   /// The state of actor is true When the actor is out of scope or is killed
   absl::flat_hash_map<ActorID, bool> subscribed_actors_ GUARDED_BY(cache_mutex_);
 
+  WorkerID last_known_worker_id_;
+
   FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledAfterSubscribeFinished);
   FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished);
 };

@@ -140,9 +140,8 @@ class CoreWorkerDirectTaskSubmitter {
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Get an existing lease client or connect a new one. If a raylet_address is
-  /// provided, this connects to a remote raylet. Else, this connects to the
-  /// local raylet.
+  /// Get an existing worker client or connect a new one. raylet_address must
+  /// not be null.
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
       const rpc::Address *raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
