@@ -43,13 +43,17 @@ class TestTrainerRunner(unittest.TestCase):
         tf1, tf, tfv = try_import_tf()
         tf1.executing_eagerly()
 
-        fws = ["tf", "torch"]
+        # TODO (Avnish): tf does not clear out the GPU memory footprint, therefore
+        # doing it first before torch will result in OOM. Find a way to clear out the
+        # GPU memory footprint of tf.
+        fws = ["torch", "tf"]
         scaling_modes = ["local-cpu", "local-gpu"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         env = gym.make("CartPole-v1")
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
+            ray.init(ignore_reinit_error=True)
             scaling_config = self.scaling_configs[scaling_mode]
             runner = get_trainer_runner(fw, env, scaling_config)
             local_trainer = get_rl_trainer(fw, env)
@@ -80,11 +84,17 @@ class TestTrainerRunner(unittest.TestCase):
 
             check(local_trainer.get_state(), runner.get_state()[0])
 
+            # make sure the runner resources are freed up so that we don't autoscale
+            del runner
+            del local_trainer
+            ray.shutdown()
+            time.sleep(10)
+
     def test_update_multigpu(self):
 
         # TODO (Avnish): The tf + remote-gpu test is flakey. Removing for now until
         # investigated.
-        fws = ["torch"]
+        fws = ["torch", "tf"]
         scaling_modes = self.scaling_configs.keys()
         test_iterator = itertools.product(fws, scaling_modes)
 
@@ -127,7 +137,7 @@ class TestTrainerRunner(unittest.TestCase):
 
         # TODO (Avnish): The tf + remote-gpu test is flakey. Removing for now until
         # investigated.
-        fws = ["torch"]
+        fws = ["torch", "tf"]
         scaling_modes = self.scaling_configs.keys()
         test_iterator = itertools.product(fws, scaling_modes)
 
