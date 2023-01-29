@@ -4,12 +4,15 @@ from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
-from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec
+from ray.rllib.core.rl_trainer.rl_trainer import (
+    RLTrainerSpec,
+    RLTrainerHPs,
+    FrameworkHPs,
+)
 from ray.rllib.utils.from_config import NotProvided
 
 
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.core.rl_trainer import RLTrainer
 
 ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
@@ -30,16 +33,16 @@ class TrainerRunnerConfig:
 
         # `self.trainer()`
         self.trainer_class = None
-        self.eager_tracing = True
         self.optimizer_config = None
+        self.rl_trainer_hps = RLTrainerHPs()
 
         # `self.resources()`
         self.num_gpus_per_trainer_worker = 0
         self.num_cpus_per_trainer_worker = 1
         self.num_trainer_workers = 1
 
-        # `self.algorithm()`
-        self.algorithm_config = None
+        # `self.framework()`
+        self.eager_tracing = False
 
     def validate(self) -> None:
 
@@ -74,21 +77,26 @@ class TrainerRunnerConfig:
             num_gpus_per_worker=self.num_gpus_per_trainer_worker,
             num_cpus_per_worker=self.num_cpus_per_trainer_worker,
         )
+
+        framework_hps = FrameworkHPs(eager_tracing=self.eager_tracing)
+
         rl_trainer_spec = RLTrainerSpec(
             rl_trainer_class=self.trainer_class,
             module_spec=self.module_spec,
             optimizer_config=self.optimizer_config,
             trainer_scaling_config=scaling_config,
-            trainer_hyperparameters=self.algorithm_config,
+            trainer_hyperparameters=self.rl_trainer_hps,
+            framework_hyperparameters=framework_hps,
         )
 
         return self.trainer_runner_class(rl_trainer_spec)
 
-    def algorithm(
-        self, algorithm_config: Optional["AlgorithmConfig"] = NotProvided
+    def framework(
+        self, eager_tracing: Optional[bool] = NotProvided
     ) -> "TrainerRunnerConfig":
-        if algorithm_config is not NotProvided:
-            self.algorithm_config = algorithm_config
+
+        if eager_tracing is not NotProvided:
+            self.eager_tracing = eager_tracing
         return self
 
     def module(
@@ -121,15 +129,15 @@ class TrainerRunnerConfig:
         self,
         *,
         trainer_class: Optional[Type["RLTrainer"]] = NotProvided,
-        eager_tracing: Optional[bool] = NotProvided,
         optimizer_config: Optional[Dict] = NotProvided,
+        rl_trainer_hps: Optional[RLTrainerHPs] = NotProvided,
     ) -> "TrainerRunnerConfig":
 
         if trainer_class is not NotProvided:
             self.trainer_class = trainer_class
-        if eager_tracing is not NotProvided:
-            self.eager_tracing = eager_tracing
         if optimizer_config is not NotProvided:
             self.optimizer_config = optimizer_config
+        if rl_trainer_hps is not NotProvided:
+            self.rl_trainer_hps = rl_trainer_hps
 
         return self

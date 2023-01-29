@@ -48,11 +48,8 @@ ParamDictType = Dict[ParamRef, ParamType]
 
 
 @dataclass
-class RLTrainerHPs:
-    """The hyper-parameters for RLTrainer.
-
-    When creating a new RLTrainer, the new hyper-parameters have to be defined by
-    subclassing this class and adding the new hyper-parameters as fields.
+class FrameworkHPs:
+    """The framework specific hyper-parameters.
 
     Args:
         eager_tracing: Whether to trace the model in eager mode. This enables tf
@@ -63,6 +60,17 @@ class RLTrainerHPs:
     """
 
     eager_tracing: bool = False
+
+
+@dataclass
+class RLTrainerHPs:
+    """The hyper-parameters for RLTrainer.
+
+    When creating a new RLTrainer, the new hyper-parameters have to be defined by
+    subclassing this class and adding the new hyper-parameters as fields.
+    """
+
+    pass
 
 
 class RLTrainer:
@@ -137,6 +145,7 @@ class RLTrainer:
         optimizer_config: Mapping[str, Any] = None,
         trainer_scaling_config: Optional[TrainerScalingConfig] = None,
         trainer_hyperparameters: Optional[RLTrainerHPs] = None,
+        framework_hyperparameters: Optional[FrameworkHPs] = None,
     ):
         # TODO (Kourosh): Having the entire algorithm_config inside trainer may not be
         # the best idea in the world, but it's easy to implement and user will
@@ -654,13 +663,12 @@ class RLTrainerSpec:
     rl_trainer_class: Type["RLTrainer"]
     module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
     module: Optional["RLModule"] = None
-    trainer_scaling_config: Optional[TrainerScalingConfig] = None
+    trainer_scaling_config: TrainerScalingConfig = field(
+        default_factory=TrainerScalingConfig
+    )
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
     trainer_hyperparameters: RLTrainerHPs = field(default_factory=RLTrainerHPs)
-
-    def __post_init__(self):
-        if self.trainer_scaling_config is None:
-            self.trainer_scaling_config = TrainerScalingConfig()
+    framework_hyperparameters: FrameworkHPs = field(default_factory=FrameworkHPs)
 
     def get_params_dict(self) -> Dict[str, Any]:
         """Returns the parameters than be passed to the RLTrainer constructor."""
@@ -670,6 +678,7 @@ class RLTrainerSpec:
             "trainer_scaling_config": self.trainer_scaling_config,
             "optimizer_config": self.optimizer_config,
             "trainer_hyperparameters": self.trainer_hyperparameters,
+            "framework_hyperparameters": self.framework_hyperparameters,
         }
 
     def build(self) -> "RLTrainer":

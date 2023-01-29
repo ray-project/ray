@@ -15,12 +15,8 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
-)
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_trainer.rl_trainer import (
-    RLTrainerHPs,
     RLTrainer,
     ParamOptimizerPairs,
     Optimizer,
@@ -49,23 +45,9 @@ class TorchRLTrainer(RLTrainer):
     framework: str = "torch"
 
     def __init__(
-        self,
-        *,
-        module_spec: Optional[
-            Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
-        ] = None,
-        module: Optional[RLModule] = None,
-        optimizer_config: Mapping[str, Any] = None,
-        trainer_scaling_config: Optional[TrainerScalingConfig] = None,
-        trainer_hyperparameters: Optional[RLTrainerHPs] = None,
+        self, *, trainer_scaling_config: Optional[TrainerScalingConfig] = None, **kwargs
     ):
-        super().__init__(
-            module_spec=module_spec,
-            module=module,
-            optimizer_config=optimizer_config,
-            trainer_scaling_config=trainer_scaling_config,
-            trainer_hyperparameters=trainer_hyperparameters,
-        )
+        super().__init__(trainer_scaling_config=trainer_scaling_config, **kwargs)
 
         # pick the stuff that we need from the scaling config
         self._use_gpu = trainer_scaling_config.num_gpus_per_worker > 0

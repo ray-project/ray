@@ -17,6 +17,7 @@ from typing import (
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerHPs
 from ray.rllib.core.rl_trainer.trainer_runner_config import (
     TrainerRunnerConfig,
     ModuleSpec,
@@ -320,6 +321,10 @@ class AlgorithmConfig:
         self.max_requests_in_flight_per_sampler_worker = 2
         self.rl_trainer_class = None
         self._enable_rl_trainer_api = False
+        # experimental: this will contain the hyper-parameters that are passed to the
+        # RLTrainer, for computing loss, etc. New algorithms have to set this to their
+        # own default. .training() will modify the fields of this object.
+        self._rl_trainer_hps = RLTrainerHPs()
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -444,6 +449,10 @@ class AlgorithmConfig:
         self.horizon = DEPRECATED_VALUE
         self.soft_horizon = DEPRECATED_VALUE
         self.no_done_at_end = DEPRECATED_VALUE
+
+    @property
+    def rl_trainer_hps(self) -> RLTrainerHPs:
+        return self._rl_trainer_hps
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
