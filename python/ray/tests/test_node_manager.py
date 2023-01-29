@@ -125,7 +125,7 @@ import ray
 
 @ray.remote
 def f():
-	pass
+    pass
 
 ray.get(f.options(num_cpus=10000000).remote())
   """
