@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <pthread.h>
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
@@ -23,12 +24,27 @@ namespace {
 
 std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
 
+void prepare_callback() {
+  core_worker_process->PrePareCallback();
+}
+
+void parent_post_callback() {
+  core_worker_process->ParentPostforkCallback();
+}
+
+void child_post_callback() {
+  core_worker_process->ChildPostforkCallback();
+}
+
+
 }  // namespace
 
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)
       << "The process is already initialized for core worker.";
   core_worker_process.reset(new CoreWorkerProcessImpl(options));
+
+  pthread_atfork(prepare_callback, parent_post_callback, child_post_callback);
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
@@ -378,6 +394,22 @@ void CoreWorkerProcessImpl::SetThreadLocalWorkerById(const WorkerID &worker_id) 
   auto worker = GetWorker(worker_id);
   RAY_CHECK(worker) << "Worker " << worker_id << " not found.";
   thread_local_core_worker_ = GetWorker(worker_id);
+}
+
+void CoreWorkerProcessImpl::PrePareCallback() {
+  mutex_.ReaderLock();
+  RAY_LOG(INFO) << "[Parent Process] fork preprocess!";
+}
+
+void CoreWorkerProcessImpl::ParentPostforkCallback() {
+  mutex_.ReaderUnlock();
+  RAY_LOG(INFO) << "[Parent Process] fork postprocess!";
+}
+
+void CoreWorkerProcessImpl::ChildPostforkCallback() {
+  mutex_.ReaderUnlock();
+  auto global_worker = GetGlobalWorker();
+  global_worker->ChildCoreWorkerPostCallback();
 }
 
 }  // namespace core

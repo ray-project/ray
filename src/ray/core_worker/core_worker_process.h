@@ -181,7 +181,14 @@ class CoreWorkerProcessImpl {
   /// Currently used by Java worker only.
   void SetThreadLocalWorkerById(const WorkerID &worker_id);
 
+  void PrePareCallback();
+
+  void ParentPostforkCallback();
+
+  void ChildPostforkCallback();
+
  private:
+
   /// The various options.
   const CoreWorkerOptions options_;
 

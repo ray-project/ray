@@ -3411,6 +3411,11 @@ std::unordered_map<std::string, std::vector<uint64_t>> CoreWorker::GetActorCallS
   return total_counts;
 }
 
+void CoreWorker::ChildCoreWorkerPostCallback() {
+  RAY_LOG(INFO) << "[Child Process][CoreWorker] fork postprocess!";
+  core_worker_server_->StopServer();
+}
+
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<ActorID> actor_ids;
   for (const auto &id : ids) {
