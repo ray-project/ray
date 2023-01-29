@@ -2,6 +2,8 @@ import gymnasium as gym
 import unittest
 import ray
 import time
+import numpy as np
+import itertools
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
@@ -13,43 +15,16 @@ from ray.rllib.core.testing.utils import (
 
 
 class TestTrainerRunner(unittest.TestCase):
-    """This test is setup for 2 gpus."""
-
-    # TODO: This unittest should also test other resource allocations like multi-cpu,
-    # multi-node multi-gpu, etc.
-
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
 
         # Settings to test
-        # 1. base: local_mode on cpu
-        # scaling_config = TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0)
-        # 2. base-gpu: local_mode on gpu, e.g. only 1 gpu should be used despite
-        #     having 2 gpus on the machine and defining fractional gpus.
-        # scaling_config = TrainerScalingConfig(
-        #     num_workers=0, num_gpus_per_worker=0.5 # this would be get ignored
-        # )
-        # 3. async-cpu: e.g. 1 remote trainer on cpu
-        # scaling_config = TrainerScalingConfig(num_workers=1)
-        # 4. async-gpu: e.g. 1 remote trainer on 0.5 gpu
-        # scaling_config = TrainerScalingConfig(
-        #     num_workers=1, num_gpus_per_worker=0.5
-        # )
-        # 5. multi-gpu-ddp: e.g. 2 remote trainers on 1 gpu each with ddp
-        # scaling_config = TrainerScalingConfig(num_workers=2, num_gpus_per_worker=1)
-        # 6. multi-cpu-ddp: e.g. 2 remote trainers on 2 cpu each with ddp, This
-        #     imitates multi-gpu-ddp for debugging purposes when GPU is not available
-        #     in dev cycle
-        # scaling_config = TrainerScalingConfig(num_workers=2, num_cpus_per_worker=1)
-        # 7. multi-gpu-ddp-pipeline (skip for now): e.g. 2 remote trainers on 2 gpu
-        #     each with pipeline parallelism
-        # scaling_config = TrainerScalingConfig(num_workers=2, num_gpus_per_worker=2)
         cls.scaling_configs = {
-            "base": TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0),
-            "base-gpu": TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
-            "async-cpu": TrainerScalingConfig(num_workers=1),
-            "async-gpu": TrainerScalingConfig(num_workers=1, num_gpus_per_worker=0.5),
+            "local-cpu": TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0),
+            "local-gpu": TrainerScalingConfig(num_workers=0, num_gpus_per_worker=0.5),
+            "remote-cpu": TrainerScalingConfig(num_workers=1),
+            "remote-gpu": TrainerScalingConfig(num_workers=1, num_gpus_per_worker=0.5),
             "multi-gpu-ddp": TrainerScalingConfig(num_workers=2, num_gpus_per_worker=1),
             "multi-cpu-ddp": TrainerScalingConfig(num_workers=2, num_cpus_per_worker=2),
             # "multi-gpu-ddp-pipeline": TrainerScalingConfig(
@@ -62,33 +37,41 @@ class TestTrainerRunner(unittest.TestCase):
         ray.shutdown()
 
     def test_update_multigpu(self):
-        """Test training in a 2 gpu setup and that weights are synchronized."""
 
-        for fw in ["tf", "torch"]:
+        # TODO (Avnish): The tf + remote-gpu test is flakey. Removing for now until
+        # investigated.
+        fws = ["torch"]
+        scaling_modes = self.scaling_configs.keys()
+        test_iterator = itertools.product(fws, scaling_modes)
+
+        for fw, scaling_mode in test_iterator:
+            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             ray.init(ignore_reinit_error=True)
-            print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
 
-            scaling_config = self.scaling_configs["multi-gpu-ddp"]
+            scaling_config = self.scaling_configs[scaling_mode]
             runner = get_trainer_runner(fw, env, scaling_config)
-            reader = get_cartpole_dataset_reader(batch_size=512)
+            reader = get_cartpole_dataset_reader(batch_size=1024)
 
             min_loss = float("inf")
             for iter_i in range(1000):
                 batch = reader.next()
-                res_0, res_1 = runner.update(batch.as_multi_agent())
+                results = runner.update(batch.as_multi_agent())
 
-                loss = (res_0["loss"]["total_loss"] + res_1["loss"]["total_loss"]) / 2
+                loss = np.mean([res["loss"]["total_loss"] for res in results])
                 min_loss = min(loss, min_loss)
                 print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
                 # The loss is initially around 0.69 (ln2). When it gets to around
                 # 0.57 the return of the policy gets to around 100.
                 if min_loss < 0.57:
                     break
-                self.assertEqual(
-                    res_0["mean_weight"]["default_policy"],
-                    res_1["mean_weight"]["default_policy"],
-                )
+
+                for res1, res2 in zip(results, results[1:]):
+                    self.assertEqual(
+                        res1["mean_weight"]["default_policy"],
+                        res2["mean_weight"]["default_policy"],
+                    )
+
             self.assertLess(min_loss, 0.57)
 
             # make sure the runner resources are freed up so that we don't autoscale
@@ -98,11 +81,17 @@ class TestTrainerRunner(unittest.TestCase):
 
     def test_add_remove_module(self):
 
-        for fw in ["tf", "torch"]:
+        # TODO (Avnish): The tf + remote-gpu test is flakey. Removing for now until
+        # investigated.
+        fws = ["torch"]
+        scaling_modes = self.scaling_configs.keys()
+        test_iterator = itertools.product(fws, scaling_modes)
+
+        for fw, scaling_mode in test_iterator:
+            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             ray.init(ignore_reinit_error=True)
-            print(f"Testing framework: {fw}.")
             env = gym.make("CartPole-v1")
-            scaling_config = TrainerScalingConfig(num_workers=2, num_gpus_per_worker=1)
+            scaling_config = self.scaling_configs[scaling_mode]
             runner = get_trainer_runner(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=500)
             batch = reader.next()

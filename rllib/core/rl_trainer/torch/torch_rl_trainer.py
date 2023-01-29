@@ -130,6 +130,12 @@ class TorchRLTrainer(RLTrainer):
         super().build()
 
     @override(RLTrainer)
+    def _make_module(self) -> MultiAgentRLModule:
+        module = super()._make_module()
+        self._map_module_to_device(module)
+        return module
+
+    @override(RLTrainer)
     def _make_distributed_module(self) -> MultiAgentRLModule:
         module = self._make_module()
 
@@ -140,11 +146,9 @@ class TorchRLTrainer(RLTrainer):
         # register them in the MultiAgentRLModule. We should find a better way to
         # handle this.
         if isinstance(module, torch.nn.Module):
-            module.to(self._device)
             module = TorchDDPRLModule(module)
         else:
             for key in module.keys():
-                module[key].to(self._device)
                 module.add_module(key, TorchDDPRLModule(module[key]), override=True)
 
         return module
@@ -204,3 +208,11 @@ class TorchRLTrainer(RLTrainer):
             self._module.add_module(
                 module_id, TorchDDPRLModule(self._module[module_id]), override=True
             )
+
+    def _map_module_to_device(self, module: MultiAgentRLModule) -> None:
+        """Moves the module to the correct device."""
+        if isinstance(module, torch.nn.Module):
+            module.to(self._device)
+        else:
+            for key in module.keys():
+                module[key].to(self._device)

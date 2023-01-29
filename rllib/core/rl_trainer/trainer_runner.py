@@ -66,7 +66,12 @@ class TrainerRunner:
             # TODO (Avnish) How do I run TF on one GPU?
             pass
 
+        # TODO (Kourosh): Go with a _remote flag instead of _is_local to be more
+        # explicit
         self._is_local = scaling_config.num_workers == 0
+        self._trainer = None
+        self._workers = None
+
         if self._is_local:
             # in local mode the trainer is always not distributed
             rl_trainer_spec.module_backend_config.set_distributed(False)
@@ -113,7 +118,7 @@ class TrainerRunner:
 
     @property
     def is_local(self) -> bool:
-        return not self._is_local
+        return self._is_local
 
     def update(self, batch: MultiAgentBatch) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the RLTrainer(s) maintained by this TrainerRunner.
@@ -125,9 +130,9 @@ class TrainerRunner:
             A list of dictionaries of results from the updates from the RLTrainer(s)
         """
         if self.is_local:
-            return self._distributed_update(batch)
-        else:
             return [self._trainer.update(batch)]
+        else:
+            return self._distributed_update(batch)
 
     def _distributed_update(self, batch: MultiAgentBatch) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the RLTrainers using DDP training.
@@ -175,12 +180,12 @@ class TrainerRunner:
         """
 
         if self.is_local:
+            return [self._trainer.additional_update(*args, **kwargs)]
+        else:
             refs = []
             for worker in self._workers:
                 refs.append(worker.additional_update.remote(*args, **kwargs))
             return ray.get(refs)
-        else:
-            return [self._trainer.additional_update(*args, **kwargs)]
 
     def add_module(
         self,
@@ -204,6 +209,13 @@ class TrainerRunner:
                 should be provided.
         """
         if self.is_local:
+            self._trainer.add_module(
+                module_id=module_id,
+                module_spec=module_spec,
+                set_optimizer_fn=set_optimizer_fn,
+                optimizer_cls=optimizer_cls,
+            )
+        else:
             refs = []
             for worker in self._workers:
                 ref = worker.add_module.remote(
@@ -214,13 +226,6 @@ class TrainerRunner:
                 )
                 refs.append(ref)
             ray.get(refs)
-        else:
-            self._trainer.add_module(
-                module_id=module_id,
-                module_spec=module_spec,
-                set_optimizer_fn=set_optimizer_fn,
-                optimizer_cls=optimizer_cls,
-            )
 
     def remove_module(self, module_id: ModuleID) -> None:
         """Remove a module from the RLTrainers maintained by this TrainerRunner.
@@ -230,13 +235,13 @@ class TrainerRunner:
 
         """
         if self.is_local:
+            self._trainer.remove_module(module_id)
+        else:
             refs = []
             for worker in self._workers:
                 ref = worker.remove_module.remote(module_id)
                 refs.append(ref)
             ray.get(refs)
-        else:
-            self._trainer.remove_module(module_id)
 
     def get_weight(self) -> Dict:
         """Get the weights of the MARLModule.
@@ -250,12 +255,12 @@ class TrainerRunner:
     def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
         """Get the states of the RLTrainers"""
         if self.is_local:
+            return [self._trainer.get_state()]
+        else:
             refs = []
             for worker in self._workers:
                 refs.append(worker.get_state.remote())
             return ray.get(refs)
-        else:
-            return [self._trainer.get_state()]
 
     def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:
         """Sets the states of the RLTrainers.
@@ -265,9 +270,9 @@ class TrainerRunner:
 
         """
         if self.is_local:
+            self._trainer.set_state(state)
+        else:
             refs = []
             for worker in self._workers:
                 refs.append(worker.set_state.remote(state))
             ray.get(refs)
-        else:
-            self._trainer.set_state(state)
