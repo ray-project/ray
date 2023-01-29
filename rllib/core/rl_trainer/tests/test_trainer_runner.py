@@ -71,7 +71,7 @@ class TestTrainerRunner(unittest.TestCase):
 
             scaling_config = self.scaling_configs["multi-gpu-ddp"]
             runner = get_trainer_runner(fw, env, scaling_config)
-            reader = get_cartpole_dataset_reader(batch_size=500)
+            reader = get_cartpole_dataset_reader(batch_size=512)
 
             min_loss = float("inf")
             for iter_i in range(1000):
