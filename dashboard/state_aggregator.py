@@ -4,10 +4,11 @@ import json
 
 from dataclasses import asdict, fields
 from itertools import islice
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from datetime import datetime
 
 from ray._private.ray_constants import env_integer
+from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
@@ -210,7 +211,13 @@ class StateAPIManager:
         for message in reply.actor_table_data:
             data = self._message_to_dict(
                 message=message,
-                fields_to_decode=["actor_id", "owner_id", "job_id", "node_id"],
+                fields_to_decode=[
+                    "actor_id",
+                    "owner_id",
+                    "job_id",
+                    "node_id",
+                    "placement_group_id",
+                ],
             )
             result.append(data)
         num_after_truncation = len(result)
@@ -280,6 +287,9 @@ class StateAPIManager:
         for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
             data["node_ip"] = data["node_manager_address"]
+            data["start_time_ms"] = int(data["start_time_ms"])
+            data["end_time_ms"] = int(data["end_time_ms"])
+
             result.append(data)
 
         total_nodes = len(result)
@@ -319,6 +329,8 @@ class StateAPIManager:
             data["worker_id"] = data["worker_address"]["worker_id"]
             data["node_id"] = data["worker_address"]["raylet_id"]
             data["ip"] = data["worker_address"]["ip_address"]
+            data["start_time_ms"] = int(data["start_time_ms"])
+            data["end_time_ms"] = int(data["end_time_ms"])
             result.append(data)
 
         num_after_truncation = len(result)
@@ -362,13 +374,15 @@ class StateAPIManager:
         """
         job_id = None
         for filter in option.filters:
-            if filter[0] == "job_id":
+            if filter[0] == "job_id" and filter[1] == "=":
+                # Filtering by job_id == xxxx, pass it to source side filtering.
                 # tuple consists of (job_id, predicate, value)
                 job_id = filter[2]
-
         try:
             reply = await self._client.get_all_task_info(
-                timeout=option.timeout, job_id=job_id
+                timeout=option.timeout,
+                job_id=job_id,
+                exclude_driver=option.exclude_driver,
             )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
@@ -380,7 +394,7 @@ class StateAPIManager:
             task_state = {}
             task_info = task_attempt.get("task_info", {})
             state_updates = task_attempt.get("state_updates", [])
-            profiling_data = task_attempt.get("profiling_data", {})
+            profiling_data = task_attempt.get("profile_events", {})
             if profiling_data:
                 for event in profiling_data["events"]:
                     # End/start times are recorded in ns. We convert them to ms.
@@ -403,10 +417,11 @@ class StateAPIManager:
                         "required_resources",
                         "runtime_env_info",
                         "parent_task_id",
+                        "placement_group_id",
                     ],
                 ),
                 (task_attempt, ["task_id", "attempt_number", "job_id"]),
-                (state_updates, ["node_id"]),
+                (state_updates, ["node_id", "worker_id"]),
             ]
             for src, keys in mappings:
                 for key in keys:
@@ -419,7 +434,8 @@ class StateAPIManager:
             for state in common_pb2.TaskStatus.keys():
                 key = f"{state.lower()}_ts"
                 if key in state_updates:
-                    # timestamp is recorded in ns.
+                    # timestamp is recorded as nanosecond from the backend.
+                    # We need to convert it to the second.
                     ts_ms = int(state_updates[key]) // 1e6
                     events.append(
                         {
@@ -451,6 +467,8 @@ class StateAPIManager:
                         "node_id",
                         "actor_id",
                         "parent_task_id",
+                        "worker_id",
+                        "placement_group_id",
                         "component_id",
                     ],
                 )
@@ -742,6 +760,13 @@ class StateAPIManager:
             num_after_truncation=result.num_after_truncation,
             num_filtered=result.num_filtered,
         )
+
+    async def generate_task_timeline(self, job_id: Optional[str]) -> List[dict]:
+        filters = [("job_id", "=", job_id)] if job_id else None
+        result = await self.list_tasks(
+            option=ListApiOptions(detail=True, filters=filters, limit=10000)
+        )
+        return chrome_tracing_dump(result.result)
 
     def _message_to_dict(
         self,
