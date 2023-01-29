@@ -88,7 +88,7 @@ class TfRLTrainer(RLTrainer):
     def __init__(
         self,
         *,
-        framework_hyperparameters: Optional[FrameworkHPs] = None,
+        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
         **kwargs,
     ):
         super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)

@@ -2669,16 +2669,16 @@ class AlgorithmConfig:
             .module(module_spec)
             .trainer(
                 trainer_class=self.rl_trainer_class,
-                eager_tracing=self.eager_tracing,
                 # TODO (Kourosh): optimizer config can now be more complicated.
                 optimizer_config={"lr": self.lr},
+                rl_trainer_hps=self.rl_trainer_hps,
             )
             .resources(
                 num_trainer_workers=self.num_trainer_workers,
                 num_cpus_per_trainer_worker=self.num_cpus_per_trainer_worker,
                 num_gpus_per_trainer_worker=self.num_gpus_per_trainer_worker,
             )
-            .algorithm(algorithm_config=self)
+            .framework(eager_tracing=self.eager_tracing)
         )
 
         return config

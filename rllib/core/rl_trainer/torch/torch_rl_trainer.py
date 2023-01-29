@@ -45,7 +45,10 @@ class TorchRLTrainer(RLTrainer):
     framework: str = "torch"
 
     def __init__(
-        self, *, trainer_scaling_config: Optional[TrainerScalingConfig] = None, **kwargs
+        self,
+        *,
+        trainer_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
+        **kwargs,
     ):
         super().__init__(trainer_scaling_config=trainer_scaling_config, **kwargs)
 

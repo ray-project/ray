@@ -143,9 +143,9 @@ class RLTrainer:
         ] = None,
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
-        trainer_scaling_config: Optional[TrainerScalingConfig] = None,
-        trainer_hyperparameters: Optional[RLTrainerHPs] = None,
-        framework_hyperparameters: Optional[FrameworkHPs] = None,
+        trainer_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
+        trainer_hyperparameters: Optional[RLTrainerHPs] = RLTrainerHPs(),
+        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
     ):
         # TODO (Kourosh): Having the entire algorithm_config inside trainer may not be
         # the best idea in the world, but it's easy to implement and user will

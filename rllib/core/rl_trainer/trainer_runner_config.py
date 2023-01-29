@@ -58,12 +58,6 @@ class TrainerRunnerConfig:
                 "the RLTrainer class with .trainer(trainer_class=MyTrainerClass)."
             )
 
-        if self.algorithm_config is None:
-            raise ValueError(
-                "Must provide algorithm_config for RLTrainer. Use "
-                ".algorithm(algorithm_config=MyConfig)."
-            )
-
         if self.optimizer_config is None:
             # get the default optimizer config if it's not provided
             # TODO (Kourosh): Change the optimizer config to a dataclass object.
