@@ -13,7 +13,7 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         AWS_ACCESS_KEY_ID="" \
         AWS_SECRET_ACCESS_KEY="" \
         AWS_DEFAULT_REGION="us-west-2" \
-        AWS_S3_BUCKET="" \
+        AWS_S3_BUCKET="cluster-anywhere" \
         CRATE_GC_LOG_DIR="/data/crate/log" \
         CRATE_HEAP_DUMP_PATH="/data/crate/data" \
         CRATE_JAVA_OPTS="-XX:+IgnoreUnrecognizedVMOptions -XX:+UseContainerSupport -XX:+IdleTuningCompactOnIdle -XX:+IdleTuningGcOnIdle -Xtune:virtualized -Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS" \

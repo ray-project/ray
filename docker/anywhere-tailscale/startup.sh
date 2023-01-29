@@ -13,6 +13,12 @@ shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
 
 num_cpus=$(nproc)
 
+if [ -z "$TSAPIKEY" ]; then
+  echo "Environmental variable for TSAPIKEY not set"
+  exit 1
+fi
+
+#settings number of cpus for optimial (local) speed
 export NUMEXPR_MAX_THREADS=$num_cpus
 #used by conda to specify cpus for building packages
 export MAKEFLAGS="-j$num_cpus"
@@ -36,12 +42,12 @@ curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY
 # Make the GET request to the Tailscale API to retrieve the list of all devices
 # This could be updated to grab the DNS domain too to be more flexable.
 response=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].hostname')
-# Output the hostnames left as a comma-separated list. This will be used by the crate seed host parameter
-hostnames=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr '\n' ',')
-if [ -n hostnames ]; then
-    hostnames=${hostnames%?}
+# Output the clusterhosts left as a comma-separated list. This will be used by the crate seed host parameter
+clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr '\n' ',')
+if [ -n clusterhosts ]; then
+    clusterhosts=${clusterhosts%?}
 else
-    hostnames="nexus.chimp-beta.ts.net:4300"
+    clusterhosts="nexus.chimp-beta.ts.net:4300"
 fi
 
 
@@ -67,6 +73,8 @@ fi
 # TS_STATEDIR environment variable would specify a directory path other than /var/lib/tailscale, if that is being set.
 
 
+
+
 while [ not $status = "Running" ]
     do
         echo "Waiting for tailscale to start..."
@@ -75,10 +83,7 @@ done
 
 
 
-if [ -z "$TSAPIKEY" ]; then
-  echo "Environmental variable for TSAPIKEY not set"
-  exit 1
-fi
+
 
 
 echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee /etc/sysctl.conf
@@ -134,12 +139,12 @@ term_handler(){
     /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
     echo "Running Decommission"
     response=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].hostname')
-    hostnames=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net"}' | tr '\n' ' ')
-    if [ -z hostnames ]; then
-        hostnames="nexus.chimp-beta.ts.net"
+    clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net"}' | tr '\n' ' ')
+    if [ -z clusterhosts ]; then
+        clusterhosts="nexus.chimp-beta.ts.net"
     fi
-    export hostnames=$hostnames
-    /usr/local/bin/crash --hosts ${hostnames} -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
+    export clusterhosts=$clusterhosts
+    /usr/local/bin/crash --hosts ${clusterhosts} -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
 
 
 
