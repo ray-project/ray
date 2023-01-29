@@ -147,20 +147,42 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                                         rpc::GetAllJobInfoReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Getting all job info.";
-  auto on_done = [this, reply, send_reply_callback](
+
+  int limit = std::numeric_limits<int>::max();
+  if (request.has_limit()) {
+    limit = request.limit();
+    if (limit < 0) {
+      RAY_LOG(ERROR) << "Invalid limit " << limit
+                     << " specified in GetAllJobInfoRequest, "
+                     << "must be nonnegative.";
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Invalid limit"));
+      return;
+    }
+    RAY_LOG(INFO) << "Getting job info with limit " << limit;
+  }
+
+  auto on_done = [this, reply, send_reply_callback, &limit](
                      const absl::flat_hash_map<JobID, JobTableData> &result) {
     // We send a reply upon processing the last job; if there are no jobs, we
     // must send the reply here.
-    if (result.empty()) {
+    if (result.empty() || limit == 0) {
       RAY_LOG(INFO) << "Finished getting all job info.";
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       return;
     }
 
+    // Read jobs up to the limit.
+    int num_read_jobs = 0;
     for (auto &data : result) {
+      if (num_read_jobs >= limit) {
+        break;
+      }
       reply->add_job_info_list()->CopyFrom(data.second);
+      num_read_jobs++;
     }
 
+    // Scan the jobs to see if any were submitted by the Ray Job API.
+    // If so, fetch their JobInfo from the internal KV store.
     std::shared_ptr<std::atomic<int>> num_processed_jobs =
         std::make_shared<std::atomic<int>>(0);
 
@@ -177,8 +199,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         }
         continue;
       }
-
       const auto &job_submission_id = iter->second;
+
       // Get the JobInfo for this job.
       auto kv_get_callback =
           [reply, send_reply_callback, num_processed_jobs, i, &job_submission_id](
