@@ -12,13 +12,13 @@ from typing import (
 )
 
 from ray.rllib.core.rl_trainer.rl_trainer import (
+    RLTrainerHPs,
     RLTrainer,
     ParamOptimizerPairs,
     ParamRef,
     Optimizer,
     ParamType,
     ParamDictType,
-    HyperparamType,
 )
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -98,7 +98,7 @@ class TfRLTrainer(RLTrainer):
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
         trainer_scaling_config: Optional[TrainerScalingConfig] = None,
-        trainer_hyperparameters: Optional[HyperparamType] = None,
+        trainer_hyperparameters: Optional[RLTrainerHPs] = None,
     ):
         super().__init__(
             module_spec=module_spec,
@@ -117,9 +117,7 @@ class TfRLTrainer(RLTrainer):
         tf1.enable_eager_execution()
 
         # TODO (Kourosh): Fix this later
-        self._enable_tf_function = getattr(
-            trainer_hyperparameters, "eager_tracing", False
-        )
+        self._enable_tf_function = self.config.eager_tracing
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn)
         else:

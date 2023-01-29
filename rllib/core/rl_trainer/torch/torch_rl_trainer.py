@@ -20,12 +20,12 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_trainer.rl_trainer import (
+    RLTrainerHPs,
     RLTrainer,
     ParamOptimizerPairs,
     Optimizer,
     ParamType,
     ParamDictType,
-    HyperparamType,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
@@ -57,7 +57,7 @@ class TorchRLTrainer(RLTrainer):
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
         trainer_scaling_config: Optional[TrainerScalingConfig] = None,
-        trainer_hyperparameters: Optional[HyperparamType] = None,
+        trainer_hyperparameters: Optional[RLTrainerHPs] = None,
     ):
         super().__init__(
             module_spec=module_spec,

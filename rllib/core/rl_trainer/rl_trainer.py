@@ -15,7 +15,6 @@ from typing import (
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -32,12 +31,8 @@ from ray.rllib.core.rl_module.marl_module import (
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.params import Hyperparams
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
-
-if TYPE_CHECKING:
-    from ray.rllib.algorithms import AlgorithmConfig
 
 
 torch, _ = try_import_torch()
@@ -50,7 +45,24 @@ ParamType = Union["torch.Tensor", "tf.Variable"]
 ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
-HyperparamType = Union["AlgorithmConfig", Hyperparams]
+
+
+@dataclass
+class RLTrainerHPs:
+    """The hyper-parameters for RLTrainer.
+
+    When creating a new RLTrainer, the new hyper-parameters have to be defined by
+    subclassing this class and adding the new hyper-parameters as fields.
+
+    Args:
+        eager_tracing: Whether to trace the model in eager mode. This enables tf
+            tracing mode by wrapping the loss function computation in a tf.function.
+            This is useful for speeding up the training loop. However, it is not
+            compatible with all tf operations. For example, tf.print is not supported
+            in tf.function.
+    """
+
+    eager_tracing: bool = False
 
 
 class RLTrainer:
@@ -124,7 +136,7 @@ class RLTrainer:
         module: Optional[RLModule] = None,
         optimizer_config: Mapping[str, Any] = None,
         trainer_scaling_config: Optional[TrainerScalingConfig] = None,
-        trainer_hyperparameters: Optional[HyperparamType] = None,
+        trainer_hyperparameters: Optional[RLTrainerHPs] = None,
     ):
         # TODO (Kourosh): Having the entire algorithm_config inside trainer may not be
         # the best idea in the world, but it's easy to implement and user will
@@ -633,12 +645,10 @@ class RLTrainerSpec:
             only works if the RLTrainer is not an actor.
         backend_config: The backend config for properly distributing the RLModule.
         optimizer_config: The optimizer setting to apply during training.
-        trainer_hyperparameters: The extra config for the loss/additional update. The
-            items within this object should be accessible via a dot notation. For
-            example, if the trainer_hyperparameters contains {"coeff": 0.001}, then the
-            learning rate can be accessed via trainer_hyperparameters.coeff. This is
-            useful for passing in algorithm config or a HyperParams that contains the
-            hyper-parameters.
+        trainer_hyperparameters: The extra config for the loss/additional update. This
+            should be a subclass of RLTrainerHPs. This is useful for passing in
+            algorithm configs that contains the hyper-parameters for loss computation,
+            change of training behaviors, etc. e.g lr, entropy_coeff.
     """
 
     rl_trainer_class: Type["RLTrainer"]
@@ -646,13 +656,9 @@ class RLTrainerSpec:
     module: Optional["RLModule"] = None
     trainer_scaling_config: Optional[TrainerScalingConfig] = None
     optimizer_config: Dict[str, Any] = field(default_factory=dict)
-    trainer_hyperparameters: HyperparamType = field(default_factory=dict)
+    trainer_hyperparameters: RLTrainerHPs = field(default_factory=RLTrainerHPs)
 
     def __post_init__(self):
-        # convert to hyper params object if needed
-        if isinstance(self.trainer_hyperparameters, dict):
-            self.trainer_hyperparameters = Hyperparams(self.trainer_hyperparameters)
-
         if self.trainer_scaling_config is None:
             self.trainer_scaling_config = TrainerScalingConfig()
 
