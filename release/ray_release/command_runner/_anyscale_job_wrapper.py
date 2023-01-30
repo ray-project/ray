@@ -34,7 +34,7 @@ def exponential_backoff_retry(
 def run_aws_cp(source: str, target: str):
     try:
         exponential_backoff_retry(
-            lambda: subprocess.check_call(
+            lambda: subprocess.run(
                 [
                     "aws",
                     "s3",
@@ -45,7 +45,8 @@ def run_aws_cp(source: str, target: str):
                     "bucket-owner-full-control",
                 ],
                 timeout=AWS_CP_TIMEOUT,
-                stdout=subprocess.PIPE,
+                capture_output=True,
+                check=True,
             ),
             subprocess.SubprocessError,
             initial_retry_delay_s=10,
@@ -64,7 +65,7 @@ def collect_metrics(time_taken: float) -> bool:
     # and no more than 900s
     metrics_timeout = max(90, min((time.time() - time_taken) / 200, 900))
     try:
-        subprocess.check_call(
+        subprocess.run(
             [
                 "python",
                 "prometheus_metrics.py",
@@ -73,6 +74,8 @@ def collect_metrics(time_taken: float) -> bool:
                 os.environ["METRICS_OUTPUT_JSON"],
             ],
             timeout=metrics_timeout,
+            capture_output=True,
+            check=True,
         )
         return True
     except subprocess.SubprocessError:
@@ -93,9 +96,7 @@ def run_bash_command(workload: str, timeout: float):
     print(f"Running command {workload}")
 
     try:
-        subprocess.check_call(
-            command, timeout=timeout, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
+        subprocess.run(command, timeout=timeout, capture_output=True, check=True)
         return_code = 0
     except subprocess.CalledProcessError as e:
         return_code = e.returncode
@@ -159,7 +160,9 @@ def main(
                 f"Time taken: {workload_time_taken}"
             )
 
-        subprocess.check_call(["pip", "install", "-q", "awscli"])
+        subprocess.run(
+            ["pip", "install", "-q", "awscli"], check=True, capture_output=True
+        )
         uploaded_results = run_aws_cp(os.environ["TEST_OUTPUT_JSON"], results_s3_uri)
 
         collected_metrics = collect_metrics(workload_time_taken)
