@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
@@ -23,11 +24,18 @@ namespace gcs {
 /// GCS and `monitor.py`
 class GcsMonitorServer : public rpc::MonitorServiceHandler {
  public:
-  explicit GcsMonitorServer();
+  explicit GcsMonitorServer(std::shared_ptr<GcsNodeManager> gcs_node_manager);
 
   void HandleGetRayVersion(rpc::GetRayVersionRequest request,
                            rpc::GetRayVersionReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleDrainAndKillNode(rpc::DrainAndKillNodeRequest request,
+                              rpc::DrainAndKillNodeReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
+ private:
+  std::shared_ptr<GcsNodeManager> gcs_node_manager_;
 };
 }  // namespace gcs
 }  // namespace ray
