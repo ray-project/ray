@@ -203,6 +203,14 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test_module_list(
+  files = [
+    "test_monitor_service.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+)
 
 py_test_module_list(
   files = [
@@ -266,6 +274,7 @@ py_test_module_list(
     "test_threaded_actor.py",
     "test_stress_failure.py",
     "test_state_api.py",
+    "test_state_api_2.py",
     "test_reconstruction.py",
     "test_reconstruction_2.py",
     "test_reconstruction_stress.py",

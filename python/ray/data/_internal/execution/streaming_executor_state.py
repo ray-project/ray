@@ -3,12 +3,17 @@
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
-from typing import Dict, List, Optional
+import math
+import time
+from collections import deque
+from typing import Dict, List, Optional, Deque, Union
 
 import ray
 from ray.data._internal.execution.interfaces import (
+    ExecutionResources,
     RefBundle,
     PhysicalOperator,
+    ExecutionOptions,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
@@ -19,21 +24,27 @@ from ray.data._internal.stats import DatasetStats
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
 
+# A RefBundle or an exception / end of stream indicator.
+MaybeRefBundle = Union[RefBundle, Exception, None]
+
 
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
     This tracks state to manage input and output buffering for StreamingExecutor and
     progress bars, which is separate from execution state internal to the operators.
+
+    Note: we use the `deque` data structure here because it is thread-safe, enabling
+    operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[List[RefBundle]]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[Deque[MaybeRefBundle]]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
-        self.inqueues: List[List[RefBundle]] = inqueues
+        self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
-        self.outqueue: List[RefBundle] = []
+        self.outqueue: Deque[MaybeRefBundle] = deque()
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
@@ -63,26 +74,49 @@ class OpState:
     def refresh_progress_bar(self) -> None:
         """Update the console with the latest operator progress."""
         if self.progress_bar:
-            queued = self.num_queued()
-            self.progress_bar.set_description(
-                f"{self.op.name}: {self.num_active_tasks()} active, {queued} queued"
-            )
+            self.progress_bar.set_description(self.summary_str())
+
+    def summary_str(self) -> str:
+        queued = self.num_queued()
+        desc = f"{self.op.name}: {self.num_active_tasks()} active, {queued} queued"
+        suffix = self.op.progress_str()
+        if suffix:
+            desc += f", {suffix}"
+        return desc
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
         for i, inqueue in enumerate(self.inqueues):
             if inqueue:
-                self.op.add_input(inqueue.pop(0), input_index=i)
+                self.op.add_input(inqueue.popleft(), input_index=i)
                 return
         assert False, "Nothing to dispatch"
 
+    def get_output_blocking(self) -> MaybeRefBundle:
+        """Get an item from this node's output queue, blocking as needed.
 
-def build_streaming_topology(dag: PhysicalOperator) -> Topology:
-    """Build the streaming operator state topology for the given DAG.
+        Returns:
+            The RefBundle from the output queue, or an error / end of stream indicator.
+        """
+        while True:
+            try:
+                return self.outqueue.popleft()
+            except IndexError:
+                time.sleep(0.01)
+
+
+def build_streaming_topology(
+    dag: PhysicalOperator, options: ExecutionOptions
+) -> Topology:
+    """Instantiate the streaming operator state topology for the given DAG.
 
     This involves creating the operator state for each operator in the DAG,
     registering it with this class, and wiring up the inqueues/outqueues of
     dependent operator states.
+
+    Args:
+        dag: The operator DAG to instantiate.
+        options: The execution options to use to start operators.
 
     Returns:
         The topology dict holding the streaming execution state.
@@ -104,13 +138,15 @@ def build_streaming_topology(dag: PhysicalOperator) -> Topology:
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
+        op.start(options)
         return op_state
 
     setup_state(dag)
 
     # Create the progress bars starting from the first operator to run.
-    # Note that the topology dict is in topological sort order.
-    i = 0
+    # Note that the topology dict is in topological sort order. Index zero is reserved
+    # for global progress information.
+    i = 1
     for op_state in list(topology.values()):
         if not isinstance(op_state.op, InputDataBuffer):
             op_state.initialize_progress_bar(i)
@@ -122,8 +158,6 @@ def build_streaming_topology(dag: PhysicalOperator) -> Topology:
 
 def process_completed_tasks(topology: Topology) -> None:
     """Process any newly completed tasks and update operator state."""
-    for op_state in topology.values():
-        op_state.refresh_progress_bar()
 
     # Update active tasks.
     active_tasks: Dict[ray.ObjectRef, PhysicalOperator] = {}
@@ -162,7 +196,12 @@ def process_completed_tasks(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
 
-def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
+def select_operator_to_run(
+    topology: Topology,
+    cur_usage: ExecutionResources,
+    limits: ExecutionResources,
+    ensure_at_least_one_running: bool,
+) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
     The objective of this function is to maximize the throughput of the overall
@@ -171,19 +210,30 @@ def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
     This is currently implemented by applying backpressure on operators that are
     producing outputs faster than they are consuming them `len(outqueue)`, as well as
     operators with a large number of running tasks `num_active_tasks()`.
+
+    Note that memory limits also apply to the outqueue of the output operator. This
+    provides backpressure if the consumer is slow. However, once a bundle is returned
+    to the user, it is no longer tracked.
     """
 
-    # TODO: set limits properly based on resources and execution options. This is just
-    # a hard-coded development placeholder.
-    PARALLELISM_LIMIT = 8
-    num_active_tasks = sum(
-        op_state.num_active_tasks() for op_state in topology.values()
-    )
-    if num_active_tasks >= PARALLELISM_LIMIT:
-        return None
+    # Filter to ops that are eligible for execution.
+    ops = [
+        op
+        for op, state in topology.items()
+        if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
+    ]
 
-    # Filter to ops that have queued inputs.
-    ops = [op for op, state in topology.items() if state.num_queued() > 0]
+    # To ensure liveness, allow at least 1 op to run regardless of limits. This is
+    # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
+    if (
+        ensure_at_least_one_running
+        and not ops
+        and all(op.num_active_work_refs() == 0 for op in topology)
+    ):
+        # The topology is entirely idle, so choose from all ready ops ignoring limits.
+        ops = [op for op, state in topology.items() if state.num_queued() > 0]
+
+    # Nothing to run.
     if not ops:
         return None
 
@@ -191,3 +241,35 @@ def select_operator_to_run(topology: Topology) -> Optional[PhysicalOperator]:
     return min(
         ops, key=lambda op: len(topology[op].outqueue) + topology[op].num_active_tasks()
     )
+
+
+def _execution_allowed(
+    op: PhysicalOperator,
+    global_usage: ExecutionResources,
+    global_limits: ExecutionResources,
+) -> bool:
+    """Return whether an operator is allowed to execute given resource usage.
+
+    Args:
+        op: The operator to check.
+        global_usage: Resource usage across the entire topology.
+        global_limits: Execution resource limits.
+
+    Returns:
+        Whether the op is allowed to run.
+    """
+    # To avoid starvation problems when dealing with fractional resource types,
+    # convert all quantities to integer (0 or 1) for deciding admissibility. This
+    # allows operators with non-integral requests to slightly overshoot the limit.
+    global_floored = ExecutionResources(
+        cpu=math.floor(global_usage.cpu or 0),
+        gpu=math.floor(global_usage.gpu or 0),
+        object_store_memory=global_usage.object_store_memory,
+    )
+    inc = op.incremental_resource_usage()
+    inc_indicator = ExecutionResources(
+        cpu=1 if inc.cpu else 0,
+        gpu=1 if inc.gpu else 0,
+        object_store_memory=1 if inc.object_store_memory else 0,
+    )
+    return global_floored.add(inc_indicator).satisfies_limit(global_limits)

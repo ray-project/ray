@@ -17,6 +17,8 @@
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "gtest/gtest_prod.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
@@ -109,7 +111,9 @@ class WorkerInterface {
   virtual bool IsAvailableForScheduling() const = 0;
 
   /// Time when the last task was assigned to this worker.
-  virtual const std::chrono::steady_clock::time_point GetAssignedTaskTime() const = 0;
+  virtual absl::Time GetAssignedTaskTime() const = 0;
+
+  virtual void SetJobId(const JobID &job_id) = 0;
 
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
@@ -213,12 +217,10 @@ class Worker : public WorkerInterface {
 
   void SetAssignedTask(const RayTask &assigned_task) {
     assigned_task_ = assigned_task;
-    task_assign_time_ = std::chrono::steady_clock::now();
-  };
+    task_assign_time_ = absl::Now();
+  }
 
-  const std::chrono::steady_clock::time_point GetAssignedTaskTime() const {
-    return task_assign_time_;
-  };
+  absl::Time GetAssignedTaskTime() const { return task_assign_time_; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
@@ -233,6 +235,8 @@ class Worker : public WorkerInterface {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
+
+  void SetJobId(const JobID &job_id);
 
  protected:
   void SetStartupToken(StartupToken startup_token);
@@ -262,7 +266,7 @@ class Worker : public WorkerInterface {
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
-  const JobID assigned_job_id_;
+  JobID assigned_job_id_;
   /// The hash of the worker's assigned runtime env.  We use this in the worker
   /// pool to cache and reuse workers with the same runtime env, because
   /// installing runtime envs from scratch can be slow.
@@ -298,7 +302,7 @@ class Worker : public WorkerInterface {
   /// RayTask being assigned to this worker.
   RayTask assigned_task_;
   /// Time when the last task was assigned to this worker.
-  std::chrono::steady_clock::time_point task_assign_time_;
+  absl::Time task_assign_time_;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
 };

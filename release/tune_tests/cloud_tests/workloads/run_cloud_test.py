@@ -77,7 +77,7 @@ class TrialStub:
         trial_id: str,
         status: str,
         config: Dict[str, Any],
-        local_dir: str,
+        _local_dir: str,
         experiment_tag: str,
         _last_result: Dict[str, Any],
         relative_logdir: str,
@@ -88,7 +88,7 @@ class TrialStub:
         self.trial_id = trial_id
         self.status = status
         self.config = config
-        self.local_dir = local_dir
+        self.local_dir = _local_dir
         self.experiment_tag = experiment_tag
         self.last_result = _last_result
         self.relative_logdir = relative_logdir
