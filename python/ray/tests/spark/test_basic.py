@@ -46,6 +46,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
     @classmethod
     def teardown_class(cls):
         time.sleep(10)  # Wait all background spark job canceled.
+        os.environ.pop("SPARK_WORKER_CORES", None)
         cls.spark.stop()
 
     @staticmethod

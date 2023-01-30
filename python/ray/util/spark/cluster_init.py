@@ -154,7 +154,7 @@ class RayClusterOnSpark:
                             "Started / Total requested: "
                             f"({cur_alive_worker_count} / {self.num_worker_nodes}). "
                             "Current spark cluster does not have sufficient resources "
-                            "to launch requested number Ray worker nodes."
+                            "to launch requested number of Ray worker nodes."
                         )
                         return
         finally:

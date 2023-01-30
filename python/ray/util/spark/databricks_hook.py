@@ -58,7 +58,7 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
     )
 
 
-AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS = 3
+DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS = 3
 DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES = (
     "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES"
 )
@@ -91,9 +91,9 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             )
         except Exception:
             _logger.warning(
-                "Register ray cluster spark job as background job failed. You need to "
-                "manually call `ray_cluster_on_spark.shutdown()` before detaching "
-                "your databricks python REPL."
+                "Registering ray cluster spark job as background job failed. "
+                "You need to manually call `ray.util.spark.shutdown_ray_cluster()` "
+                "before detaching your databricks notebook."
             )
 
         auto_shutdown_timeout_minutes = float(
@@ -105,6 +105,14 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "databricks notebook or call "
                 "`ray.util.spark.shutdown_ray_cluster()`."
             )
+        elif auto_shutdown_timeout_minutes < 0:
+            _logger.warning(
+                "You must set "
+                f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES}' "
+                "to a value >= 0. The negative value you set is ignored and the "
+                "default value 30 will be used."
+            )
+            auto_shutdown_timeout_minutes = 30
         else:
             _logger.info(
                 "The Ray cluster will be shut down automatically if you don't run "
@@ -122,20 +130,9 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                     # The cluster is shut down. The watcher thread exits.
                     return
 
-                try:
-                    idle_time = (
-                        db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
-                    )
-                except Exception:
-                    _logger.warning(
-                        "Your current Databricks Runtime version does not support API "
-                        "`getIdleTimeMillisSinceLastNotebookExecution`, we cannot "
-                        "automatically shut down Ray cluster when databricks notebook "
-                        "is inactive, you need to manually detach databricks notebook "
-                        "or call `ray.util.spark.shutdown_ray_cluster()` to shut down "
-                        "Ray cluster on spark."
-                    )
-                    return
+                idle_time = (
+                    db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
+                )
 
                 if idle_time > auto_shutdown_timeout_millis:
                     from ray.util.spark import cluster_init
@@ -145,7 +142,19 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                             cluster_init.shutdown_ray_cluster()
                     return
 
-                time.sleep(AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
+                time.sleep(DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
 
-        if auto_shutdown_timeout_minutes > 0:
-            threading.Thread(target=auto_shutdown_watcher, args=(), daemon=True).start()
+        try:
+            db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
+            if auto_shutdown_timeout_minutes > 0:
+                threading.Thread(target=auto_shutdown_watcher, args=(), daemon=True).start()
+
+        except Exception:
+            _logger.warning(
+                "Your current Databricks Runtime version does not support API "
+                "`getIdleTimeMillisSinceLastNotebookExecution`, we cannot "
+                "automatically shut down Ray cluster when databricks notebook "
+                "is inactive, you need to manually detach databricks notebook "
+                "or call `ray.util.spark.shutdown_ray_cluster()` to shut down "
+                "Ray cluster on spark."
+            )

@@ -45,6 +45,7 @@ class TestDatabricksHook:
     def teardown_class(cls):
         time.sleep(10)  # Wait all background spark job canceled.
         cls.spark.stop()
+        os.environ.pop("SPARK_WORKER_CORES")
 
     def test_hook(self):
         try:
@@ -76,7 +77,6 @@ class TestDatabricksHook:
                 # if the test raised error and does not destroy cluster,
                 # destroy it here.
                 ray.util.spark.cluster_init._active_ray_cluster.shutdown()
-                time.sleep(5)
 
 
 if __name__ == "__main__":
