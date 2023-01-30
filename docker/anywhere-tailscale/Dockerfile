@@ -45,7 +45,8 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     datetime \
     icecream \
     crate \
-    geojson
+    geojson \
+    alpaca_py
 
     # dask version compatible with ray and modin
 
