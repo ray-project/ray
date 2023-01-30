@@ -8,6 +8,9 @@ def handle_result(
     test: Test,
     result: Result,
 ) -> Optional[str]:
+    if not result.results:
+        return "Result is empty!"
+
     test_name = test["legacy"]["test_name"]
 
     time_taken = result.results.get("time_taken", float("inf"))

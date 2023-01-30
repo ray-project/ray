@@ -130,7 +130,7 @@ class TestCommandError(CommandError):
 
 
 class ResultsError(CommandError):
-    pass
+    exit_code = ExitCode.FETCH_RESULT_ERROR
 
 
 class LogsError(CommandError):

@@ -52,11 +52,14 @@ class ExitCode(enum.Enum):
     CLUSTER_STARTUP_TIMEOUT = 32
     CLUSTER_WAIT_TIMEOUT = 33
 
-    # Command errors
+    # Command errors - these are considered application errors
     COMMAND_ERROR = 40
     COMMAND_ALERT = 41
     COMMAND_TIMEOUT = 42
     PREPARE_ERROR = 43
+
+    # Infra error after application is done
+    FETCH_RESULT_ERROR = 51
 
 
 def handle_exception(e: Exception) -> Tuple[ExitCode, str, Optional[int]]:

@@ -10,6 +10,9 @@ def handle_result(
 ) -> Optional[str]:
     test_name = test["legacy"]["test_name"]
 
+    if not result.results:
+        return "Result is empty!"
+
     msg = ""
     success = result.status == "finished"
     time_taken = result.results.get("time_taken", float("inf"))

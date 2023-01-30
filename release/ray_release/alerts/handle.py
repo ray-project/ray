@@ -21,7 +21,15 @@ result_to_handle_map = {
 }
 
 
-def handle_result(test: Test, result: Result):
+def handle_result(test: Test, result: Result) -> bool:
+    """Handle result.
+
+    Returns:
+        A boolean indicates if the logic needs a non-empty result to be fetched.
+        If true, a proper FetchResultError will be raised by caller.
+    Raises:
+        ResultsAlert.
+    """
     alert_suite = test.get("alert", "default")
 
     logger.info(
@@ -35,6 +43,9 @@ def handle_result(test: Test, result: Result):
     handler = result_to_handle_map[alert_suite]
     error = handler(test, result)
 
+    if error == "Result is empty!":
+        # A proper FetchResultError to be raised outside.
+        return True
     if error:
         raise ResultsAlert(error)
 

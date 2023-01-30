@@ -8,6 +8,9 @@ def handle_result(
     test: Test,
     result: Result,
 ) -> Optional[str]:
+    if not result.results:
+        return "Result is empty!"
+
     last_update_diff = result.results.get("last_update_diff", float("inf"))
 
     test_name = test["legacy"]["test_name"]

@@ -167,6 +167,8 @@ def run_release_test(
         raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e
 
     pipeline_exception = None
+    # non critical for some tests. So separate it from the general one.
+    fetch_command_exception = None
     try:
         # Load configs
         cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
@@ -324,6 +326,7 @@ def run_release_test(
             logger.error("Could not fetch results for test command")
             logger.exception(e)
             command_results = {}
+            fetch_command_exception = e
 
         # Postprocess result:
         if "last_update" in command_results:
@@ -379,7 +382,9 @@ def run_release_test(
         buildkite_group(":mag: Interpreting results")
         # Only handle results if we didn't run into issues earlier
         try:
-            handle_result(test, result)
+            result_is_empty = handle_result(test, result)
+            if result_is_empty:
+                raise fetch_command_exception
         except Exception as e:
             pipeline_exception = e
 
