@@ -104,7 +104,6 @@ enum class RayLogLevel {
 #define RAY_LOG_ENABLED(level) ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)
 
 #define RAY_LOG(level)                                      \
-  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))

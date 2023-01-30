@@ -134,6 +134,8 @@ namespace ray {
 
 class MockRayletClientInterface : public RayletClientInterface {
  public:
+  explicit MockRayletClientInterface(instrumented_io_context &main_io_service)
+      : main_io_service_(main_io_service) {}
   MOCK_METHOD(ray::Status,
               WaitForDirectActorCallArgs,
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
@@ -159,11 +161,6 @@ class MockRayletClientInterface : public RayletClientInterface {
                const WorkerID &worker_id,
                bool disconnect_worker,
                bool worker_exiting),
-              (override));
-  MOCK_METHOD(void,
-              GetWorkerFailureCause,
-              (const WorkerID &worker_id,
-               const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback),
               (override));
   MOCK_METHOD(void,
               ReleaseUnusedWorkers,
@@ -232,6 +229,20 @@ class MockRayletClientInterface : public RayletClientInterface {
                bool graceful,
                const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback),
               (override));
+  void GetWorkerFailureCause(
+      const WorkerID &worker_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback) {
+    main_io_service_.post(
+        [callback]() {
+          const rpc::GetWorkerFailureCauseReply reply;
+          callback(ray::Status::OK(), reply);
+        },
+        "MockRayletClientInterface.GetWorkerFailureCause");
+  }
+
+ private:
+  /// Async API Callback needs to post to main_io_service_ to avoid deadlocks.
+  instrumented_io_context &main_io_service_;
 };
 
 }  // namespace ray

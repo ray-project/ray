@@ -38,7 +38,8 @@ class DirectTaskTransportTest : public ::testing::Test {
         [&](const rpc::Address &) { return nullptr; });
     memory_store = std::make_unique<CoreWorkerMemoryStore>();
     NodeID local_raylet_id;
-    auto local_raylet_client = std::make_shared<MockRayletClientInterface>();
+    std::shared_ptr<WorkerLeaseInterface> local_raylet_client =
+        std::make_shared<MockRayletClientInterface>(io_context);
     actor_task_submitter = std::make_unique<CoreWorkerDirectActorTaskSubmitter>(
         *client_pool,
         *memory_store,
@@ -49,7 +50,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         local_raylet_id,
         local_raylet_client,
         [this](const std::string &, int) {
-          return std::make_shared<MockRayletClientInterface>();
+          return std::make_shared<MockRayletClientInterface>(io_context);
         });
   }
 

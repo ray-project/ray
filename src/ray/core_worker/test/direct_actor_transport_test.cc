@@ -24,6 +24,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/task_manager.h"
+#include "mock/ray/raylet_client/raylet_client.h"
 // clang-format on
 
 // clang-format off
@@ -114,6 +115,7 @@ class DirectActorSubmitterTest : public ::testing::TestWithParam<bool> {
         store_(std::make_shared<CoreWorkerMemoryStore>()),
         task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
         io_work(io_context),
+        local_raylet_client_(std::make_shared<MockRayletClientInterface>(io_context)),
         submitter_(
             *client_pool_,
             *store_,
@@ -122,7 +124,12 @@ class DirectActorSubmitterTest : public ::testing::TestWithParam<bool> {
             [this](const ActorID &actor_id, int64_t num_queued) {
               last_queue_warning_ = num_queued;
             },
-            io_context) {}
+            io_context,
+            local_raylet_id_,
+            local_raylet_client_,
+            [this](const std::string &, int) {
+              return std::make_shared<MockRayletClientInterface>(io_context);
+            }) {}
 
   void TearDown() override { io_context.stop(); }
 
@@ -135,6 +142,8 @@ class DirectActorSubmitterTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
   instrumented_io_context io_context;
   boost::asio::io_service::work io_work;
+  NodeID local_raylet_id_;
+  std::shared_ptr<MockRayletClientInterface> local_raylet_client_;
   CoreWorkerDirectActorTaskSubmitter submitter_;
 
  protected:
@@ -324,10 +333,13 @@ TEST_P(DirectActorSubmitterTest, TestActorDead) {
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(_, _, _, _, _, _)).Times(0);
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 1);
+
   // Actor marked as dead. All queued tasks should get failed.
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
       .Times(1);
   submitter_.DisconnectActor(actor_id, 2, /*dead=*/true, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 1);
 }
 
 TEST_P(DirectActorSubmitterTest, TestActorRestartNoRetry) {
@@ -364,6 +376,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   // Simulate the actor failing.
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 1);
   // Third task fails after the actor is disconnected. It should not get
   // retried.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
@@ -420,6 +433,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartRetry) {
   // Simulate the actor failing.
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 1);
   // Third task fails after the actor is disconnected.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
@@ -477,6 +491,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError(""), /*index=*/0));
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 1);
 
   // Actor gets restarted.
   addr.set_port(1);
@@ -537,6 +552,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // We receive the RESTART message late. Nothing happens.
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 0);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 2);
@@ -546,6 +562,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
 
   // The actor dies twice. We receive the last RESTART message first.
   submitter_.DisconnectActor(actor_id, 3, /*dead=*/false, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 1);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 3);
@@ -561,14 +578,17 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   addr.set_port(2);
   submitter_.ConnectActor(actor_id, addr, 2);
   submitter_.DisconnectActor(actor_id, 2, /*dead=*/false, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 0);
   ASSERT_EQ(num_clients_connected_, 2);
 
   // The actor dies permanently.
   submitter_.DisconnectActor(actor_id, 3, /*dead=*/true, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 1);
   ASSERT_EQ(num_clients_connected_, 2);
 
   // We receive more late messages. Nothing happens because the actor is dead.
   submitter_.DisconnectActor(actor_id, 4, /*dead=*/false, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 1);
   addr.set_port(3);
   submitter_.ConnectActor(actor_id, addr, 4);
   ASSERT_EQ(num_clients_connected_, 2);
@@ -611,6 +631,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
       .Times(1);
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 1);
 
   // The task replies are now received. Since the tasks are already failed, they will not
   // be marked as failed or finished again.
@@ -647,6 +668,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFastFail) {
   // Actor failed and is now restarting.
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause, addr);
+  ASSERT_EQ(io_context.poll(), 1);
 
   // Submit a new task. This task should fail immediately because "max_task_retries" is 0.
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
