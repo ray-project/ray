@@ -1787,7 +1787,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1817,7 +1817,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -2665,7 +2665,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2688,7 +2688,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2710,7 +2710,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2734,7 +2734,7 @@
 #    test_suite: rllib_tests
 
 #  frequency: nightly
-#  team: rl
+#  team: rllib
 #  env: staging
 
 #  cluster:
@@ -2758,7 +2758,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2781,7 +2781,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2803,7 +2803,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2825,7 +2825,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2847,7 +2847,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2869,7 +2869,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2891,7 +2891,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2913,7 +2913,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2935,7 +2935,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2958,7 +2958,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2981,7 +2981,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3004,7 +3004,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3027,7 +3027,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3050,7 +3050,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3073,7 +3073,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3096,7 +3096,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3119,7 +3119,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3142,7 +3142,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3165,7 +3165,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3188,7 +3188,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3211,7 +3211,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3234,7 +3234,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3256,7 +3256,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3279,7 +3279,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3302,7 +3302,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3325,7 +3325,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3348,7 +3348,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3370,7 +3370,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3393,7 +3393,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3416,7 +3416,7 @@
     test_suite: rllib_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
