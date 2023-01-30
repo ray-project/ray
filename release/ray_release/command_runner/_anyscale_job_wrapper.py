@@ -88,7 +88,6 @@ def run_bash_command(workload: str, timeout: float):
     workload_path = workload_path.absolute().resolve()
     with open(workload_path, "w") as fp:
         fp.write(workload)
-    os.chmod(str(workload_path), 777)
 
     command = ["bash", "-x", str(workload_path)]
     print(f"Running command {command}")
@@ -100,6 +99,8 @@ def run_bash_command(workload: str, timeout: float):
         return_code = e.returncode
     except subprocess.TimeoutExpired:
         return_code = -1
+
+    os.remove(str(workload_path))
     return return_code
 
 
