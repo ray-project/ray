@@ -1,9 +1,11 @@
 import asyncio
 import logging
 from dataclasses import asdict
+from datetime import datetime
 from typing import Callable, List, Tuple, Optional
 
 import aiohttp.web
+from aiohttp.web import Response
 from abc import ABC, abstractmethod
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -461,6 +463,23 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def summarize_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_OBJECTS, "1")
         return await self._handle_summary_api(self._state_api.summarize_objects, req)
+
+    @routes.get("/api/v0/tasks/timeline")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def tasks_timeline(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        job_id = req.query.get("job_id")
+        download = req.query.get("download")
+        result = await self._state_api.generate_task_timeline(job_id)
+        if download == "1":
+            # Support download if specified.
+            now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            content_disposition = (
+                f'attachment; filename="timeline-{job_id}-{now_str}.json"'
+            )
+            headers = {"Content-Disposition": content_disposition}
+        else:
+            headers = None
+        return Response(text=result, content_type="application/json", headers=headers)
 
     @routes.get("/api/v0/delay/{delay_s}")
     async def delayed_response(self, req: aiohttp.web.Request):
