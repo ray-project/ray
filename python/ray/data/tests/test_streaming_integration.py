@@ -98,7 +98,7 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared):
     assert tasks == ["DEFAULT", "DEFAULT", "SPREAD", "SPREAD"]
 
 
-def test_scheduling_progress_when_output_blocked():
+def test_scheduling_progress_when_output_blocked(ray_start_10_cpus_shared):
     # Processing stages should fully finish even if output is completely stalled.
 
     @ray.remote
@@ -134,7 +134,7 @@ def test_scheduling_progress_when_output_blocked():
     assert list(it) == [[x] for x in range(1, 100)]
 
 
-def test_backpressure_from_output():
+def test_backpressure_from_output(ray_start_10_cpus_shared):
     # Here we set the memory limit low enough so the output getting blocked will
     # actually stall execution.
 
@@ -178,7 +178,7 @@ def test_backpressure_from_output():
         ctx.execution_options.resource_limits.object_store_memory = None
 
 
-def test_e2e_liveness_with_output_backpressure_edge_case():
+def test_e2e_liveness_with_output_backpressure_edge_case(ray_start_10_cpus_shared):
     # At least one operator is ensured to be running, if the output becomes idle.
     ctx = DatasetContext.get_current()
     ctx.use_streaming_executor = True
