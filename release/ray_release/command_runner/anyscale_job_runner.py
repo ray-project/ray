@@ -104,10 +104,10 @@ class AnyscaleJobRunner(JobRunner):
         else:
             env_str = ""
 
-        is_long_running_str = " --test-long-running " if is_long_running else ""
+        is_long_running_str = " --test-long-running" if is_long_running else ""
         full_command = (
             f"{env_str}python anyscale_job_wrapper.py '{command}' "
-            f"--test-workload-timeout {timeout}{is_long_running_str}"
+            f"--test-workload-timeout {timeout}{is_long_running_str} "
             "--results-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
             "--metrics-s3-uri "
