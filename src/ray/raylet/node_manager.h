@@ -576,8 +576,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Handle a `GetWorkerFailureCause` request.
   void HandleGetWorkerFailureCause(rpc::GetWorkerFailureCauseRequest request,
-                                 rpc::GetWorkerFailureCauseReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+                                   rpc::GetWorkerFailureCauseReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetObjectsInfo` request.
   void HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
@@ -665,8 +665,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Stores the failure reason for the worker. The entry will be cleaned up by a periodic
   /// function post TTL.
   void SetWorkerFailureReason(const WorkerID &worker_id,
-                            const rpc::RayErrorInfo &failure_reason,
-                            bool should_retry);
+                              const rpc::RayErrorInfo &failure_reason,
+                              bool should_retry);
 
   /// Checks the expiry time of the task failures and garbage collect them.
   void GCTaskFailureReason();

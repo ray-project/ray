@@ -793,11 +793,13 @@ void NodeManager::HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
 
-void NodeManager::HandleGetWorkerFailureCause(rpc::GetWorkerFailureCauseRequest request,
-                                            rpc::GetWorkerFailureCauseReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleGetWorkerFailureCause(
+    rpc::GetWorkerFailureCauseRequest request,
+    rpc::GetWorkerFailureCauseReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  RAY_LOG(DEBUG) << "Received a HandleGetWorkerFailureCause request for worker " << worker_id;
+  RAY_LOG(DEBUG) << "Received a HandleGetWorkerFailureCause request for worker "
+                 << worker_id;
 
   auto it = worker_failure_reasons_.find(worker_id);
   if (it != worker_failure_reasons_.end()) {
@@ -3004,8 +3006,8 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
 }
 
 void NodeManager::SetWorkerFailureReason(const WorkerID &worker_id,
-                                       const rpc::RayErrorInfo &failure_reason,
-                                       bool should_retry) {
+                                         const rpc::RayErrorInfo &failure_reason,
+                                         bool should_retry) {
   RAY_LOG(DEBUG) << "set failure reason for worker " << worker_id;
   ray::WorkerFailureEntry entry(failure_reason, should_retry);
   auto result = worker_failure_reasons_.emplace(worker_id, std::move(entry));

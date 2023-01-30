@@ -293,12 +293,6 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
                   worker_address,
                   get_worker_failure_cause_reply_status,
                   get_worker_failure_cause_reply);
-          RAY_LOG(ERROR) << " get task failure for actor " << actor_id;
-          RAY_LOG(ERROR) << "Task failure cause for actor "
-                         << ray::gcs::RayErrorInfoToString(
-                                get_worker_failure_cause_reply.failure_cause())
-                         << " Fail immediatedly "
-                         << get_worker_failure_cause_reply.fail_task_immediately();
           absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
               inflight_task_callbacks;
           std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
@@ -385,7 +379,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
                    << WorkerID::FromBinary(raylet_address.worker_id());
     auto worker_client = GetOrConnectWorkerClient(raylet_address);
     worker_client->GetWorkerFailureCause(WorkerID::FromBinary(raylet_address.worker_id()),
-                                       callback);
+                                         callback);
   }
 }
 
@@ -407,9 +401,12 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
 
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
-            /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
+             /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
         auto &task_spec = deque_itr->second;
-        RAY_CHECK(task_spec.ActorId() == queue.actor_id) << "Task in the queue has a different actor id than the queue, task actor id: " << task_spec.ActorId() << " queue actor id: " << queue.actor_id;
+        RAY_CHECK(task_spec.ActorId() == queue.actor_id)
+            << "Task in the queue has a different actor id than the queue, task actor "
+               "id: "
+            << task_spec.ActorId() << " queue actor id: " << queue.actor_id;
         task_specs.push_back(task_spec);
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
       }
@@ -420,7 +417,8 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
   for (auto &task_spec : task_specs) {
     auto actor_failure_it = actor_failures.find(task_spec.ActorId());
-    RAY_CHECK(actor_failure_it != actor_failures.end()) << "Should have actor failure entry for task for actor " << task_spec.ActorId();
+    RAY_CHECK(actor_failure_it != actor_failures.end())
+        << "Should have actor failure entry for task for actor " << task_spec.ActorId();
     auto error_type = actor_failure_it->second.error_type;
     auto error_info = actor_failure_it->second.error_info;
     GetTaskFinisherWithoutMu().FailPendingTask(

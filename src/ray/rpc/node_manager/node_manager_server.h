@@ -156,8 +156,8 @@ class NodeManagerServiceHandler {
                                     SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetWorkerFailureCause(GetWorkerFailureCauseRequest request,
-                                         GetWorkerFailureCauseReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
+                                           GetWorkerFailureCauseReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

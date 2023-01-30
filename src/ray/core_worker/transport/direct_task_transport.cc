@@ -597,16 +597,17 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
           if (!status.ok()) {
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
-            const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> callback =
-                [this, status, is_actor, task_id, addr](
-                    const Status &get_worker_failure_cause_reply_status,
-                    const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply) {
+            const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply>
+                callback = [this, status, is_actor, task_id, addr](
+                               const Status &get_worker_failure_cause_reply_status,
+                               const rpc::GetWorkerFailureCauseReply
+                                   &get_worker_failure_cause_reply) {
                   HandleGetWorkerFailureCause(status,
-                                            is_actor,
-                                            task_id,
-                                            addr,
-                                            get_worker_failure_cause_reply_status,
-                                            get_worker_failure_cause_reply);
+                                              is_actor,
+                                              task_id,
+                                              addr,
+                                              get_worker_failure_cause_reply_status,
+                                              get_worker_failure_cause_reply);
                 };
             auto &lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(lease_entry.lease_client);
