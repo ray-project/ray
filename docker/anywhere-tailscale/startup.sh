@@ -41,9 +41,9 @@ curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY
 ### getting a list of remaining devices
 # Make the GET request to the Tailscale API to retrieve the list of all devices
 # This could be updated to grab the DNS domain too to be more flexable.
-response=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].hostname')
+clusterhosts=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].name')
 # Output the clusterhosts left as a comma-separated list. This will be used by the crate seed host parameter
-clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr '\n' ',')
+#clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr '\n' ',')
 if [ -n clusterhosts ]; then
     clusterhosts=${clusterhosts%?}
 else
@@ -138,8 +138,9 @@ term_handler(){
     echo "Running Cluster Election"
     /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
     echo "Running Decommission"
-    response=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].hostname')
-    clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net"}' | tr '\n' ' ')
+    clusterhosts=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].name')
+    #response=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].hostname')
+    #clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net"}' | tr '\n' ' ')
     if [ -z clusterhosts ]; then
         clusterhosts="nexus.chimp-beta.ts.net"
     fi
