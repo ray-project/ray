@@ -97,7 +97,7 @@ def run_bash_command(workload: str, timeout: float):
             command,
             timeout=timeout,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             shell=True,
         )
         return_code = 0
