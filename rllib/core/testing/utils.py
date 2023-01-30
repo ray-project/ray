@@ -4,6 +4,8 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerSpec
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
@@ -101,17 +103,19 @@ def get_rl_trainer(
 def get_trainer_runner(
     framework: str,
     env: "gym.Env",
-    compute_config: dict,
+    scaling_config: TrainerScalingConfig,
     is_multi_agent: bool = False,
 ) -> TrainerRunner:
-    trainer_class = get_trainer_class(framework)
-    trainer_cfg = dict(
+
+    rl_trainer_spec = RLTrainerSpec(
+        rl_trainer_class=get_trainer_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
         optimizer_config={"lr": 0.1},
+        trainer_scaling_config=scaling_config,
     )
-    runner = TrainerRunner(trainer_class, trainer_cfg, compute_config=compute_config)
+    runner = TrainerRunner(rl_trainer_spec)
 
     return runner
 

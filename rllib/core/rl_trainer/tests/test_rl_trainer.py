@@ -11,16 +11,12 @@ from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_rl_trainer import BCTfRLTrainer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
 
-def get_trainer(distributed=False) -> RLTrainer:
+def get_trainer() -> RLTrainer:
     env = gym.make("CartPole-v1")
 
-    # TODO: Another way to make RLTrainer would be to construct the module first
-    # and then apply trainer to it. We should also allow that. In fact if we figure
-    # out the serialization of RLModules we can simply pass the module the trainer
-    # and internally it will serialize and deserialize the module for distributed
-    # construction.
     trainer = BCTfRLTrainer(
         module_spec=SingleAgentRLModuleSpec(
             module_class=DiscreteBCTFModule,
@@ -29,7 +25,7 @@ def get_trainer(distributed=False) -> RLTrainer:
             model_config={"hidden_dim": 32},
         ),
         optimizer_config={"lr": 1e-3},
-        distributed=distributed,
+        trainer_scaling_config=TrainerScalingConfig(),
     )
 
     trainer.build()
