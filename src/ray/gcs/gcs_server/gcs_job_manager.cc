@@ -208,9 +208,13 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
             if (job_info_json) {
               // Parse the JSON into a JobsAPIInfo proto.
               rpc::JobsAPIInfo jobs_api_info;
-              RAY_CHECK(google::protobuf::util::JsonStringToMessage(*job_info_json,
-                                                                    &jobs_api_info)
-                            .ok());
+              auto status = google::protobuf::util::JsonStringToMessage(*job_info_json,
+                                                                        &jobs_api_info);
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to parse JSON into JobsAPIInfo proto for job "
+                               << "with submission ID " << job_submission_id
+                               << ". Error: " << status.message();
+              }
               // Load info into the reply.
               reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
                   jobs_api_info);
