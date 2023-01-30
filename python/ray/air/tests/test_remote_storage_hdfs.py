@@ -7,10 +7,10 @@ from ray.air._internal.remote_storage import get_fs_and_path
 
 
 @pytest.fixture
-def set_hdfs_env_var_and_get_hostname():
+def setup_hdfs():
     """Set env vars required by pyarrow to talk to hdfs correctly.
 
-    Returns hostname that is needed for the hdfs uri."""
+    Returns hostname and port needed for the hdfs uri."""
 
     # the following file is written in `install-hdfs.sh`.
     with open("/tmp/hdfs_env", "r") as f:
@@ -22,12 +22,13 @@ def set_hdfs_env_var_and_get_hostname():
 
     sys.path.insert(0, os.path.join(os.environ["HADOOP_HOME"], "bin"))
     hostname = os.getenv("CONTAINER_ID")
-    yield hostname
+    port = os.getenv("HDFS_PORT")
+    yield hostname, port
 
 
-def test_get_fs_and_path_hdfs(set_hdfs_env_var_and_get_hostname):
-    hostname = set_hdfs_env_var_and_get_hostname
-    hdfs_uri = f"hdfs://{hostname}:8020/test/"
+def test_get_fs_and_path_hdfs(setup_hdfs):
+    hostname, port = setup_hdfs
+    hdfs_uri = f"hdfs://{hostname}:{port}/test/"
     # do it twice should yield the same result
     _, path = get_fs_and_path(hdfs_uri)
     _, cached_path = get_fs_and_path(hdfs_uri)

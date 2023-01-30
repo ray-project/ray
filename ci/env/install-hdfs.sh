@@ -75,7 +75,7 @@ do
 done
 
 # Needed for `test_remote_storage_hdfs` unit test to specify hdfs uri.
-echo "CONTAINER_ID=$(hostname)" >> $destdir
+echo -e "CONTAINER_ID=$(hostname)\nHDFS_PORT=8020" >> $destdir
 
 # Needed for pyarrow to work.
 echo "CLASSPATH=$(hadoop classpath --glob)" >> $destdir
