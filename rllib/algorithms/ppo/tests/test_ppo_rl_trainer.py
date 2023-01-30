@@ -97,7 +97,7 @@ class TestPPO(unittest.TestCase):
         trainer_runner.set_state(state_dict)
         results = trainer_runner.update(train_batch.as_multi_agent())
 
-        trainer_runner_loss = results[0]["loss"]["total_loss"]
+        trainer_runner_loss = results["loss"]["total_loss"]
 
         check(trainer_runner_loss, policy_loss)
 
