@@ -793,19 +793,19 @@ void NodeManager::HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
 
-void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
-                                            rpc::GetTaskFailureCauseReply *reply,
+void NodeManager::HandleGetWorkerFailureCause(rpc::GetWorkerFailureCauseRequest request,
+                                            rpc::GetWorkerFailureCauseReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  const WorkerID task_id = WorkerID::FromBinary(request.task_id());
-  RAY_LOG(DEBUG) << "Received a HandleGetTaskFailureCause request for task " << task_id;
+  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+  RAY_LOG(DEBUG) << "Received a HandleGetWorkerFailureCause request for worker " << worker_id;
 
-  auto it = task_failure_reasons_.find(task_id);
-  if (it != task_failure_reasons_.end()) {
-    RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
+  auto it = worker_failure_reasons_.find(worker_id);
+  if (it != worker_failure_reasons_.end()) {
+    RAY_LOG(DEBUG) << "worker " << worker_id << " has failure reason "
                    << ray::gcs::RayErrorInfoToString(it->second.ray_error_info);
     reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
   } else {
-    RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
+    RAY_LOG(INFO) << "didn't find failure cause for worker " << worker_id;
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2906,7 +2906,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           rpc::RayErrorInfo task_failure_reason;
           task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-          SetTaskFailureReason(
+          SetWorkerFailureReason(
               worker_to_kill->WorkerId(), std::move(task_failure_reason), should_retry);
 
           /// since we print the process memory in the message. Destroy should be called
@@ -3003,28 +3003,28 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
   return oom_kill_suggestions_ss.str();
 }
 
-void NodeManager::SetTaskFailureReason(const WorkerID &worker_id,
+void NodeManager::SetWorkerFailureReason(const WorkerID &worker_id,
                                        const rpc::RayErrorInfo &failure_reason,
                                        bool should_retry) {
-  RAY_LOG(DEBUG) << "set failure reason for task " << worker_id;
-  ray::TaskFailureEntry entry(failure_reason, should_retry);
-  auto result = task_failure_reasons_.emplace(worker_id, std::move(entry));
+  RAY_LOG(DEBUG) << "set failure reason for worker " << worker_id;
+  ray::WorkerFailureEntry entry(failure_reason, should_retry);
+  auto result = worker_failure_reasons_.emplace(worker_id, std::move(entry));
   if (!result.second) {
     RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
-                        "task, the previous failure will be removed. Task id: "
+                        "task, the previous failure will be removed. Worker id: "
                      << worker_id;
   }
 }
 
 void NodeManager::GCTaskFailureReason() {
-  for (const auto &entry : task_failure_reasons_) {
+  for (const auto &entry : worker_failure_reasons_) {
     auto duration = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - entry.second.creation_time)
                         .count();
     if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
       RAY_LOG(INFO) << "Removing task failure reason since it expired, task: "
                     << entry.first;
-      task_failure_reasons_.erase(entry.first);
+      worker_failure_reasons_.erase(entry.first);
     }
   }
 }

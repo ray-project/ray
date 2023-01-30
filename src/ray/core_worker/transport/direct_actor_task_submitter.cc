@@ -283,22 +283,22 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     /// to fetch the worker failure from the raylet.
     rpc::Address raylet_address(
         queue->second.rpc_client ? queue->second.rpc_client->Addr() : address);
-    const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
+    const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> callback =
         [this, actor_id, num_restarts, dead, death_cause, raylet_address, queue](
-            const Status &get_task_failure_cause_reply_status,
-            const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
+            const Status &get_worker_failure_cause_reply_status,
+            const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply) {
           rpc::WorkerAddress worker_address(raylet_address);
           std::optional<rpc::RayErrorInfo> worker_error =
-              GetErrorInfoFromGetTaskFailureCauseReply(
+              GetErrorInfoFromGetWorkerFailureCauseReply(
                   worker_address,
-                  get_task_failure_cause_reply_status,
-                  get_task_failure_cause_reply);
+                  get_worker_failure_cause_reply_status,
+                  get_worker_failure_cause_reply);
           RAY_LOG(ERROR) << " get task failure for actor " << actor_id;
           RAY_LOG(ERROR) << "Task failure cause for actor "
                          << ray::gcs::RayErrorInfoToString(
-                                get_task_failure_cause_reply.failure_cause())
+                                get_worker_failure_cause_reply.failure_cause())
                          << " Fail immediatedly "
-                         << get_task_failure_cause_reply.fail_task_immediately();
+                         << get_worker_failure_cause_reply.fail_task_immediately();
           absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
               inflight_task_callbacks;
           std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
@@ -315,7 +315,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
             queue->second.worker_failure_error_info = worker_error;
             queue->second.fail_task_immediately =
-                get_task_failure_cause_reply.fail_task_immediately();
+                get_worker_failure_cause_reply.fail_task_immediately();
             if (dead) {
               queue->second.state = rpc::ActorTableData::DEAD;
               queue->second.death_cause = death_cause;
@@ -384,36 +384,47 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     RAY_LOG(DEBUG) << "Getting error from raylet for worker "
                    << WorkerID::FromBinary(raylet_address.worker_id());
     auto worker_client = GetOrConnectWorkerClient(raylet_address);
-    worker_client->GetTaskFailureCause(WorkerID::FromBinary(raylet_address.worker_id()),
+    worker_client->GetWorkerFailureCause(WorkerID::FromBinary(raylet_address.worker_id()),
                                        callback);
   }
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
-  for (auto &queue_pair : client_queues_) {
-    rpc::ErrorType error_type = rpc::ErrorType::ACTOR_DIED;
+  std::vector<TaskSpecification> task_specs;
+  typedef struct {
+    rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
-    const Status *status = nullptr;
-    std::vector<TaskSpecification> task_specs;
-    {
-      absl::MutexLock lock(&mu_);
+  } actor_failure_t;
+  std::unordered_map<ActorID, actor_failure_t> actor_failures;
+  {
+    absl::MutexLock lock(&mu_);
+    for (auto &queue_pair : client_queues_) {
       auto &queue = queue_pair.second;
-      error_type = queue.GetErrorTypeForActorDeath();
-      error_info = queue.GetErrorInfoForActorDeath();
+      actor_failure_t actor_failure;
+      actor_failure.error_type = queue.GetErrorTypeForActorDeath();
+      actor_failure.error_info = queue.GetErrorInfoForActorDeath();
+      actor_failures.emplace(queue.actor_id, actor_failure);
+
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
-             /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
+            /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
         auto &task_spec = deque_itr->second;
+        RAY_CHECK(task_spec.ActorId() == queue.actor_id) << "Task in the queue has a different actor id than the queue, task actor id: " << task_spec.ActorId() << " queue actor id: " << queue.actor_id;
         task_specs.push_back(task_spec);
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
       }
     }
-    // Do not hold mu_, because FailPendingTask may call python from cpp,
-    // and may cause deadlock with SubmitActorTask thread when aquire GIL.
-    for (auto &task_spec : task_specs) {
-      GetTaskFinisherWithoutMu().FailPendingTask(
-          task_spec.TaskId(), error_type, status, &error_info);
-    }
+  }
+
+  // Do not hold mu_, because FailPendingTask may call python from cpp,
+  // and may cause deadlock with SubmitActorTask thread when aquire GIL.
+  for (auto &task_spec : task_specs) {
+    auto actor_failure_it = actor_failures.find(task_spec.ActorId());
+    RAY_CHECK(actor_failure_it != actor_failures.end()) << "Should have actor failure entry for task for actor " << task_spec.ActorId();
+    auto error_type = actor_failure_it->second.error_type;
+    auto error_info = actor_failure_it->second.error_info;
+    GetTaskFinisherWithoutMu().FailPendingTask(
+        task_spec.TaskId(), error_type, /*status*/ nullptr, &error_info);
   }
 }
 

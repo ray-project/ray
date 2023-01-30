@@ -148,9 +148,9 @@ class MockNodeManager : public NodeManager {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandleGetTaskFailureCause,
-              (rpc::GetTaskFailureCauseRequest request,
-               rpc::GetTaskFailureCauseReply *reply,
+              HandleGetWorkerFailureCause,
+              (rpc::GetWorkerFailureCauseRequest request,
+               rpc::GetWorkerFailureCauseReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
 };

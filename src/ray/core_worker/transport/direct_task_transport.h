@@ -198,14 +198,14 @@ class CoreWorkerDirectTaskSubmitter {
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
 
-  /// Handles result from GetTaskFailureCause.
-  void HandleGetTaskFailureCause(
+  /// Handles result from GetWorkerFailureCause.
+  void HandleGetWorkerFailureCause(
       const Status &task_execution_status,
       const bool is_actor,
       const TaskID &task_id,
       const rpc::WorkerAddress &addr,
-      const Status &get_task_failure_cause_reply_status,
-      const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply);
+      const Status &get_worker_failure_cause_reply_status,
+      const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply);
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

@@ -72,13 +72,13 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    void GetTaskFailureCause(
+    void GetWorkerFailureCause(
         const TaskID &task_id,
-        const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+        const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
         override {
-      ray::rpc::GetTaskFailureCauseReply reply;
+      ray::rpc::GetWorkerFailureCauseReply reply;
       callback(Status::OK(), reply);
-      num_get_task_failure_causes += 1;
+      num_get_worker_failure_causes += 1;
     }
 
     std::shared_ptr<grpc::Channel> GetChannel() const override { return nullptr; }
@@ -307,7 +307,7 @@ struct GcsServerMocker {
     int num_workers_disconnected = 0;
     int num_leases_canceled = 0;
     int num_release_unused_workers = 0;
-    int num_get_task_failure_causes = 0;
+    int num_get_worker_failure_causes = 0;
     NodeID node_id = NodeID::FromRandom();
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};

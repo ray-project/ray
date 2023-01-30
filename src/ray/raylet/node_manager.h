@@ -574,9 +574,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                           rpc::GetTasksInfoReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `GetTaskFailureCause` request.
-  void HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
-                                 rpc::GetTaskFailureCauseReply *reply,
+  /// Handle a `GetWorkerFailureCause` request.
+  void HandleGetWorkerFailureCause(rpc::GetWorkerFailureCauseRequest request,
+                                 rpc::GetWorkerFailureCauseReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetObjectsInfo` request.
@@ -662,9 +662,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   const std::string CreateOomKillMessageSuggestions(
       const std::shared_ptr<WorkerInterface> &worker) const;
 
-  /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
+  /// Stores the failure reason for the worker. The entry will be cleaned up by a periodic
   /// function post TTL.
-  void SetTaskFailureReason(const WorkerID &worker_id,
+  void SetWorkerFailureReason(const WorkerID &worker_id,
                             const rpc::RayErrorInfo &failure_reason,
                             bool should_retry);
 
@@ -741,8 +741,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Map of workers leased out to direct call clients.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
-  /// Optional extra information about why the task failed.
-  absl::flat_hash_map<WorkerID, ray::TaskFailureEntry> task_failure_reasons_;
+  /// Optional extra information about why the worker failed.
+  absl::flat_hash_map<WorkerID, ray::WorkerFailureEntry> worker_failure_reasons_;
 
   /// Whether to trigger global GC in the next resource usage report. This will broadcast
   /// a global GC message to all raylets except for this one.

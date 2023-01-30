@@ -597,20 +597,20 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
           if (!status.ok()) {
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
-            const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
+            const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> callback =
                 [this, status, is_actor, task_id, addr](
-                    const Status &get_task_failure_cause_reply_status,
-                    const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
-                  HandleGetTaskFailureCause(status,
+                    const Status &get_worker_failure_cause_reply_status,
+                    const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply) {
+                  HandleGetWorkerFailureCause(status,
                                             is_actor,
                                             task_id,
                                             addr,
-                                            get_task_failure_cause_reply_status,
-                                            get_task_failure_cause_reply);
+                                            get_worker_failure_cause_reply_status,
+                                            get_worker_failure_cause_reply);
                 };
             auto &lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(lease_entry.lease_client);
-            lease_entry.lease_client->GetTaskFailureCause(addr.worker_id, callback);
+            lease_entry.lease_client->GetWorkerFailureCause(addr.worker_id, callback);
           }
 
           if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
@@ -640,22 +640,22 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       });
 }
 
-void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
+void CoreWorkerDirectTaskSubmitter::HandleGetWorkerFailureCause(
     const Status &task_execution_status,
     const bool is_actor,
     const TaskID &task_id,
     const rpc::WorkerAddress &addr,
-    const Status &get_task_failure_cause_reply_status,
-    const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
-  auto worker_error = GetErrorInfoFromGetTaskFailureCauseReply(
-      addr, get_task_failure_cause_reply_status, get_task_failure_cause_reply);
+    const Status &get_worker_failure_cause_reply_status,
+    const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply) {
+  auto worker_error = GetErrorInfoFromGetWorkerFailureCauseReply(
+      addr, get_worker_failure_cause_reply_status, get_worker_failure_cause_reply);
   rpc::ErrorType error_type = rpc::ErrorType::WORKER_DIED;
   rpc::RayErrorInfo error_info;
   if (worker_error) {
     error_info = worker_error.value();
     error_type = worker_error.value().error_type();
   }
-  bool fail_immediately = get_task_failure_cause_reply.fail_task_immediately();
+  bool fail_immediately = get_worker_failure_cause_reply.fail_task_immediately();
   RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
       task_id,
       is_actor ? rpc::ErrorType::ACTOR_DIED : error_type,

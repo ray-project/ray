@@ -58,9 +58,9 @@ class MockWorkerLeaseInterface : public WorkerLeaseInterface {
                const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback),
               (override));
   MOCK_METHOD(void,
-              GetTaskFailureCause,
-              (const TaskID &task_id,
-               const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback),
+              GetWorkerFailureCause,
+              (const WorkerID &worker_id,
+               const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback),
               (override));
 };
 
@@ -161,9 +161,9 @@ class MockRayletClientInterface : public RayletClientInterface {
                bool worker_exiting),
               (override));
   MOCK_METHOD(void,
-              GetTaskFailureCause,
-              (const TaskID &task_id,
-               const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback),
+              GetWorkerFailureCause,
+              (const WorkerID &worker_id,
+               const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback),
               (override));
   MOCK_METHOD(void,
               ReleaseUnusedWorkers,

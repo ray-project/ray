@@ -182,7 +182,8 @@ class CoreWorkerDirectActorTaskSubmitter
                 bool execute_out_of_order,
                 int32_t max_pending_calls,
                 bool fail_if_actor_unreachable)
-        : max_pending_calls(max_pending_calls),
+        : actor_id(actor_id),
+          max_pending_calls(max_pending_calls),
           fail_if_actor_unreachable(fail_if_actor_unreachable) {
       if (execute_out_of_order) {
         actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
@@ -233,6 +234,9 @@ class CoreWorkerDirectActorTaskSubmitter
     /// without replies.
     absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
         inflight_task_callbacks;
+
+    /// The id of the actor of this request queue.
+    const ActorID actor_id;
 
     /// The max number limit of task capacity used for back pressure.
     /// If the number of tasks in requests >= max_pending_calls, it can't continue to

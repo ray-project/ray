@@ -3,22 +3,22 @@
 namespace ray {
 namespace core {
 
-inline std::optional<rpc::RayErrorInfo> GetErrorInfoFromGetTaskFailureCauseReply(
+inline std::optional<rpc::RayErrorInfo> GetErrorInfoFromGetWorkerFailureCauseReply(
     const rpc::WorkerAddress &addr,
-    const Status &get_task_failure_cause_reply_status,
-    const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
-  if (get_task_failure_cause_reply_status.ok()) {
+    const Status &get_worker_failure_cause_reply_status,
+    const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply) {
+  if (get_worker_failure_cause_reply_status.ok()) {
     RAY_LOG(DEBUG) << "Task failure cause for worker " << addr.worker_id << ": "
                    << ray::gcs::RayErrorInfoToString(
-                          get_task_failure_cause_reply.failure_cause());
-    if (get_task_failure_cause_reply.has_failure_cause()) {
-      return std::make_optional(get_task_failure_cause_reply.failure_cause());
+                          get_worker_failure_cause_reply.failure_cause());
+    if (get_worker_failure_cause_reply.has_failure_cause()) {
+      return std::make_optional(get_worker_failure_cause_reply.failure_cause());
     } else {
       return std::nullopt;
     }
   } else {
     RAY_LOG(DEBUG) << "Failed to fetch task result with status "
-                   << get_task_failure_cause_reply_status.ToString()
+                   << get_worker_failure_cause_reply_status.ToString()
                    << " node id: " << addr.raylet_id << " ip: " << addr.ip_address;
     std::stringstream buffer;
     buffer << "Task failed due to the node dying.\n\nThe node (IP: " << addr.ip_address
