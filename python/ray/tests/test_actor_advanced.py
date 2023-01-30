@@ -11,7 +11,6 @@ import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
     convert_actor_state,
-    get_non_head_nodes,
     kill_actor_and_wait_for_failure,
     make_global_state_accessor,
     run_string_as_driver,
