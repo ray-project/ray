@@ -38,6 +38,7 @@ export deviceid=$deviceid
 echo "Deleting the device from Tailscale"
 curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
 
+getclusterhosts() {
 ### getting a list of remaining devices
 # Make the GET request to the Tailscale API to retrieve the list of all devices
 # This could be updated to grab the DNS domain too to be more flexable.
@@ -45,12 +46,12 @@ clusterhosts=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailne
 # Output the clusterhosts left as a comma-separated list. This will be used by the crate seed host parameter
 #clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr '\n' ',')
 if [ -n clusterhosts ]; then
-    clusterhosts=${clusterhosts%?}
+    clusterhosts=${clusterhosts}
 else
     clusterhosts="nexus.chimp-beta.ts.net:4300"
 fi
-
-
+export clusterhosts=$clusterhosts
+}
 
 # Make sure directories exist as they are not automatically created
 # This needs to happen at runtime, as the directory could be mounted.
@@ -81,37 +82,82 @@ while [ not $status = "Running" ]
         status="$(tailscale status -json | jq -r .BackendState)"
 done
 
-
-
-
-
-
 echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee /etc/sysctl.conf
 echo "net.ipv6.conf.default.disable_ipv6=1" | sudo tee /etc/sysctl.conf
 echo "net.ipv6.conf.lo.disable_ipv6=1" | sudo tee /etc/sysctl.conf
 echo "vm.max_map_count = 262144" | sudo tee /etc/sysctl.conf
 
+# check if we already have state data
+if [ -d "$CRATE_HEAP_DUMP_PATH" ]; then
+
+	if [ "$(ls -A $CRATE_HEAP_DUMP_PATH)" ]; then
+        echo "$CRATE_HEAP_DUMP_PATH is not Empty"
+        statedata=$true
+	else
+        echo "$CRATE_HEAP_DUMP_PATH is Empty"
+        statedata=$false
+	fi
+else
+	echo "Directory $CRATE_HEAP_DUMP_PATH not found."
+    exit 1
+fi
+
+
+
+
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
 
-ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address nexus.chimp-beta.ts.net
+    ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address nexus.chimp-beta.ts.net \
+    && getclusterhosts
 
-/crate/bin/crate -Cnetwork.host=_tailscale0_ \
-            -Cnode.name=nexus \
-            -Cnode.master=true \
-            -Cnode.data=false \
-            -Cnode.store.allow_mmap=false \
-            -Chttp.cors.enabled=true \
-            -Chttp.cors.allow-origin="/*" \
-            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
-            -Ccluster.initial_master_nodes=nexus \
-            -Ccluster.graceful_stop.min_availability=primaries \
-            -Cstats.enabled=false &
+    #there is state data then and we can see other hosts in the cluster, just start up
+    if [ $statedata ] && [ ! $clusterhosts=="nexus.chimp-beta.ts.net:4300" ]; then
 
+        /crate/bin/crate -Cnetwork.host=_tailscale0_ \
+                    -Cnode.name=nexus \
+                    -Cnode.master=true \
+                    -Cnode.data=false \
+                    -Cdiscovery.seed_hosts=$clusterhosts \
+                    -Ccluster.initial_master_nodes=nexus \
+                    -Ccluster.graceful_stop.min_availability=primaries \
+                    -Cnode.store.allow_mmap=false \
+                    -Chttp.cors.enabled=true \
+                    -Chttp.cors.allow-origin="/*" \
+                    -Cstats.enabled=false &
+    #but if there are servers in the cluster but nexus lacks state data we'll recover
+    elif [ ! $clusterhosts=="nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
+        crate join --recovered --no-rebootstrap $clusterhosts \
+        -Cnetwork.host=_tailscale0_ \
+                    -Cnode.name=nexus \
+                    -Cnode.master=true \
+                    -Cnode.data=false \
+                    -Cnode.store.allow_mmap=false \
+                    -Chttp.cors.enabled=true \
+                    -Chttp.cors.allow-origin="/*" \
+                    -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
+                    -Ccluster.initial_master_nodes=nexus \
+                    -Ccluster.graceful_stop.min_availability=primaries \
+                    -Cstats.enabled=false &
+    #otherwise just start fresh
+    else
+        /crate/bin/crate -Cnetwork.host=_tailscale0_ \
+                    -Cnode.name=nexus \
+                    -Cnode.master=true \
+                    -Cnode.data=false \
+                    -Cnode.store.allow_mmap=false \
+                    -Chttp.cors.enabled=true \
+                    -Chttp.cors.allow-origin="/*" \
+                    -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
+                    -Ccluster.initial_master_nodes=nexus \
+                    -Ccluster.graceful_stop.min_availability=primaries \
+                    -Cstats.enabled=false &
+    fi
 
 else
 
-ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address $HOSTNAME.chimp-beta.ts.net
+ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address $HOSTNAME.chimp-beta.ts.net \
+&& getclusterhosts
 
 /crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
             -Cnode.name=$HOSTNAME \
@@ -119,12 +165,14 @@ ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-
             -Cnode.store.allow_mmap=false \
             -Chttp.cors.enabled=true \
             -Chttp.cors.allow-origin="/*" \
+            -Cthread_pool.write.type=scaling \
             -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
             -Ccluster.initial_master_nodes=nexus \
             -Ccluster.graceful_stop.min_availability=primaries \
             -Cstats.enabled=false &
 
 fi
+
 
 #CREATE REPOSITORY s3backup TYPE s3
 #[ WITH (parameter_name [= value], [, ...]) ]
