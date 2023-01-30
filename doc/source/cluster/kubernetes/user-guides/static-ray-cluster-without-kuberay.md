@@ -3,7 +3,7 @@
 # (Advanced) Deploying a static Ray cluster without KubeRay
 
 This deployment method for Ray no longer requires the use of CustomResourceDefinitions (CRDs).
-In contrast, the CRDs is a prerequisite to use KubeRay. One of its key components, the Kuberay operator,
+In contrast, the CRDs is a prerequisite to use KubeRay. One of its key components, the KubeRay operator,
 manages the Ray cluster resources by watching for Kubernetes events (create/delete/update).
 Although the KubeRay operator can function within a single namespace, the use of CRDs has a cluster-wide scope.
 If the necessary Kubernetes admin permissions are not available for deploying KubeRay, this doc introduces a way to deploy a static Ray cluster to Kubernetes without using KubeRay. However, it should be noted that this deployment method lacks the built-in
@@ -147,7 +147,7 @@ We can now execute a Ray program on the previously identified head pod. The foll
 # Substitute your output from the last cell in place of "deployment-ray-head-xxxxx"
 
 ! kubectl exec deployment-ray-head-xxxxx -it -c ray-head -- python -c "import ray; ray.init('auto')"
-# 2022-08-10 11:23:17,093 INFO worker.py:1312 -- Connecting to existing Ray cluster at address: <IP address>:6379...
+# 2022-08-10 11:23:17,093 INFO worker.py:1312 -- Connecting to existing Ray cluster at address: <IP address>:6380...
 # 2022-08-10 11:23:17,097 INFO worker.py:1490 -- Connected to Ray cluster. View the dashboard at ...
 ```
 
@@ -167,7 +167,7 @@ To identify the Ray head service for our example cluster, run:
 ! kubectl get service service-ray-cluster
 
 # NAME                             TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                            AGE
-# service-ray-cluster              ClusterIP   10.92.118.20   <none>        6379/TCP,8265/TCP,10001/TCP...     XXs
+# service-ray-cluster              ClusterIP   10.92.118.20   <none>        6380/TCP,8265/TCP,10001/TCP...     XXs
 ```
 
 Now that we have the name of the service, we can use port-forwarding to access the Ray Dashboard port (8265 by default).
