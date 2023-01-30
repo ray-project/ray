@@ -130,7 +130,7 @@ def _gym_env_creator(
     try:
         # If class provided, call constructor directly.
         if isinstance(env_descriptor, type):
-            env = env_descriptor(**env_context)
+            env = env_descriptor(env_context)
         # Special case: Atari not supported by gymnasium yet -> Need to use their
         # GymV26 compatibility wrapper class.
         # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
