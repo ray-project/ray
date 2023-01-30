@@ -19,11 +19,11 @@ ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_DIR = "/tmp"
 
 class MockDbApiEntry:
     def __init__(self):
-        self.idle_time = time.time()
+        self.created_time = time.time()
         self.registered_job_groups = []
 
     def getIdleTimeMillisSinceLastNotebookExecution(self):
-        return (time.time() - self.idle_time) * 1000
+        return (time.time() - self.created_time) * 1000
 
     def registerBackgroundSparkJobGroup(self, job_group_id):
         self.registered_job_groups.append(job_group_id)
