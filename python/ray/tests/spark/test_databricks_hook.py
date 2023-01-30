@@ -69,7 +69,7 @@ class TestDatabricksHook:
                 assert db_api_entry.registered_job_groups == [
                     cluster.spark_job_group_id
                 ]
-                time.sleep(2.5)
+                time.sleep(125)
                 assert cluster.is_shutdown
                 assert ray.util.spark.cluster_init._active_ray_cluster is None
         finally:

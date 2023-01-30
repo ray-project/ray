@@ -105,6 +105,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "databricks notebook or call "
                 "`ray.util.spark.shutdown_ray_cluster()`."
             )
+            return
         elif auto_shutdown_timeout_minutes < 0:
             raise ValueError(
                 "You must set "
@@ -120,6 +121,19 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "'DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES' environment "
                 "variable, setting it to 0 means infinite timeout."
             )
+
+        try:
+            db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
+        except Exception:
+            _logger.warning(
+                "Your current Databricks Runtime version does not support API "
+                "`getIdleTimeMillisSinceLastNotebookExecution`, we cannot "
+                "automatically shut down Ray cluster when databricks notebook "
+                "is inactive, you need to manually detach databricks notebook "
+                "or call `ray.util.spark.shutdown_ray_cluster()` to shut down "
+                "Ray cluster on spark."
+            )
+            return
 
         def auto_shutdown_watcher():
             auto_shutdown_timeout_millis = auto_shutdown_timeout_minutes * 60 * 1000
@@ -140,19 +154,6 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
                 time.sleep(DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
 
-        try:
-            db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
-        except Exception:
-            _logger.warning(
-                "Your current Databricks Runtime version does not support API "
-                "`getIdleTimeMillisSinceLastNotebookExecution`, we cannot "
-                "automatically shut down Ray cluster when databricks notebook "
-                "is inactive, you need to manually detach databricks notebook "
-                "or call `ray.util.spark.shutdown_ray_cluster()` to shut down "
-                "Ray cluster on spark."
-            )
-
-        if auto_shutdown_timeout_minutes > 0:
-            threading.Thread(
-                target=auto_shutdown_watcher, args=(), daemon=True
-            ).start()
+        threading.Thread(
+            target=auto_shutdown_watcher, args=(), daemon=True
+        ).start()
