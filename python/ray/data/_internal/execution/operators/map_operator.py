@@ -107,19 +107,21 @@ class MapOperator(PhysicalOperator, ABC):
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators.actor_pool_map_operator import (
                 ActorPoolMapOperator,
+                AutoscalingConfig,
+                AutoscalingPolicy,
             )
 
-            pool_size = compute_strategy.max_size
-            if pool_size == float("inf"):
-                # Use min_size if max_size is unbounded (default).
-                pool_size = compute_strategy.min_size
+            autoscaling_config = AutoscalingConfig.from_compute_strategy(
+                compute_strategy
+            )
+            autoscaling_policy = AutoscalingPolicy(autoscaling_config)
             return ActorPoolMapOperator(
                 transform_fn,
                 input_op,
+                autoscaling_policy=autoscaling_policy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
                 ray_remote_args=ray_remote_args,
-                pool_size=pool_size,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
