@@ -1,4 +1,5 @@
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
+import warnings
 
 import ray
 
@@ -15,6 +16,7 @@ from ray.tune.progress_reporter import (
 )
 from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
+from ray.util.annotations import RayDeprecationWarning
 
 if TYPE_CHECKING:
     from ray.train.base_trainer import BaseTrainer
@@ -159,6 +161,9 @@ class Tuner:
     def restore(
         cls,
         path: str,
+        trainable: Optional[
+            Union[str, Callable, Type[Trainable], "BaseTrainer"]
+        ] = None,
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
@@ -191,23 +196,30 @@ class Tuner:
                 console output of previous run.
                 Note: depending on whether ray client mode is used or not,
                 this path may or may not exist on your local machine.
+            trainable: The trainable to use upon resuming the experiment.
+                This should be the same trainable that was used to initialize
+                the original Tuner.
+                NOTE: Starting in 2.5, this will be a required parameter.
             resume_unfinished: If True, will continue to run unfinished trials.
             resume_errored: If True, will re-schedule errored trials and try to
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them from scratch (no checkpoint will be loaded).
-            overwrite_trainable: A newly specified trainable that will overwrite
-                the trainable that was originally saved by Tune. This should
-                only be used to resume an experiment where the original trainable
-                is not fully serializable (e.g. when the trainable has object
-                references attached to it via ``tune.with_parameters``, the objects
-                they point to may not exist if restoring from a new Ray cluster).
-                NOTE: This API is experimental and should be used with caution.
+            overwrite_trainable: Deprecated. Use the `trainable` argument instead.
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
         #  For example, is callbacks supposed to be automatically applied
         #  when a Tuner is restored and fit again?
+
+        if overwrite_trainable:
+            if not trainable:
+                trainable = overwrite_trainable
+            warning_message = (
+                "`overwrite_trainable` has been renamed to `trainable`. "
+                "This argument will be removed starting from version 2.5."
+            )
+            warnings.warn(warning_message, RayDeprecationWarning, stacklevel=2)
 
         resume_config = _ResumeConfig(
             resume_unfinished=resume_unfinished,
@@ -219,7 +231,7 @@ class Tuner:
             tuner_internal = TunerInternal(
                 restore_path=path,
                 resume_config=resume_config,
-                trainable=overwrite_trainable,
+                trainable=trainable,
             )
             return Tuner(_tuner_internal=tuner_internal)
         else:
@@ -228,7 +240,7 @@ class Tuner:
             ).remote(
                 restore_path=path,
                 resume_config=resume_config,
-                trainable=overwrite_trainable,
+                trainable=trainable,
             )
             return Tuner(_tuner_internal=tuner_internal)
 
