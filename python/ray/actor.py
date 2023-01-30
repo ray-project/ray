@@ -1189,7 +1189,7 @@ class ActorHandle:
             raise AttributeError(
                 f"'{type(self).__name__}' object has " f"no attribute '{item}'"
             )
-        if item in ["__ray_terminate__", "__ray_checkpoint__"]:
+        if item in ["__ray_terminate__"]:
 
             class FakeActorMethod(object):
                 def __call__(self, *args, **kwargs):
