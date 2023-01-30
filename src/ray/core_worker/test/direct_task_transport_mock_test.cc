@@ -28,7 +28,7 @@ using namespace ::testing;
 class DirectTaskTransportTest : public ::testing::Test {
  public:
   void SetUp() override {
-    raylet_client = std::make_shared<MockRayletClientInterface>();
+    raylet_client = std::make_shared<MockRayletClientInterface>(io_context);
     task_finisher = std::make_shared<MockTaskFinisherInterface>();
     actor_creator = std::make_shared<MockActorCreatorInterface>();
     lease_policy = std::make_shared<MockLeasePolicyInterface>();
@@ -64,6 +64,7 @@ class DirectTaskTransportTest : public ::testing::Test {
   std::shared_ptr<MockTaskFinisherInterface> task_finisher;
   std::shared_ptr<MockActorCreatorInterface> actor_creator;
   std::shared_ptr<MockLeasePolicyInterface> lease_policy;
+  instrumented_io_context io_context;
 };
 
 TEST_F(DirectTaskTransportTest, ActorRegisterOk) {

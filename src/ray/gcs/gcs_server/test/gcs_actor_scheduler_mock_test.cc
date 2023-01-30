@@ -39,7 +39,7 @@ class GcsActorSchedulerMockTest : public Test {
     store_client = std::make_shared<MockStoreClient>();
     actor_table = std::make_unique<GcsActorTable>(store_client);
     gcs_node_manager = std::make_unique<MockGcsNodeManager>();
-    raylet_client = std::make_shared<MockRayletClientInterface>();
+    raylet_client = std::make_shared<MockRayletClientInterface>(io_context);
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
