@@ -1,7 +1,9 @@
+from pathlib import Path
 import pytest
 
 import ray
 from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
+from ray.air._internal.remote_storage import upload_to_uri
 from ray.train.base_trainer import BaseTrainer, TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
@@ -309,6 +311,39 @@ def test_restore_with_different_trainer(tmpdir):
         TorchTrainer.restore(str(tmpdir))
     with pytest.raises(AssertionError):
         XGBoostTrainer.restore(str(tmpdir))
+
+
+def test_restore_from_invalid_dir(tmpdir):
+    with pytest.raises(AssertionError):
+        BaseTrainer.restore(str(tmpdir))
+
+    with pytest.raises(AssertionError):
+        BaseTrainer.restore("memory:///not/found")
+
+
+@pytest.mark.parametrize("upload_dir", [None, "memory:///test/"])
+def test_trainer_can_restore_utility(tmp_path, upload_dir):
+    """Make sure that `can_restore` detects an existing experiment at a
+    local/remote path and only returns True if it's at the Train experiment dir root.
+    """
+    name = "exp_name"
+    path = tmp_path / name
+    if upload_dir:
+        path = Path(upload_dir) / name
+
+    assert not DataParallelTrainer.can_restore(path)
+
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=lambda config: session.report({"score": 1}),
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(name=name, local_dir=tmp_path),
+    )
+    (tmp_path / name).mkdir(exist_ok=True)
+    trainer._save(tmp_path / name)
+    if upload_dir:
+        upload_to_uri(tmp_path / name, str(path))
+
+    assert DataParallelTrainer.can_restore(path)
 
 
 if __name__ == "__main__":
