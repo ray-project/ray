@@ -47,8 +47,8 @@
 #  # Run configuration for the test
 #  run:
 #    # Type of test. Can be job, sdk_command or client.
-#    # Uses either Ray jobs, anyscale SDK commands or the Ray client to run the actual
-#    # release test.
+#    # Uses either Ray jobs, anyscale jobs, anyscale SDK commands
+#    # or the Ray client to run the actual release test.
 #    type: anyscale_job
 #
 #    # File manager to use to transfer files to and from the cluster.
@@ -2168,7 +2168,6 @@
     script: python workloads/jobs_basic.py --working-dir "workloads"
     wait_for_nodes:
       num_nodes: 4
-    type: job
 
 
   alert: default
@@ -2193,7 +2192,6 @@
     script: python workloads/jobs_basic.py --working-dir "https://github.com/anyscale/job-services-cuj-examples/archive/refs/heads/main.zip"
     wait_for_nodes:
       num_nodes: 4
-    type: job
 
 
   alert: default
@@ -2233,7 +2231,6 @@
     script: python workloads/jobs_check_cuda_available.py
     wait_for_nodes:
       num_nodes: 2
-    type: job
 
 - name: jobs_specify_num_gpus
   group: Jobs tests
@@ -2448,7 +2445,6 @@
 - name: serve_serve_micro_benchmark_k8s
   group: Serve tests
   working_dir: serve_tests
-  env: prod
 
   legacy:
     test_name: serve_micro_benchmark_k8s
@@ -2466,7 +2462,6 @@
     timeout: 7200
     long_running: false
     script: python workloads/serve_micro_benchmark.py
-    type: sdk_command
 
   alert: default
 
@@ -3858,7 +3853,6 @@
 - name: dask_on_ray_1tb_sort
   group: core-daily-test
   working_dir: nightly_tests
-  env: prod
   legacy:
     test_name: dask_on_ray_1tb_sort
     test_suite: nightly_tests
@@ -3873,7 +3867,6 @@
     timeout: 7200
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions
       1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
-    type: sdk_command
 
     wait_for_nodes:
       num_nodes: 32
@@ -3984,7 +3977,8 @@
     timeout: 12000
     prepare: sleep 0
     script: python single_node/test_single_node.py
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: object_store
   group: core-scalability-test
@@ -4004,7 +3998,8 @@
     script: python object_store/test_object_store.py
     wait_for_nodes:
       num_nodes: 50
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: many_actors
@@ -4025,7 +4020,8 @@
     script: python distributed/test_many_actors.py
     wait_for_nodes:
       num_nodes: 65
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: many_actors_smoke_test
@@ -4046,7 +4042,8 @@
     script: SMOKE_TEST=1 python distributed/test_many_actors.py
     wait_for_nodes:
       num_nodes: 2
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: many_tasks
@@ -4067,7 +4064,8 @@
     script: python distributed/test_many_tasks.py --num-tasks=10000
     wait_for_nodes:
       num_nodes: 65
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
   smoke_test:
@@ -4080,7 +4078,8 @@
       script: python distributed/test_many_tasks.py --num-tasks=100
       wait_for_nodes:
         num_nodes: 2
-      type: anyscale_job
+      # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: many_pgs
@@ -4101,7 +4100,8 @@
     script: python distributed/test_many_pgs.py
     wait_for_nodes:
       num_nodes: 65
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: many_pgs_smoke_test
@@ -4122,7 +4122,8 @@
     script: SMOKE_TEST=1 python distributed/test_many_pgs.py
     wait_for_nodes:
       num_nodes: 2
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: many_nodes
@@ -4145,7 +4146,8 @@
     script: python distributed/test_many_tasks.py --num-tasks=1000
     wait_for_nodes:
       num_nodes: 250
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: scheduling_test_many_0s_tasks_many_nodes
@@ -4168,7 +4170,8 @@
 
     wait_for_nodes:
       num_nodes: 32
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 # - name: scheduling_test_many_5s_tasks_single_node
@@ -4241,13 +4244,13 @@
     script: python inference.py
     wait_for_nodes:
       num_nodes: 2
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: shuffle_data_loader
   group: data-tests
   working_dir: nightly_tests/dataset
-  env: prod
   legacy:
     test_name: shuffle_data_loader
     test_suite: dataset_test
@@ -4261,7 +4264,8 @@
   run:
     timeout: 1800
     script: python dataset_shuffle_data_loader.py
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: parquet_metadata_resolution
   group: data-tests
@@ -4280,14 +4284,14 @@
     # Expect the test to finish around 40 seconds.
     timeout: 80
     script: python parquet_metadata_resolution.py --num-files 915
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: dataset_random_access
   group: data-tests
   working_dir: nightly_tests/dataset
   stable: false
-  env: prod
 
   frequency: nightly
   team: data
@@ -4300,7 +4304,8 @@
     script: python dataset_random_access.py
     wait_for_nodes:
       num_nodes: 15
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: pipelined_data_ingest_benchmark
@@ -4318,7 +4323,8 @@
     script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
     wait_for_nodes:
       num_nodes: 20
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: aggregate_benchmark
@@ -4334,7 +4340,8 @@
   run:
     timeout: 1800
     script: python aggregate_benchmark.py
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: read_parquet_benchmark_single_node
@@ -4352,7 +4359,8 @@
     timeout: 300
     script: python read_parquet_benchmark.py
 
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: read_images_benchmark_single_node
   group: data-tests
@@ -4367,7 +4375,8 @@
   run:
     timeout: 1800
     script: python read_images_benchmark.py
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: read_tfrecords_benchmark_single_node
@@ -4385,7 +4394,8 @@
     timeout: 1800
     script: python read_tfrecords_benchmark.py
 
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: map_batches_benchmark_single_node
   group: data-tests
@@ -4402,7 +4412,8 @@
     timeout: 2400
     script: python map_batches_benchmark.py
 
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: iter_tensor_batches_benchmark_single_node
   group: data-tests
@@ -4419,7 +4430,8 @@
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py
 
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
@@ -4436,12 +4448,12 @@
     timeout: 1080
     script: python iter_batches_benchmark.py
 
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: pipelined_training_50_gb
   group: data-tests
   working_dir: nightly_tests/dataset
-  env: prod
   legacy:
     test_name: pipelined_training_50_gb
     test_suite: dataset_test
@@ -4457,7 +4469,8 @@
     script: python pipelined_training.py --epochs 1
     wait_for_nodes:
       num_nodes: 15
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 
 - name: pipelined_ingestion_1500_gb
@@ -4478,7 +4491,8 @@
     timeout: 9600
     script: python pipelined_training.py --epochs 2 --num-windows 5 --num-files 915
       --debug
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
     wait_for_nodes:
       num_nodes: 21
@@ -4502,7 +4516,8 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: dataset_shuffle_sort_1tb
   group: data-tests
@@ -4522,7 +4537,8 @@
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
@@ -4542,7 +4558,8 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: dataset_shuffle_push_based_sort_1tb
   group: data-tests
@@ -4562,7 +4579,8 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
   group: data-tests
@@ -4582,7 +4600,8 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 100
-    type: anyscale_job
+    # Works fine as an anyscale job
+    # type: anyscale_job
 
 ##################
 # Core Chaos tests
@@ -4677,7 +4696,6 @@
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
   group: data-tests
   working_dir: nightly_tests
-  env: prod
   legacy:
     test_name: chaos_pipelined_ingestion_1500_gb_15_windows
     test_suite: chaos_test
@@ -4828,7 +4846,6 @@
 - name: aws_cluster_launcher
   group: cluster-launcher-test
   working_dir: cluster_tests
-  env: prod
   legacy:
     test_name: aws_cluster_launcher
     test_suite: cluster-launcher-test
@@ -4844,4 +4861,3 @@
   run:
     timeout: 1200
     script: bash test_aws_cluster_launcher.sh
-    type: sdk_command
