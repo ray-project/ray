@@ -599,7 +599,7 @@
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
 
-- label: ":hadoop: hdfs tests"
+- label: ":hadoop: Ray AIR HDFS tests"
   conditions: ["RAY_CI_ML_AFFECTED"]
   instance_size: medium
   commands:
