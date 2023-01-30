@@ -382,7 +382,7 @@ class PPO(Algorithm):
             # TODO (Kourosh) Clearly define what train_batch_size
             # vs. sgd_minibatch_size and num_sgd_iter is in the config.
             # TODO (Kourosh) Do this inside the RL Trainer so
-            # that we don't have to this back and forth
+            # that we don't have to do this back and forth
             # communication between driver and the remote
             # trainer workers
 
@@ -398,6 +398,11 @@ class PPO(Algorithm):
             train_results = multi_gpu_train_one_step(self, train_batch)
 
         if self.config._enable_rl_trainer_api:
+            # the train results's loss keys are pids to their loss values. But we also
+            # return a total_loss key at the same level as the pid keys. So we need to
+            # subtract that to get the total set of pids to update.
+            # TODO (Kourosh): We need to make a better design for the hierarchy of the
+            # train results, so that all the policy ids end up in the same level.
             policies_to_update = set(train_results["loss"].keys()) - {"total_loss"}
         else:
             policies_to_update = list(train_results.keys())
@@ -416,12 +421,12 @@ class PPO(Algorithm):
         # workers.
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
-                from_worker = None
+                from_worker_or_trainer = None
                 if self.config._enable_rl_trainer_api:
                     # sync weights from trainer_runner to all rollout workers
-                    from_worker = self.trainer_runner
+                    from_worker_or_trainer = self.trainer_runner
                 self.workers.sync_weights(
-                    from_worker=from_worker,
+                    from_worker=from_worker_or_trainer,
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
@@ -431,6 +436,9 @@ class PPO(Algorithm):
 
         if self.config._enable_rl_trainer_api:
             kl_dict = {
+                # TODO (Kourosh): Train results don't match the old format. The thing
+                # that used to be under `kl` is now under `mean_kl_loss`. Fix this. Do
+                # we need get here?
                 pid: train_results["loss"][pid].get("mean_kl_loss")
                 for pid in policies_to_update
             }

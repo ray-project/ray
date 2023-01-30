@@ -108,8 +108,8 @@ class TrainerRunner:
         """Do `num_iters` minibatch updates given the original batch.
 
         Given a batch of episodes you can use this method to take more
-        than one backward pass on the batch. The same minibatch_size and num_iters gets 
-        will be used for all module ids (previously known as policies) in the 
+        than one backward pass on the batch. The same minibatch_size and num_iters gets
+        will be used for all module ids (previously known as policies) in the
         multiagent batch
 
         Args:
@@ -125,7 +125,8 @@ class TrainerRunner:
         start = {mid: 0 for mid in batch.policy_batches.keys()}
         num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
         results = []
-        # loop until the number of passes through all modules batches reaches the num_iters
+        # loop until the number of passes through all modules batches reaches the
+        # num_iters
         while min(num_covered_epochs.values()) < num_iters:
             minibatch = {}
             for module_id, module_batch in batch.policy_batches.items():
@@ -155,6 +156,9 @@ class TrainerRunner:
             results.append(self.update(minibatch))
 
         # return the average of the results using tree map
+        # TODO (Kourosh): There should be system for reporting back metrics from
+        # RLTrainers. Some metrics should be averaged, while some should be just
+        # concatenated.
         return tree.map_structure(lambda *x: np.mean(x), *results)
 
     def update(self, batch: MultiAgentBatch) -> List[Mapping[str, Any]]:
@@ -289,7 +293,6 @@ class TrainerRunner:
             self._trainer.set_weights(weights)
         else:
             ray.get([worker.set_weights.remote(weights) for worker in self._workers])
-            
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         if self.is_local:
@@ -303,10 +306,8 @@ class TrainerRunner:
         if self.is_local:
             return self._trainer.get_state()
         else:
-            refs = []
-            for worker in self._workers:
-                refs.append(worker.get_state.remote())
-            return ray.get(refs)[0]
+            worker = next(iter(self._workers))
+            return ray.get(worker.get_state.remote())
 
     def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:
         """Sets the states of the RLTrainers.

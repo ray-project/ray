@@ -8,7 +8,7 @@ from typing import (
     Hashable,
     Optional,
     Callable,
-    Set
+    Set,
 )
 
 from ray.rllib.core.rl_module.rl_module import (
@@ -155,7 +155,7 @@ class TorchRLTrainer(RLTrainer):
         module_weights = self._module.get_state()
         if module_ids is None:
             return module_weights
-        
+
         return {k: v for k, v in module_weights.items() if k in module_ids}
 
     def set_weights(self, weights: Mapping[str, Any]) -> None:

@@ -1201,7 +1201,7 @@ class Policy(metaclass=ABCMeta):
             # If in local debugging mode, and _fake_gpus is not on.
             num_gpus = 0
         elif worker_idx == 0:
-            # if we are in the new trainer wold num_gpus is only for trainer
+            # if we are in the new rl trainer world num_gpus is deprecated.
             # so use num_gpus_per_worker for policy sampling
             if self.config["_enable_rl_trainer_api"]:
                 num_gpus = self.config["num_gpus_per_worker"]

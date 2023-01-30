@@ -8,6 +8,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     explained_variance,
 )
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
@@ -16,6 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 class PPOTorchRLTrainer(TorchRLTrainer):
+    """Implements PPO loss / update logic on top of TorchRLTrainer.
+
+    This class implements the ppo loss under `_compute_loss_per_module()` and the
+    additional non-gradient based updates such as KL-coeff and learning rate updates
+    under `_additional_update_per_module()`.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -37,6 +45,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
         self.kl_coeff = self.config.kl_coeff
         self.kl_target = self.config.kl_target
 
+    @override(TorchRLTrainer)
     def _compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
@@ -62,7 +71,14 @@ class PPOTorchRLTrainer(TorchRLTrainer):
             mean_kl_loss = torch.mean(action_kl)
             if mean_kl_loss.isinf():
                 logger.warning(
-                    "KL divergence is non-finite, this will likely destabilize your model and the training process. Action(s) in a specific state have near-zero probability. This can happen naturally in deterministic environments where the optimal policy has zero mass for a specific action. To fix this issue, consider setting the coefficient for the KL loss term to zero or increasing policy entropy."
+                    "KL divergence is non-finite, this will likely destabilize "
+                    "your model and the training process. Action(s) in a "
+                    "specific state have near-zero probability. "
+                    "This can happen naturally in deterministic "
+                    "environments where the optimal policy has zero mass "
+                    "for a specific action. To fix this issue, consider "
+                    "setting the coefficient for the KL loss term to "
+                    "zero or increasing policy entropy."
                 )
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
@@ -111,6 +127,7 @@ class PPOTorchRLTrainer(TorchRLTrainer):
             "mean_kl_loss": mean_kl_loss,
         }
 
+    @override(TorchRLTrainer)
     def _additional_update_per_module(
         self, module_id: str, sampled_kl_values: dict, timestep: int
     ) -> Mapping[str, Any]:

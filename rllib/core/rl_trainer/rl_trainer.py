@@ -455,6 +455,8 @@ class RLTrainer:
                 from `get_state`.
 
         """
+        # TODO (Kourosh): We have both get(set)_state and get(set)_weights. I think
+        # having both can become confusing. Can we simplify this API requirement?
         self.__check_if_build_called()
         # TODO: once we figure out the optimizer format, we can set/get the state
         self._module.set_state(state.get("module_state", {}))

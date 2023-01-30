@@ -695,7 +695,7 @@ class Algorithm(Trainable):
             # TODO (Kourosh): This is an interim solution where policies and modules
             # co-exist. In this world we have both policy_map and MARLModule that need
             # to be consistent with one another. To make a consistent parity between
-            # the two we need to loop throught the policy modules and create a simple
+            # the two we need to loop through the policy modules and create a simple
             # MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
             module_specs = {}
@@ -715,7 +715,7 @@ class Algorithm(Trainable):
             trainer_runner_config = self.config.get_trainer_runner_config(module_spec)
             self.trainer_runner = trainer_runner_config.build()
 
-            # sync the weights from rollout workers to trainers
+            # sync the weights from local rollout worker to trainers
             weights = local_worker.get_weights()
             self.trainer_runner.set_weights(weights)
 
