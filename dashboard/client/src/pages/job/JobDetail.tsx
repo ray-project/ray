@@ -16,6 +16,7 @@ import TaskList from "../state/task";
 
 import { useJobDetail } from "./hook/useJobDetail";
 import { JobProgressBar } from "./JobProgressBar";
+import { TaskTimeline } from "./TaskTimeline";
 
 const useStyle = makeStyles((theme) => ({
   root: {
@@ -121,6 +122,9 @@ export const JobDetailChartsPage = ({
       </TitleCard>
       <TitleCard title="Tasks">
         <JobProgressBar jobId={jobId} job={job} />
+      </TitleCard>
+      <TitleCard title="Task Timeline">
+        <TaskTimeline jobId={jobId} />
       </TitleCard>
       <TitleCard>
         <CollapsibleSection title="Task Table">

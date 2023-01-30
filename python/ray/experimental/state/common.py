@@ -560,7 +560,7 @@ class TaskState(StateSchema):
     creation_time_ms: Optional[int] = state_column(detail=True, filterable=False)
     #: The time when the task starts to run. A Unix timestamp in ms.
     start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
-    #: The time when the task finishes or failed. A Unix timestamp in ms.
+    #: The time when the task is finished or failed. A Unix timestamp in ms.
     end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
 
 

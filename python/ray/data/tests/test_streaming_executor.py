@@ -2,18 +2,13 @@ import pytest
 import time
 from unittest.mock import MagicMock
 
-from typing import List, Any
-
 import ray
-from ray.data.context import DatasetContext
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
-    RefBundle,
     PhysicalOperator,
 )
 from ray.data._internal.execution.streaming_executor import (
-    StreamingExecutor,
     _debug_dump_topology,
     _validate_topology,
 )
@@ -24,12 +19,10 @@ from ray.data._internal.execution.streaming_executor_state import (
     select_operator_to_run,
     _execution_allowed,
 )
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.data.tests.conftest import *  # noqa
 
 
 @ray.remote
@@ -45,15 +38,7 @@ def make_transform(block_fn):
     return map_fn
 
 
-def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
-    output = []
-    for bundle in bundles:
-        for block, _ in bundle.blocks:
-            output.append(ray.get(block))
-    return output
-
-
-def test_build_streaming_topology(ray_start_10_cpus_shared):
+def test_build_streaming_topology():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
@@ -67,7 +52,7 @@ def test_build_streaming_topology(ray_start_10_cpus_shared):
     assert list(topo) == [o1, o2, o3]
 
 
-def test_disallow_non_unique_operators(ray_start_10_cpus_shared):
+def test_disallow_non_unique_operators():
     inputs = make_ref_bundles([[x] for x in range(20)])
     # An operator [o1] cannot used in the same DAG twice.
     o1 = InputDataBuffer(inputs)
@@ -78,7 +63,7 @@ def test_disallow_non_unique_operators(ray_start_10_cpus_shared):
         build_streaming_topology(o4, ExecutionOptions())
 
 
-def test_process_completed_tasks(ray_start_10_cpus_shared):
+def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
@@ -110,7 +95,7 @@ def test_process_completed_tasks(ray_start_10_cpus_shared):
     o2.inputs_done.assert_called_once()
 
 
-def test_select_operator_to_run(ray_start_10_cpus_shared):
+def test_select_operator_to_run():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
@@ -120,35 +105,56 @@ def test_select_operator_to_run(ray_start_10_cpus_shared):
 
     # Test empty.
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) is None
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        is None
     )
 
     # Test backpressure based on queue length between operators.
     topo[o1].outqueue.append("dummy1")
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) == o2
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o2
     )
     topo[o1].outqueue.append("dummy2")
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) == o2
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o2
     )
     topo[o2].outqueue.append("dummy3")
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) == o3
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o3
     )
 
     # Test backpressure includes num active tasks as well.
-    topo[o3].num_active_tasks = MagicMock(return_value=2)
+    o3.num_active_work_refs = MagicMock(return_value=2)
+    o3.internal_queue_size = MagicMock(return_value=0)
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) == o2
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o2
     )
-    topo[o2].num_active_tasks = MagicMock(return_value=2)
+    # nternal queue size is added to num active tasks.
+    o3.num_active_work_refs = MagicMock(return_value=0)
+    o3.internal_queue_size = MagicMock(return_value=2)
     assert (
-        select_operator_to_run(topo, ExecutionResources(), ExecutionResources()) == o3
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o2
+    )
+    o2.num_active_work_refs = MagicMock(return_value=2)
+    o2.internal_queue_size = MagicMock(return_value=0)
+    assert (
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o3
+    )
+    o2.num_active_work_refs = MagicMock(return_value=0)
+    o2.internal_queue_size = MagicMock(return_value=2)
+    assert (
+        select_operator_to_run(topo, ExecutionResources(), ExecutionResources(), True)
+        == o3
     )
 
 
-def test_dispatch_next_task(ray_start_10_cpus_shared):
+def test_dispatch_next_task():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o1_state = OpState(o1, [])
@@ -168,7 +174,7 @@ def test_dispatch_next_task(ray_start_10_cpus_shared):
     assert o2.add_input.called_once_with("dummy2")
 
 
-def test_debug_dump_topology(ray_start_10_cpus_shared):
+def test_debug_dump_topology():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
@@ -179,7 +185,7 @@ def test_debug_dump_topology(ray_start_10_cpus_shared):
     _debug_dump_topology(topo)
 
 
-def test_validate_topology(ray_start_10_cpus_shared):
+def test_validate_topology():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
@@ -201,7 +207,7 @@ def test_validate_topology(ray_start_10_cpus_shared):
         _validate_topology(topo, ExecutionResources(cpu=10))
 
 
-def test_execution_allowed(ray_start_10_cpus_shared):
+def test_execution_allowed():
     op = InputDataBuffer([])
 
     # CPU.
@@ -246,7 +252,7 @@ def test_execution_allowed(ray_start_10_cpus_shared):
     )
 
 
-def test_select_ops_ensure_at_least_one_live_operator(ray_start_10_cpus_shared):
+def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
@@ -263,78 +269,26 @@ def test_select_ops_ensure_at_least_one_live_operator(ray_start_10_cpus_shared):
     o1.num_active_work_refs = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
-            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1)
+            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1), True
         )
         is None
     )
     o1.num_active_work_refs = MagicMock(return_value=0)
     assert (
         select_operator_to_run(
-            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1)
+            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1), True
         )
         is o3
     )
-
-
-def test_pipelined_execution(ray_start_10_cpus_shared):
-    executor = StreamingExecutor(ExecutionOptions())
-    inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
-
-    def reverse_sort(inputs: List[RefBundle]):
-        reversed_list = inputs[::-1]
-        return reversed_list, {}
-
-    o4 = AllToAllOperator(reverse_sort, o3)
-    it = executor.execute(o4)
-    output = ref_bundles_to_list(it)
-    expected = [[x * -2] for x in range(20)][::-1]
-    assert output == expected, (output, expected)
-
-
-def test_e2e_option_propagation(ray_start_10_cpus_shared):
-    DatasetContext.get_current().new_execution_backend = True
-    DatasetContext.get_current().use_streaming_executor = True
-
-    def run():
-        ray.data.range(5, parallelism=5).map(
-            lambda x: x, compute=ray.data.ActorPoolStrategy(2, 2)
-        ).take_all()
-
-    DatasetContext.get_current().execution_options.resource_limits = (
-        ExecutionResources()
+    assert (
+        select_operator_to_run(
+            topo, ExecutionResources(cpu=1), ExecutionResources(cpu=1), False
+        )
+        is None
     )
-    run()
-
-    DatasetContext.get_current().execution_options.resource_limits.cpu = 1
-    with pytest.raises(ValueError):
-        run()
 
 
-def test_configure_spread_e2e(ray_start_10_cpus_shared):
-    from ray import remote_function
-
-    tasks = []
-
-    def _test_hook(fn, args, strategy):
-        if "map_task" in str(fn):
-            tasks.append(strategy)
-
-    remote_function._task_launch_hook = _test_hook
-    DatasetContext.get_current().use_streaming_executor = True
-    DatasetContext.get_current().execution_options.preserve_order = True
-
-    # Simple 2-stage pipeline.
-    ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
-
-    # Read tasks get SPREAD by default, subsequent ones use default policy.
-    tasks = sorted(tasks)
-    assert tasks == ["DEFAULT", "DEFAULT", "SPREAD", "SPREAD"]
-
-
-def test_configure_output_locality(ray_start_10_cpus_shared):
+def test_configure_output_locality():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)

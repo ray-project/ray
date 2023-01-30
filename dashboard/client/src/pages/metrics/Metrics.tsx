@@ -32,7 +32,7 @@ const useStyles = makeStyles((theme) =>
     },
     chart: {
       width: "100%",
-      height: 300,
+      height: 400,
       overflow: "hidden",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus padding between cards
@@ -209,7 +209,7 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
     useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
-    TimeRangeOptions.THIRTY_MINS,
+    TimeRangeOptions.FIVE_MINS,
   );
   const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,
