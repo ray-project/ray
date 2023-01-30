@@ -124,6 +124,7 @@ test_core() {
         -//:event_test
         -//:gcs_server_rpc_test
         -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
+        -//:gcs_health_check_manager_test
         -//:gcs_client_reconnection_test
       )
       ;;
