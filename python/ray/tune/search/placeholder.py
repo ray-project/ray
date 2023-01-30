@@ -11,7 +11,7 @@ class _Categorical_Value:
     def __init__(self, choices):
         self._choices = choices
 
-    def get(self, ph):
+    def get_value(self, placeholder: str) -> Any:
         ca, i = ph.split("_")
         assert ca == "cat", "Categorical placeholder should start with cat_"
         return self._choices[int(i)]
