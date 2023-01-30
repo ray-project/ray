@@ -1,4 +1,5 @@
 import itertools
+import sys
 from typing import Iterable, Optional, Tuple, List, Sequence, Union
 
 from pkg_resources._vendor.packaging.version import parse as parse_version
@@ -310,6 +311,13 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                 arr = np.ascontiguousarray(arr)
             pa_dtype = pa.from_numpy_dtype(arr.dtype)
             if pa.types.is_string(pa_dtype):
+                if arr.dtype.byteorder == ">" or (
+                    arr.dtype.byteorder == "=" and sys.byteorder == "big"
+                ):
+                    raise ValueError(
+                        "Only little-endian string tensors are supported, but got: ",
+                        arr.dtype,
+                    )
                 pa_dtype = pa.binary(arr.dtype.itemsize)
             outer_len = arr.shape[0]
             element_shape = arr.shape[1:]
@@ -428,10 +436,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             arr = np.unpackbits(arr, bitorder="little")
             # Interpret buffer as boolean array.
             return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
-        # Special handling of binary/string types
+        # Special handling of binary/string types. Assumes unicode string tensor columns
         if pa.types.is_fixed_size_binary(value_type):
-            # if arr.dtype.byteorder != "<":
-            #     raise ValueError(f"Input binary/string array must be little-endian, but instead got {arr.dtype.byteorder}")  # noqa: E501
             NUM_BYTES_PER_UNICODE_CHAR = 4
             ext_dtype = np.dtype(
                 f"<U{value_type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}"
@@ -716,6 +722,12 @@ class ArrowVariableShapedTensorArray(
             )
         pa_dtype = pa.from_numpy_dtype(dtype)
         if pa.types.is_string(pa_dtype):
+            if dtype.byteorder == ">" or (
+                dtype.byteorder == "=" and sys.byteorder == "big"
+            ):
+                raise ValueError(
+                    "Only little-endian string tensors are supported, but got: ", dtype
+                )
             pa_dtype = pa.binary(dtype.itemsize)
         if dtype.type is np.bool_:
             # NumPy doesn't represent boolean arrays as bit-packed, so we manually
@@ -809,10 +821,8 @@ class ArrowVariableShapedTensorArray(
             arr = np.unpackbits(arr, bitorder="little")
             # Interpret buffer as boolean array.
             return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
-        # Special handling of binary/string types
+        # Special handling of binary/string types. Assumes unicode string tensor columns
         if pa.types.is_fixed_size_binary(value_type):
-            # if arr.dtype.byteorder != "<":
-            #     raise ValueError(f"Input binary/string array must be little-endian, but instead got {arr.dtype.byteorder}")  # noqa: E501
             NUM_BYTES_PER_UNICODE_CHAR = 4
             ext_dtype = np.dtype(
                 f"<U{value_type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}"
