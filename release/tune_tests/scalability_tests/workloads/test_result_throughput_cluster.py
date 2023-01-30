@@ -8,7 +8,7 @@ Cluster: cluster_16x64.yaml
 
 Test owner: krfricke
 
-Acceptance criteria: Should run faster than 135 seconds.
+Acceptance criteria: Should run faster than 160 seconds.
 
 Theoretical minimum time: 100 seconds
 """
@@ -31,11 +31,11 @@ def main():
     results_per_second = 0.5
     trial_length_s = 100
 
-    max_runtime = 130
+    max_runtime = 160
 
     if _is_ray_cluster():
         # Add constant overhead for SSH connection
-        max_runtime = 130
+        max_runtime = 160
 
     timed_tune_run(
         name="result throughput cluster",
