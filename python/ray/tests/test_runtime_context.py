@@ -5,6 +5,8 @@ import time
 import sys
 import pytest
 import warnings
+import threading
+from queue import Queue
 
 from ray._private.test_utils import SignalActor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -338,54 +340,92 @@ def test_errors_when_ray_not_initialized():
         ray.get_runtime_context().get_node_id()
 
 
+@ray.remote
+def task_id(i):
+    id = ray.get_runtime_context().get_task_id()
+    return id
+
+
+@ray.remote
+class AsyncActor:
+    async def task_id(self, i):
+        id = ray.get_runtime_context().get_task_id()
+        return id
+
+
+@ray.remote
+class ThreadedActor:
+    def task_id(self):
+        return ray.get_runtime_context().get_task_id()
+
+
 @pytest.mark.parametrize("actor_concurrency", [1, 3, 10])
 def test_threaded_actor_runtime_context(ray_start_regular, actor_concurrency):
-    @ray.remote
-    class ThreadedActor:
-        def task_id(self):
-            return ray.get_runtime_context().get_task_id()
-
     threaded_actor = ThreadedActor.options(max_concurrency=actor_concurrency).remote()
     # Test threaded actor
     tasks = [threaded_actor.task_id.remote() for _ in range(20)]
     submitted_task_ids = [task.task_id().hex() for task in tasks]
     actual_task_ids = ray.get(tasks)
-    assert ",".join(submitted_task_ids) == ",".join(actual_task_ids)
+    assert submitted_task_ids == actual_task_ids
 
 
-@pytest.mark.parametrize("actor_concurrency", [10])
+@pytest.mark.parametrize("actor_concurrency", [1, 3, 10])
+@pytest.mark.skipif(
+    sys.version_info < (3, 7), reason="requires contextvars from python3.7+"
+)
 def test_async_actor_runtime_context(ray_start_regular, actor_concurrency):
     @ray.remote
-    class AsyncActor:
+    class NestedAsyncActor:
         async def task_id(self, i):
             id = ray.get_runtime_context().get_task_id()
-            print(f"task {i} = {id}")
+
+            def verify_nested_task():
+                nested_task = task_id.remote(i * 100)
+                child_id = ray.get(nested_task)
+                assert nested_task.task_id().hex() == child_id
+
+            def verify_nested_async_actors():
+                nested_actor = AsyncActor.options(
+                    max_concurrency=actor_concurrency
+                ).remote()
+                tasks = [nested_actor.task_id.remote(j + i * 100) for j in range(20)]
+                expect_task_ids = [task.task_id().hex() for task in tasks]
+                actual_task_ids = ray.get(tasks)
+                assert expect_task_ids == actual_task_ids
+
+            def verify_nested_threaded_actors():
+                threaded_actor = ThreadedActor.options(
+                    max_concurrency=actor_concurrency
+                ).remote()
+                # Test threaded actor
+                tasks = [threaded_actor.task_id.remote() for _ in range(20)]
+                submitted_task_ids = [task.task_id().hex() for task in tasks]
+                actual_task_ids = ray.get(tasks)
+                assert submitted_task_ids == actual_task_ids
+
+            verify_nested_task()
+            verify_nested_async_actors()
+            verify_nested_threaded_actors()
+
             return id
 
     # Asyncio actors run in another thread that's beyond knowledge of ray
-    async_actor = AsyncActor.options(max_concurrency=actor_concurrency).remote()
+    async_actor = NestedAsyncActor.options(max_concurrency=actor_concurrency).remote()
     tasks = [async_actor.task_id.options(name=f"task{i}").remote(i) for i in range(20)]
     expect_task_ids = [task.task_id().hex() for task in tasks]
     actual_task_ids = ray.get(tasks)
     assert len(expect_task_ids) == len(actual_task_ids)
     assert expect_task_ids == actual_task_ids
-    # for i in range(len(expect_task_ids)):
-    #     expect = expect_task_ids[i]
-    #     actual = actual_task_ids[i]
-    #     assert expect == actual, i
 
 
 def test_thread_task_runtime_context(ray_start_regular):
     def threaded_task_id():
-        import threading
-        from queue import Queue
-
         q = Queue()
 
-        def task_id(q):
+        def thd_task_id(q):
             q.put(ray.get_runtime_context().get_task_id())
 
-        thd = threading.Thread(target=task_id, args=(q,))
+        thd = threading.Thread(target=thd_task_id, args=(q,))
         thd.start()
         id = q.get()
         thd.join()
@@ -403,14 +443,17 @@ def test_thread_task_runtime_context(ray_start_regular):
     assert task.task_id().hex(), thread_task_id
 
 
-def test_normal_actor_with_thread_runtime_context(ray_start_regular):
+@pytest.mark.parametrize(
+    "actor_concurrency,user_thread_task_id_expect_none",
+    [(1, False), (3, True), (10, True)],
+)
+def test_user_spawned_threads_in_threaded_actor(
+    ray_start_regular, actor_concurrency, user_thread_task_id_expect_none
+):
     @ray.remote
-    class Actor:
+    class ThreadActor:
         def threaded_task_id(self):
-            task_id = ray.get_runtime_context().get_task_id()
-            import threading
-            from queue import Queue
-
+            main_task_id = ray.get_runtime_context().get_task_id()
             q = Queue()
 
             def task_id(q):
@@ -421,24 +464,40 @@ def test_normal_actor_with_thread_runtime_context(ray_start_regular):
             thread_task_id = q.get()
             thd.join()
 
-            return task_id, thread_task_id
+            return main_task_id, thread_task_id
 
-    a = Actor.remote()
-    task = a.threaded_task_id.remote()
-    main_thread_task_id, thread_task_id = ray.get(task)
+    a = ThreadActor.options(max_concurrency=actor_concurrency).remote()
+    tasks = [a.threaded_task_id.remote() for _ in range(20)]
+    # Expect new thread's tasks to have the same task id as parent threads'.
+    if user_thread_task_id_expect_none:
+        expect_thread_task_ids = [None for _ in tasks]
+    else:
+        expect_thread_task_ids = [task.task_id().hex() for task in tasks]
 
-    assert task.task_id().hex(), main_thread_task_id
-    assert task.task_id().hex(), thread_task_id
+    expect_main_thread_task_ids = [task.task_id().hex() for task in tasks]
+
+    result = ray.get(tasks)
+    actual_task_ids = [thread_task_id for _, thread_task_id in result]
+    main_thread_task_ids = [main_thread_task_id for main_thread_task_id, _ in result]
+
+    assert expect_thread_task_ids == actual_task_ids
+    assert expect_main_thread_task_ids == main_thread_task_ids
 
 
-def test_user_spawned_threads_in_concurrent_actors(ray_start_regular):
+@pytest.mark.parametrize(
+    "actor_concurrency,user_thread_task_id_expect_none",
+    [(1, True), (3, True), (10, True)],
+)
+@pytest.mark.skipif(
+    sys.version_info < (3, 7), reason="requires contextvars from python3.7+"
+)
+def test_user_spawned_threads_in_async_actors(
+    ray_start_regular, actor_concurrency, user_thread_task_id_expect_none
+):
     @ray.remote
     class AsyncActor:
         async def threaded_task_id(self):
-            task_id = ray.get_runtime_context().get_task_id()
-            import threading
-            from queue import Queue
-
+            main_task_id = ray.get_runtime_context().get_task_id()
             q = Queue()
 
             def task_id(q):
@@ -449,39 +508,22 @@ def test_user_spawned_threads_in_concurrent_actors(ray_start_regular):
             thread_task_id = q.get()
             thd.join()
 
-            return task_id, thread_task_id
+            return main_task_id, thread_task_id
 
-    async_actor = AsyncActor.options(max_concurrency=3).remote()
+    async_actor = AsyncActor.options(max_concurrency=actor_concurrency).remote()
     tasks = [async_actor.threaded_task_id.remote() for _ in range(20)]
-    expect_task_ids = [None for _ in tasks] 
-    actual_task_ids = [thread_task_id for _, thread_task_id in ray.get(tasks)]
-    assert ",".join(expect_task_ids) == ",".join(actual_task_ids)
+    if user_thread_task_id_expect_none:
+        expect_thread_task_ids = [None for _ in tasks]
+    else:
+        expect_thread_task_ids = [task.task_id().hex() for task in tasks]
+    expect_main_thread_task_ids = [task.task_id().hex() for task in tasks]
 
-    @ray.remote
-    class ThreadedActor:
-        def threaded_task_id(self):
-            task_id = ray.get_runtime_context().get_task_id()
-            import threading
-            from queue import Queue
+    result = ray.get(tasks)
+    actual_task_ids = [thread_task_id for _, thread_task_id in result]
+    main_thread_task_ids = [main_thread_task_id for main_thread_task_id, _ in result]
 
-            q = Queue()
-
-            def task_id(q):
-                q.put(ray.get_runtime_context().get_task_id())
-
-            thd = threading.Thread(target=task_id, args=(q,))
-            thd.start()
-            thread_task_id = q.get()
-            thd.join()
-
-            return task_id, thread_task_id
-
-
-    threaded_actor = ThreadedActor.options(max_concurrency=3).remote()
-    tasks = [threaded_actor.threaded_task_id.remote() for _ in range(20)]
-    expect_task_ids = [None for _ in tasks]
-    actual_task_ids = [thread_task_id for _, thread_task_id in ray.get(tasks)]
-    assert ",".join(expect_task_ids) == ",".join(actual_task_ids)
+    assert expect_thread_task_ids == actual_task_ids
+    assert expect_main_thread_task_ids == main_thread_task_ids
 
 
 if __name__ == "__main__":

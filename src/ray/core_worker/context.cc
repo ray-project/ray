@@ -87,8 +87,6 @@ struct WorkerExecContext {
   void SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_counter_ == 0);
-    RAY_LOG(INFO) << "set current task " << task_spec.GetName() << "for "
-                  << task_spec.TaskId();
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber());
     SetCurrentPlacementGroupId(task_spec.PlacementGroupBundleId().first);
     SetPlacementGroupCaptureChildTasks(task_spec.PlacementGroupCaptureChildTasks());
@@ -357,12 +355,11 @@ bool WorkerContext::CurrentActorDetached() const {
 
 void WorkerContext::InitExecContext(const TaskID &task_id) {
   auto thread_ctx = std::make_shared<WorkerExecContext>(task_id);
-  RAY_LOG(INFO) << "Init ctx for " << task_id;
   auto itr_inserted =
       all_exec_threads_contexts_.insert({std::this_thread::get_id(), thread_ctx});
   current_exec_context_ = itr_inserted.first->second;
   if (current_actor_is_asyncio_) {
-    // We also add this to the task id -> ctx mapping for async io since
+    // We also add an ExecContext corresponds to this task id for asyncio actor since
     // asyncio will run tasks in a seperate thread in its event loop.
     auto async_ctx = std::make_shared<WorkerExecContext>(task_id);
     all_async_actor_exec_contexts_.insert({task_id, async_ctx});
@@ -382,8 +379,8 @@ std::shared_ptr<WorkerExecContext> WorkerContext::GetExecContextInternal() const
     //  1. Its a thread owned by async actor's asyncio event loop.
     //    - We could try looking up the exec context by getting the task id from the
     //    context var.
-    //  2. Its a thread started by user level code.
-    //    - There's much we could do, we will return a nil context.
+    //  2. Its a thread started in user level code.
+    //    - There is not much we could do - we will return a nil context.
     if (current_actor_is_asyncio_) {
       // Try looking up the context stored in context var stored for each asyncio
       // coroutine before running it.
@@ -392,40 +389,29 @@ std::shared_ptr<WorkerExecContext> WorkerContext::GetExecContextInternal() const
              "CoreWorker "
              "could be aware of which task is running in asyncio's event loop.";
       auto current_task_id = TaskID::FromBinary(get_running_task_id_callback_());
-      RAY_CHECK(!current_task_id.IsNil()) << " should not be nil";
-      RAY_LOG(INFO) << "Got task from asyncio context: " << current_task_id;
-      const auto async_itr = all_async_actor_exec_contexts_.find(current_task_id);
-      if (async_itr == all_async_actor_exec_contexts_.end()) {
-        RAY_LOG(WARNING)
-            << "A unknown task(" << current_task_id
-            << ") is executed in the async actor. Returning the dummy exec context "
-               "with nil task id.";
-        return std::make_shared<WorkerExecContext>(TaskID::Nil());
+      if (!current_task_id.IsNil()) {
+        const auto async_itr = all_async_actor_exec_contexts_.find(current_task_id);
+        if (async_itr != all_async_actor_exec_contexts_.end()) {
+          RAY_CHECK(async_itr->second->GetCurrentTaskID() == current_task_id)
+              << "itr->" << async_itr->second->GetCurrentTaskID() << ", task_id"
+              << current_task_id;
+          return async_itr->second;
+        }
       }
-      RAY_CHECK(async_itr->second->GetCurrentTaskID() == current_task_id)
-          << "itr->" << async_itr->second->GetCurrentTaskID() << ", task_id"
-          << current_task_id;
-      return async_itr->second;
+      // This is where a user spawned a thread in async actor, Ray couldn't figure out
+      // the exact task that's being run.
+      RAY_LOG(WARNING)
+          << "An unknown task(" << current_task_id
+          << ") is executed in the async actor. Returning the dummy exec context "
+             "with nil task id.";
+      return std::make_shared<WorkerExecContext>(TaskID::Nil());
     }
     RAY_LOG(WARNING)
-        << "A unknown thread(" << std::this_thread::get_id()
+        << "An unknown thread(" << std::this_thread::get_id()
         << ") started executing in a multi-threaded/async actor. Ray is unable to "
            "figure out the parent thread's information. Returning the dummy exec "
            "context with nil task id.";
     return std::make_shared<WorkerExecContext>(TaskID::Nil());
-  }
-
-  if (current_actor_is_asyncio_) {
-    RAY_CHECK(get_running_task_id_callback_)
-        << "Async actors should have get_running_task_id_callback set so that "
-           "CoreWorker "
-           "could be aware of which task is running in asyncio's event loop.";
-    auto current_task_id = TaskID::FromBinary(get_running_task_id_callback_());
-
-    if (current_task_id != itr->second->GetCurrentTaskID()) {
-      RAY_LOG(WARNING) << "callback task id(" << current_task_id << ") != ctx task id("
-                       << itr->second->GetCurrentTaskID() << ")";
-    }
   }
 
   return itr->second;
@@ -433,9 +419,7 @@ std::shared_ptr<WorkerExecContext> WorkerContext::GetExecContextInternal() const
 
 std::shared_ptr<WorkerExecContext> WorkerContext::GetExecContext() const {
   absl::ReaderMutexLock lock(&mutex_);
-  auto x = GetExecContextInternal();
-  RAY_LOG(INFO) << "get task exec for " << x->GetCurrentTaskID();
-  return x;
+  return GetExecContextInternal();
 }
 
 }  // namespace core

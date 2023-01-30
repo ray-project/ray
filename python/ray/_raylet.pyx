@@ -22,7 +22,9 @@ import traceback
 import _thread
 import typing
 
-from contextvars import ContextVar, Token, copy_context 
+if sys.version_info.major >= 3 and sys.version_info.minor >= 7:
+    # TODO(rickyx): drop after python 3.6 deprecation
+    from contextvars import ContextVar, Token, copy_context
 
 from libc.stdint cimport (
     int32_t,
@@ -797,10 +799,9 @@ cdef void execute_task(
                         return function(actor, *arguments, **kwarguments)
                     async_function = sync_to_async(function)
 
-
                 return core_worker.run_async_func_in_event_loop(
                     async_function, function_descriptor,
-                    name_of_concurrency_group_to_execute,task_id, actor,
+                    name_of_concurrency_group_to_execute, task_id, actor,
                     *arguments, **kwarguments)
 
             return function(actor, *arguments, **kwarguments)
@@ -1166,7 +1167,6 @@ cdef CRayStatus task_execution_handler(
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
 
-
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -1498,8 +1498,10 @@ cdef class EmptyProfileEvent:
     def __exit__(self, *args):
         pass
 
+running_task_id_ctx_var = None
+if sys.version_info.major >= 3 and sys.version_info.minor >= 7:
+    running_task_id_ctx_var = ContextVar("__ray_task_id", default=TaskID.nil().binary())
 
-running_task_id_ctx_var = ContextVar("_ray_running_task_id", default=TaskID.nil().binary())
 cdef c_string get_running_task_id_callback() nogil:
     """
     A callback to be invoked by the CoreWorker to determine current running
@@ -1507,10 +1509,11 @@ cdef c_string get_running_task_id_callback() nogil:
     """
     cdef:
         c_string c_task_id_binary
-
     with gil:
-        c_task_id_binary = running_task_id_ctx_var.get()
-        return c_task_id_binary
+        if sys.version_info.major >= 3 and sys.version_info.minor >= 7:
+            c_task_id_binary = running_task_id_ctx_var.get()
+            return c_task_id_binary
+        return TaskID.nil().binary()
 
 cdef class CoreWorker:
 
@@ -2664,43 +2667,22 @@ cdef class CoreWorker:
         cdef:
             CFiberEvent event
 
+        if task_id is not None:
+            if sys.version_info.major >= 3 and sys.version_info.minor >= 7:
+                # Set the current task id in the context var so that each async
+                # function will have the correct task id while running concurrently.
+                running_task_id_ctx_var.set(task_id.binary())
 
-        ctx = copy_context()
+        eventloop, async_thread = self.get_event_loop(
+            function_descriptor, specified_cgname)
+        coroutine = func(*args, **kwargs)
 
-        def run_async_with_context():
-            if task_id != None:
-                # Set the current task id in context var so that each async function will
-                # match the correct and unique task while running concurrently.
-                token = running_task_id_ctx_var.set(task_id.binary())
-                if token.old_value != Token.MISSING:
-                    old_task_id = TaskID(token.old_value)
-                else:
-                    old_task_id = TaskID.nil()
-                print(f"set={task_id} , old={old_task_id}")
-                print(f"context's var = {TaskID(ctx.get(running_task_id_ctx_var))}")
-                print(f"var = {TaskID(running_task_id_ctx_var.get())}")
+        if threading.get_ident() == async_thread.ident:
+            future = asyncio.ensure_future(coroutine, eventloop)
+        else:
+            future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
 
-            eventloop, async_thread = self.get_event_loop(
-                function_descriptor, specified_cgname)
-            coroutine = func(*args, **kwargs)
-
-            # This task exec context should be set correctly by Ray's CoreWorker thread which 
-            # accepts the task, so it should always have the correct task exec context for 
-            # the to-be-run async function.
-            # task_id = core_worker.get_current_task_id()
-
-            # task_id = running_task_id_ctx_var.get()
-            # print(f"{threading.get_ident()} with {task_id} {function_descriptor.function_name} yielding")
-            if threading.get_ident() == async_thread.ident:
-                future = asyncio.ensure_future(coroutine, eventloop)
-            else:
-                future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
-
-            future.add_done_callback(lambda _: event.Notify())
-            return future
-
-        future = ctx.run(run_async_with_context)
-
+        future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
