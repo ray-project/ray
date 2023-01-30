@@ -25,6 +25,8 @@ NUM_NODES = 4
 
 # RandomTest setup constants
 CPUS_PER_NODE = 10
+NUM_ITERATIONS = 350
+ACTIONS_PER_ITERATION = 20
 
 RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
 
@@ -138,11 +140,10 @@ class RandomTest:
                 time.sleep(0.01)
 
     def run(self):
-        iteration = 0
         start_time = time.time()
         previous_time = start_time
-        while True:
-            for _ in range(20):
+        for iteration in range(NUM_ITERATIONS):
+            for _ in range(ACTIONS_PER_ITERATION):
                 actions, weights = zip(*self.weighted_actions)
                 action_chosen = random.choices(actions, weights=weights)[0]
                 print(f"Executing {action_chosen}")
@@ -166,7 +167,6 @@ class RandomTest:
                 }
             )
             previous_time = new_time
-            iteration += 1
 
             if RAY_UNIT_TEST:
                 break
