@@ -167,7 +167,6 @@ class RandomTest:
                 }
             )
             previous_time = new_time
-            iteration += 1
 
             if RAY_UNIT_TEST:
                 break
