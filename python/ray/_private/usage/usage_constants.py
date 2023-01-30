@@ -57,4 +57,10 @@ PROVIDER_KUBERNETES_GENERIC = "kubernetes"
 PROVIDER_KUBERAY = "kuberay"
 
 # The list of 3rd party libraries where we track their usages.
-THIRD_PARTY_LIBARY_LIBRARIES_WHITELIST = set(["tensorflow", "pytorch"])
+THIRD_PARTY_LIBARY_LIBRARIES_WHITELIST = {
+    "tensorflow",
+    "pytorch",
+    "numpy",
+    "pandas",
+    "pyarrow",
+}
