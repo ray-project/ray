@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import tempfile
+import shlex
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -8,7 +10,6 @@ from ray_release.command_runner.job_runner import JobRunner
 from ray_release.exception import (
     CommandError,
     JobBrokenError,
-    LogsError,
     ResultsError,
     JobTerminatedError,
 )
@@ -79,7 +80,8 @@ class AnyscaleJobRunner(JobRunner):
         timeout: float = 3600.0,
         is_long_running: bool = False,
     ) -> float:
-        prepare_command_str = ""
+        prepare_command_strs = []
+        prepare_command_timeout_strs = []
         for prepare_command, prepare_env, prepare_timeout in self.prepare_commands:
             prepare_env = self.get_full_command_env(prepare_env)
 
@@ -87,9 +89,8 @@ class AnyscaleJobRunner(JobRunner):
                 env_str = " ".join(f"{k}={v}" for k, v in prepare_env.items()) + " "
             else:
                 env_str = ""
-            prepare_command_str += (
-                f"{env_str}timeout '{prepare_timeout}' {prepare_command}; "
-            )
+            prepare_command_strs.append(f"'{env_str} {prepare_command}'")
+            prepare_command_timeout_strs.append(prepare_timeout)
 
         full_env = self.get_full_command_env(env)
 
@@ -98,16 +99,18 @@ class AnyscaleJobRunner(JobRunner):
         else:
             env_str = ""
 
-        is_long_running_str = " --test-long-running "
+        is_long_running_str = " --test-long-running " if is_long_running else ""
         full_command = (
-            f"{prepare_command_str}{env_str}python anyscale_job_wrapper.py '{command}' "
+            f"{env_str}python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{is_long_running_str}"
             "--results-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
             "--metrics-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}'"
+            f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
+            f"--prepare-commands {shlex.split(prepare_command_strs)} "
+            f"--prepare-commands-timeouts {shlex.split(prepare_command_timeout_strs)}"
         )
-        status_code, time_taken, error = self.job_manager.run_and_wait(
+        job_status_code, time_taken, error = self.job_manager.run_and_wait(
             full_command,
             full_env,
             working_dir=".",
@@ -115,30 +118,28 @@ class AnyscaleJobRunner(JobRunner):
             timeout=int(timeout) + 1000,
         )
 
-        if status_code == -2:
+        logs = self.get_last_logs()
+        output_json = re.search(r"### JSON \|([^\|]*)\| ###", logs)
+        if output_json:
+            output_json = json.loads(output_json.group(1))
+            workload_status_code = output_json["return_code"]
+
+        if job_status_code == -2:
             raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
 
-        if status_code == -3:
+        if job_status_code == -3:
             raise JobTerminatedError(
                 "Job entered terminated state (terminated manually or nodes "
-                "could not have been provisioned):\n{error}\n"
+                f"could not have been provisioned):\n{error}\n"
             )
 
-        if status_code != 0:
+        if job_status_code != 0 or workload_status_code != 0:
             raise CommandError(
-                f"Command returned non-success status: {status_code} with error:\n"
-                f"{error}\n"
+                f"Command returned non-success status: {workload_status_code} with"
+                f"error:\n{error}\n"
             )
 
         return time_taken
-
-    def get_last_logs(self, scd_id: Optional[str] = None):
-        ret = self.job_manager.get_last_logs()
-        if isinstance(ret, Exception):
-            raise LogsError(f"Could not get last logs: {ret}") from ret
-        elif ret is None:
-            raise LogsError("Could not get last logs")
-        return ret
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:

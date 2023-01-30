@@ -6,6 +6,7 @@ import subprocess
 import traceback
 import json
 import sys
+from typing import List
 
 AWS_CP_TIMEOUT = 300
 
@@ -80,55 +81,81 @@ def collect_metrics(time_taken: float) -> bool:
         return False
 
 
+def run_bash_command(workload: str, timeout: float):
+    timeout = timeout if timeout > 0 else None
+    cwd = Path.cwd()
+    workload_path = cwd / "workload.sh"
+    workload_path = workload_path.absolute().resolve()
+    with open(workload_path, "w") as fp:
+        fp.write(workload)
+    os.chmod(str(workload_path), 777)
+
+    command = ["bash", "-x", str(workload_path)]
+    print(f"Running command {command}")
+
+    try:
+        subprocess.check_call(command, timeout=timeout, stdout=subprocess.PIPE)
+        return_code = 0
+    except subprocess.CalledProcessError as e:
+        return_code = e.returncode
+    except subprocess.TimeoutExpired:
+        return_code = -1
+    return return_code
+
+
 def main(
     test_workload: str,
     test_workload_timeout: float,
     test_long_running: bool,
     results_s3_uri: str,
     metrics_s3_uri: str,
+    prepare_commands: List[str],
+    prepare_commands_timeouts: List[str],
 ):
-    print("### Starting entrypoint ###")
-    test_workload_timeout = test_workload_timeout if test_workload_timeout > 0 else None
+    print("### Starting ###")
     start_time = time.monotonic()
-    cwd = Path.cwd()
-    workload_path = cwd / "workload.sh"
-    with open(workload_path, "w") as fp:
-        fp.write(test_workload)
-    os.chmod(str(workload_path), 777)
 
-    command = ["bash", "-x", str(workload_path.absolute().resolve())]
-    print(f"Running command {command}")
+    prepare_return_codes = []
+    if prepare_commands:
+        print("### Starting prepare commands ###")
+        assert len(prepare_commands) == len(prepare_commands_timeouts)
+        for prepare_command, timeout in zip(
+            prepare_commands, prepare_commands_timeouts
+        ):
+            prepare_return_codes.append(run_bash_command(prepare_command, timeout))
+            if prepare_return_codes[-1] != 0:
+                print("Prepare command failed.")
+                break
 
-    try:
-        subprocess.check_call(
-            command, timeout=test_workload_timeout, stdout=subprocess.PIPE
-        )
-        return_code = 0
-    except subprocess.CalledProcessError as e:
-        return_code = e.returncode
-    except subprocess.TimeoutExpired:
-        return_code = -1
+    if prepare_return_codes[-1] == 0:
+        print("### Starting entrypoint ###")
+        return_code = run_bash_command(test_workload, test_workload_timeout)
 
-    timeout = return_code == -1
-    workload_time_taken = time.monotonic() - start_time
-    if timeout:
-        print(f"Timed out. Time taken: {workload_time_taken}")
+        timeout = return_code == -1
+        workload_time_taken = time.monotonic() - start_time
+        if timeout:
+            print(f"Timed out. Time taken: {workload_time_taken}")
+        else:
+            print(
+                f"Finished with return code {return_code}. "
+                f"Time taken: {workload_time_taken}"
+            )
+
+        subprocess.check_call(["pip", "install", "-q", "awscli"])
+        uploaded_results = run_aws_cp(os.environ["TEST_OUTPUT_JSON"], results_s3_uri)
+
+        collected_metrics = collect_metrics(workload_time_taken)
+        if collect_metrics:
+            uploaded_metrics = run_aws_cp(
+                os.environ["METRICS_OUTPUT_JSON"], metrics_s3_uri
+            )
     else:
-        print(
-            f"Finished with return code {return_code}. "
-            f"Time taken: {workload_time_taken}"
-        )
-
-    subprocess.check_call(["pip", "install", "-q", "awscli"])
-    uploaded_results = run_aws_cp(os.environ["TEST_OUTPUT_JSON"], results_s3_uri)
-
-    collected_metrics = collect_metrics(workload_time_taken)
-    if collect_metrics:
-        uploaded_metrics = run_aws_cp(os.environ["METRICS_OUTPUT_JSON"], metrics_s3_uri)
+        return_code = None
 
     total_time_taken = time.monotonic() - start_time
     output_json = {
         "return_code": return_code,
+        "prepare_return_codes": prepare_return_codes,
         "workload_time_taken": workload_time_taken,
         "total_time_taken": total_time_taken,
         "uploaded_results": uploaded_results,
@@ -146,6 +173,8 @@ def main(
             return_code = 0
         else:
             return_code = 124
+    elif return_code is None:
+        return_code = 1
     sys.exit(return_code)
 
 
@@ -170,6 +199,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--metrics-s3-uri", type=str, help="bucket address to upload metrics.json to"
+    )
+    parser.add_argument(
+        "--prepare-commands", type=str, nargs="*", help="prepare commands to run"
+    )
+    parser.add_argument(
+        "--prepare-commands-timeouts",
+        default=3600,
+        type=float,
+        nargs="*",
+        help="timeout for prepare commands (set to <0 for infinite)",
     )
 
     args = parser.parse_args()
