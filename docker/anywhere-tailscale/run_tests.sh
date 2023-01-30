@@ -12,7 +12,7 @@ fi
 
 /usr/local/bin/crash -U crate --hosts $clusterhosts -c "SELECT * FROM sys.nodes" || exit 1
 
-
+ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE || exit 1
 #ray status || exit 1
 
 #exit 0
