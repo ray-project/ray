@@ -473,8 +473,6 @@ class TrialRunnerTest3(unittest.TestCase):
             checkpoint_period=-1,
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
-        for i in range(3):
-            runner.step()
 
         assert len(runner.get_trials()) == 3, [t.config for t in runner.get_trials()]
         for t in runner.get_trials():
