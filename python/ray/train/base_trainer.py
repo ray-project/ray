@@ -459,12 +459,13 @@ class BaseTrainer(abc.ABC):
             tuner = Tuner(
                 trainable=trainable, param_space=param_space, run_config=self.run_config
             )
-            experiment_path = Path(
-                TunerInternal.setup_create_experiment_checkpoint_dir(
-                    trainable, self.run_config
-                )
+
+        experiment_path = Path(
+            TunerInternal.setup_create_experiment_checkpoint_dir(
+                trainable, self.run_config
             )
-            self._save(experiment_path)
+        )
+        self._save(experiment_path)
 
         result_grid = tuner.fit()
         assert len(result_grid) == 1
