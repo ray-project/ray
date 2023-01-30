@@ -986,7 +986,6 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   }
 }
 
-// TODO(ricky)
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {

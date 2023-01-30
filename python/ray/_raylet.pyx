@@ -730,7 +730,6 @@ cdef void execute_task(
     cdef:
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
-        # TaskID task_id = core_worker.get_current_task_id()
         CFiberEvent task_done_event
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
@@ -974,7 +973,6 @@ cdef void execute_task(
                 # actually run the task. We should run the usual handlers for
                 # task cancellation, retrying on application exception, etc. for
                 # all generator tasks, both static and dynamic.
-                # TODO(ricky)
                 core_worker.store_task_outputs(
                     worker, outputs,
                     returns)
@@ -1020,7 +1018,6 @@ cdef execute_task_with_cancellation_handler(
         dict execution_infos = manager.execution_infos
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
-        # TaskID task_id = core_worker.get_current_task_id()
         CFiberEvent task_done_event
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
@@ -1071,9 +1068,6 @@ cdef execute_task_with_cancellation_handler(
     global current_task_id
 
     try:
-        # task_id = (ray._private.worker.
-        #            global_worker.core_worker.get_current_task_id())
-
         # Set the current task ID, which is checked by a separate thread during
         # task cancellation. We must do this inside the try block so that, if
         # the task is interrupted because of cancellation, we will catch the
