@@ -55,8 +55,6 @@ tuner = Tuner(
         "train_loop_config": {
             "lr": tune.choice([0.001, 0.01, 0.1]),
             "momentum": 0.8,
-            "head_location": None,
-            "worker_locations": None,
             "test_mode": args.smoke_test,
             "batch_size": 128 * num_training_workers,
             # For the long running test, we want the training to run forever,

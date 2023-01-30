@@ -255,13 +255,13 @@ def get_and_run_exp_folder_observer(
             # first walk the experiment folder.
             # mapping between trial_id and trial_dir.
             trial_id_to_dir = {}
-            for _, dirs, _ in os.walk(self.experiment_dir):
+            for _, dirs, _ in os.walk(self._experiment_dir):
                 for (
                     dir
                 ) in (
                     dirs
                 ):  # for example, `TorchTrainer_8b00d_00000_0_2023-01-20_16-14-17`
-                    if dir.startswith(self.trainable_name):
+                    if dir.startswith(self._trainable_name):
                         tokens = dir.split("_")
                         trial_id = int(tokens[2])
                         trial_id_to_dir[trial_id] = dir
@@ -272,11 +272,16 @@ def get_and_run_exp_folder_observer(
             trial_id_to_checkpoint_ids = {}
             for trial_id, trial_dir in trial_id_to_dir.items():
                 trial_id_to_checkpoint_ids[trial_id] = []
-                for _, dirs, _ in os.walk(os.path.join(self.experiment_dir, trial_dir)):
+                for _, dirs, _ in os.walk(
+                    os.path.join(self._experiment_dir, trial_dir)
+                ):
                     for dir in dirs:
                         if dir.startswith("checkpoint_"):  # checkpoint_000001
-                            ckpt_id = int(dir.split("_")[1])
-                            trial_id_to_checkpoint_ids[trial_id].append(ckpt_id)
+                            try:
+                                ckpt_id = int(dir.split("_")[1])
+                                trial_id_to_checkpoint_ids[trial_id].append(ckpt_id)
+                            except ValueError:  # cannot be cast to int, ignore
+                                pass
                     break  # non-recursive
 
             return trial_id_to_checkpoint_ids
