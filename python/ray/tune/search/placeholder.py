@@ -36,7 +36,7 @@ class _Function_Value:
 
 
 class _Ref_Value:
-    """Replaced value for all other reference typed objects.
+    """Replaced value for all other non-primitive objects.
     """
     def __init__(self, value):
         self._value = value
