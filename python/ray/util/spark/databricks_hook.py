@@ -71,9 +71,12 @@ def _get_db_api_entry():
     return get_dbutils().entry_point
 
 
+_DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
+
+
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
     def get_default_temp_dir(self):
-        return "/local_disk0/tmp"
+        return _DATABRICKS_DEFAULT_TMP_DIR
 
     def on_ray_dashboard_created(self, port):
         display_databricks_driver_proxy_url(

@@ -93,8 +93,10 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 head_node_options={"include_dashboard": True},
             )
 
-            assert os.environ["RAY_ADDRESS"] == \
-                   ray.util.spark.cluster_init._active_ray_cluster.address
+            assert (
+                os.environ["RAY_ADDRESS"]
+                == ray.util.spark.cluster_init._active_ray_cluster.address
+            )
 
             ray.init()
 
@@ -127,7 +129,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             if ray.util.spark.cluster_init._active_ray_cluster is not None:
                 # if the test raised error and does not destroy cluster,
                 # destroy it here.
-                ray.util.spark._active_ray_cluster.shutdown()
+                ray.util.spark.cluster_init._active_ray_cluster.shutdown()
                 time.sleep(5)
             shutil.rmtree(ray_temp_root_dir, ignore_errors=True)
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
