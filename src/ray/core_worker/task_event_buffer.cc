@@ -139,7 +139,8 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     }
 
     size_t num_to_send =
-        std::min(RayConfig::instance().task_events_send_batch_size(), buffer_.size());
+        std::min(static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()),
+                 static_cast<size_t>(buffer_.size()));
     to_send.insert(to_send.end(),
                    std::make_move_iterator(buffer_.begin()),
                    std::make_move_iterator(buffer_.begin() + num_to_send));
