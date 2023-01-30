@@ -4,7 +4,9 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
 import math
-from typing import Dict, List, Optional
+import time
+from collections import deque
+from typing import Dict, List, Optional, Deque, Union
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -22,21 +24,27 @@ from ray.data._internal.stats import DatasetStats
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
 
+# A RefBundle or an exception / end of stream indicator.
+MaybeRefBundle = Union[RefBundle, Exception, None]
+
 
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
     This tracks state to manage input and output buffering for StreamingExecutor and
     progress bars, which is separate from execution state internal to the operators.
+
+    Note: we use the `deque` data structure here because it is thread-safe, enabling
+    operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[List[RefBundle]]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[Deque[MaybeRefBundle]]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
-        self.inqueues: List[List[RefBundle]] = inqueues
+        self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
-        self.outqueue: List[RefBundle] = []
+        self.outqueue: Deque[MaybeRefBundle] = deque()
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
@@ -80,9 +88,21 @@ class OpState:
         """Move a bundle from the operator inqueue to the operator itself."""
         for i, inqueue in enumerate(self.inqueues):
             if inqueue:
-                self.op.add_input(inqueue.pop(0), input_index=i)
+                self.op.add_input(inqueue.popleft(), input_index=i)
                 return
         assert False, "Nothing to dispatch"
+
+    def get_output_blocking(self) -> MaybeRefBundle:
+        """Get an item from this node's output queue, blocking as needed.
+
+        Returns:
+            The RefBundle from the output queue, or an error / end of stream indicator.
+        """
+        while True:
+            try:
+                return self.outqueue.popleft()
+            except IndexError:
+                time.sleep(0.01)
 
 
 def build_streaming_topology(
@@ -177,7 +197,10 @@ def process_completed_tasks(topology: Topology) -> None:
 
 
 def select_operator_to_run(
-    topology: Topology, cur_usage: ExecutionResources, limits: ExecutionResources
+    topology: Topology,
+    cur_usage: ExecutionResources,
+    limits: ExecutionResources,
+    ensure_at_least_one_running: bool,
 ) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
@@ -187,6 +210,10 @@ def select_operator_to_run(
     This is currently implemented by applying backpressure on operators that are
     producing outputs faster than they are consuming them `len(outqueue)`, as well as
     operators with a large number of running tasks `num_active_tasks()`.
+
+    Note that memory limits also apply to the outqueue of the output operator. This
+    provides backpressure if the consumer is slow. However, once a bundle is returned
+    to the user, it is no longer tracked.
     """
 
     # Filter to ops that are eligible for execution.
@@ -196,8 +223,13 @@ def select_operator_to_run(
         if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
     ]
 
-    # To ensure liveness, allow at least 1 op to run regardless of limits.
-    if not ops and all(op.num_active_work_refs() == 0 for op in topology):
+    # To ensure liveness, allow at least 1 op to run regardless of limits. This is
+    # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
+    if (
+        ensure_at_least_one_running
+        and not ops
+        and all(op.num_active_work_refs() == 0 for op in topology)
+    ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
         ops = [op for op, state in topology.items() if state.num_queued() > 0]
 
