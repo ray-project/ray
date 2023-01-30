@@ -121,7 +121,7 @@ def exponential_backoff_retry(
             retry_cnt += 1
             if retry_cnt > max_retries:
                 raise
-            logger.info(
+            logger.exception(
                 f"Retry function call failed due to {e} "
                 f"in {retry_delay_s} seconds..."
             )
