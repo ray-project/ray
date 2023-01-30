@@ -62,6 +62,7 @@ class CallResult:
 
     actor_id: int
     result_or_error: ResultOrError
+    tag: str
 
     @property
     def ok(self):
@@ -108,14 +109,15 @@ class RemoteCallResults:
     def __init__(self):
         self.result_or_errors: List[CallResult] = []
 
-    def add_result(self, actor_id: int, result_or_error: ResultOrError):
+    def add_result(self, actor_id: int, result_or_error: ResultOrError, tag: str):
         """Add index of a remote actor plus the call result to the list.
 
         Args:
             actor_id: ID of the remote actor.
             result_or_error: The result or error from the call.
+            tag: A description to identify the call.
         """
-        self.result_or_errors.append(CallResult(actor_id, result_or_error))
+        self.result_or_errors.append(CallResult(actor_id, result_or_error, tag))
 
     def __iter__(self) -> Iterator[ResultOrError]:
         """Return an iterator over the results."""
@@ -429,6 +431,7 @@ class FaultTolerantActorManager:
         *,
         remote_actor_ids: List[int],
         remote_calls: List[ray.ObjectRef],
+        tags: List[str],
         timeout_seconds: int = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
@@ -441,6 +444,7 @@ class FaultTolerantActorManager:
             remote_actor_ids: IDs of the actors these remote
                 calls were fired against.
             remote_calls: list of remote calls to fetch.
+            tags: list of tags used for identifying the remote calls.
             timeout_seconds: timeout for the ray.wait() call. Default is None.
             return_obj_refs: whether to return ObjectRef instead of actual results.
             mark_healthy: whether to mark certain actors healthy based on the results
@@ -467,15 +471,16 @@ class FaultTolerantActorManager:
         for r in ready:
             # Find the corresponding actor ID for this remote call.
             actor_id = remote_actor_ids[remote_calls.index(r)]
+            tag = tags[remote_calls.index(r)]
 
             # If caller wants ObjectRefs, return directly without resolve them.
             if return_obj_refs:
-                remote_results.add_result(actor_id, ResultOrError(result=r))
+                remote_results.add_result(actor_id, ResultOrError(result=r), tag)
                 continue
 
             try:
                 result = ray.get(r)
-                remote_results.add_result(actor_id, ResultOrError(result=result))
+                remote_results.add_result(actor_id, ResultOrError(result=result), tag)
 
                 if mark_healthy and not self.is_actor_healthy(actor_id):
                     # Yay, mark this actor as healthy.
@@ -484,7 +489,7 @@ class FaultTolerantActorManager:
                     self._num_actor_restarts += 1
             except Exception as e:
                 # Return error to the user.
-                remote_results.add_result(actor_id, ResultOrError(error=e))
+                remote_results.add_result(actor_id, ResultOrError(error=e), tag)
 
                 # Mark the actor as unhealthy.
                 # TODO(jungong): Using RayError here to preserve historical behavior.
@@ -588,6 +593,7 @@ class FaultTolerantActorManager:
         _, remote_results = self.__fetch_result(
             remote_actor_ids=remote_actor_ids,
             remote_calls=remote_calls,
+            tags=["default"] * len(remote_calls),
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
             mark_healthy=mark_healthy,
@@ -715,18 +721,18 @@ class FaultTolerantActorManager:
             )
         remote_calls = []
         remote_actor_ids = []
+        valid_tags = []
         for call, (tag, actor_id) in self.__in_flight_req_to_actor_id.items():
             # the default behavior is to return all ready results.
-            if tags == "default":
+            if tags == "default" or tag in tags:
                 remote_calls.append(call)
                 remote_actor_ids.append(actor_id)
-            elif tag in tags:
-                remote_calls.append(call)
-                remote_actor_ids.append(actor_id)
+                valid_tags.append(tag)
         # Construct the list of in-flight requests.
         ready, remote_results = self.__fetch_result(
             remote_actor_ids=remote_actor_ids,
             remote_calls=remote_calls,
+            tags=valid_tags,
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
             mark_healthy=mark_healthy,
