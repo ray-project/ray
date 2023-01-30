@@ -67,7 +67,7 @@ def collect_metrics(time_taken: float) -> bool:
             [
                 "python",
                 "prometheus_metrics.py",
-                time_taken,
+                str(time_taken),
                 "--path",
                 os.environ["METRICS_OUTPUT_JSON"],
             ],
