@@ -1,6 +1,7 @@
 import collections
 import logging
 import math
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import ray
@@ -27,14 +28,23 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 U = TypeVar("U")
 
+
+@dataclass
+class TaskContext:
+    """This describes the information of a task running block transform."""
+
+    # The index of task. Tasks for the same operator will have unique task index.
+    task_idx: int
+
+
 # Block transform function applied by task and actor pools.
 BlockTransform = Union[
     # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
     # Callable[[Block, BatchUDF, ...], Iterable[Block]],
-    Callable[[Iterable[Block]], Iterable[Block]],
-    Callable[[Iterable[Block], Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext, Union[BatchUDF, RowUDF]], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
 

@@ -7,6 +7,7 @@ import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data._internal.compute import (
     ComputeStrategy,
+    TaskContext,
     TaskPoolStrategy,
     ActorPoolStrategy,
 )
@@ -326,6 +327,7 @@ class _ObjectStoreMetrics:
 
 def _map_task(
     fn: Callable[[Iterator[Block]], Iterator[Block]],
+    ctx: TaskContext,
     *blocks: Block,
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
     """Remote function for a single operator task.
@@ -341,7 +343,7 @@ def _map_task(
     """
     output_metadata = []
     stats = BlockExecStats.builder()
-    for b_out in fn(iter(blocks)):
+    for b_out in fn(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
         m_out.exec_stats = stats.build()

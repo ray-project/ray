@@ -1,5 +1,6 @@
 from typing import List, Callable, Optional, Tuple
 
+from ray.data._internal.compute import TaskContext
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     RefBundle,
@@ -31,6 +32,7 @@ class AllToAllOperator(PhysicalOperator):
             name: The name of this operator.
         """
         self._bulk_fn = bulk_fn
+        self._next_task_index = 0
         self._num_outputs = num_outputs
         self._input_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
@@ -50,7 +52,9 @@ class AllToAllOperator(PhysicalOperator):
         self._input_buffer.append(refs)
 
     def inputs_done(self) -> None:
-        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer)
+        ctx = TaskContext(task_idx=self._next_task_index)
+        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
+        self._next_task_index += 1
         self._input_buffer.clear()
         super().inputs_done()
 

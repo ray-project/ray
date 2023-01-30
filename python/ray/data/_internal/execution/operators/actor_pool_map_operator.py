@@ -5,7 +5,7 @@ from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
-from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.compute import ActorPoolStrategy, TaskContext
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -67,6 +67,7 @@ class ActorPoolMapOperator(MapOperator):
         self._cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
+        self._next_task_idx = 0
 
     def internal_queue_size(self) -> int:
         return len(self._bundle_queue)
@@ -107,9 +108,11 @@ class ActorPoolMapOperator(MapOperator):
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
+            ctx = TaskContext(task_idx=self._next_task_idx)
             ref = actor.submit.options(num_returns="dynamic").remote(
-                self._transform_fn_ref, *input_blocks
+                self._transform_fn_ref, ctx, *input_blocks
             )
+            self._next_task_idx += 1
             task = _TaskState(bundle)
             self._tasks[ref] = (task, actor)
             self._handle_task_submitted(task)
@@ -260,9 +263,12 @@ class _MapWorker:
         return "ok"
 
     def submit(
-        self, fn: Callable[[Iterator[Block]], Iterator[Block]], *blocks: Block
+        self,
+        fn: Callable[[Iterator[Block], TaskContext], Iterator[Block]],
+        ctx,
+        *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(fn, *blocks)
+        yield from _map_task(fn, ctx, *blocks)
 
 
 # TODO(Clark): Promote this to a public config once we deprecate the legacy compute
