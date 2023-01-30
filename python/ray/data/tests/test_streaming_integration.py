@@ -55,7 +55,7 @@ def test_pipelined_execution(ray_start_10_cpus_shared):
     assert output == expected, (output, expected)
 
 
-def test_e2e_option_propagation(ray_start_10_cpus_shared):
+def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_context):
     DatasetContext.get_current().new_execution_backend = True
     DatasetContext.get_current().use_streaming_executor = True
 
@@ -69,12 +69,9 @@ def test_e2e_option_propagation(ray_start_10_cpus_shared):
     )
     run()
 
-    try:
-        DatasetContext.get_current().execution_options.resource_limits.cpu = 1
-        with pytest.raises(ValueError):
-            run()
-    finally:
-        DatasetContext.get_current().execution_options.resource_limits.cpu = None
+    DatasetContext.get_current().execution_options.resource_limits.cpu = 1
+    with pytest.raises(ValueError):
+        run()
 
 
 def test_configure_spread_e2e(ray_start_10_cpus_shared):
@@ -134,7 +131,7 @@ def test_scheduling_progress_when_output_blocked(ray_start_10_cpus_shared):
     assert list(it) == [[x] for x in range(1, 100)]
 
 
-def test_backpressure_from_output(ray_start_10_cpus_shared):
+def test_backpressure_from_output(ray_start_10_cpus_shared, restore_dataset_context):
     # Here we set the memory limit low enough so the output getting blocked will
     # actually stall execution.
 
@@ -156,44 +153,40 @@ def test_backpressure_from_output(ray_start_10_cpus_shared):
         return x
 
     ctx = DatasetContext.get_current()
-    try:
-        ctx.use_streaming_executor = True
-        ctx.execution_options.resource_limits.object_store_memory = 10000
+    ctx.use_streaming_executor = True
+    ctx.execution_options.resource_limits.object_store_memory = 10000
 
-        # Only take the first item from the iterator.
-        it = iter(
-            ray.data.range(100000, parallelism=100)
-            .map_batches(func, batch_size=None)
-            .iter_batches(batch_size=None)
-        )
-        next(it)
-        num_finished = ray.get(counter.get.remote())
-        assert num_finished < 5, num_finished
+    # Only take the first item from the iterator.
+    it = iter(
+        ray.data.range(100000, parallelism=100)
+        .map_batches(func, batch_size=None)
+        .iter_batches(batch_size=None)
+    )
+    next(it)
+    num_finished = ray.get(counter.get.remote())
+    assert num_finished < 5, num_finished
 
-        # Check we can get the rest.
-        for rest in it:
-            pass
-        assert ray.get(counter.get.remote()) == 100
-    finally:
-        ctx.execution_options.resource_limits.object_store_memory = None
+    # Check we can get the rest.
+    for rest in it:
+        pass
+    assert ray.get(counter.get.remote()) == 100
 
 
-def test_e2e_liveness_with_output_backpressure_edge_case(ray_start_10_cpus_shared):
+def test_e2e_liveness_with_output_backpressure_edge_case(
+    ray_start_10_cpus_shared, restore_dataset_context
+):
     # At least one operator is ensured to be running, if the output becomes idle.
     ctx = DatasetContext.get_current()
     ctx.use_streaming_executor = True
     ctx.execution_options.preserve_order = True
-    try:
-        ctx.execution_options.resource_limits.object_store_memory = 1
-        ds = ray.data.range(10000, parallelism=100).map(lambda x: x, num_cpus=2)
-        # This will hang forever if the liveness logic is wrong, since the output
-        # backpressure will prevent any operators from running at all.
-        assert ds.take_all() == list(range(10000))
-    finally:
-        ctx.execution_options.resource_limits.object_store_memory = None
+    ctx.execution_options.resource_limits.object_store_memory = 1
+    ds = ray.data.range(10000, parallelism=100).map(lambda x: x, num_cpus=2)
+    # This will hang forever if the liveness logic is wrong, since the output
+    # backpressure will prevent any operators from running at all.
+    assert ds.take_all() == list(range(10000))
 
 
-def test_e2e_autoscaling_up(ray_start_10_cpus_shared):
+def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_dataset_context):
     DatasetContext.get_current().new_execution_backend = True
     DatasetContext.get_current().use_streaming_executor = True
 
@@ -264,7 +257,7 @@ def test_e2e_autoscaling_up(ray_start_10_cpus_shared):
         ).take_all()
 
 
-def test_e2e_autoscaling_down(ray_start_10_cpus_shared):
+def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_dataset_context):
     DatasetContext.get_current().new_execution_backend = True
     DatasetContext.get_current().use_streaming_executor = True
 
@@ -274,15 +267,12 @@ def test_e2e_autoscaling_down(ray_start_10_cpus_shared):
 
     # Tests that autoscaling works even when resource constrained via actor killing.
     # To pass this, we need to autoscale down to free up slots for task execution.
-    try:
-        DatasetContext.get_current().execution_options.resource_limits.cpu = 2
-        ray.data.range(5, parallelism=5).map_batches(
-            f,
-            compute=ray.data.ActorPoolStrategy(1, 2),
-            batch_size=None,
-        ).map_batches(lambda x: x, batch_size=None, num_cpus=2).take_all()
-    finally:
-        DatasetContext.get_current().execution_options.resource_limits.cpu = None
+    DatasetContext.get_current().execution_options.resource_limits.cpu = 2
+    ray.data.range(5, parallelism=5).map_batches(
+        f,
+        compute=ray.data.ActorPoolStrategy(1, 2),
+        batch_size=None,
+    ).map_batches(lambda x: x, batch_size=None, num_cpus=2).take_all()
 
 
 if __name__ == "__main__":
