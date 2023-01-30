@@ -283,6 +283,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
       ray_syncer_service_(ray_syncer_),
+      worker_killing_policy_(
+          CreateWorkerKillingPolicy(RayConfig::instance().worker_killing_policy())),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold(),
@@ -525,6 +527,8 @@ ray::Status NodeManager::RegisterGcs() {
         /* receiver */ this,
         /* pull_from_reporter_interval_ms */ 0);
 
+    auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
+    ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
     periodical_runner_.RunFnPeriodically(
         [this] {
           auto triggered_by_global_gc = TryLocalGC();
@@ -1278,11 +1282,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
-  if (((worker_type != rpc::WorkerType::SPILL_WORKER &&
-        worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
-      worker_type == rpc::WorkerType::DRIVER) {
+  if (worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
-  } else {
+  } else if (worker_type == rpc::WorkerType::SPILL_WORKER ||
+             worker_type == rpc::WorkerType::RESTORE_WORKER) {
     RAY_CHECK(job_id.IsNil());
   }
   auto worker = std::dynamic_pointer_cast<WorkerInterface>(
@@ -1456,10 +1459,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   }
   // Publish the worker failure.
   auto worker_failure_data_ptr =
-      gcs::CreateWorkerFailureData(self_node_id_,
-                                   worker->WorkerId(),
-                                   worker->IpAddress(),
-                                   worker->Port(),
+      gcs::CreateWorkerFailureData(worker->WorkerId(),
                                    time(nullptr),
                                    disconnect_type,
                                    disconnect_detail,
@@ -2869,9 +2869,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << "idle worker are occupying most of the memory.";
           return;
         }
-        RetriableLIFOWorkerKillingPolicy worker_killing_policy;
         auto worker_to_kill_and_should_retry =
-            worker_killing_policy.SelectWorkerToKill(workers, system_memory);
+            worker_killing_policy_->SelectWorkerToKill(workers, system_memory);
         auto worker_to_kill = worker_to_kill_and_should_retry.first;
         bool should_retry = worker_to_kill_and_should_retry.second;
         if (worker_to_kill == nullptr) {

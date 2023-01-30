@@ -327,6 +327,8 @@
     script: python workloads/gpu_batch_prediction.py --data-size-gb 100
     type: job
 
+    wait_for_nodes:
+        num_nodes: 4
 
   alert: default
 
@@ -1785,7 +1787,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1815,7 +1817,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -2663,7 +2665,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2686,7 +2688,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2708,7 +2710,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2732,7 +2734,7 @@
 #    test_suite: rllib_tests
 
 #  frequency: nightly
-#  team: rl
+#  team: rllib
 #  env: staging
 
 #  cluster:
@@ -2756,7 +2758,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2779,7 +2781,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2801,7 +2803,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2823,7 +2825,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2845,7 +2847,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2867,7 +2869,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2889,7 +2891,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2911,7 +2913,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2933,7 +2935,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2956,7 +2958,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2979,7 +2981,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3002,7 +3004,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3025,7 +3027,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3048,7 +3050,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3071,7 +3073,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3094,7 +3096,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3117,7 +3119,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3140,7 +3142,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3163,7 +3165,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3172,7 +3174,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/tf --framework=tf
 
 
   alert: default
@@ -3186,7 +3188,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3195,7 +3197,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/torch --framework=torch
 
 
   alert: default
@@ -3209,7 +3211,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3232,7 +3234,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3254,7 +3256,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3277,7 +3279,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3300,7 +3302,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3323,7 +3325,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3346,7 +3348,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3368,7 +3370,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3391,7 +3393,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3414,7 +3416,7 @@
     test_suite: rllib_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3435,6 +3437,30 @@
 
     run:
       timeout: 2000
+
+  alert: default
+
+- name: rllib_learning_tests_leela_chess_zero
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml  
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=leela_chess_zero
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -3870,26 +3896,50 @@
       num_nodes: 32
 
 
-- name: many_nodes_actor_test
+- name: many_nodes_actor_test_on_v2
   group: core-daily-test
-  working_dir: nightly_tests
+  working_dir: benchmarks
   legacy:
     test_name: many_nodes_actor_test
-    test_suite: nightly_tests
+    test_suite: benchmarks
 
   frequency: nightly-3x
   team: core
+  env: staging
   cluster:
-    cluster_env: many_nodes_tests/app_config.yaml
-    cluster_compute: many_nodes_tests/compute_config.yaml
+    cluster_env: distributed/many_nodes_tests/app_config.yaml
+    cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
     timeout: 7200
-    script: python many_nodes_tests/actor_test.py
+    # 2cpus per node x 1000 nodes / 0.2 cpus per actor = 10k
+    # 2cpus per node x 2000 nodes / 0.2 cpus per actor = 20k
+    script: python distributed/many_nodes_tests/actor_test.py --no-wait --cpus-per-actor=0.2 --total-actors 10000 20000
+    type: job
     wait_for_nodes:
-      num_nodes: 251
+      num_nodes: 500
 
-
+#- name: many_nodes_multi_master_test
+#  group: core-daily-test
+#  working_dir: nightly_tests
+#  legacy:
+#    test_name: many_nodes_multi_master_test
+#    test_suite: nightly_tests
+#
+#  frequency: nightly-3x
+#  team: core
+#  cluster:
+#    cluster_env: many_nodes_tests/app_config.yaml
+#    cluster_compute: many_nodes_tests/compute_config.yaml
+#
+#  run:
+#    timeout: 7200
+#    script: python many_nodes_tests/multi_master_test.py
+#    wait_for_nodes:
+#      num_nodes: 251
+#
+#    type: sdk_command
+#    file_manager: sdk
 
 - name: pg_autoscaling_regression_test
   group: core-daily-test
@@ -4349,6 +4399,23 @@
     # Expect the benchmark to finish around 30 minutes.
     timeout: 2400
     script: python map_batches_benchmark.py
+
+    type: sdk_command
+
+- name: iter_tensor_batches_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py
 
     type: sdk_command
 

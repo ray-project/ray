@@ -7,6 +7,8 @@ import ray.cloudpickle as cloudpickle
 from typing import Iterator, Tuple, Any
 
 import ray
+from ray.data._internal.logical.optimizers import get_execution_dag
+from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, List
 from ray.data.datasource import ReadTask
@@ -74,7 +76,10 @@ def execute_to_legacy_block_list(
     Returns:
         The output as a legacy block list.
     """
-    dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    if DatasetContext.get_current().optimizer_enabled:
+        dag, stats = get_execution_dag(plan._logical_plan.dag), None
+    else:
+        dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
     bundles = executor.execute(dag, initial_stats=stats)
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
     return _bundles_to_block_list(bundles)
@@ -146,7 +151,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for read_task in blocks:
                 yield from read_task()
 
-        return MapOperator(do_read, inputs, name="DoRead")
+        return MapOperator.create(do_read, inputs, name="DoRead")
     else:
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
         for i in output:
@@ -212,7 +217,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         def do_map(blocks: Iterator[Block]) -> Iterator[Block]:
             yield from block_fn(blocks, *fn_args, **fn_kwargs)
 
-        return MapOperator(
+        return MapOperator.create(
             do_map,
             input_op,
             name=stage.name,
