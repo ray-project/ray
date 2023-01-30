@@ -26,9 +26,9 @@ from ray._private.utils import _get_pyarrow_version
 )
 def test_create_possibly_ragged_ndarray(values):
     ragged_array = create_possibly_ragged_ndarray(values)
-
-    assert [array.shape for array in ragged_array] == [array.shape for array in values]
-    assert [array.dtype for array in ragged_array] == [array.dtype for array in values]
+    assert len(ragged_array) == len(values)
+    for actual_array, expected_array in zip(ragged_array, values):
+        np.testing.assert_array_equal(actual_array, expected_array)
 
 
 def test_tensor_array_validation():
