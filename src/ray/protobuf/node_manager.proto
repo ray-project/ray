@@ -411,7 +411,6 @@ service NodeManagerService {
   rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
   // [State API] Get the all object information of the node.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
-  // Gets the task execution result. May contain a result if
-  // the task completed in error.
+  // Gets the worker failure. May contain a result if the worker completed in error.
   rpc GetWorkerFailureCause(GetWorkerFailureCauseRequest) returns (GetWorkerFailureCauseReply);
 }

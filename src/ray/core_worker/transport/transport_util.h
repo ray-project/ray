@@ -8,7 +8,7 @@ inline std::optional<rpc::RayErrorInfo> GetErrorInfoFromGetWorkerFailureCauseRep
     const Status &get_worker_failure_cause_reply_status,
     const rpc::GetWorkerFailureCauseReply &get_worker_failure_cause_reply) {
   if (get_worker_failure_cause_reply_status.ok()) {
-    RAY_LOG(DEBUG) << "Task failure cause for worker " << addr.worker_id << ": "
+    RAY_LOG(DEBUG) << "Worker failure for " << addr.worker_id << ": "
                    << ray::gcs::RayErrorInfoToString(
                           get_worker_failure_cause_reply.failure_cause());
     if (get_worker_failure_cause_reply.has_failure_cause()) {
@@ -17,13 +17,13 @@ inline std::optional<rpc::RayErrorInfo> GetErrorInfoFromGetWorkerFailureCauseRep
       return std::nullopt;
     }
   } else {
-    RAY_LOG(DEBUG) << "Failed to fetch task result with status "
+    RAY_LOG(DEBUG) << "Failed to fetch worker failure with status "
                    << get_worker_failure_cause_reply_status.ToString()
                    << " node id: " << addr.raylet_id << " ip: " << addr.ip_address;
     std::stringstream buffer;
-    buffer << "Task failed due to the node dying.\n\nThe node (IP: " << addr.ip_address
+    buffer << "Worker failed due to the node dying.\n\nThe node (IP: " << addr.ip_address
            << ", node ID: " << addr.raylet_id
-           << ") where this task was running crashed unexpectedly. "
+           << ") where this worker was running crashed unexpectedly. "
            << "This can happen if: (1) the instance where the node was running failed, "
               "(2) raylet crashes unexpectedly (OOM, preempted node, etc).\n\n"
            << "To see more information about the crash, use `ray logs raylet.out -ip "
