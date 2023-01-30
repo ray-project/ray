@@ -163,6 +163,9 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
+    if mode == ray.WORKER_MODE:
+        ray._private.usage.usage_lib.start_record_third_party_library_usage()
+
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address

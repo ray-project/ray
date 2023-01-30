@@ -52,6 +52,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
+from importlib.abc import MetaPathFinder
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -170,6 +171,7 @@ class UsageStatsEnabledness(Enum):
 
 
 _recorded_library_usages = set()
+_record_third_party_library_usage_started = False
 _recorded_library_usages_lock = threading.Lock()
 _recorded_extra_usage_tags = dict()
 _recorded_extra_usage_tags_lock = threading.Lock()
@@ -275,6 +277,40 @@ def _put_extra_usage_tag(key: str, value: str):
         )
     except Exception as e:
         logger.debug(f"Failed to put extra usage tag, {e}")
+
+
+class _ThirdPartyLibraryUsageFinder(MetaPathFinder):
+    """Custom MetaPathFinder that logs the whitelisted 3rd party library usage."""
+
+    def find_spec(self, fullname, _, target=None):
+        library_name = self._get_library_name(fullname)
+        if (
+            library_name
+            and library_name in usage_constant.THIRD_PARTY_LIBARY_LIBRARIES_WHITELIST
+        ):
+            record_library_usage(library_name)
+        # This meta path finder only logs the library usage
+        # without actually import it. Return None
+        # so the default meta_path_finder could pick up
+        # the job.
+        return None
+
+    def _get_library_name(self, fullname: str):
+        if not fullname:
+            return None
+        return fullname.split(".")[0]
+
+
+def start_record_third_party_library_usage():
+    """Install the hook which records whitelisted 3rd party library usages on import."""
+    global _record_third_party_library_usage_started
+    with _recorded_library_usages_lock:
+        if _record_third_party_library_usage_started:
+            return
+        # insert _ThirdPartyLibraryUsageFinder at the front of sys.meta_path
+        # it is triggered first.
+        sys.meta_path.insert(0, _ThirdPartyLibraryUsageFinder())
+        _record_third_party_library_usage_started = True
 
 
 def record_library_usage(library_usage: str):
