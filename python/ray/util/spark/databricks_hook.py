@@ -59,8 +59,8 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
 
 
 DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS = 3
-DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES = (
-    "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES"
+DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES = (
+    "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES"
 )
 
 
@@ -91,13 +91,13 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             )
         except Exception:
             _logger.warning(
-                "Registering ray cluster spark job as background job failed. "
+                "Registering Ray cluster spark job as background job failed. "
                 "You need to manually call `ray.util.spark.shutdown_ray_cluster()` "
                 "before detaching your databricks notebook."
             )
 
         auto_shutdown_timeout_minutes = float(
-            os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES, "30")
+            os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES, "30")
         )
         if auto_shutdown_timeout_minutes == 0:
             _logger.info(
@@ -106,20 +106,11 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "`ray.util.spark.shutdown_ray_cluster()`."
             )
             return
-        elif auto_shutdown_timeout_minutes < 0:
+        if auto_shutdown_timeout_minutes < 0:
             raise ValueError(
                 "You must set "
-                f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES}' "
+                f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES}' "
                 "to a value >= 0."
-            )
-        else:
-            _logger.info(
-                "The Ray cluster will be shut down automatically if you don't run "
-                "commands on the databricks notebook for "
-                f"{auto_shutdown_timeout_minutes} minutes. You can change the "
-                "timeout minutes by setting "
-                "'DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES' environment "
-                "variable, setting it to 0 means infinite timeout."
             )
 
         try:
@@ -134,6 +125,15 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "Ray cluster on spark."
             )
             return
+
+        _logger.info(
+            "The Ray cluster will be shut down automatically if you don't run "
+            "commands on the databricks notebook for "
+            f"{auto_shutdown_timeout_minutes} minutes. You can change the "
+            "timeout minutes by setting "
+            f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES}' environment "
+            "variable, setting it to 0 means infinite timeout."
+        )
 
         def auto_shutdown_watcher():
             auto_shutdown_timeout_millis = auto_shutdown_timeout_minutes * 60 * 1000
@@ -155,5 +155,5 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 time.sleep(DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
 
         threading.Thread(
-            target=auto_shutdown_watcher, args=(), daemon=True
+            target=auto_shutdown_watcher, daemon=True
         ).start()

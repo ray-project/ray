@@ -14,7 +14,6 @@ pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
     reason="Ray on spark only supports running on Linux.",
 )
-ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_DIR = "/tmp"
 
 
 class MockDbApiEntry:
@@ -47,31 +46,33 @@ class TestDatabricksHook:
         cls.spark.stop()
         os.environ.pop("SPARK_WORKER_CORES")
 
-    def test_hook(self):
+    def test_hook(self, monkeypatch):
         try:
+            monkeypatch.setattr(
+                "ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_DIR",
+                "/tmp"
+            )
+            monkeypatch.setenv("DATABRICKS_RUNTIME_VERSION", "12.2")
+            monkeypatch.setenv(
+                "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES", 1
+            )
             db_api_entry = MockDbApiEntry()
-            with mock.patch(
+            monkeypatch.setattr(
                 "ray.util.spark.databricks_hook._get_db_api_entry",
-                return_value=db_api_entry,
-            ), mock.patch.dict(
-                os.environ,
-                {
-                    "DATABRICKS_RUNTIME_VERSION": "12.2",
-                    "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES": "2",
-                },
-            ):
-                setup_ray_cluster(
-                    num_worker_nodes=2,
-                    head_node_options={"include_dashboard": False},
-                )
-                cluster = ray.util.spark.cluster_init._active_ray_cluster
-                assert not cluster.is_shutdown
-                assert db_api_entry.registered_job_groups == [
-                    cluster.spark_job_group_id
-                ]
-                time.sleep(125)
-                assert cluster.is_shutdown
-                assert ray.util.spark.cluster_init._active_ray_cluster is None
+                lambda: db_api_entry
+            )
+            setup_ray_cluster(
+                num_worker_nodes=2,
+                head_node_options={"include_dashboard": False},
+            )
+            cluster = ray.util.spark.cluster_init._active_ray_cluster
+            assert not cluster.is_shutdown
+            assert db_api_entry.registered_job_groups == [
+                cluster.spark_job_group_id
+            ]
+            time.sleep(65)
+            assert cluster.is_shutdown
+            assert ray.util.spark.cluster_init._active_ray_cluster is None
         finally:
             if ray.util.spark.cluster_init._active_ray_cluster is not None:
                 # if the test raised error and does not destroy cluster,

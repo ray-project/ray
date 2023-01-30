@@ -71,6 +71,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 self.num_cpus_per_spark_task * 2,
                 MAX_NUM_WORKER_NODES,
             ),
+            (
+                self.max_spark_tasks // 2,
+                self.num_cpus_per_spark_task * 2,
+                self.max_spark_tasks // 2 + 1,
+            ),  # Test case: requesting resources exceeding all cluster resources
         ]:
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes_arg,
