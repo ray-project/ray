@@ -2062,7 +2062,7 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: serve_failure
