@@ -221,6 +221,14 @@ class Tuner:
             )
             warnings.warn(warning_message, RayDeprecationWarning, stacklevel=2)
 
+        if not trainable:
+            warning_message = (
+                "Passing in the experiment's `trainable` will be a required argument "
+                "to `Tuner.restore` starting from version 2.5. "
+                "Please specify the trainable to avoid this warning."
+            )
+            warnings.warn(warning_message, RayDeprecationWarning, stacklevel=2)
+
         resume_config = _ResumeConfig(
             resume_unfinished=resume_unfinished,
             resume_errored=resume_errored,
