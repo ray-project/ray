@@ -417,8 +417,9 @@ class Monitor:
                             ).set(pending)
 
                     self.prom_metrics.pending_nodes.set(
-                        len(autoscaler_summary.pending_nodes) +
-                        len(autoscaler_summary.pending_launches))
+                        len(autoscaler_summary.pending_nodes)
+                        + len(autoscaler_summary.pending_launches)
+                    )
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
