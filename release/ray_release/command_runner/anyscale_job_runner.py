@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.exception import (
-    CommandError,
+    TestCommandTimeout,
+    TestCommandError,
+    PrepareCommandError,
+    PrepareCommandTimeout,
     JobBrokenError,
     ResultsError,
     JobTerminatedError,
@@ -131,6 +134,9 @@ class AnyscaleJobRunner(JobRunner):
             output_json = json.loads(output_json.group(1))
             print(output_json)
             workload_status_code = output_json["return_code"]
+            workload_time_taken = output_json["workload_time_taken"]
+            prepare_return_codes = output_json["prepare_return_codes"]
+            last_prepare_time_taken = output_json["last_prepare_time_taken"]
 
         if job_status_code == -2:
             raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
@@ -141,9 +147,24 @@ class AnyscaleJobRunner(JobRunner):
                 f"could not have been provisioned):\n{error}\n"
             )
 
+        if prepare_return_codes[-1] != 0:
+            if prepare_return_codes[-1] != 0:
+                raise PrepareCommandTimeout(
+                    "Prepare command timed out after "
+                    f"{last_prepare_time_taken} seconds."
+                )
+            raise PrepareCommandError(
+                f"Prepare command '{self.prepare_commands[-1]}' returned non-success "
+                f"status: {prepare_return_codes[-1]} with error:\n{error}\n"
+            )
+
         if job_status_code != 0 or workload_status_code != 0:
-            raise CommandError(
-                f"Command returned non-success status: {workload_status_code} with"
+            if workload_status_code == -1:
+                raise TestCommandTimeout(
+                    f"Command timed out after {workload_time_taken} seconds."
+                )
+            raise TestCommandError(
+                f"Command returned non-success status: {workload_status_code} with "
                 f"error:\n{error}\n"
             )
 

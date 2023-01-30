@@ -90,7 +90,7 @@ def run_bash_command(workload: str, timeout: float):
         fp.write(workload)
 
     command = ["bash", "-x", str(workload_path)]
-    print(f"Running command {command}")
+    print(f"Running command {workload}")
 
     try:
         subprocess.check_call(command, timeout=timeout, stdout=subprocess.PIPE)
@@ -99,8 +99,8 @@ def run_bash_command(workload: str, timeout: float):
         return_code = e.returncode
     except subprocess.TimeoutExpired:
         return_code = -1
-
-    os.remove(str(workload_path))
+    finally:
+        os.remove(str(workload_path))
     return return_code
 
 
@@ -123,17 +123,32 @@ def main(
         for prepare_command, timeout in zip(
             prepare_commands, prepare_commands_timeouts
         ):
+            command_start_time = time.monotonic()
             prepare_return_codes.append(run_bash_command(prepare_command, timeout))
-            if prepare_return_codes[-1] != 0:
+            prepare_time_taken = time.monotonic() - command_start_time
+            return_code = prepare_return_codes[-1]
+            if return_code != 0:
+                timeout = return_code == -1
+                if timeout:
+                    print(
+                        "Prepare command timed out. "
+                        f"Time taken: {prepare_time_taken}"
+                    )
+                else:
+                    print(
+                        f"Prepare command finished with return code {return_code}. "
+                        f"Time taken: {prepare_time_taken}"
+                    )
                 print("Prepare command failed.")
                 break
 
     if prepare_return_codes[-1] == 0:
         print("### Starting entrypoint ###")
+        command_start_time = time.monotonic()
         return_code = run_bash_command(test_workload, test_workload_timeout)
+        workload_time_taken = time.monotonic() - command_start_time
 
         timeout = return_code == -1
-        workload_time_taken = time.monotonic() - start_time
         if timeout:
             print(f"Timed out. Time taken: {workload_time_taken}")
         else:
@@ -157,6 +172,7 @@ def main(
     output_json = {
         "return_code": return_code,
         "prepare_return_codes": prepare_return_codes,
+        "last_prepare_time_taken": prepare_time_taken,
         "workload_time_taken": workload_time_taken,
         "total_time_taken": total_time_taken,
         "uploaded_results": uploaded_results,
