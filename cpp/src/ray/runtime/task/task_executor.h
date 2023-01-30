@@ -78,6 +78,7 @@ class TaskExecutor {
       const rpc::Address &caller_address,
       ray::TaskType task_type,
       const std::string task_name,
+      const ray::TaskID task_id,
       const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<ray::RayObject>> &args,

@@ -22,6 +22,8 @@ import traceback
 import _thread
 import typing
 
+from contextvars import ContextVar, Token, copy_context 
+
 from libc.stdint cimport (
     int32_t,
     int64_t,
@@ -701,6 +703,7 @@ cdef void execute_task(
         const CAddress &caller_address,
         CTaskType task_type,
         const c_string name,
+        TaskID task_id,
         const CRayFunction &ray_function,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -725,7 +728,7 @@ cdef void execute_task(
     cdef:
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
-        TaskID task_id = core_worker.get_current_task_id()
+        # TaskID task_id = core_worker.get_current_task_id()
         CFiberEvent task_done_event
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
@@ -794,9 +797,10 @@ cdef void execute_task(
                         return function(actor, *arguments, **kwarguments)
                     async_function = sync_to_async(function)
 
+
                 return core_worker.run_async_func_in_event_loop(
                     async_function, function_descriptor,
-                    name_of_concurrency_group_to_execute, actor,
+                    name_of_concurrency_group_to_execute,task_id, actor,
                     *arguments, **kwarguments)
 
             return function(actor, *arguments, **kwarguments)
@@ -825,7 +829,7 @@ cdef void execute_task(
                                         metadata_pairs, object_refs))
                         args = core_worker.run_async_func_in_event_loop(
                             deserialize_args, function_descriptor,
-                            name_of_concurrency_group_to_execute)
+                            name_of_concurrency_group_to_execute, None)
                     else:
                         # Defer task cancellation (SIGINT) until after the task argument
                         # deserialization context has been left.
@@ -969,6 +973,7 @@ cdef void execute_task(
                 # actually run the task. We should run the usual handlers for
                 # task cancellation, retrying on application exception, etc. for
                 # all generator tasks, both static and dynamic.
+                # TODO(ricky)
                 core_worker.store_task_outputs(
                     worker, outputs,
                     returns)
@@ -988,6 +993,7 @@ cdef execute_task_with_cancellation_handler(
         const CAddress &caller_address,
         CTaskType task_type,
         const c_string name,
+        TaskID task_id,
         const CRayFunction &ray_function,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -1013,7 +1019,7 @@ cdef execute_task_with_cancellation_handler(
         dict execution_infos = manager.execution_infos
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
-        TaskID task_id = core_worker.get_current_task_id()
+        # TaskID task_id = core_worker.get_current_task_id()
         CFiberEvent task_done_event
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
@@ -1064,8 +1070,9 @@ cdef execute_task_with_cancellation_handler(
     global current_task_id
 
     try:
-        task_id = (ray._private.worker.
-                   global_worker.core_worker.get_current_task_id())
+        # task_id = (ray._private.worker.
+        #            global_worker.core_worker.get_current_task_id())
+
         # Set the current task ID, which is checked by a separate thread during
         # task cancellation. We must do this inside the try block so that, if
         # the task is interrupted because of cancellation, we will catch the
@@ -1076,6 +1083,7 @@ cdef execute_task_with_cancellation_handler(
         execute_task(caller_address,
                      task_type,
                      name,
+                     task_id,
                      ray_function,
                      c_resources,
                      c_args,
@@ -1142,6 +1150,7 @@ cdef CRayStatus task_execution_handler(
         const CAddress &caller_address,
         CTaskType task_type,
         const c_string task_name,
+        const CTaskID c_task_id,
         const CRayFunction &ray_function,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -1157,10 +1166,13 @@ cdef CRayStatus task_execution_handler(
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
 
+
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
         maybe_initialize_job_config()
+
+        task_id = TaskID(c_task_id.Binary())
 
         try:
             try:
@@ -1169,7 +1181,7 @@ cdef CRayStatus task_execution_handler(
                 # indicates that there was an internal error.
                 execute_task_with_cancellation_handler(
                         caller_address,
-                        task_type, task_name,
+                        task_type, task_name, task_id,
                         ray_function, c_resources,
                         c_args, c_arg_refs,
                         debugger_breakpoint,
@@ -1486,6 +1498,20 @@ cdef class EmptyProfileEvent:
     def __exit__(self, *args):
         pass
 
+
+running_task_id_ctx_var = ContextVar("_ray_running_task_id", default=TaskID.nil().binary())
+cdef c_string get_running_task_id_callback() nogil:
+    """
+    A callback to be invoked by the CoreWorker to determine current running
+    task
+    """
+    cdef:
+        c_string c_task_id_binary
+
+    with gil:
+        c_task_id_binary = running_task_id_ctx_var.get()
+        return c_task_id_binary
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -1528,6 +1554,7 @@ cdef class CoreWorker:
         options.stdout_file = stdout_file
         options.stderr_file = stderr_file
         options.task_execution_callback = task_execution_handler
+        options.get_running_task_id_callback = get_running_task_id_callback
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
@@ -2632,18 +2659,48 @@ cdef class CoreWorker:
         return self.eventloop_for_default_cg, self.thread_for_default_cg
 
     def run_async_func_in_event_loop(
-          self, func, function_descriptor, specified_cgname, *args, **kwargs):
+          self, func, function_descriptor, specified_cgname, task_id, *args, **kwargs):
 
         cdef:
             CFiberEvent event
-        eventloop, async_thread = self.get_event_loop(
-            function_descriptor, specified_cgname)
-        coroutine = func(*args, **kwargs)
-        if threading.get_ident() == async_thread.ident:
-            future = asyncio.ensure_future(coroutine, eventloop)
-        else:
-            future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
-        future.add_done_callback(lambda _: event.Notify())
+
+
+        ctx = copy_context()
+
+        def run_async_with_context():
+            if task_id != None:
+                # Set the current task id in context var so that each async function will
+                # match the correct and unique task while running concurrently.
+                token = running_task_id_ctx_var.set(task_id.binary())
+                if token.old_value != Token.MISSING:
+                    old_task_id = TaskID(token.old_value)
+                else:
+                    old_task_id = TaskID.nil()
+                print(f"set={task_id} , old={old_task_id}")
+                print(f"context's var = {TaskID(ctx.get(running_task_id_ctx_var))}")
+                print(f"var = {TaskID(running_task_id_ctx_var.get())}")
+
+            eventloop, async_thread = self.get_event_loop(
+                function_descriptor, specified_cgname)
+            coroutine = func(*args, **kwargs)
+
+            # This task exec context should be set correctly by Ray's CoreWorker thread which 
+            # accepts the task, so it should always have the correct task exec context for 
+            # the to-be-run async function.
+            # task_id = core_worker.get_current_task_id()
+
+            # task_id = running_task_id_ctx_var.get()
+            # print(f"{threading.get_ident()} with {task_id} {function_descriptor.function_name} yielding")
+            if threading.get_ident() == async_thread.ident:
+                future = asyncio.ensure_future(coroutine, eventloop)
+            else:
+                future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
+
+            future.add_done_callback(lambda _: event.Notify())
+            return future
+
+        future = ctx.run(run_async_with_context)
+
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))

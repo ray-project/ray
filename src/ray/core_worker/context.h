@@ -29,7 +29,11 @@ struct WorkerExecContext;
 
 class WorkerContext {
  public:
-  WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
+  WorkerContext(
+      WorkerType worker_type,
+      const WorkerID &worker_id,
+      const JobID &job_id,
+      const std::function<std::string()> &get_running_task_id_callback = nullptr);
 
   const WorkerType GetWorkerType() const;
 
@@ -38,9 +42,9 @@ class WorkerContext {
   JobID GetCurrentJobID() const LOCKS_EXCLUDED(mutex_);
   rpc::JobConfig GetCurrentJobConfig() const LOCKS_EXCLUDED(mutex_);
 
-  const TaskID &GetCurrentTaskID() const;
+  TaskID GetCurrentTaskID() const;
 
-  const PlacementGroupID &GetCurrentPlacementGroupId() const LOCKS_EXCLUDED(mutex_);
+  PlacementGroupID GetCurrentPlacementGroupId() const LOCKS_EXCLUDED(mutex_);
 
   bool ShouldCaptureChildTasksInPlacementGroup() const LOCKS_EXCLUDED(mutex_);
 
@@ -59,7 +63,7 @@ class WorkerContext {
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
 
-  const TaskID &GetCurrentInternalTaskId() const;
+  TaskID GetCurrentInternalTaskId() const;
 
   void SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_);
 
@@ -108,7 +112,7 @@ class WorkerContext {
   bool current_task_is_direct_call_ = false;
 
  private:
-  WorkerExecContext &GetExecContext() const;
+  std::shared_ptr<WorkerExecContext> GetExecContext() const;
 
   std::shared_ptr<WorkerExecContext> GetExecContextInternal() const
       SHARED_LOCKS_REQUIRED(mutex_);
@@ -126,9 +130,6 @@ class WorkerContext {
   ActorID current_actor_id_ GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ GUARDED_BY(mutex_) = 1;
   bool current_actor_is_asyncio_ GUARDED_BY(mutex_) = false;
-  // If this is an actor with multiple threads of execution. It could be an async actor or
-  // threaded actor. This is true when `max_concurrency > 0` set on actor's options.
-  bool current_actor_is_multi_threaded_ GUARDED_BY(mutex_) = false;
   bool is_detached_actor_ GUARDED_BY(mutex_) = false;
   // The placement group id that the current actor belongs to.
   PlacementGroupID current_actor_placement_group_id_ GUARDED_BY(mutex_);
@@ -143,8 +144,12 @@ class WorkerContext {
   // All thread contexts started by this CoreWorker.
   absl::flat_hash_map<std::thread::id, std::shared_ptr<WorkerExecContext>>
       all_exec_threads_contexts_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<TaskID, std::shared_ptr<WorkerExecContext>>
+      all_async_actor_exec_contexts_ GUARDED_BY(mutex_);
   // The current running task's thread context.
   std::shared_ptr<WorkerExecContext> current_exec_context_ GUARDED_BY(mutex_);
+
+  const std::function<std::string()> &get_running_task_id_callback_;
 
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;

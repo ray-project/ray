@@ -108,7 +108,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
-      worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
+      worker_context_(options_.worker_type,
+                      worker_id,
+                      GetProcessJobID(options_),
+                      options_.get_running_task_id_callback),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       periodical_runner_(io_service_),
@@ -983,6 +986,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   }
 }
 
+// TODO(ricky)
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
@@ -1768,6 +1772,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
+  // TODO(ricky)
   const auto task_id = TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                                              worker_context_.GetCurrentInternalTaskId(),
                                              next_task_index);
@@ -2468,6 +2473,7 @@ Status CoreWorker::ExecuteTask(
       task_spec.CallerAddress(),
       task_type,
       task_spec.GetName(),
+      task_spec.TaskId(),
       func,
       task_spec.GetRequiredResources().GetResourceUnorderedMap(),
       args,

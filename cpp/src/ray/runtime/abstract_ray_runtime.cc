@@ -216,7 +216,7 @@ std::string AbstractRayRuntime::CallActor(
   return task_submitter_->SubmitActorTask(invocation_spec, call_options).Binary();
 }
 
-const TaskID &AbstractRayRuntime::GetCurrentTaskId() {
+TaskID AbstractRayRuntime::GetCurrentTaskId() {
   return GetWorkerContext().GetCurrentTaskID();
 }
 

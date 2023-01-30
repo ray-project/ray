@@ -36,6 +36,7 @@ struct CoreWorkerOptions {
       const rpc::Address &caller_address,
       TaskType task_type,
       const std::string task_name,
+      const TaskID task_id,
       const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
@@ -71,6 +72,7 @@ struct CoreWorkerOptions {
         stdout_file(""),
         stderr_file(""),
         task_execution_callback(nullptr),
+        get_running_task_id_callback(nullptr),
         check_signals(nullptr),
         gc_collect(nullptr),
         spill_objects(nullptr),
@@ -123,6 +125,7 @@ struct CoreWorkerOptions {
   std::string stderr_file;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
+  std::function<std::string()> get_running_task_id_callback;
   /// The callback to be called when shutting down a `CoreWorker` instance.
   std::function<void(const WorkerID &)> on_worker_shutdown;
   /// Application-language callback to check for signals that have been received

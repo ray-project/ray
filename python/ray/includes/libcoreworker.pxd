@@ -281,6 +281,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CAddress &caller_address,
             CTaskType task_type,
             const c_string name,
+            const CTaskID task_id,
             const CRayFunction &ray_function,
             const unordered_map[c_string, double] &resources,
             const c_vector[shared_ptr[CRayObject]] &args,
@@ -297,6 +298,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string name_of_concurrency_group_to_execute,
             c_bool is_reattempt) nogil
          ) task_execution_callback
+        (c_string() nogil)  get_running_task_id_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect

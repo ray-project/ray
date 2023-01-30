@@ -51,7 +51,7 @@ struct WorkerExecContext {
     return num_returns + ++put_counter_;
   }
 
-  const TaskID &GetCurrentTaskID() const { return current_task_id_; }
+  TaskID GetCurrentTaskID() const { return current_task_id_; }
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const {
     return current_task_;
@@ -66,9 +66,9 @@ struct WorkerExecContext {
     }
   }
 
-  const TaskID &GetCurrentInternalTaskId() const { return current_internal_task_id_; }
+  TaskID GetCurrentInternalTaskId() const { return current_internal_task_id_; }
 
-  const PlacementGroupID &GetCurrentPlacementGroupId() const {
+  PlacementGroupID GetCurrentPlacementGroupId() const {
     return current_placement_group_id_;
   }
 
@@ -87,6 +87,8 @@ struct WorkerExecContext {
   void SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_counter_ == 0);
+    RAY_LOG(INFO) << "set current task " << task_spec.GetName() << "for "
+                  << task_spec.TaskId();
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber());
     SetCurrentPlacementGroupId(task_spec.PlacementGroupBundleId().first);
     SetPlacementGroupCaptureChildTasks(task_spec.PlacementGroupCaptureChildTasks());
@@ -137,9 +139,11 @@ struct WorkerExecContext {
   bool placement_group_capture_child_tasks_ = false;
 };
 
-WorkerContext::WorkerContext(WorkerType worker_type,
-                             const WorkerID &worker_id,
-                             const JobID &job_id)
+WorkerContext::WorkerContext(
+    WorkerType worker_type,
+    const WorkerID &worker_id,
+    const JobID &job_id,
+    const std::function<std::string()> &get_running_task_id_callback)
     : worker_type_(worker_type),
       worker_id_(worker_id),
       current_job_id_(job_id),
@@ -148,6 +152,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
       main_thread_id_(std::this_thread::get_id()),
+      get_running_task_id_callback_(get_running_task_id_callback),
       mutex_() {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
@@ -165,12 +170,14 @@ const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
 const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
 
-uint64_t WorkerContext::GetNextTaskIndex() { return GetExecContext().GetNextTaskIndex(); }
+uint64_t WorkerContext::GetNextTaskIndex() {
+  return GetExecContext()->GetNextTaskIndex();
+}
 
-uint64_t WorkerContext::GetTaskIndex() { return GetExecContext().GetTaskIndex(); }
+uint64_t WorkerContext::GetTaskIndex() { return GetExecContext()->GetTaskIndex(); }
 
 ObjectIDIndexType WorkerContext::GetNextPutIndex() {
-  return GetExecContext().GetNextPutIndex();
+  return GetExecContext()->GetNextPutIndex();
 }
 
 void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
@@ -200,21 +207,21 @@ rpc::JobConfig WorkerContext::GetCurrentJobConfig() const {
   return job_config_.has_value() ? job_config_.value() : kDefaultJobConfig;
 }
 
-const TaskID &WorkerContext::GetCurrentTaskID() const {
-  return GetExecContext().GetCurrentTaskID();
+TaskID WorkerContext::GetCurrentTaskID() const {
+  return GetExecContext()->GetCurrentTaskID();
 }
 
-const TaskID &WorkerContext::GetCurrentInternalTaskId() const {
-  return GetExecContext().GetCurrentInternalTaskId();
+TaskID WorkerContext::GetCurrentInternalTaskId() const {
+  return GetExecContext()->GetCurrentInternalTaskId();
 }
 
-const PlacementGroupID &WorkerContext::GetCurrentPlacementGroupId() const {
+PlacementGroupID WorkerContext::GetCurrentPlacementGroupId() const {
   absl::ReaderMutexLock lock(&mutex_);
   // If the worker is an actor, we should return the actor's placement group id.
   if (current_actor_id_ != ActorID::Nil()) {
     return current_actor_placement_group_id_;
   } else {
-    return GetExecContext().GetCurrentPlacementGroupId();
+    return GetExecContext()->GetCurrentPlacementGroupId();
   }
 }
 
@@ -224,7 +231,7 @@ bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
   if (current_actor_id_ != ActorID::Nil()) {
     return placement_group_capture_child_tasks_;
   } else {
-    return GetExecContext().PlacementGroupCaptureChildTasks();
+    return GetExecContext()->PlacementGroupCaptureChildTasks();
   }
 }
 
@@ -245,7 +252,7 @@ std::shared_ptr<json> WorkerContext::GetCurrentRuntimeEnv() const {
 }
 
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number) {
-  GetExecContext().SetCurrentTaskId(task_id, attempt_number);
+  GetExecContext()->SetCurrentTaskId(task_id, attempt_number);
 }
 
 void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_) {
@@ -275,7 +282,6 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
-    current_actor_is_multi_threaded_ = task_spec.ExecuteOutOfOrder();
     is_detached_actor_ = task_spec.IsDetachedActor();
     current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
@@ -297,10 +303,10 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   }
 }
 
-void WorkerContext::ResetCurrentTask() { GetExecContext().ResetCurrentTask(); }
+void WorkerContext::ResetCurrentTask() { GetExecContext()->ResetCurrentTask(); }
 
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
-  return GetExecContext().GetCurrentTask();
+  return GetExecContext()->GetCurrentTask();
 }
 
 const ActorID &WorkerContext::GetCurrentActorID() const {
@@ -351,35 +357,85 @@ bool WorkerContext::CurrentActorDetached() const {
 
 void WorkerContext::InitExecContext(const TaskID &task_id) {
   auto thread_ctx = std::make_shared<WorkerExecContext>(task_id);
-  auto itr_inserted = all_exec_threads_contexts_.insert(
-      {std::this_thread::get_id(), std::move(thread_ctx)});
+  RAY_LOG(INFO) << "Init ctx for " << task_id;
+  auto itr_inserted =
+      all_exec_threads_contexts_.insert({std::this_thread::get_id(), thread_ctx});
   current_exec_context_ = itr_inserted.first->second;
+  if (current_actor_is_asyncio_) {
+    // We also add this to the task id -> ctx mapping for async io since
+    // asyncio will run tasks in a seperate thread in its event loop.
+    auto async_ctx = std::make_shared<WorkerExecContext>(task_id);
+    all_async_actor_exec_contexts_.insert({task_id, async_ctx});
+  }
   RAY_CHECK(current_exec_context_ != nullptr);
 }
 
 std::shared_ptr<WorkerExecContext> WorkerContext::GetExecContextInternal() const {
-  if (!current_actor_is_multi_threaded_) {
+  // For non threaded actor/async actors, Ray will only execute one task sequentially.
+  if (!current_actor_is_asyncio_ && current_actor_max_concurrency_ == 1) {
     return current_exec_context_;
   }
 
   const auto itr = all_exec_threads_contexts_.find(std::this_thread::get_id());
   if (itr == all_exec_threads_contexts_.end()) {
-    // Ray isn't aware of this current thread, likely due to user code started a new
-    // thread during executing a task.
+    // Ray isn't aware of this current thread, there could be 2 possible cases:
+    //  1. Its a thread owned by async actor's asyncio event loop.
+    //    - We could try looking up the exec context by getting the task id from the
+    //    context var.
+    //  2. Its a thread started by user level code.
+    //    - There's much we could do, we will return a nil context.
+    if (current_actor_is_asyncio_) {
+      // Try looking up the context stored in context var stored for each asyncio
+      // coroutine before running it.
+      RAY_CHECK(get_running_task_id_callback_)
+          << "Async actors should have get_running_task_id_callback set so that "
+             "CoreWorker "
+             "could be aware of which task is running in asyncio's event loop.";
+      auto current_task_id = TaskID::FromBinary(get_running_task_id_callback_());
+      RAY_CHECK(!current_task_id.IsNil()) << " should not be nil";
+      RAY_LOG(INFO) << "Got task from asyncio context: " << current_task_id;
+      const auto async_itr = all_async_actor_exec_contexts_.find(current_task_id);
+      if (async_itr == all_async_actor_exec_contexts_.end()) {
+        RAY_LOG(WARNING)
+            << "A unknown task(" << current_task_id
+            << ") is executed in the async actor. Returning the dummy exec context "
+               "with nil task id.";
+        return std::make_shared<WorkerExecContext>(TaskID::Nil());
+      }
+      RAY_CHECK(async_itr->second->GetCurrentTaskID() == current_task_id)
+          << "itr->" << async_itr->second->GetCurrentTaskID() << ", task_id"
+          << current_task_id;
+      return async_itr->second;
+    }
     RAY_LOG(WARNING)
         << "A unknown thread(" << std::this_thread::get_id()
         << ") started executing in a multi-threaded/async actor. Ray is unable to "
-           "figure out the parent thread's information. Returning the dummy exec context "
-           "with nil task id.";
+           "figure out the parent thread's information. Returning the dummy exec "
+           "context with nil task id.";
     return std::make_shared<WorkerExecContext>(TaskID::Nil());
+  }
+
+  if (current_actor_is_asyncio_) {
+    RAY_CHECK(get_running_task_id_callback_)
+        << "Async actors should have get_running_task_id_callback set so that "
+           "CoreWorker "
+           "could be aware of which task is running in asyncio's event loop.";
+    auto current_task_id = TaskID::FromBinary(get_running_task_id_callback_());
+
+    if (current_task_id != itr->second->GetCurrentTaskID()) {
+      RAY_LOG(WARNING) << "callback task id(" << current_task_id << ") != ctx task id("
+                       << itr->second->GetCurrentTaskID() << ")";
+    }
   }
 
   return itr->second;
 }
 
-WorkerExecContext &WorkerContext::GetExecContext() const {
+std::shared_ptr<WorkerExecContext> WorkerContext::GetExecContext() const {
   absl::ReaderMutexLock lock(&mutex_);
-  return *GetExecContextInternal();
+  auto x = GetExecContextInternal();
+  RAY_LOG(INFO) << "get task exec for " << x->GetCurrentTaskID();
+  return x;
 }
 
 }  // namespace core
