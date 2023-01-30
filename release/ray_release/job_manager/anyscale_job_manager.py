@@ -66,6 +66,7 @@ class AnyscaleJobManager:
         self.last_job_result = job_response.result
         self.cluster_manager.cluster_id = self.last_job_result.state.cluster_id
         self.start_time = time.time()
+        self._last_job_result = None
 
         logger.info(
             f"Link to job: " f"{format_link(anyscale_job_url(self.last_job_result.id))}"
@@ -112,6 +113,8 @@ class AnyscaleJobManager:
         self._terminate_job()
 
     def _terminate_job(self, raise_exceptions: bool = False):
+        if not self.last_job_result:
+            return
         try:
             self.sdk.terminate_job(self.job_id)
         except Exception:

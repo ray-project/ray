@@ -89,16 +89,12 @@ def run_bash_command(workload: str, timeout: float):
     with open(workload_path, "w") as fp:
         fp.write(workload)
 
-    command = f'bash -x "{str(workload_path)}"'
+    command = ["bash", "-x", str(workload_path)]
     print(f"Running command {workload}")
 
     try:
         subprocess.check_call(
-            command,
-            timeout=timeout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=True,
+            command, timeout=timeout, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         return_code = 0
     except subprocess.CalledProcessError as e:
