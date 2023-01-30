@@ -56,7 +56,7 @@ KUBERAY_ENV = "RAY_USAGE_STATS_KUBERAY_IN_USE"
 PROVIDER_KUBERNETES_GENERIC = "kubernetes"
 PROVIDER_KUBERAY = "kuberay"
 
-# The list of 3rd party libraries where we track their usages.
+# The list of 3rd party libraries where we track if they're imported.
 THIRD_PARTY_LIBARY_LIBRARIES_WHITELIST = {
     "tensorflow",
     "pytorch",
