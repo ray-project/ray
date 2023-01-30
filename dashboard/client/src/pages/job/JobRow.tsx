@@ -113,7 +113,7 @@ export const JobRow = ({ job, newIA = false }: JobRowProps) => {
             </a>
             <br />
             <a
-              href={`/worker/memory_profile?pid=${driver_info.pid}&ip=${driver_info.node_ip_address}&duration=5&native=0`}
+              href={`/worker/memory_profile?pid=${driver_info.pid}&ip=${driver_info.node_ip_address}&duration=5&native=0&format=flamegraph`}
               target="_blank"
               title="Profile the Python worker for 5 seconds (default) and display a memory flame graph."
               rel="noreferrer"

@@ -57,13 +57,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
-    async def get_reporter_stub(self, ip: str):
-        for _ in range(10):
-            if len(self._stubs) == 0:
-                await asyncio.sleep(0.1)
-
-        return self._stub[ip]
-
     @routes.get("/api/v0/cluster_metadata")
     async def get_cluster_metadata(self, req):
         return dashboard_optional_utils.rest_response(
@@ -163,20 +156,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.Response(
                 body=reply.output,
                 headers={
-                    "Content-Type": "text/html"
+                    "Content-Type": "image/svg+xml"
                     if format == "flamegraph"
                     else "text/plain"
                 },
             )
         else:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
-
-    @routes.get("/worker/memory_profiled_workers")
-    async def get_memory_profiled_workers(self, req) -> aiohttp.web.Response:
-        return aiohttp.web.Response(
-            body=DataSource.mem_profiled_workers,
-            headers={"Content-Type": "application/json"},
-        )
 
     @routes.get("/worker/memory_profile")
     async def attach_and_run_memory_profiler(self, req) -> aiohttp.web.Response:

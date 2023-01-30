@@ -129,6 +129,11 @@ class MemoryProfilingManager:
         self.profile_dir_path.mkdir(exist_ok=True)
 
     def check_memray_python_version(self) -> Tuple[bool, str]:
+        if not memray:
+            return False, (
+                "`memray` is not installed. Run pip install memray==1.5.0 "
+                "acorss your cluster environment to use this feature."
+            )
         if tuple(map(int, (memray.__version__.split(".")))) < (1, 5, 0):
             return False, (
                 f"Current memray version is {memray.__version__}. "
@@ -151,8 +156,6 @@ class MemoryProfilingManager:
 
             if sys.platform == "linux" and native:
                 cmd += " --native"
-            if await _can_passwordless_sudo():
-                cmd = "sudo -n " + cmd
             process = await asyncio.create_subprocess_shell(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -194,8 +197,6 @@ class MemoryProfilingManager:
             f"Getting the result of memory profiling from a pid {pid}. "
             f"Command: {cmd}"
         )
-        if await _can_passwordless_sudo():
-            cmd = "sudo -n " + cmd
         process = await asyncio.create_subprocess_shell(
             cmd,
             stdout=subprocess.PIPE,
