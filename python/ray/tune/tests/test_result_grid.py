@@ -225,32 +225,55 @@ def test_result_repr(ray_start_2_cpus):
 
 
 def test_result_grid_repr(ray_start_2_cpus, tmpdir):
-    from ray.air import session
+    from ray.air.result import Result
 
-    def f(config):
-        if config["x"] == 1:
-            raise RuntimeError
-
-        metrics = {"loss": 1}
-        session.report(metrics, checkpoint=Checkpoint.from_dict(metrics))
-
-    tuner = tune.Tuner(
-        f,
-        run_config=air.RunConfig(
-            name="test_result_grid_repr",
-            local_dir=str(tmpdir / "test_result_grid_repr_results"),
-        ),
-        param_space={"x": tune.grid_search([1, 2])},
+    results = list()
+    results.append(
+        Result(
+            metrics={"loss": 1.0},
+            checkpoint=Checkpoint(data_dict={"weight": 1.0}),
+            log_dir=Path("./log_1"),
+            error=None,
+            metrics_dataframe=None,
+            best_checkpoints=None,
+        )
     )
-    result_grid = tuner.fit()
+    results.append(
+        Result(
+            metrics={"loss": 2.0},
+            checkpoint=Checkpoint(data_dict={"weight": 2.0}),
+            log_dir=Path("./log_2"),
+            error=RuntimeError(),
+            metrics_dataframe=None,
+            best_checkpoints=None,
+        )
+    )
+
+    result_grid = ResultGrid(experiment_analysis=None)
+    result_grid._results = results
 
     representation = result_grid.__repr__()
 
     from ray.tune.result import AUTO_RESULT_KEYS
 
+    assert len(result_grid) == 2
     assert not any(key in representation for key in AUTO_RESULT_KEYS)
 
-    assert len(result_grid) == 2
+    gold_representation = """ResultGrid<[
+  Result(
+    metrics={'loss': 1.0},
+    log_dir=PosixPath('log_1'),
+    checkpoint=Checkpoint(data_dict={'weight': 1.0})
+  ),
+  Result(
+    error='RuntimeError',
+    metrics={'loss': 2.0},
+    log_dir=PosixPath('log_2'),
+    checkpoint=Checkpoint(data_dict={'weight': 2.0})
+  )
+]>"""
+
+    assert representation == gold_representation
     assert representation.count("metrics=") == 2
     assert representation.count("log_dir=") == 2
     assert representation.count("checkpoint=") == 2
