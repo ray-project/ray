@@ -24,16 +24,3 @@ def make_ref_bundles(simple_data: List[Block]) -> List[RefBundle]:
             )
         )
     return output
-
-
-def merge_ref_bundles(x: RefBundle, y: RefBundle) -> RefBundle:
-    """Merge two ref bundles into a single bundle of multiple blocks."""
-    if x is None:
-        return y
-    elif y is None:
-        return x
-    else:
-        return RefBundle(
-            x.blocks + y.blocks,
-            x.owns_blocks and y.owns_blocks,
-        )

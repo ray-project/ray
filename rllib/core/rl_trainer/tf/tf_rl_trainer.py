@@ -9,28 +9,29 @@ from typing import (
     Dict,
     Sequence,
     Hashable,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.core.rl_trainer.rl_trainer import (
+    FrameworkHPs,
     RLTrainer,
-    MultiAgentRLModule,
     ParamOptimizerPairs,
     ParamRef,
     Optimizer,
     ParamType,
     ParamDictType,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
+from ray.rllib.core.rl_module.rl_module import (
+    RLModule,
+    ModuleID,
+    SingleAgentRLModuleSpec,
+)
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 
-if TYPE_CHECKING:
-    from ray.air.config import ScalingConfig
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 tf1, tf, tfv = try_import_tf()
 
@@ -86,22 +87,11 @@ class TfRLTrainer(RLTrainer):
 
     def __init__(
         self,
-        module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
-        module_kwargs: Mapping[str, Any],
-        optimizer_config: Mapping[str, Any],
-        distributed: bool = False,
-        enable_tf_function: bool = True,
-        scaling_config: Optional["ScalingConfig"] = None,
-        algorithm_config: Optional["AlgorithmConfig"] = None,
+        *,
+        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
+        **kwargs,
     ):
-        super().__init__(
-            module_class=module_class,
-            module_kwargs=module_kwargs,
-            optimizer_config=optimizer_config,
-            distributed=distributed,
-            scaling_config=scaling_config,
-            algorithm_config=algorithm_config,
-        )
+        super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
 
         # TODO (Kourosh): This is required to make sure tf computes the values in the
         # end. Two question remains:
@@ -111,7 +101,7 @@ class TfRLTrainer(RLTrainer):
         # does not mention this as a requirement?
         tf1.enable_eager_execution()
 
-        self._enable_tf_function = enable_tf_function
+        self._enable_tf_function = framework_hyperparameters.eager_tracing
         if self._enable_tf_function:
             self._update_fn = tf.function(self._do_update_fn)
         else:
@@ -195,8 +185,7 @@ class TfRLTrainer(RLTrainer):
         self,
         *,
         module_id: ModuleID,
-        module_cls: Type[RLModule],
-        module_kwargs: Mapping[str, Any],
+        module_spec: SingleAgentRLModuleSpec,
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
@@ -204,16 +193,14 @@ class TfRLTrainer(RLTrainer):
             with self.strategy.scope():
                 super().add_module(
                     module_id=module_id,
-                    module_cls=module_cls,
-                    module_kwargs=module_kwargs,
+                    module_spec=module_spec,
                     set_optimizer_fn=set_optimizer_fn,
                     optimizer_cls=optimizer_cls,
                 )
         else:
             super().add_module(
                 module_id=module_id,
-                module_cls=module_cls,
-                module_kwargs=module_kwargs,
+                module_spec=module_spec,
                 set_optimizer_fn=set_optimizer_fn,
                 optimizer_cls=optimizer_cls,
             )
