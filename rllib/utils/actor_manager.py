@@ -700,7 +700,9 @@ class FaultTolerantActorManager:
             The values may be actual data returned or exceptions raised during the
             remote call in the format of RemoteCallResults.
         """
-        if isinstance(tags, str):
+        if tags == "default":
+            pass
+        elif isinstance(tags, str):
             tags = {tags}
         elif isinstance(tags, list):
             tags = set(tags)
@@ -711,7 +713,11 @@ class FaultTolerantActorManager:
         remote_calls = []
         remote_actor_ids = []
         for call, (tag, actor_id) in self.__in_flight_req_to_actor_id.items():
-            if tag in tags:
+            # the default behavior is to return all ready results.
+            if tags == "default":
+                remote_calls.append(call)
+                remote_actor_ids.append(actor_id)
+            elif tag in tags:
                 remote_calls.append(call)
                 remote_actor_ids.append(actor_id)
         # Construct the list of in-flight requests.

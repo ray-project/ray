@@ -393,7 +393,7 @@ class TestActorManager(unittest.TestCase):
                 self.assertEqual(result, 2)
             else:
                 raise ValueError("result is not str or int")
-        # test with default tag
+        # test with custom tags
         manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
         time.sleep(1)
@@ -407,6 +407,24 @@ class TestActorManager(unittest.TestCase):
                 self.assertEqual(result, "pong")
             elif isinstance(result, int):
                 self.assertEqual(result, 3)
+            else:
+                raise ValueError("result is not str or int")
+        # test with incorrect tags
+        manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
+        manager.foreach_actor_async(lambda w: w.call(), tag="call")
+        time.sleep(1)
+        results = manager.fetch_ready_async_reqs(timeout_seconds=5, tags=["incorrect"])
+        self.assertEquals(len(list(results)), 0)
+
+        # now test that passing no tags still gives back all of the results
+        results = manager.fetch_ready_async_reqs(timeout_seconds=5)
+        self.assertEquals(len(list(results)), 8)
+        for result in results:
+            result = result.get()
+            if isinstance(result, str):
+                self.assertEqual(result, "pong")
+            elif isinstance(result, int):
+                self.assertEqual(result, 4)
             else:
                 raise ValueError("result is not str or int")
 
