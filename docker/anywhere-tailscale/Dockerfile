@@ -111,5 +111,5 @@ RUN curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/mast
 
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
 HEALTHCHECK --interval=300s --timeout=5s --start-period=300s \
-CMD tailscale status -json | jq -r .BackendState | grep -q "Running" || exit 1
+CMD ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE || exit 1
 #CMD sh /home/ray/run_tests.sh
