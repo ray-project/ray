@@ -20,15 +20,20 @@
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_monitor_server.h"
-#include "mock/ray/pubsub/publisher.h"
+#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 // clang-format on
+
+using namespace testing;
 
 namespace ray {
 class GcsMonitorServerTest : public ::testing::Test {
  public:
-  GcsMonitorServerTest() : monitor_server_() {}
+  GcsMonitorServerTest()
+      : mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
+        monitor_server_(mock_node_manager_) {}
 
  protected:
+  std::shared_ptr<gcs::MockGcsNodeManager> mock_node_manager_;
   gcs::GcsMonitorServer monitor_server_;
 };
 
@@ -41,6 +46,21 @@ TEST_F(GcsMonitorServerTest, TestRayVersion) {
   monitor_server_.HandleGetRayVersion(request, &reply, send_reply_callback);
 
   ASSERT_EQ(reply.version(), kRayVersion);
+}
+
+TEST_F(GcsMonitorServerTest, TestDrainAndKillNode) {
+  rpc::DrainAndKillNodeRequest request;
+  rpc::DrainAndKillNodeReply reply;
+  auto send_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+
+  *request.add_node_ids() = NodeID::FromRandom().Binary();
+  *request.add_node_ids() = NodeID::FromRandom().Binary();
+
+  EXPECT_CALL(*mock_node_manager_, DrainNode(_)).Times(Exactly(2));
+  monitor_server_.HandleDrainAndKillNode(request, &reply, send_reply_callback);
+
+  ASSERT_EQ(reply.drained_nodes().size(), 2);
 }
 
 }  // namespace ray

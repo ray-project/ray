@@ -590,7 +590,7 @@ void GcsServer::InitGcsTaskManager() {
 }
 
 void GcsServer::InitMonitorServer() {
-  monitor_server_ = std::make_unique<GcsMonitorServer>();
+  monitor_server_ = std::make_unique<GcsMonitorServer>(gcs_node_manager_);
   monitor_grpc_service_.reset(
       new rpc::MonitorGrpcService(main_service_, *monitor_server_));
   rpc_server_.RegisterService(*monitor_grpc_service_);

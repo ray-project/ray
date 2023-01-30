@@ -22,9 +22,22 @@ message GetRayVersionReply {
   string version = 1;
 }
 
+message DrainAndKillNodeRequest {
+  // The node ids to drain.
+  repeated bytes node_ids = 1;
+}
+
+message DrainAndKillNodeReply {
+  // The node ids which are beginning to drain.
+  repeated bytes drained_nodes = 2;
+}
+
 // This service provides a stable interface for a monitor/autoscaler process to interact
 // with Ray.
 service MonitorGcsService {
   // Get the ray version of the service.
   rpc GetRayVersion(GetRayVersionRequest) returns (GetRayVersionReply);
+  // Request that GCS drain and kill a node. This call is idempotent, and could
+  // need to be retried if the head node fails.
+  rpc DrainAndKillNode(DrainAndKillNodeRequest) returns (DrainAndKillNodeReply);
 }

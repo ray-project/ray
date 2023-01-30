@@ -222,6 +222,10 @@ class MonitorGcsServiceHandler {
   virtual void HandleGetRayVersion(GetRayVersionRequest request,
                                    GetRayVersionReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleDrainAndKillNode(DrainAndKillNodeRequest request,
+                                      DrainAndKillNodeReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `MonitorServer`.
@@ -241,6 +245,7 @@ class MonitorGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     MONITOR_SERVICE_RPC_HANDLER(GetRayVersion);
+    MONITOR_SERVICE_RPC_HANDLER(DrainAndKillNode);
   }
 
  private:
