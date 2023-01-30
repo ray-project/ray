@@ -3,6 +3,7 @@ import time
 import os
 from pathlib import Path
 import subprocess
+import multiprocessing
 import traceback
 import json
 import sys
@@ -95,13 +96,24 @@ def run_bash_command(workload: str, timeout: float):
     command = ["bash", "-x", str(workload_path)]
     print(f"Running command {workload}")
 
+    def f():
+        try:
+            subprocess.run(command, capture_output=True, check=True)
+            return_code = 0
+        except subprocess.CalledProcessError as e:
+            return_code = e.returncode
+        sys.exit(return_code)
+
     try:
-        subprocess.run(command, timeout=timeout, capture_output=True, check=True)
+        with multiprocessing.get_context("spawn") as ctx:
+            p = ctx.Process(target=f)
+            p.start()
+            p.join(timeout=timeout)
         return_code = 0
-    except subprocess.CalledProcessError as e:
-        return_code = e.returncode
-    except subprocess.TimeoutExpired:
+    except multiprocessing.TimeoutError:
         return_code = -1
+    except multiprocessing.ProcessError:
+        return_code = p.exitcode
     finally:
         os.remove(str(workload_path))
     return return_code

@@ -26,6 +26,7 @@ class AnyscaleJobManager:
         self.counter = 0
         self.cluster_manager = cluster_manager
         self.wait_for_nodes_timeout = 0
+        self._last_job_result = None
 
     def _run_job(
         self,
@@ -66,7 +67,6 @@ class AnyscaleJobManager:
         self.last_job_result = job_response.result
         self.cluster_manager.cluster_id = self.last_job_result.state.cluster_id
         self.start_time = time.time()
-        self._last_job_result = None
 
         logger.info(
             f"Link to job: " f"{format_link(anyscale_job_url(self.last_job_result.id))}"
