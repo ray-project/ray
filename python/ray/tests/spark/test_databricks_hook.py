@@ -47,20 +47,20 @@ class TestDatabricksHook:
         os.environ.pop("SPARK_WORKER_CORES")
 
     def test_hook(self, monkeypatch):
+        monkeypatch.setattr(
+            "ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_DIR",
+            "/tmp"
+        )
+        monkeypatch.setenv("DATABRICKS_RUNTIME_VERSION", "12.2")
+        monkeypatch.setenv(
+            "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES", 1
+        )
+        db_api_entry = MockDbApiEntry()
+        monkeypatch.setattr(
+            "ray.util.spark.databricks_hook._get_db_api_entry",
+            lambda: db_api_entry
+        )
         try:
-            monkeypatch.setattr(
-                "ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_DIR",
-                "/tmp"
-            )
-            monkeypatch.setenv("DATABRICKS_RUNTIME_VERSION", "12.2")
-            monkeypatch.setenv(
-                "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES", 1
-            )
-            db_api_entry = MockDbApiEntry()
-            monkeypatch.setattr(
-                "ray.util.spark.databricks_hook._get_db_api_entry",
-                lambda: db_api_entry
-            )
             setup_ray_cluster(
                 num_worker_nodes=2,
                 head_node_options={"include_dashboard": False},
