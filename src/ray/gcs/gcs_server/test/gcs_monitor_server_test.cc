@@ -57,7 +57,7 @@ TEST_F(GcsMonitorServerTest, TestDrainAndKillNode) {
   *request.add_node_ids() = NodeID::FromRandom().Binary();
   *request.add_node_ids() = NodeID::FromRandom().Binary();
 
-  EXPECT_CALL(*mock_node_manager_, DrainNode(_)).Times(AtLeast(2));
+  EXPECT_CALL(*mock_node_manager_, DrainNode(_)).Times(Exactly(2));
   monitor_server_.HandleDrainAndKillNode(request, &reply, send_reply_callback);
 
   ASSERT_EQ(reply.drained_nodes().size(), 2);
