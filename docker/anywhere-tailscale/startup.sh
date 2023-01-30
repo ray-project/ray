@@ -136,7 +136,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
-                    -Ccluster.initial_master_nodes=nexus \
+#                    -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cstats.enabled=false &
     #otherwise just start fresh
@@ -148,7 +148,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.store.allow_mmap=false \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
-                    -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
+                    -Cdiscovery.seed_hosts=$clusterhosts \
                     -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cstats.enabled=false &
