@@ -27,9 +27,9 @@ from ray.data._internal.compute import (
     ComputeStrategy,
     get_compute,
     is_task_compute,
-    TaskContext,
 )
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block

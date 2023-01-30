@@ -155,6 +155,15 @@ class ExecutionOptions:
     preserve_order: bool = True
 
 
+@dataclass
+class TaskContext:
+    """This describes the information of a task running block transform."""
+
+    # The index of task. Each task has a unique task index within the same
+    # operator.
+    task_idx: int
+
+
 class PhysicalOperator(Operator):
     """Abstract class for physical operators.
 

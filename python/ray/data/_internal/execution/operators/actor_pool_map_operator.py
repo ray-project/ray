@@ -5,12 +5,13 @@ from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
 import ray
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
-from ray.data._internal.compute import ActorPoolStrategy, TaskContext
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
     ExecutionOptions,
     PhysicalOperator,
+    TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,

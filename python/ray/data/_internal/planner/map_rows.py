@@ -1,6 +1,7 @@
 from typing import Iterator
 
-from ray.data._internal.compute import BlockTransform, TaskContext
+from ray.data._internal.compute import BlockTransform
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import Block, BlockAccessor, RowUDF
 from ray.data.context import DatasetContext

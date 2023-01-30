@@ -2,7 +2,8 @@ import sys
 from typing import Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
-from ray.data._internal.compute import BlockTransform, TaskContext
+from ray.data._internal.compute import BlockTransform
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import BatchUDF, Block, DataBatch
 from ray.data.context import DEFAULT_BATCH_SIZE, DatasetContext

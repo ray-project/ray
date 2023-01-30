@@ -1,7 +1,6 @@
 from typing import Callable, List, Optional, Tuple
 
-from ray.data._internal.compute import TaskContext
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.stats import StatsDict
 
 

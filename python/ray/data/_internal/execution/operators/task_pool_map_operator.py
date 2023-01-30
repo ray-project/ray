@@ -2,11 +2,11 @@ from typing import List, Optional, Callable, Iterator, Dict, Any
 
 import ray
 from ray.data.block import Block
-from ray.data._internal.compute import TaskContext
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
     PhysicalOperator,
+    TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,

@@ -7,7 +7,6 @@ import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data._internal.compute import (
     ComputeStrategy,
-    TaskContext,
     TaskPoolStrategy,
     ActorPoolStrategy,
 )
@@ -16,6 +15,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
+    TaskContext,
 )
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict

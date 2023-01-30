@@ -8,7 +8,7 @@ from ray.data._internal.shuffle_and_partition import (
     SimpleShufflePartitionOp,
 )
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import TaskContext
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import sort_impl
 from ray.data.context import DatasetContext

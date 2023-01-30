@@ -1,10 +1,10 @@
 from typing import List, Callable, Optional, Tuple
 
-from ray.data._internal.compute import TaskContext
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
+    TaskContext,
 )
 
 

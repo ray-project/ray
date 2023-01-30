@@ -19,7 +19,6 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import (
     get_compute,
     CallableClass,
-    TaskContext,
     TaskPoolStrategy,
     ActorPoolStrategy,
 )
@@ -32,6 +31,7 @@ from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,
     RefBundle,
+    TaskContext,
 )
 
 

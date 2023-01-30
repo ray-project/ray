@@ -3,11 +3,10 @@ from typing import Any, Iterator
 import ray
 from ray.data._internal.compute import (
     ActorPoolStrategy,
-    TaskContext,
     TaskPoolStrategy,
     get_compute,
 )
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
