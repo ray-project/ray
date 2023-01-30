@@ -49,7 +49,10 @@ const useFetchStateApiProgressByTaskName = (
 
       if (rsp.data.result) {
         setLatestFetchTimestamp?.(new Date().getTime());
-        return formatSummaryToTaskProgress(rsp.data.data.result.result);
+        const summary = formatSummaryToTaskProgress(
+          rsp.data.data.result.result,
+        );
+        return { summary, totalTasks: rsp.data.data.result.total };
       } else {
         setError(true);
         setRefresh(false);
@@ -79,7 +82,7 @@ export const useJobProgress = (
   const [error, setError] = useState(false);
   const [isRefreshing, setRefresh] = useState(true);
   const [latestFetchTimestamp, setLatestFetchTimestamp] = useState(0);
-  const { data: tasks } = useFetchStateApiProgressByTaskName(
+  const { data } = useFetchStateApiProgressByTaskName(
     jobId,
     isRefreshing,
     setMsg,
@@ -89,7 +92,7 @@ export const useJobProgress = (
     setLatestFetchTimestamp,
   );
 
-  const summed = (tasks ?? []).reduce((acc, task) => {
+  const summed = (data?.summary ?? []).reduce((acc, task) => {
     Object.entries(task.progress).forEach(([k, count]) => {
       const key = k as keyof TaskProgress;
       acc[key] = (acc[key] ?? 0) + count;
@@ -100,6 +103,7 @@ export const useJobProgress = (
   const driverExists = !jobId ? false : true;
   return {
     progress: summed,
+    totalTasks: data?.totalTasks,
     msg,
     error,
     driverExists,
@@ -124,7 +128,7 @@ export const useJobProgressByTaskName = (jobId: string) => {
     setRefresh(event.target.checked);
   };
 
-  const { data: tasks } = useFetchStateApiProgressByTaskName(
+  const { data } = useFetchStateApiProgressByTaskName(
     jobId,
     isRefreshing,
     setMsg,
@@ -133,7 +137,7 @@ export const useJobProgressByTaskName = (jobId: string) => {
     false,
   );
 
-  const formattedTasks = (tasks ?? []).map((task) => {
+  const formattedTasks = (data?.summary ?? []).map((task) => {
     const {
       numFailed = 0,
       numPendingArgsAvail = 0,
@@ -162,6 +166,7 @@ export const useJobProgressByTaskName = (jobId: string) => {
     progress: paginatedTasks,
     page: { pageNo: page, pageSize: 10 },
     total: formattedTasks.length,
+    totalTasks: data?.totalTasks,
     setPage,
     msg,
     error,
@@ -257,7 +262,7 @@ export const useJobProgressByLineage = (
         const summary = formatNestedJobProgressToJobProgressGroup(
           rsp.data.data.result.result,
         );
-        return { summary, totalTasks: rsp.data.data.result.num_filtered };
+        return { summary, totalTasks: rsp.data.data.result.total };
       } else {
         setError(true);
         setRefresh(false);

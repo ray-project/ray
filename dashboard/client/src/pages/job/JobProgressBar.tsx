@@ -35,12 +35,13 @@ export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
   const {
     progress,
     driverExists,
+    totalTasks,
     latestFetchTimestamp: progressTimestamp,
   } = useJobProgress(jobId, advancedProgressBarExpanded);
   const {
     progressGroups,
     total,
-    totalTasks,
+    totalTasks: advancedTotalTasks,
     latestFetchTimestamp: totalTimestamp,
   } = useJobProgressByLineage(
     advancedProgressBarRendered ? jobId : undefined,
@@ -55,8 +56,8 @@ export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
   // Note these values may disagree in some way. It might better to consistently use one endpoint.
   const [totalProgress, finalTotalTasks] =
     progressTimestamp > totalTimestamp
-      ? [progress, undefined]
-      : [total, totalTasks];
+      ? [progress, totalTasks]
+      : [total, advancedTotalTasks];
 
   return (
     <div>

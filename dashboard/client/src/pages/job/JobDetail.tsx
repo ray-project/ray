@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
+import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -121,12 +122,20 @@ export const JobDetailChartsPage = ({
       <TitleCard title="Tasks">
         <JobProgressBar jobId={jobId} job={job} />
       </TitleCard>
-      <TitleCard title="Task Table">
-        <TaskList jobId={jobId} />
+      <TitleCard>
+        <CollapsibleSection title="Task Table">
+          <TaskList jobId={jobId} />
+        </CollapsibleSection>
       </TitleCard>
-      <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
-      <TitleCard title="Placement Groups">
-        <PlacementGroupList jobId={jobId} />
+      <TitleCard>
+        <CollapsibleSection title="Actors">
+          <ActorList jobId={jobId} />
+        </CollapsibleSection>
+      </TitleCard>
+      <TitleCard>
+        <CollapsibleSection title="Placement Groups">
+          <PlacementGroupList jobId={jobId} />
+        </CollapsibleSection>
       </TitleCard>
     </div>
   );

@@ -130,6 +130,8 @@ export type StateApiJobProgressByTaskNameRsp = {
   data: {
     result: {
       result: StateApiJobProgressByTaskName;
+      num_filtered: number;
+      total: number;
     };
   };
   msg: string;
@@ -169,6 +171,7 @@ export type StateApiNestedJobProgressRsp = {
     result: {
       result: StateApiNestedJobProgress;
       num_filtered: number;
+      total: number;
     };
   };
   msg: string;
