@@ -109,7 +109,7 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-
+from ray.includes.global_state_accessor cimport RedisDelKeySync
 from ray.includes.optional cimport (
     optional
 )
@@ -804,11 +804,6 @@ cdef void execute_task(
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
-            if (not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                     and function_name == "__ray_terminate__") and
-                    ray._config.memory_monitor_refresh_ms() == 0):
-                worker.memory_monitor.raise_if_low_memory()
-
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
                     args, kwargs = [], {}
@@ -2793,3 +2788,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     py_callback = <object>user_callback
     py_callback(result)
     cpython.Py_DECREF(py_callback)
+
+
+def del_key_from_storage(host, port, password, use_ssl, key):
+    return RedisDelKeySync(host, port, password, use_ssl, key)
