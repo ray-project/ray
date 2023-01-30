@@ -140,7 +140,9 @@ def has_metric_tagged_with_value(addr, tag, value) -> bool:
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_non_restartable_actor_killed_by_memory_monitor_with_oom_error(ray_with_memory_monitor):
+def test_non_restartable_actor_killed_by_memory_monitor_with_oom_error(
+    ray_with_memory_monitor,
+):
     addr = ray_with_memory_monitor
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
 

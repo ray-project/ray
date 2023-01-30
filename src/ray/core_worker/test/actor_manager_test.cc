@@ -111,11 +111,12 @@ class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterf
                void(const ActorID &actor_id,
                     const rpc::Address &address,
                     int64_t num_restarts));
-  MOCK_METHOD4(DisconnectActor,
+  MOCK_METHOD5(DisconnectActor,
                void(const ActorID &actor_id,
                     int64_t num_restarts,
                     bool dead,
-                    const rpc::ActorDeathCause &death_cause));
+                    const rpc::ActorDeathCause &death_cause,
+                    const rpc::Address &address));
   MOCK_METHOD3(KillActor,
                void(const ActorID &actor_id, bool force_kill, bool no_restart));
 
