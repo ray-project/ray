@@ -2,7 +2,7 @@ import os
 import time
 from typing import Optional, List
 
-from ray_release.alerts.handle import handle_result
+from ray_release.alerts.handle import handle_result, require_non_empty_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
@@ -168,7 +168,7 @@ def run_release_test(
 
     pipeline_exception = None
     # non critical for some tests. So separate it from the general one.
-    fetch_command_exception = None
+    fetch_result_exception = None
     try:
         # Load configs
         cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
@@ -326,7 +326,7 @@ def run_release_test(
             logger.error("Could not fetch results for test command")
             logger.exception(e)
             command_results = {}
-            fetch_command_exception = e
+            fetch_result_exception = e
 
         # Postprocess result:
         if "last_update" in command_results:
@@ -379,12 +379,12 @@ def run_release_test(
     os.chdir(old_wd)
 
     if not pipeline_exception:
+        if require_non_empty_result(test) and fetch_result_exception:
+            raise fetch_result_exception
         buildkite_group(":mag: Interpreting results")
         # Only handle results if we didn't run into issues earlier
         try:
-            result_is_empty = handle_result(test, result)
-            if result_is_empty:
-                raise fetch_command_exception
+            handle_result(test, result)
         except Exception as e:
             pipeline_exception = e
 

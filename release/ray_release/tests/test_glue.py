@@ -33,7 +33,7 @@ from ray_release.exception import (
     PrepareCommandTimeout,
     TestCommandError,
     TestCommandTimeout,
-    ResultsError,
+    FetchResultError,
     LogsError,
     ResultsAlert,
     ClusterNodesWaitTimeout,
@@ -583,7 +583,7 @@ class GlueTest(unittest.TestCase):
 
         self._succeed_until("test_command")
 
-        self.command_runner_return["fetch_results"] = _fail_on_call(ResultsError)
+        self.command_runner_return["fetch_results"] = _fail_on_call(FetchResultError)
         with self.assertLogs(logger, "ERROR") as cm:
             self._run(result)
             self.assertTrue(any("Could not fetch results" in o for o in cm.output))

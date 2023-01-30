@@ -3,13 +3,13 @@ from typing import Optional
 from ray_release.config import Test
 from ray_release.result import Result
 
+REQ_NON_EMPTY_RESULT = True
+
 
 def handle_result(
     test: Test,
     result: Result,
 ) -> Optional[str]:
-    if not result.results:
-        return "Result is empty!"
 
     last_update_diff = result.results.get("last_update_diff", float("inf"))
 

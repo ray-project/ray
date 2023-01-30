@@ -13,23 +13,25 @@ from ray_release.alerts import (
 
 
 result_to_handle_map = {
-    "default": default.handle_result,
-    "long_running_tests": long_running_tests.handle_result,
-    "rllib_tests": rllib_tests.handle_result,
-    "tune_tests": tune_tests.handle_result,
-    "xgboost_tests": xgboost_tests.handle_result,
+    "default": (default.handle_result, default.REQ_NON_EMPTY_RESULT),
+    "long_running_tests": (
+        long_running_tests.handle_result,
+        long_running_tests.REQ_NON_EMPTY_RESULT,
+    ),
+    "rllib_tests": (rllib_tests.handle_result, rllib_tests.REQ_NON_EMPTY_RESULT),
+    "tune_tests": (tune_tests.handle_result, tune_tests.REQ_NON_EMPTY_RESULT),
+    "xgboost_tests": (xgboost_tests.handle_result, xgboost_tests.REQ_NON_EMPTY_RESULT),
 }
 
 
-def handle_result(test: Test, result: Result) -> bool:
-    """Handle result.
+def require_non_empty_result(test: Test) -> bool:
+    alert_suite = test.get("alert", "default")
+    if alert_suite not in result_to_handle_map:
+        raise ReleaseTestConfigError(f"Alert suite {alert_suite} not found.")
+    return result_to_handle_map[alert_suite][1]
 
-    Returns:
-        A boolean indicates if the logic needs a non-empty result to be fetched.
-        If true, a proper FetchResultError will be raised by caller.
-    Raises:
-        ResultsAlert.
-    """
+
+def handle_result(test: Test, result: Result):
     alert_suite = test.get("alert", "default")
 
     logger.info(
@@ -40,12 +42,9 @@ def handle_result(test: Test, result: Result) -> bool:
     if alert_suite not in result_to_handle_map:
         raise ReleaseTestConfigError(f"Alert suite {alert_suite} not found.")
 
-    handler = result_to_handle_map[alert_suite]
+    handler = result_to_handle_map[alert_suite][0]
     error = handler(test, result)
 
-    if error == "Result is empty!":
-        # A proper FetchResultError to be raised outside.
-        return True
     if error:
         raise ResultsAlert(error)
 

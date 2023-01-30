@@ -44,6 +44,7 @@ class ExitCode(enum.Enum):
     CLUSTER_STARTUP_ERROR = 15
     LOCAL_ENV_SETUP_ERROR = 16
     REMOTE_ENV_SETUP_ERROR = 17
+    FETCH_RESULT_ERROR = 18
     # ANYSCALE_SDK_ERROR = 19
 
     # Infra timeouts (retryable)
@@ -57,9 +58,6 @@ class ExitCode(enum.Enum):
     COMMAND_ALERT = 41
     COMMAND_TIMEOUT = 42
     PREPARE_ERROR = 43
-
-    # Infra error after application is done
-    FETCH_RESULT_ERROR = 51
 
 
 def handle_exception(e: Exception) -> Tuple[ExitCode, str, Optional[int]]:
