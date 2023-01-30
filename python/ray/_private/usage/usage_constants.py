@@ -58,9 +58,11 @@ PROVIDER_KUBERAY = "kuberay"
 
 # The list of 3rd party libraries where we track if they're imported.
 THIRD_PARTY_LIBARY_LIBRARIES_WHITELIST = {
-    "tensorflow",
-    "pytorch",
+    "jax",
     "numpy",
     "pandas",
+    "pytorch",
     "pyarrow",
+    "scikit-learn",
+    "tensorflow",
 }
