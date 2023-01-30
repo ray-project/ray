@@ -16,6 +16,7 @@ from ray.util.debug import log_once
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo.ppo_rl_trainer_config import PPORLTrainerHPs
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
 )
@@ -91,6 +92,7 @@ class PPOConfig(PGConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # PPO specific settings:
+        self._rl_trainer_hps = PPORLTrainerHPs()
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
@@ -214,12 +216,16 @@ class PPOConfig(PGConfig):
             self.lr_schedule = lr_schedule
         if use_critic is not NotProvided:
             self.use_critic = use_critic
+            # TODO (Kourosh) This is experimental. Set rl_trainer_hps parameters as 
+            # well. Don't forget to remote .use_critic from algorithm config.
+            self._rl_trainer_hps.use_critic = use_critic
         if use_gae is not NotProvided:
             self.use_gae = use_gae
         if lambda_ is not NotProvided:
             self.lambda_ = lambda_
         if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
+            self._rl_trainer_hps.kl_coeff = kl_coeff
         if sgd_minibatch_size is not NotProvided:
             self.sgd_minibatch_size = sgd_minibatch_size
         if num_sgd_iter is not NotProvided:
@@ -228,18 +234,24 @@ class PPOConfig(PGConfig):
             self.shuffle_sequences = shuffle_sequences
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
+            self._rl_trainer_hps.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
             self.entropy_coeff = entropy_coeff
+            self._rl_trainer_hps.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
+            self._rl_trainer_hps.entropy_coeff_schedule = entropy_coeff_schedule
         if clip_param is not NotProvided:
             self.clip_param = clip_param
+            self._rl_trainer_hps.clip_param = clip_param
         if vf_clip_param is not NotProvided:
             self.vf_clip_param = vf_clip_param
+            self._rl_trainer_hps.vf_clip_param = vf_clip_param
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if kl_target is not NotProvided:
             self.kl_target = kl_target
+            self._rl_trainer_hps.kl_target = kl_target
 
         return self
 

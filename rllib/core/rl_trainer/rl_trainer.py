@@ -69,6 +69,10 @@ class RLTrainerHPs:
 
     When creating a new RLTrainer, the new hyper-parameters have to be defined by
     subclassing this class and adding the new hyper-parameters as fields.
+
+    # TODO (Kourosh): The things that could be part of the base class:
+    - lr_schedule
+    - grad_clip
     """
 
     pass

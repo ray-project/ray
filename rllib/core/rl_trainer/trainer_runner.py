@@ -5,6 +5,8 @@ from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECK
 
 import ray
 
+from ray.rllib.utils.typing import ResultDict
+from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -103,7 +105,12 @@ class TrainerRunner:
         return self._is_local
 
     def fit(
-        self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int
+        self, 
+        batch: MultiAgentBatch, 
+        *,
+        minibatch_size: int, 
+        num_iters: int,
+        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results
     ) -> Mapping[str, Any]:
         """Do `num_iters` minibatch updates given the original batch.
 
@@ -117,6 +124,7 @@ class TrainerRunner:
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
+            reduce_fn: See `update()` documenation for more details.
 
         Returns:
             A dictionary of results summarizing the statistics of the updates.
@@ -153,7 +161,7 @@ class TrainerRunner:
             # clear what the correct value should be. Since training does not depend on
             # this it will be fine for now.
             minibatch = MultiAgentBatch(minibatch, len(batch))
-            results.append(self.update(minibatch))
+            results.append(self.update(minibatch, reduce_fn=reduce_fn))
 
         # return the average of the results using tree map
         # TODO (Kourosh): There should be system for reporting back metrics from
@@ -161,19 +169,34 @@ class TrainerRunner:
         # concatenated.
         return tree.map_structure(lambda *x: np.mean(x), *results)
 
-    def update(self, batch: MultiAgentBatch) -> List[Mapping[str, Any]]:
-        """Do one gradient based update to the RLTrainer(s) maintained by this TrainerRunner.
+    def update(self, 
+        batch: MultiAgentBatch,
+        *,
+        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results
+    ) -> List[Mapping[str, Any]]:
+        """Do one gradient based update to the RLTrainer(s).
 
         Args:
             batch: The data to use for the update.
+            reduce_fn: A function to reduce the results from a list of RLTrainer Actors 
+                into a single result. This can be any arbitrary function that takes a 
+                list of dictionaries and returns a single dictionary. For example you 
+                can either take an average (default) or concatenate the results (for 
+                example for metrics) or be more selective about you want to report back 
+                to the algorithm's training_step. If None is passed, the results will 
+                not get reduced.
 
         Returns:
             A list of dictionaries of results from the updates from the RLTrainer(s)
         """
         if self.is_local:
-            return [self._trainer.update(batch)]
+            results = [self._trainer.update(batch)]
         else:
-            return self._distributed_update(batch)
+            results = self._distributed_update(batch)
+
+        if reduce_fn is None:
+            return results
+        return reduce_fn(results)
 
     def _distributed_update(self, batch: MultiAgentBatch) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the RLTrainers using DDP training.
@@ -203,10 +226,13 @@ class TrainerRunner:
             refs.append(worker.update.remote(new_batch))
 
         results = ray.get(refs)
-        # take an average across the result of all actors
-        return tree.map_structure(lambda *x: np.mean(x), *results)
+        return results
 
-    def additional_update(self, *args, **kwargs) -> List[Mapping[str, Any]]:
+    def additional_update(self, 
+        *,
+        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
+        **kwargs
+    ) -> List[Mapping[str, Any]]:
         """Apply additional non-gradient based updates to the RLTrainers.
 
         For example, this could be used to do a polyak averaging update
@@ -215,7 +241,7 @@ class TrainerRunner:
         By default this is a pass through that calls `RLTrainer.additional_update`
 
         Args:
-            *args: Arguments to pass to each RLTrainer.
+            reduce_fn: See `update()` documentation for more details.
             **kwargs: Keyword arguments to pass to each RLTrainer.
 
         Returns:
@@ -223,12 +249,15 @@ class TrainerRunner:
         """
 
         if self.is_local:
-            return [self._trainer.additional_update(*args, **kwargs)]
+            results = [self._trainer.additional_update(**kwargs)]
         else:
             refs = []
             for worker in self._workers:
-                refs.append(worker.additional_update.remote(*args, **kwargs))
-            return ray.get(refs)
+                refs.append(worker.additional_update.remote(**kwargs))
+            results = ray.get(refs)
+        if reduce_fn is None:
+            return results
+        return reduce_fn(results)
 
     def add_module(
         self,
@@ -301,8 +330,11 @@ class TrainerRunner:
             worker = next(iter(self._workers))
             return ray.get(worker.get_weights.remote(module_ids))
 
-    def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
-        """Get the states of the RLTrainers"""
+    def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
+        """Get the states of the first RLTrainers.
+        
+        This should be the same across RLTrainers
+        """
         if self.is_local:
             return self._trainer.get_state()
         else:
