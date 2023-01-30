@@ -64,6 +64,13 @@ DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES = (
 )
 
 
+def _get_db_api_entry():
+    """
+    Get databricks API entry point.
+    """
+    return get_dbutils().entry_point
+
+
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
     def get_default_temp_dir(self):
         return "/local_disk0/tmp"
@@ -74,7 +81,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         )
 
     def on_cluster_created(self, ray_cluster_handler):
-        db_api_entry = get_dbutils().entry_point
+        db_api_entry = _get_db_api_entry()
         try:
             db_api_entry.registerBackgroundSparkJobGroup(
                 ray_cluster_handler.spark_job_group_id

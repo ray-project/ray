@@ -92,6 +92,10 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 ray_temp_root_dir=ray_temp_root_dir,
                 head_node_options={"include_dashboard": True},
             )
+
+            assert os.environ["RAY_ADDRESS"] == \
+                   ray.util.spark.cluster_init._active_ray_cluster.address
+
             ray.init()
 
             @ray.remote
@@ -103,6 +107,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
             assert results == [i * i for i in range(32)]
 
             shutdown_ray_cluster()
+
+            assert "RAY_ADDRESS" not in os.environ
 
             time.sleep(7)
             # assert temp dir is removed.
