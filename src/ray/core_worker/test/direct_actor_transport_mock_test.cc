@@ -19,6 +19,7 @@
 #include "ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/task_manager.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/raylet_client/raylet_client.h"
 // clang-format on
 
 namespace ray {
@@ -36,8 +37,20 @@ class DirectTaskTransportTest : public ::testing::Test {
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
         [&](const rpc::Address &) { return nullptr; });
     memory_store = std::make_unique<CoreWorkerMemoryStore>();
+    NodeID local_raylet_id;
+    auto local_raylet_client = std::make_shared<MockRayletClientInterface>();
     actor_task_submitter = std::make_unique<CoreWorkerDirectActorTaskSubmitter>(
-        *client_pool, *memory_store, *task_finisher, *actor_creator, nullptr, io_context);
+        *client_pool,
+        *memory_store,
+        *task_finisher,
+        *actor_creator,
+        nullptr,
+        io_context,
+        local_raylet_id,
+        local_raylet_client,
+        [this](const std::string &, int) {
+          return std::make_shared<MockRayletClientInterface>();
+        });
   }
 
   TaskSpecification GetActorTaskSpec(const ActorID &actor_id) {

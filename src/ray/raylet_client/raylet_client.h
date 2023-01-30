@@ -106,7 +106,7 @@ class WorkerLeaseInterface {
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
 
   virtual void GetWorkerFailureCause(
-      const WorkerID &task_id,
+      const WorkerID &worker_id,
       const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback) = 0;
 
   virtual ~WorkerLeaseInterface(){};
