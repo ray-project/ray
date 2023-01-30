@@ -118,7 +118,10 @@ def main():
             result["perf_metrics"] = perf
             dashboard_test.update_release_test_result(result)
 
+        print(f"Writing data into file: {os.environ['TEST_OUTPUT_JSON']}")
         json.dump(result, out_file)
+    print(f"Result: {json.dumps(result, indent=2)}")
+    print("Test finished successfully!")
 
 
 if __name__ == "__main__":
