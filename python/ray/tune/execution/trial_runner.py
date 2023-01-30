@@ -332,6 +332,7 @@ class TrialRunner:
 
     def __init__(
         self,
+        *,
         search_alg: Optional[SearchAlgorithm] = None,
         replaced_ref_map: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
