@@ -1122,9 +1122,10 @@ class AlgorithmConfig:
             auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
                 the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
                 dict). If True, RLlib will automatically wrap the given gym env class
-                with the gym-provided compatibility wrapper. If False, RLlib will
-                produce a descriptive error on which steps to perform to upgrade to
-                gymnasium (or to switch this flag to True).
+                with the gym-provided compatibility wrapper
+                (gym.wrappers.EnvCompatibility). If False, RLlib will produce a
+                descriptive error on which steps to perform to upgrade to gymnasium
+                (or to switch this flag to True).
 
         Returns:
             This updated AlgorithmConfig object.

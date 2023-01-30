@@ -2259,7 +2259,7 @@ class Algorithm(Trainable):
                         return isinstance(self, MultiAgentEnv)
 
                 return env_id, lambda cfg: _wrapper.remote(cfg)
-            # Gymnasium.Env-subclass: Also go through our RLlib gym-creator.
+            # gym.Env-subclass: Also go through our RLlib gym-creator.
             elif issubclass(env_specifier, gym.Env):
                 return env_id, functools.partial(
                     _gym_env_creator,

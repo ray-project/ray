@@ -1,11 +1,12 @@
 import logging
+from typing import Type, Union
 
 import gymnasium as gym
 
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.multi_agent_env_compatibility import (
-    MultiAgentEnvCompatibility
+    MultiAgentEnvCompatibility,
 )
 from ray.rllib.utils.error import (
     ERR_MSG_INVALID_ENV_DESCRIPTOR,
@@ -76,7 +77,7 @@ def try_import_open_spiel(error: bool = False):
 
 def _gym_env_creator(
     env_context: EnvContext,
-    env_descriptor: str,
+    env_descriptor: Union[str, Type[gym.Env]],
     auto_wrap_old_gym_envs: bool = True,
 ) -> gym.Env:
     """Tries to create a gym env given an EnvContext object and descriptor.
@@ -91,15 +92,15 @@ def _gym_env_creator(
         env_context: The env context object to configure the env.
             Note that this is a config dict, plus the properties:
             `worker_index`, `vector_index`, and `remote`.
-        env_descriptor: The env descriptor, e.g. CartPole-v1,
-            ALE/MsPacman-v5, VizdoomBasic-v0, or
-            CartPoleContinuousBulletEnv-v0.
+        env_descriptor: The env descriptor as a gym-registered string, e.g. CartPole-v1,
+            ALE/MsPacman-v5, VizdoomBasic-v0, or CartPoleContinuousBulletEnv-v0.
+            Alternatively, the gym.Env subclass to use.
         auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
             the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
             dict). If True, RLlib will automatically wrap the given gym env class
-            with the gym-provided compatibility wrapper. If False, RLlib will
-            produce a descriptive error on which steps to perform to upgrade to
-            gymnasium (or to switch this flag to True).
+            with the gym-provided compatibility wrapper (gym.wrappers.EnvCompatibility).
+            If False, RLlib will produce a descriptive error on which steps to perform
+            to upgrade to gymnasium (or to switch this flag to True).
 
     Returns:
         The actual gym environment object.
@@ -145,16 +146,24 @@ def _gym_env_creator(
         # wrapper.
         if auto_wrap_old_gym_envs:
             try:
+                # Call the env's reset() method to check for the env using the old
+                # gym (reset doesn't take `seed` and `options` args and returns only
+                # the initial observations) or new gymnasium APIs (reset takes `seed`
+                # and `options` AND returns observations and infos).
                 obs_and_infos = env.reset(seed=None, options={})
+                # Check return values for correct gymnasium .
                 check_old_gym_env(reset_results=obs_and_infos)
+            # TypeError for `reset()` not accepting seed/options.
+            # ValueError for `check_old_gym_env` raising error if return values
+            # incorrect.
             except Exception:
                 if log_once("auto_wrap_gym_api"):
                     logger.warning(
-                        "`config.auto_wrap_old_gym_envs` is activated AND you seem to have "
-                        "provided an old gym-API environment. RLlib will therefore try and "
-                        "auto-fix the following error. However, please consider switching "
-                        "over to the new `gymnasium` APIs:\n" + 
-                        ERR_MSG_OLD_GYM_API
+                        "`config.auto_wrap_old_gym_envs` is activated AND you seem to "
+                        "have provided an old gym-API environment. RLlib will therefore"
+                        " try to auto-fix the following error. However, please "
+                        "consider switching over to the new `gymnasium` APIs:\n"
+                        + ERR_MSG_OLD_GYM_API
                     )
                 # Multi-agent case.
                 if isinstance(env, MultiAgentEnv):
@@ -162,6 +171,9 @@ def _gym_env_creator(
                 # Single agent (gymnasium.Env) case.
                 else:
                     env = gym.wrappers.EnvCompatibility(env)
+                # Repeat the checks, now everything should work.
+                obs_and_infos = env.reset(seed=None, options={})
+                check_old_gym_env(reset_results=obs_and_infos)
     except gym.error.Error:
         raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))
 
