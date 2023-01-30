@@ -44,7 +44,7 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     numpy \
     datetime \
     icecream \
-    psycopg2-binary
+    sqlalchemy
 
     # dask version compatible with ray and modin
 
