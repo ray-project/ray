@@ -145,7 +145,7 @@ term_handler(){
     fi
     export clusterhosts=$clusterhosts
     /usr/local/bin/crash --hosts ${clusterhosts} -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
-
+    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'all';"
 
 
 
@@ -155,7 +155,6 @@ term_handler(){
     curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
     echo "Shutting Tailscale Down"
     sudo tailscale down
-    /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'all';"
     exit 0
 }
 
