@@ -106,13 +106,11 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "`ray.util.spark.shutdown_ray_cluster()`."
             )
         elif auto_shutdown_timeout_minutes < 0:
-            _logger.warning(
+            raise ValueError(
                 "You must set "
                 f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_TIMEOUT_MINUTES}' "
-                "to a value >= 0. The negative value you set is ignored and the "
-                "default value 30 will be used."
+                "to a value >= 0."
             )
-            auto_shutdown_timeout_minutes = 30
         else:
             _logger.info(
                 "The Ray cluster will be shut down automatically if you don't run "
@@ -130,9 +128,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                     # The cluster is shut down. The watcher thread exits.
                     return
 
-                idle_time = (
-                    db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
-                )
+                idle_time = db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
 
                 if idle_time > auto_shutdown_timeout_millis:
                     from ray.util.spark import cluster_init
@@ -146,9 +142,6 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
         try:
             db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
-            if auto_shutdown_timeout_minutes > 0:
-                threading.Thread(target=auto_shutdown_watcher, args=(), daemon=True).start()
-
         except Exception:
             _logger.warning(
                 "Your current Databricks Runtime version does not support API "
@@ -158,3 +151,8 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "or call `ray.util.spark.shutdown_ray_cluster()` to shut down "
                 "Ray cluster on spark."
             )
+
+        if auto_shutdown_timeout_minutes > 0:
+            threading.Thread(
+                target=auto_shutdown_watcher, args=(), daemon=True
+            ).start()
