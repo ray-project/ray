@@ -74,7 +74,7 @@ def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_dataset_contex
         run()
 
 
-def test_configure_spread_e2e(ray_start_10_cpus_shared):
+def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_dataset_context):
     from ray import remote_function
 
     tasks = []
@@ -95,7 +95,9 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared):
     assert tasks == ["DEFAULT", "DEFAULT", "SPREAD", "SPREAD"]
 
 
-def test_scheduling_progress_when_output_blocked(ray_start_10_cpus_shared):
+def test_scheduling_progress_when_output_blocked(
+    ray_start_10_cpus_shared, restore_dataset_context
+):
     # Processing stages should fully finish even if output is completely stalled.
 
     @ray.remote
