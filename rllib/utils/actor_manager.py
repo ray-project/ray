@@ -679,11 +679,44 @@ class FaultTolerantActorManager:
 
         return len(remote_calls)
 
+    def __filter_calls_by_tag(
+        self, tags
+    ) -> Tuple[List[ray.ObjectRef], List[ActorHandle], List[str]]:
+        """Return all the in flight requests that match the given tags.
+
+        Args:
+            tags: A str or a list of str. If tags is empty, return all the in flight
+
+        Returns:
+            A tuple of corresponding (remote_calls, remote_actor_ids, valid_tags)
+
+        """
+        if tags == ():
+            pass
+        elif isinstance(tags, str):
+            tags = {tags}
+        elif isinstance(tags, list):
+            tags = set(tags)
+        else:
+            raise ValueError(
+                f"tags must be either a str or a list of str, got {type(tags)}."
+            )
+        remote_calls = []
+        remote_actor_ids = []
+        valid_tags = []
+        for call, (tag, actor_id) in self.__in_flight_req_to_actor_id.items():
+            # the default behavior is to return all ready results.
+            if tags == () or tag in tags:
+                remote_calls.append(call)
+                remote_actor_ids.append(actor_id)
+                valid_tags.append(tag)
+        return remote_calls, remote_actor_ids, valid_tags
+
     @DeveloperAPI
     def fetch_ready_async_reqs(
         self,
         *,
-        tags: Union[str, List[str]] = "default",
+        tags: Union[str, List[str]] = (),
         timeout_seconds: Union[None, int] = 0,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
@@ -692,7 +725,7 @@ class FaultTolerantActorManager:
 
         Automatically mark actors unhealthy if they fail to respond.
 
-        Note: If tags is "default" then results from all ready async requests are
+        Note: If tags is an empty tuple then results from all ready async requests are
             returned.
 
         Args:
@@ -709,26 +742,8 @@ class FaultTolerantActorManager:
             The values may be actual data returned or exceptions raised during the
             remote call in the format of RemoteCallResults.
         """
-        if tags == "default":
-            pass
-        elif isinstance(tags, str):
-            tags = {tags}
-        elif isinstance(tags, list):
-            tags = set(tags)
-        else:
-            raise ValueError(
-                f"tags must be either a str or a list of str, got {type(tags)}."
-            )
-        remote_calls = []
-        remote_actor_ids = []
-        valid_tags = []
-        for call, (tag, actor_id) in self.__in_flight_req_to_actor_id.items():
-            # the default behavior is to return all ready results.
-            if tags == "default" or tag in tags:
-                remote_calls.append(call)
-                remote_actor_ids.append(actor_id)
-                valid_tags.append(tag)
-        # Construct the list of in-flight requests.
+        # Construct the list of in-flight requests filtered by tag.
+        remote_calls, remote_actor_ids, valid_tags = self.__filter_calls_by_tag(tags)
         ready, remote_results = self.__fetch_result(
             remote_actor_ids=remote_actor_ids,
             remote_calls=remote_calls,

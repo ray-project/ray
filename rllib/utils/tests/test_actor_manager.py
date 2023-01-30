@@ -381,6 +381,7 @@ class TestActorManager(unittest.TestCase):
             data = result.get()
             self.assertEqual(data, 1)
             self.assertEqual(result.tag, "call")
+
         # test with default tag
         manager.foreach_actor_async(lambda w: w.ping())
         manager.foreach_actor_async(lambda w: w.call())
@@ -396,6 +397,7 @@ class TestActorManager(unittest.TestCase):
                 self.assertEqual(data, 2)
             else:
                 raise ValueError("data is not str or int")
+
         # test with custom tags
         manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
@@ -414,6 +416,7 @@ class TestActorManager(unittest.TestCase):
                 self.assertEqual(result.tag, "call")
             else:
                 raise ValueError("data is not str or int")
+
         # test with incorrect tags
         manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
