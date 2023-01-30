@@ -3,9 +3,8 @@ import sys
 import pytest
 from ray.util.ray_executor import RayExecutor
 import time
-from concurrent.futures._base import TimeoutError
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, TimeoutError as ConTimeoutError
+import ray
 
 def test_remote_function_runs_on_local_instance():
     with RayExecutor() as ex:
@@ -29,9 +28,23 @@ def test_remote_function_runs_on_local_instance_with_map():
 
 def test_remote_function_map_using_max_workers():
     with RayExecutor(max_workers=3) as ex:
-        futures_iter = ex.map(lambda x: x * x, [100, 100, 100])
-        for result in futures_iter:
-            assert result == 10_000
+        time_start = time.monotonic()
+        ff = ex.map(lambda x: time.sleep(1), range(12))
+        print(f'blah: {list(ff)}')
+        time_end = time.monotonic()
+        # we expect about (12*1) / 3 = 4 rounds
+        delta = time_end - time_start
+        assert delta > 3.0
+
+
+def test_remote_function_max_workers_same_result():
+    with RayExecutor() as ex:
+        futures_iter0 = ex.map(lambda x: x * x, range(12))
+    with RayExecutor(max_workers=1) as ex:
+        futures_iter1 = ex.map(lambda x: x * x, range(12))
+    with RayExecutor(max_workers=3) as ex:
+        futures_iter3 = ex.map(lambda x: x * x, range(12))
+    assert list(futures_iter0) == list(futures_iter1) == list(futures_iter3)
 
 
 def test_remote_function_runs_on_specified_instance(call_ray_start):
@@ -50,13 +63,24 @@ def test_remote_function_runs_on_specified_instance_with_map(call_ray_start):
 
 
 def test_map_times_out():
+    def f(x):
+        time.sleep(2)
+        return x
     with RayExecutor() as ex:
-        i0 = ex.map(lambda x: time.sleep(x), [2])
-        i0.__next__()
-        i1 = ex.map(lambda x: time.sleep(x), [2], timeout=1)
-        with pytest.raises(TimeoutError):
-            i1.__next__()
+        with pytest.raises(ConTimeoutError):
+            i1 = ex.map(f, [1, 2, 3], timeout=1)
+            for _ in i1:
+                pass
 
+def test_map_times_out_with_max_workers():
+    def f(x):
+        time.sleep(2)
+        return x
+    with RayExecutor(max_workers=2) as ex:
+        with pytest.raises(ConTimeoutError):
+            i1 = ex.map(f, [1, 2, 3], timeout=1)
+            for _ in i1:
+                pass
 
 def test_remote_function_runs_multiple_tasks_using_max_workers():
     with RayExecutor(max_workers=2) as ex:

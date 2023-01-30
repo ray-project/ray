@@ -1,6 +1,7 @@
 import itertools
 import time
 from concurrent.futures import Executor, Future
+from concurrent.futures._base import TimeoutError as ConcurrentTimeoutError
 from functools import partial
 from typing import (
     Callable,
@@ -15,9 +16,9 @@ from typing import (
 )
 
 import ray
-from ray.util.actor_pool import ActorPool
 from ray.util.annotations import PublicAPI
-
+from ray.types import ObjectRef
+import ray.exceptions
 
 # Typing -----------------------------------------------
 
@@ -72,8 +73,6 @@ class RayExecutor(Executor):
             submissions are blocked.
         self._futures:
             Futures are aggregated into this list as they are returned.
-        self.__actor_pool:
-            ActorPool which is used by self.map() when max_workers > 1
         self.__remote_fn:
             Wrapper around the remote function to be executed by Ray.
         self.context:
@@ -84,46 +83,22 @@ class RayExecutor(Executor):
         self._shutdown_ray: bool = shutdown_ray
         self._shutdown_lock: bool = False
         self._futures: List[Future] = []
-        self.__actor_pool: Optional[ActorPool] = None
-        self.__remote_fn: "Optional[RemoteFunction0]" = None
         self.context: "Optional[BaseContext]" = None
 
-        # The following is necessary because `@ray.remote` is only available at runtime.
-        if max_workers is None:
+        @ray.remote
+        def remote_fn(fn: Callable[[], T]) -> T:
+            return fn()
 
-            @ray.remote
-            def remote_fn(fn: Callable[[], T]) -> T:
-                return fn()
+        self.__remote_fn: "RemoteFunction0" = remote_fn
 
-            self.__remote_fn = remote_fn
-        else:
+        if max_workers is not None:
             if max_workers < 1:
                 raise ValueError(
                     f"`max_workers={max_workers}` is given. The argument \
                     `max_workers` must be >= 1"
                 )
-
-            @ray.remote
-            class ExecutorActor:
-                def __init__(self):
-                    pass
-
-                def actor_function(self, fn: Callable):
-                    return fn()
-
-                def ready(self):
-                    return
-
-            actors = [
-                ExecutorActor.options(  # type: ignore[attr-defined]
-                    name=f"actor-{i}"
-                ).remote()
-                for i in range(max_workers)
-            ]
-            for a in actors:
-                ray.get(a.ready.remote())
-            self.__actor_pool = ray.util.ActorPool(actors)
-
+            self.max_workers = max_workers
+            kwargs['num_cpus'] = max_workers
         self.context = ray.init(ignore_reinit_error=True, **kwargs)
 
     def submit(
@@ -149,31 +124,33 @@ class RayExecutor(Executor):
         """
         self._check_shutdown_lock()
         fn_curried = partial(fn, *args, **kwargs)
-        if self.__actor_pool:
-            self.__actor_pool.submit(
-                lambda a, _: a.actor_function.remote(fn_curried), None
-            )
-            oref = self.__actor_pool._index_to_future[
-                self.__actor_pool._next_task_index - 1
-            ]
-        else:
-            if self.__remote_fn:
-                oref = self.__remote_fn.options(  # type: ignore
-                    name=fn.__name__
-                ).remote(fn_curried)
-            else:
-                raise RuntimeError("Remote function is undefined")
 
-        future = oref.future()
+        future = self.__remote_fn.options(name=fn.__name__).remote(  # type: ignore
+            fn_curried
+        ).future()
         self._futures.append(future)
+        del fn_curried
         return future
+
+    @staticmethod
+    def _result_or_cancel(fut: Future[T], timeout: Optional[float] = None) -> T:
+        """
+        From concurrent.futures
+        """
+        try:
+            try:
+                return fut.result(timeout)
+            finally:
+                fut.cancel()
+        finally:
+            # Break a reference cycle with the exception in self._exception
+            del fut
 
     def map(
         self,
         fn: Callable[..., T],
         *iterables: Iterable[Any],
-        timeout: Optional[float] = None,
-        chunksize: int = 1,
+        timeout: Optional[float] = None
     ) -> Iterator[T]:
         """Returns an iterator equivalent to `map(fn, iter)`.
 
@@ -182,8 +159,6 @@ class RayExecutor(Executor):
                 passed iterables.
             timeout: The maximum number of seconds to wait. If None, then there
                 is no limit on the wait time.
-            chunksize: The size of the chunks the iterable will be broken into
-                before being passed to a child process.
 
         Returns:
             An iterator equivalent to: `map(func, *iterables)` but the calls may
@@ -204,62 +179,11 @@ class RayExecutor(Executor):
 
         """
         self._check_shutdown_lock()
-        results_list = []
-        for chunk in self._get_chunks(*iterables, chunksize=chunksize):
-            if self.__actor_pool:
-                results = self.__actor_pool.map(
-                    lambda a, v: a.actor_function.remote(  # type: ignore
-                        partial(fn, *v)
-                    ),
-                    list(chunk),
-                )
-            else:
-                results = self._map(fn, chunk, timeout)
-            results_list.append(results)
-        return itertools.chain(*results_list)
 
-    @staticmethod
-    def _get_chunks(
-        *iterables: Iterable[Any], chunksize: int
-    ) -> Iterator[tuple[tuple[Any, ...], ...]]:
-        """
-        https://github.com/python/cpython/blob/main/Lib/concurrent/futures/process.py#L186
-        Iterates over zip()-ed iterables in chunks.
-        """
-        it = zip(*iterables)
-        while True:
-            chunk = tuple(itertools.islice(it, chunksize))
-            if not chunk:
-                return
-            yield chunk
-
-    @staticmethod
-    def _result_or_cancel(fut: Future[T], timeout: Optional[float] = None) -> T:
-        """
-        From concurrent.futures
-        """
-        try:
-            try:
-                return fut.result(timeout)
-            finally:
-                fut.cancel()
-        finally:
-            # Break a reference cycle with the exception in self._exception
-            del fut
-
-    def _map(
-        self,
-        fn: Callable[..., T],
-        iterables: Iterable[tuple[Any, ...]],
-        timeout: Optional[float] = None,
-    ) -> Iterator[T]:
-        """
-        This was adapted from concurrent.futures.Executor.map.
-        """
         if timeout is not None:
             end_time = timeout + time.monotonic()
 
-        fs = [self.submit(fn, *args) for args in iterables]
+        fs = [self.submit(fn, *args) for args in zip(*iterables)]
 
         # Yield must be hidden in closure so that the futures are submitted
         # before the first iterator value is required.
@@ -272,13 +196,10 @@ class RayExecutor(Executor):
                     if timeout is None:
                         yield self._result_or_cancel(fs.pop())
                     else:
-                        yield self._result_or_cancel(
-                            fs.pop(), end_time - time.monotonic()
-                        )
+                        yield self._result_or_cancel(fs.pop(), end_time - time.monotonic())
             finally:
                 for future in fs:
                     future.cancel()
-
         return result_iterator()
 
     def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
@@ -308,7 +229,6 @@ class RayExecutor(Executor):
                         _ = future.result()
 
             ray.shutdown()
-            del self.__actor_pool
         del self._futures
         self._futures = []
 
