@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Uni
 import ray
 import ray.cloudpickle as pickle
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
-from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
+from ray.air._internal.remote_storage import (
+    download_from_uri,
+    is_non_local_path_uri,
+    list_at_uri,
+)
 from ray.air.checkpoint import Checkpoint
 from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
@@ -185,8 +189,14 @@ class BaseTrainer(abc.ABC):
         preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
     ) -> "BaseTrainer":
+        assert cls.can_restore(path), (
+            f"Invalid restore path: {path}. Make sure that this path exists and "
+            "is the experiment directory that results from a call to `trainer.fit()`."
+        )
         trainer_state_path = cls._maybe_sync_down_trainer_state(path)
-        assert trainer_state_path.exists()
+        assert (
+            trainer_state_path.exists()
+        ), f"Did not find trainer state at {str(trainer_state_path)}."
 
         with open(trainer_state_path, "rb") as fp:
             trainer = pickle.load(fp)
@@ -208,6 +218,26 @@ class BaseTrainer(abc.ABC):
             trainer.scaling_config = scaling_config
 
         return trainer
+
+    @classmethod
+    def can_restore(cls: Type["BaseTrainer"], path: Union[str, Path]) -> bool:
+        """Checks whether a given directory contains a restorable Train experiment.
+
+        Args:
+            path: The path to the experiment directory of the Train experiment.
+                This can be either a local directory (e.g. ~/ray_results/exp_name)
+                or a remote URI (e.g. s3://bucket/exp_name).
+
+        Returns:
+            can_restore: Whether or not this path exists and contains the pickled
+                Trainer, to load on restore.
+        """
+        path = str(path)
+        if is_non_local_path_uri(path):
+            dir_contents = list_at_uri(path)
+        else:
+            dir_contents = [] if not os.path.exists(path) else os.listdir(path)
+        return bool(dir_contents) and _TRAINER_PKL in dir_contents
 
     def __repr__(self):
         # A dictionary that maps parameters to their default values.
