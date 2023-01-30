@@ -16,7 +16,6 @@ from ray.tune.progress_reporter import (
 )
 from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
-from ray.util.annotations import RayDeprecationWarning
 
 if TYPE_CHECKING:
     from ray.train.base_trainer import BaseTrainer
@@ -167,6 +166,7 @@ class Tuner:
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
+        # Deprecated
         overwrite_trainable: Optional[
             Union[str, Callable, Type[Trainable], "BaseTrainer"]
         ] = None,
@@ -217,9 +217,9 @@ class Tuner:
                 trainable = overwrite_trainable
             warning_message = (
                 "`overwrite_trainable` has been renamed to `trainable`. "
-                "This argument will be removed starting from version 2.5."
+                "The old argument will be removed starting from version 2.5."
             )
-            warnings.warn(warning_message, RayDeprecationWarning, stacklevel=2)
+            warnings.warn(warning_message, DeprecationWarning)
 
         if not trainable:
             warning_message = (
@@ -227,7 +227,7 @@ class Tuner:
                 "to `Tuner.restore` starting from version 2.5. "
                 "Please specify the trainable to avoid this warning."
             )
-            warnings.warn(warning_message, RayDeprecationWarning, stacklevel=2)
+            warnings.warn(warning_message, DeprecationWarning)
 
         resume_config = _ResumeConfig(
             resume_unfinished=resume_unfinished,
