@@ -45,7 +45,7 @@ describe("Metrics", () => {
 
     render(<Metrics newIA />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
-    expect(screen.getByText(/30 minutes/)).toBeVisible();
+    expect(screen.getByText(/5 minutes/)).toBeVisible();
     expect(screen.getByText(/Tasks/)).toBeVisible();
     expect(screen.getByText(/Actors/)).toBeVisible();
     expect(screen.getByText(/Scheduler and autoscaler/)).toBeVisible();
@@ -61,7 +61,7 @@ describe("Metrics", () => {
     render(<Metrics newIA />, { wrapper: MetricsDisabledWrapper });
     await screen.findByText(/Grafana or prometheus server not detected./);
     expect(screen.queryByText(/View in Grafana/)).toBeNull();
-    expect(screen.queryByText(/30 minutes/)).toBeNull();
+    expect(screen.queryByText(/5 minutes/)).toBeNull();
     expect(screen.queryByText(/Tasks/)).toBeNull();
     expect(screen.queryByText(/Actors/)).toBeNull();
     expect(screen.queryByText(/Scheduler and autoscaler/)).toBeNull();
