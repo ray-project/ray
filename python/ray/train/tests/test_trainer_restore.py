@@ -55,7 +55,12 @@ class FailureInjectionCallback(Callback):
 
 
 def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
-
+    """Restoring a DataParallelTrainer with object refs captured in the train fn
+    or config works by re-specifying them.
+    Success criteria:
+    - Restored to the correct iteration. (1 iteration before crash, 1 after restore)
+    - Results are being logged to the same directory as before.
+    """
     dataset_size = 10
     num_workers = 2
 
@@ -109,6 +114,11 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
 
 @pytest.mark.parametrize("trainer_cls", [XGBoostTrainer, LightGBMTrainer])
 def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
+    """Tests restoring gradient boosted decision tree trainers.
+    Success criteria:
+    - Picks up at the right iteration. 2 before crash. 3 after. 5 total trees.
+    - Results are being logged to the same directory as before.
+    """
     exp_name = f"{trainer_cls.__name__}_restore_test"
     datasets = {"train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])}
 
@@ -147,6 +157,8 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
 
 @pytest.mark.parametrize("trainer_cls", [HuggingFaceTrainer])
 def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
+    """Tests restore for data parallel trainers that take in a `train_init` function
+    and config. Success criteria: same as for data parallel trainers."""
     exp_name = f"{trainer_cls.__name__}_restore_test"
 
     if trainer_cls == HuggingFaceTrainer:
@@ -192,6 +204,7 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
 
 
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
+    """Datasets are required to re-specify if they were originally provided."""
     datasets = {
         "train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(8)]),
         "valid": ray.data.from_items([{"x": x, "y": x + 1} for x in range(8)]),
@@ -222,6 +235,10 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
 
 
 def test_preprocessor_restore(ray_start_4_cpus, tmpdir):
+    """Preprocessors get restored from latest checkpoint if no new one is provided.
+    They will not be re-fit if loaded from the checkpoint.
+    If a new one is provided on restore, then it will be re-fit.
+    """
     datasets = {
         "train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(8)]),
     }
@@ -262,6 +279,11 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir):
 
 
 def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
+    """Re-specifying the preprocessor allows restoration when the preprocessor
+    includes some non-serializable (across clusters) objects.
+    In this test, the preprocessor consists of 2 calls to a dummy preprocessor
+    object that is put on the object store and used as a remote actor."""
+
     class ModelPreprocessor:
         def transform(self, x):
             return {k: v + 1 for k, v in x.items()}
@@ -299,6 +321,8 @@ def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
 
 
 def test_restore_with_different_trainer(tmpdir):
+    """Tests that an error is raised if trying to restore a XTrainer with
+    `YTrainer.restore`"""
     trainer = DataParallelTrainer(
         train_loop_per_worker=lambda config: session.report({"score": 1}),
         scaling_config=ScalingConfig(num_workers=1),
@@ -314,6 +338,7 @@ def test_restore_with_different_trainer(tmpdir):
 
 
 def test_restore_from_invalid_dir(tmpdir):
+    """Should raise an error if the restore directory doesn't exist or is invalid."""
     with pytest.raises(AssertionError):
         BaseTrainer.restore(str(tmpdir))
 
