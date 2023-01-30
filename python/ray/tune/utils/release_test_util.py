@@ -307,6 +307,7 @@ def get_and_run_exp_folder_observer(
     observer = ExperimentFolderObserver.options(
         resources={f"node:{head_node_ip}": 0.001},
         name="exp_folder_observer",
+        lifetime="detached",
     ).remote(
         experiment_dir=experiment_dir,
         trainable_name=trainable_name,

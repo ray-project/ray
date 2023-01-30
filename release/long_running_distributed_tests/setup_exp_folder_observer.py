@@ -2,6 +2,7 @@ import argparse
 import os
 
 # set up the background observer to write checkpoint ids to a file periodically.
+import ray
 from ray.tune.utils.release_test_util import get_and_run_exp_folder_observer
 
 
@@ -16,6 +17,7 @@ def parse_script_args():
 def main():
     """Start the observer to experiment folder."""
     args, _ = parse_script_args()
+    ray.init(address="auto")
     get_and_run_exp_folder_observer(
         experiment_dir=os.path.expanduser("~/ray_results/torch_pbt_failure"),
         trainable_name="TorchTrainer",
