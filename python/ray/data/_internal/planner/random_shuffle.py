@@ -1,12 +1,12 @@
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.planner.exchange.push_based_shuffle_scheduler import (
-    PushBasedShuffleScheduler,
+from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
+    PushBasedShuffleTaskScheduler,
 )
-from ray.data._internal.planner.exchange.shuffle_impl import ShuffleImpl
-from ray.data._internal.planner.exchange.vanilla_shuffle_scheduler import (
-    VanillaShuffleScheduler,
+from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
+from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
+    PullBasedShuffleTaskScheduler,
 )
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DatasetContext
@@ -21,16 +21,16 @@ def generate_random_shuffle_fn(
 
     def fn(refs: List[RefBundle]) -> Tuple[List[RefBundle], StatsDict]:
         num_input_blocks = sum(len(r.blocks) for r in refs)
-        shuffle_impl = ShuffleImpl(random_shuffle=True, random_seed=seed)
+        shuffle_spec = ShuffleTaskSpec(random_shuffle=True, random_seed=seed)
 
         if DatasetContext.get_current().use_push_based_shuffle:
             if num_outputs is not None:
                 raise NotImplementedError(
                     "Push-based shuffle doesn't support setting num_blocks yet."
                 )
-            scheduler = PushBasedShuffleScheduler(shuffle_impl)
+            scheduler = PushBasedShuffleTaskScheduler(shuffle_spec)
         else:
-            scheduler = VanillaShuffleScheduler(shuffle_impl)
+            scheduler = PullBasedShuffleTaskScheduler(shuffle_spec)
 
         return scheduler.execute(
             refs,

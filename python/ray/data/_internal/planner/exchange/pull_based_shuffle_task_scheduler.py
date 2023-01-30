@@ -1,15 +1,15 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.planner.exchange.interfaces import ExchangeScheduler
+from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 
 
-class VanillaShuffleScheduler(ExchangeScheduler):
+class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
     """
-    The vanilla map-reduce shuffle scheduler.
+    The pull-based map-reduce shuffle scheduler.
 
     Map tasks are first scheduled to generate map output blocks. After all map output
     are generated, then reduce tasks are scheduled to combine map output blocks
@@ -44,8 +44,8 @@ class VanillaShuffleScheduler(ExchangeScheduler):
             reduce_ray_remote_args = reduce_ray_remote_args.copy()
             reduce_ray_remote_args["scheduling_strategy"] = "SPREAD"
 
-        shuffle_map = cached_remote_fn(self._exchange_impl.map)
-        shuffle_reduce = cached_remote_fn(self._exchange_impl.reduce)
+        shuffle_map = cached_remote_fn(self._exchange_spec.map)
+        shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
 
         map_bar = ProgressBar("Shuffle Map", total=input_num_blocks)
 
@@ -53,7 +53,7 @@ class VanillaShuffleScheduler(ExchangeScheduler):
             shuffle_map.options(
                 **map_ray_remote_args,
                 num_returns=1 + output_num_blocks,
-            ).remote(i, block, output_num_blocks, *self._exchange_impl._map_args)
+            ).remote(i, block, output_num_blocks, *self._exchange_spec._map_args)
             for i, block in enumerate(input_blocks)
         ]
 
@@ -69,7 +69,7 @@ class VanillaShuffleScheduler(ExchangeScheduler):
         reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
         shuffle_reduce_out = [
             shuffle_reduce.options(**reduce_ray_remote_args, num_returns=2,).remote(
-                *self._exchange_impl._reduce_args,
+                *self._exchange_spec._reduce_args,
                 *[shuffle_map_out[i][j] for i in range(input_num_blocks)],
             )
             for j in range(output_num_blocks)

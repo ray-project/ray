@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.planner.exchange.interfaces import ExchangeScheduler
+from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
@@ -328,7 +328,7 @@ class _ReduceStageIterator:
         return reduce_results
 
 
-class PushBasedShuffleScheduler(ExchangeScheduler):
+class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
     """
     Push-based shuffle merges intermediate map outputs on the reducer nodes
     while other map tasks are executing. The merged outputs are merged again
@@ -411,10 +411,10 @@ class PushBasedShuffleScheduler(ExchangeScheduler):
         merge_fn = self._merge
 
         def map_partition(*args, **kwargs):
-            return map_fn(self._exchange_impl.map, *args, **kwargs)
+            return map_fn(self._exchange_spec.map, *args, **kwargs)
 
         def merge(*args, **kwargs):
-            return merge_fn(self._exchange_impl.reduce, *args, **kwargs)
+            return merge_fn(self._exchange_spec.reduce, *args, **kwargs)
 
         shuffle_map = cached_remote_fn(map_partition)
         shuffle_map = shuffle_map.options(
@@ -425,7 +425,7 @@ class PushBasedShuffleScheduler(ExchangeScheduler):
         map_stage_iter = _MapStageIterator(
             input_blocks_list,
             shuffle_map,
-            [output_num_blocks, stage.merge_schedule, *self._exchange_impl._map_args],
+            [output_num_blocks, stage.merge_schedule, *self._exchange_spec._map_args],
         )
         map_bar = ProgressBar("Shuffle Map", position=0, total=len(input_blocks_list))
         map_stage_executor = _PipelinedStageExecutor(
@@ -434,7 +434,7 @@ class PushBasedShuffleScheduler(ExchangeScheduler):
 
         shuffle_merge = cached_remote_fn(merge)
         merge_stage_iter = _MergeStageIterator(
-            map_stage_iter, shuffle_merge, stage, self._exchange_impl._reduce_args
+            map_stage_iter, shuffle_merge, stage, self._exchange_spec._reduce_args
         )
         merge_stage_executor = _PipelinedStageExecutor(
             merge_stage_iter, stage.num_merge_tasks_per_round, max_concurrent_rounds=2
@@ -466,13 +466,13 @@ class PushBasedShuffleScheduler(ExchangeScheduler):
 
         # Execute and wait for the reduce stage.
         reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
-        shuffle_reduce = cached_remote_fn(self._exchange_impl.reduce)
+        shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
         reduce_stage_iter = _ReduceStageIterator(
             stage,
             shuffle_reduce,
             all_merge_results,
             reduce_ray_remote_args,
-            self._exchange_impl._reduce_args,
+            self._exchange_spec._reduce_args,
         )
 
         max_reduce_tasks_in_flight = output_num_blocks

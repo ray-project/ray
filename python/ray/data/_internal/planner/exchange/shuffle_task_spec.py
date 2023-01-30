@@ -4,13 +4,13 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.planner.exchange.interfaces import ExchangeInterface
+from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 
 
-class ShuffleImpl(ExchangeInterface):
+class ShuffleTaskSpec(ExchangeTaskSpec):
     """
-    Shuffle data across muiltiple tasks.
+    The implementation for shuffle tasks.
 
     This is used by random_shuffle() and repartition().
     """

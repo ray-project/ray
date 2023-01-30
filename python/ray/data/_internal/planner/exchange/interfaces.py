@@ -5,9 +5,9 @@ from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockMetadata
 
 
-class ExchangeInterface:
+class ExchangeTaskSpec:
     """
-    An interface to define exchange operation across multiple tasks.
+    An interface to specify the exchange map and reduce tasks.
 
     Subclasses should implement the `map` and `reduce` static methods.
     `map` method is to transform one input block into multiple output blocks.
@@ -60,19 +60,18 @@ class ExchangeInterface:
         raise NotImplementedError
 
 
-class ExchangeScheduler:
+class ExchangeTaskScheduler:
     """
-    An interface to schedule exchange operation (`exchange_impl`) across multiple
-    tasks.
+    An interface to schedule exchange tasks (`exchange_spec`) for multi-nodes
+    execution.
     """
 
-    def __init__(self, exchange_impl: ExchangeInterface):
+    def __init__(self, exchange_spec: ExchangeTaskSpec):
         """
         Args:
-            exchange_impl: The implementation of exchange operation to schedule to
-                execute.
+            exchange_spec: The implementation of exchange tasks to execute.
         """
-        self._exchange_impl = exchange_impl
+        self._exchange_spec = exchange_spec
 
     def execute(
         self,
@@ -82,6 +81,6 @@ class ExchangeScheduler:
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
         """
-        Execute the exchange operation across multiple tasks on input `refs`.
+        Execute the exchange tasks on input `refs`.
         """
         raise NotImplementedError
