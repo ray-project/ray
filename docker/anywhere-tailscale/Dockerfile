@@ -44,7 +44,8 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     numpy \
     datetime \
     icecream \
-    sqlalchemy
+    crate \
+    geojson
 
     # dask version compatible with ray and modin
 
