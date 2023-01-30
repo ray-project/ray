@@ -200,14 +200,27 @@ class BaseTrainer(abc.ABC):
 
         with open(trainer_state_path, "rb") as fp:
             trainer = pickle.load(fp)
-        assert type(trainer) == cls
+        assert type(trainer) == cls, (
+            f"Invalid trainer type. Cannot restore a trainer of type {type(trainer)} "
+            f"with `{cls.__name__}.restore`. "
+            f"Use `{type(trainer).__name__}.restore` instead."
+        )
         trainer._restore_path = path
 
-        if trainer.datasets and not datasets:
-            raise ValueError()
         original_datasets = trainer.datasets or {}
+        if original_datasets and not datasets:
+            raise ValueError(
+                "The following datasets need to be provided again on restore: "
+                f"{list(original_datasets.keys())}\n"
+                f"Use {cls.__name__}.restore(..., datasets=datasets) "
+                "with the datasets that were provided to the original trainer."
+            )
         datasets = datasets or {}
-        assert set(original_datasets.keys()) == set(datasets.keys())
+        assert set(original_datasets.keys()) == set(datasets.keys()), (
+            "The provided datasets don't match the original dataset keys.\n"
+            f"  Expected datasets for the keys: {list(original_datasets.keys())}\n"
+            f"  Actual datasets provided: {list(datasets.keys())}"
+        )
         trainer.datasets = datasets
 
         # If no preprocessor is re-specified, then it will be set to None
