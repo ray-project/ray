@@ -81,10 +81,23 @@ class TunerInternal:
     ):
         from ray.train.trainer import BaseTrainer
 
-        # If no run config was passed to Tuner directly, use the one from the Trainer,
-        # if available
-        if not run_config and isinstance(trainable, BaseTrainer):
-            run_config = trainable.run_config
+        if isinstance(trainable, BaseTrainer):
+            # If no run config was passed to the Tuner directly,
+            # use the one from the Trainer, if available
+            if not run_config:
+                run_config = trainable.run_config
+            if run_config and trainable.run_config != RunConfig():
+                logger.info(
+                    "A `RunConfig` was passed to both the `Tuner` and the "
+                    f"`{trainable.__class__.__name__}`. The run config passed to "
+                    "the `Tuner` is the one that will be used."
+                )
+            if param_space and "run_config" in param_space:
+                raise ValueError(
+                    "`RunConfig` cannot be tuned as part of the `param_space`! "
+                    "Move the run config to be a parameter of the `Tuner`: "
+                    "Tuner(..., run_config=RunConfig(...))"
+                )
 
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
