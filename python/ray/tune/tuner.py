@@ -227,7 +227,7 @@ class Tuner:
                 "to `Tuner.restore` starting from version 2.5. "
                 "Please specify the trainable to avoid this warning."
             )
-            warnings.warn(warning_message, DeprecationWarning)
+            warnings.warn(warning_message)
 
         resume_config = _ResumeConfig(
             resume_unfinished=resume_unfinished,
