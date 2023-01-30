@@ -2757,6 +2757,9 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
   team: rllib
   env: staging
@@ -2824,7 +2827,7 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
-  # Marking unstable since it's currently expected to fail.
+  # Marking as unstable since it's currently expected to fail.
   stable: false
 
   frequency: nightly
@@ -2897,7 +2900,7 @@
   team: rllib
   env: staging
 
-  # Marking unstable since it's currently expected to fail.
+  # Marking as unstable since it's currently expected to fail.
   stable: false
 
   cluster:
@@ -2918,7 +2921,7 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
-  # Marking unstable since it's currently expected to fail.
+  # Marking as unstable since it's currently expected to fail.
   stable: false
 
   frequency: nightly
@@ -3012,7 +3015,7 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
-  # Marking unstable since it's currently expected to fail.
+  # Marking as unstable since it's currently expected to fail.
   stable: false
 
   frequency: nightly
@@ -3130,7 +3133,7 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
-  # Marking unstable since it's currently expected to fail.
+  # Marking as unstable since it's currently expected to fail.
   stable: false
 
   frequency: nightly
@@ -3156,7 +3159,7 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
-  # Marking unstable since it's currently expected to fail.
+  # Marking as unstable since it's currently expected to fail.
   stable: false
 
   frequency: nightly
@@ -3205,7 +3208,7 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
-  # Marking unstable since it's currently expected to fail.
+  # Marking as unstable since it's currently expected to fail.
   stable: false
 
   frequency: nightly
@@ -3298,6 +3301,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
