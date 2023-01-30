@@ -16,7 +16,7 @@ class _Categorical_Value:
         assert ca == "cat", "Categorical placeholder should start with cat_"
         return self._choices[int(i)]
 
-    def get_ph(self):
+    def get_placeholders(self) -> List[str]:
         return [f"cat_{i}" for i in range(len(self._choices))]
 
 
