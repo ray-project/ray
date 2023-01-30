@@ -124,9 +124,12 @@ class AnyscaleJobRunner(JobRunner):
         )
 
         logs = self.get_last_logs()
+        print(logs)
         output_json = re.search(r"### JSON \|([^\|]*)\| ###", logs)
+        workload_status_code = 1
         if output_json:
             output_json = json.loads(output_json.group(1))
+            print(output_json)
             workload_status_code = output_json["return_code"]
 
         if job_status_code == -2:
