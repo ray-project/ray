@@ -611,7 +611,7 @@ message GetTaskEventsRequest {
   // guarantee.
   optional int64 limit = 3;
   // True if task events from driver (only profiling events) should be excluded.
-  bool exclude_driver_task = 4;
+  bool exclude_driver = 4;
 }
 
 message GetTaskEventsReply {
