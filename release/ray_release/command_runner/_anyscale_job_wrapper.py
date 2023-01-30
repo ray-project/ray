@@ -115,6 +115,10 @@ def run_bash_command(workload: str, timeout: float):
     except multiprocessing.ProcessError:
         return_code = p.exitcode
     finally:
+        try:
+            p.terminate()
+        except Exception:
+            pass
         os.remove(str(workload_path))
     return return_code
 
