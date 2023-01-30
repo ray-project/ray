@@ -161,7 +161,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     RAY_LOG(INFO) << "Getting job info with limit " << limit;
   }
 
-  auto on_done = [this, reply, send_reply_callback, &limit](
+  auto on_done = [this, reply, send_reply_callback, limit](
                      const absl::flat_hash_map<JobID, JobTableData> &result) {
     // We send a reply upon processing the last job; if there are no jobs, we
     // must send the reply here.
