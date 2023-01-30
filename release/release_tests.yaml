@@ -103,7 +103,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -128,7 +128,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: horovod/app_config_master.yaml
@@ -158,7 +158,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -182,7 +182,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: xgboost_app_config.yaml
@@ -212,7 +212,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -235,7 +235,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -272,7 +272,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -293,7 +293,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -314,7 +314,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   stable: false
 
@@ -339,7 +339,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -363,7 +363,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -386,7 +386,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -410,7 +410,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -434,7 +434,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -455,7 +455,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   stable: false
 
@@ -481,7 +481,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
 
   stable: false
 
@@ -519,7 +519,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -540,7 +540,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   stable: false
 
@@ -656,7 +656,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -683,7 +683,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config_gpu.yaml
@@ -710,7 +710,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -736,7 +736,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -763,7 +763,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -790,7 +790,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -817,7 +817,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -844,7 +844,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -900,7 +900,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -926,7 +926,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -953,7 +953,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -980,7 +980,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1005,7 +1005,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1031,7 +1031,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1298,7 +1298,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1310,6 +1310,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
 
   alert: tune_tests
@@ -1326,7 +1327,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1338,6 +1339,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
 
   alert: tune_tests
@@ -1354,7 +1356,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config.yaml
@@ -1366,6 +1368,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
 
   alert: tune_tests
@@ -1382,7 +1385,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config_ml.yaml
@@ -1396,6 +1399,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
 
   alert: tune_tests
@@ -1412,7 +1416,7 @@
 
   frequency: nightly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config_ml.yaml
@@ -1425,6 +1429,7 @@
 
     wait_for_nodes:
       num_nodes: 4
+    type: anyscale_job
 
 
   alert: tune_tests
@@ -1543,7 +1548,6 @@
   run:
     timeout: 1200
     script: python workloads/test_bookkeeping_overhead.py
-    type: anyscale_job
 
   alert: tune_tests
 
@@ -1568,7 +1572,6 @@
     script: python workloads/test_durable_trainable.py --bucket tune-cloud-tests
     wait_for_nodes:
       num_nodes: 16
-    type: anyscale_job
 
 
   alert: tune_tests
@@ -1593,7 +1596,6 @@
     timeout: 86400
     script: python workloads/test_long_running_large_checkpoints.py
     long_running: true
-    type: anyscale_job
 
   smoke_test:
     frequency: nightly
@@ -1624,7 +1626,6 @@
     script: python workloads/test_network_overhead.py
     wait_for_nodes:
       num_nodes: 100
-    type: anyscale_job
 
   smoke_test:
     frequency: nightly
@@ -1663,8 +1664,6 @@
     wait_for_nodes:
       num_nodes: 16
 
-    type: anyscale_job
-
   alert: tune_tests
 
 - name: tune_scalability_result_throughput_single_node
@@ -1686,7 +1685,6 @@
   run:
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
-    type: anyscale_job
 
   alert: tune_tests
 
@@ -1700,7 +1698,7 @@
 
   frequency: weekly
   team: ml
-  env: staging
+  env: staging_v2
 
   cluster:
     cluster_env: app_config_data.yaml
