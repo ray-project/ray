@@ -155,7 +155,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       const auto queue_it = client_queues_.find(task_spec.ActorId());
       error_type = queue_it->second.GetErrorTypeForActorDeath();
       error_info = queue_it->second.GetErrorInfoForActorDeath();
-      fail_immediately = !queue_it->second.should_retry_task;
+      fail_immediately = queue_it->second.fail_task_immediately;
     }
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
@@ -278,11 +278,15 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       return;
     }
 
+    /// We use the same address used to send the task request as that
+    /// contains the last address and worker id, which we will need in order
+    /// to fetch the worker failure from the raylet.
+    rpc::Address raylet_address(queue->second.rpc_client ? queue->second.rpc_client->Addr() : address);
     const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
-        [this, actor_id, num_restarts, dead, death_cause, address, queue](
+        [this, actor_id, num_restarts, dead, death_cause, raylet_address, queue](
             const Status &get_task_failure_cause_reply_status,
             const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
-          rpc::WorkerAddress worker_address(address);
+          rpc::WorkerAddress worker_address(raylet_address);
           std::optional<rpc::RayErrorInfo> worker_error =
               GetErrorInfoFromGetTaskFailureCauseReply(
                   worker_address,
@@ -291,7 +295,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
           RAY_LOG(ERROR) << " get task failure for actor " << actor_id;
           RAY_LOG(ERROR) << "Task failure cause for actor "
                          << ray::gcs::RayErrorInfoToString(
-                                get_task_failure_cause_reply.failure_cause());
+                                get_task_failure_cause_reply.failure_cause())
+                         << " Fail immediatedly " << get_task_failure_cause_reply.fail_task_immediately();
           absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
               inflight_task_callbacks;
           std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
@@ -306,12 +311,11 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
             inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
             queue->second.inflight_task_callbacks.clear();
 
+            queue->second.worker_failure_error_info = worker_error;
+            queue->second.fail_task_immediately = get_task_failure_cause_reply.fail_task_immediately();
             if (dead) {
               queue->second.state = rpc::ActorTableData::DEAD;
               queue->second.death_cause = death_cause;
-              queue->second.worker_failure_error_info = worker_error;
-              queue->second.should_retry_task =
-                  get_task_failure_cause_reply.fail_task_immediately();
               // If there are pending requests, treat the pending tasks as failed.
               RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
                             << " because the actor is already dead.";
@@ -321,6 +325,9 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
               wait_for_death_info_tasks =
                   std::move(queue->second.wait_for_death_info_tasks);
               // Reset the queue
+              // TODO(clarng): if the actor is dead we should disallow new entries
+              // in this queue, and instead fail the task immediately since we already
+              // have the death info.
               queue->second.wait_for_death_info_tasks =
                   std::deque<std::pair<int64_t, TaskSpecification>>();
             } else if (queue->second.state != rpc::ActorTableData::DEAD) {
@@ -338,7 +345,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
             const rpc::ErrorType error_type = queue->second.GetErrorTypeForActorDeath();
             const rpc::RayErrorInfo error_info =
                 queue->second.GetErrorInfoForActorDeath();
-            const bool fail_immediately = !queue->second.should_retry_task;
+            const bool fail_immediately = queue->second.fail_task_immediately;
 
             for (auto &task_id : task_ids_to_fail) {
               // No need to increment the number of completed tasks since the actor is
@@ -372,34 +379,37 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
         };
 
     RAY_LOG(DEBUG) << "Getting error from raylet for worker "
-                   << WorkerID::FromBinary(address.worker_id());
-    auto worker_client = GetOrConnectWorkerClient(address);
-    worker_client->GetTaskFailureCause(WorkerID::FromBinary(address.worker_id()),
+                   << WorkerID::FromBinary(raylet_address.worker_id());
+    auto worker_client = GetOrConnectWorkerClient(raylet_address);
+    worker_client->GetTaskFailureCause(WorkerID::FromBinary(raylet_address.worker_id()),
                                        callback);
   }
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
-  std::vector<TaskSpecification> task_specs;
-  {
-    absl::MutexLock lock(&mu_);
-    for (auto &queue_pair : client_queues_) {
+  for (auto &queue_pair : client_queues_) {
+    rpc::ErrorType error_type = rpc::ErrorType::ACTOR_DIED;
+    rpc::RayErrorInfo error_info;
+    const Status *status = nullptr;
+    std::vector<TaskSpecification> task_specs;
+    {
+      absl::MutexLock lock(&mu_);
       auto &queue = queue_pair.second;
+      error_type = queue.GetErrorTypeForActorDeath();
+      error_info = queue.GetErrorInfoForActorDeath();
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
-             /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
+              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
         auto &task_spec = deque_itr->second;
         task_specs.push_back(task_spec);
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
       }
     }
-  }
-
-  // Do not hold mu_, because FailPendingTask may call python from cpp,
-  // and may cause deadlock with SubmitActorTask thread when aquire GIL.
-  for (auto &task_spec : task_specs) {
-    GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
-                                               rpc::ErrorType::ACTOR_DIED);
+    // Do not hold mu_, because FailPendingTask may call python from cpp,
+    // and may cause deadlock with SubmitActorTask thread when aquire GIL.
+    for (auto &task_spec : task_specs) {
+      GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(), error_type, status, &error_info);
+    }
   }
 }
 
@@ -569,7 +579,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       is_actor_dead = queue.state == rpc::ActorTableData::DEAD;
       error_type = queue.GetErrorTypeForActorDeath();
       error_info = queue.GetErrorInfoForActorDeath();
-      fail_immediately = !queue.should_retry_task;
+      fail_immediately = queue.fail_task_immediately;
     }
 
     // This task may have been waiting for dependency resolution, so cancel
@@ -585,7 +595,10 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         /*fail_immediatedly*/ fail_immediately);
 
     if (!is_actor_dead && !will_retry) {
-      // No retry == actor is dead.
+      // TODO(clarng): It is possible that the actor is not dead but the task should not be retried.
+      // (i.e. max_task_retries < actor_restart < max_restarts)
+      // Should allow the task to fail now instead of waiting for death info, which won't be set since
+      // the actor might still be alive and is restarting.
       // If actor is not dead yet, wait for the grace period until we mark the
       // return object as failed.
       if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
@@ -598,6 +611,10 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         auto &queue = queue_pair->second;
         queue.wait_for_death_info_tasks.emplace_back(death_info_grace_period_ms,
                                                      task_spec);
+        // TODO(clarng): check the death info is already present, and if so, fail now using that info,
+        // to handle the race where this is called after death info is set (which is almost always the case)
+        // The delay here is causing actor tasks to delay by 1 second (value of timeout_ms_task_wait_for_death_info)
+        // before it surfaces the error, which delays the caller that wants to retry in the application layer.
         RAY_LOG(INFO)
             << "PushActorTask failed because of network error, this task "
                "will be stashed away and waiting for Death info from GCS, task_id="
@@ -606,7 +623,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       } else {
         // If we don't need death info, just fail the request.
         GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
-                                                   rpc::ErrorType::ACTOR_DIED);
+                                                   rpc::ErrorType::ACTOR_DIED);                                           
       }
     }
   }

@@ -198,11 +198,11 @@ class CoreWorkerDirectActorTaskSubmitter
     /// The reason why this actor is dead.
     /// If the context is not set, it means the actor is not dead.
     rpc::ActorDeathCause death_cause;
-    /// The reason why the task failed, which may be set if the actor was executing a task.
+    /// The reason why the worker failed, as determined by the raylet at the worker.
     /// If this is set, prefer using this over the death cause of the actor.
     std::optional<rpc::RayErrorInfo> worker_failure_error_info;
-    /// Whether to retry the task upon failure.
-    bool should_retry_task = true;
+    /// Whether to fail the task and not retry.
+    bool fail_task_immediately = false;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.

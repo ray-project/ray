@@ -129,7 +129,7 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> int:
 
 def has_metric_tagged_with_value(addr, tag, value) -> bool:
     metrics = raw_metrics(addr)
-    for name, samples in metrics.items():
+    for _, samples in metrics.items():
         for sample in samples:
             if tag in set(sample.labels.values()) and sample.value == value:
                 return True
@@ -140,7 +140,7 @@ def has_metric_tagged_with_value(addr, tag, value) -> bool:
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_actor(ray_with_memory_monitor):
+def test_non_restartable_actor_killed_by_memory_monitor_with_oom_error(ray_with_memory_monitor):
     addr = ray_with_memory_monitor
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
 
@@ -169,11 +169,12 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
+def test_actor_still_alive_after_oom_retry_returns_oom_error(
     ray_with_memory_monitor,
 ):
     addr = ray_with_memory_monitor
-    leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
+    max_task_retries = 1
+    leaker = Leaker.options(max_restarts=96, max_task_retries=max_task_retries).remote()
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold + 0.1
@@ -187,7 +188,33 @@ def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
         retry_interval_ms=100,
         addr=addr,
         tag="MemoryManager.ActorEviction.Total",
-        value=2.0,
+        value=max_task_retries + 1,
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_restartable_actor_no_oom_retry_fails_immediately(
+    ray_with_memory_monitor_no_oom_retry,
+):
+    addr = ray_with_memory_monitor_no_oom_retry
+    leaker = Leaker.options(max_restarts=7, max_task_retries=59).remote()
+
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold + 0.1
+    )
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+        ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
+
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        addr=addr,
+        tag="MemoryManager.ActorEviction.Total",
+        value=1.0,
     )
 
 
