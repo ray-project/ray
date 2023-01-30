@@ -92,9 +92,9 @@ class AnyscaleJobRunner(JobRunner):
             prepare_command_strs.append(f"{env_str} {prepare_command}")
             prepare_command_timeout_strs.append(prepare_timeout)
 
-        prepare_commands = " ".join(shlex.quote(x) for x in prepare_command_strs)
+        prepare_commands = " ".join(shlex.quote(str(x)) for x in prepare_command_strs)
         prepare_commands_timeouts = " ".join(
-            shlex.quote(x) for x in prepare_command_timeout_strs
+            shlex.quote(str(x)) for x in prepare_command_timeout_strs
         )
 
         full_env = self.get_full_command_env(env)
