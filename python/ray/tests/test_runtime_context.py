@@ -240,6 +240,8 @@ def test_actor_stats_async_actor(ray_start_regular):
     assert max(result["AysncActor.func"]["pending"] for result in results) == 3
 
 
+# Use default filterwarnings behavior for this test
+@pytest.mark.filterwarnings("default")
 def test_ids(ray_start_regular):
     rtc = ray.get_runtime_context()
     # node id

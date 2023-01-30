@@ -29,11 +29,12 @@ NUMPY_VERSIONS=("1.14.5"
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
-yum install libasan-4.8.5-44.el7.x86_64 -y
-yum install libubsan-7.3.1-5.10.el7.x86_64 -y
-yum install devtoolset-8-libasan-devel.x86_64 -y
 
-
+if [ "${HOSTTYPE-}" = "x86_64" ]; then
+  yum install "libasan-4.8.5-44.el7.${HOSTTYPE}" -y
+  yum install "libubsan-7.3.1-5.10.el7.${HOSTTYPE}" -y
+  yum install "devtoolset-8-libasan-devel.${HOSTTYPE}" -y
+fi
 
 java -version
 java_bin=$(readlink -f "$(command -v java)")

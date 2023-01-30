@@ -8,6 +8,7 @@ from typing import Optional
 
 import numpy as np
 
+import ray
 from ray.air.constants import _ERROR_REPORT_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -113,3 +114,8 @@ class RunnerThread(threading.Thread):
     def join(self, timeout=None):
         super(RunnerThread, self).join(timeout)
         return self._ret
+
+
+def _estimate_avail_object_store_memory() -> int:
+    """Estimates total object store memory available in the cluster."""
+    return ray.available_resources()["object_store_memory"]

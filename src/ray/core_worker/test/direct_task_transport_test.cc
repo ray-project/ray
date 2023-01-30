@@ -36,11 +36,13 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                                 std::string serialized_runtime_env = "") {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
+  rpc::JobConfig config;
   builder.SetCommonTaskSpec(TaskID::Nil(),
                             "dummy_task",
                             Language::PYTHON,
                             function_descriptor,
                             JobID::Nil(),
+                            config,
                             TaskID::Nil(),
                             0,
                             TaskID::Nil(),
@@ -144,7 +146,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
   void MarkDependenciesResolved(const TaskID &task_id) override {}
 
   void MarkTaskWaitingForExecution(const TaskID &task_id,
-                                   const NodeID &node_id) override {}
+                                   const NodeID &node_id,
+                                   const WorkerID &worker_id) override {}
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;

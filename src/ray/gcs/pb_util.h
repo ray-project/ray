@@ -105,24 +105,20 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
-    const NodeID &raylet_id,
     const WorkerID &worker_id,
-    const std::string &address,
-    int32_t port,
     int64_t timestamp,
     rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
     int pid,
     const rpc::RayException *creation_task_exception = nullptr) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
-  worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
+  // Only report the worker id + delta (new data upon worker failures).
+  // GCS will merge the data with original worker data.
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
-  worker_failure_info_ptr->mutable_worker_address()->set_ip_address(address);
-  worker_failure_info_ptr->mutable_worker_address()->set_port(port);
   worker_failure_info_ptr->set_timestamp(timestamp);
   worker_failure_info_ptr->set_exit_type(disconnect_type);
   worker_failure_info_ptr->set_exit_detail(disconnect_detail);
-  worker_failure_info_ptr->set_pid(pid);
+  worker_failure_info_ptr->set_end_time_ms(current_sys_time_ms());
   if (creation_task_exception != nullptr) {
     // this pointer will be freed by protobuf internal codes
     auto copied_data = new rpc::RayException(*creation_task_exception);
@@ -214,6 +210,108 @@ inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info
   ss << "Error type " << error_info.error_type() << " exception string "
      << error_info.error_message();
   return ss.str();
+}
+
+/// Get the parent task id from the task event.
+///
+/// \param task_event Task event.
+/// \return TaskID::Nil() if parent task id info not available, else the parent task id
+/// for the task.
+inline TaskID GetParentTaskId(const rpc::TaskEvents &task_event) {
+  if (task_event.has_task_info()) {
+    return TaskID::FromBinary(task_event.task_info().parent_task_id());
+  }
+  return TaskID::Nil();
+}
+
+/// Get the timestamp of the task status if available.
+///
+/// \param task_event Task event.
+/// \return Timestamp of the task status change if status update available, nullopt
+/// otherwise.
+inline absl::optional<int64_t> GetTaskStatusTimeFromStateUpdates(
+    const ray::rpc::TaskStatus &task_status, const rpc::TaskStateUpdate &state_updates) {
+  switch (task_status) {
+  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
+    if (state_updates.has_pending_args_avail_ts()) {
+      return state_updates.pending_args_avail_ts();
+    }
+    break;
+  }
+  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
+    if (state_updates.has_submitted_to_worker_ts()) {
+      return state_updates.submitted_to_worker_ts();
+    }
+    break;
+  }
+  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
+    if (state_updates.has_pending_node_assignment_ts()) {
+      return state_updates.pending_node_assignment_ts();
+    }
+    break;
+  }
+  case rpc::TaskStatus::FINISHED: {
+    if (state_updates.has_finished_ts()) {
+      return state_updates.finished_ts();
+    }
+    break;
+  }
+  case rpc::TaskStatus::FAILED: {
+    if (state_updates.has_failed_ts()) {
+      return state_updates.failed_ts();
+    }
+    break;
+  }
+  case rpc::TaskStatus::RUNNING: {
+    if (state_updates.has_running_ts()) {
+      return state_updates.running_ts();
+    }
+    break;
+  }
+  default: {
+    UNREACHABLE;
+  }
+  }
+  return absl::nullopt;
+}
+
+/// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
+///
+/// \param task_status The task status.
+/// \param timestamp The timestamp.
+/// \param[out] state_updates The state updates with timestamp to be updated.
+inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
+                                     int64_t timestamp,
+                                     ray::rpc::TaskStateUpdate *state_updates) {
+  switch (task_status) {
+  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
+    state_updates->set_pending_args_avail_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
+    state_updates->set_submitted_to_worker_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
+    state_updates->set_pending_node_assignment_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::FINISHED: {
+    state_updates->set_finished_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::FAILED: {
+    state_updates->set_failed_ts(timestamp);
+    break;
+  }
+  case rpc::TaskStatus::RUNNING: {
+    state_updates->set_running_ts(timestamp);
+    break;
+  }
+  default: {
+    UNREACHABLE;
+  }
+  }
 }
 
 }  // namespace gcs

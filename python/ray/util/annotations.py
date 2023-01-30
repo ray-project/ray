@@ -49,7 +49,7 @@ def PublicAPI(*args, **kwargs):
     def wrap(obj):
         if stability in ["alpha", "beta"]:
             message = (
-                f"PublicAPI ({stability}): This API is in {stability} "
+                f"**PublicAPI ({stability}):** This API is in {stability} "
                 "and may change before becoming stable."
             )
         else:
@@ -80,7 +80,8 @@ def DeveloperAPI(*args, **kwargs):
 
     def wrap(obj):
         _append_doc(
-            obj, message="DeveloperAPI: This API may change across minor Ray releases."
+            obj,
+            message="**DeveloperAPI:** This API may change across minor Ray releases.",
         )
         _mark_annotated(obj)
         return obj
@@ -124,7 +125,7 @@ def Deprecated(*args, **kwargs):
         return Deprecated()(args[0])
 
     doc_message = (
-        "\n    DEPRECATED: This API is deprecated and may be removed "
+        "**DEPRECATED**: This API is deprecated and may be removed "
         "in future Ray releases."
     )
     warning_message = (
@@ -179,10 +180,14 @@ def _append_doc(obj, *, message: str, directive: Optional[str] = None) -> str:
 
     indent = _get_indent(obj.__doc__)
     obj.__doc__ += "\n\n"
+
     if directive is not None:
-        obj.__doc__ += f"{' ' * indent}.. {directive}::\n"
+        obj.__doc__ += f"{' ' * indent}.. {directive}::\n\n"
+
+        message = message.replace("\n", "\n" + " " * (indent + 4))
         obj.__doc__ += f"{' ' * (indent + 4)}{message}"
     else:
+        message = message.replace("\n", "\n" + " " * (indent + 4))
         obj.__doc__ += f"{' ' * indent}{message}"
     obj.__doc__ += f"\n{' ' * indent}"
 

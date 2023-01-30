@@ -8,7 +8,7 @@ import numpy as np
 
 import ray
 
-from ray.data.block import BlockAccessor
+from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.tests.mock_server import *  # noqa
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 from ray.air.constants import TENSOR_COLUMN_NAME
@@ -17,7 +17,22 @@ from ray._private.utils import _get_pyarrow_version
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import _ray_start
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(scope="module")
+def ray_start_2_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_10_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=10, **param) as res:
+        yield res
 
 
 @pytest.fixture(scope="function")
@@ -224,10 +239,7 @@ def assert_base_partitioned_ds():
         if sorted_values is None:
             sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
         # Test metadata ops.
-        if num_computed is not None:
-            assert (
-                ds._plan.execute()._num_computed() == 1
-            ), f"{ds._plan.execute()._num_computed()} != 1"
+        assert ds._plan.execute()._num_computed() == 0
         assert ds.count() == count, f"{ds.count()} != {count}"
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
         assert ds.schema() is not None
@@ -303,6 +315,18 @@ def target_max_block_size(request):
     ctx.target_max_block_size = request.param
     yield request.param
     ctx.target_max_block_size = original
+
+
+@pytest.fixture(params=[True])
+def enable_optimizer(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original_backend = ctx.new_execution_backend
+    original_optimizer = ctx.optimizer_enabled
+    ctx.new_execution_backend = request.param
+    ctx.optimizer_enabled = request.param
+    yield request.param
+    ctx.new_execution_backend = original_backend
+    ctx.optimizer_enabled = original_optimizer
 
 
 # ===== Pandas dataset formats =====
@@ -388,3 +412,33 @@ def disable_pyarrow_version_check():
     os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"] = "1"
     yield
     del os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"]
+
+
+# ===== Observability & Logging Fixtures =====
+@pytest.fixture
+def stage_two_block():
+    block_params = {
+        "num_rows": [10000, 5000],
+        "size_bytes": [100, 50],
+        "max_rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
+        "wall_time": [5, 10],
+        "cpu_time": [1.2, 3.4],
+        "node_id": ["a1", "b2"],
+    }
+    block_meta_list = []
+    for i in range(len(block_params["num_rows"])):
+        block_exec_stats = BlockExecStats()
+        block_exec_stats.wall_time_s = block_params["wall_time"][i]
+        block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
+        block_exec_stats.node_id = block_params["node_id"][i]
+        block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
+        block_meta_list.append(
+            BlockMetadata(
+                num_rows=block_params["num_rows"][i],
+                size_bytes=block_params["size_bytes"][i],
+                schema=None,
+                input_files=None,
+                exec_stats=block_exec_stats,
+            )
+        )
+    return block_params, block_meta_list

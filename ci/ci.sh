@@ -454,11 +454,14 @@ build_wheels() {
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
 
+      IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
+      IMAGE_TAG="2022-12-20-b4884d9"
+
       if [ -z "${BUILDKITE-}" ]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        quay.io/pypa/manylinux2014_x86_64:2022-12-20-b4884d9 /ray/python/build-wheel-manylinux2014.sh
+        "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
       else
         rm -rf /ray-mount/*
         rm -rf /ray-mount/.whl || true
@@ -468,7 +471,7 @@ build_wheels() {
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          quay.io/pypa/manylinux2014_x86_64:2022-12-20-b4884d9 /ray/python/build-wheel-manylinux2014.sh
+          "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
 

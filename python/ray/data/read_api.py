@@ -5,10 +5,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Uni
 import numpy as np
 
 import ray
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.pandas_block import PandasRow
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -209,7 +212,8 @@ def range_tensor(
                 [2, 2]])]
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
+    type. The dataset elements take the form
+    {"__value__": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -335,13 +339,17 @@ def read_datasource(
     block_list = LazyBlockList(
         read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
     )
-    block_list.compute_first_block()
-    block_list.ensure_metadata_for_first_block()
+
+    # TODO(chengsu): avoid calling Reader.get_read_tasks() twice after removing
+    # LazyBlockList code path.
+    read_op = Read(datasource, requested_parallelism, ray_remote_args, read_args)
+    logical_plan = LogicalPlan(read_op)
 
     return Dataset(
         plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
         epoch=0,
         lazy=True,
+        logical_plan=logical_plan,
     )
 
 
@@ -1609,7 +1617,7 @@ def _resolve_parquet_args(
                 # NOTE(Clark): We use NumPy to consolidate these potentially
                 # non-contiguous buffers, and to do buffer bookkeeping in
                 # general.
-                np_col = np.array(
+                np_col = _create_possibly_ragged_ndarray(
                     [
                         np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
                         for buf in block.column(tensor_col_name)

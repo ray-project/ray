@@ -13,9 +13,7 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.text.secondary,
     marginBottom: theme.spacing(1),
   },
-  body: {
-    padding: theme.spacing(0.5),
-  },
+  body: {},
 }));
 
 const TitleCard = ({

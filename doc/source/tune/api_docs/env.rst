@@ -1,8 +1,9 @@
 
 .. _tune-env-vars:
 
-Environment variables
----------------------
+Environment variables used by Ray Tune
+--------------------------------------
+
 Some of Ray Tune's behavior can be configured using environment variables.
 These are the environment variables Ray Tune currently considers:
 

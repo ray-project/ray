@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Callable, Dict, List, Union
 
 import numpy as np
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
@@ -36,10 +37,15 @@ class TorchVisionPreprocessor(Preprocessor):
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
         with a batch-supporting ``Lambda``.
 
+        >>> def to_tensor(batch: np.ndarray) -> torch.Tensor:
+        ...     tensor = torch.as_tensor(batch, dtype=torch.float)
+        ...     # (B, H, W, C) -> (B, C, H, W)
+        ...     tensor = tensor.permute(0, 3, 1, 2).contiguous()
+        ...     # [0., 255.] -> [0., 1.]
+        ...     tensor = tensor.div(255)
+        ...     return tensor
         >>> transform = transforms.Compose([
-        ...     transforms.Lambda(
-        ...         lambda batch: torch.as_tensor(batch).permute(0, 3, 1, 2))
-        ...     ),
+        ...     transforms.Lambda(to_tensor),
         ...     transforms.Resize((224, 224))
         ... ])
         >>> preprocessor = TorchVisionPreprocessor(
@@ -80,7 +86,9 @@ class TorchVisionPreprocessor(Preprocessor):
         def transform(batch: np.ndarray) -> np.ndarray:
             if self._batched:
                 return self._fn(batch).numpy()
-            return np.array([self._fn(array).numpy() for array in batch])
+            return _create_possibly_ragged_ndarray(
+                [self._fn(array).numpy() for array in batch],
+            )
 
         if isinstance(np_data, dict):
             outputs = {}

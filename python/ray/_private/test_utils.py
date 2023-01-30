@@ -3,6 +3,7 @@ from datetime import datetime
 import fnmatch
 import functools
 import io
+import json
 import logging
 import math
 import os
@@ -50,7 +51,6 @@ from ray.core.generated import (
 )
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
-from ray.experimental.state.state_manager import StateDataSourceClient
 
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,12 @@ def enable_external_redis():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
+def redis_replicas():
+    import os
+
+    return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
+
+
 def start_redis_instance(
     session_dir_path: str,
     port: int,
@@ -103,6 +109,9 @@ def start_redis_instance(
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
     enable_tls: bool = False,
+    replica_of=None,
+    leader_id=None,
+    db_dir=None,
 ):
     """Start a single Redis server.
 
@@ -152,7 +161,8 @@ def start_redis_instance(
         if " " in password:
             raise ValueError("Spaces not permitted in redis password.")
         command += ["--requirepass", password]
-
+    if redis_replicas() > 1:
+        command += ["--cluster-enabled", "yes", "--cluster-config-file", f"node-{port}"]
     if enable_tls:
         import socket
 
@@ -184,6 +194,8 @@ def start_redis_instance(
         command += ["--tls-replication", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
+    if db_dir is not None:
+        command += ["--dir", str(db_dir)]
     process_info = ray._private.services.start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -191,8 +203,32 @@ def start_redis_instance(
         stderr_file=stderr_file,
         fate_share=fate_share,
     )
-    port = ray._private.services.new_port(denylist=port_denylist)
-    return port, process_info
+    node_id = None
+    if redis_replicas() > 1:
+        # Setup redis cluster
+        import redis
+
+        while True:
+            try:
+                redis_cli = redis.Redis("localhost", str(port))
+                if replica_of is None:
+                    slots = [str(i) for i in range(16384)]
+                    redis_cli.cluster("addslots", *slots)
+                else:
+                    redis_cli.cluster("meet", "127.0.0.1", str(replica_of))
+                    redis_cli.cluster("replicate", leader_id)
+                node_id = redis_cli.cluster("myid")
+                break
+            except (
+                redis.exceptions.ConnectionError,
+                redis.exceptions.ResponseError,
+            ) as e:
+                from time import sleep
+
+                print(f"Waiting for redis to be up {e}")
+                sleep(0.1)
+
+    return node_id, process_info
 
 
 def _pid_alive(pid):
@@ -206,7 +242,9 @@ def _pid_alive(pid):
     """
     alive = True
     try:
-        psutil.Process(pid)
+        proc = psutil.Process(pid)
+        if proc.status() == psutil.STATUS_ZOMBIE:
+            alive = False
     except psutil.NoSuchProcess:
         alive = False
     return alive
@@ -1655,26 +1693,6 @@ def kill_raylet(raylet, graceful=False):
         assert not graceful
 
 
-# Creates a state api client assuming the head node (gcs) is local.
-def get_local_state_client():
-    hostname = ray.worker._global_node.gcs_address
-
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
-    )
-
-    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
-        client.register_agent_client(node_id, ip, port)
-
-    return client
-
-
 # Global counter to test different return values
 # for external_ray_cluster_activity_hook1.
 ray_cluster_activity_hook_counter = 0
@@ -1784,3 +1802,19 @@ def wandb_populate_run_location_hook():
 
     os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
     os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
+
+
+def safe_write_to_results_json(
+    result: str,
+    default_file_name: str = "/tmp/release_test_output.json",
+    env_var: Optional[str] = "TEST_OUTPUT_JSON",
+):
+    """
+    Safe (atomic) write to file to guard against malforming the json
+    if the job gets interrupted in the middle of writing.
+    """
+    test_output_json = os.environ.get(env_var, default_file_name)
+    test_output_json_tmp = test_output_json + ".tmp"
+    with open(test_output_json_tmp, "wt") as f:
+        json.dump(result, f)
+    os.replace(test_output_json_tmp, test_output_json)

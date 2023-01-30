@@ -86,17 +86,17 @@ ds = ray.data.read_binary_files(
     ray_remote_args={"num_cpus": 0.5},
 )
 # Do a blocking map so that we can measure the download time.
-ds = ds.map(lambda x: x)
+ds = ds.map(lambda x: x).fully_executed()
 
 end_download_time = time.time()
 print("Preprocessing...")
-ds = ds.map(preprocess)
+ds = ds.map(preprocess).fully_executed()
 end_preprocess_time = time.time()
 print("Inferring...")
 # NOTE: set a small batch size to avoid OOM on GRAM when doing inference.
 ds = ds.map_batches(
     infer, num_gpus=0.25, batch_size=128, batch_format="pandas", compute="actors"
-)
+).fully_executed()
 
 end_time = time.time()
 
