@@ -19,7 +19,7 @@ ray.util.spark.databricks_hook._DATABRICKS_DEFAULT_TMP_DIR = "/tmp"
 
 class MockDbApiEntry:
     def __init__(self):
-        self.idle_time = 0
+        self.idle_time = time.time()
         self.registered_job_groups = []
 
     def getIdleTimeMillisSinceLastNotebookExecution(self):
