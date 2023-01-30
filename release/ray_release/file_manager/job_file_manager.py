@@ -147,10 +147,21 @@ class JobFileManager(FileManager):
 
         self.delete(remote_upload_to)
 
-    def delete(self, target: str):
+    def delete(self, target: str, recursive: bool = False):
+        def delete_fn():
+            if recursive:
+                response = self.s3_client.list_objects_v2(
+                    Bucket=self.bucket, Prefix=target
+                )
+
+                for object in response["Contents"]:
+                    self.s3_client.delete_object(Bucket=self.bucket, Key=object["Key"])
+            else:
+                self.s3_client.delete_object(Bucket=self.bucket, Key=target)
+
         try:
             self._run_with_retry(
-                lambda: self.s3_client.delete_object(Bucket=self.bucket, Key=target),
+                delete_fn,
                 initial_retry_delay_s=2,
             )
         except Exception as e:

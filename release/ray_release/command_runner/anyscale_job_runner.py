@@ -89,8 +89,13 @@ class AnyscaleJobRunner(JobRunner):
                 env_str = " ".join(f"{k}={v}" for k, v in prepare_env.items()) + " "
             else:
                 env_str = ""
-            prepare_command_strs.append(f"'{env_str} {prepare_command}'")
+            prepare_command_strs.append(f"{env_str} {prepare_command}")
             prepare_command_timeout_strs.append(prepare_timeout)
+
+        prepare_commands = " ".join(shlex.quote(x) for x in prepare_command_strs)
+        prepare_commands_timeouts = " ".join(
+            shlex.quote(x) for x in prepare_command_timeout_strs
+        )
 
         full_env = self.get_full_command_env(env)
 
@@ -107,8 +112,8 @@ class AnyscaleJobRunner(JobRunner):
             f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
             "--metrics-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
-            f"--prepare-commands {shlex.split(prepare_command_strs)} "
-            f"--prepare-commands-timeouts {shlex.split(prepare_command_timeout_strs)}"
+            f"--prepare-commands {prepare_commands} "
+            f"--prepare-commands-timeouts {prepare_commands_timeouts}"
         )
         job_status_code, time_taken, error = self.job_manager.run_and_wait(
             full_command,
@@ -168,4 +173,4 @@ class AnyscaleJobRunner(JobRunner):
         )
 
     def cleanup(self):
-        self.file_manager.delete(self.path_in_bucket)
+        self.file_manager.delete(self.path_in_bucket, recursive=True)
