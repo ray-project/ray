@@ -94,7 +94,7 @@ def main(
     workload_path = cwd / "workload.sh"
     with open(workload_path, "w") as fp:
         fp.write(test_workload)
-    os.chmod(str(workload_path), "777")
+    os.chmod(str(workload_path), 777)
 
     command = ["bash", "-x", str(workload_path.absolute().resolve())]
     print(f"Running command {command}")
