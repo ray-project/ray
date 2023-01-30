@@ -24,8 +24,8 @@
 /python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl
 
 # Metrics
-/src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567 @ray-project/ray-core
-/src/ray/stats/metric_defs.cc @ericl @scv119 @rkooo567 @ray-project/ray-core
+/src/ray/stats/metric_defs.h @ray-project/ray-core
+/src/ray/stats/metric_defs.cc @ray-project/ray-core
 
 # Telemetry
 /src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
