@@ -36,7 +36,6 @@ from uuid import uuid4
 
 from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
-
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
 logger = logging.getLogger(__name__)
@@ -683,6 +682,13 @@ class GCPTPU(GCPResource):
             # this is required for SSH to work, per google documentation
             # https://cloud.google.com/tpu/docs/users-guide-tpu-vm#create-curl
             config["networkConfig"]["enableExternalIps"] = True
+
+        # replace serviceAccounts with serviceAccount, and scopes with scope
+        # this is necessary for the head node to work
+        # see here: https://tpu.googleapis.com/$discovery/rest?version=v2alpha1
+        if "serviceAccounts" in config:
+            config["serviceAccount"] = config.pop("serviceAccounts")[0]
+            config["serviceAccount"]["scope"] = config["serviceAccount"].pop("scopes")
 
         operation = (
             self.resource.projects()

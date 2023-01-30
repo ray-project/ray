@@ -11,7 +11,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
-
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -286,10 +285,6 @@ def bootstrap_gcp(config):
     # insert that information into the provider config
     if _has_tpus_in_node_configs(config):
         config["provider"][HAS_TPU_PROVIDER_FIELD] = True
-
-        # We can't run autoscaling through a serviceAccount on TPUs (atm)
-        if _is_head_node_a_tpu(config):
-            raise RuntimeError("TPUs are not supported as head nodes.")
 
     crm, iam, compute, tpu = construct_clients_from_provider_config(config["provider"])
 
