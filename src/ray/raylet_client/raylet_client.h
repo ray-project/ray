@@ -414,7 +414,7 @@ class RayletClient : public RayletClientInterface {
                            bool worker_exiting) override;
 
   void GetWorkerFailureCause(
-      const WorkerID &task_id,
+      const WorkerID &worker_id,
       const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
       override;
 

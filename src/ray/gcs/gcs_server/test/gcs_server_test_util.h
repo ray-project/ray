@@ -73,7 +73,7 @@ struct GcsServerMocker {
     }
 
     void GetWorkerFailureCause(
-        const WorkerId &worker_id,
+        const WorkerID &worker_id,
         const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback)
         override {
       ray::rpc::GetWorkerFailureCauseReply reply;
