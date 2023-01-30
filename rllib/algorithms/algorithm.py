@@ -862,7 +862,7 @@ class Algorithm(Trainable):
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
             self.evaluation_workers.sync_weights(
-                from_worker=self.workers.local_worker()
+                from_worker_or_trainer=self.workers.local_worker()
             )
             self._sync_filters_if_needed(
                 from_worker=self.workers.local_worker(),
@@ -1380,11 +1380,11 @@ class Algorithm(Trainable):
             # TODO (Avnish): Implement this on trainer_runner.get_weights().
             # TODO (Kourosh): figure out how we are going to sync MARLModule
             # weights to MARLModule weights under the policy_map objects?
-            from_worker = None
+            from_worker_or_trainer = None
             if self.config._enable_rl_trainer_api:
-                from_worker = self.trainer_runner
+                from_worker_or_trainer = self.trainer_runner
             self.workers.sync_weights(
-                from_worker=from_worker,
+                from_worker_or_trainer=from_worker_or_trainer,
                 policies=list(train_results.keys()),
                 global_vars=global_vars,
             )

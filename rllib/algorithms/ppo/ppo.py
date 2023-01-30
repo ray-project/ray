@@ -426,7 +426,7 @@ class PPO(Algorithm):
                     # sync weights from trainer_runner to all rollout workers
                     from_worker_or_trainer = self.trainer_runner
                 self.workers.sync_weights(
-                    from_worker=from_worker_or_trainer,
+                    from_worker_or_trainer=from_worker_or_trainer,
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
