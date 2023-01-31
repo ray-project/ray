@@ -1,10 +1,11 @@
 import os
+import pytest
 import shutil
 import sys
 import tempfile
 import time
-import unittest
 from typing import Type, Callable
+import unittest
 from unittest.mock import patch
 
 from ray_release.alerts.handle import result_to_handle_map
@@ -153,7 +154,7 @@ class GlueTest(unittest.TestCase):
         def mock_alerter(test: Test, result: Result):
             return self.mock_alert_return
 
-        result_to_handle_map["unit_test_alerter"] = mock_alerter
+        result_to_handle_map["unit_test_alerter"] = (mock_alerter, False)
 
         type_str_to_command_runner["unit_test"] = MockCommandRunner
         command_runner_to_cluster_manager[MockCommandRunner] = MockClusterManager
@@ -591,6 +592,26 @@ class GlueTest(unittest.TestCase):
         self.assertEqual(result.status, "finished")
 
         # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
+    def testFetchResultFailsReqNonEmptyResult(self):
+        # set `require_non_empty_result` bit.
+        new_handler = (result_to_handle_map["unit_test_alerter"], True)
+        result_to_handle_map["unit_test_alerter"] = new_handler
+
+        result = Result()
+
+        self._succeed_until("test_command")
+
+        self.command_runner_return["fetch_results"] = _fail_on_call(FetchResultError)
+        with self.assertRaisesRegex(FetchResultError, "Fail"):
+            with self.assertLogs(logger, "ERROR") as cm:
+                self._run(result)
+                self.assertTrue(any("Could not fetch results" in o for o in cm.output))
+        self.assertEqual(result.return_code, ExitCode.FETCH_RESULT_ERROR.value)
+        self.assertEqual(result.status, "infra_error")
+
+        # Ensure cluster was terminated, no matter what
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
     def testLastLogsFails(self):
