@@ -57,6 +57,7 @@ shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
 
 if ! [ -x "$(command -v docker)" ] && ! [ -z "$WSL_DISTRO_NAME" ] && ! [ -x /usr/bin/podman ]; then
 sudo curl https://get.docker.com | sh
+sudo adduser ubuntu docker
 fi
 
 if [ -x /usr/bin/podman ]; then
