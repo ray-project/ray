@@ -114,7 +114,7 @@ if [ "$NODETYPE" = "head" ]; then
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
-                    -Cnode.master=true \
+                   # -Cnode.master=true \
                     -Cnode.data=false \
                     -Cdiscovery.seed_hosts=$clusterhosts \
                     -Ccluster.initial_master_nodes=nexus \
@@ -128,7 +128,7 @@ if [ "$NODETYPE" = "head" ]; then
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
-                    -Cnode.master=true \
+                   # -Cnode.master=true \
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=false \
                     -Chttp.cors.enabled=true \
