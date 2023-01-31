@@ -187,6 +187,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val2",
             "actor_num_created": "0",
+            "task_num_created": "0",
             "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
@@ -203,6 +204,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
             "actor_num_created": "0",
+            "task_num_created": "0",
             "pg_num_created": "0",
         }
 
@@ -298,6 +300,34 @@ def test_pg_stats():
             )
             == "2",
             timeout=5,
+        )
+
+
+def test_task_stats():
+    @ray.remote
+    def foo():
+        pass
+
+    with ray.init(
+        _system_config={"metrics_report_interval_ms": 10},
+    ) as ctx:
+        gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+
+        ray.get(foo.remote())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "task_num_created"
+            )
+            == "1",
+            timeout=10,
+        )
+        ray.get(foo.remote())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "task_num_created"
+            )
+            == "2",
+            timeout=10,
         )
 
 
@@ -1130,8 +1160,10 @@ provider:
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
         assert int(payload["extra_usage_tags"]["actor_num_created"]) >= 0
+        assert int(payload["extra_usage_tags"]["task_num_created"]) >= 0
         assert int(payload["extra_usage_tags"]["pg_num_created"]) >= 0
         payload["extra_usage_tags"]["actor_num_created"] = "0"
+        payload["extra_usage_tags"]["task_num_created"] = "0"
         payload["extra_usage_tags"]["pg_num_created"] = "0"
         assert payload["extra_usage_tags"] == {
             "extra_k1": "extra_v1",
@@ -1142,6 +1174,7 @@ provider:
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
             "actor_num_created": "0",
+            "task_num_created": "0",
             "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
@@ -1485,6 +1518,7 @@ def test_usage_stats_tags(
                 "gcs_storage": gcs_storage_type,
                 "dashboard_used": "False",
                 "actor_num_created": "0",
+                "task_num_created": "0",
                 "pg_num_created": "0",
             }
             assert num_nodes == 2
