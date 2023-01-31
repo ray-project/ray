@@ -39,6 +39,16 @@ class InternalKVInterface {
                    const std::string &key,
                    std::function<void(std::optional<std::string>)> callback) = 0;
 
+  /// Get the values associated with `keys`.
+  ///
+  /// \param ns The namespace of the key.
+  /// \param keys The keys to fetch.
+  /// \param callback Returns the values for those keys that exist.
+  virtual void MultiGet(
+      const std::string &ns,
+      const std::vector<std::string> &keys,
+      std::function<void(std::unordered_map<std::string, std::string>)> callback) = 0;
+
   /// Associate a key with the specified value.
   ///
   /// \param ns The namespace of the key.
