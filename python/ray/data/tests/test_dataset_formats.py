@@ -179,7 +179,7 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
     ray.get(output.data_sink.set_enabled.remote(False))
-    ds = maybe_pipeline(ds0, pipelined)
+    ds = maybe_pipeline(ray.data.range(10, parallelism=2), pipelined)
     with pytest.raises(ValueError):
         ds.write_datasource(output, ray_remote_args={"max_retries": 0})
     assert ray.get(output.data_sink.get_num_ok.remote()) == 2

@@ -2635,7 +2635,7 @@ class Dataset(Generic[T]):
                 raise
             return []
 
-        plan = self._plan.with_stage(
+        self._plan = self._plan.with_stage(
             OneToOneStage(
                 "write",
                 transform,
@@ -2644,8 +2644,7 @@ class Dataset(Generic[T]):
                 fn=lambda x: x,
             )
         )
-        ds = Dataset(plan, self._epoch, self._lazy)
-        ds.fully_executed()
+        self.fully_executed()
 
     def iterator(self) -> DatasetIterator:
         """Return a :class:`~ray.data.DatasetIterator` that
