@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 
 
 class TorchRLTrainer(RLTrainer):
+    """RLTrainer implementation for PyTorch."""
 
     framework: str = "torch"
 
