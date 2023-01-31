@@ -6,6 +6,7 @@ import numpy as np
 import ray
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import (
     Block,
@@ -344,7 +345,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     def do_write(
         self,
         blocks: Iterable[Block],
-        task_idx: int,
+        ctx: TaskContext,
         **write_args,
     ):
         tasks = []

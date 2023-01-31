@@ -17,6 +17,7 @@ from typing import (
 
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
 from ray.data.block import Block, BlockAccessor
@@ -259,7 +260,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     def do_write(
         self,
         blocks: Iterable[Block],
-        task_idx: int,
+        ctx: TaskContext,
         path: str,
         dataset_uuid: str,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -317,7 +318,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             filesystem=filesystem,
             dataset_uuid=dataset_uuid,
             block=block,
-            block_index=task_idx,
+            block_index=ctx.task_idx,
             file_format=file_format,
         )
         return write_block(write_path, block)

@@ -7,6 +7,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
 )
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 from typing import Iterable
@@ -40,7 +41,7 @@ class MongoDatasource(Datasource):
     def do_write(
         self,
         blocks: Iterable[Block],
-        task_idx: int,
+        ctx: TaskContext,
         uri: str,
         database: str,
         collection: str,

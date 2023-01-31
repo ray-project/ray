@@ -2626,9 +2626,9 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        def transform(blocks: Iterable[Block], task_idx, fn):
+        def transform(blocks: Iterable[Block], ctx, fn):
             try:
-                datasource.do_write(blocks, task_idx, **write_args)
+                datasource.do_write(blocks, ctx, **write_args)
                 datasource.on_write_complete([])
             except Exception as e:
                 datasource.on_write_failed([], e)

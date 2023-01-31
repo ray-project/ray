@@ -13,6 +13,7 @@ from fsspec.implementations.http import HTTPFileSystem
 
 import ray
 from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource import (
     Datasource,
@@ -265,7 +266,7 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
     def do_write(
         self,
         blocks: Iterable[Block],
-        task_idx: int,
+        ctx: TaskContext,
         **write_args,
     ) -> WriteResult:
         data_sink = self.data_sink
