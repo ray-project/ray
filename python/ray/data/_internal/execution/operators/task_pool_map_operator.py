@@ -6,6 +6,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
     PhysicalOperator,
+    TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -50,8 +51,9 @@ class TaskPoolMapOperator(MapOperator):
         # Submit the task as a normal Ray task.
         map_task = cached_remote_fn(_map_task, num_returns="dynamic")
         input_blocks = [block for block, _ in bundle.blocks]
+        ctx = TaskContext(task_idx=self._next_task_idx)
         ref = map_task.options(**self._ray_remote_args).remote(
-            self._transform_fn_ref, self._next_task_idx, *input_blocks
+            self._transform_fn_ref, ctx, *input_blocks
         )
         self._next_task_idx += 1
         task = _TaskState(bundle)

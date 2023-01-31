@@ -8,6 +8,7 @@ from ray.data._internal.shuffle_and_partition import (
     SimpleShufflePartitionOp,
 )
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import sort_impl
 from ray.data.context import DatasetContext
@@ -32,7 +33,7 @@ class RepartitionStage(AllToAllStage):
 
             def do_shuffle(
                 block_list,
-                task_idx: int,
+                ctx: TaskContext,
                 clear_input_blocks: bool,
                 block_udf,
                 remote_args,
@@ -99,7 +100,11 @@ class RandomShuffleStage(AllToAllStage):
         remote_args: Optional[Dict[str, Any]] = None,
     ):
         def do_shuffle(
-            block_list, task_idx: int, clear_input_blocks: bool, block_udf, remote_args
+            block_list,
+            ctx: TaskContext,
+            clear_input_blocks: bool,
+            block_udf,
+            remote_args,
         ):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:

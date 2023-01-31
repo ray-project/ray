@@ -29,6 +29,7 @@ from ray.data._internal.compute import (
     is_task_compute,
 )
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block
@@ -904,7 +905,7 @@ class OneToOneStage(Stage):
 
         def block_fn(
             blocks: Iterable[Block],
-            task_idx: int,
+            ctx: TaskContext,
             fn: UDF,
             *fn_args,
             **fn_kwargs,
@@ -922,8 +923,8 @@ class OneToOneStage(Stage):
             prev_fn_args = (
                 prev_fn_args if prev_fn_ is None else (prev_fn_,) + prev_fn_args
             )
-            blocks = block_fn1(blocks, task_idx, *prev_fn_args, **prev_fn_kwargs)
-            return block_fn2(blocks, task_idx, *self_fn_args, **self_fn_kwargs)
+            blocks = block_fn1(blocks, ctx, *prev_fn_args, **prev_fn_kwargs)
+            return block_fn2(blocks, ctx, *self_fn_args, **self_fn_kwargs)
 
         return OneToOneStage(
             name,
@@ -1016,22 +1017,20 @@ class AllToAllStage(Stage):
         prev_block_fn = prev.block_fn
         if self.block_udf is None:
 
-            def block_udf(blocks: Iterable[Block], task_idx: int) -> Iterable[Block]:
-                yield from prev_block_fn(
-                    blocks, task_idx, *prev_fn_args, **prev_fn_kwargs
-                )
+            def block_udf(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+                yield from prev_block_fn(blocks, ctx, *prev_fn_args, **prev_fn_kwargs)
 
         else:
             self_block_udf = self.block_udf
 
-            def block_udf(blocks: Iterable[Block], task_idx) -> Iterable[Block]:
+            def block_udf(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
                 blocks = prev_block_fn(
                     blocks,
-                    task_idx,
+                    ctx,
                     *prev_fn_args,
                     **prev_fn_kwargs,
                 )
-                yield from self_block_udf(blocks, task_idx)
+                yield from self_block_udf(blocks, ctx)
 
         return AllToAllStage(
             name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
@@ -1108,7 +1107,7 @@ def _rewrite_read_stage(
 
     @_adapt_for_multiple_blocks
     def block_fn(
-        read_fn: Callable[[], Iterator[Block]], task_idx: int
+        read_fn: Callable[[], Iterator[Block]], ctx: TaskContext
     ) -> Iterator[Block]:
         for block in read_fn():
             yield block
@@ -1228,8 +1227,8 @@ def _adapt_for_multiple_blocks(
     fn: Callable[..., Iterable[Block]],
 ) -> Callable[..., Iterable[Block]]:
     @functools.wraps(fn)
-    def wrapper(blocks: Iterable[Block], task_idx, *args, **kwargs):
+    def wrapper(blocks: Iterable[Block], ctx: TaskContext, *args, **kwargs):
         for block in blocks:
-            yield from fn(block, task_idx, *args, **kwargs)
+            yield from fn(block, ctx, *args, **kwargs)
 
     return wrapper
