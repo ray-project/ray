@@ -190,6 +190,84 @@ class BaseTrainer(abc.ABC):
         scaling_config: Optional[ScalingConfig] = None,
         **kwargs,
     ) -> "BaseTrainer":
+        """Restores a Train experiment from a previously interrupted/failed run.
+
+        Restore should be used for experiment-level fault tolerance in the event
+        that the head node crashes (e.g. OOM or some other runtime error) or the
+        entire cluster goes down (e.g. network error affecting all nodes).
+
+        The following example can be paired with implementing job retry using
+        :ref:`Ray Jobs <jobs-overview>` to produce a Train experiment that will
+        attempt to resume on both experiment-level and trial-level failures:
+
+        .. code-block:: python
+
+            import os
+            from ray.train.torch import TorchTrainer
+            from ray import tune
+
+            experiment_name = "unique_experiment_name"
+            upload_dir = "s3://bucket"
+            experiment_dir = os.path.join(upload_dir, experiment_name)
+
+            # Pretend this is a large object that's been loaded
+            large_data = {}
+            # Use an object reference to share this object across the cluster
+            large_data_ref = ray.put(large_dataset)
+
+            datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
+
+            def train_loop_per_worker(config):
+                pass
+
+            train_loop_config = {"obj_ref": large_data_ref}
+
+            if TorchTrainer.can_restore(experiment_dir):
+                trainer = TorchTrainer.restore(
+                    experiment_dir,
+                    train_loop_per_worker=train_loop_per_worker,
+                    train_loop_config=train_loop_config,
+                    datasets=datasets,
+                )
+            else:
+                trainer = TorchTrainer(
+                    train_loop_per_worker,
+                    train_loop_config,
+                    datasets=datasets,
+                    run_config=air.RunConfig(
+                        name=experiment_name,
+                        sync_config=tune.SyncConfig(upload_dir=upload_dir),
+                        # Tip: Add trial-level fault-tolerance on top.
+                        failure_config=air.FailureConfig(max_failures=3),
+                    ),
+                )
+
+            result = trainer.fit()
+
+
+        Args:
+            path: The path to the experiment directory of the training run to restore.
+                This can be a local path or a remote URI if the experiment was
+                uploaded to the cloud.
+            datasets: Re-specified datasets used in the original training run.
+                This must include all the datasets that were passed in the
+                original trainer constructor.
+            preprocessor: Optionally re-specified preprocessor that was passed in
+                the original trainer constructor. This should be used to re-supply
+                the preprocessor if it is not restorable in a new Ray cluster.
+                This preprocessor will be fit at the start before resuming training.
+                If no preprocessor is passed in restore, then the old preprocessor
+                will be loaded from the latest checkpoint and will not be re-fit.
+            scaling_config: Optionally re-specified scaling config. This can be
+                modified to be different from the original spec.
+            **kwargs: Other optionally re-specified arguments, passed in by subclasses.
+
+        Raises:
+            ValueError: If all datasets were not re-supplied on restore.
+
+        Returns:
+            BaseTrainer: A restored instance of the class that is calling this method.
+        """
         assert cls.can_restore(path), (
             f"Invalid restore path: {path}. Make sure that this path exists and "
             "is the experiment directory that results from a call to `trainer.fit()`."
@@ -252,8 +330,7 @@ class BaseTrainer(abc.ABC):
                 or a remote URI (e.g. s3://bucket/exp_name).
 
         Returns:
-            can_restore: Whether or not this path exists and contains the pickled
-                Trainer, to load on restore.
+            bool: Whether or not this path exists and contains the pickled Trainer
         """
         path = str(path)
         if is_non_local_path_uri(path):

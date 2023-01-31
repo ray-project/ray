@@ -292,6 +292,26 @@ class DataParallelTrainer(BaseTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
     ) -> "DataParallelTrainer":
+        """Restores a DataParallelTrainer from a previously interrupted/failed run.
+
+        Args:
+            train_loop_per_worker: Optionally re-specified train loop function.
+                This should be used to re-specify a function that is not
+                restorable in a new Ray cluster (e.g. it holds onto outdated
+                object references). This should be the same training loop
+                that was passed to the original trainer constructor.
+            train_loop_config: Optionally re-specified train config.
+                This should similarly be used if the original `train_loop_config`
+                contained outdated object references, and it should not be modified
+                from what was originally passed in.
+
+        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
+        for descriptions of the other arguments.
+
+        Returns:
+            DataParallelTrainer: A restored instance of the `DataParallelTrainer`
+            subclass that is calling this method.
+        """
         return super(DataParallelTrainer, cls).restore(
             path=path,
             train_loop_per_worker=train_loop_per_worker,
