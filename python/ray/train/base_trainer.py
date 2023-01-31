@@ -271,7 +271,8 @@ class BaseTrainer(abc.ABC):
         if not cls.can_restore(path):
             raise ValueError(
                 f"Invalid restore path: {path}. Make sure that this path exists and "
-                "is the experiment directory that results from a call to `trainer.fit()`."
+                "is the experiment directory that results from a call to "
+                "`trainer.fit()`."
             )
         trainer_state_path = cls._maybe_sync_down_trainer_state(path)
         assert trainer_state_path.exists()
@@ -583,6 +584,7 @@ class BaseTrainer(abc.ABC):
         return result
 
     def _save(self, experiment_path: Union[str, Path]):
+        """Saves the"""
         experiment_path = Path(experiment_path)
         with open(experiment_path / _TRAINER_PKL, "wb") as fp:
             pickle.dump(self, fp)
