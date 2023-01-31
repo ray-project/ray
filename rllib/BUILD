@@ -3879,7 +3879,7 @@ py_test(
 
 
 py_test(
-    name = "examples/rl_trainer/multi_agent_cartpole_ppo_torch_gpu",
+    name = "examples/rl_trainer/multi_agent_cartpole_ppo_torch_multi_gpu",
     main = "examples/rl_trainer/multi_agent_cartpole_ppo.py",
     tags = ["team:rllib", "exclusive", "examples", "multi-gpu"],
     size = "medium",
