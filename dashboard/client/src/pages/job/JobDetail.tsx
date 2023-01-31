@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
+import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -16,17 +17,12 @@ import TaskList from "../state/task";
 
 import { useRayStatus } from "./hook/useClusterStatus";
 import { useJobDetail } from "./hook/useJobDetail";
-import { useJobProgress } from "./hook/useJobProgress";
-import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
-import { TaskProgressBar } from "./TaskProgressBar";
+import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
 
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
-  },
-  taskProgressTable: {
-    marginTop: theme.spacing(2),
   },
 }));
 
@@ -40,7 +36,7 @@ export const JobDetailChartsPage = ({
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
-  const { progress, error, driverExists } = useJobProgress(jobId);
+
   const { cluster_status } = useRayStatus();
   console.log(cluster_status?.data.clusterStatus.split("\n"));
 
@@ -80,7 +76,7 @@ export const JobDetailChartsPage = ({
           // See format_info_string in util.py
           if (i.startsWith("-----") || i.startsWith("=====")) {
             // Separator
-            return <br />;
+            return <div />;
           } else if (i.endsWith(":")) {
             return (
               <div key={key}>
@@ -109,54 +105,6 @@ export const JobDetailChartsPage = ({
       </div>
     );
   }
-
-  const tasksSectionContents = (() => {
-    if (!driverExists) {
-      return <TaskProgressBar />;
-    }
-    const { status } = job;
-    if (!progress || error) {
-      return (
-        <Alert severity="warning">
-          No tasks visualizations because prometheus is not detected. Please
-          make sure prometheus is running and refresh this page. See:{" "}
-          <a
-            href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
-            target="_blank"
-            rel="noreferrer"
-          >
-            https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
-          </a>
-          .
-          <br />
-          If you are hosting prometheus on a separate machine or using a
-          non-default port, please set the RAY_PROMETHEUS_HOST env var to point
-          to your prometheus server when launching ray.
-        </Alert>
-      );
-    }
-    if (status === "SUCCEEDED" || status === "FAILED") {
-      return (
-        <React.Fragment>
-          <TaskProgressBar {...progress} showAsComplete />
-          <JobTaskNameProgressTable
-            className={classes.taskProgressTable}
-            jobId={jobId}
-          />
-        </React.Fragment>
-      );
-    } else {
-      return (
-        <React.Fragment>
-          <TaskProgressBar {...progress} />
-          <JobTaskNameProgressTable
-            className={classes.taskProgressTable}
-            jobId={jobId}
-          />
-        </React.Fragment>
-      );
-    }
-  })();
 
   return (
     <div className={classes.root}>
@@ -230,13 +178,15 @@ export const JobDetailChartsPage = ({
           ]}
         />
       </TitleCard>
-      <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
+      <TitleCard title="Tasks">
+        <JobProgressBar jobId={jobId} job={job} />
+      </TitleCard>
       <TitleCard title="Task Timeline">
         <TaskTimeline jobId={jobId} />
       </TitleCard>
-      <TitleCard title="">
-        <Grid container spacing={3}>
-          <Grid item xs={6}>
+      <Grid container>
+        <Grid item xs={4}>
+          <TitleCard title="">
             <Box
               mb={2}
               display="flex"
@@ -252,8 +202,10 @@ export const JobDetailChartsPage = ({
                 ? FormatNodeStatus(cluster_status?.data.clusterStatus)
                 : "No cluster status."}
             </Box>
-          </Grid>
-          <Grid item xs={6}>
+          </TitleCard>
+        </Grid>
+        <Grid item xs={4}>
+          <TitleCard title="">
             <Box
               mb={2}
               display="flex"
@@ -269,15 +221,23 @@ export const JobDetailChartsPage = ({
                 ? FormatResourcesStatus(cluster_status?.data.clusterStatus)
                 : "No cluster status."}
             </Box>
-          </Grid>
+          </TitleCard>
         </Grid>
+      </Grid>
+      <TitleCard>
+        <CollapsibleSection title="Task Table">
+          <TaskList jobId={jobId} />
+        </CollapsibleSection>
       </TitleCard>
-      <TitleCard title="Task Table">
-        <TaskList jobId={jobId} />
+      <TitleCard>
+        <CollapsibleSection title="Actors">
+          <ActorList jobId={jobId} />
+        </CollapsibleSection>
       </TitleCard>
-      <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
-      <TitleCard title="Placement Groups">
-        <PlacementGroupList jobId={jobId} />
+      <TitleCard>
+        <CollapsibleSection title="Placement Groups">
+          <PlacementGroupList jobId={jobId} />
+        </CollapsibleSection>
       </TitleCard>
     </div>
   );
