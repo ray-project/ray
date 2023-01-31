@@ -160,7 +160,10 @@ class AnyscaleJobManager:
                     msg = "... job still running ..."
                 else:
                     msg = "... job not yet running ..."
-                logger.info(f"{msg}({int(now - start_time)} seconds) ...")
+                logger.info(
+                    f"{msg}({int(now - start_time)} seconds, "
+                    f"{int(timeout_at - now)} seconds to timeout) ..."
+                )
                 next_status += 30
 
             result = self._get_job_status_with_retry()
