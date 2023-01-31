@@ -155,18 +155,20 @@ Logging that happens in distributed training workers (if you happen to use Ray T
 is not part of this ``log_to_file`` configuration.
 
 Where to find ``log_to_file`` files?
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 If your Tune workload is configured with syncing to head node, then the corresponding ``log_to_file`` outputs
 can be located under each trial folder.
 If your Tune workload is instead configured with syncing to cloud, then the corresponding ``log_to_file``
 outputs are *NOT* synced to cloud and can only be found in the worker nodes that the corresponding trial happens.
 
 .. note::
-    This can get ugly when the trainable is moved across different nodes throughout its lifetime like in some
-    scheduler's case. We may prioritize enabling this if there are enough user requests.
+    This can get ugly when the trainable is moved across different nodes throughout its lifetime.
+    This can happen with some schedulers or with node failures.
+    We may prioritize enabling this if there are enough user requests.
+    Please open an issue on Ray GitHub if this impacts you.
 
 
-Leave us feedback to this feature
+Leave us feedback on this feature
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 We know that logging and observability can be a huge performance boost for your workflow. Let us know what is your
 ideal way of interacting with logging that happens in trainables. To leave your thoughts, please go to
