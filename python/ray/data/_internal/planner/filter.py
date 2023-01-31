@@ -1,16 +1,20 @@
-from typing import Callable, Iterator
+from typing import Iterator
 
+from ray.data._internal.execution.interfaces import TaskContext, TransformFn
 from ray.data.block import Block, BlockAccessor, RowUDF
 from ray.data.context import DatasetContext
 
 
-def generate_filter_fn() -> Callable[[Iterator[Block]], Iterator[Block]]:
+def generate_filter_fn() -> TransformFn:
     """Generate function to apply the UDF to each record of blocks,
     and filter out records that do not satisfy the given predicate.
     """
+
     context = DatasetContext.get_current()
 
-    def fn(blocks: Iterator[Block], row_fn: RowUDF) -> Iterator[Block]:
+    def fn(
+        blocks: Iterator[Block], ctx: TaskContext, row_fn: RowUDF
+    ) -> Iterator[Block]:
         DatasetContext._set_current(context)
         for block in blocks:
             block = BlockAccessor.for_block(block)

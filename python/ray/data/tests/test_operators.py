@@ -33,7 +33,7 @@ def _get_blocks(bundle: RefBundle, output_list: List[Block]):
         output_list.append(ray.get(block))
 
 
-def _mul2_transform(block_iter: Iterable[Block]) -> Iterable[Block]:
+def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
     for block in block_iter:
         yield [b * 2 for b in block]
 
@@ -59,7 +59,7 @@ def test_input_data_buffer(ray_start_regular_shared):
 
 
 def test_all_to_all_operator():
-    def dummy_all_transform(bundles: List[RefBundle]):
+    def dummy_all_transform(bundles: List[RefBundle], ctx):
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
@@ -198,7 +198,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_min_rows_per_bundle(shutdown_only, use_actors):
     # Simple sanity check of batching behavior.
-    def _check_batch(block_iter: Iterable[Block]) -> Iterable[Block]:
+    def _check_batch(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
         block_iter = list(block_iter)
         assert len(block_iter) == 5, block_iter
         for block in block_iter:
