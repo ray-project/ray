@@ -43,3 +43,39 @@ class RandomizeBlocks(AbstractAllToAll):
             input_op,
         )
         self._seed = seed
+
+
+class RandomShuffle(AbstractAllToAll):
+    """Logical operator for random_shuffle."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        seed: Optional[int] = None,
+        num_outputs: Optional[int] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            "RandomShuffle",
+            input_op,
+            num_outputs=num_outputs,
+            ray_remote_args=ray_remote_args,
+        )
+        self._seed = seed
+
+
+class Repartition(AbstractAllToAll):
+    """Logical operator for repartition."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        num_outputs: int,
+        shuffle: bool,
+    ):
+        super().__init__(
+            "Repartition",
+            input_op,
+            num_outputs=num_outputs,
+        )
+        self._shuffle = shuffle
