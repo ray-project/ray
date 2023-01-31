@@ -75,14 +75,12 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
                 sum([len(batch["feature"]) for batch in ds.iter_batches()])
                 == dataset_size // num_workers
             )
-
             _failing_train_fn(config)
 
         train_loop_config = {"obj_ref": obj_ref}
         return train_fn, train_loop_config
 
     datasets = {"train": ray.data.from_items([{"feature": i} for i in range(10)])}
-
     train_fn, train_loop_config = create_train_fn_and_config()
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_fn,
@@ -98,7 +96,12 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
     with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
+    # TODO(justinvyu): Figure out how to clear object refs in a better way.
+    ray.shutdown()
+    ray.init(num_cpus=4)
+
     train_fn, train_loop_config = create_train_fn_and_config()
+    datasets = {"train": ray.data.from_items([{"feature": i} for i in range(10)])}
     trainer = DataParallelTrainer.restore(
         str(tmpdir / "data_parallel_restore_test"),
         train_loop_per_worker=train_fn,
@@ -138,7 +141,7 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
             name=exp_name,
             checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
             callbacks=[FailureInjectionCallback(num_iters=2)],
-            # We also use a stopper criteria, since the restored run will go for
+            # We also use a stopper, since the restored run will go for
             # another 5 boosting rounds otherwise.
             stop={"training_iteration": 5},
         ),
@@ -234,7 +237,8 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
     trainer = DataParallelTrainer.restore(str(tmpdir), datasets=datasets)
 
 
-def test_preprocessor_restore(ray_start_4_cpus, tmpdir):
+@pytest.mark.parametrize("new_preprocessor", [True, False])
+def test_preprocessor_restore(ray_start_4_cpus, tmpdir, new_preprocessor):
     """Preprocessors get restored from latest checkpoint if no new one is provided.
     They will not be re-fit if loaded from the checkpoint.
     If a new one is provided on restore, then it will be re-fit.
@@ -244,7 +248,8 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir):
     }
 
     class MyPreprocessor(Preprocessor):
-        def __init__(self):
+        def __init__(self, id):
+            self.id = id
             self._num_fits = 0
 
         def _fit(self, dataset):
@@ -258,15 +263,18 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir):
     trainer = DataParallelTrainer(
         train_loop_per_worker=_failing_train_fn,
         datasets=datasets,
-        preprocessor=MyPreprocessor(),
+        preprocessor=MyPreprocessor(id=1),
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name="preprocessor_restore_test", local_dir=tmpdir),
     )
     with pytest.raises(TrainingFailedError):
         trainer.fit()
 
+    new_preprocessor = MyPreprocessor(id=2) if new_preprocessor else None
     trainer = DataParallelTrainer.restore(
-        str(tmpdir / "preprocessor_restore_test"), datasets=datasets
+        str(tmpdir / "preprocessor_restore_test"),
+        datasets=datasets,
+        preprocessor=new_preprocessor,
     )
     result = trainer.fit()
     preprocessor = result.checkpoint.get_preprocessor()
@@ -276,6 +284,8 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir):
         "and it should not have been fit again. "
         f"Fit {preprocessor._num_fits} times instead of once."
     )
+    if new_preprocessor:
+        assert preprocessor and preprocessor.id == 2, "Wrong preprocessor was used."
 
 
 def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
@@ -288,15 +298,18 @@ def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
         def transform(self, x):
             return {k: v + 1 for k, v in x.items()}
 
-    model_prep_ref = ray.put(ModelPreprocessor())
-    model_actor_handle = ray.remote(ModelPreprocessor).remote()
+    def create_preprocessor():
+        model_prep_ref = ray.put(ModelPreprocessor())
+        model_actor_handle = ray.remote(ModelPreprocessor).remote()
 
-    def preprocess_fn(batch):
-        batch = ray.get(model_prep_ref).transform(batch)
-        batch = ray.get(model_actor_handle.transform.remote(batch))
-        return batch
+        def preprocess_fn(batch):
+            batch = ray.get(model_prep_ref).transform(batch)
+            batch = ray.get(model_actor_handle.transform.remote(batch))
+            return batch
 
-    preprocessor = BatchMapper(preprocess_fn, batch_format="numpy")
+        return BatchMapper(preprocess_fn, batch_format="numpy")
+
+    preprocessor = create_preprocessor()
 
     def train_fn(config):
         session.report({"score": 1})
@@ -312,7 +325,7 @@ def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
     trainer._save(tmpdir)
 
     trainer = DataParallelTrainer.restore(
-        str(tmpdir), datasets=datasets, preprocessor=preprocessor
+        str(tmpdir), datasets=datasets, preprocessor=create_preprocessor()
     )
     trainer.preprocess_datasets()
 
