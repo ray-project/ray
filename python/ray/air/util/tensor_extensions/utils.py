@@ -30,7 +30,7 @@ def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
     return True
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def create_possibly_ragged_ndarray(
     values: Union[np.ndarray, "ABCSeries", Sequence[Any]]
 ) -> np.ndarray:
