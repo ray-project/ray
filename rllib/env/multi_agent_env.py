@@ -536,6 +536,12 @@ def make_multi_agent(
         @override(MultiAgentEnv)
         def step(self, action_dict):
             obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
+
+            # the environment is expecting actions for all sub-envs
+            if set(action_dict) != self._agent_ids:
+                missings = self._agent_ids - set(action_dict)
+                raise ValueError(f"Missing actions for agent ids: {missings}")
+
             for i, action in action_dict.items():
                 obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[
                     i
