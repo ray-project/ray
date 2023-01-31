@@ -663,7 +663,7 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
   {
     absl::MutexLock lock(&task_manager->mutex_);
     EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), num_limit);
-    EXPECT_EQ(task_manager->task_event_storage_->total_num_events_,
+    EXPECT_EQ(task_manager->task_event_storage_->total_num_tasks_,
               num_limit + num_total);
     // No task has parent.
     EXPECT_EQ(task_manager->task_event_storage_->parent_to_children_task_index_.size(),
