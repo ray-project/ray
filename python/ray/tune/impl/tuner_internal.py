@@ -320,7 +320,7 @@ class TunerInternal:
             dir_contents = list_at_uri(path)
         else:
             dir_contents = [] if not os.path.exists(path) else os.listdir(path)
-        return bool(dir_contents) and _TUNER_PKL in dir_contents
+        return dir_contents and _TUNER_PKL in dir_contents
 
     def _restore_from_path_or_uri(
         self,
