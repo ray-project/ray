@@ -1,7 +1,8 @@
 import sys
-from typing import Callable, Iterator, Optional
+from typing import Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
+from ray.data._internal.execution.interfaces import TaskContext, TransformFn
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import BatchUDF, Block, DataBatch
 from ray.data.context import DEFAULT_BATCH_SIZE, DatasetContext
@@ -18,7 +19,7 @@ def generate_map_batches_fn(
     batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
     prefetch_batches: int = 0,
     zero_copy_batch: bool = False,
-) -> Callable[[Iterator[Block]], Iterator[Block]]:
+) -> TransformFn:
     """Generate function to apply the batch UDF to blocks."""
     import numpy as np
     import pandas as pd
@@ -27,7 +28,11 @@ def generate_map_batches_fn(
     context = DatasetContext.get_current()
 
     def fn(
-        blocks: Iterator[Block], batch_fn: BatchUDF, *fn_args, **fn_kwargs
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        batch_fn: BatchUDF,
+        *fn_args,
+        **fn_kwargs,
     ) -> Iterator[Block]:
         DatasetContext._set_current(context)
         output_buffer = BlockOutputBuffer(None, context.target_max_block_size)

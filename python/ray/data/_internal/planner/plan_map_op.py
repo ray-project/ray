@@ -1,8 +1,12 @@
 from typing import Any, Iterator
 
 import ray
-from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy, get_compute
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.compute import (
+    ActorPoolStrategy,
+    TaskPoolStrategy,
+    get_compute,
+)
+from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
@@ -76,8 +80,8 @@ def _plan_map_op(op: AbstractMap, input_physical_dag: PhysicalOperator) -> MapOp
         fn_args += op._fn_args
     fn_kwargs = op._fn_kwargs or {}
 
-    def do_map(blocks: Iterator[Block]) -> Iterator[Block]:
-        yield from transform_fn(blocks, *fn_args, **fn_kwargs)
+    def do_map(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
+        yield from transform_fn(blocks, ctx, *fn_args, **fn_kwargs)
 
     return MapOperator.create(
         do_map,

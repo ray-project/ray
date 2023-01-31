@@ -22,7 +22,7 @@ from ray.data.tests.conftest import *  # noqa
 
 
 def make_transform(block_fn):
-    def map_fn(block_iter):
+    def map_fn(block_iter, ctx):
         for block in block_iter:
             yield block_fn(block)
 
@@ -44,7 +44,7 @@ def test_pipelined_execution(ray_start_10_cpus_shared):
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
 
-    def reverse_sort(inputs: List[RefBundle]):
+    def reverse_sort(inputs: List[RefBundle], ctx):
         reversed_list = inputs[::-1]
         return reversed_list, {}
 
