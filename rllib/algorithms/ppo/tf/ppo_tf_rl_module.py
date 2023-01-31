@@ -1,17 +1,20 @@
-import gymnasium as gym
 from typing import Mapping, Any, List
+
+import gymnasium as gym
+
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.experimental.configs import MLPConfig, IdentityConfig
+from ray.rllib.models.experimental.encoder import STATE_OUT
+from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
+from ray.rllib.models.experimental.tf.primitives import TfMLP
+from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian
-from ray.rllib.models.experimental.tf.primitives import TfMLP
-from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 
 tf1, tf, _ = try_import_tf()
 tf1.enable_eager_execution()
@@ -60,9 +63,14 @@ class PPOTfRLModule(TfRLModule):
 
     @override(TfRLModule)
     def _forward_train(self, batch: NestedDict):
+        output = {}
+
         encoder_out = self.encoder(batch)
+        if STATE_OUT in encoder_out:
+            output[STATE_OUT] = encoder_out[STATE_OUT]
+
+        # Actions
         action_logits = self.pi(encoder_out[ENCODER_OUT])
-        vf = self.vf(encoder_out[ENCODER_OUT])
 
         if self._is_discrete:
             action_dist = Categorical(action_logits)
@@ -71,10 +79,10 @@ class PPOTfRLModule(TfRLModule):
                 action_logits, None, action_space=self.config.action_space
             )
 
-        output = {
-            SampleBatch.ACTION_DIST: action_dist,
-            SampleBatch.VF_PREDS: tf.squeeze(vf, axis=-1),
-        }
+        vf = self.vf(encoder_out[ENCODER_OUT])
+        output[SampleBatch.ACTION_DIST] = action_dist
+        output[SampleBatch.VF_PREDS] = tf.squeeze(vf, axis=-1)
+
         return output
 
     @override(TfRLModule)
@@ -87,7 +95,11 @@ class PPOTfRLModule(TfRLModule):
 
     @override(TfRLModule)
     def _forward_inference(self, batch) -> Mapping[str, Any]:
+        output = {}
+
         encoder_out = self.encoder(batch)
+        if STATE_OUT in encoder_out:
+            output[STATE_OUT] = encoder_out[STATE_OUT]
 
         action_logits = self.pi(encoder_out[ENCODER_OUT])
 
@@ -97,9 +109,8 @@ class PPOTfRLModule(TfRLModule):
             action, _ = tf.split(action_logits, num_or_size_splits=2, axis=1)
 
         action_dist = Deterministic(action, model=None)
-        output = {
-            SampleBatch.ACTION_DIST: action_dist,
-        }
+        output[SampleBatch.ACTION_DIST] = action_dist
+
         return output
 
     @override(TfRLModule)
@@ -116,7 +127,10 @@ class PPOTfRLModule(TfRLModule):
 
     @override(TfRLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+        output = {}
         encoder_out = self.encoder(batch)
+        if STATE_OUT in encoder_out:
+            output[STATE_OUT] = encoder_out[STATE_OUT]
 
         action_logits = self.pi(encoder_out[ENCODER_OUT])
         vf = self.vf(encoder_out[ENCODER_OUT])
@@ -127,11 +141,11 @@ class PPOTfRLModule(TfRLModule):
             action_dist = DiagGaussian(
                 action_logits, None, action_space=self.config.action_space
             )
-        output = {
-            SampleBatch.ACTION_DIST: action_dist,
-            SampleBatch.ACTION_DIST_INPUTS: action_logits,
-            SampleBatch.VF_PREDS: tf.squeeze(vf, axis=-1),
-        }
+
+        output[SampleBatch.ACTION_DIST] = action_dist
+        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        output[SampleBatch.VF_PREDS] = tf.squeeze(vf, axis=-1)
+
         return output
 
     @classmethod
