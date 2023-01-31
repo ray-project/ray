@@ -119,7 +119,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.master=true \
                     -Cnode.data=false \
                     -Cdiscovery.seed_hosts=$clusterhosts \
-                    -Ccluster.initial_master_nodes=nexus \
+       #             -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cnode.store.allow_mmap=false \
                     -Chttp.cors.enabled=true \
@@ -127,20 +127,20 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cstats.enabled=false &
     #but if there are servers in the cluster but nexus lacks state data we'll recover
     elif [ ! $clusterhosts=="nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
-        crate join --recovered --no-rebootstrap $clusterhosts \
-        -Cnetwork.host=_tailscale0_ \
+        /crate/bin/crate join --recovered --no-rebootstrap $clusterhosts \
+                    -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
                     -Cnode.master=true \
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=false \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
-                    -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
-#                    -Ccluster.initial_master_nodes=nexus \
+                    -Cdiscovery.seed_hosts=$clusterhosts \
+                    -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cstats.enabled=false &
-    #otherwise just start fresh
     else
+        #otherwise just start fresh
         /crate/bin/crate -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
                     -Cnode.master=true \
