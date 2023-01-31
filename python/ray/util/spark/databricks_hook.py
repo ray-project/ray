@@ -134,7 +134,9 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             f"{auto_shutdown_minutes} minutes. You can change the "
             "timeout minutes by setting "
             f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES}' environment "
-            "variable, setting it to 0 means infinite timeout."
+            "variable, setting it to 0 means that the Ray cluster keeps running "
+            "until you manually call `ray.util.spark.shutdown_ray_cluster()` or "
+            "detach databricks notebook."
         )
 
         def auto_shutdown_watcher():
