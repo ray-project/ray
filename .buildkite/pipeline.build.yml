@@ -599,6 +599,15 @@
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
 
+- label: ":hadoop: Ray AIR HDFS tests"
+  conditions: ["RAY_CI_ML_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - cat /tmp/hdfs_env
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_tag_filters=hdfs python/ray/air/...
 
 
 # Test to see if Train can be used without torch, tf, etc. installed

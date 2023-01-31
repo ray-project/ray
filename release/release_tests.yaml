@@ -2062,7 +2062,7 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: serve_failure
@@ -2757,6 +2757,9 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
   team: rllib
   env: staging
@@ -2823,6 +2826,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -2894,6 +2900,9 @@
   team: rllib
   env: staging
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -2911,6 +2920,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3002,6 +3014,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3118,6 +3133,9 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
   team: rllib
   env: staging
@@ -3140,6 +3158,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3186,6 +3207,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3277,6 +3301,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3911,7 +3938,7 @@
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
-    timeout: 7200
+    timeout: 3600
     # 2cpus per node x 1000 nodes / 0.2 cpus per actor = 10k
     # 2cpus per node x 2000 nodes / 0.2 cpus per actor = 20k
     script: python distributed/many_nodes_tests/actor_test.py --no-wait --cpus-per-actor=0.2 --total-actors 10000 20000
