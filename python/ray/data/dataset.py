@@ -614,7 +614,7 @@ class Dataset(Generic[T]):
             zero_copy_batch=zero_copy_batch,
         )
 
-        # breakpoint()
+        # TODO(chengsu): pass function name to MapBatches logical operator.
         if hasattr(fn, "__self__") and isinstance(
             fn.__self__, ray.data.preprocessor.Preprocessor
         ):
