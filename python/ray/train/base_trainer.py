@@ -544,6 +544,7 @@ class BaseTrainer(abc.ABC):
             ``self.as_trainable()``.
         """
         from ray.tune.tuner import Tuner, TunerInternal
+        from ray.tune import TuneError
 
         trainable = self.as_trainable()
         param_space = self._extract_fields_for_tuner_param_space()
@@ -572,9 +573,12 @@ class BaseTrainer(abc.ABC):
 
         result_grid = tuner.fit()
         assert len(result_grid) == 1
-        result = result_grid[0]
-        if result.error:
-            raise TrainingFailedError from result.error
+        try:
+            result = result_grid[0]
+            if result.error:
+                raise result.error
+        except TuneError as e:
+            raise TrainingFailedError from e
         return result
 
     def _save(self, experiment_path: Union[str, Path]):
