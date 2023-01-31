@@ -16,7 +16,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     TaskContext,
-    TransformFn,
+    MapTransformFn,
 )
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
@@ -34,7 +34,7 @@ class MapOperator(PhysicalOperator, ABC):
 
     def __init__(
         self,
-        transform_fn: TransformFn,
+        transform_fn: MapTransformFn,
         input_op: PhysicalOperator,
         name: str,
         min_rows_per_bundle: Optional[int],
@@ -44,9 +44,7 @@ class MapOperator(PhysicalOperator, ABC):
         # instead.
         # NOTE: This constructor must be called by subclasses.
 
-        # Put the function def in the object store to avoid repeated serialization
-        # in case it's large (i.e., closure captures large objects).
-        self._transform_fn_ref = ray.put(transform_fn)
+        self._transform_fn = transform_fn
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
 
         # Bundles block references up to the min_rows_per_bundle target.
@@ -64,7 +62,7 @@ class MapOperator(PhysicalOperator, ABC):
     @classmethod
     def create(
         cls,
-        transform_fn: TransformFn,
+        transform_fn: MapTransformFn,
         input_op: PhysicalOperator,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
@@ -142,6 +140,9 @@ class MapOperator(PhysicalOperator, ABC):
                 ray.get_runtime_context().get_node_id(),
                 soft=True,
             )
+        # Put the function def in the object store to avoid repeated serialization
+        # in case it's large (i.e., closure captures large objects).
+        self._transform_fn_ref = ray.put(self._transform_fn)
         super().start(options)
 
     def add_input(self, refs: RefBundle, input_index: int):
@@ -261,6 +262,9 @@ class MapOperator(PhysicalOperator, ABC):
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
 
+    def get_transformation_fn(self) -> MapTransformFn:
+        return self._transform_fn
+
     @abstractmethod
     def shutdown(self):
         # NOTE: This must be implemented by subclasses, and those overriding methods
@@ -327,7 +331,7 @@ class _ObjectStoreMetrics:
 
 
 def _map_task(
-    fn: TransformFn,
+    fn: MapTransformFn,
     ctx: TaskContext,
     *blocks: Block,
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
