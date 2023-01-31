@@ -335,7 +335,7 @@ class TrainerRunner:
         else:
             worker = next(iter(self._workers))
             weights = ray.get(worker.get_weights.remote(module_ids))
-        
+
         return convert_to_numpy(weights)
 
     def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:

@@ -29,6 +29,7 @@ from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
@@ -156,7 +157,9 @@ class TorchRLTrainer(RLTrainer):
         if module_ids is None:
             return module_weights
 
-        return {k: v for k, v in module_weights.items() if k in module_ids}
+        return convert_to_numpy(
+            {k: v for k, v in module_weights.items() if k in module_ids}
+        )
 
     def set_weights(self, weights: Mapping[str, Any]) -> None:
         """Sets the state of the underlying MultiAgentRLModule"""

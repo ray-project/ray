@@ -2136,10 +2136,13 @@ class Algorithm(Trainable):
         eval_cf.freeze()
 
         # resources for local worker
-        local_worker = {
-            "CPU": cf.num_cpus_for_local_worker,
-            "GPU": 0 if cf._fake_gpus else cf.num_gpus,
-        }
+        if cf._enable_rl_trainer_api:
+            local_worker = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
+        else:
+            local_worker = {
+                "CPU": cf.num_cpus_for_local_worker,
+                "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+            }
 
         bundles = [local_worker]
 
@@ -2182,6 +2185,28 @@ class Algorithm(Trainable):
             evaluation_bundle = []
 
         bundles += rollout_workers + evaluation_bundle
+
+        if cf._enable_rl_trainer_api:
+            # resources for the trainer
+            if cf.num_trainer_workers == 0:
+                # if num_trainer_workers is 0, then we need to allocate one gpu if
+                # num_gpus_per_trainer_worker is greater than 0.
+                trainer_bundle = [
+                    {
+                        "CPU": cf.num_cpus_per_trainer_worker,
+                        "GPU": int(cf.num_gpus_per_trainer_worker > 0),
+                    }
+                ]
+            else:
+                trainer_bundle = [
+                    {
+                        "CPU": cf.num_cpus_per_trainer_worker,
+                        "GPU": cf.num_gpus_per_trainer_worker,
+                    }
+                    for _ in range(cf.num_trainer_workers)
+                ]
+
+            bundles += trainer_bundle
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
