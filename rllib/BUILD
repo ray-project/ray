@@ -588,9 +588,19 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_pendulum_ppo_with_rl_module",
+    name = "learning_tests_pendulum_ppo_with_rl_module_torch",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
+    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
+    args = ["--dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "learning_tests_pendulum_ppo_with_rl_module_tf2_eager",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "tf2_only", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
@@ -872,6 +882,14 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/alpha_zero/tests/test_alpha_zero.py"]
+)
+
+# LeelaChessZero
+py_test(
+    name = "test_leela_chess_zero",
+    tags = ["team:rllib","torch_only", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/leela_chess_zero/tests/test_leela_chess_zero.py"]
 )
 
 # APEX-DQN
@@ -1825,19 +1843,18 @@ py_test(
     srcs = ["core/rl_module/tests/test_marl_module.py"]
 )
 
-# TODO: to be removed
-py_test(
-    name = "test_tf_rl_trainer",
-    tags = ["team:rllib", "multi_gpu", "exclusive"],
-    size = "medium",
-    srcs = ["core/rl_trainer/tests/tf/test_tf_rl_trainer.py"]
-)
-
 py_test(
     name = "test_trainer_runner",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
-    size = "medium",
+    size = "large",
     srcs = ["core/rl_trainer/tests/test_trainer_runner.py"]
+)
+
+py_test(
+    name = "test_trainer_runner_config",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/test_trainer_runner_config.py"]
 )
 
 py_test(
@@ -1845,6 +1862,14 @@ py_test(
     tags = ["team:rllib", "core"],
     size = "medium",
     srcs = ["core/rl_trainer/tests/test_rl_trainer.py"]
+)
+
+# TODO (Kourosh): to be removed in favor of test_rl_trainer.py
+py_test(
+    name = "test_torch_rl_trainer",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["core/rl_trainer/torch/tests/test_torch_rl_trainer.py"]
 )
 
 # --------------------------------------------------------------------
@@ -3306,6 +3331,14 @@ py_test(
     args = ["--stop-iters=4", "--framework=torch"]
 )
 
+py_test(
+    name = "examples/multi_agent_independent_learning",
+    main = "examples/multi_agent_independent_learning.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent_independent_learning.py"],
+    args = ["--stop-iters=4", "--framework=torch"]
+)
 
 py_test(
     name = "examples/multi_agent_two_trainers_tf",

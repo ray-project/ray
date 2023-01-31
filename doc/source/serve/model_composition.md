@@ -324,6 +324,7 @@ $ python arithmetic.py
 9
 ```
 
+(pydot-visualize-dag)=
 ### Visualizing the Graph
 
 You can render an illustration of your deployment graph to see its nodes and their connection.
@@ -392,6 +393,9 @@ This path includes only the dependencies needed to generate `m1_output`.
 On the other hand, when the script visualizes the final graph output, `combine_output`, it captures all nodes used in execution since they're all required to create the final output.
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/visualize_full.svg)
+
+#### Visualizing the Graph with Gradio
+Another option is to visualize your deployment graph through Gradio. Check out the [Graph Visualization with Gradio Tutorial](serve-gradio-dag-visualization) to learn how to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
 
 ## Next Steps
 

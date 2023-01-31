@@ -45,7 +45,7 @@ from pandas.core.indexers import check_array_indexer, validate_indices
 from pandas.io.formats.format import ExtensionArrayFormatter
 
 from ray.air.util.tensor_extensions.utils import (
-    _create_possibly_ragged_ndarray,
+    create_possibly_ragged_ndarray,
     _is_ndarray_variable_shaped_tensor,
 )
 from ray.util.annotations import PublicAPI
@@ -731,13 +731,13 @@ class TensorArray(
         # Try to convert some well-known objects to ndarrays before handing off to
         # ndarray handling logic.
         if isinstance(values, ABCSeries):
-            values = _create_possibly_ragged_ndarray(values)
+            values = create_possibly_ragged_ndarray(values)
         elif isinstance(values, Sequence):
             values = [
                 np.asarray(v) if isinstance(v, TensorArrayElement) else v
                 for v in values
             ]
-            values = _create_possibly_ragged_ndarray(values)
+            values = create_possibly_ragged_ndarray(values)
         elif isinstance(values, TensorArrayElement):
             values = np.array([np.asarray(values)], copy=False)
 
@@ -754,7 +754,7 @@ class TensorArray(
                     values = [np.asarray(v) for v in values]
                     # Try to convert ndarrays of ndarrays/TensorArrayElements with an
                     # opaque object type to a properly typed ndarray of ndarrays.
-                    values = _create_possibly_ragged_ndarray(values)
+                    values = create_possibly_ragged_ndarray(values)
                 else:
                     raise TypeError(
                         "Expected a well-typed ndarray or an object-typed ndarray of "

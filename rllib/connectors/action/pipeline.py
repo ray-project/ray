@@ -28,7 +28,6 @@ class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
             timer = self.timers[str(c)]
             with timer:
                 ac_data = c(ac_data)
-            timer.push_units_processed(1)
         return ac_data
 
     def to_state(self):
