@@ -544,20 +544,6 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
         return None
 
 
-def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
-    """Return the total number of alive nodes in the cluster"""
-    try:
-        result = gcs_client.get_all_node_info(timeout=timeout)
-        total_num_nodes = 0
-        for node in result.node_info_list:
-            if node.state == gcs_utils.GcsNodeInfo.GcsNodeState.ALIVE:
-                total_num_nodes += 1
-        return total_num_nodes
-    except Exception as e:
-        logger.info(f"Faile to query number of nodes in the cluster: {e}")
-        return None
-
-
 def get_subnets_to_report(gcs_client, timeout=None) -> Dict[str, int]:
     """Return the the subnets in the form of {subnet: num_nodes} of the cluster"""
     subnets = {}
@@ -566,11 +552,12 @@ def get_subnets_to_report(gcs_client, timeout=None) -> Dict[str, int]:
         for node in result.node_info_list:
             if node.state != gcs_utils.GcsNodeInfo.GcsNodeState.ALIVE:
                 continue
+            # redact the last byte of ipv4 address by *.
             address, num_matches = IP_ADDRESS_PATTERN.subn(
                 r"\1*", node.node_manager_address, count=1
             )
             if num_matches == 0:
-                continue
+                address = "0.0.0.0"  # unknown address
             subnets[address] = subnets.get(address, 0) + 1
     except Exception as e:
         logger.info(f"Faile to query number of nodes in the cluster: {e}")
@@ -823,6 +810,7 @@ def generate_report_data(
     gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=20)
 
     subnets = get_subnets_to_report(gcs_client)
+    total_num_nodes = sum(subnets.values()) if subnets else None
     record_extra_usage_tag(TagKey.SUBNETS, json.dumps(subnets))
 
     cluster_metadata = get_cluster_metadata(gcs_client)
@@ -852,7 +840,7 @@ def generate_report_data(
         total_failed=total_failed,
         seq_number=seq_number,
         extra_usage_tags=get_extra_usage_tags_to_report(gcs_client),
-        total_num_nodes=get_total_num_nodes_to_report(gcs_client),
+        total_num_nodes=total_num_nodes,
         total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
     )
     return data
