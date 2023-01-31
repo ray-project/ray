@@ -30,6 +30,7 @@ Image/CV
 --------
 
 - :doc:`/ray-air/examples/torch_image_example`
+- :doc:`/ray-air/examples/torch_detection`
 
 Logging & Observability
 -----------------------

@@ -491,6 +491,14 @@ The following are highlighted examples utilizing Ray AIR to implement end-to-end
         :text: [Example] Image classification with Ray
         :classes: btn-link btn-block stretched-link torchImageExample
     ---
+    :img-top: /images/detection.jpeg
+
+    +++
+    .. link-button:: /ray-air/examples/torch_detection
+        :type: ref
+        :text: [Example] Object detection with Ray
+        :classes: btn-link btn-block stretched-link torchImageExample
+    ---
     :img-top: /images/credit.png
 
     +++
