@@ -1,23 +1,25 @@
+version: '3'
 services:
   sut:
     environment:
-      - TSAPIKEY
-      - TSKEY
+      TSAPIKEY: "$TSAPIKEY"
+      TSKEY: "$TSKEY"
     build: .
     network_mode: host
     command: run_tests.sh
     volumes:
       - /dev/net/tun:/dev/net/tun
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
-    shm_size: 5.6gb
-    shm_size: 5.6gb
-  ulimits:
-    memlock:
-      soft: -1
-      hard: -1
-  ports:
+    mem_limit: 5.6gb
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    expose:
+      - 41641/udp
+    ports:
       - "41641:41641/udp"
-  cap_add:
+    cap_add:
       - NET_ADMIN
       - SYS_PTRACE
       - SYS_ADMIN
