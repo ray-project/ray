@@ -1242,7 +1242,7 @@ class RayTrialExecutor:
                 if ready:
                     # If at least one future resolved, use that one. Cache the other
                     # ones.
-                    [ready_futures] = ready.pop(0)
+                    ready_futures = [ready.pop(0)]
                     self._cached_ready_futures = ready
                 else:
                     # Otherwise, wait for next future with timeout.
