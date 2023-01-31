@@ -46,7 +46,6 @@ def run_aws_cp(source: str, target: str):
                     "bucket-owner-full-control",
                 ],
                 timeout=AWS_CP_TIMEOUT,
-                capture_output=True,
                 check=True,
             ),
             subprocess.SubprocessError,
@@ -75,7 +74,6 @@ def collect_metrics(time_taken: float) -> bool:
                 os.environ["METRICS_OUTPUT_JSON"],
             ],
             timeout=metrics_timeout,
-            capture_output=True,
             check=True,
         )
         return True
@@ -83,6 +81,18 @@ def collect_metrics(time_taken: float) -> bool:
         print("Couldn't collect metrics.")
         traceback.print_exc()
         return False
+
+
+# Has to be here so it can be pickled
+def _run_bash_command_subprocess(command: str, timeout: float):
+    try:
+        subprocess.run(command, check=True, timeout=timeout)
+        return_code = 0
+    except subprocess.TimeoutExpired:
+        return_code = -1
+    except subprocess.CalledProcessError as e:
+        return_code = e.returncode
+    sys.exit(return_code)
 
 
 def run_bash_command(workload: str, timeout: float):
@@ -96,29 +106,25 @@ def run_bash_command(workload: str, timeout: float):
     command = ["bash", "-x", str(workload_path)]
     print(f"Running command {workload}")
 
-    def f():
-        try:
-            subprocess.run(command, capture_output=True, check=True)
-            return_code = 0
-        except subprocess.CalledProcessError as e:
-            return_code = e.returncode
-        sys.exit(return_code)
-
+    # We use multiprocessing with 'spawn' context to avoid
+    # forking (as happens when using subprocess directly),
+    # because that messes up Ray interactions and causes
+    # deadlocks.
     try:
-        with multiprocessing.get_context("spawn") as ctx:
-            p = ctx.Process(target=f)
-            p.start()
-            p.join(timeout=timeout)
+        ctx = multiprocessing.get_context("spawn")
+        p = ctx.Process(target=_run_bash_command_subprocess, args=(command, timeout))
+        p.start()
+        # Add a little extra to the timeout as _run_bash_command_subprocess
+        # also has a timeout internally and it's cleaner to use that
+        p.join(timeout=timeout + 10)
         return_code = 0
     except multiprocessing.TimeoutError:
         return_code = -1
     except multiprocessing.ProcessError:
         return_code = p.exitcode
     finally:
-        try:
+        if p.is_alive():
             p.terminate()
-        except Exception:
-            pass
         os.remove(str(workload_path))
     return return_code
 
@@ -176,9 +182,7 @@ def main(
                 f"Time taken: {workload_time_taken}"
             )
 
-        subprocess.run(
-            ["pip", "install", "-q", "awscli"], check=True, capture_output=True
-        )
+        subprocess.run(["pip", "install", "-q", "awscli"], check=True)
         uploaded_results = run_aws_cp(os.environ["TEST_OUTPUT_JSON"], results_s3_uri)
 
         collected_metrics = collect_metrics(workload_time_taken)

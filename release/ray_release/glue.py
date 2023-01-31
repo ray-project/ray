@@ -325,11 +325,11 @@ def run_release_test(
                 is_long_running=is_long_running,
             )
         except CommandError as e:
-            if isinstance(e, TestCommandError, PrepareCommandError):
+            if isinstance(e, (TestCommandError, PrepareCommandError)):
                 raise e
             raise TestCommandError(e)
         except CommandTimeout as e:
-            if isinstance(e, TestCommandTimeout, PrepareCommandTimeout):
+            if isinstance(e, (TestCommandTimeout, PrepareCommandTimeout)):
                 raise e
             if not is_long_running:
                 # Only raise error if command is not long running

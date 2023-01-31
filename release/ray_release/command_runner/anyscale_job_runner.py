@@ -127,16 +127,6 @@ class AnyscaleJobRunner(JobRunner):
         )
 
         logs = self.get_last_logs()
-        print(logs)
-        output_json = re.search(r"### JSON \|([^\|]*)\| ###", logs)
-        workload_status_code = 1
-        if output_json:
-            output_json = json.loads(output_json.group(1))
-            print(output_json)
-            workload_status_code = output_json["return_code"]
-            workload_time_taken = output_json["workload_time_taken"]
-            prepare_return_codes = output_json["prepare_return_codes"]
-            last_prepare_time_taken = output_json["last_prepare_time_taken"]
 
         if job_status_code == -2:
             raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
@@ -147,16 +137,27 @@ class AnyscaleJobRunner(JobRunner):
                 f"could not have been provisioned):\n{error}\n"
             )
 
-        if prepare_return_codes[-1] != 0:
+        output_json = re.search(r"### JSON \|([^\|]*)\| ###", logs)
+        workload_status_code = 1
+        if output_json:
+            output_json = json.loads(output_json.group(1))
+            print(output_json)
+            workload_status_code = output_json["return_code"]
+            workload_time_taken = output_json["workload_time_taken"]
+            prepare_return_codes = output_json["prepare_return_codes"]
+            last_prepare_time_taken = output_json["last_prepare_time_taken"]
+
             if prepare_return_codes[-1] != 0:
-                raise PrepareCommandTimeout(
-                    "Prepare command timed out after "
-                    f"{last_prepare_time_taken} seconds."
+                if prepare_return_codes[-1] != 0:
+                    raise PrepareCommandTimeout(
+                        "Prepare command timed out after "
+                        f"{last_prepare_time_taken} seconds."
+                    )
+                raise PrepareCommandError(
+                    f"Prepare command '{self.prepare_commands[-1]}' returned "
+                    f"non-success status: {prepare_return_codes[-1]} with error:"
+                    f"\n{error}\n"
                 )
-            raise PrepareCommandError(
-                f"Prepare command '{self.prepare_commands[-1]}' returned non-success "
-                f"status: {prepare_return_codes[-1]} with error:\n{error}\n"
-            )
 
         if job_status_code != 0 or workload_status_code != 0:
             if workload_status_code == -1:

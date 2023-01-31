@@ -155,7 +155,6 @@ class JobFileManager(FileManager):
                 )
 
                 for object in response["Contents"]:
-                    print(object)
                     self.s3_client.delete_object(Bucket=self.bucket, Key=object["Key"])
             else:
                 self.s3_client.delete_object(Bucket=self.bucket, Key=target)

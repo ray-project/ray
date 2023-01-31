@@ -1,5 +1,7 @@
+import io
 import os
 import time
+from contextlib import redirect_stdout
 from typing import Any, Dict, Optional, Tuple
 
 
@@ -7,6 +9,7 @@ from anyscale.sdk.anyscale_client.models import (
     CreateProductionJob,
     HaJobStates,
 )
+from anyscale.controllers.job_controller import JobController, terminal_state
 
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -157,12 +160,7 @@ class AnyscaleJobManager:
                 if self.wait_for_nodes_timeout > 0:
                     timeout_at = now + timeout
 
-            if status in {
-                HaJobStates.SUCCESS,
-                HaJobStates.TERMINATED,
-                HaJobStates.BROKEN,
-                HaJobStates.OUT_OF_RETRIES,
-            }:
+            if status in terminal_state:
                 break
             time.sleep(1)
 
@@ -195,13 +193,21 @@ class AnyscaleJobManager:
         return self._wait_job(timeout)
 
     def get_last_logs(self):
-        return "\n".join(
-            exponential_backoff_retry(
-                lambda: self.sdk.fetch_production_job_logs(job_id=self.job_id).split(
-                    "\n"
-                )[-LAST_LOGS_LENGTH * 3 :],
-                retry_exceptions=Exception,
-                initial_retry_delay_s=15,
-                max_retries=3,
-            )
+        def _get_logs():
+            job_controller = JobController()
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                job_controller.logs(
+                    job_id=self.job_id,
+                    should_follow=False,
+                )
+            output = buf.getvalue().strip()
+            assert "### Starting ###" in output, "No logs fetched"
+            return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
+
+        return exponential_backoff_retry(
+            _get_logs,
+            retry_exceptions=Exception,
+            initial_retry_delay_s=15,
+            max_retries=3,
         )
