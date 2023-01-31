@@ -38,7 +38,7 @@ export deviceid=$deviceid
 echo "Deleting the device from Tailscale"
 curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY: || echo "Error deleting $deviceid"
 
-getclusterhosts() {
+
 ### getting a list of remaining devices
 # Make the GET request to the Tailscale API to retrieve the list of all devices
 # This could be updated to grab the DNS domain too to be more flexable.
@@ -51,7 +51,8 @@ else
     clusterhosts="nexus.chimp-beta.ts.net:4300"
 fi
 export clusterhosts=$clusterhosts
-}
+
+
 
 # Make sure directories exist as they are not automatically created
 # This needs to happen at runtime, as the directory could be mounted.
@@ -102,9 +103,6 @@ else
     exit 1
 fi
 
-
-getclusterhosts
-
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
 
@@ -147,7 +145,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.store.allow_mmap=false \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
-                    -Cdiscovery.seed_hosts=$clusterhosts \
+                    -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 \
                     -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cstats.enabled=false &
