@@ -89,7 +89,7 @@ class ListApiOptions:
         default_factory=list
     )
     # [only actors] If actors from dead jobs should be included in the list.
-    show_dead_jobs: bool = False
+    show_dead_jobs: bool = True
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,
