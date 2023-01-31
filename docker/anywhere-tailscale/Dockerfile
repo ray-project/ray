@@ -47,6 +47,7 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
     crate \
     geojson \
     sqlalchemy \
+    crate[sqlalchemy] \
     alpaca_py
 
     # dask version compatible with ray and modin
