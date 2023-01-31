@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar
 import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
@@ -27,14 +28,15 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 U = TypeVar("U")
 
+
 # Block transform function applied by task and actor pools.
 BlockTransform = Union[
     # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
     # Callable[[Block, BatchUDF, ...], Iterable[Block]],
-    Callable[[Iterable[Block]], Iterable[Block]],
-    Callable[[Iterable[Block], Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext, Union[BatchUDF, RowUDF]], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
 
@@ -173,6 +175,9 @@ class TaskPoolStrategy(ComputeStrategy):
             list(new_metadata),
             owned_by_consumer=in_block_owned_by_consumer,
         )
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, TaskPoolStrategy)
 
 
 @PublicAPI
@@ -446,6 +451,14 @@ class ActorPoolStrategy(ComputeStrategy):
                 logger.exception(f"Error killing workers: {err}")
             finally:
                 raise e from None
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, ActorPoolStrategy) and (
+            self.min_size == other.min_size
+            and self.max_size == other.max_size
+            and self.max_tasks_in_flight_per_actor
+            == other.max_tasks_in_flight_per_actor
+        )
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:

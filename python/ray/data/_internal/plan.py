@@ -29,6 +29,7 @@ from ray.data._internal.compute import (
     is_task_compute,
 )
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block
@@ -43,6 +44,30 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
 logger = DatasetLogger(__name__)
+
+
+def capfirst(s: str):
+    """Capitalize the first letter of a string
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+       Capitalized string
+    """
+    return s[0].upper() + s[1:]
+
+
+def capitalize(s: str):
+    """Capitalize a string, removing '_' and keeping camelcase.
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+        Capitalized string with no underscores.
+    """
+    return "".join(capfirst(x) for x in s.split("_"))
 
 
 class Stage:
@@ -157,7 +182,7 @@ class ExecutionPlan:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
                 # Get name of each stage in camel case.
-                stage_name = stage.name.title().replace("_", "")
+                stage_name = capitalize(stage.name)
                 if num_stages == 0:
                     plan_str += f"{stage_name}\n"
                 else:
@@ -880,6 +905,7 @@ class OneToOneStage(Stage):
 
         def block_fn(
             blocks: Iterable[Block],
+            ctx: TaskContext,
             fn: UDF,
             *fn_args,
             **fn_kwargs,
@@ -897,8 +923,8 @@ class OneToOneStage(Stage):
             prev_fn_args = (
                 prev_fn_args if prev_fn_ is None else (prev_fn_,) + prev_fn_args
             )
-            blocks = block_fn1(blocks, *prev_fn_args, **prev_fn_kwargs)
-            return block_fn2(blocks, *self_fn_args, **self_fn_kwargs)
+            blocks = block_fn1(blocks, ctx, *prev_fn_args, **prev_fn_kwargs)
+            return block_fn2(blocks, ctx, *self_fn_args, **self_fn_kwargs)
 
         return OneToOneStage(
             name,
@@ -991,19 +1017,20 @@ class AllToAllStage(Stage):
         prev_block_fn = prev.block_fn
         if self.block_udf is None:
 
-            def block_udf(blocks: Iterable[Block]) -> Iterable[Block]:
-                yield from prev_block_fn(blocks, *prev_fn_args, **prev_fn_kwargs)
+            def block_udf(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+                yield from prev_block_fn(blocks, ctx, *prev_fn_args, **prev_fn_kwargs)
 
         else:
             self_block_udf = self.block_udf
 
-            def block_udf(blocks: Iterable[Block]) -> Iterable[Block]:
+            def block_udf(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
                 blocks = prev_block_fn(
                     blocks,
+                    ctx,
                     *prev_fn_args,
                     **prev_fn_kwargs,
                 )
-                yield from self_block_udf(blocks)
+                yield from self_block_udf(blocks, ctx)
 
         return AllToAllStage(
             name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
@@ -1079,7 +1106,9 @@ def _rewrite_read_stage(
     )
 
     @_adapt_for_multiple_blocks
-    def block_fn(read_fn: Callable[[], Iterator[Block]]) -> Iterator[Block]:
+    def block_fn(
+        read_fn: Callable[[], Iterator[Block]], ctx: TaskContext
+    ) -> Iterator[Block]:
         for block in read_fn():
             yield block
 
@@ -1198,8 +1227,8 @@ def _adapt_for_multiple_blocks(
     fn: Callable[..., Iterable[Block]],
 ) -> Callable[..., Iterable[Block]]:
     @functools.wraps(fn)
-    def wrapper(blocks: Iterable[Block], *args, **kwargs):
+    def wrapper(blocks: Iterable[Block], ctx: TaskContext, *args, **kwargs):
         for block in blocks:
-            yield from fn(block, *args, **kwargs)
+            yield from fn(block, ctx, *args, **kwargs)
 
     return wrapper
