@@ -1,4 +1,4 @@
 #!/bin/bash
 
 # Set image type based on build argument
-docker build . --shm-size=6g --ulimit memlock=-1 -t jcoffi/cluster-anywhere:$DOCKER_TAG --build-arg IMAGETYPE=$DOCKER_TAG
+docker build --cache-from=jcoffi/cluster-anywhere:cpu . --shm-size=6g --ulimit memlock=-1 -t jcoffi/cluster-anywhere:$DOCKER_TAG --build-arg IMAGETYPE=$DOCKER_TAG
