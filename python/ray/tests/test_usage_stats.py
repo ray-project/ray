@@ -1481,7 +1481,7 @@ def test_usage_stats_tags(
                 "dashboard_used": "False",
                 "actor_num_created": "0",
                 "pg_num_created": "0",
-                "subnets": """{"127.0.0.*": 1}""",
+                "subnets": """{"127.0.0.*": 2}""",
             }
             assert num_nodes == 2
             return True
