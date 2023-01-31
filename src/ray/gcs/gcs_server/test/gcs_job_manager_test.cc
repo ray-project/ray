@@ -76,16 +76,17 @@ class GcsJobManagerTest : public ::testing::Test {
 
 TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
   fake_kv_->Put("ns", "key", "value", /*overwrite=*/true, /*callback=*/[](auto) {});
+  fake_kv_->Get(
+      "ns", "key", [](std::optional<std::string> v) { ASSERT_EQ(v.value(), "value"); });
+  fake_kv_->Put("ns", "key2", "value2", /*overwrite=*/true, /*callback=*/[](auto) {});
 
-  std::string value;
-  std::promise<bool> promise;
-  auto kv_get_callback = [&value, &promise](std::optional<std::string> v) {
-    value = v.value();
-    promise.set_value(true);
-  };
-  fake_kv_->Get("ns", "key", kv_get_callback);
-  promise.get_future().get();
-  ASSERT_EQ(value, "value");
+  fake_kv_->MultiGet("ns",
+                     {"key", "key2"},
+                     [](const std::unordered_map<std::string, std::string> &result) {
+                       ASSERT_EQ(result.size(), 2);
+                       ASSERT_EQ(result.at("key"), "value");
+                       ASSERT_EQ(result.at("key2"), "value2");
+                     });
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
@@ -236,8 +237,11 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
-  gcs::GcsJobManager gcs_job_manager(
-      gcs_table_storage_, gcs_publisher_, runtime_env_manager_, *function_manager_, *kv_);
+  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
+                                     gcs_publisher_,
+                                     runtime_env_manager_,
+                                     *function_manager_,
+                                     *fake_kv_);
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
@@ -372,8 +376,11 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
 }
 
 TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
-  gcs::GcsJobManager gcs_job_manager(
-      gcs_table_storage_, gcs_publisher_, runtime_env_manager_, *function_manager_, *kv_);
+  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
+                                     gcs_publisher_,
+                                     runtime_env_manager_,
+                                     *function_manager_,
+                                     *fake_kv_);
 
   auto job_id = JobID::FromInt(1);
   gcs::GcsInitData gcs_init_data(gcs_table_storage_);

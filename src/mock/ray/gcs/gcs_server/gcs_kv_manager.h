@@ -25,12 +25,13 @@ class MockInternalKVInterface : public ray::gcs::InternalKVInterface {
                const std::string &key,
                std::function<void(std::optional<std::string>)> callback),
               (override));
-  MOCK_METHOD(void,
-              MultiGet,
-              (const std::string &ns,
-               const std::vector<std::string> &keys,
-               std::function<void(std::unordered_map<std::string, std::string>)> callback),
-              (override));
+  MOCK_METHOD(
+      void,
+      MultiGet,
+      (const std::string &ns,
+       const std::vector<std::string> &keys,
+       std::function<void(std::unordered_map<std::string, std::string>)> callback),
+      (override));
   MOCK_METHOD(void,
               Put,
               (const std::string &ns,
@@ -82,6 +83,21 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
     } else {
       callback(it->second);
     }
+  }
+
+  void MultiGet(const std::string &ns,
+                const std::vector<std::string> &keys,
+                std::function<void(std::unordered_map<std::string, std::string>)>
+                    callback) override {
+    std::unordered_map<std::string, std::string> result;
+    for (const auto &key : keys) {
+      std::string full_key = ns + key;
+      auto it = kv_store_.find(full_key);
+      if (it != kv_store_.end()) {
+        result[key] = it->second;
+      }
+    }
+    callback(result);
   }
 
   void Put(const std::string &ns,

@@ -158,80 +158,65 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Invalid limit"));
       return;
     }
-    RAY_LOG(INFO) << "Getting job info with limit " << limit;
+    RAY_LOG(INFO) << "Getting job info with limit " << limit << ".";
   }
 
   auto on_done = [this, reply, send_reply_callback, limit](
                      const absl::flat_hash_map<JobID, JobTableData> &result) {
-    // We send a reply upon processing the last job; if there are no jobs, we
-    // must send the reply here.
-    if (result.empty() || limit == 0) {
-      RAY_LOG(INFO) << "Finished getting all job info.";
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      return;
-    }
+    // Internal KV keys for jobs that were submitted via the Ray Job API.
+    std::vector<std::string> job_api_data_keys;
 
-    // Read jobs up to the limit.
-    int num_read_jobs = 0;
+    // Maps job data keys to the index of the job in the table.
+    std::unordered_map<std::string, int> job_data_key_to_index;
+
+    // Load the job table data into the reply.
+    int i = 0;
     for (auto &data : result) {
-      if (num_read_jobs >= limit) {
+      if (i >= limit) {
         break;
       }
       reply->add_job_info_list()->CopyFrom(data.second);
-      num_read_jobs++;
+      auto &metadata = data.second.config().metadata();
+      auto iter = metadata.find("job_submission_id");
+      if (iter != metadata.end()) {
+        // This job was submitted via the Ray Job API, so it has JobInfo in the kv.
+        std::string job_submission_id = iter->second;
+        std::string job_data_key = JobDataKey(job_submission_id);
+        job_api_data_keys.push_back(job_data_key);
+        job_data_key_to_index[job_data_key] = i;
+      }
+      i++;
     }
 
-    // Scan the jobs to see if any were submitted by the Ray Job API.
-    // If so, fetch their JobInfo from the internal KV store.
-    std::shared_ptr<std::atomic<int>> num_processed_jobs =
-        std::make_shared<std::atomic<int>>(0);
+    RAY_CHECK(job_api_data_keys.size() == job_data_key_to_index.size());
 
-    for (int i = 0; i < reply->job_info_list_size(); i++) {
-      const auto &metadata = reply->job_info_list(i).config().metadata();
-      auto iter = metadata.find("job_submission_id");
-      if (iter == metadata.end()) {
-        // This job was not submitted by the Ray Job API so it has no JobInfo.
-        // Send reply if all jobs have been processed.
-        if (num_processed_jobs->fetch_add(1) == reply->job_info_list_size() - 1) {
-          RAY_LOG(INFO) << "Finished getting all job info.";
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-          return;
-        }
-        continue;
-      }
-      const auto &job_submission_id = iter->second;
-
-      // Get the JobInfo for this job.
-      auto kv_get_callback =
-          [reply, send_reply_callback, num_processed_jobs, i, &job_submission_id](
-              std::optional<std::string> job_info_json) {
-            if (job_info_json) {
+    auto kv_multi_get_callback =
+        [reply, send_reply_callback, job_data_key_to_index](
+            std::unordered_map<std::string, std::string> result) {
+          for (auto &data : result) {
+            std::string job_data_key = data.first;
+            // The JobInfo stored by the Ray Job API.
+            std::string job_info_json = data.second;
+            if (!job_info_json.empty()) {
               // Parse the JSON into a JobsAPIInfo proto.
               rpc::JobsAPIInfo jobs_api_info;
-              auto status = google::protobuf::util::JsonStringToMessage(*job_info_json,
+              auto status = google::protobuf::util::JsonStringToMessage(job_info_json,
                                                                         &jobs_api_info);
               if (!status.ok()) {
-                RAY_LOG(ERROR) << "Failed to parse JSON into JobsAPIInfo proto for job "
-                               << "with submission ID " << job_submission_id
-                               << ". Error: " << status.message();
+                RAY_LOG(ERROR)
+                    << "Failed to parse JobInfo JSON into JobsAPIInfo protobuf. JSON: "
+                    << job_info_json << " Error: " << status.message();
               }
-              // Load info into the reply.
-              reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
-                  jobs_api_info);
-            } else {
-              RAY_LOG(ERROR)
-                  << "Failed to look up Ray Job API JobInfo for job with submission ID "
-                  << job_submission_id;
+              // Add the JobInfo to the correct index in the reply.
+              reply->mutable_job_info_list(job_data_key_to_index.at(job_data_key))
+                  ->mutable_job_info()
+                  ->CopyFrom(jobs_api_info);
             }
-
-            // Send reply if all jobs have been processed.
-            if (num_processed_jobs->fetch_add(1) == reply->job_info_list_size() - 1) {
-              RAY_LOG(INFO) << "Finished getting all job info.";
-              GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-            }
-          };
-      internal_kv_.Get("job", JobDataKey(job_submission_id), kv_get_callback);
-    }
+          }
+          RAY_LOG(INFO) << "Finished getting all job info.";
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        };
+    internal_kv_.MultiGet("job", job_api_data_keys, kv_multi_get_callback);
   };
   Status status = gcs_table_storage_->JobTable().GetAll(on_done);
   if (!status.ok()) {
