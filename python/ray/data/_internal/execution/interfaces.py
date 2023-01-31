@@ -8,6 +8,7 @@ from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
+from typing import Callable
 
 
 @dataclass
@@ -162,6 +163,10 @@ class TaskContext:
     # The index of task. Each task has a unique task index within the same
     # operator.
     task_idx: int
+
+
+# Block transform function applied by task and actor pools.
+TransformFn = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
 
 
 class PhysicalOperator(Operator):
