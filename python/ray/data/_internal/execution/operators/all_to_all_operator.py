@@ -1,7 +1,8 @@
-from typing import List, Callable, Optional, Tuple
+from typing import List, Optional
 
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
+    AllToAllTransformFn,
     RefBundle,
     PhysicalOperator,
     TaskContext,
@@ -16,7 +17,7 @@ class AllToAllOperator(PhysicalOperator):
 
     def __init__(
         self,
-        bulk_fn: Callable[[List[RefBundle]], Tuple[List[RefBundle], StatsDict]],
+        bulk_fn: AllToAllTransformFn,
         input_op: PhysicalOperator,
         num_outputs: Optional[int] = None,
         name: str = "AllToAll",
