@@ -164,8 +164,6 @@ WorkerContext::WorkerContext(WorkerType worker_type,
   GetThreadContext().SetCurrentTaskId(task_id, /*attempt_number=*/0);
 }
 
-// WorkerContext::~WorkerContext() { thread_context_ = nullptr; }
-
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
 const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }

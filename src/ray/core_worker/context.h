@@ -31,8 +31,6 @@ class WorkerContext {
  public:
   WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
 
-  // ~WorkerContext();
-
   const WorkerType GetWorkerType() const;
 
   const WorkerID &GetWorkerID() const;
