@@ -178,7 +178,7 @@ def main(
                 logger.error("Prepare command failed.")
                 break
 
-    if prepare_return_codes[-1] == 0:
+    if not prepare_return_codes or prepare_return_codes[-1] == 0:
         logger.info("### Starting entrypoint ###")
         command_start_time = time.monotonic()
         return_code = run_bash_command(test_workload, test_workload_timeout)
