@@ -37,9 +37,21 @@ DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
-SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0)) or None
+
+# TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or None
 )
+
+if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
+    logger.warning(
+        "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
+        "been deprecated. Please use `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` "
+        "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
+        "future versions."
+    )
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -90,14 +102,14 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # https://github.com/ray-project/ray/pull/29534 for more info.
 
             _, request_timed_out = await asyncio.wait(
-                [object_ref], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             )
             if request_timed_out:
                 logger.info(
                     "Request didn't finish within "
-                    f"{SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
+                    f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
                     "with another replica. You can modify this timeout by "
-                    'setting the "SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                    'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
                 )
                 backoff = True
             else:
@@ -421,11 +433,12 @@ class HTTPProxyActor:
         """Returns when HTTP proxy is ready to serve traffic.
         Or throw exception when it is not able to serve traffic.
         """
+        setup_task = get_or_create_event_loop().create_task(self.setup_complete.wait())
         done_set, _ = await asyncio.wait(
             [
                 # Either the HTTP setup has completed.
                 # The event is set inside self.run.
-                self.setup_complete.wait(),
+                setup_task,
                 # Or self.run errored.
                 self.running_task,
             ],

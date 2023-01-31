@@ -116,8 +116,8 @@ def test_separate_gpu_stage(shutdown_only):
         allow_gpu=True,
     )
     stats = ds.stats()
-    assert "Stage 1 read->map_batches:" in stats, stats
-    assert "Stage 2 map_batches:" in stats, stats
+    assert "Stage 1 read->DummyPreprocessor:" in stats, stats
+    assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert ds.max("value") == 36.0, ds
 
     ds = batch_predictor.predict(
@@ -128,7 +128,7 @@ def test_separate_gpu_stage(shutdown_only):
     )
     stats = ds.stats()
     assert "Stage 1 read:" in stats, stats
-    assert "Stage 2 map_batches:" in stats, stats
+    assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert ds.max("value") == 36.0, ds
 
 
@@ -160,7 +160,7 @@ def test_batch_prediction():
     test_dataset = ray.data.range_table(4)
     ds = batch_predictor.predict(test_dataset)
     # Check fusion occurred.
-    assert "read->map_batches" in ds.stats(), ds.stats()
+    assert "read->DummyPreprocessor" in ds.stats(), ds.stats()
     assert ds.to_pandas().to_numpy().squeeze().tolist() == [
         0.0,
         4.0,
@@ -278,7 +278,7 @@ def test_batch_prediction_various_combination():
         ds = batch_predictor.predict(input_dataset)
         print(ds.stats())
         # Check no fusion needed since we're not doing a dataset read.
-        assert "Stage 1 map_batches" in ds.stats(), ds.stats()
+        assert f"Stage 1 {preprocessor.__class__.__name__}" in ds.stats(), ds.stats()
         assert ds.to_pandas().to_numpy().squeeze().tolist() == [
             4.0,
             8.0,
@@ -544,8 +544,8 @@ def test_separate_gpu_stage_pipelined(shutdown_only):
     )
     out = [x["value"] for x in ds.iter_rows()]
     stats = ds.stats()
-    assert "Stage 1 read->map_batches:" in stats, stats
-    assert "Stage 2 map_batches:" in stats, stats
+    assert "Stage 1 read->DummyPreprocessor:" in stats, stats
+    assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert max(out) == 16.0, out
 
     ds = batch_predictor.predict_pipelined(
@@ -558,7 +558,7 @@ def test_separate_gpu_stage_pipelined(shutdown_only):
     out = [x["value"] for x in ds.iter_rows()]
     stats = ds.stats()
     assert "Stage 1 read:" in stats, stats
-    assert "Stage 2 map_batches:" in stats, stats
+    assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert max(out) == 16.0, out
 
 

@@ -1,5 +1,6 @@
 import abc
 
+from dataclasses import dataclass, field
 import logging
 import numpy as np
 from typing import (
@@ -14,20 +15,25 @@ from typing import (
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.core.rl_module.rl_module import RLModule, ModuleID
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.rl_module import (
+    RLModule,
+    ModuleID,
+    SingleAgentRLModuleSpec,
+)
+
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 
-if TYPE_CHECKING:
-    from ray.air.config import ScalingConfig
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -39,6 +45,32 @@ ParamType = Union["torch.Tensor", "tf.Variable"]
 ParamOptimizerPairs = List[Tuple[Sequence[ParamType], Optimizer]]
 ParamRef = Hashable
 ParamDictType = Dict[ParamRef, ParamType]
+
+
+@dataclass
+class FrameworkHPs:
+    """The framework specific hyper-parameters.
+
+    Args:
+        eager_tracing: Whether to trace the model in eager mode. This enables tf
+            tracing mode by wrapping the loss function computation in a tf.function.
+            This is useful for speeding up the training loop. However, it is not
+            compatible with all tf operations. For example, tf.print is not supported
+            in tf.function.
+    """
+
+    eager_tracing: bool = False
+
+
+@dataclass
+class RLTrainerHPs:
+    """The hyper-parameters for RLTrainer.
+
+    When creating a new RLTrainer, the new hyper-parameters have to be defined by
+    subclassing this class and adding the new hyper-parameters as fields.
+    """
+
+    pass
 
 
 class RLTrainer:
@@ -105,24 +137,38 @@ class RLTrainer:
 
     def __init__(
         self,
-        module_class: Union[Type[RLModule], Type[MultiAgentRLModule]],
-        module_kwargs: Mapping[str, Any],
-        optimizer_config: Mapping[str, Any],
-        distributed: bool = False,
-        scaling_config: Optional["ScalingConfig"] = None,
-        algorithm_config: Optional["AlgorithmConfig"] = None,
+        *,
+        module_spec: Optional[
+            Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
+        ] = None,
+        module: Optional[RLModule] = None,
+        optimizer_config: Mapping[str, Any] = None,
+        trainer_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
+        trainer_hyperparameters: Optional[RLTrainerHPs] = RLTrainerHPs(),
+        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
     ):
         # TODO (Kourosh): Having the entire algorithm_config inside trainer may not be
         # the best idea in the world, but it's easy to implement and user will
         # understand it. If we can find a better way to make subset of the config
         # available to the trainer, that would be great.
         # TODO (Kourosh): convert optimizer configs to dataclasses
-        self.module_class = module_class
-        self.module_kwargs = module_kwargs
+        if module_spec is not None and module is not None:
+            raise ValueError(
+                "Only one of module spec or module can be provided to RLTrainer."
+            )
+
+        if module_spec is None and module is None:
+            raise ValueError(
+                "Either module_spec or module should be provided to RLTrainer."
+            )
+
+        self.module_spec = module_spec
+        self.module_obj = module
         self.optimizer_config = optimizer_config
-        self.distributed = distributed
-        self.scaling_config = scaling_config
-        self.config = algorithm_config
+        self.config = trainer_hyperparameters
+
+        # pick the configs that we need for the trainer from scaling config
+        self._distributed = trainer_scaling_config.num_workers > 1
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
@@ -130,6 +176,10 @@ class RLTrainer:
         self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
         self._param_to_optim: Dict[ParamRef, Optimizer] = {}
         self._params: ParamDictType = {}
+
+    @property
+    def distributed(self) -> bool:
+        return self._distributed
 
     @property
     def module(self) -> MultiAgentRLModule:
@@ -415,12 +465,11 @@ class RLTrainer:
         self,
         *,
         module_id: ModuleID,
-        module_cls: Type[RLModule],
-        module_kwargs: Mapping[str, Any],
+        module_spec: SingleAgentRLModuleSpec,
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
-        """Add a module to the trainer.
+        """Add a module to the underlying MultiAgentRLModule and the trainer.
 
         Args:
             module_id: The id of the module to add.
@@ -435,7 +484,7 @@ class RLTrainer:
                 should be provided.
         """
         self.__check_if_build_called()
-        module = module_cls.from_model_config(**module_kwargs)
+        module = module_spec.build()
 
         # construct a default set_optimizer_fn if not provided
         if set_optimizer_fn is None:
@@ -492,19 +541,11 @@ class RLTrainer:
         Returns:
             The constructed module.
         """
-
-        if issubclass(self.module_class, MultiAgentRLModule):
-            module = self.module_class.from_multi_agent_config(**self.module_kwargs)
-        elif issubclass(self.module_class, RLModule):
-            module = self.module_class.from_model_config(
-                **self.module_kwargs
-            ).as_multi_agent()
+        if self.module_obj is not None:
+            module = self.module_obj
         else:
-            raise ValueError(
-                f"Module class {self.module_class} is not a subclass of "
-                f"RLModule or MultiAgentRLModule."
-            )
-
+            module = self.module_spec.build()
+        module = module.as_multi_agent()
         return module
 
     def build(self) -> None:
@@ -600,3 +641,46 @@ class RLTrainer:
                 "RLTrainer.build() must be called after constructing a "
                 "RLTrainer and before calling any methods on it."
             )
+
+
+@dataclass
+class RLTrainerSpec:
+    """The spec for construcitng RLTrainer actors.
+
+    Args:
+        rl_trainer_class: The RLTrainer class to use.
+        module_spec: The underlying (MA)RLModule spec to completely define the module.
+        module: Alternatively the RLModule instance can be passed in directly. This
+            only works if the RLTrainer is not an actor.
+        backend_config: The backend config for properly distributing the RLModule.
+        optimizer_config: The optimizer setting to apply during training.
+        trainer_hyperparameters: The extra config for the loss/additional update. This
+            should be a subclass of RLTrainerHPs. This is useful for passing in
+            algorithm configs that contains the hyper-parameters for loss computation,
+            change of training behaviors, etc. e.g lr, entropy_coeff.
+    """
+
+    rl_trainer_class: Type["RLTrainer"]
+    module_spec: Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"] = None
+    module: Optional["RLModule"] = None
+    trainer_scaling_config: TrainerScalingConfig = field(
+        default_factory=TrainerScalingConfig
+    )
+    optimizer_config: Dict[str, Any] = field(default_factory=dict)
+    trainer_hyperparameters: RLTrainerHPs = field(default_factory=RLTrainerHPs)
+    framework_hyperparameters: FrameworkHPs = field(default_factory=FrameworkHPs)
+
+    def get_params_dict(self) -> Dict[str, Any]:
+        """Returns the parameters than be passed to the RLTrainer constructor."""
+        return {
+            "module": self.module,
+            "module_spec": self.module_spec,
+            "trainer_scaling_config": self.trainer_scaling_config,
+            "optimizer_config": self.optimizer_config,
+            "trainer_hyperparameters": self.trainer_hyperparameters,
+            "framework_hyperparameters": self.framework_hyperparameters,
+        }
+
+    def build(self) -> "RLTrainer":
+        """Builds the RLTrainer instance."""
+        return self.rl_trainer_class(**self.get_params_dict())

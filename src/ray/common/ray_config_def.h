@@ -686,6 +686,10 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 /// grpc keepalive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 
+/// grpc streaming buffer size
+/// Set it to 512kb
+RAY_CONFIG(int64_t, grpc_stream_buffer_size, 512 * 1024);
+
 /// Whether to use log reporter in event framework
 RAY_CONFIG(bool, event_log_reporter_enabled, false)
 
