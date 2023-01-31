@@ -217,8 +217,7 @@ class AnyscaleJobManager:
     def get_last_logs(self):
         if not self.job_id:
             raise RuntimeError(
-                "Job has not been started, therefore there are "
-                "no logs to obtain."
+                "Job has not been started, therefore there are no logs to obtain."
             )
 
         if self._last_logs:

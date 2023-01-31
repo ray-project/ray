@@ -122,6 +122,13 @@ class AnyscaleJobRunner(JobRunner):
                 f"\n{error}\n"
             )
 
+    @property
+    def command_env(self):
+        env = super().command_env
+        # Make sure we don't buffer stdout so we don't lose any logs.
+        env["PYTHONUNBUFFERED"] = "1"
+        return env
+
     def run_command(
         self,
         command: str,
