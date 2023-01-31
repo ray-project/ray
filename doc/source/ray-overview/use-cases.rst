@@ -480,7 +480,7 @@ The following are highlighted examples utilizing Ray AIR to implement end-to-end
 Large Scale Workload Orchestration
 ----------------------------------
 
-The following highlights feature companies leveraging Ray Core's distributed APIs to simplify the orchestration of large scale workloads.
+The following highlights feature projects leveraging Ray Core's distributed APIs to simplify the orchestration of large scale workloads.
 
 .. panels::
     :container: container pb-3
@@ -517,3 +517,11 @@ The following highlights feature companies leveraging Ray Core's distributed API
         :type: url
         :text: [Blog] A new world record on the CloudSort benchmark using Ray
         :classes: btn-link btn-block stretched-link rayForward
+
+    ---
+    :img-top: /images/ray_logo.png
+
+    .. link-button:: /ray-core/examples/web-crawler
+        :type: ref
+        :text: [Example] Speed up your web crawler by parallelizing it with Ray
+        :classes: btn-link btn-block stretched-link webCrawler
