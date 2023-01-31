@@ -689,7 +689,8 @@ async def download_and_unpack_package(
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` "
-                            f"to fetch {protocol.value.upper()} URIs. " + install_warning
+                            f"to fetch {protocol.value.upper()} URIs. "
+                            + install_warning
                         )
 
                 with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
