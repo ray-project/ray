@@ -1,6 +1,6 @@
 # Requirements to run release tests from buildkite (client dependencies will be installed separately)
 # Copy anyscale pin to requirements.txt and util.py
-anyscale==0.5.51
+anyscale==0.5.71
 click
 boto3
 jinja2
