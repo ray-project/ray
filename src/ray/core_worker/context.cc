@@ -26,9 +26,9 @@ const rpc::JobConfig kDefaultJobConfig{};
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
-  explicit WorkerThreadContext(const JobID &job_id)
-      : current_task_id_(), task_index_(0), put_counter_(0) {
-    SetCurrentTaskId(TaskID::FromRandom(job_id), /*attempt_number=*/0);
+  explicit WorkerThreadContext(const TaskID &task_id)
+      : current_task_id_(task_id), task_index_(0), put_counter_(0) {
+    SetCurrentTaskId(task_id, /*attempt_number=*/0);
   }
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
@@ -138,7 +138,7 @@ struct WorkerThreadContext {
   bool placement_group_capture_child_tasks_ = false;
 };
 
-thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
+thread_local std::shared_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
     nullptr;
 
 WorkerContext::WorkerContext(WorkerType worker_type,
@@ -151,17 +151,20 @@ WorkerContext::WorkerContext(WorkerType worker_type,
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
-      main_thread_id_(boost::this_thread::get_id()),
+      main_thread_id_(std::this_thread::get_id()),
       mutex_() {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  if (worker_type_ == WorkerType::DRIVER) {
-    RAY_CHECK(!current_job_id_.IsNil());
-    GetThreadContext().SetCurrentTaskId(TaskID::ForDriverTask(job_id),
-                                        /*attempt_number=*/0);
-  }
+  RAY_CHECK(WorkerType::DRIVER != worker_type_ || !job_id.IsNil())
+      << "job id is required for initializing driver's exec context's task id.";
+  auto task_id =
+      WorkerType::DRIVER == worker_type_ ? TaskID::ForDriverTask(job_id) : TaskID::Nil();
+  InitThreadContext(task_id);
+  GetThreadContext().SetCurrentTaskId(task_id, /*attempt_number=*/0);
 }
+
+WorkerContext::~WorkerContext() { thread_context_ = nullptr; }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
@@ -264,39 +267,42 @@ void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mu
 void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
+  InitThreadContext(task_spec.TaskId());
+  {
+    absl::WriterMutexLock lock(&mutex_);
+    SetTaskDepth(task_spec.GetDepth());
+    RAY_CHECK(current_job_id_ == task_spec.JobId());
+    if (task_spec.IsNormalTask()) {
+      current_task_is_direct_call_ = true;
+    } else if (task_spec.IsActorCreationTask()) {
+      if (!current_actor_id_.IsNil()) {
+        RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
+      }
+      current_actor_id_ = task_spec.ActorCreationId();
+      current_actor_is_direct_call_ = true;
+      current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
+      current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
+      is_detached_actor_ = task_spec.IsDetachedActor();
+      current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
+      placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
+    } else if (task_spec.IsActorTask()) {
+      RAY_CHECK(current_actor_id_ == task_spec.ActorId());
+    } else {
+      RAY_CHECK(false);
+    }
+    if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
+      // TODO(architkulkarni): Once workers are cached by runtime env, we should
+      // only set runtime_env_ once and then RAY_CHECK that we
+      // never see a new one.
+      runtime_env_info_.reset(new rpc::RuntimeEnvInfo());
+      *runtime_env_info_ = task_spec.RuntimeEnvInfo();
+      if (!IsRuntimeEnvEmpty(runtime_env_info_->serialized_runtime_env())) {
+        runtime_env_.reset(new json());
+        *runtime_env_ = json::parse(runtime_env_info_->serialized_runtime_env());
+      }
+    }
+  }
   GetThreadContext().SetCurrentTask(task_spec);
-  absl::WriterMutexLock lock(&mutex_);
-  SetTaskDepth(task_spec.GetDepth());
-  RAY_CHECK(current_job_id_ == task_spec.JobId());
-  if (task_spec.IsNormalTask()) {
-    current_task_is_direct_call_ = true;
-  } else if (task_spec.IsActorCreationTask()) {
-    if (!current_actor_id_.IsNil()) {
-      RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
-    }
-    current_actor_id_ = task_spec.ActorCreationId();
-    current_actor_is_direct_call_ = true;
-    current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
-    current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
-    is_detached_actor_ = task_spec.IsDetachedActor();
-    current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
-    placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
-  } else if (task_spec.IsActorTask()) {
-    RAY_CHECK(current_actor_id_ == task_spec.ActorId());
-  } else {
-    RAY_CHECK(false);
-  }
-  if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
-    // TODO(architkulkarni): Once workers are cached by runtime env, we should
-    // only set runtime_env_ once and then RAY_CHECK that we
-    // never see a new one.
-    runtime_env_info_.reset(new rpc::RuntimeEnvInfo());
-    *runtime_env_info_ = task_spec.RuntimeEnvInfo();
-    if (!IsRuntimeEnvEmpty(runtime_env_info_->serialized_runtime_env())) {
-      runtime_env_.reset(new json());
-      *runtime_env_ = json::parse(runtime_env_info_->serialized_runtime_env());
-    }
-  }
 }
 
 void WorkerContext::ResetCurrentTask() { GetThreadContext().ResetCurrentTask(); }
@@ -311,7 +317,8 @@ const ActorID &WorkerContext::GetCurrentActorID() const {
 }
 
 bool WorkerContext::CurrentThreadIsMain() const {
-  return boost::this_thread::get_id() == main_thread_id_;
+  absl::ReaderMutexLock lock(&mutex_);
+  return std::this_thread::get_id() == main_thread_id_;
 }
 
 bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
@@ -350,13 +357,49 @@ bool WorkerContext::CurrentActorDetached() const {
   return is_detached_actor_;
 }
 
+void WorkerContext::InitThreadContext(const TaskID &task_id) {
+  absl::WriterMutexLock lock(&mutex_);
+  auto thread_ctx = std::make_shared<WorkerThreadContext>(task_id);
+  auto itr_inserted =
+      all_exec_threads_contexts_.insert({std::this_thread::get_id(), thread_ctx});
+  current_exec_context_ = itr_inserted.first->second;
+}
+
+std::shared_ptr<WorkerThreadContext> WorkerContext::GetThreadContextInternal() const {
+  // For non threaded actor/async actors, Ray will only execute one task sequentially.
+  if (!current_actor_is_asyncio_ && current_actor_max_concurrency_ == 1) {
+    RAY_CHECK(current_exec_context_ != nullptr);
+    return current_exec_context_;
+  }
+
+  const auto itr = all_exec_threads_contexts_.find(std::this_thread::get_id());
+  if (itr == all_exec_threads_contexts_.end()) {
+    // Ray isn't aware of this current thread, there could be 2 possible cases:
+    //  1. Its a thread owned by async actor's asyncio event loop.
+    //  2. Its a thread started in user level code.
+    return nullptr;
+  }
+
+  RAY_CHECK(itr->second != nullptr);
+  return itr->second;
+}
+
 WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
     absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK(!current_job_id_.IsNil())
-        << "can't access thread context when job_id is not assigned";
-    thread_context_ = std::make_unique<WorkerThreadContext>(current_job_id_);
+    auto ctx = GetThreadContextInternal();
+    if (ctx == nullptr) {
+      // Not able to find a proxied thread context.
+      RAY_CHECK(!current_job_id_.IsNil())
+          << "can't access thread context when job_id is not assigned";
+      thread_context_ =
+          std::make_unique<WorkerThreadContext>(TaskID::FromRandom(current_job_id_));
+    } else {
+      // Found a proxy thread ctx.
+      thread_context_ = ctx;
+    }
   }
+  RAY_CHECK(thread_context_ != nullptr);
 
   return *thread_context_;
 }

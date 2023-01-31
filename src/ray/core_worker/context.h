@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <boost/thread.hpp>
+#include <thread>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -30,6 +30,8 @@ struct WorkerThreadContext;
 class WorkerContext {
  public:
   WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
+
+  ~WorkerContext();
 
   const WorkerType GetWorkerType() const;
 
@@ -129,15 +131,25 @@ class WorkerContext {
   // The runtime env info.
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
-  const boost::thread::id main_thread_id_;
+  const std::thread::id main_thread_id_;
+  // All thread contexts started by this CoreWorker.
+  absl::flat_hash_map<std::thread::id, std::shared_ptr<WorkerThreadContext>>
+      all_exec_threads_contexts_ GUARDED_BY(mutex_);
+  // The current running task's thread context.
+  std::shared_ptr<WorkerThreadContext> current_exec_context_ GUARDED_BY(mutex_);
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
 
  private:
+  std::shared_ptr<WorkerThreadContext> GetThreadContextInternal() const
+      SHARED_LOCKS_REQUIRED(mutex_);
+
+  void InitThreadContext(const TaskID &task_id) LOCKS_EXCLUDED(mutex_);
+
   WorkerThreadContext &GetThreadContext() const;
 
   /// Per-thread worker context.
-  static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
+  static thread_local std::shared_ptr<WorkerThreadContext> thread_context_;
 };
 
 }  // namespace core
