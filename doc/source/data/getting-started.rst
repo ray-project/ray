@@ -24,7 +24,7 @@ Create a dataset
 
 Create datasets from on-disk files, Python objects, and cloud storage services like S3.
 Ray reads from any `filesystem supported by Arrow
-<http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__
+<http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__.
 
 .. testcode::
 
@@ -40,7 +40,7 @@ Ray reads from any `filesystem supported by Arrow
 
 
 To learn more about creating datasets, read
-:ref:`Creating Datasets <creating_datasets>`.
+:ref:`Creating datasets <creating_datasets>`.
 
 Transform the dataset
 ---------------------
@@ -65,7 +65,7 @@ transform datasets. Ray executes transformations in parallel for performance at 
     +- Dataset(num_blocks=1, num_rows=150, schema={sepal length (cm): double, sepal width (cm): double, petal length (cm): double, petal width (cm): double, target: int64})
 
 To learn more about transforming datasets, read
-:ref:`Transforming Datasets <transforming_datasets>`.
+:ref:`Transforming datasets <transforming_datasets>`.
 
 Consume the dataset
 -------------------
@@ -80,7 +80,7 @@ Pass datasets to Ray tasks or actors, and access records with methods like
         batches = transformed_dataset.iter_batches(batch_size=8)
         print(next(iter(batches)))
 
-   .. testoutput::
+    .. testoutput::
         :options: +NORMALIZE_WHITESPACE
 
            sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
@@ -108,23 +108,20 @@ Pass datasets to Ray tasks or actors, and access records with methods like
         @ray.remote
         class Worker:
 
-            def __init__(self, rank: int):
-                ...
-
             def train(self, shard) -> int:
                 for batch in shard.iter_batches(batch_size=8):
                     pass
                 return shard.count()
 
-        workers = [Worker.remote(i) for i in range(4)]
+        workers = [Worker.remote() for _ in range(4)]
         shards = transformed_dataset.split(n=4, locality_hints=workers)
         ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
 
 
 To learn more about consuming datasets, read
-:ref:`Consuming Datasets <consuming_datasets>`.
+:ref:`Consuming datasets <consuming_datasets>`.
 
-Save the Dataset
+Save the dataset
 ----------------
 
 Call methods like :meth:`~ray.data.Dataset.write_parquet` to save datasets to local
@@ -144,4 +141,4 @@ or remote filesystems.
     ['..._000000.parquet']
 
 
-To learn more about saving datasets, read :ref:`Saving Datasets <saving_datasets>`.
+To learn more about saving datasets, read :ref:`Saving datasets <saving_datasets>`.
