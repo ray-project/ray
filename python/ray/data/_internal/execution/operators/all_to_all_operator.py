@@ -67,3 +67,8 @@ class AllToAllOperator(PhysicalOperator):
 
     def get_stats(self) -> StatsDict:
         return self._stats
+
+    def get_transformation_fn(
+        self,
+    ) -> Callable[[List[RefBundle]], Tuple[List[RefBundle], StatsDict]]:
+        return self._bulk_fn
