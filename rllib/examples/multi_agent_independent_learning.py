@@ -21,7 +21,6 @@ parser.add_argument(
     help="Whether this script should be run as a test: Only one episode will be "
     "sampled.",
 )
-parser.add_argument()
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -45,7 +44,7 @@ if __name__ == "__main__":
 
     if args.as_test:
         # Only a compilation test of running waterworld / independent learning.
-        stop = {"iterations": 1}
+        stop = {"training_iteration": 1}
     else:
         stop = {"episodes_total": 60000}
 
