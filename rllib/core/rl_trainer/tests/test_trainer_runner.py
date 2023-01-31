@@ -74,7 +74,9 @@ class TestTrainerRunner(unittest.TestCase):
     def test_trainer_runner_local(self):
         fws = ["tf", "torch"]
         test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
-        # run the logic of this test inside of a ray actor
+        # run the logic of this test inside of a ray actor because we want tensorflow
+        # resources to be gracefully released. Tensorflow blocks the gpu resources
+        # otherwise between test cases, causing a gpu oom error.
         remote_helper_fn = ray.remote(self.local_training_helper)
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
