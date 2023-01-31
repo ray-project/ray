@@ -90,15 +90,15 @@ echo "vm.max_map_count = 262144" | sudo tee /etc/sysctl.conf
 # check if we already have state data
 if [ -d "$CRATE_HEAP_DUMP_PATH" ]; then
 
-	if [ "$(ls -A $CRATE_HEAP_DUMP_PATH)" ]; then
-        echo "$CRATE_HEAP_DUMP_PATH is not Empty"
+	if [ "$(ls -A $CRATE_HEAP_DUMP_PATH/nodes/0/)" ]; then
+        echo "$CRATE_HEAP_DUMP_PATH/nodes/0/ is not Empty"
         statedata=$true
 	else
-        echo "$CRATE_HEAP_DUMP_PATH is Empty"
+        echo "$CRATE_HEAP_DUMP_PATH/nodes/0/ is Empty"
         statedata=$false
 	fi
 else
-	echo "Directory $CRATE_HEAP_DUMP_PATH not found."
+	echo "Directory $CRATE_HEAP_DUMP_PATH/nodes/0 not found."
     exit 1
 fi
 
@@ -119,7 +119,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.master=true \
                     -Cnode.data=false \
                     -Cdiscovery.seed_hosts=$clusterhosts \
-       #             -Ccluster.initial_master_nodes=nexus \
+                    -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cnode.store.allow_mmap=false \
                     -Chttp.cors.enabled=true \
