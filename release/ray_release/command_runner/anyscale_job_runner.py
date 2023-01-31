@@ -79,9 +79,12 @@ class AnyscaleJobRunner(JobRunner):
         return
 
     def _handle_command_output(self, job_status_code: int, error: str):
-        logs = self.get_last_logs()
+        try:
+            logs = self.get_last_logs()
+            output_json = re.search(r"### JSON \|([^\|]*)\| ###", logs)
+        except Exception:
+            output_json = None
 
-        output_json = re.search(r"### JSON \|([^\|]*)\| ###", logs)
         workload_status_code = 1
         if output_json:
             output_json = json.loads(output_json.group(1))
