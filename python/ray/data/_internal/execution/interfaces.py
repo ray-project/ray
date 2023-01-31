@@ -165,8 +165,13 @@ class TaskContext:
     task_idx: int
 
 
-# Block transform function applied by task and actor pools.
-TransformFn = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
+# Block transform function applied by task and actor pools in MapOperator.
+MapTransformFn = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
+
+# Block transform function applied in AllToAllOperator.
+AllToAllTransformFn = Callable[
+    [List[RefBundle], TaskContext], Tuple[List[RefBundle], StatsDict]
+]
 
 
 class PhysicalOperator(Operator):
