@@ -110,7 +110,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
   actor_data.set_actor_id(actor_id.Binary());
   auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec(), counter);
   std::function<void(const Status &, const rpc::RequestWorkerLeaseReply &)> cb;
-  EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
+  EXPECT_CALL(*raylet_client,
+              RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&cb));
   // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));
@@ -139,7 +140,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> request_worker_lease_cb;
   // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));
-  EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
+  EXPECT_CALL(*raylet_client,
+              RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&request_worker_lease_cb));
 
   std::function<void(bool)> async_put_with_index_cb;

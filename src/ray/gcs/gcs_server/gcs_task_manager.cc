@@ -427,6 +427,8 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
         total_num_profile_task_events_dropped_ +=
             replaced_task_events->profile_events().events_size();
       }
+    } else {
+      total_num_tasks_reported_++;
     }
   }
 
@@ -439,6 +441,7 @@ std::string GcsTaskManager::DebugString() {
   std::ostringstream ss;
   ss << "GcsTaskManager: "
      << "\n-Total num task events reported: " << total_num_task_events_reported_
+     << "\n-Total num tasks reported: " << total_num_tasks_reported_
      << "\n-Total num status task events dropped: "
      << total_num_status_task_events_dropped_
      << "\n-Total num profile events dropped: " << total_num_profile_task_events_dropped_
@@ -464,6 +467,16 @@ void GcsTaskManager::RecordMetrics() {
       task_event_storage_->GetTaskEventsCount());
   ray::stats::STATS_gcs_task_manager_task_events_stored_bytes.Record(
       task_event_storage_->GetTaskEventsBytes());
+
+  if (usage_stats_client_) {
+    usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::TASK_NUM_CREATED,
+                                                 total_num_tasks_reported_);
+  }
+}
+
+void GcsTaskManager::SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
+  absl::MutexLock lock(&mutex_);
+  usage_stats_client_ = usage_stats_client;
 }
 
 void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms) {

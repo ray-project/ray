@@ -18,6 +18,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -96,6 +97,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
   /// Record metrics.
   void RecordMetrics() LOCKS_EXCLUDED(mutex_);
+
+  /// Set telemetry client.
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) LOCKS_EXCLUDED(mutex_);
 
   /// A storage component that stores the task events.
   ///
@@ -294,6 +298,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// Total number of task events reported.
   uint32_t total_num_task_events_reported_ GUARDED_BY(mutex_) = 0;
 
+  /// Total number of unique tasks (dedupe multiple events from the same task) reported.
+  uint32_t total_num_tasks_reported_ GUARDED_BY(mutex_) = 0;
+
   /// Total number of status task events dropped on the worker.
   uint32_t total_num_status_task_events_dropped_ GUARDED_BY(mutex_) = 0;
 
@@ -311,6 +318,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
   /// Timer for delay functions.
   boost::asio::deadline_timer timer_;
+
+  UsageStatsClient *usage_stats_client_ GUARDED_BY(mutex_) = nullptr;
 
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);

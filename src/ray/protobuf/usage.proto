@@ -79,6 +79,8 @@ enum TagKey {
   PG_NUM_CREATED = 300;
   // Total number of actors created.
   ACTOR_NUM_CREATED = 301;
+  // Total number of tasks created.
+  TASK_NUM_CREATED = 306;
   // The count(int) of worker crash with exit type 'system error' since
   // the cluster started, emitted from GCS
   WORKER_CRASH_SYSTEM_ERROR = 302;
