@@ -216,7 +216,7 @@ class PPOConfig(PGConfig):
             self.lr_schedule = lr_schedule
         if use_critic is not NotProvided:
             self.use_critic = use_critic
-            # TODO (Kourosh) This is experimental. Set rl_trainer_hps parameters as 
+            # TODO (Kourosh) This is experimental. Set rl_trainer_hps parameters as
             # well. Don't forget to remote .use_critic from algorithm config.
             self._rl_trainer_hps.use_critic = use_critic
         if use_gae is not NotProvided:

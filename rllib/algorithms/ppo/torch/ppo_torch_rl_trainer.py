@@ -16,7 +16,6 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-
 class PPOTorchRLTrainer(TorchRLTrainer):
     """Implements PPO loss / update logic on top of TorchRLTrainer.
 

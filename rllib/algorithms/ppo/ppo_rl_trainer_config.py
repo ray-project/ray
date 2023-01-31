@@ -3,6 +3,7 @@ from typing import List, Optional, Union
 
 from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerHPs
 
+
 @dataclass
 class PPORLTrainerHPs(RLTrainerHPs):
     """Hyperparameters for the PPO RL Trainer"""
@@ -18,4 +19,3 @@ class PPORLTrainerHPs(RLTrainerHPs):
     # experimental placeholder for things that could be part of the base RLTrainerHPs
     lr_schedule: Optional[List[List[Union[int, float]]]] = None
     entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None
-    

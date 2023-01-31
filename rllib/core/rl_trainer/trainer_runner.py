@@ -105,12 +105,12 @@ class TrainerRunner:
         return self._is_local
 
     def fit(
-        self, 
-        batch: MultiAgentBatch, 
+        self,
+        batch: MultiAgentBatch,
         *,
-        minibatch_size: int, 
+        minibatch_size: int,
         num_iters: int,
-        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results
+        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
     ) -> Mapping[str, Any]:
         """Do `num_iters` minibatch updates given the original batch.
 
@@ -169,21 +169,22 @@ class TrainerRunner:
         # concatenated.
         return tree.map_structure(lambda *x: np.mean(x), *results)
 
-    def update(self, 
+    def update(
+        self,
         batch: MultiAgentBatch,
         *,
-        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results
+        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
     ) -> List[Mapping[str, Any]]:
         """Do one gradient based update to the RLTrainer(s).
 
         Args:
             batch: The data to use for the update.
-            reduce_fn: A function to reduce the results from a list of RLTrainer Actors 
-                into a single result. This can be any arbitrary function that takes a 
-                list of dictionaries and returns a single dictionary. For example you 
-                can either take an average (default) or concatenate the results (for 
-                example for metrics) or be more selective about you want to report back 
-                to the algorithm's training_step. If None is passed, the results will 
+            reduce_fn: A function to reduce the results from a list of RLTrainer Actors
+                into a single result. This can be any arbitrary function that takes a
+                list of dictionaries and returns a single dictionary. For example you
+                can either take an average (default) or concatenate the results (for
+                example for metrics) or be more selective about you want to report back
+                to the algorithm's training_step. If None is passed, the results will
                 not get reduced.
 
         Returns:
@@ -194,7 +195,7 @@ class TrainerRunner:
         else:
             results = self._distributed_update(batch)
 
-        # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here? 
+        # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
         if reduce_fn is None:
             return results
         return reduce_fn(results)
@@ -229,10 +230,11 @@ class TrainerRunner:
         results = ray.get(refs)
         return results
 
-    def additional_update(self, 
+    def additional_update(
+        self,
         *,
         reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
-        **kwargs
+        **kwargs,
     ) -> List[Mapping[str, Any]]:
         """Apply additional non-gradient based updates to the RLTrainers.
 
@@ -333,7 +335,7 @@ class TrainerRunner:
 
     def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
         """Get the states of the first RLTrainers.
-        
+
         This should be the same across RLTrainers
         """
         if self.is_local:
