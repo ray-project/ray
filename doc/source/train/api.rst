@@ -125,7 +125,6 @@ HuggingFace
     :show-inheritance:
 
     .. automethod:: __init__
-    .. automethod:: restore
 
 ``HuggingFacePredictor`` and ``HuggingFaceCheckpoint``
 ******************************************************
