@@ -16,7 +16,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     TaskContext,
-    TransformFn,
+    MapTransformFn,
 )
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
@@ -34,7 +34,7 @@ class MapOperator(PhysicalOperator, ABC):
 
     def __init__(
         self,
-        transform_fn: TransformFn,
+        transform_fn: MapTransformFn,
         input_op: PhysicalOperator,
         name: str,
         min_rows_per_bundle: Optional[int],
@@ -64,7 +64,7 @@ class MapOperator(PhysicalOperator, ABC):
     @classmethod
     def create(
         cls,
-        transform_fn: TransformFn,
+        transform_fn: MapTransformFn,
         input_op: PhysicalOperator,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
@@ -327,7 +327,7 @@ class _ObjectStoreMetrics:
 
 
 def _map_task(
-    fn: TransformFn,
+    fn: MapTransformFn,
     ctx: TaskContext,
     *blocks: Block,
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
