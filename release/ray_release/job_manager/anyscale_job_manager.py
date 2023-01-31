@@ -29,6 +29,7 @@ class AnyscaleJobManager:
         self.counter = 0
         self.cluster_manager = cluster_manager
         self._last_job_result = None
+        self._last_logs = None
 
     def _run_job(
         self,
@@ -169,6 +170,7 @@ class AnyscaleJobManager:
         else:
             retcode = -1
         duration = time.time() - self.start_time
+        self._last_logs = None
         return retcode, duration
 
     def run_and_wait(
@@ -185,6 +187,9 @@ class AnyscaleJobManager:
         return self._wait_job(timeout)
 
     def get_last_logs(self):
+        if self._last_logs:
+            return self._last_logs
+
         # TODO: replace with an actual API call.
         def _get_logs():
             job_controller = JobController()
@@ -198,9 +203,12 @@ class AnyscaleJobManager:
             assert "### Starting ###" in output, "No logs fetched"
             return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
 
-        return exponential_backoff_retry(
+        ret = exponential_backoff_retry(
             _get_logs,
             retry_exceptions=Exception,
-            initial_retry_delay_s=15,
-            max_retries=3,
+            initial_retry_delay_s=30,
+            max_retries=5,
         )
+        if ret:
+            self._last_logs = ret
+        return ret
