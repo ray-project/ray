@@ -1,6 +1,5 @@
 import sys
 
-import mock
 import pytest
 import os
 import time
