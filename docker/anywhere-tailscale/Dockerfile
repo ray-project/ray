@@ -93,11 +93,11 @@ VOLUME /data
 RUN sudo mkdir -p $CRATE_HEAP_DUMP_PATH $CRATE_GC_LOG_DIR $TS_STATEDIR
 
 ##building juicefs
-RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/releases/latest | grep 'tag_name' | cut -d '"' -f 4 | tr -d 'v') && \
-  wget "https://github.com/juicedata/juicefs/releases/download/v${JFS_LATEST_TAG}/juicefs-${JFS_LATEST_TAG}-linux-amd64.tar.gz" && \
-  tar -zxf "juicefs-${JFS_LATEST_TAG}-linux-amd64.tar.gz" && \
-  sudo install juicefs /usr/bin && \
-  rm juicefs "juicefs-${JFS_LATEST_TAG}-linux-amd64.tar.gz"
+#RUN JFS_LATEST_TAG=$(curl -s https://api.github.com/repos/juicedata/juicefs/releases/latest | grep 'tag_name' | cut -d '"' -f 4 | tr -d 'v') && \
+#  wget "https://github.com/juicedata/juicefs/releases/download/v${JFS_LATEST_TAG}/juicefs-${JFS_LATEST_TAG}-linux-amd64.tar.gz" && \
+#  tar -zxf "juicefs-${JFS_LATEST_TAG}-linux-amd64.tar.gz" && \
+#  sudo install juicefs /usr/bin && \
+#  rm juicefs "juicefs-${JFS_LATEST_TAG}-linux-amd64.tar.gz"
 
 ##COPY startup.sh /home/ray/startup.sh
 ##COPY run_tests.sh /home/ray/run_tests.sh
