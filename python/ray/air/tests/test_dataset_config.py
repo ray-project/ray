@@ -251,7 +251,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         # applying the preprocessor on each epoch.
         assert results[0] == results[1], results
         stats = shard.stats()
-        assert "Stage 1 read->map_batches: 1/1 blocks executed " in stats, stats
+        assert "Stage 1 read->BatchMapper: 1/1 blocks executed " in stats, stats
 
     def rand(x):
         x["value"] = [random.random() for _ in range(len(x))]
@@ -284,8 +284,8 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         assert results[0] != results[1], results
         stats = shard.stats()
         assert (
-            "Stage 1 read->randomize_block_order->map_batches: 1/1 blocks executed "
-            in stats
+            "Stage 1 read->randomize_block_order->"
+            "BatchMapper: 1/1 blocks executed " in stats
         ), stats
 
     test = TestStream(

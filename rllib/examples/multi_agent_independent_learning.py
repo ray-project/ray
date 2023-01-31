@@ -1,19 +1,33 @@
+import argparse
+
 from ray import air, tune
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.apex_ddpg import ApexDDPGConfig
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
-from pettingzoo.sisl import waterworld_v3
+from pettingzoo.sisl import waterworld_v4
 
-# TODO (Kourosh): Noticed that the env is broken and throws an error in this test.
-# The error is ValueError: Input vector should be 1-D. (Could be pettingzoo version
-# issue)
 # Based on code from github.com/parametersharingmadrl/parametersharingmadrl
 
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--num-gpus",
+    type=int,
+    default=1,
+    help="Number of GPUs to use for training.",
+)
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: Only one episode will be "
+    "sampled.",
+)
+parser.add_argument()
+
 if __name__ == "__main__":
-    # RDQN - Rainbow DQN
-    # ADQN - Apex DQN
+    args = parser.parse_args()
+
     def env_creator(args):
-        return PettingZooEnv(waterworld_v3.env())
+        return PettingZooEnv(waterworld_v4.env())
 
     env = env_creator({})
     register_env("waterworld", env_creator)
@@ -21,7 +35,7 @@ if __name__ == "__main__":
     config = (
         ApexDDPGConfig()
         .environment("waterworld")
-        .resources(num_gpus=1)
+        .resources(num_gpus=args.num_gpus)
         .rollouts(num_rollout_workers=2)
         .multi_agent(
             policies=env.get_agent_ids(),
@@ -29,10 +43,16 @@ if __name__ == "__main__":
         )
     )
 
+    if args.as_test:
+        # Only a compilation test of running waterworld / independent learning.
+        stop = {"iterations": 1}
+    else:
+        stop = {"episodes_total": 60000}
+
     tune.Tuner(
         "APEX_DDPG",
         run_config=air.RunConfig(
-            stop={"episodes_total": 60000},
+            stop=stop,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=10,
             ),
