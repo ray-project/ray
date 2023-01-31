@@ -38,7 +38,7 @@ You can train DQN with the following commands:
     has a number of options you can show by running `rllib train --help`.
 
 Note that you choose any supported RLlib algorithm (``--algo``) and environment (``--env``).
-RLlib supports any OpenAI Gym environment, as well as a number of other environments
+RLlib supports any Farama-Foundation Gymnasium environment, as well as a number of other environments
 (see :ref:`rllib-environments-doc`).
 It also supports a large number of algorithms (see :ref:`rllib-algorithms-doc`) to
 choose from.
