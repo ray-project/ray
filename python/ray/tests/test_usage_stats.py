@@ -66,6 +66,12 @@ schema = {
 }
 
 
+def get_subnet(address: str):
+    parts = address.split(".")
+    parts[3] = "*"
+    return ".".join(parts)
+
+
 def file_exists(temp_dir: Path):
     for path in temp_dir.iterdir():
         if usage_constants.USAGE_STATS_FILE in str(path):
@@ -772,12 +778,12 @@ def test_usage_lib_get_subnets_to_report(ray_start_cluster, reset_usage_stats):
     worker_node = cluster.add_node(num_cpus=2)
     assert ray_usage_lib.get_subnets_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client()
-    ) == {"127.0.0.*": 2}
+    ) == {get_subnet(cluster.address): 2}
     cluster.remove_node(worker_node)
     # Make sure only alive nodes are counted
     assert ray_usage_lib.get_subnets_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client()
-    ) == {"127.0.0.*": 1}
+    ) == {get_subnet(cluster.address): 1}
 
 
 def test_usage_lib_get_cluster_status_to_report(shutdown_only, reset_usage_stats):
@@ -1136,7 +1142,7 @@ provider:
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
             "actor_num_created": "0",
-            "subnets": """{"127.0.0.*": 1}""",
+            "subnets": f"""{{"{get_subnet(cluster.address)}": 1}}""",
             "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
@@ -1481,7 +1487,7 @@ def test_usage_stats_tags(
                 "dashboard_used": "False",
                 "actor_num_created": "0",
                 "pg_num_created": "0",
-                "subnets": """{"127.0.0.*": 2}""",
+                "subnets": f"""{{"{get_subnet(cluster.address)}": 2}}""",
             }
             assert num_nodes == 2
             return True
