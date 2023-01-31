@@ -4,7 +4,11 @@ import ray
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
+from ray.data._internal.logical.operators.all_to_all_operator import (
+    RandomShuffle,
+    RandomizeBlocks,
+    Repartition,
+)
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.map_operator import (
     MapRows,
@@ -164,6 +168,70 @@ def test_randomize_blocks_e2e(ray_start_cluster_enabled, enable_optimizer):
     ds = ray.data.range(12, parallelism=4)
     ds = ds.randomize_block_order(seed=0)
     assert ds.take_all() == [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11], ds
+
+
+def test_random_shuffle_operator(ray_start_cluster_enabled, enable_optimizer):
+    planner = Planner()
+    read_op = Read(ParquetDatasource())
+    op = RandomShuffle(
+        read_op,
+        seed=0,
+    )
+    physical_op = planner.plan(op)
+
+    assert op.name == "RandomShuffle"
+    assert isinstance(physical_op, AllToAllOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+
+def test_random_shuffle_e2e(
+    ray_start_cluster_enabled, enable_optimizer, use_push_based_shuffle
+):
+    ds = ray.data.range(12, parallelism=4)
+    r1 = ds.random_shuffle(seed=0).take_all()
+    r2 = ds.random_shuffle(seed=1024).take_all()
+    assert r1 != r2, (r1, r2)
+    assert sorted(r1) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], r1
+    assert sorted(r2) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], r2
+
+
+def test_repartition_operator(ray_start_cluster_enabled, enable_optimizer):
+    planner = Planner()
+    read_op = Read(ParquetDatasource())
+    op = Repartition(
+        read_op,
+        num_outputs=5,
+        shuffle=True,
+    )
+    physical_op = planner.plan(op)
+
+    assert op.name == "Repartition"
+    assert isinstance(physical_op, AllToAllOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+    # Check error is thrown for non-shuffle repartition.
+    with pytest.raises(AssertionError):
+        planner.plan(
+            Repartition(
+                read_op,
+                num_outputs=5,
+                shuffle=False,
+            )
+        )
+
+
+def test_repartition_e2e(
+    ray_start_cluster_enabled, enable_optimizer, use_push_based_shuffle
+):
+    ds = ray.data.range(10000, parallelism=10)
+    ds1 = ds.repartition(20, shuffle=True)
+    assert ds1._block_num_rows() == [500] * 20, ds
+
+    # Check error is thrown for non-shuffle repartition.
+    with pytest.raises(AssertionError):
+        ds.repartition(20, shuffle=False).take_all()
 
 
 if __name__ == "__main__":
