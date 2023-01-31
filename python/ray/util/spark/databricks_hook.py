@@ -96,17 +96,17 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "before detaching your databricks notebook."
             )
 
-        auto_shutdown_timeout_minutes = float(
+        auto_shutdown_minutes = float(
             os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES, "30")
         )
-        if auto_shutdown_timeout_minutes == 0:
+        if auto_shutdown_minutes == 0:
             _logger.info(
                 "The Ray cluster will keep running until you manually detach the "
                 "databricks notebook or call "
                 "`ray.util.spark.shutdown_ray_cluster()`."
             )
             return
-        if auto_shutdown_timeout_minutes < 0:
+        if auto_shutdown_minutes < 0:
             raise ValueError(
                 "You must set "
                 f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES}' "
@@ -117,7 +117,9 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
         except Exception:
             _logger.warning(
-                "Your current Databricks Runtime version does not support API "
+                "Databricks `getIdleTimeMillisSinceLastNotebookExecution` API "
+                "is unavailable, it is probably because that "
+                "your current Databricks Runtime version does not support API "
                 "`getIdleTimeMillisSinceLastNotebookExecution`, we cannot "
                 "automatically shut down Ray cluster when databricks notebook "
                 "is inactive, you need to manually detach databricks notebook "
@@ -129,14 +131,14 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         _logger.info(
             "The Ray cluster will be shut down automatically if you don't run "
             "commands on the databricks notebook for "
-            f"{auto_shutdown_timeout_minutes} minutes. You can change the "
+            f"{auto_shutdown_minutes} minutes. You can change the "
             "timeout minutes by setting "
             f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES}' environment "
             "variable, setting it to 0 means infinite timeout."
         )
 
         def auto_shutdown_watcher():
-            auto_shutdown_timeout_millis = auto_shutdown_timeout_minutes * 60 * 1000
+            auto_shutdown_timeout_millis = auto_shutdown_minutes * 60 * 1000
             while True:
                 if ray_cluster_handler.is_shutdown:
                     # The cluster is shut down. The watcher thread exits.
