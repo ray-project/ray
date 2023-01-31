@@ -232,8 +232,8 @@ class RayTrialExecutor:
         ] = defaultdict(list)
 
         # Trials for which we requested resources
-        self._staged_trials = set()
-        self._staged_resources = Counter()
+        self._staged_trials = set()  # Staged trials
+        self._staged_resources = Counter()  # Resources of staged trials
         self._trial_to_acquired_resources: Dict[Trial, AcquiredResources] = {}
 
         # Result buffer
