@@ -968,7 +968,7 @@ cdef void execute_task(
                 core_worker.store_task_outputs(
                     worker, outputs,
                     returns)
-        except Exception as e:
+        except BaseException as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, function_name,
                     task_type, title, returns)

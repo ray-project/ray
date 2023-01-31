@@ -681,6 +681,24 @@ def test_task_crash_after_raylet_dead_throws_node_died_error():
         assert raylet["NodeManagerAddress"] in message
 
 
+def test_task_fail_with_base_exception(ray_start_cluster):
+    @ray.remote(max_retries=0)
+    def Task():
+        raise BaseException
+
+    @ray.remote
+    class Actor:
+        def raise_base_exception(self):
+            raise BaseException
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(Task.remote())
+
+    actor = Actor.remote()
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(actor.raise_base_exception.remote())
+
+
 if __name__ == "__main__":
     import os
 
