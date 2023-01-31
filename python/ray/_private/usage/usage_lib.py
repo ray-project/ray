@@ -559,7 +559,7 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
 
 
 def get_subnets_to_report(gcs_client, timeout=None) -> Dict[str, int]:
-    """Return the total number of alive nodes in the cluster"""
+    """Return the the subnets in the form of {subnet: num_nodes} of the cluster"""
     subnets = {}
     try:
         result = gcs_client.get_all_node_info(timeout=timeout)
