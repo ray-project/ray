@@ -360,11 +360,27 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     builder.SetDriverTaskSpec(task_id,
                               options_.language,
                               worker_context_.GetCurrentJobID(),
-                              TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
+                              // Driver has no parent task
+                              /* parent_task_id */ TaskID::Nil(),
                               GetCallerId(),
                               rpc_address_);
     // Drivers are never re-executed.
     SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
+
+    // Add the driver task info.
+    if (task_event_buffer_->Enabled()) {
+      rpc::TaskEvents task_event;
+      const auto spec = builder.Build();
+      auto task_info = task_manager_->MakeTaskInfoEntry(spec);
+      task_event.set_task_id(task_id.Binary());
+      task_event.set_job_id(spec.JobId().Binary());
+      task_event.set_attempt_number(0);
+      task_event.mutable_task_info()->Swap(&task_info);
+      gcs::FillTaskStatusUpdateTime(rpc::TaskStatus::RUNNING,
+                                    absl::GetCurrentTimeNanos(),
+                                    task_event.mutable_state_updates());
+      task_event_buffer_->AddTaskEvent(std::move(task_event));
+    }
   }
 
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
@@ -642,6 +658,19 @@ void CoreWorker::Disconnect(
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Force stats export before exiting the worker.
   RecordMetrics();
+
+  // Driver exiting.
+  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
+    // Mark Driver as finished.
+    rpc::TaskEvents task_event;
+    task_event.set_task_id(worker_context_.GetCurrentTaskID().Binary());
+    task_event.set_job_id(worker_context_.GetCurrentJobID().Binary());
+    task_event.set_attempt_number(0);
+    gcs::FillTaskStatusUpdateTime(rpc::TaskStatus::FINISHED,
+                                  absl::GetCurrentTimeNanos(),
+                                  task_event.mutable_state_updates());
+    task_event_buffer_->AddTaskEvent(std::move(task_event));
+  }
 
   // Force task state events push before exiting the worker.
   task_event_buffer_->FlushEvents(/* forced */ true);

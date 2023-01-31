@@ -224,3 +224,5 @@ workflow_data/
 
 # Auto-generated tag mapping
 tag-mapping.json
+
+.bazeliskrc
