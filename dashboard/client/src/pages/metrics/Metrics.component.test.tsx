@@ -41,7 +41,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
 
 describe("Metrics", () => {
   it("renders", async () => {
-    expect.assertions(6);
+    expect.assertions(5);
 
     render(<Metrics newIA />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
@@ -55,7 +55,7 @@ describe("Metrics", () => {
   });
 
   it("renders warning when ", async () => {
-    expect.assertions(6);
+    expect.assertions(5);
 
     render(<Metrics newIA />, { wrapper: MetricsDisabledWrapper });
     await screen.findByText(/Grafana or prometheus server not detected./);
