@@ -4,4 +4,8 @@ services:
       - TSAPIKEY
       - TSKEY
     build: .
+    network_mode: host
     command: run_tests.sh
+    volumes:
+      - /dev/net/tun
+      - /var/run/dbus/system_bus_socket
