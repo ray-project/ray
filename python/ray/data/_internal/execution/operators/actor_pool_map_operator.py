@@ -11,6 +11,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     ExecutionOptions,
     PhysicalOperator,
+    TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -60,13 +61,17 @@ class ActorPoolMapOperator(MapOperator):
             ObjectRef[ObjectRefGenerator], Tuple[_TaskState, ray.actor.ActorHandle]
         ] = {}
         # A pool of running actors on which we can execute mapper tasks.
-        self._actor_pool = _ActorPool()
+        self._actor_pool = _ActorPool(autoscaling_policy._config.max_tasks_in_flight)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = collections.deque()
         # Cached actor class.
         self._cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
+        self._next_task_idx = 0
+
+    def internal_queue_size(self) -> int:
+        return len(self._bundle_queue)
 
     def start(self, options: ExecutionOptions):
         super().start(options)
@@ -104,9 +109,11 @@ class ActorPoolMapOperator(MapOperator):
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
+            ctx = TaskContext(task_idx=self._next_task_idx)
             ref = actor.submit.options(num_returns="dynamic").remote(
-                self._transform_fn_ref, *input_blocks
+                self._transform_fn_ref, ctx, *input_blocks
             )
+            self._next_task_idx += 1
             task = _TaskState(bundle)
             self._tasks[ref] = (task, actor)
             self._handle_task_submitted(task)
@@ -197,10 +204,11 @@ class ActorPoolMapOperator(MapOperator):
         return len(self._tasks)
 
     def progress_str(self) -> str:
-        return (
-            f"{self._actor_pool.num_running_actors()} "
-            f"({self._actor_pool.num_pending_actors()} pending)"
-        )
+        base = f"{self._actor_pool.num_running_actors()} actors"
+        pending = self._actor_pool.num_pending_actors()
+        if pending:
+            base += f" ({pending} pending)"
+        return base
 
     def base_resource_usage(self) -> ExecutionResources:
         min_workers = self._autoscaling_policy.min_workers
@@ -256,9 +264,12 @@ class _MapWorker:
         return "ok"
 
     def submit(
-        self, fn: Callable[[Iterator[Block]], Iterator[Block]], *blocks: Block
+        self,
+        fn: Callable[[Iterator[Block], TaskContext], Iterator[Block]],
+        ctx,
+        *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(fn, *blocks)
+        yield from _map_task(fn, ctx, *blocks)
 
 
 # TODO(Clark): Promote this to a public config once we deprecate the legacy compute
