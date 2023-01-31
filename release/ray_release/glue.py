@@ -292,9 +292,6 @@ def run_release_test(
             num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
 
-        if isinstance(command_runner, AnyscaleJobRunner):
-            command_runner.wait_for_nodes(0, cluster_timeout)
-
         prepare_cmd = test["run"].get("prepare", None)
         if prepare_cmd:
             prepare_timeout = test["run"].get("prepare_timeout", command_timeout)
@@ -324,13 +321,13 @@ def run_release_test(
                 timeout=command_timeout,
                 is_long_running=is_long_running,
             )
+        except (TestCommandError, PrepareCommandError) as e:
+            raise e
+        except (TestCommandTimeout, PrepareCommandTimeout) as e:
+            raise e
         except CommandError as e:
-            if isinstance(e, (TestCommandError, PrepareCommandError)):
-                raise e
             raise TestCommandError(e)
         except CommandTimeout as e:
-            if isinstance(e, (TestCommandTimeout, PrepareCommandTimeout)):
-                raise e
             if not is_long_running:
                 # Only raise error if command is not long running
                 raise TestCommandTimeout(e)

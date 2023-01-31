@@ -3879,7 +3879,7 @@
 
   frequency: nightly-3x
   team: core
-  env: staging
+  env: staging_v2
   cluster:
     cluster_env: distributed/many_nodes_tests/app_config.yaml
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
