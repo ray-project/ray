@@ -22,7 +22,8 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         CRATE_HOME=/crate/bin/ \
         CRATE_USE_IPV4=true \
         DISABLE_IPV6=true \
-        IPv6=false
+        IPv6=false \
+        SQLALCHEMY_SILENCE_UBER_WARNING=1
 #        TS_STATEDIR="/data/tailscale/" \
 #        TS_STATE="tailscale.state"
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
