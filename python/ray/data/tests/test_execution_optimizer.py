@@ -283,19 +283,6 @@ def test_read_map_chain_operator_fusion(ray_start_cluster_enabled, enable_optimi
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
 
 
-def test_read_map_chain_operator_fusion_e2e(
-    ray_start_cluster_enabled, enable_optimizer
-):
-    ds = ray.data.range(10, parallelism=2)
-    ds = ds.filter(lambda x: x % 2 == 0)
-    ds = ds.map(lambda x: x + 1)
-    ds = ds.map_batches(lambda batch: [2 * x for x in batch], batch_size=None)
-    ds = ds.flat_map(lambda x: [-x, x])
-    assert ds.take_all() == [-2, 2, -6, 6, -10, 10, -14, 14, -18, 18]
-    name = "DoRead->Filter->MapRows->MapBatches->FlatMap:"
-    assert name in ds.stats()
-
-
 def test_read_map_batches_operator_fusion_compatible_remote_args(
     ray_start_cluster_enabled, enable_optimizer
 ):
@@ -524,6 +511,19 @@ def test_read_map_batches_operator_fusion_incompatible_constructor_args(
     assert physical_op.name == "DoRead->MapBatches"
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+
+
+def test_read_map_chain_operator_fusion_e2e(
+    ray_start_cluster_enabled, enable_optimizer
+):
+    ds = ray.data.range(10, parallelism=2)
+    ds = ds.filter(lambda x: x % 2 == 0)
+    ds = ds.map(lambda x: x + 1)
+    ds = ds.map_batches(lambda batch: [2 * x for x in batch], batch_size=None)
+    ds = ds.flat_map(lambda x: [-x, x])
+    assert ds.take_all() == [-2, 2, -6, 6, -10, 10, -14, 14, -18, 18]
+    name = "DoRead->Filter->MapRows->MapBatches->FlatMap:"
+    assert name in ds.stats()
 
 
 if __name__ == "__main__":
