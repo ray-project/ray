@@ -4,6 +4,7 @@ import pytest
 import ray
 from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
 from ray.air._internal.remote_storage import upload_to_uri
+from ray.exceptions import RayTaskError
 from ray.train.base_trainer import BaseTrainer, TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
@@ -93,12 +94,12 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
             checkpoint_config=CheckpointConfig(num_to_keep=1),
         ),
     )
-    with pytest.raises(TrainingFailedError):
+    with pytest.raises(RayTaskError):
         result = trainer.fit()
 
     # TODO(justinvyu): Figure out how to clear object refs in a better way.
-    ray.shutdown()
-    ray.init(num_cpus=4)
+    # ray.shutdown()
+    # ray.init(num_cpus=4)
 
     train_fn, train_loop_config = create_train_fn_and_config()
     datasets = {"train": ray.data.from_items([{"feature": i} for i in range(10)])}
@@ -267,7 +268,7 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir, new_preprocessor):
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name="preprocessor_restore_test", local_dir=tmpdir),
     )
-    with pytest.raises(TrainingFailedError):
+    with pytest.raises(RayTaskError):
         trainer.fit()
 
     new_preprocessor = MyPreprocessor(id=2) if new_preprocessor else None
