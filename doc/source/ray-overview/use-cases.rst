@@ -510,19 +510,10 @@ The following highlights feature companies leveraging Ray Core's distributed API
         :text: [Blog] Ray Forward 2022 Conference: Hyper-scale Ray Application Use Cases
         :classes: btn-link btn-block stretched-link rayForward
 
-
-Basic Examples
---------------
-
-.. panels::
-    :container: container pb-3
-    :column: col-md-3 px-1 py-1
-    :img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
-
     ---
     :img-top: /images/ray_logo.png
 
-    .. link-button:: /ray-core/examples/web-crawler
-        :type: ref
-        :text: Speed up your web crawler by parallelizing it with Ray
-        :classes: btn-link btn-block stretched-link webCrawler
+    .. link-button:: https://www.anyscale.com/blog/ray-breaks-the-usd1-tb-barrier-as-the-worlds-most-cost-efficient-sorting
+        :type: url
+        :text: [Blog] A new world record on the CloudSort benchmark using Ray
+        :classes: btn-link btn-block stretched-link rayForward
