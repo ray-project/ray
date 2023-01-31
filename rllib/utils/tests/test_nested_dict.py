@@ -24,7 +24,8 @@ class TestNestedDict(unittest.TestCase):
             "d": {"g": {"h": {"i": 500}}},
             # An empty dict that has no leafs and thus should be ignored when
             # counting or iterating
-            "j": {},
+            "j": {"k": {}},
+            "l": {},
         }
 
         desired_keys = [
@@ -50,7 +51,8 @@ class TestNestedDict(unittest.TestCase):
 
         # this call will use __len__ and __iter__
         foo_dict["d"] = {"g": NestedDict([("h", NestedDict({"i": 500}))])}
-        foo_dict["j"] = {}
+        foo_dict["j"] = {"k": {}}
+        foo_dict["l"] = {}
 
         # test asdict
         check(foo_dict.asdict(), desired_dict)
@@ -99,7 +101,7 @@ class TestNestedDict(unittest.TestCase):
         )
 
         # test shallow_keys()
-        self.assertEqual(list(foo_dict.shallow_keys()), ["aa", "b", "c", "d", "j"])
+        self.assertEqual(list(foo_dict.shallow_keys()), ["aa", "b", "c", "d", "j", "l"])
 
         # test copy()
         foo_dict_copy = foo_dict.copy()
