@@ -1,18 +1,11 @@
 from typing import Type, Optional, TYPE_CHECKING, Union, Dict
-
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
-from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
-from ray.rllib.core.rl_trainer.rl_trainer import (
-    RLTrainerSpec,
-    RLTrainerHPs,
-    FrameworkHPs,
-)
 from ray.rllib.utils.from_config import NotProvided
-
+from ray.rllib.core.rl_trainer.trainer_runner import TrainerRunner
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.core.rl_trainer import RLTrainer
 
 ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
@@ -33,16 +26,15 @@ class TrainerRunnerConfig:
 
         # `self.trainer()`
         self.trainer_class = None
+        self.eager_tracing = True
         self.optimizer_config = None
-        self.rl_trainer_hps = RLTrainerHPs()
 
         # `self.resources()`
-        self.num_gpus_per_trainer_worker = 0
-        self.num_cpus_per_trainer_worker = 1
-        self.num_trainer_workers = 1
+        self.num_gpus = 0
+        self.fake_gpus = False
 
-        # `self.framework()`
-        self.eager_tracing = False
+        # `self.algorithm()`
+        self.algorithm_config = None
 
     def validate(self) -> None:
 
@@ -58,39 +50,51 @@ class TrainerRunnerConfig:
                 "the RLTrainer class with .trainer(trainer_class=MyTrainerClass)."
             )
 
+        if self.algorithm_config is None:
+            raise ValueError(
+                "Must provide algorithm_config for RLTrainer. Use "
+                ".algorithm(algorithm_config=MyConfig)."
+            )
+
         if self.optimizer_config is None:
             # get the default optimizer config if it's not provided
             # TODO (Kourosh): Change the optimizer config to a dataclass object.
             self.optimizer_config = {"lr": 1e-3}
 
+        if self.fake_gpus and self.num_gpus <= 0:
+            raise ValueError("If fake_gpus is True, num_gpus must be greater than 0.")
+
     def build(self) -> TrainerRunner:
         self.validate()
 
-        scaling_config = TrainerScalingConfig(
-            num_workers=self.num_trainer_workers,
-            num_gpus_per_worker=self.num_gpus_per_trainer_worker,
-            num_cpus_per_worker=self.num_cpus_per_trainer_worker,
+        # If the module class is a multi agent class it will override the default
+        # MultiAgentRLModule class. otherwise, it will be a single agent wrapped with
+        # mutliagent
+        # TODO (Kourosh): What should be scaling_config? it's not clear what
+        # should be passed in as trainer_config and what will be inferred
+        return self.trainer_runner_class(
+            trainer_class=self.trainer_class,
+            trainer_config={
+                "module_spec": self.module_spec,
+                # TODO (Kourosh): should this be inferred inside the constructor?
+                "distributed": self.num_gpus > 1,
+                # TODO (Avnish): add this
+                # "enable_tf_function": self.eager_tracing,
+                "optimizer_config": self.optimizer_config,
+                "algorithm_config": self.algorithm_config,
+            },
+            compute_config={
+                "num_gpus": self.num_gpus,
+                # TODO (Avnish): add this
+                # "fake_gpus": self.fake_gpus,
+            },
         )
 
-        framework_hps = FrameworkHPs(eager_tracing=self.eager_tracing)
-
-        rl_trainer_spec = RLTrainerSpec(
-            rl_trainer_class=self.trainer_class,
-            module_spec=self.module_spec,
-            optimizer_config=self.optimizer_config,
-            trainer_scaling_config=scaling_config,
-            trainer_hyperparameters=self.rl_trainer_hps,
-            framework_hyperparameters=framework_hps,
-        )
-
-        return self.trainer_runner_class(rl_trainer_spec)
-
-    def framework(
-        self, eager_tracing: Optional[bool] = NotProvided
+    def algorithm(
+        self, algorithm_config: Optional["AlgorithmConfig"] = NotProvided
     ) -> "TrainerRunnerConfig":
-
-        if eager_tracing is not NotProvided:
-            self.eager_tracing = eager_tracing
+        if algorithm_config is not NotProvided:
+            self.algorithm_config = algorithm_config
         return self
 
     def module(
@@ -105,17 +109,14 @@ class TrainerRunnerConfig:
 
     def resources(
         self,
-        num_trainer_workers: Optional[int] = NotProvided,
-        num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
-        num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
+        num_gpus: Optional[Union[float, int]] = NotProvided,
+        fake_gpus: Optional[bool] = NotProvided,
     ) -> "TrainerRunnerConfig":
 
-        if num_trainer_workers is not NotProvided:
-            self.num_trainer_workers = num_trainer_workers
-        if num_gpus_per_trainer_worker is not NotProvided:
-            self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
-        if num_cpus_per_trainer_worker is not NotProvided:
-            self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
+        if num_gpus is not NotProvided:
+            self.num_gpus = num_gpus
+        if fake_gpus is not NotProvided:
+            self.fake_gpus = fake_gpus
 
         return self
 
@@ -123,15 +124,15 @@ class TrainerRunnerConfig:
         self,
         *,
         trainer_class: Optional[Type["RLTrainer"]] = NotProvided,
+        eager_tracing: Optional[bool] = NotProvided,
         optimizer_config: Optional[Dict] = NotProvided,
-        rl_trainer_hps: Optional[RLTrainerHPs] = NotProvided,
     ) -> "TrainerRunnerConfig":
 
         if trainer_class is not NotProvided:
             self.trainer_class = trainer_class
+        if eager_tracing is not NotProvided:
+            self.eager_tracing = eager_tracing
         if optimizer_config is not NotProvided:
             self.optimizer_config = optimizer_config
-        if rl_trainer_hps is not NotProvided:
-            self.rl_trainer_hps = rl_trainer_hps
 
         return self

@@ -31,6 +31,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             .trainer(
                 trainer_class=BCTfRLTrainer,
             )
+            .algorithm(algorithm_config=AlgorithmConfig())
         )
         config.build()
 
