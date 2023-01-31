@@ -831,7 +831,7 @@ class TaskSummaries:
         Step 1: Iterate through all tasks and keep track of them by id and ownership
         Step 2: Put the tasks in a tree structure based on ownership
         Step 3: Merge together siblings in the tree if there are more
-                than one with the same name.
+        than one with the same name.
         Step 4: Total the children
 
         This can probably be more efficient if we merge together some steps to
