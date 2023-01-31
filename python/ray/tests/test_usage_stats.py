@@ -716,6 +716,8 @@ with joblib.parallel_backend("ray"):
         "pre_init",
         "post_init",
         "dataset",
+        "pyarrow",
+        "pandas",
         "workflow",
         "serve",
         "util.ActorGroup",
@@ -723,6 +725,8 @@ with joblib.parallel_backend("ray"):
         "util.multiprocessing.Pool",
         "util.Queue",
         "util.joblib",
+        "pandas",
+        "pyarrow",
     }
     if sys.platform != "win32":
         expected.add("job_submission")
@@ -1150,10 +1154,17 @@ provider:
         assert payload["total_num_running_jobs"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":
             # Since we start a serve actor for mocking a server using runtime env.
-            assert set(payload["library_usages"]) == {"serve"}
+            assert set(payload["library_usages"]) == {"serve", "pandas", "pyarrow"}
         else:
             # Serve is recorded due to our mock server.
-            assert set(payload["library_usages"]) == {"rllib", "train", "tune", "serve"}
+            assert set(payload["library_usages"]) == {
+                "rllib",
+                "pandas",
+                "pyarrow",
+                "train",
+                "tune",
+                "serve",
+            }
         validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.
@@ -1327,7 +1338,13 @@ if os.environ.get("RAY_MINIMAL") != "1":
             if os.environ.get("RAY_MINIMAL") == "1":
                 return set(lib_usages) == set()
             else:
-                return set(lib_usages) == {"rllib", "train", "tune"}
+                return set(lib_usages) == {
+                    "rllib",
+                    "train",
+                    "tune",
+                    "pandas",
+                    "pyarrow",
+                }
 
         wait_for_condition(verify)
 
@@ -1380,7 +1397,7 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats
 
         def verify():
             lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
-            return set(lib_usages) == {"tune", "rllib", "train"}
+            return set(lib_usages) == {"tune", "rllib", "train", "pandas", "pyarrow"}
 
         wait_for_condition(verify)
 
@@ -1446,7 +1463,7 @@ tune.run(objective)
         def verify():
             lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
             print(lib_usages)
-            return set(lib_usages) == {"rllib", "train", "tune"}
+            return set(lib_usages) == {"rllib", "train", "tune", "pandas", "pyarrow"}
 
         wait_for_condition(verify)
 
