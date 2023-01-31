@@ -53,7 +53,7 @@ class TestDatabricksHook:
         )
         monkeypatch.setenv("DATABRICKS_RUNTIME_VERSION", "12.2")
         monkeypatch.setenv(
-            "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES", 1
+            "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES", "1"
         )
         db_api_entry = MockDbApiEntry()
         monkeypatch.setattr(
