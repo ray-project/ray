@@ -919,7 +919,9 @@ class TaskSummaries:
 
             return task_group_by_id[task_id]
 
-        def get_or_create_actor_task_group(actor_id: str) -> Optional[NestedTaskSummary]:
+        def get_or_create_actor_task_group(
+            actor_id: str,
+        ) -> Optional[NestedTaskSummary]:
             """
             Gets an existing task group that represents an actor.
             OR
@@ -1028,8 +1030,9 @@ class TaskSummaries:
                     if child.timestamp < (min_timestamp or sys.maxsize):
                         min_timestamp = child.timestamp
 
-            # Take the groups that have more than one children and return it. 
-            # For groups with just one child, return the child itself instead of creating a group.
+            # Take the groups that have more than one children and return it.
+            # For groups with just one child, return the child itself instead of
+            # creating a group.
             return [
                 group if len(group.children) > 1 else group.children[0]
                 for group in groups.values()

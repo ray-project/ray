@@ -507,9 +507,9 @@ def test_summarize_by_lineage():
                             timestamp=200,
                             state_counts={
                                 "FINISHED": 1,
-                            }
+                            },
                         )
-                    ]
+                    ],
                 )
                 for i in range(10)
             ],
