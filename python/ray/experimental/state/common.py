@@ -751,8 +751,7 @@ class TaskSummaryPerFuncOrClassName:
 
 @dataclass(init=True)
 class NestedTaskSummary:
-    #: The list of function names where the last item is the current function name
-    #  and each item immediately before it is it's parent
+    #: The name of this task group
     name: str
     #: A unique identifier for this group
     key: str
@@ -773,7 +772,7 @@ class TaskSummaries:
     #: Group key -> summary.
     #: Right now, we only have func_class_name as a key.
     # TODO(sang): Support the task group abstraction.
-    summary: Dict[str, TaskSummaryPerFuncOrClassName]
+    summary: Union[Dict[str, TaskSummaryPerFuncOrClassName], List[NestedTaskSummary]]
     #: Total Ray tasks.
     total_tasks: int
     #: Total actor tasks.
@@ -783,7 +782,7 @@ class TaskSummaries:
     summary_by: str = "func_name"
 
     @classmethod
-    def to_summary_by_func_name(cls, *, tasks: List[Dict]):
+    def to_summary_by_func_name(cls, *, tasks: List[Dict]) -> "TaskSummaries":
         # NOTE: The argument tasks contains a list of dictionary
         # that have the same k/v as TaskState.
         summary = {}
@@ -822,7 +821,7 @@ class TaskSummaries:
         )
 
     @classmethod
-    def to_summary_by_lineage(cls, *, tasks: List[Dict]):
+    def to_summary_by_lineage(cls, *, tasks: List[Dict]) -> "TaskSummaries":
         """
         This summarizes tasks by lineage.
         i.e. A task will be grouped with another task if they have the
@@ -862,13 +861,15 @@ class TaskSummaries:
             if type_enum == TaskType.ACTOR_CREATION_TASK:
                 actor_creation_task_id_for_actor_id[task["actor_id"]] = task["task_id"]
 
-        def get_or_create_task_group(task_id):
+        def get_or_create_task_group(task_id: str) -> Optional[NestedTaskSummary]:
             """
             Gets an already created task_group
             OR
             Creates a task group and puts it in the right place under its parent.
             For actor tasks, the parent is the Actor that owns it. For all other
             tasks, the owner is the driver or task that created it.
+
+            Returns None if there is missing data about the task or one of its parents.
 
             For task groups that represents actors, the id is in the
             format actor:{actor_id}
@@ -918,12 +919,14 @@ class TaskSummaries:
 
             return task_group_by_id[task_id]
 
-        def get_or_create_actor_task_group(actor_id):
+        def get_or_create_actor_task_group(actor_id: str) -> Optional[NestedTaskSummary]:
             """
             Gets an existing task group that represents an actor.
             OR
             Creates a task group that represents an actor. The owner of the actor is
             the parent of the creation_task that created that actor.
+
+            Returns None if there is missing data about the actor or one of its parents.
             """
             key = f"actor:{actor_id}"
             if key not in task_group_by_id:
@@ -983,10 +986,17 @@ class TaskSummaries:
 
         def merge_sibings_for_task_group(
             siblings: List[NestedTaskSummary],
-        ) -> Tuple[NestedTaskSummary, Optional[int]]:
+        ) -> Tuple[List[NestedTaskSummary], Optional[int]]:
             """
-            Merges children with the same name into a group if there are more than
+            Merges task summaries with the same name into a group if there are more than
             one child with that name.
+
+            Args:
+                siblings: A list of NestedTaskSummary's to merge together
+
+            Returns
+                Index 0: A list of NestedTaskSummary's which have been merged
+                Index 1: The smallest timestamp amongst the siblings
             """
             if not len(siblings):
                 return siblings, None
@@ -1018,7 +1028,8 @@ class TaskSummaries:
                     if child.timestamp < (min_timestamp or sys.maxsize):
                         min_timestamp = child.timestamp
 
-            # Return merged siblings
+            # Take the groups that have more than one children and return it. 
+            # For groups with just one child, return the child itself instead of creating a group.
             return [
                 group if len(group.children) > 1 else group.children[0]
                 for group in groups.values()
@@ -1027,7 +1038,7 @@ class TaskSummaries:
         # Step 3
         summary, _ = merge_sibings_for_task_group(summary)
 
-        def sort_task_groups(task_groups: List[NestedTaskSummary]):
+        def sort_task_groups(task_groups: List[NestedTaskSummary]) -> None:
             # Sort by timestamp
             # Put actor creation tasks above other tasks with the same timestamp
             task_groups.sort(key=lambda x: 0 if x.type == "ACTOR_CREATION_TASK" else 1)
@@ -1051,7 +1062,6 @@ class TaskSummaries:
                         task_group.state_counts.get(state, 0) + count
                     )
 
-            # Sort first by timestamp, then by states
             sort_task_groups(task_group.children)
 
             return task_group

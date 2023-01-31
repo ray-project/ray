@@ -488,7 +488,7 @@ def test_summarize_by_lineage():
             type="GROUP",
             timestamp=100,
             state_counts={
-                "FINISHED": 10,
+                "FINISHED": 20,
             },
             children=[
                 NestedTaskSummary(
@@ -497,8 +497,19 @@ def test_summarize_by_lineage():
                     type="NORMAL_TASK",
                     timestamp=100 + i,
                     state_counts={
-                        "FINISHED": 1,
+                        "FINISHED": 2,
                     },
+                    children=[
+                        NestedTaskSummary(
+                            name="preprocess_sub_task",
+                            key=f"preprocess-{i}-0",
+                            type="NORMAL_TASK",
+                            timestamp=200,
+                            state_counts={
+                                "FINISHED": 1,
+                            }
+                        )
+                    ]
                 )
                 for i in range(10)
             ],
@@ -643,7 +654,7 @@ def test_summarize_by_lineage():
 
     summary = TaskSummaries.to_summary_by_lineage(tasks=tasks)
 
-    assert summary.total_tasks == 10
+    assert summary.total_tasks == 20
     assert summary.total_actor_tasks == 110
     assert summary.total_actor_scheduled == 11
     assert summary.summary[1] == expected_summary[1]
