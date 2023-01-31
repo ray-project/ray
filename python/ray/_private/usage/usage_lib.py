@@ -42,6 +42,7 @@ To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
 import glob
+import ipaddress
 import json
 import logging
 import threading
@@ -67,6 +68,7 @@ from ray.core.generated import usage_pb2
 
 logger = logging.getLogger(__name__)
 TagKey = usage_pb2.TagKey
+IP_ADDRESS_PATTERN = re.compile(r"^\d+.\d+.\d+.(\d+)$")
 
 #################
 # Internal APIs #
@@ -557,6 +559,26 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
         return None
 
 
+def get_subnets_to_report(gcs_client, timeout=None) -> Optional[Dict[str, int]]:
+    """Return the total number of alive nodes in the cluster"""
+    try:
+        result = gcs_client.get_all_node_info(timeout=timeout)
+        subnets = {}
+        for node in result.node_info_list:
+            if node.state != gcs_utils.GcsNodeInfo.GcsNodeState.ALIVE:
+                continue
+            address, num_match = IP_ADDRESS_PATTERN.subn(
+                "0", node.node_manager_address, count=1
+            )
+            if num_match == 0:
+                continue
+            subnets[address] = subnets.get(address, 0) + 1
+        return subnets
+    except Exception as e:
+        logger.info(f"Faile to query number of nodes in the cluster: {e}")
+        return None
+
+
 def get_library_usages_to_report(gcs_client) -> List[str]:
     try:
         result = []
@@ -801,6 +823,9 @@ def generate_report_data(
         UsageStats
     """
     gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+
+    subnets = get_subnets_to_report(gcs_client)
+    record_extra_usage_tag(TagKey.SUBNETS, json.dumps(subnets))
 
     cluster_metadata = get_cluster_metadata(gcs_client)
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)

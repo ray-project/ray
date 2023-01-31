@@ -89,4 +89,6 @@ enum TagKey {
   // This is to track usage of the buggy behavior that will be fixed.
   // See https://github.com/ray-project/ray/issues/28465 for more details.
   RAY_GET_TIMEOUT_ZERO = 304;
+  // A map from subnet to number of nodes in the subnet.
+  SUBNETS = 305;
 }
