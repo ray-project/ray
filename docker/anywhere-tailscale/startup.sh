@@ -45,7 +45,7 @@ curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY
 clusterhosts=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].name')
 # Output the clusterhosts left as a comma-separated list. This will be used by the crate seed host parameter
 #clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr '\n' ',')
-if [ -n clusterhosts ]; then
+if [ -n $clusterhosts ]; then
     clusterhosts=${clusterhosts}
 else
     clusterhosts="nexus.chimp-beta.ts.net:4300"
@@ -77,16 +77,16 @@ fi
 
 
 
-while [ not $status = "Running" ]
+while [ ! $status = "Running" ]
     do
         echo "Waiting for tailscale to start..."
         status="$(tailscale status -json | jq -r .BackendState)"
 done
 
-echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee /etc/sysctl.conf
-echo "net.ipv6.conf.default.disable_ipv6=1" | sudo tee /etc/sysctl.conf
-echo "net.ipv6.conf.lo.disable_ipv6=1" | sudo tee /etc/sysctl.conf
-echo "vm.max_map_count = 262144" | sudo tee /etc/sysctl.conf
+echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv6.conf.default.disable_ipv6=1" | sudo -a tee /etc/sysctl.conf
+echo "net.ipv6.conf.lo.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
+echo "vm.max_map_count = 262144" | sudo tee -a /etc/sysctl.conf
 
 # check if we already have state data
 if [ -d "$CRATE_HEAP_DUMP_PATH" ]; then
@@ -111,7 +111,8 @@ if [ "$NODETYPE" = "head" ]; then
     #there is state data then and we can see other hosts in the cluster, just start up
     if [ $statedata ] && [ ! $clusterhosts=="nexus.chimp-beta.ts.net:4300" ]; then
 
-        /crate/bin/crate -Cnetwork.host=_tailscale0_ \
+        /crate/bin/crate \
+                    -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
                     -Cnode.master=true \
                     -Cnode.data=false \
@@ -124,7 +125,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cstats.enabled=false &
     #but if there are servers in the cluster but nexus lacks state data we'll recover
     elif [ ! $clusterhosts=="nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
-        /crate/bin/crate join --recovered --no-rebootstrap $clusterhosts \
+        /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
                     -Cnode.master=true \
@@ -138,7 +139,8 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cstats.enabled=false &
     else
         #otherwise just start fresh
-        /crate/bin/crate -Cnetwork.host=_tailscale0_ \
+        /crate/bin/crate \
+                    -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
                     -Cnode.master=true \
                     -Cnode.data=false \
@@ -156,7 +158,8 @@ else
     ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address $HOSTNAME.chimp-beta.ts.net
 
     if [ $(ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE| grep -q ALIVE && echo true || echo false) ]; then
-        /crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
+        /crate/bin/crate
+                    -Cnetwork.host=_tailscale0_,_local_ \
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
@@ -167,7 +170,8 @@ else
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cstats.enabled=false &
     else
-        /crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
+        /crate/bin/crate
+                    -Cnetwork.host=_tailscale0_,_local_ \
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
