@@ -129,7 +129,7 @@ class TestCommandError(CommandError):
     exit_code = ExitCode.COMMAND_ERROR
 
 
-class FetchResultError(ReleaseTestError):
+class FetchResultError(FileManagerError):
     exit_code = ExitCode.FETCH_RESULT_ERROR
 
 
