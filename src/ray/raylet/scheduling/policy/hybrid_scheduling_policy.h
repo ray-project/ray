@@ -86,7 +86,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   /// helper function compute a score between 0-1 indicates
   /// the preference of the current node (the lower score,
   /// the more preferable.
-  float CompuateLocalNodeScore(float spread_threshold) const;
+  float ComputeLocalNodeScore(float spread_threshold) const;
 
   scheduling::NodeID GetBestNode(
       std::vector<std::pair<scheduling::NodeID, float>> &node_scores,

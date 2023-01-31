@@ -55,7 +55,7 @@ float ComputeNodeScore(const NodeResources &node_resources, float spread_thresho
 }
 }  // namespace
 
-float HybridSchedulingPolicy::CompuateLocalNodeScore(float spread_threshold) const {
+float HybridSchedulingPolicy::ComputeLocalNodeScore(float spread_threshold) const {
   const auto local_it = nodes_.find(local_node_id_);
   RAY_CHECK(local_it != nodes_.end());
   return ComputeNodeScore(local_it->second.GetLocalView(), spread_threshold);
@@ -144,10 +144,9 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
     }
   }
 
-  size_t num_candidate_nodes = std::max<int32_t>(
-      1,
+  size_t num_candidate_nodes =
       std::max<int32_t>(schedule_top_k_absolute,
-                        static_cast<int32_t>(nodes_.size() * scheduler_top_k_fraction)));
+                        static_cast<int32_t>(nodes_.size() * scheduler_top_k_fraction));
 
   if (!available_nodes.empty()) {
     bool prioritize_local_node = !force_spillback && local_node_is_available;
@@ -157,7 +156,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
         num_candidate_nodes,
         prioritize_local_node,
         /* local_node_score*/
-        prioritize_local_node ? CompuateLocalNodeScore(spread_threshold) : 1);
+        prioritize_local_node ? ComputeLocalNodeScore(spread_threshold) : 1);
   } else if (!feasible_nodes.empty() && !require_node_available) {
     bool prioritize_local_node = !force_spillback && local_node_is_feasible;
     // If there are no available nodes, and the caller is okay with an
@@ -166,7 +165,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
         feasible_nodes,
         num_candidate_nodes,
         prioritize_local_node,
-        prioritize_local_node ? CompuateLocalNodeScore(spread_threshold) : 1);
+        prioritize_local_node ? ComputeLocalNodeScore(spread_threshold) : 1);
   } else {
     return scheduling::NodeID::Nil();
   }
