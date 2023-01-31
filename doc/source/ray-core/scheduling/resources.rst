@@ -61,12 +61,12 @@ Some use cases for custom resources:
 Specifying Node Resources
 -------------------------
 
-By default, Ray nodes start with pre-defiend CPU, GPU, and memory resources. The quantities of these resources on each node are set to the physical quantities auto detected by Ray.
+By default, Ray nodes start with pre-defined CPU, GPU, and memory resources. The quantities of these resources on each node are set to the physical quantities auto detected by Ray.
 By default, logical resources are configured by the following rule.
 
 .. warning::
 
-    Ray **does not permit dynamic updates of resource capacities after a node has begun**.
+    Ray **does not permit dynamic updates of resource capacities after Ray has been started on a node**.
 
 - **Number of logical CPUs (``num_cpus``)**: Set to the number of CPUs of the machine/container.
 - **Number of logical GPUs (``num_gpus)**: Set to the number of GPUs of the machine/container.
