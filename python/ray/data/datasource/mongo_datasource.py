@@ -1,16 +1,16 @@
 import logging
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
 )
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 from typing import Iterable
 
 if TYPE_CHECKING:
@@ -66,6 +66,7 @@ class MongoDatasource(Datasource):
             write_tasks.append(write_task)
         return write_tasks
 
+    @Deprecated
     def do_write(
         self,
         blocks: List[ObjectRef[Block]],

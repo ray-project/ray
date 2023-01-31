@@ -364,7 +364,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
         self.data_sink = DataSink.remote()
 
-    def do_write(
+    def direct_write(
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
