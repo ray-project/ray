@@ -15,8 +15,8 @@ from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
     CommandTimeout,
-    ClusterStartupTimeout,
-    ClusterStartupError,
+    JobStartupTimeout,
+    JobStartupFailed,
 )
 from ray_release.logger import logger
 from ray_release.util import (
@@ -25,6 +25,13 @@ from ray_release.util import (
     anyscale_job_url,
     format_link,
 )
+
+job_status_to_return_code = {
+    HaJobStates.SUCCESS: 0,
+    HaJobStates.OUT_OF_RETRIES: -1,
+    HaJobStates.BROKEN: -2,
+    HaJobStates.TERMINATED: -3,
+}
 
 
 class AnyscaleJobManager:
@@ -73,7 +80,7 @@ class AnyscaleJobManager:
                 ),
             )
         except Exception as e:
-            raise ClusterStartupError(
+            raise JobStartupFailed(
                 "Error starting job with name "
                 f"{self.cluster_manager.cluster_name}: "
                 f"{e}"
@@ -151,7 +158,7 @@ class AnyscaleJobManager:
             if now >= timeout_at:
                 self._terminate_job()
                 if not job_running:
-                    raise ClusterStartupTimeout(
+                    raise JobStartupTimeout(
                         "Cluster did not start within "
                         f"{self.cluster_startup_timeout} seconds."
                     )
@@ -189,14 +196,8 @@ class AnyscaleJobManager:
         result = self._get_job_status_with_retry()
         self.last_job_result = result
         status = self.last_job_status
-        if status == HaJobStates.SUCCESS:
-            retcode = 0
-        elif status == HaJobStates.BROKEN:
-            retcode = -2
-        elif status == HaJobStates.TERMINATED:
-            retcode = -3
-        else:
-            retcode = -1
+        assert status in terminal_state
+        retcode = job_status_to_return_code[status]
         duration = time.time() - self.start_time
         self._last_logs = None
         return retcode, duration

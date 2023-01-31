@@ -147,3 +147,11 @@ class JobBrokenError(ReleaseTestError):
 
 class JobTerminatedError(ReleaseTestError):
     exit_code = ExitCode.CLUSTER_WAIT_TIMEOUT
+
+
+class JobStartupFailed(ClusterStartupFailed):
+    pass
+
+
+class JobStartupTimeout(ClusterStartupTimeout):
+    pass

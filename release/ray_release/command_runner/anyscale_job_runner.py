@@ -10,6 +10,7 @@ from ray_release.command_runner.job_runner import JobRunner
 from ray_release.exception import (
     TestCommandTimeout,
     TestCommandError,
+    JobStartupFailed,
     PrepareCommandError,
     PrepareCommandTimeout,
     JobBrokenError,
@@ -58,7 +59,6 @@ class AnyscaleJobRunner(JobRunner):
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
         job_script = os.path.join(os.path.dirname(__file__), "_anyscale_job_wrapper.py")
-        # Copy prometheus metrics script to working dir
         if os.path.exists("anyscale_job_wrapper.py"):
             os.unlink("anyscale_job_wrapper.py")
         os.link(job_script, "anyscale_job_wrapper.py")
@@ -76,6 +76,7 @@ class AnyscaleJobRunner(JobRunner):
         super().wait_for_nodes(num_nodes, timeout)
 
     def save_metrics(self, start_time: float, timeout: float = 900):
+        # Handled in run_command
         return
 
     def _handle_command_output(self, job_status_code: int, error: str):
@@ -85,7 +86,7 @@ class AnyscaleJobRunner(JobRunner):
         except Exception:
             output_json = None
 
-        workload_status_code = 1
+        workload_status_code = None
         if output_json:
             output_json = json.loads(output_json.group(1))
             workload_status_code = output_json["return_code"]
@@ -105,24 +106,32 @@ class AnyscaleJobRunner(JobRunner):
                     f"\n{error}\n"
                 )
 
-        if job_status_code != 0 or workload_status_code != 0:
-            if workload_status_code == TIMEOUT_RETURN_CODE:
-                raise TestCommandTimeout(
-                    f"Command timed out after {workload_time_taken} seconds."
-                )
-            raise TestCommandError(
-                f"Command returned non-success status: {workload_status_code} with "
-                f"error:\n{error}\n"
-            )
-
         if job_status_code == -2:
             raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
 
         if job_status_code == -3:
             raise JobTerminatedError(
-                "Job entered terminated state (terminated manually, nodes "
+                "Job entered 'TERMINATED' state (terminated manually, nodes "
                 "could not have been provisioned or Ray was stopped):"
                 f"\n{error}\n"
+            )
+
+        if workload_status_code == TIMEOUT_RETURN_CODE:
+            raise TestCommandTimeout(
+                f"Command timed out after {workload_time_taken} seconds."
+            )
+
+        if workload_status_code is not None and workload_status_code != 0:
+            raise TestCommandError(
+                f"Command returned non-success status: {workload_status_code} with "
+                f"error:\n{error}\n"
+            )
+
+        if job_status_code == -1:
+            raise JobStartupFailed(
+                "Job returned non-success state: 'OUT_OF_RETRIES' "
+                "(command has not been ran or no logs could have been obtained) "
+                f"with error:\n{error}\n"
             )
 
     @property
