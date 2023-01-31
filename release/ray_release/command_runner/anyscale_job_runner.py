@@ -204,4 +204,9 @@ class AnyscaleJobRunner(JobRunner):
         )
 
     def cleanup(self):
-        self.file_manager.delete(self.path_in_bucket, recursive=True)
+        try:
+            self.file_manager.delete(self.path_in_bucket, recursive=True)
+        except Exception:
+            # No big deal if we don't clean up, the bucket
+            # is set to automatically expire objects anyway
+            pass
