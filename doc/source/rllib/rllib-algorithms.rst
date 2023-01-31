@@ -33,6 +33,7 @@ Algorithm                      Frameworks Discrete Actions              Continuo
 `DQN`_, `Rainbow`_             tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   tf + torch
 `APEX-DQN`_                    tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   torch
 `IMPALA`_                      tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`LeelaChessZero`_              torch      **Yes** `+parametric`_        No                 **Yes**                                                                   torch
 `MAML`_                        tf + torch No                            **Yes**            No                                                                        torch
 `MARWIL`_                      tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `MBMPO`_                       torch      No                            **Yes**            No                                                                        torch
@@ -840,6 +841,22 @@ Tuned examples: `Sparse reward CartPole <https://github.com/ray-project/ray/blob
    :members: training
 
    
+.. _leelachesszero:
+
+MultiAgent LeelaChessZero (LeelaChessZero)
+------------------------------------------
+|pytorch|
+`[source] <https://lczero.org/>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/leela_chess_zero>`__ LeelaChessZero is an RL agent originally inspired by AlphaZero for playing chess. This version adapts it to handle a MultiAgent competitive environment of chess. The code can be scaled to any number of workers.
+
+Tuned examples: tbd
+
+**LeelaChessZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.leela_chess_zero.leela_chess_zero.LeelaChessZeroConfig
+   :members: training
+
+
+
 .. _curiosity:
 
 Curiosity (ICM: Intrinsic Curiosity Module)

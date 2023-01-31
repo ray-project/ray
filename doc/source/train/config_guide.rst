@@ -1,13 +1,13 @@
 .. _train-config:
 
-Configurations User Guide
-=========================
+Ray Train Configuration User Guide
+==================================
 
 The following overviews how to configure scale-out, run options, and fault-tolerance for Train.
 For more details on how to configure data ingest, also refer to :ref:`air-ingest`.
 
-Scaling configuration (``ScalingConfig``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Scaling Configurations in Train (``ScalingConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The scaling configuration specifies distributed training properties like the number of workers or the
 resources per worker.
@@ -22,8 +22,8 @@ The properties of the scaling configuration are :ref:`tunable <air-tuner-search-
     :end-before: __scaling_config_end__
 
 
-Run configuration (``RunConfig``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Run Configuration in Train (``RunConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The run configuration specifies distributed training properties like the number of workers or the
 resources per worker.
@@ -37,8 +37,8 @@ The properties of the run configuration are :ref:`not tunable <air-tuner-search-
     :start-after: __run_config_start__
     :end-before: __run_config_end__
 
-Failure configuration (``FailureConfig``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Failure configurations in Train (``FailureConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The failure configuration specifies how training failures should be dealt with.
 
@@ -52,8 +52,8 @@ are :ref:`not tunable <air-tuner-search-space>`.
     :start-after: __failure_config_start__
     :end-before: __failure_config_end__
 
-Sync configuration (``SyncConfig``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Sync configurations in Train (``SyncConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The sync configuration specifies how to synchronize checkpoints between the
 Ray cluster and remote storage.
@@ -69,8 +69,8 @@ are :ref:`not tunable <air-tuner-search-space>`.
     :end-before: __sync_config_end__
 
 
-Checkpoint configuration (``CheckpointConfig``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Checkpoint configurations in Train (``CheckpointConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The checkpoint configuration specifies how often to checkpoint training state
 and how many checkpoints to keep.

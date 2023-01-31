@@ -1517,26 +1517,28 @@ def test_dataset_repr(ray_start_regular_shared):
     assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
+        "MapBatches(<lambda>)\n"
+        "+- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
     ds = ds.filter(lambda x: x > 0)
     assert repr(ds) == (
         "Filter\n"
-        "+- MapBatches\n"
+        "+- MapBatches(<lambda>)\n"
         "   +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
         "+- Filter\n"
-        "   +- MapBatches\n"
+        "   +- MapBatches(<lambda>)\n"
         "      +- Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     )
     ds.fully_executed()
     assert repr(ds) == "Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches\n" "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
+        "MapBatches(<lambda>)\n"
+        "+- Dataset(num_blocks=10, num_rows=9, schema=<class 'int'>)"
     )
     ds1, ds2 = ds.split(2)
     assert (

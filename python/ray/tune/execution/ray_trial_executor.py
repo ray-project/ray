@@ -232,7 +232,8 @@ class RayTrialExecutor:
         ] = defaultdict(list)
 
         # Trials for which we requested resources
-        self._staged_trials = set()
+        self._staged_trials = set()  # Staged trials
+        self._staged_resources = Counter()  # Resources of staged trials
         self._trial_to_acquired_resources: Dict[Trial, AcquiredResources] = {}
 
         # Result buffer
@@ -319,6 +320,7 @@ class RayTrialExecutor:
             resource_request = trial.placement_group_factory
 
             self._staged_trials.add(trial)
+            self._staged_resources[trial.placement_group_factory] += 1
             self._resource_manager.request_resources(resource_request=resource_request)
 
         self._resource_manager.update_state()
@@ -533,6 +535,7 @@ class RayTrialExecutor:
         # Case 1: The trial we started was staged. Just remove it
         if trial in self._staged_trials:
             self._staged_trials.remove(trial)
+            self._staged_resources[trial.placement_group_factory] -= 1
             return
 
         # Case 2: We staged a trial "A" with the same resources, but our trial "B"
@@ -551,6 +554,7 @@ class RayTrialExecutor:
 
         if candidate_trial:
             self._staged_trials.remove(candidate_trial)
+            self._staged_resources[candidate_trial.placement_group_factory] -= 1
             return
 
         raise RuntimeError(
@@ -843,18 +847,16 @@ class RayTrialExecutor:
         """Before step() is called, update the available resources."""
         self._resource_updater.update_avail_resources()
 
-    def on_step_end(self) -> None:
-        self._cleanup_cached_actors()
+    def on_step_end(self, search_ended: bool = False) -> None:
+        self._cleanup_cached_actors(search_ended=search_ended)
         self._do_force_trial_cleanup()
 
     def _count_staged_resources(self):
-        counter = Counter()
-        for trial in self._staged_trials:
-            resource_request = trial.placement_group_factory
-            counter[resource_request] += 1
-        return counter
+        return self._staged_resources
 
-    def _cleanup_cached_actors(self, force_all: bool = False):
+    def _cleanup_cached_actors(
+        self, search_ended: bool = False, force_all: bool = False
+    ):
         """Clean up unneeded cached actors.
 
         Ray Tune caches actors for re-use to avoid initialization overhead. This is
@@ -884,8 +886,10 @@ class RayTrialExecutor:
         resources for all cached actors. If we cached more actors than we need, we
         terminate the excess actors and free the resources.
         """
-        if not self._staged_trials and not force_all:
-            # If we don't have any staged trials, keep cached actors
+        if not self._staged_trials and not force_all and not search_ended:
+            # If we don't have any staged trials, keep cached actors,
+            # unless cleanup is forced or no new trials are going to be generated
+            # (if the search ended).
             return
 
         staged_resources = self._count_staged_resources()
