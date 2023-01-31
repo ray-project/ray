@@ -8,6 +8,7 @@ from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
+from typing import Callable
 
 
 @dataclass
@@ -155,6 +156,24 @@ class ExecutionOptions:
     preserve_order: bool = True
 
 
+@dataclass
+class TaskContext:
+    """This describes the information of a task running block transform."""
+
+    # The index of task. Each task has a unique task index within the same
+    # operator.
+    task_idx: int
+
+
+# Block transform function applied by task and actor pools in MapOperator.
+MapTransformFn = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
+
+# Block transform function applied in AllToAllOperator.
+AllToAllTransformFn = Callable[
+    [List[RefBundle], TaskContext], Tuple[List[RefBundle], StatsDict]
+]
+
+
 class PhysicalOperator(Operator):
     """Abstract class for physical operators.
 
@@ -292,6 +311,13 @@ class PhysicalOperator(Operator):
         Subclasses can override this as a performance optimization.
         """
         return len(self.get_work_refs())
+
+    def internal_queue_size(self) -> int:
+        """If the operator has an internal input queue, return its size.
+
+        This is used to report tasks pending submission to actor pools.
+        """
+        return 0
 
     def notify_work_completed(self, work_ref: ray.ObjectRef) -> None:
         """Executor calls this when the given work is completed and local.
