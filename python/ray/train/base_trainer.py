@@ -268,22 +268,22 @@ class BaseTrainer(abc.ABC):
         Returns:
             BaseTrainer: A restored instance of the class that is calling this method.
         """
-        assert cls.can_restore(path), (
-            f"Invalid restore path: {path}. Make sure that this path exists and "
-            "is the experiment directory that results from a call to `trainer.fit()`."
-        )
+        if not cls.can_restore(path):
+            raise ValueError(
+                f"Invalid restore path: {path}. Make sure that this path exists and "
+                "is the experiment directory that results from a call to `trainer.fit()`."
+            )
         trainer_state_path = cls._maybe_sync_down_trainer_state(path)
-        assert (
-            trainer_state_path.exists()
-        ), f"Did not find trainer state at {str(trainer_state_path)}."
+        assert trainer_state_path.exists()
 
         with open(trainer_state_path, "rb") as fp:
             original_trainer = pickle.load(fp)
-        assert type(original_trainer) == cls, (
-            f"Invalid trainer type. Cannot restore a trainer of type "
-            f"{type(original_trainer)} with `{cls.__name__}.restore`. "
-            f"Use `{type(original_trainer).__name__}.restore` instead."
-        )
+        if type(original_trainer) != cls:
+            raise ValueError(
+                f"Invalid trainer type. Cannot restore a trainer of type "
+                f"{type(original_trainer)} with `{cls.__name__}.restore`. "
+                f"Use `{type(original_trainer).__name__}.restore` instead."
+            )
 
         # Get the param dict used to initialize the original trainer
         param_dict = original_trainer._param_dict
@@ -297,11 +297,12 @@ class BaseTrainer(abc.ABC):
                 "with the datasets that were provided to the original trainer."
             )
         datasets = datasets or {}
-        assert set(original_datasets.keys()) == set(datasets.keys()), (
-            "The provided datasets don't match the original dataset keys.\n"
-            f"  Expected datasets for the keys: {list(original_datasets.keys())}\n"
-            f"  Actual datasets provided: {list(datasets.keys())}"
-        )
+        if set(original_datasets) != set(datasets):
+            raise ValueError(
+                "The provided datasets don't match the original dataset keys.\n"
+                f"  Expected datasets for the keys: {list(original_datasets.keys())}\n"
+                f"  Actual datasets provided: {list(datasets.keys())}"
+            )
         param_dict["datasets"] = datasets
 
         # If no preprocessor is re-specified, then it will be set to None
