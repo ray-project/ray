@@ -133,6 +133,8 @@ class TrainerRunner:
         start = {mid: 0 for mid in batch.policy_batches.keys()}
         num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
         results = []
+        # TODO (Kourosh): One data transfer is probably better than many for each mini
+        # batch. How should we do this?
         # loop until the number of passes through all modules batches reaches the
         # num_iters
         while min(num_covered_epochs.values()) < num_iters:
