@@ -247,7 +247,7 @@ def test_worker_crash_increment_stats():
         assert result["worker_crash_oom"] == "1"
 
 
-def test_actor_stats():
+def test_actor_stats(reset_usage_stats):
     @ray.remote
     class Actor:
         pass
@@ -276,7 +276,7 @@ def test_actor_stats():
         del actor
 
 
-def test_pg_stats():
+def test_pg_stats(reset_usage_stats):
     with ray.init(
         num_cpus=3,
         _system_config={"metrics_report_interval_ms": 1000},
@@ -303,7 +303,7 @@ def test_pg_stats():
         )
 
 
-def test_task_stats():
+def test_task_stats(reset_usage_stats):
     @ray.remote
     def foo():
         pass
@@ -313,7 +313,6 @@ def test_task_stats():
     ) as ctx:
         gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
 
-        ray.get(foo.remote())
         wait_for_condition(
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
                 "task_num_created"
@@ -327,6 +326,14 @@ def test_task_stats():
                 "task_num_created"
             )
             == "2",
+            timeout=10,
+        )
+        ray.get(foo.remote())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "task_num_created"
+            )
+            == "3",
             timeout=10,
         )
 

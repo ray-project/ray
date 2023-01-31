@@ -334,6 +334,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   task_to_task_attempt_index_[task_id].insert(task_attempt);
   // Add a new task events.
   task_events_.push_back(std::move(events_by_task));
+  total_num_events_ += 1;
 
   MarkTaskTreeFailedIfNeeded(task_id, parent_task_id);
   return absl::nullopt;
