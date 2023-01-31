@@ -21,7 +21,6 @@ parser.add_argument(
     help="Whether this script should be run as a test: Only one episode will be "
     "sampled.",
 )
-parser.add_argument()
 
 if __name__ == "__main__":
     args = parser.parse_args()
