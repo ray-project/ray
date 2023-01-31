@@ -103,6 +103,7 @@ def _run_bash_command_subprocess(command: str, timeout: float):
         return_code = TIMEOUT_RETURN_CODE
     except subprocess.CalledProcessError as e:
         return_code = e.returncode
+    print(f"Subprocess return code: {return_code}", file=sys.stderr)
     sys.exit(return_code)
 
 
@@ -121,22 +122,28 @@ def run_bash_command(workload: str, timeout: float):
     # forking (as happens when using subprocess directly),
     # because that messes up Ray interactions and causes
     # deadlocks.
+    return_code = None
     try:
         ctx = multiprocessing.get_context("spawn")
         p = ctx.Process(target=_run_bash_command_subprocess, args=(command, timeout))
         p.start()
+        logger.info(f"Starting process {p.pid}.")
         # Add a little extra to the timeout as _run_bash_command_subprocess
         # also has a timeout internally and it's cleaner to use that
         p.join(timeout=timeout + 10)
-        return_code = 0
     except multiprocessing.TimeoutError:
         return_code = TIMEOUT_RETURN_CODE
     except multiprocessing.ProcessError:
-        return_code = p.exitcode
+        pass
     finally:
         if p.is_alive():
+            logger.warning(f"Terminating process {p.pid} forcefully.")
             p.terminate()
+        if return_code is None:
+            return_code = p.exitcode
         os.remove(str(workload_path))
+    logger.info(f"Process {p.pid} exited with return code {return_code}.")
+    assert return_code is not None
     return return_code
 
 
