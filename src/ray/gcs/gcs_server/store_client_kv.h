@@ -33,6 +33,11 @@ class StoreClientInternalKV : public InternalKVInterface {
            const std::string &key,
            std::function<void(std::optional<std::string>)> callback) override;
 
+  void MultiGet(const std::string &ns,
+                const std::vector<std::string> &keys,
+                std::function<void(std::unordered_map<std::string, std::string>)>
+                    callback) override;
+
   void Put(const std::string &ns,
            const std::string &key,
            const std::string &value,
