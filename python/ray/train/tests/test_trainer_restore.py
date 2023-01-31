@@ -228,10 +228,10 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
     with pytest.raises(ValueError):
         DataParallelTrainer.restore(str(tmpdir))
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         DataParallelTrainer.restore(str(tmpdir), datasets={"train": datasets["train"]})
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         DataParallelTrainer.restore(
             str(tmpdir),
             datasets={"train": datasets["train"], "invalid_key": datasets["valid"]},
@@ -345,20 +345,20 @@ def test_restore_with_different_trainer(tmpdir):
         run_config=RunConfig(name="restore_with_diff_trainer", local_dir=tmpdir),
     )
     trainer._save(tmpdir)
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         BaseTrainer.restore(str(tmpdir))
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         TorchTrainer.restore(str(tmpdir))
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         XGBoostTrainer.restore(str(tmpdir))
 
 
 def test_restore_from_invalid_dir(tmpdir):
     """Should raise an error if the restore directory doesn't exist or is invalid."""
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         BaseTrainer.restore(str(tmpdir))
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         BaseTrainer.restore("memory:///not/found")
 
 
