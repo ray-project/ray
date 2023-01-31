@@ -1,3 +1,7 @@
+// Warning: This top navigation is meant to be in sync with the top navigation on
+// https://www.ray.io/. Please mirror any changes to the top navigation and 
+// dropdowns to https://www.ray.io/.
+
 // Remove the black background from the announcement banner. We abuse the
 // sphinx-book-theme announcement feature to place a navigation bar on top of the
 // documentation. This javascript file replaces the announcement banner with the
