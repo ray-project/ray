@@ -26,13 +26,13 @@ class _FunctionResolver:
     def __init__(self, fn):
         self._fn = fn
 
-    def resolve(self, spec):
+    def resolve(self, config):
         """Some functions take a resolved spec dict as input.
 
         Note: Function placeholders are independently sampled during
         resolution. Therefore their random states are not restored.
         """
-        return self._fn.sample(spec=spec)
+        return self._fn.sample(config=config)
 
     def get_placeholder(self) -> str:
         return "fn_ph"
@@ -115,23 +115,13 @@ def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dic
 
 
 @DeveloperAPI
-def resolve_placeholders(spec: Any, replaced: Dict):
-    """Replaces placeholders contained by a spec dict with the original values.
+def resolve_placeholders(config: Any, replaced: Dict):
+    """Replaces placeholders contained by a config dict with the original values.
 
     Args:
-        spec: The spec to replace placeholders in.
-            Note that not like inject_placeholders, this is the spec dict,
-            which contains config dict under "config" key.
+        config: The config to replace placeholders in.
         replaced: A dict from path to replaced objects.
     """
-    # resolve_placeholders gets passed the entire spec dict, because it is
-    # required for resolving Function placeholders.
-    if "config" not in spec:
-        # Nothing to resolve.
-        return
-
-    # First thing is to take the config dict out.
-    config = spec["config"]
     for path, resolver in replaced.items():
         resolved = None
 
@@ -140,7 +130,7 @@ def resolve_placeholders(spec: Any, replaced: Dict):
             resolved = resolver.resolve(sampled)
         elif isinstance(resolver, _FunctionResolver):
             # Function domain expects the full spec dict.
-            resolved = resolver.resolve(spec)
+            resolved = resolver.resolve(config)
         elif isinstance(resolver, _RefResolver):
             resolved = resolver.resolve()
 

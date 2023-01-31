@@ -466,7 +466,6 @@ class TrialRunnerTest3(unittest.TestCase):
         restored_config = inject_placeholders(restored_config, replaced_resolvers)
 
         runner = TrialRunner(
-            spec=experiments[0].spec,
             search_alg=searcher,
             # Use the new ref map to construct the TrailRunner.
             placeholder_resolvers=replaced_resolvers,

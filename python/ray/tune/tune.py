@@ -721,7 +721,6 @@ def run(
         chdir_to_trial_dir=chdir_to_trial_dir,
     )
     runner = TrialRunner(
-        spec=experiments[0].spec,
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,

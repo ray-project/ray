@@ -24,7 +24,7 @@ class PlaceholderTest(unittest.TestCase):
         config["param2"][1] = "cat_0"
         config["param3"]["param4"] = "cat_1"
 
-        resolve_placeholders({"config": config}, replaced)
+        resolve_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1], "ok")
         self.assertEqual(config["param3"]["param4"], "not ok")
@@ -48,7 +48,7 @@ class PlaceholderTest(unittest.TestCase):
         config["param2"][1] = "cat_0"
         config["param3"]["param4"] = "cat_1"
 
-        resolve_placeholders({"config": config}, replaced)
+        resolve_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1], "ok")
         self.assertEqual(config["param3"]["param4"], "not ok")
@@ -57,8 +57,12 @@ class PlaceholderTest(unittest.TestCase):
         config = {
             "param1": "ok",
             "param2": ["not ok", tune.sample_from(lambda: "not ok")],
+            # Both lambdas, either taking spec or config, should work.
             "param3": {
                 "param4": tune.sample_from(lambda spec: spec["config"]["param1"]),
+            },
+            "param4": {
+                "param4": tune.sample_from(lambda config: config["param1"]),
             },
         }
 
@@ -68,7 +72,7 @@ class PlaceholderTest(unittest.TestCase):
         self.assertEqual(config["param2"][1], "fn_ph")
         self.assertEqual(config["param3"]["param4"], "fn_ph")
 
-        resolve_placeholders({"config": config}, replaced)
+        resolve_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1], "not ok")
         self.assertEqual(config["param3"]["param4"], "ok")
@@ -92,7 +96,7 @@ class PlaceholderTest(unittest.TestCase):
         self.assertEqual(config["param2"][1], "ref_ph")
         self.assertEqual(config["param3"]["param4"], "ref_ph")
 
-        resolve_placeholders({"config": config}, replaced)
+        resolve_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1].value, "ok")
         self.assertEqual(config["param3"]["param4"].value, "not ok")

@@ -333,7 +333,6 @@ class TrialRunner:
     def __init__(
         self,
         *,
-        spec: Optional[Dict[str, Any]] = None,
         search_alg: Optional[SearchAlgorithm] = None,
         placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
@@ -352,7 +351,6 @@ class TrialRunner:
         # Deprecate on next refactor
         driver_sync_trial_checkpoints: bool = False,
     ):
-        self._spec = spec
         self._search_alg = search_alg or BasicVariantGenerator()
         self._placeholder_resolvers = placeholder_resolvers
         self._scheduler_alg = scheduler or FIFOScheduler()
@@ -1094,11 +1092,7 @@ class TrialRunner:
         # If the config map has had all the references replaced,
         # resolve them before adding the trial.
         if self._placeholder_resolvers:
-            # Construct the full experiment spec for resolution.
-            spec = self._spec or {}
-            # Replace the config with the trial's config.
-            spec.update(config=trial.config)
-            resolve_placeholders(spec, self._placeholder_resolvers)
+            resolve_placeholders(trial.config, self._placeholder_resolvers)
 
         self._trials.append(trial)
         if trial.status != Trial.TERMINATED:
