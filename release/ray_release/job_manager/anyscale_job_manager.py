@@ -28,7 +28,6 @@ class AnyscaleJobManager:
         self.start_time = None
         self.counter = 0
         self.cluster_manager = cluster_manager
-        self.wait_for_nodes_timeout = 0
         self._last_job_result = None
 
     def _run_job(
@@ -39,7 +38,6 @@ class AnyscaleJobManager:
         upload_path: Optional[str] = None,
     ) -> None:
         env = os.environ.copy()
-        # env["RAY_ADDRESS"] = self.cluster_manager.get_cluster_address()
         env.setdefault("ANYSCALE_HOST", str(ANYSCALE_HOST))
 
         full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
@@ -126,10 +124,7 @@ class AnyscaleJobManager:
 
     def _wait_job(self, timeout: int):
         start_time = time.monotonic()
-        if self.wait_for_nodes_timeout > 0:
-            timeout_at = start_time + self.wait_for_nodes_timeout
-        else:
-            timeout_at = start_time + timeout
+        timeout_at = start_time + timeout
         next_status = start_time + 30
         job_running = False
 
@@ -157,8 +152,6 @@ class AnyscaleJobManager:
             }:
                 logger.info(f"... job started ...({int(now - start_time)} seconds) ...")
                 job_running = True
-                if self.wait_for_nodes_timeout > 0:
-                    timeout_at = now + timeout
 
             if status in terminal_state:
                 break
@@ -175,9 +168,8 @@ class AnyscaleJobManager:
             retcode = -3
         else:
             retcode = -1
-        error = result.state.error
         duration = time.time() - self.start_time
-        return retcode, duration, error
+        return retcode, duration
 
     def run_and_wait(
         self,
@@ -193,6 +185,7 @@ class AnyscaleJobManager:
         return self._wait_job(timeout)
 
     def get_last_logs(self):
+        # TODO: replace with an actual API call.
         def _get_logs():
             job_controller = JobController()
             buf = io.StringIO()

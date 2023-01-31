@@ -4,12 +4,14 @@ import os
 from pathlib import Path
 import subprocess
 import multiprocessing
-import traceback
 import json
 import sys
+import logging
 from typing import List
 
 AWS_CP_TIMEOUT = 300
+
+logger = logging.getLogger(__name__)
 
 
 def exponential_backoff_retry(
@@ -24,7 +26,7 @@ def exponential_backoff_retry(
             retry_cnt += 1
             if retry_cnt > max_retries:
                 raise
-            print(
+            logger.warning(
                 f"Retry function call failed due to {e} "
                 f"in {retry_delay_s} seconds..."
             )
@@ -33,6 +35,9 @@ def exponential_backoff_retry(
 
 
 def run_aws_cp(source: str, target: str):
+    if not Path(source).exists():
+        logger.error(f"Couldn't upload to s3: '{source}' does not exist.")
+        return False
     try:
         exponential_backoff_retry(
             lambda: subprocess.run(
@@ -54,8 +59,7 @@ def run_aws_cp(source: str, target: str):
         )
         return True
     except subprocess.SubprocessError:
-        print("Couldn't upload to s3.")
-        traceback.print_exc()
+        logger.exception("Couldn't upload to s3.")
         return False
 
 
@@ -78,8 +82,7 @@ def collect_metrics(time_taken: float) -> bool:
         )
         return True
     except subprocess.SubprocessError:
-        print("Couldn't collect metrics.")
-        traceback.print_exc()
+        logger.exception("Couldn't collect metrics.")
         return False
 
 
@@ -104,7 +107,7 @@ def run_bash_command(workload: str, timeout: float):
         fp.write(workload)
 
     command = ["bash", "-x", str(workload_path)]
-    print(f"Running command {workload}")
+    logger.info(f"Running command {workload}")
 
     # We use multiprocessing with 'spawn' context to avoid
     # forking (as happens when using subprocess directly),
@@ -138,12 +141,12 @@ def main(
     prepare_commands: List[str],
     prepare_commands_timeouts: List[str],
 ):
-    print("### Starting ###")
+    logger.info("### Starting ###")
     start_time = time.monotonic()
 
     prepare_return_codes = []
     if prepare_commands:
-        print("### Starting prepare commands ###")
+        logger.info("### Starting prepare commands ###")
         assert len(prepare_commands) == len(prepare_commands_timeouts)
         for prepare_command, timeout in zip(
             prepare_commands, prepare_commands_timeouts
@@ -155,38 +158,43 @@ def main(
             if return_code != 0:
                 timeout = return_code == -1
                 if timeout:
-                    print(
+                    logger.error(
                         "Prepare command timed out. "
                         f"Time taken: {prepare_time_taken}"
                     )
                 else:
-                    print(
+                    logger.info(
                         f"Prepare command finished with return code {return_code}. "
                         f"Time taken: {prepare_time_taken}"
                     )
-                print("Prepare command failed.")
+                logger.error("Prepare command failed.")
                 break
 
     if prepare_return_codes[-1] == 0:
-        print("### Starting entrypoint ###")
+        logger.info("### Starting entrypoint ###")
         command_start_time = time.monotonic()
         return_code = run_bash_command(test_workload, test_workload_timeout)
         workload_time_taken = time.monotonic() - command_start_time
 
         timeout = return_code == -1
         if timeout:
-            print(f"Timed out. Time taken: {workload_time_taken}")
+            msg = f"Timed out. Time taken: {workload_time_taken}"
+            if test_long_running:
+                logger.info(msg)
+            else:
+                logger.error(msg)
         else:
-            print(
+            logger.info(
                 f"Finished with return code {return_code}. "
                 f"Time taken: {workload_time_taken}"
             )
 
+        # Install awscli for uploading to s3
         subprocess.run(["pip", "install", "-q", "awscli"], check=True)
         uploaded_results = run_aws_cp(os.environ["TEST_OUTPUT_JSON"], results_s3_uri)
 
         collected_metrics = collect_metrics(workload_time_taken)
-        if collect_metrics:
+        if collected_metrics:
             uploaded_metrics = run_aws_cp(
                 os.environ["METRICS_OUTPUT_JSON"], metrics_s3_uri
             )
@@ -208,8 +216,8 @@ def main(
         output_json, ensure_ascii=True, sort_keys=True, separators=(",", ":")
     )
 
-    print("### Finished ###")
-    print(f"### JSON |{output_json}| ###")
+    logger.info("### Finished ###")
+    logger.info(f"### JSON |{output_json}| ###")
     if return_code == -1:
         if test_long_running:
             return_code = 0

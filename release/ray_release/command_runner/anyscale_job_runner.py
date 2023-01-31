@@ -70,78 +70,18 @@ class AnyscaleJobRunner(JobRunner):
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Handled by Anyscale
-        self.job_manager.wait_for_nodes_timeout += timeout
         super().wait_for_nodes(num_nodes, timeout)
 
     def save_metrics(self, start_time: float, timeout: float = 900):
         return
 
-    def run_command(
-        self,
-        command: str,
-        env: Optional[Dict] = None,
-        timeout: float = 3600.0,
-        is_long_running: bool = False,
-    ) -> float:
-        prepare_command_strs = []
-        prepare_command_timeout_strs = []
-        for prepare_command, prepare_env, prepare_timeout in self.prepare_commands:
-            prepare_env = self.get_full_command_env(prepare_env)
-
-            if prepare_env:
-                env_str = " ".join(f"{k}={v}" for k, v in prepare_env.items()) + " "
-            else:
-                env_str = ""
-            prepare_command_strs.append(f"{env_str} {prepare_command}")
-            prepare_command_timeout_strs.append(prepare_timeout)
-
-        prepare_commands = " ".join(shlex.quote(str(x)) for x in prepare_command_strs)
-        prepare_commands_timeouts = " ".join(
-            shlex.quote(str(x)) for x in prepare_command_timeout_strs
-        )
-
-        full_env = self.get_full_command_env(env)
-
-        if full_env:
-            env_str = " ".join(f"{k}={v}" for k, v in full_env.items()) + " "
-        else:
-            env_str = ""
-
-        is_long_running_str = " --test-long-running" if is_long_running else ""
-        full_command = (
-            f"{env_str}python anyscale_job_wrapper.py '{command}' "
-            f"--test-workload-timeout {timeout}{is_long_running_str} "
-            "--results-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
-            "--metrics-s3-uri "
-            f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
-            f"--prepare-commands {prepare_commands} "
-            f"--prepare-commands-timeouts {prepare_commands_timeouts}"
-        )
-        job_status_code, time_taken, error = self.job_manager.run_and_wait(
-            full_command,
-            full_env,
-            working_dir=".",
-            upload_path=self.upload_path,
-            timeout=int(timeout) + 1000,
-        )
-
+    def _handle_command_output(self, job_status_code: int, error: str):
         logs = self.get_last_logs()
-
-        if job_status_code == -2:
-            raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
-
-        if job_status_code == -3:
-            raise JobTerminatedError(
-                "Job entered terminated state (terminated manually or nodes "
-                f"could not have been provisioned):\n{error}\n"
-            )
 
         output_json = re.search(r"### JSON \|([^\|]*)\| ###", logs)
         workload_status_code = 1
         if output_json:
             output_json = json.loads(output_json.group(1))
-            print(output_json)
             workload_status_code = output_json["return_code"]
             workload_time_taken = output_json["workload_time_taken"]
             prepare_return_codes = output_json["prepare_return_codes"]
@@ -168,6 +108,72 @@ class AnyscaleJobRunner(JobRunner):
                 f"Command returned non-success status: {workload_status_code} with "
                 f"error:\n{error}\n"
             )
+
+        if job_status_code == -2:
+            raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
+
+        if job_status_code == -3:
+            raise JobTerminatedError(
+                "Job entered terminated state (terminated manually, nodes "
+                "could not have been provisioned or Ray was stopped):"
+                f"\n{error}\n"
+            )
+
+    def run_command(
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        is_long_running: bool = False,
+    ) -> float:
+        prepare_command_strs = []
+        prepare_command_timeouts = []
+        for prepare_command, prepare_env, prepare_timeout in self.prepare_commands:
+            prepare_env = self.get_full_command_env(prepare_env)
+
+            if prepare_env:
+                env_str = " ".join(f"{k}={v}" for k, v in prepare_env.items()) + " "
+            else:
+                env_str = ""
+            prepare_command_strs.append(f"{env_str} {prepare_command}")
+            prepare_command_timeouts.append(prepare_timeout)
+
+        prepare_commands = " ".join(shlex.quote(str(x)) for x in prepare_command_strs)
+        prepare_commands_timeouts = " ".join(
+            shlex.quote(str(x)) for x in prepare_command_timeouts
+        )
+
+        full_env = self.get_full_command_env(env)
+
+        if full_env:
+            env_str = " ".join(f"{k}={v}" for k, v in full_env.items()) + " "
+        else:
+            env_str = ""
+
+        is_long_running_str = " --test-long-running" if is_long_running else ""
+        full_command = (
+            f"{env_str}python anyscale_job_wrapper.py '{command}' "
+            f"--test-workload-timeout {timeout}{is_long_running_str} "
+            "--results-s3-uri "
+            f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
+            "--metrics-s3-uri "
+            f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
+            f"--prepare-commands {prepare_commands} "
+            f"--prepare-commands-timeouts {prepare_commands_timeouts}"
+        )
+        job_status_code, time_taken = self.job_manager.run_and_wait(
+            full_command,
+            full_env,
+            working_dir=".",
+            upload_path=self.upload_path,
+            timeout=int(timeout) + sum(prepare_command_timeouts) + 300,
+        )
+        try:
+            error = self.job_manager.last_job_result.state.error
+        except AttributeError:
+            error = None
+
+        self._handle_command_output(job_status_code, error)
 
         return time_taken
 
