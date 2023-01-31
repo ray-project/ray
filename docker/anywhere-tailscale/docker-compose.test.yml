@@ -17,8 +17,6 @@ services:
         hard: -1
     expose:
       - 41641/udp
-    ports:
-      - "41641:41641/udp"
     cap_add:
       - NET_ADMIN
       - SYS_PTRACE
