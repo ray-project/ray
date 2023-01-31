@@ -2,7 +2,7 @@ import gymnasium as gym
 from ray.rllib.algorithms.ppo import PPOConfig
 
 
-# Define your problem using python and openAI's gym API:
+# Define your problem using python and Farama-Foundation's gymnasium API:
 class ParrotEnv(gym.Env):
     """Environment in which an agent must learn to repeat the seen observations.
 

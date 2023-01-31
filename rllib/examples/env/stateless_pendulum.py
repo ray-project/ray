@@ -7,8 +7,8 @@ from gymnasium.envs.classic_control import PendulumEnv
 class StatelessPendulum(PendulumEnv):
     """Partially observable variant of the Pendulum gym environment.
 
-    https://github.com/openai/gym/blob/master/gym/envs/classic_control/
-    pendulum.py
+    https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/
+    classic_control/pendulum.py
 
     We delete the angular velocity component of the state, so that it
     can only be solved by a memory enhanced model (policy).

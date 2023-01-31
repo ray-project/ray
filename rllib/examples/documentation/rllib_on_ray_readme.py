@@ -3,7 +3,7 @@ import gymnasium as gym
 from ray.rllib.algorithms.ppo import PPOConfig
 
 
-# Define your problem using python and openAI's gym API:
+# Define your problem using python and Farama-Foundation's gymnasium API:
 class SimpleCorridor(gym.Env):
     """Corridor in which an agent must learn to move right to reach the exit.
 

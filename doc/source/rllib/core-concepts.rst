@@ -119,7 +119,7 @@ Policies
 `Policies <rllib-concepts.html#policies>`__ are a core concept in RLlib. In a nutshell, policies are
 Python classes that define how an agent acts in an environment.
 `Rollout workers <rllib-concepts.html#policy-evaluation>`__ query the policy to determine agent actions.
-In a `gym <rllib-env.html#openai-gym>`__ environment, there is a single agent and policy.
+In a `Farama-Foundation Gymnasium <rllib-env.html#gymnasium>`__ environment, there is a single agent and policy.
 In `vector envs <rllib-env.html#vectorized>`__, policy inference is for multiple agents at once,
 and in `multi-agent <rllib-env.html#multi-agent-and-hierarchical>`__, there may be multiple policies,
 each controlling one or more agents:

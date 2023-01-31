@@ -77,7 +77,7 @@ As a last step, we `evaluate` the trained Algorithm:
     :start-after: __rllib-in-60s-begin__
     :end-before: __rllib-in-60s-end__
 
-Note that you can use any OpenAI gym environment as `env`.
+Note that you can use any Farama-Foundation Gymnasium environment as `env`.
 In `rollouts` you can for instance specify the number of parallel workers to collect samples from the environment.
 The `framework` config lets you choose between "tf2", "tf" and "torch" for execution.
 You can also tweak RLlib's default `model` config,and set up a separate config for `evaluation`.
@@ -159,7 +159,7 @@ click on the dropdowns below:
     :animate: fade-in-slide-down
 
     *  `RLlib Environments Overview <rllib-env.html>`__
-    *  `OpenAI Gym <rllib-env.html#openai-gym>`__
+    *  `Farama-Foundation gymnasium <rllib-env.html#gymnasium>`__
     *  `Vectorized <rllib-env.html#vectorized>`__
     *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
     *  `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
@@ -200,7 +200,7 @@ Feature Overview
 
     **RLlib Environments**
     ^^^
-    Get started with environments supported by RLlib, such as OpenAI Gym, Petting Zoo,
+    Get started with environments supported by RLlib, such as Farama foundation's Gymnasium, Petting Zoo,
     and many custom formats for vectorized and multi-agent environments.
     +++
     .. link-button:: rllib-environments-doc
@@ -220,7 +220,7 @@ Customizing RLlib
 
 RLlib provides simple APIs to customize all aspects of your training- and experimental workflows.
 For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
-in python using openAI's gym or DeepMind's OpenSpiel, provide custom
+in python using Farama-Foundation's gymnasium or DeepMind's OpenSpiel, provide custom
 `TensorFlow/Keras- <rllib-models.html#tensorflow-models>`__ or ,
 `Torch models <rllib-models.html#torch-models>`_, write your own
 `policy- and loss definitions <rllib-concepts.html#policies>`__, or define
