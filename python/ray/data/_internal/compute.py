@@ -176,6 +176,9 @@ class TaskPoolStrategy(ComputeStrategy):
             owned_by_consumer=in_block_owned_by_consumer,
         )
 
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, TaskPoolStrategy)
+
 
 @PublicAPI
 class ActorPoolStrategy(ComputeStrategy):
@@ -448,6 +451,14 @@ class ActorPoolStrategy(ComputeStrategy):
                 logger.exception(f"Error killing workers: {err}")
             finally:
                 raise e from None
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, ActorPoolStrategy) and (
+            self.min_size == other.min_size
+            and self.max_size == other.max_size
+            and self.max_tasks_in_flight_per_actor
+            == other.max_tasks_in_flight_per_actor
+        )
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
