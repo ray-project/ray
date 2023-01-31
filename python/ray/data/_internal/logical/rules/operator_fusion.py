@@ -1,6 +1,7 @@
 from typing import Iterator
 
 from ray.data.block import Block
+
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
 from ray.data._internal.compute import is_task_compute, CallableClass, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -63,9 +64,8 @@ class OperatorFusionRule(Rule):
         up_logical_op = self._op_map[up_op]
 
         # We only support fusing upstream reads and maps with downstream maps.
-        if (
-            not isinstance(down_logical_op, AbstractMap)
-            or not isinstance(up_logical_op, (Read, AbstractMap))
+        if not isinstance(down_logical_op, AbstractMap) or not isinstance(
+            up_logical_op, (Read, AbstractMap)
         ):
             return False
 

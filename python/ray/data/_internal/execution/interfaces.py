@@ -8,7 +8,6 @@ from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
-from typing import Callable
 
 
 @dataclass

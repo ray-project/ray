@@ -262,7 +262,7 @@ class MapOperator(PhysicalOperator, ABC):
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
 
-    def get_transformation_fn(self) -> Callable[[Iterator[Block]], Iterator[Block]]:
+    def get_transformation_fn(self) -> MapTransformFn:
         return self._transform_fn
 
     @abstractmethod
