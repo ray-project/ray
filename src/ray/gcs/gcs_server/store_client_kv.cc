@@ -85,7 +85,7 @@ void StoreClientInternalKV::MultiGet(
         for (const auto &item : result) {
           ret.emplace(ExtractKey(item.first), item.second);
         }
-        callback(ret);
+        callback(std::move(ret));
       }));
 }
 
