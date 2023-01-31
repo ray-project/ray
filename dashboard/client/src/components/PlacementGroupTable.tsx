@@ -134,7 +134,7 @@ const PlacementGroupTable = ({
         <TableBody>
           {list.map(
             ({ placement_group_id, name, creator_job_id, state, stats }) => (
-              <TableRow>
+              <TableRow key={placement_group_id}>
                 <TableCell align="center">
                   <Tooltip
                     className={classes.idCol}

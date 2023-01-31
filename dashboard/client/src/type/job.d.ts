@@ -1,4 +1,5 @@
 import { Actor } from "./actor";
+import { TypeTaskType } from "./task";
 import { Worker } from "./worker";
 
 export type Job = {
@@ -129,6 +130,48 @@ export type StateApiJobProgressByTaskNameRsp = {
   data: {
     result: {
       result: StateApiJobProgressByTaskName;
+      num_filtered: number;
+      total: number;
+    };
+  };
+  msg: string;
+  result: boolean;
+};
+
+export type NestedJobProgress = {
+  name: string;
+  key: string;
+  state_counts: {
+    [stateName: string]: number;
+  };
+  children: NestedJobProgress[];
+  type: TypeTaskType | "GROUP" | "ACTOR";
+};
+
+export type JobProgressGroup = {
+  name: string;
+  key: string;
+  progress: TaskProgress;
+  children: JobProgressGroup[];
+  type: TypeTaskType | "GROUP" | "ACTOR";
+};
+
+export type StateApiNestedJobProgress = {
+  node_id_to_summary: {
+    cluster: {
+      summary: {
+        [taskName: string]: NestedJobProgress;
+      };
+    };
+  };
+};
+
+export type StateApiNestedJobProgressRsp = {
+  data: {
+    result: {
+      result: StateApiNestedJobProgress;
+      num_filtered: number;
+      total: number;
     };
   };
   msg: string;
