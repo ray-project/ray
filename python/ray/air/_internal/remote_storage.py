@@ -86,7 +86,18 @@ def get_fs_and_path(
         return None, None
 
     parsed = urllib.parse.urlparse(uri)
-    path = parsed.netloc + parsed.path
+    # for uri="hdfs://48bb8ca83706:8020/test":
+    # netloc="48bb8ca83706:8020/"
+    # netloc's information is taken into account from the pyarrow client.
+    # so path should not include netloc.
+    # On the other hand, for uri="s3://my_bucket/test":
+    # netloc="my_bucket/" and path="test/"
+    # netloc's information is not part of the pyarrow client.
+    # so path should include netloc information hence the concatenation.
+    if uri.startswith("hdfs://"):
+        path = parsed.path
+    else:
+        path = parsed.netloc + parsed.path
 
     cache_key = (parsed.scheme, parsed.netloc)
 
