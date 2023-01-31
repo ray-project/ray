@@ -1,9 +1,11 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from abc import ABCMeta
+import glob
+import os
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import warnings
 
 from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.tune.utils.restorable import Restorable
+from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
 
 if TYPE_CHECKING:
     from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
@@ -67,7 +69,7 @@ class _CallbackMeta(ABCMeta):
 
 
 @PublicAPI(stability="beta")
-class Callback(Restorable, metaclass=_CallbackMeta):
+class Callback(metaclass=_CallbackMeta):
     """Tune base callback that can be extended and passed to a ``TrialRunner``
 
     Tune callbacks are called from within the ``TrialRunner`` class. There are
@@ -105,7 +107,7 @@ class Callback(Restorable, metaclass=_CallbackMeta):
 
     """
 
-    CKPT_FILE_TMPL = "callback-state-{}.json"
+    CKPT_FILE_TMPL = "callback-state-{}.pkl"
 
     # arguments here match Experiment.public_spec
     def setup(
@@ -281,13 +283,91 @@ class Callback(Restorable, metaclass=_CallbackMeta):
         """
         pass
 
+    def get_state(self) -> Optional[Dict]:
+        """Get the state of the callback.
+
+        This method should be implemented by subclasses to return a dictionary
+        representation of the object's current state.
+
+        Returns:
+            state: State of the callback. Should be `None` if the callback does not
+                have any state to save (this is the default).
+        """
+        return None
+
+    def set_state(self, state: Dict):
+        """Get the state of the callback.
+
+        This method should be implemented by subclasses to restore the callback's
+        state based on the given dict state.
+
+        Args:
+            state: State of the callback.
+        """
+        pass
+
+    def can_restore(self, checkpoint_dir: str) -> bool:
+        """Check if the checkpoint_dir contains the saved state for this callback.
+
+        Returns:
+            can_restore: True if the checkpoint_dir contains a file of the
+                format `CKPT_FILE_TMPL`. False otherwise.
+        """
+        return bool(
+            glob.glob(os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")))
+        )
+
+    def save_to_dir(self, checkpoint_dir: str, session_str: str = "default"):
+        """Save the state of the callback to the checkpoint_dir.
+
+        Args:
+            checkpoint_dir: directory where the checkpoint is stored.
+            session_str: Unique identifier of the current run session (ex: timestamp).
+
+        Raises:
+            NotImplementedError: if the `get_state` method is not implemented.
+        """
+        state_dict = self.get_state()
+
+        if state_dict:
+            file_name = self.CKPT_FILE_TMPL.format(session_str)
+            tmp_file_name = f".tmp-{file_name}"
+            _atomic_save(
+                state=state_dict,
+                checkpoint_dir=checkpoint_dir,
+                file_name=file_name,
+                tmp_file_name=tmp_file_name,
+            )
+
+    def restore_from_dir(self, checkpoint_dir: str):
+        """Restore the state of the object from the checkpoint_dir.
+
+        You should check if it's possible to restore with `can_restore`
+        before calling this method.
+
+        Args:
+            checkpoint_dir: directory where the checkpoint is stored.
+
+        Raises:
+            RuntimeError: if unable to find checkpoint.
+            NotImplementedError: if the `set_state` method is not implemented.
+        """
+        state_dict = _load_newest_checkpoint(
+            checkpoint_dir, self.CKPT_FILE_TMPL.format("*")
+        )
+        if not state_dict:
+            raise RuntimeError(
+                "Unable to find checkpoint in {}.".format(checkpoint_dir)
+            )
+        self.set_state(state_dict)
+
 
 @DeveloperAPI
 class CallbackList(Callback):
     """Call multiple callbacks at once."""
 
     IS_CALLBACK_CONTAINER = True
-    CKPT_FILE_TMPL = "callback-list-state-{}.json"
+    CKPT_FILE_TMPL = "callback-list-state-{}.pkl"
 
     def __init__(self, callbacks: List[Callback]):
         self._callbacks = callbacks
@@ -352,12 +432,9 @@ class CallbackList(Callback):
         state = {}
         any_stateful_callbacks = False
         for i, callback in enumerate(self._callbacks):
-            callback_state = None
-            try:
-                callback_state = callback.get_state()
+            callback_state = callback.get_state()
+            if callback_state:
                 any_stateful_callbacks = True
-            except NotImplementedError:
-                pass
             state[i] = callback_state
         if not any_stateful_callbacks:
             return None
