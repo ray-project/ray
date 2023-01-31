@@ -210,7 +210,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               // Add the JobInfo to the correct index in the reply.
               reply->mutable_job_info_list(job_data_key_to_index.at(job_data_key))
                   ->mutable_job_info()
-                  ->CopyFrom(jobs_api_info);
+                  ->CopyFrom(std::move(jobs_api_info));
             }
           }
           RAY_LOG(INFO) << "Finished getting all job info.";
