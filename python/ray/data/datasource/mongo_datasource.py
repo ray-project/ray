@@ -1,6 +1,7 @@
 import logging
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.block import (
     Block,
@@ -38,7 +39,7 @@ class MongoDatasource(Datasource):
     def create_reader(self, **kwargs) -> Reader:
         return _MongoDatasourceReader(**kwargs)
 
-    def do_write(
+    def direct_write(
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
@@ -62,6 +63,38 @@ class MongoDatasource(Datasource):
         write_tasks = []
         for block in blocks:
             write_task = write_block(uri, database, collection, block)
+            write_tasks.append(write_task)
+        return write_tasks
+
+    def do_write(
+        self,
+        blocks: List[ObjectRef[Block]],
+        metadata: List[BlockMetadata],
+        ray_remote_args: Optional[Dict[str, Any]],
+        uri: str,
+        database: str,
+        collection: str,
+    ) -> List[ObjectRef[WriteResult]]:
+        import pymongo
+
+        _validate_database_collection_exist(
+            pymongo.MongoClient(uri), database, collection
+        )
+
+        def write_block(uri: str, database: str, collection: str, block: Block):
+            from pymongoarrow.api import write
+
+            block = BlockAccessor.for_block(block).to_arrow()
+            client = pymongo.MongoClient(uri)
+            write(client[database][collection], block)
+
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        write_block = cached_remote_fn(write_block).options(**ray_remote_args)
+        write_tasks = []
+        for block in blocks:
+            write_task = write_block.remote(uri, database, collection, block)
             write_tasks.append(write_task)
         return write_tasks
 

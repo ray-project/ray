@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, Callable, Generic, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -51,7 +51,7 @@ class Datasource(Generic[T]):
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
-    def do_write(
+    def direct_write(
         self,
         blocks: Iterable[Block],
         **write_args,
@@ -64,6 +64,28 @@ class Datasource(Generic[T]):
 
         Returns:
             The output of the write tasks.
+        """
+        raise NotImplementedError
+
+    @Deprecated
+    def do_write(
+        self,
+        blocks: List[ObjectRef[Block]],
+        metadata: List[BlockMetadata],
+        ray_remote_args: Dict[str, Any],
+        **write_args,
+    ) -> List[ObjectRef[WriteResult]]:
+        """Launch Ray tasks for writing blocks out to the datasource.
+
+        Args:
+            blocks: List of data block references. It is recommended that one
+                write task be generated per block.
+            metadata: List of block metadata.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            write_args: Additional kwargs to pass to the datasource impl.
+
+        Returns:
+            A list of the output of the write tasks.
         """
         raise NotImplementedError
 
