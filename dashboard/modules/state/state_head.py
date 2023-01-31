@@ -193,7 +193,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         filters = self._get_filters_from_req(req)
         detail = convert_string_to_type(req.query.get("detail", False), bool)
         show_dead_jobs = convert_string_to_type(
-            req.query.get("show_dead_jobs", False), bool
+            req.query.get("show_dead_jobs", True), bool
         )
 
         return ListApiOptions(
