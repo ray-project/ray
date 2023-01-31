@@ -32,7 +32,7 @@ const useStyles = makeStyles((theme) =>
     },
     chart: {
       width: "100%",
-      height: 300,
+      height: 400,
       overflow: "hidden",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus padding between cards
@@ -105,7 +105,7 @@ type MetricsSectionConfig = {
 // NOTE: please keep the titles here in sync with grafana_dashboard_factory.py
 const METRICS_CONFIG: MetricsSectionConfig[] = [
   {
-    title: "Tasks",
+    title: "Tasks and Actors",
     contents: [
       {
         title: "Scheduler Task State",
@@ -115,11 +115,6 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Active Tasks by Name",
         path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=35",
       },
-    ],
-  },
-  {
-    title: "Actors",
-    contents: [
       {
         title: "Scheduler Actor State",
         path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=33",
@@ -131,12 +126,8 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
     ],
   },
   {
-    title: "Scheduler and autoscaler",
+    title: "Ray Resource Usage",
     contents: [
-      {
-        title: "Node Count",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24",
-      },
       {
         title: "Scheduler CPUs (logical slots)",
         path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=27",
@@ -146,14 +137,22 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
       },
       {
-        title: "Scheduler Placement Groups",
+        title: "Object Store Memory",
+        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=29",
+      },
+      {
+        title: "Placement Groups",
         path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=40",
       },
     ],
   },
   {
-    title: "Node metrics",
+    title: "Hardware Utilization",
     contents: [
+      {
+        title: "Node Count",
+        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24",
+      },
       {
         title: "Node CPU (hardware utilization)",
         path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
@@ -186,14 +185,9 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Node CPU by Component",
         path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=37",
       },
-
       {
         title: "Node Memory by Component",
         path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=34",
-      },
-      {
-        title: "Object Store Memory",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=29",
       },
     ],
   },
@@ -209,7 +203,7 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
     useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
-    TimeRangeOptions.THIRTY_MINS,
+    TimeRangeOptions.FIVE_MINS,
   );
   const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,

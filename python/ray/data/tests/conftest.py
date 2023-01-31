@@ -1,3 +1,4 @@
+import copy
 import os
 import posixpath
 
@@ -270,6 +271,14 @@ def assert_base_partitioned_ds():
         ), f"{actual_sorted_values} != {sorted_values}"
 
     yield _assert_base_partitioned_ds
+
+
+@pytest.fixture
+def restore_dataset_context(request):
+    """Restore any DatasetContext changes after the test runs"""
+    original = copy.deepcopy(ray.data.context.DatasetContext.get_current())
+    yield
+    ray.data.context.DatasetContext._set_current(original)
 
 
 @pytest.fixture(params=[True, False])
