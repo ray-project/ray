@@ -31,6 +31,7 @@ from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,
     RefBundle,
+    TaskContext,
 )
 
 
@@ -147,7 +148,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for b in i.blocks:
                 trace_allocation(b[0], "legacy_compat.blocks_to_input_buf[0]")
 
-        def do_read(blocks: Iterator[Block], task_idx: int) -> Iterator[Block]:
+        def do_read(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
             for read_task in blocks:
                 yield from read_task()
 
@@ -214,8 +215,8 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             fn_args += stage.fn_args
         fn_kwargs = stage.fn_kwargs or {}
 
-        def do_map(blocks: Iterator[Block], task_idx) -> Iterator[Block]:
-            yield from block_fn(blocks, task_idx, *fn_args, **fn_kwargs)
+        def do_map(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
+            yield from block_fn(blocks, ctx, *fn_args, **fn_kwargs)
 
         return MapOperator.create(
             do_map,
@@ -232,7 +233,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         stage_name = stage.name
 
         def bulk_fn(
-            refs: List[RefBundle], task_idx: int
+            refs: List[RefBundle], ctx: TaskContext
         ) -> Tuple[List[RefBundle], StatsDict]:
             input_owned = all(b.owns_blocks for b in refs)
             if isinstance(stage, RandomizeBlocksStage):
@@ -241,7 +242,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
                 output_owned = True
             block_list = _bundles_to_block_list(refs)
             block_list, stats_dict = fn(
-                block_list, task_idx, input_owned, block_udf, remote_args
+                block_list, ctx, input_owned, block_udf, remote_args
             )
             output = _block_list_to_bundles(block_list, owns_blocks=output_owned)
             if not stats_dict:
