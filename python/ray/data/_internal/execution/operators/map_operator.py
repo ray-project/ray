@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import itertools
-from typing import List, Iterator, Any, Dict, Callable, Optional, Union
+from typing import List, Iterator, Any, Dict, Optional, Union
 
 import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
