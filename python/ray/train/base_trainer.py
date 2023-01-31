@@ -234,8 +234,7 @@ class BaseTrainer(abc.ABC):
             param_dict["scaling_config"] = scaling_config
 
         for param_name, val in kwargs.items():
-            assert param_name in param_dict
-            # Overwrite the old value if something was passed in
+            # Overwrite the old value if something is passed into restore
             if val is not None:
                 param_dict[param_name] = val
 
@@ -535,6 +534,7 @@ class BaseTrainer(abc.ABC):
 
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
+        restored = bool(self._restore_path)
 
         def train_func(config):
             # config already contains merged values.
@@ -547,7 +547,11 @@ class BaseTrainer(abc.ABC):
             checkpoint = session.get_checkpoint()
             if checkpoint:
                 trainer.resume_from_checkpoint = checkpoint
-                trainer.preprocessor = checkpoint.get_preprocessor()
+                # Always load the preprocessor from checkpoint
+                # Unless we are restoring the experiment and have passed in a new
+                # preprocessor
+                if not (restored and trainer.preprocessor):
+                    trainer.preprocessor = checkpoint.get_preprocessor()
 
             trainer.setup()
             trainer.preprocess_datasets()
