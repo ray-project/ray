@@ -158,6 +158,4 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
                 time.sleep(DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
 
-        threading.Thread(
-            target=auto_shutdown_watcher, daemon=True
-        ).start()
+        threading.Thread(target=auto_shutdown_watcher, daemon=True).start()
