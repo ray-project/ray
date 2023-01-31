@@ -15,6 +15,7 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
+from ray.tune.impl.placeholder import inject_placeholders
 from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
@@ -36,7 +37,6 @@ from ray.tune.schedulers import (
 from ray.tune.schedulers.util import (
     _set_search_properties_backwards_compatible as scheduler_set_search_props,
 )
-from ray.tune.search.placeholder import inject_placeholders
 from ray.tune.stopper import Stopper
 from ray.tune.search import (
     BasicVariantGenerator,

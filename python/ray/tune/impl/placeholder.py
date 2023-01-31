@@ -52,67 +52,67 @@ class _RefResolver:
 
 
 @DeveloperAPI
-def inject_placeholders(spec: Any, resolvers: Dict, prefix: Tuple = ()) -> Dict:
-    """Replaces reference objects contained by a spec dict with placeholders.
+def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dict:
+    """Replaces reference objects contained by a config dict with placeholders.
 
-    Given a spec dict, this function replaces all reference objects contained
+    Given a config dict, this function replaces all reference objects contained
     by this dict with placeholder strings. It recursively expands nested dicts
     and lists, and properly handles Tune native search objects such as Categorical
     and Function.
-    This makes sure the spec dict only contains primitive typed values, which
+    This makes sure the config dict only contains primitive typed values, which
     can then be handled by different search algorithms.
 
     Args:
-        spec: The spec to replace references in.
+        config: The config dict to replace references in.
         resolvers: A dict from path to replaced objects.
         prefix: The prefix to prepend to all paths.
 
     Returns:
-        The spec with all references replaced.
+        The config with all references replaced.
     """
-    if (isinstance(spec, dict) and
-        "grid_search" in spec and
-        len(spec) == 1
+    if (isinstance(config, dict) and
+        "grid_search" in config and
+        len(config) == 1
     ):
         # Special case for grid search spec.
-        v = _CategoricalResolver(spec["grid_search"])
+        v = _CategoricalResolver(config["grid_search"])
         resolvers[prefix] = v
         # Here we return the original grid_search spec, but with the choices replaced. 
-        spec["grid_search"] = v.get_placeholders()
-        return spec
-    elif isinstance(spec, dict):
+        config["grid_search"] = v.get_placeholders()
+        return config
+    elif isinstance(config, dict):
         return {
             k: inject_placeholders(v, resolvers, prefix + (k,))
-            for k, v in spec.items()
+            for k, v in config.items()
         }
-    elif isinstance(spec, list):
+    elif isinstance(config, list):
         return [
             inject_placeholders(elem, resolvers, prefix + (i,))
-            for i, elem in enumerate(spec)
+            for i, elem in enumerate(config)
         ]
-    elif isinstance(spec, tuple):
+    elif isinstance(config, tuple):
         return (
             inject_placeholders(elem, resolvers, prefix + (i,))
-            for i, elem in enumerate(spec)
+            for i, elem in enumerate(config)
         )
-    elif isinstance(spec, (int, float, str)):
+    elif isinstance(config, (int, float, str)):
         # Primitive types.
-        return spec
-    elif isinstance(spec, Categorical):
+        return config
+    elif isinstance(config, Categorical):
         # Categorical type.
-        v = _CategoricalResolver(spec.categories)
+        v = _CategoricalResolver(config.categories)
         resolvers[prefix] = v
         # Here we return the original Categorical spec, but with the choices replaced. 
-        spec.categories = v.get_placeholders()
-        return spec
-    elif isinstance(spec, Function):
+        config.categories = v.get_placeholders()
+        return config
+    elif isinstance(config, Function):
         # Function type.
-        v = _FunctionResolver(spec)
+        v = _FunctionResolver(config)
         resolvers[prefix] = v
         return v.get_placeholder()
     else:
         # Other reference objects, dataset, actor handle, etc.
-        v = _RefResolver(spec)
+        v = _RefResolver(config)
         resolvers[prefix] = v
         return v.get_placeholder()
 
@@ -123,6 +123,8 @@ def resolve_placeholders(spec: Any, replaced: Dict):
 
     Args:
         spec: The spec to replace placeholders in.
+            Note that not like inject_placeholders, this is the spec dict,
+            which contains config dict under "config" key.
         replaced: A dict from path to replaced objects.
     """
     # resolve_placeholders gets passed the entire spec dict, because it is

@@ -17,10 +17,10 @@ from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
+from ray.tune.impl.placeholder import resolve_placeholders
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList, Callback
-from ray.tune.search.placeholder import resolve_placeholders
 from ray.tune.experiment import Experiment
 from ray.tune.execution.insufficient_resources_manager import (
     _InsufficientResourcesManager,

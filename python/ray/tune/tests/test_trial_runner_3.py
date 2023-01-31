@@ -19,11 +19,11 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 from ray.tune import TuneError
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
+from ray.tune.impl.placeholder import inject_placeholders
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.search import BasicVariantGenerator
-from ray.tune.search.placeholder import inject_placeholders
 from ray.tune.search.sample import sample_from
 from ray.tune.search.variant_generator import grid_search
 from ray.tune.experiment import Trial
