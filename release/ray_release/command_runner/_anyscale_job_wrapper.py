@@ -226,6 +226,12 @@ def main(
 
     logger.info("### Finished ###")
     logger.info(f"### JSON |{output_json}| ###")
+
+    # Flush buffers
+    logging.shutdown()
+    print("", flush=True)
+    print("", file=sys.stderr, flush=True)
+
     if return_code == TIMEOUT_RETURN_CODE:
         if test_long_running:
             return_code = 0
@@ -233,6 +239,8 @@ def main(
             return_code = 124
     elif return_code is None:
         return_code = 1
+
+    time.sleep(1)
     sys.exit(return_code)
 
 

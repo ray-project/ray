@@ -91,6 +91,8 @@ class AnyscaleJobManager:
 
     @property
     def job_id(self):
+        if not self.last_job_result:
+            return None
         return self.last_job_result.id
 
     @property
@@ -213,6 +215,12 @@ class AnyscaleJobManager:
         return self._wait_job(timeout)
 
     def get_last_logs(self):
+        if not self.job_id:
+            raise RuntimeError(
+                "Job has not been started, therefore there are "
+                "no logs to obtain."
+            )
+
         if self._last_logs:
             return self._last_logs
 
