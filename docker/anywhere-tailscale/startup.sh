@@ -162,7 +162,6 @@ else
                     -Cnode.store.allow_mmap=false \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
-                    -Cthread_pool.write.type=scaling \
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
                     -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
@@ -174,7 +173,6 @@ else
                     -Cnode.store.allow_mmap=false \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
-                    -Cthread_pool.write.type=scaling \
                     -Cdiscovery.seed_hosts=$clusterhosts \
                     -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
