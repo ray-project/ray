@@ -58,7 +58,7 @@
 /java/api/ @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
 
 # C++ worker
-/cpp/include/ray @ray-project/ray-core
+/cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core
 
 # Ray Client
 /src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017
