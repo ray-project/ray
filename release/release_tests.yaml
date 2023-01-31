@@ -1785,7 +1785,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -1815,7 +1815,7 @@
     test_suite: long_running_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
   cluster:
     cluster_env: ../rllib_tests/app_config.yaml
@@ -2060,7 +2060,7 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: false
+  stable: true
 
   legacy:
     test_name: serve_failure
@@ -2663,7 +2663,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2686,7 +2686,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2708,7 +2708,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2732,7 +2732,7 @@
 #    test_suite: rllib_tests
 
 #  frequency: nightly
-#  team: rl
+#  team: rllib
 #  env: staging
 
 #  cluster:
@@ -2755,8 +2755,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2779,7 +2782,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2801,7 +2804,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2822,8 +2825,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2845,7 +2851,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2867,7 +2873,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2889,8 +2895,11 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   cluster:
     cluster_env: app_config.yaml
@@ -2910,8 +2919,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2933,7 +2945,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2956,7 +2968,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -2979,7 +2991,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3001,8 +3013,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3025,7 +3040,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3048,7 +3063,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3071,7 +3086,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3094,7 +3109,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3116,8 +3131,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3139,8 +3157,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3163,7 +3184,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3172,7 +3193,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/tf --framework=tf
 
 
   alert: default
@@ -3185,8 +3206,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3195,7 +3219,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/torch --framework=torch
 
 
   alert: default
@@ -3209,7 +3233,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3232,7 +3256,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3254,7 +3278,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3276,8 +3300,11 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3300,7 +3327,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3323,7 +3350,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3346,7 +3373,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3368,7 +3395,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3391,7 +3418,7 @@
     test_suite: rllib_tests
 
   frequency: nightly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3414,7 +3441,7 @@
     test_suite: rllib_tests
 
   frequency: weekly
-  team: rl
+  team: rllib
   env: staging
 
   cluster:
@@ -3435,6 +3462,30 @@
 
     run:
       timeout: 2000
+
+  alert: default
+
+- name: rllib_learning_tests_leela_chess_zero
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: rl
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml  
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=leela_chess_zero
+    type: sdk_command
+    file_manager: job
 
   alert: default
 
@@ -3885,7 +3936,7 @@
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
-    timeout: 7200
+    timeout: 3600
     # 2cpus per node x 1000 nodes / 0.2 cpus per actor = 10k
     # 2cpus per node x 2000 nodes / 0.2 cpus per actor = 20k
     script: python distributed/many_nodes_tests/actor_test.py --no-wait --cpus-per-actor=0.2 --total-actors 10000 20000

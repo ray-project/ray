@@ -884,6 +884,14 @@ py_test(
     srcs = ["algorithms/alpha_zero/tests/test_alpha_zero.py"]
 )
 
+# LeelaChessZero
+py_test(
+    name = "test_leela_chess_zero",
+    tags = ["team:rllib","torch_only", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/leela_chess_zero/tests/test_leela_chess_zero.py"]
+)
+
 # APEX-DQN
 py_test(
     name = "test_apex_dqn",
@@ -1838,15 +1846,8 @@ py_test(
 py_test(
     name = "test_trainer_runner",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
-    size = "medium",
+    size = "large",
     srcs = ["core/rl_trainer/tests/test_trainer_runner.py"]
-)
-
-py_test(
-    name = "test_trainer_runner_local",
-    tags = ["team:rllib", "core", "exclusive"],
-    size = "medium",
-    srcs = ["core/rl_trainer/tests/test_trainer_runner_local.py"]
 )
 
 py_test(
@@ -3330,6 +3331,14 @@ py_test(
     args = ["--stop-iters=4", "--framework=torch"]
 )
 
+py_test(
+    name = "examples/multi_agent_independent_learning",
+    main = "examples/multi_agent_independent_learning.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent_independent_learning.py"],
+    args = ["--stop-iters=4", "--framework=torch"]
+)
 
 py_test(
     name = "examples/multi_agent_two_trainers_tf",
