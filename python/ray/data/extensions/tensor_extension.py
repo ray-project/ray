@@ -11,5 +11,6 @@ from ray.air.util.tensor_extensions.arrow import (  # noqa: F401
     ArrowVariableShapedTensorArray,
 )
 from ray.air.util.tensor_extensions.utils import (  # noqa: F401
-    create_possibly_ragged_ndarray,
+    _create_possibly_ragged_ndarray,
+    create_ragged_ndarray,
 )

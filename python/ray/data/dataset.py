@@ -25,7 +25,7 @@ import warnings
 import numpy as np
 
 import ray
-from ray.air.util.tensor_extensions.utils import create_possibly_ragged_ndarray
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
@@ -1095,7 +1095,7 @@ class Dataset(Generic[T]):
             if isinstance(batch, pd.DataFrame):
                 return batch.sample(frac=fraction)
             if isinstance(batch, np.ndarray):
-                return create_possibly_ragged_ndarray(
+                return _create_possibly_ragged_ndarray(
                     [row for row in batch if random.random() <= fraction]
                 )
             raise ValueError(f"Unsupported batch type: {type(batch)}")

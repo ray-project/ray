@@ -13,7 +13,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
-from ray.air.util.tensor_extensions.utils import create_possibly_ragged_ndarray
+from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray._private.utils import _get_pyarrow_version
 
 
@@ -24,8 +24,8 @@ from ray._private.utils import _get_pyarrow_version
         [np.zeros((3,))],
     ],
 )
-def test_create_possibly_ragged_ndarray(values):
-    ragged_array = create_possibly_ragged_ndarray(values)
+def test_create_ragged_ndarray(values):
+    ragged_array = create_ragged_ndarray(values)
     assert len(ragged_array) == len(values)
     for actual_array, expected_array in zip(ragged_array, values):
         np.testing.assert_array_equal(actual_array, expected_array)
