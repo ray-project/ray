@@ -260,6 +260,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   }
 
   // A new task event, add to storage and index.
+  total_num_tasks_ += 1;
 
   // If limit enforced, replace one.
   // TODO(rickyx): Optimize this to per job limit with bounded FIFO map.
@@ -322,7 +323,6 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
 
     // Update iter.
     next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % max_num_task_events_;
-    total_num_events_ += 1;
 
     MarkTaskTreeFailedIfNeeded(task_id, parent_task_id);
     return replaced;
@@ -334,7 +334,6 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   task_to_task_attempt_index_[task_id].insert(task_attempt);
   // Add a new task events.
   task_events_.push_back(std::move(events_by_task));
-  total_num_events_ += 1;
 
   MarkTaskTreeFailedIfNeeded(task_id, parent_task_id);
   return absl::nullopt;
@@ -449,7 +448,7 @@ std::string GcsTaskManager::DebugString() {
      << "\n-Current num of task events stored: "
      << task_event_storage_->GetTaskEventsCount()
      << "\n-Total num of task events ever stored: "
-     << task_event_storage_->GetTotalNumTaskEventsCount() << "\n";
+     << task_event_storage_->GetTotalNumTasks() << "\n";
 
   return ss.str();
 }
@@ -470,9 +469,8 @@ void GcsTaskManager::RecordMetrics() {
       task_event_storage_->GetTaskEventsBytes());
 
   if (usage_stats_client_) {
-    usage_stats_client_->RecordExtraUsageCounter(
-        usage::TagKey::TASK_NUM_CREATED,
-        task_event_storage_->GetTotalNumTaskEventsCount());
+    usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::TASK_NUM_CREATED,
+                                                 task_event_storage_->GetTotalNumTasks());
   }
 }
 
