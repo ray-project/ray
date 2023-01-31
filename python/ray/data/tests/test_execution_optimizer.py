@@ -4,7 +4,10 @@ import ray
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
+from ray.data._internal.logical.operators.all_to_all_operator import (
+    RandomShuffle,
+    RandomizeBlocks,
+)
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.map_operator import (
     MapRows,
@@ -164,6 +167,32 @@ def test_randomize_blocks_e2e(ray_start_cluster_enabled, enable_optimizer):
     ds = ray.data.range(12, parallelism=4)
     ds = ds.randomize_block_order(seed=0)
     assert ds.take_all() == [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11], ds
+
+
+def test_random_shuffle_operator(ray_start_cluster_enabled, enable_optimizer):
+    planner = Planner()
+    read_op = Read(ParquetDatasource())
+    op = RandomShuffle(
+        read_op,
+        seed=0,
+    )
+    physical_op = planner.plan(op)
+
+    assert op.name == "RandomShuffle"
+    assert isinstance(physical_op, AllToAllOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+
+def test_random_shuffle_e2e(
+    ray_start_cluster_enabled, enable_optimizer, use_push_based_shuffle
+):
+    ds = ray.data.range(12, parallelism=4)
+    r1 = ds.random_shuffle(seed=0).take_all()
+    r2 = ds.random_shuffle(seed=1024).take_all()
+    assert r1 != r2, (r1, r2)
+    assert sorted(r1) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], r1
+    assert sorted(r2) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], r2
 
 
 if __name__ == "__main__":
