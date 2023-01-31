@@ -4,9 +4,11 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
     RandomShuffle,
     RandomizeBlocks,
+    Repartition,
 )
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
+from ray.data._internal.planner.repartition import generate_repartition_fn
 
 
 def _plan_all_to_all_op(
@@ -22,6 +24,8 @@ def _plan_all_to_all_op(
         fn = generate_randomize_blocks_fn(op._seed)
     elif isinstance(op, RandomShuffle):
         fn = generate_random_shuffle_fn(op._seed, op._num_outputs)
+    elif isinstance(op, Repartition):
+        fn = generate_repartition_fn(op._num_outputs, op._shuffle)
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")
 
