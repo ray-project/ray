@@ -535,6 +535,7 @@ py_test_module_list(
     "spark/test_GPU.py",
     "spark/test_multicores_per_task.py",
     "spark/test_utils.py",
+    "spark/test_databricks_hook.py",
   ],
   size = "large",
   tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
