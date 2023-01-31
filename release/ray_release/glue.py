@@ -321,9 +321,12 @@ def run_release_test(
                 timeout=command_timeout,
                 is_long_running=is_long_running,
             )
-        except (TestCommandError, PrepareCommandError) as e:
-            raise e
-        except (TestCommandTimeout, PrepareCommandTimeout) as e:
+        except (
+            TestCommandError,
+            PrepareCommandError,
+            TestCommandTimeout,
+            PrepareCommandTimeout,
+        ) as e:
             raise e
         except CommandError as e:
             raise TestCommandError(e)

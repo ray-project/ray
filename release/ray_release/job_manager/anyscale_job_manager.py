@@ -13,7 +13,7 @@ from anyscale.controllers.job_controller import JobController, terminal_state
 
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.exception import CommandTimeout
+from ray_release.exception import CommandTimeout, ClusterNodesWaitTimeout
 from ray_release.logger import logger
 from ray_release.util import (
     ANYSCALE_HOST,
@@ -30,6 +30,7 @@ class AnyscaleJobManager:
         self.cluster_manager = cluster_manager
         self._last_job_result = None
         self._last_logs = None
+        self.wait_for_nodes_timeout = 0
 
     def _run_job(
         self,
@@ -125,7 +126,10 @@ class AnyscaleJobManager:
 
     def _wait_job(self, timeout: int):
         start_time = time.monotonic()
-        timeout_at = start_time + timeout
+        if self.wait_for_nodes_timeout > 0:
+            timeout_at = start_time + self.wait_for_nodes_timeout
+        else:
+            timeout_at = start_time + timeout
         next_status = start_time + 30
         job_running = False
 
@@ -133,6 +137,11 @@ class AnyscaleJobManager:
             now = time.monotonic()
             if now >= timeout_at:
                 self._terminate_job()
+                if not job_running:
+                    raise ClusterNodesWaitTimeout(
+                        "Cluster did not start within "
+                        f"{self.wait_for_nodes_timeout} seconds."
+                    )
                 raise CommandTimeout(f"Job timed out after {timeout} seconds.")
 
             if now >= next_status:
@@ -153,6 +162,8 @@ class AnyscaleJobManager:
             }:
                 logger.info(f"... job started ...({int(now - start_time)} seconds) ...")
                 job_running = True
+                if self.wait_for_nodes_timeout > 0:
+                    timeout_at = now + timeout
 
             if status in terminal_state:
                 break

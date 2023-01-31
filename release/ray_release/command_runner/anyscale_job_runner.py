@@ -24,6 +24,8 @@ from ray_release.util import get_anyscale_sdk, generate_tmp_s3_path, join_s3_pat
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
+TIMEOUT_RETURN_CODE = -1
+
 
 class AnyscaleJobRunner(JobRunner):
     def __init__(
@@ -69,7 +71,7 @@ class AnyscaleJobRunner(JobRunner):
         self.prepare_commands.append((command, env, timeout))
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
-        # Handled by Anyscale
+        self.job_manager.wait_for_nodes_timeout += timeout
         super().wait_for_nodes(num_nodes, timeout)
 
     def save_metrics(self, start_time: float, timeout: float = 900):
@@ -88,7 +90,7 @@ class AnyscaleJobRunner(JobRunner):
             last_prepare_time_taken = output_json["last_prepare_time_taken"]
 
             if prepare_return_codes[-1] != 0:
-                if prepare_return_codes[-1] != 0:
+                if prepare_return_codes[-1] == TIMEOUT_RETURN_CODE:
                     raise PrepareCommandTimeout(
                         "Prepare command timed out after "
                         f"{last_prepare_time_taken} seconds."
@@ -100,7 +102,7 @@ class AnyscaleJobRunner(JobRunner):
                 )
 
         if job_status_code != 0 or workload_status_code != 0:
-            if workload_status_code == -1:
+            if workload_status_code == TIMEOUT_RETURN_CODE:
                 raise TestCommandTimeout(
                     f"Command timed out after {workload_time_taken} seconds."
                 )
@@ -166,7 +168,9 @@ class AnyscaleJobRunner(JobRunner):
             full_env,
             working_dir=".",
             upload_path=self.upload_path,
-            timeout=int(timeout) + sum(prepare_command_timeouts) + 300,
+            timeout=int(timeout)
+            + sum(prepare_command_timeouts)
+            - self.job_manager.wait_for_nodes_timeout,
         )
         try:
             error = self.job_manager.last_job_result.state.error

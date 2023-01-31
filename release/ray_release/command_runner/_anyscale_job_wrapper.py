@@ -10,22 +10,16 @@ import logging
 from typing import List
 
 AWS_CP_TIMEOUT = 300
+TIMEOUT_RETURN_CODE = -1
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-def add_handlers(logger: logging.Logger):
-    handler = logging.StreamHandler(stream=sys.stderr)
-    formatter = logging.Formatter(
-        fmt="[%(levelname)s %(asctime)s] %(filename)s: %(lineno)d  %(message)s"
-    )
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-
-if not logger.hasHandlers():
-    add_handlers(logger)
+handler = logging.StreamHandler(stream=sys.stderr)
+formatter = logging.Formatter(
+    fmt="[%(levelname)s %(asctime)s] %(filename)s: %(lineno)d  %(message)s"
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 
 def exponential_backoff_retry(
@@ -106,7 +100,7 @@ def _run_bash_command_subprocess(command: str, timeout: float):
         subprocess.run(command, check=True, timeout=timeout)
         return_code = 0
     except subprocess.TimeoutExpired:
-        return_code = -1
+        return_code = TIMEOUT_RETURN_CODE
     except subprocess.CalledProcessError as e:
         return_code = e.returncode
     sys.exit(return_code)
@@ -136,7 +130,7 @@ def run_bash_command(workload: str, timeout: float):
         p.join(timeout=timeout + 10)
         return_code = 0
     except multiprocessing.TimeoutError:
-        return_code = -1
+        return_code = TIMEOUT_RETURN_CODE
     except multiprocessing.ProcessError:
         return_code = p.exitcode
     finally:
@@ -170,7 +164,7 @@ def main(
             prepare_time_taken = time.monotonic() - command_start_time
             return_code = prepare_return_codes[-1]
             if return_code != 0:
-                timeout = return_code == -1
+                timeout = return_code == TIMEOUT_RETURN_CODE
                 if timeout:
                     logger.error(
                         "Prepare command timed out. "
@@ -190,7 +184,7 @@ def main(
         return_code = run_bash_command(test_workload, test_workload_timeout)
         workload_time_taken = time.monotonic() - command_start_time
 
-        timeout = return_code == -1
+        timeout = return_code == TIMEOUT_RETURN_CODE
         if timeout:
             msg = f"Timed out. Time taken: {workload_time_taken}"
             if test_long_running:
@@ -232,7 +226,7 @@ def main(
 
     logger.info("### Finished ###")
     logger.info(f"### JSON |{output_json}| ###")
-    if return_code == -1:
+    if return_code == TIMEOUT_RETURN_CODE:
         if test_long_running:
             return_code = 0
         else:
