@@ -4,7 +4,7 @@ from ray.data.block import Block
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
 from ray.data._internal.compute import is_task_compute, CallableClass, get_compute
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
 from ray.data._internal.logical.interfaces import Rule, PhysicalPlan
 
 
@@ -140,10 +140,10 @@ class OperatorFusionRule(Rule):
         down_transform_fn = down_op.get_transformation_fn()
         up_transform_fn = up_op.get_transformation_fn()
 
-        def transform_fn(blocks: Iterator[Block]) -> Iterator[Block]:
-            blocks = up_transform_fn(blocks)
+        def transform_fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
+            blocks = up_transform_fn(blocks, ctx)
             # TODO(Clark): Add zero-copy batching between transform functions.
-            return down_transform_fn(blocks)
+            return down_transform_fn(blocks, ctx)
 
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
