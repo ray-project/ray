@@ -232,7 +232,8 @@ class RayTrialExecutor:
         ] = defaultdict(list)
 
         # Trials for which we requested resources
-        self._staged_trials = set()
+        self._staged_trials = set()  # Staged trials
+        self._staged_resources = Counter()  # Resources of staged trials
         self._trial_to_acquired_resources: Dict[Trial, AcquiredResources] = {}
 
         # Result buffer
@@ -319,6 +320,7 @@ class RayTrialExecutor:
             resource_request = trial.placement_group_factory
 
             self._staged_trials.add(trial)
+            self._staged_resources[trial.placement_group_factory] += 1
             self._resource_manager.request_resources(resource_request=resource_request)
 
         self._resource_manager.update_state()
@@ -533,6 +535,7 @@ class RayTrialExecutor:
         # Case 1: The trial we started was staged. Just remove it
         if trial in self._staged_trials:
             self._staged_trials.remove(trial)
+            self._staged_resources[trial.placement_group_factory] -= 1
             return
 
         # Case 2: We staged a trial "A" with the same resources, but our trial "B"
@@ -551,6 +554,7 @@ class RayTrialExecutor:
 
         if candidate_trial:
             self._staged_trials.remove(candidate_trial)
+            self._staged_resources[candidate_trial.placement_group_factory] -= 1
             return
 
         raise RuntimeError(
@@ -848,11 +852,7 @@ class RayTrialExecutor:
         self._do_force_trial_cleanup()
 
     def _count_staged_resources(self):
-        counter = Counter()
-        for trial in self._staged_trials:
-            resource_request = trial.placement_group_factory
-            counter[resource_request] += 1
-        return counter
+        return self._staged_resources
 
     def _cleanup_cached_actors(
         self, search_ended: bool = False, force_all: bool = False
