@@ -2757,6 +2757,9 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
   team: rllib
   env: staging
@@ -2823,6 +2826,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -2894,6 +2900,9 @@
   team: rllib
   env: staging
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -2911,6 +2920,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3002,6 +3014,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3118,6 +3133,9 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
   frequency: nightly
   team: rllib
   env: staging
@@ -3140,6 +3158,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3186,6 +3207,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
@@ -3277,6 +3301,9 @@
   legacy:
     test_name: learning_tests
     test_suite: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
 
   frequency: nightly
   team: rllib
