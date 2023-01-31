@@ -4,8 +4,8 @@ tailscale status -json | jq -r .BackendState | grep -q "Running" || exit 1
 #test for crate connectivity
 clusterhosts=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].name')
 #clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net"}' | tr '\n' ' ')
-if [ -n clusterhosts ]; then
-    clusterhosts=${clusterhosts%?}
+if [ -n $clusterhosts ]; then
+    clusterhosts=${clusterhosts}
 else
     clusterhosts="nexus.chimp-beta.ts.net"
 fi
