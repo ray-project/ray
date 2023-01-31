@@ -10,9 +10,9 @@ else
     clusterhosts="nexus.chimp-beta.ts.net"
 fi
 
-/usr/local/bin/crash -U crate --hosts $clusterhosts -c "SELECT * FROM sys.nodes"
+#/usr/local/bin/crash -U crate --hosts $clusterhosts -c "SELECT * FROM sys.nodes"
 
-ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE
+ray list nodes -f NODE_NAME=$HOSTNAME.chimp-beta.ts.net -f STATE=ALIVE | grep -q ALIVE || exit 1
 #ray status || exit 1
 
-#exit 0
+exit 0
