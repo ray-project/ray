@@ -333,8 +333,9 @@ class TrialRunner:
     def __init__(
         self,
         *,
+        spec: Optional[Dict[str, Any]] = None,
         search_alg: Optional[SearchAlgorithm] = None,
-        replaced_ref_map: Optional[Dict[Tuple, Any]] = None,
+        placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
         local_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
@@ -351,8 +352,9 @@ class TrialRunner:
         # Deprecate on next refactor
         driver_sync_trial_checkpoints: bool = False,
     ):
+        self._spec = spec
         self._search_alg = search_alg or BasicVariantGenerator()
-        self._replaced_ref_map = replaced_ref_map
+        self._placeholder_resolvers = placeholder_resolvers
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
         self._callbacks = CallbackList(callbacks or [])
@@ -1091,8 +1093,14 @@ class TrialRunner:
         """
         # If the config map has had all the references replaced,
         # resolve them before adding the trial.
-        if self._replaced_ref_map:
-            resolve_placeholders(trial.config, self._replaced_ref_map)
+        if self._placeholder_resolvers:
+            # Construct the full experiment spec for resolution.
+            spec = self._spec or {}
+            # Replace the config with the trial's config.
+            spec.update(config=trial.config)
+            resolve_placeholders(
+                spec, self._placeholder_resolvers
+            )
 
         self._trials.append(trial)
         if trial.status != Trial.TERMINATED:
@@ -1595,6 +1603,7 @@ class TrialRunner:
             "_stop_queue",
             "_server",
             "_search_alg",
+            "_placeholder_resolvers",
             "_scheduler_alg",
             "_pending_trial_queue_times",
             "trial_executor",

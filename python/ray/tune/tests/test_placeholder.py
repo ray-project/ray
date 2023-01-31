@@ -1,7 +1,7 @@
 import unittest
 
 from ray import tune
-from ray.tune.search.placeholder import replace_references, resolve_placeholders
+from ray.tune.search.placeholder import inject_placeholders, resolve_placeholders
 
 
 class PlaceholderTest(unittest.TestCase):
@@ -15,7 +15,7 @@ class PlaceholderTest(unittest.TestCase):
         }
 
         replaced = {}
-        config = replace_references(config, replaced)
+        config = inject_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1]["grid_search"], ["cat_0", "cat_1"])
         self.assertEqual(config["param3"]["param4"]["grid_search"], ["cat_0", "cat_1"])
@@ -39,7 +39,7 @@ class PlaceholderTest(unittest.TestCase):
         }
 
         replaced = {}
-        config = replace_references(config, replaced)
+        config = inject_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1].categories, ["cat_0", "cat_1"])
         self.assertEqual(config["param3"]["param4"].categories, ["cat_0", "cat_1"])
@@ -63,7 +63,7 @@ class PlaceholderTest(unittest.TestCase):
         }
 
         replaced = {}
-        config = replace_references(config, replaced)
+        config = inject_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1], "fn_ph")
         self.assertEqual(config["param3"]["param4"], "fn_ph")
@@ -87,7 +87,7 @@ class PlaceholderTest(unittest.TestCase):
         }
 
         replaced = {}
-        config = replace_references(config, replaced)
+        config = inject_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1], "ref_ph")
         self.assertEqual(config["param3"]["param4"], "ref_ph")

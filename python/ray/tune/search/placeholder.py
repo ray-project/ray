@@ -1,18 +1,18 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
+
 from ray.tune.search.sample import Categorical, Function
 from ray.tune.search.variant_generator import assign_value, _get_value
-
 from ray.util.annotations import DeveloperAPI
 
 
-class _Categorical_Value:
+class _CategoricalResolver:
     """Replaced value for categorical typed objects.
     """
     def __init__(self, choices):
         self._choices = choices
 
-    def get_value(self, placeholder: str) -> Any:
-        ca, i = ph.split("_")
+    def resolve(self, placeholder: str) -> Any:
+        ca, i = placeholder.split("_")
         assert ca == "cat", "Categorical placeholder should start with cat_"
         return self._choices[int(i)]
 
@@ -20,41 +20,51 @@ class _Categorical_Value:
         return [f"cat_{i}" for i in range(len(self._choices))]
 
 
-class _Function_Value:
+class _FunctionResolver:
     """Replaced value for function typed objects.
     """
     def __init__(self, fn):
         self._fn = fn
 
-    def get(self, spec):
+    def resolve(self, spec):
         """Some functions take a resolved spec dict as input.
+
+        Note: Function placeholders are independently sampled during
+        resolution. Therefore their random states are not restored.
         """
         return self._fn.sample(spec=spec)
 
-    def get_ph(self):
+    def get_placeholder(self) -> str:
         return "fn_ph"
 
 
-class _Ref_Value:
+class _RefResolver:
     """Replaced value for all other non-primitive objects.
     """
     def __init__(self, value):
         self._value = value
 
-    def get(self):
+    def resolve(self):
         return self._value
 
-    def get_ph(self):
+    def get_placeholder(self) -> str:
         return "ref_ph"
 
 
 @DeveloperAPI
-def replace_references(spec: Any, replaced: Dict, prefix: Tuple = ()) -> Dict:
+def inject_placeholders(spec: Any, resolvers: Dict, prefix: Tuple = ()) -> Dict:
     """Replaces reference objects contained by a spec dict with placeholders.
+
+    Given a spec dict, this function replaces all reference objects contained
+    by this dict with placeholder strings. It recursively expands nested dicts
+    and lists, and properly handles Tune native search objects such as Categorical
+    and Function.
+    This makes sure the spec dict only contains primitive typed values, which
+    can then be handled by different search algorithms.
 
     Args:
         spec: The spec to replace references in.
-        replacements: A dict from path to replaced objects.
+        resolvers: A dict from path to replaced objects.
         prefix: The prefix to prepend to all paths.
 
     Returns:
@@ -65,41 +75,46 @@ def replace_references(spec: Any, replaced: Dict, prefix: Tuple = ()) -> Dict:
         len(spec) == 1
     ):
         # Special case for grid search spec.
-        v = _Categorical_Value(spec["grid_search"])
-        replaced[prefix] = v
+        v = _CategoricalResolver(spec["grid_search"])
+        resolvers[prefix] = v
         # Here we return the original grid_search spec, but with the choices replaced. 
-        spec["grid_search"] = v.get_ph()
+        spec["grid_search"] = v.get_placeholders()
         return spec
     elif isinstance(spec, dict):
         return {
-            k: replace_references(v, replaced, prefix + (k,))
+            k: inject_placeholders(v, resolvers, prefix + (k,))
             for k, v in spec.items()
         }
-    elif isinstance(spec, (list, tuple)):
+    elif isinstance(spec, list):
         return [
-            replace_references(elem, replaced, prefix + (i,))
+            inject_placeholders(elem, resolvers, prefix + (i,))
             for i, elem in enumerate(spec)
         ]
+    elif isinstance(spec, tuple):
+        return (
+            inject_placeholders(elem, resolvers, prefix + (i,))
+            for i, elem in enumerate(spec)
+        )
     elif isinstance(spec, (int, float, str)):
         # Primitive types.
         return spec
     elif isinstance(spec, Categorical):
         # Categorical type.
-        v = _Categorical_Value(spec.categories)
-        replaced[prefix] = v
+        v = _CategoricalResolver(spec.categories)
+        resolvers[prefix] = v
         # Here we return the original Categorical spec, but with the choices replaced. 
-        spec.categories = v.get_ph()
+        spec.categories = v.get_placeholders()
         return spec
     elif isinstance(spec, Function):
         # Function type.
-        v = _Function_Value(spec)
-        replaced[prefix] = v
-        return v.get_ph()
+        v = _FunctionResolver(spec)
+        resolvers[prefix] = v
+        return v.get_placeholder()
     else:
         # Other reference objects, dataset, actor handle, etc.
-        v = _Ref_Value(spec)
-        replaced[prefix] = v
-        return v.get_ph()
+        v = _RefResolver(spec)
+        resolvers[prefix] = v
+        return v.get_placeholder()
 
 
 @DeveloperAPI
@@ -110,15 +125,24 @@ def resolve_placeholders(spec: Any, replaced: Dict):
         spec: The spec to replace placeholders in.
         replaced: A dict from path to replaced objects.
     """
-    for path, value in replaced.items():
+    # resolve_placeholders gets passed the entire spec dict, because it is
+    # required for resolving Function placeholders.
+    if "config" not in spec:
+        # Nothing to resolve.
+        return
+
+    # First thing is to take the config dict out.
+    config = spec["config"]
+    for path, resolver in replaced.items():
         resolved = None
 
-        if isinstance(value, _Categorical_Value):
-            sampled = _get_value(spec, path)
-            resolved = value.get(sampled)
-        elif isinstance(value, _Function_Value):
-            resolved = value.get(spec)
-        elif isinstance(value, _Ref_Value):
-            resolved = value.get()
+        if isinstance(resolver, _CategoricalResolver):
+            sampled = _get_value(config, path)
+            resolved = resolver.resolve(sampled)
+        elif isinstance(resolver, _FunctionResolver):
+            # Function domain expects the full spec dict.
+            resolved = resolver.resolve(spec)
+        elif isinstance(resolver, _RefResolver):
+            resolved = resolver.resolve()
 
-        assign_value(spec, path, resolved)
+        assign_value(config, path, resolved)
