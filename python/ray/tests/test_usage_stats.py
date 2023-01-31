@@ -1492,7 +1492,7 @@ def test_usage_stats_tags(
 def test_usage_stats_gcs_query_failure(
     monkeypatch, ray_start_cluster, reset_usage_stats
 ):
-    """Test None data is reported when the GCS query is failed."""
+    """Test empty data is reported when the GCS query is failed."""
     with monkeypatch.context() as m:
         m.setenv(
             "RAY_testing_asio_delay_us",
@@ -1506,7 +1506,7 @@ def test_usage_stats_gcs_query_failure(
             ray_usage_lib.get_subnets_to_report(
                 ray.experimental.internal_kv.internal_kv_get_gcs_client(), timeout=1
             )
-            is None
+            == {}
         )
 
 
