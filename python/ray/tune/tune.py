@@ -97,6 +97,17 @@ def _check_default_resources_override(
     )
 
 
+def _check_mixin(run_identifier: Union[Experiment, str, Type, Callable]) -> bool:
+    trainable_cls = _get_trainable(run_identifier)
+    if not trainable_cls:
+        # Default to True
+        return True
+
+    return hasattr(trainable_cls, "__mixins__") or getattr(
+        trainable_cls, "_is_mixin", False
+    )
+
+
 def _check_gpus_in_resources(
     resources: Optional[Union[Dict, PlacementGroupFactory]]
 ) -> bool:
@@ -536,7 +547,13 @@ def run(
                 # will be requested, yet, so default to False
                 _check_default_resources_override(trainable)
             )
+            and not (
+                # Mixins do not work with reuse_actors as the mixin setup will only
+                # be invoked once
+                _check_mixin(trainable)
+            )
         )
+        logger.debug(f"Auto-detected `reuse_actors={reuse_actors}`")
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))

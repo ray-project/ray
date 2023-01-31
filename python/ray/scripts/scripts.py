@@ -406,7 +406,7 @@ def debug(address):
     required=False,
     default="localhost",
     help="the host to bind the dashboard server to, either localhost "
-    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this"
+    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
     "is localhost.",
 )
 @click.option(
@@ -467,8 +467,8 @@ def debug(address):
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir of the Ray process, only works"
-    "when --head is specified",
+    help="manually specify the root temporary dir of the Ray process, only "
+    "works when --head is specified",
 )
 @click.option(
     "--storage",
@@ -515,7 +515,7 @@ def debug(address):
     "--ray-debugger-external",
     is_flag=True,
     default=False,
-    help="Make the Ray debugger available externally to the node. This is only"
+    help="Make the Ray debugger available externally to the node. This is only "
     "safe to activate if the node is behind a firewall.",
 )
 @click.option(

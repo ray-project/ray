@@ -30,7 +30,6 @@ try:
     from wandb.sdk.lib.disabled import RunDisabled
     from wandb.sdk.data_types.base_types.wb_value import WBValue
 except ImportError:
-    logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = json_dumps_safer = Run = RunDisabled = WBValue = None
 
 
@@ -544,6 +543,11 @@ class WandbLoggerCallback(LoggerCallback):
         save_checkpoints: bool = False,
         **kwargs,
     ):
+        if not wandb:
+            raise RuntimeError(
+                "Wandb was not found - please install with `pip install wandb`"
+            )
+
         if save_checkpoints:
             warnings.warn(
                 "`save_checkpoints` is deprecated. Use `upload_checkpoints` instead.",

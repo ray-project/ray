@@ -1,3 +1,4 @@
+import copy
 import os
 import posixpath
 
@@ -17,7 +18,22 @@ from ray._private.utils import _get_pyarrow_version
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import _ray_start
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(scope="module")
+def ray_start_2_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_10_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=10, **param) as res:
+        yield res
 
 
 @pytest.fixture(scope="function")
@@ -255,6 +271,14 @@ def assert_base_partitioned_ds():
         ), f"{actual_sorted_values} != {sorted_values}"
 
     yield _assert_base_partitioned_ds
+
+
+@pytest.fixture
+def restore_dataset_context(request):
+    """Restore any DatasetContext changes after the test runs"""
+    original = copy.deepcopy(ray.data.context.DatasetContext.get_current())
+    yield
+    ray.data.context.DatasetContext._set_current(original)
 
 
 @pytest.fixture(params=[True, False])
