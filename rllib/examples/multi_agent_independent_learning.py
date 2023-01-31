@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     if args.as_test:
         # Only a compilation test of running waterworld / independent learning.
-        stop = {"iterations": 1}
+        stop = {"episodes_total": 1}
     else:
         stop = {"episodes_total": 60000}
 
