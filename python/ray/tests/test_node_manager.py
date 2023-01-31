@@ -192,7 +192,7 @@ import ray
 class A:
     def fn(self):
         pass
-        
+
 ray.init(address="{}", namespace="test_det")
 
 ray.get(A.options(num_cpus=123, name="det", lifetime="detached").remote())
