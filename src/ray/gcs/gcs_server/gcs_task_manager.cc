@@ -322,6 +322,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
 
     // Update iter.
     next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % max_num_task_events_;
+    total_num_events_ += 1;
 
     MarkTaskTreeFailedIfNeeded(task_id, parent_task_id);
     return replaced;
@@ -427,8 +428,6 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
         total_num_profile_task_events_dropped_ +=
             replaced_task_events->profile_events().events_size();
       }
-    } else {
-      total_num_tasks_reported_++;
     }
   }
 
@@ -441,14 +440,15 @@ std::string GcsTaskManager::DebugString() {
   std::ostringstream ss;
   ss << "GcsTaskManager: "
      << "\n-Total num task events reported: " << total_num_task_events_reported_
-     << "\n-Total num tasks reported: " << total_num_tasks_reported_
      << "\n-Total num status task events dropped: "
      << total_num_status_task_events_dropped_
      << "\n-Total num profile events dropped: " << total_num_profile_task_events_dropped_
      << "\n-Total num bytes of task event stored: "
      << 1.0 * task_event_storage_->GetTaskEventsBytes() / 1024 / 1024 << "MiB"
-     << "\n-Total num of task events stored: "
-     << task_event_storage_->GetTaskEventsCount() << "\n";
+     << "\n-Current num of task events stored: "
+     << task_event_storage_->GetTaskEventsCount()
+     << "\n-Total num of task events ever stored: "
+     << task_event_storage_->GetTotalNumTaskEventsCount() << "\n";
 
   return ss.str();
 }
@@ -469,8 +469,9 @@ void GcsTaskManager::RecordMetrics() {
       task_event_storage_->GetTaskEventsBytes());
 
   if (usage_stats_client_) {
-    usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::TASK_NUM_CREATED,
-                                                 total_num_tasks_reported_);
+    usage_stats_client_->RecordExtraUsageCounter(
+        usage::TagKey::TASK_NUM_CREATED,
+        task_event_storage_->GetTotalNumTaskEventsCount());
   }
 }
 

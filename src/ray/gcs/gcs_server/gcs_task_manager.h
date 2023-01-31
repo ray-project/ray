@@ -250,6 +250,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// Get the number of task events stored.
     size_t GetTaskEventsCount() const { return task_events_.size(); }
 
+    /// Get the total number of task events, including the ones have been overwritten.
+    size_t GetTotalNumTaskEventsCount() const { return total_num_events_; }
+
     /// Get the total number of bytes of task events stored.
     uint64_t GetTaskEventsBytes() const { return num_bytes_task_events_; }
 
@@ -258,6 +261,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
     /// A iterator into task_events_ that determines which element to be overwritten.
     size_t next_idx_to_overwrite_ = 0;
+
+    /// Total number of task_events, including the ones have been overwritten.
+    size_t total_num_events_ = 0;
 
     /// TODO(rickyx): Refactor this into LRI(least recently inserted) buffer:
     /// https://github.com/ray-project/ray/issues/31158
@@ -297,9 +303,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
   /// Total number of task events reported.
   uint32_t total_num_task_events_reported_ GUARDED_BY(mutex_) = 0;
-
-  /// Total number of unique tasks (dedupe multiple events from the same task) reported.
-  uint32_t total_num_tasks_reported_ GUARDED_BY(mutex_) = 0;
 
   /// Total number of status task events dropped on the worker.
   uint32_t total_num_status_task_events_dropped_ GUARDED_BY(mutex_) = 0;
