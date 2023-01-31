@@ -62,3 +62,20 @@ class RandomShuffle(AbstractAllToAll):
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
+
+
+class Repartition(AbstractAllToAll):
+    """Logical operator for repartition."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        num_outputs: int,
+        shuffle: bool,
+    ):
+        super().__init__(
+            "Repartition",
+            input_op,
+            num_outputs=num_outputs,
+        )
+        self._shuffle = shuffle
