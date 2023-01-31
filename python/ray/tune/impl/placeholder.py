@@ -6,8 +6,8 @@ from ray.util.annotations import DeveloperAPI
 
 
 class _CategoricalResolver:
-    """Replaced value for categorical typed objects.
-    """
+    """Replaced value for categorical typed objects."""
+
     def __init__(self, choices):
         self._choices = choices
 
@@ -21,8 +21,8 @@ class _CategoricalResolver:
 
 
 class _FunctionResolver:
-    """Replaced value for function typed objects.
-    """
+    """Replaced value for function typed objects."""
+
     def __init__(self, fn):
         self._fn = fn
 
@@ -39,8 +39,8 @@ class _FunctionResolver:
 
 
 class _RefResolver:
-    """Replaced value for all other non-primitive objects.
-    """
+    """Replaced value for all other non-primitive objects."""
+
     def __init__(self, value):
         self._value = value
 
@@ -70,14 +70,11 @@ def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dic
     Returns:
         The config with all references replaced.
     """
-    if (isinstance(config, dict) and
-        "grid_search" in config and
-        len(config) == 1
-    ):
+    if isinstance(config, dict) and "grid_search" in config and len(config) == 1:
         # Special case for grid search spec.
         v = _CategoricalResolver(config["grid_search"])
         resolvers[prefix] = v
-        # Here we return the original grid_search spec, but with the choices replaced. 
+        # Here we return the original grid_search spec, but with the choices replaced.
         config["grid_search"] = v.get_placeholders()
         return config
     elif isinstance(config, dict):
@@ -102,7 +99,7 @@ def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dic
         # Categorical type.
         v = _CategoricalResolver(config.categories)
         resolvers[prefix] = v
-        # Here we return the original Categorical spec, but with the choices replaced. 
+        # Here we return the original Categorical spec, but with the choices replaced.
         config.categories = v.get_placeholders()
         return config
     elif isinstance(config, Function):

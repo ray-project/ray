@@ -67,7 +67,7 @@ class TrialRunnerTest3(unittest.TestCase):
         if "CUDA_VISIBLE_DEVICES" in os.environ:
             del os.environ["CUDA_VISIBLE_DEVICES"]
         shutil.rmtree(self.tmpdir)
-    '''
+
     def testStepHook(self):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner(
@@ -429,7 +429,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.resume()
         assert callback.counter == 3
 
-    '''
     def testSearcherCorrectReferencesAfterRestore(self):
         ray.init(num_cpus=8, local_mode=True)
 
@@ -438,7 +437,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 "param2": grid_search([1, 2, 3]),
             },
             "param4": sample_from(lambda: 1),
-            "param5": sample_from(lambda spec: spec.config["param1"]["param2"])
+            "param5": sample_from(lambda spec: spec.config["param1"]["param2"]),
         }
         resolvers = {}
         config = inject_placeholders(config, resolvers)
@@ -461,7 +460,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 "param2": grid_search([4, 5, 6]),
             },
             "param4": sample_from(lambda: 8),
-            "param5": sample_from(lambda spec: spec["config"]["param1"]["param2"])
+            "param5": sample_from(lambda spec: spec["config"]["param1"]["param2"]),
         }
         replaced_resolvers = {}
         restored_config = inject_placeholders(restored_config, replaced_resolvers)
@@ -485,7 +484,7 @@ class TrialRunnerTest3(unittest.TestCase):
             assert t.config["param1"]["param2"] in [4, 5, 6]
             assert t.config["param4"] == 8
             assert t.config["param5"] in [4, 5, 6]
-    '''
+
     def testTrialErrorResumeFalse(self):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
         runner = TrialRunner(
@@ -1447,7 +1446,7 @@ class SearchAlgorithmTest(unittest.TestCase):
         assert limiter.suggest("test_1")["score"] == 1
         assert limiter.suggest("test_2")["score"] == 2
         assert limiter.suggest("test_3")["score"] == 3
-    '''
+
 
 class ResourcesTest(unittest.TestCase):
     def testSubtraction(self):

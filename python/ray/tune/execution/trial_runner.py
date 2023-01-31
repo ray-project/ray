@@ -1098,9 +1098,7 @@ class TrialRunner:
             spec = self._spec or {}
             # Replace the config with the trial's config.
             spec.update(config=trial.config)
-            resolve_placeholders(
-                spec, self._placeholder_resolvers
-            )
+            resolve_placeholders(spec, self._placeholder_resolvers)
 
         self._trials.append(trial)
         if trial.status != Trial.TERMINATED:

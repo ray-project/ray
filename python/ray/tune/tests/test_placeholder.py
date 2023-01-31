@@ -11,7 +11,7 @@ class PlaceholderTest(unittest.TestCase):
             "param2": ["not ok", tune.grid_search(["ok", "not ok"])],
             "param3": {
                 "param4": tune.grid_search(["ok", "not ok"]),
-            }
+            },
         }
 
         replaced = {}
@@ -35,7 +35,7 @@ class PlaceholderTest(unittest.TestCase):
             "param2": ["not ok", tune.choice(["ok", "not ok"])],
             "param3": {
                 "param4": tune.choice(["ok", "not ok"]),
-            }
+            },
         }
 
         replaced = {}
@@ -59,7 +59,7 @@ class PlaceholderTest(unittest.TestCase):
             "param2": ["not ok", tune.sample_from(lambda: "not ok")],
             "param3": {
                 "param4": tune.sample_from(lambda spec: spec["config"]["param1"]),
-            }
+            },
         }
 
         replaced = {}
@@ -83,7 +83,7 @@ class PlaceholderTest(unittest.TestCase):
             "param2": ["not ok", Dummy("ok")],
             "param3": {
                 "param4": Dummy("not ok"),
-            }
+            },
         }
 
         replaced = {}
