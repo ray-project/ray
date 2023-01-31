@@ -293,6 +293,13 @@ class PhysicalOperator(Operator):
         """
         return len(self.get_work_refs())
 
+    def internal_queue_size(self) -> int:
+        """If the operator has an internal input queue, return its size.
+
+        This is used to report tasks pending submission to actor pools.
+        """
+        return 0
+
     def notify_work_completed(self, work_ref: ray.ObjectRef) -> None:
         """Executor calls this when the given work is completed and local.
 
