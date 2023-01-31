@@ -216,6 +216,28 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
+def test_retryable_task_killed_by_memory_monitor_with_oom_error(
+    ray_with_memory_monitor,
+):
+    addr = ray_with_memory_monitor
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+        ray.get(allocate_memory.options(max_retries=1).remote(bytes_to_alloc))
+
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        addr=addr,
+        tag="MemoryManager.TaskEviction.Total",
+        value=2.0,
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
 def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold - 0.1
