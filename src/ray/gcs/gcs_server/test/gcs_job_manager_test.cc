@@ -201,6 +201,38 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   ASSERT_EQ(job_info.entrypoint_resources().size(), 1);
   ASSERT_EQ(job_info.entrypoint_resources().at("Custom"), 1);
   ASSERT_EQ(job_info.runtime_env_json(), "{\"pip\": [\"pkg\"]}");
+
+  // Manually overwrite with bad JobInfo JSON to test error handling on parse.
+  job_info_json = R"(
+    {
+      "status": "PENDING",
+      "entrypoint": "echo hi",
+      "not_a_real_field": 1
+    }
+  )";
+
+  std::promise<bool> kv_promise2;
+  fake_kv_->Put("job",
+                gcs::JobDataKey(submission_id),
+                job_info_json,
+                /*overwrite=*/true,
+                [&kv_promise2](auto) { kv_promise2.set_value(true); });
+  kv_promise2.get_future().get();
+
+  // Get all job info again.
+  rpc::GetAllJobInfoRequest all_job_info_request3;
+  rpc::GetAllJobInfoReply all_job_info_reply3;
+  std::promise<bool> all_job_info_promise3;
+
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request3,
+      &all_job_info_reply3,
+      [&all_job_info_promise3](Status, std::function<void()>, std::function<void()>) {
+        all_job_info_promise3.set_value(true);
+      });
+
+  // Make sure the GCS didn't hang or crash.
+  all_job_info_promise3.get_future().get();
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
