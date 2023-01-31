@@ -6,8 +6,8 @@ All distributed tests are run on 64 nodes with 64 cores/node. Maximum number of 
 
 | Dimension                                       | Quantity |
 | ---------                                       | -------- |
-| # nodes in cluster (with trivial task workload) | 250+     |
-| # actors in cluster (with trivial workload)     | 10k+     |
+| # nodes in cluster (with trivial task workload) | 2k+      |
+| # actors in cluster (with trivial workload)     | 40k+     |
 | # simultaneously running tasks                  | 10k+     |
 | # simultaneously running placement groups       | 1k+      |
 
@@ -25,9 +25,7 @@ All single node benchmarks are run on a single m4.16xlarge.
 | Dimension                                      | Quantity   |
 | ---------                                      | --------   |
 | # of object arguments to a single task         | 10000+     |
-| # of objects returned from a single task       | 3000+     |
+| # of objects returned from a single task       | 3000+      |
 | # of plasma objects in a single `ray.get` call | 10000+     |
 | # of tasks queued on a single node             | 1,000,000+ |
 | Maximum `ray.get` numpy object size            | 100GiB+    |
-
-    
