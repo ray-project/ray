@@ -97,6 +97,7 @@ build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --copt -Wno-uninitialized
 build:tsan --linkopt -fsanitize=thread
+build:tsan --cxxopt="-D_RAY_TSAN_BUILD"
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
 build:tsan-clang --config=llvm
