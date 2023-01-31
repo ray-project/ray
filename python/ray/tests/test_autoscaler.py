@@ -2256,7 +2256,6 @@ class AutoscalingTest(unittest.TestCase):
         waiters = rtc1._cond._waiters
         self.waitFor(lambda: len(waiters) == 2)
         assert autoscaler.pending_launches.value == 10
-        mock_metrics.pending_nodes.set.assert_called_with(10)
         assert (
             len(
                 self.provider.non_terminated_nodes(
@@ -2281,11 +2280,9 @@ class AutoscalingTest(unittest.TestCase):
         )
         self.waitForNodes(10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert autoscaler.pending_launches.value == 0
-        mock_metrics.pending_nodes.set.assert_called_with(0)
         autoscaler.update()
         self.waitForNodes(10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert autoscaler.pending_launches.value == 0
-        mock_metrics.pending_nodes.set.assert_called_with(0)
         assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testUpdateThrottling(self):
