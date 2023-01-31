@@ -1,3 +1,4 @@
+import copy
 import datetime
 import logging
 import os
@@ -573,7 +574,10 @@ def run(
     #   search algorithms, since a lot of them do not support non-primitive
     #   config values.
     placeholder_resolvers = {}
-    config = inject_placeholders(config, placeholder_resolvers, prefix=())
+    config = inject_placeholders(
+        # Make a deep copy here to avoid modifying the original config dict.
+        copy.deepcopy(config), placeholder_resolvers, prefix=()
+    )
 
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment

@@ -845,7 +845,9 @@ class TrialRunner:
                     trial_to_add.restore_path = None
             elif trial.status != Trial.TERMINATED and not resume_unfinished:
                 trial_to_add.status = Trial.TERMINATED
-            self.add_trial(trial_to_add)
+            # Resumed trials already have resolved values.
+            # So skip placeholder resolution.
+            self.add_trial(trial_to_add, resolve=False)
 
     def update_pending_trial_resources(
         self, resources: Union[dict, PlacementGroupFactory]
@@ -1081,7 +1083,7 @@ class TrialRunner:
         """Returns the set of trials that are not in Trial.TERMINATED state."""
         return self._live_trials
 
-    def add_trial(self, trial: Trial):
+    def add_trial(self, trial: Trial, resolve: bool):
         """Adds a new trial to this TrialRunner.
 
         Trials may be added at any time.
@@ -1091,7 +1093,7 @@ class TrialRunner:
         """
         # If the config map has had all the references replaced,
         # resolve them before adding the trial.
-        if self._placeholder_resolvers:
+        if resolve and self._placeholder_resolvers:
             resolve_placeholders(trial.config, self._placeholder_resolvers)
 
         self._trials.append(trial)
@@ -1495,7 +1497,8 @@ class TrialRunner:
                 time.sleep(1)
 
         if trial:
-            self.add_trial(trial)
+            # New trial needs to have all the placeholders resolved.
+            self.add_trial(trial, resolve=True)
             return True
 
         return False
