@@ -1,15 +1,21 @@
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import (
+    AllToAllTransformFn,
+    RefBundle,
+    TaskContext,
+)
 from ray.data._internal.stats import StatsDict
 
 
 def generate_randomize_blocks_fn(
     seed: Optional[int],
-) -> Callable[[List[RefBundle]], Tuple[List[RefBundle], StatsDict]]:
+) -> AllToAllTransformFn:
     """Generate function to randomize order of blocks."""
 
-    def fn(refs: List[RefBundle]) -> Tuple[List[RefBundle], StatsDict]:
+    def fn(
+        refs: List[RefBundle], context: TaskContext
+    ) -> Tuple[List[RefBundle], StatsDict]:
         import random
 
         blocks_with_metadata = []
