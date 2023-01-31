@@ -26,6 +26,7 @@ from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.huggingface._huggingface_utils import (
     TrainReportCallback,
     process_datasets,
@@ -316,18 +317,14 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
     ) -> "HuggingFaceTrainer":
-        trainer = super(HuggingFaceTrainer, cls).restore(
-            train_loop_per_worker=_huggingface_train_loop_per_worker,
+        return super(DataParallelTrainer, cls).restore(
             path=path,
+            trainer_init_per_worker=trainer_init_per_worker,
+            trainer_init_config=trainer_init_config,
             datasets=datasets,
             preprocessor=preprocessor,
             scaling_config=scaling_config,
         )
-        if trainer_init_per_worker:
-            trainer._train_loop_config[TRAINER_INIT_FN_KEY] = trainer_init_per_worker
-        if trainer_init_config:
-            trainer._train_loop_config.update(trainer_init_config)
-        return trainer
 
     def _validate_trainer_init_per_worker(
         self, trainer_init_per_worker: Callable, fn_name: str

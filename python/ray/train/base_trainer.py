@@ -176,7 +176,7 @@ class BaseTrainer(abc.ABC):
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
 
-        # This path is only set through the `restore` path of constructing the trainer
+        # This path should only be set through restore
         self._restore_path = None
 
         self._validate_attributes()
@@ -188,6 +188,7 @@ class BaseTrainer(abc.ABC):
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
+        **kwargs,
     ) -> "BaseTrainer":
         assert cls.can_restore(path), (
             f"Invalid restore path: {path}. Make sure that this path exists and "
@@ -199,15 +200,17 @@ class BaseTrainer(abc.ABC):
         ), f"Did not find trainer state at {str(trainer_state_path)}."
 
         with open(trainer_state_path, "rb") as fp:
-            trainer = pickle.load(fp)
-        assert type(trainer) == cls, (
-            f"Invalid trainer type. Cannot restore a trainer of type {type(trainer)} "
-            f"with `{cls.__name__}.restore`. "
-            f"Use `{type(trainer).__name__}.restore` instead."
+            original_trainer = pickle.load(fp)
+        assert type(original_trainer) == cls, (
+            f"Invalid trainer type. Cannot restore a trainer of type "
+            f"{type(original_trainer)} with `{cls.__name__}.restore`. "
+            f"Use `{type(original_trainer).__name__}.restore` instead."
         )
-        trainer._restore_path = path
 
-        original_datasets = trainer.datasets or {}
+        # Get the param dict used to initialize the original trainer
+        param_dict = original_trainer._param_dict
+
+        original_datasets = original_trainer.datasets or {}
         if original_datasets and not datasets:
             raise ValueError(
                 "The following datasets need to be provided again on restore: "
@@ -221,15 +224,23 @@ class BaseTrainer(abc.ABC):
             f"  Expected datasets for the keys: {list(original_datasets.keys())}\n"
             f"  Actual datasets provided: {list(datasets.keys())}"
         )
-        trainer.datasets = datasets
+        param_dict["datasets"] = datasets
 
         # If no preprocessor is re-specified, then it will be set to None
         # here and loaded from the latest checkpoint
-        trainer.preprocessor = preprocessor
+        param_dict["preprocessor"] = preprocessor
 
         if scaling_config:
-            trainer.scaling_config = scaling_config
+            param_dict["scaling_config"] = scaling_config
 
+        for param_name, val in kwargs.items():
+            assert param_name in param_dict
+            # Overwrite the old value if something was passed in
+            if val is not None:
+                param_dict[param_name] = val
+
+        trainer = cls(**param_dict)
+        trainer._restore_path = path
         return trainer
 
     @classmethod
@@ -462,6 +473,9 @@ class BaseTrainer(abc.ABC):
         param_space = self._extract_fields_for_tuner_param_space()
 
         if self._restore_path:
+            # TODO(justinvyu): Pass in the new trainable + param_space after Jun's PR
+            # This is because some params get propagated to the Tuner and will
+            # overwrite new ones from Trainer.restore.
             tuner = Tuner.restore(
                 self._restore_path,
                 overwrite_trainable=trainable,

@@ -292,17 +292,14 @@ class DataParallelTrainer(BaseTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
     ) -> "DataParallelTrainer":
-        trainer: DataParallelTrainer = super(DataParallelTrainer, cls).restore(
+        return super(DataParallelTrainer, cls).restore(
             path=path,
+            train_loop_per_worker=train_loop_per_worker,
+            train_loop_config=train_loop_config,
             datasets=datasets,
             preprocessor=preprocessor,
             scaling_config=scaling_config,
         )
-        if train_loop_per_worker:
-            trainer._train_loop_per_worker = train_loop_per_worker
-        if train_loop_config:
-            trainer._train_loop_config = train_loop_config
-        return trainer
 
     def _validate_attributes(self):
         super()._validate_attributes()
