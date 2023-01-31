@@ -100,11 +100,6 @@ class RayClusterOnSpark:
     def wait_until_ready(self):
         import ray
 
-        if self.background_job_exception is not None:
-            raise RuntimeError(
-                "Ray workers has exited."
-            ) from self.background_job_exception
-
         if self.is_shutdown:
             raise RuntimeError(
                 "The ray cluster has been shut down or it failed to start."
@@ -125,6 +120,16 @@ class RayClusterOnSpark:
             last_progress_move_time = time.time()
             while True:
                 time.sleep(_RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL)
+
+                # Inside the waiting ready loop,
+                # checking `self.background_job_exception`, if it is not None,
+                # it means the background spark job has failed,
+                # in this case, raise error directly.
+                if self.background_job_exception is not None:
+                    raise RuntimeError(
+                        "Ray workers has exited."
+                    ) from self.background_job_exception
+
                 cur_alive_worker_count = (
                     len([node for node in ray.nodes() if node["Alive"]]) - 1
                 )  # Minus 1 means excluding the head node.
