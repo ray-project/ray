@@ -17,7 +17,7 @@ def _force_on_node(
         Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]
     ] = None,
 ) -> Optional[Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]]:
-    """Schedule a task or actor on a given node.
+    """Schedule a remote function or actor class on a given node.
 
     Args:
         node_id: The node to schedule on.
@@ -49,7 +49,7 @@ def _force_on_current_node(
         Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]
     ] = None
 ) -> Optional[Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]]:
-    """Schedule a task or actor on the current node.
+    """Schedule a remote function or actor class on the current node.
 
     If using Ray Client, the current node is the client server node.
 
