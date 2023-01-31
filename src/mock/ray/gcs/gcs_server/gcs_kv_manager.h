@@ -25,6 +25,13 @@ class MockInternalKVInterface : public ray::gcs::InternalKVInterface {
                const std::string &key,
                std::function<void(std::optional<std::string>)> callback),
               (override));
+  MOCK_METHOD(
+      void,
+      MultiGet,
+      (const std::string &ns,
+       const std::vector<std::string> &keys,
+       std::function<void(std::unordered_map<std::string, std::string>)> callback),
+      (override));
   MOCK_METHOD(void,
               Put,
               (const std::string &ns,
