@@ -156,7 +156,7 @@ const TaskTable = ({
               start_time_ms,
               end_time_ms,
             }) => (
-              <TableRow>
+              <TableRow key={task_id}>
                 <TableCell align="center">
                   <Tooltip
                     className={classes.idCol}
