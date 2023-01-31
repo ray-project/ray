@@ -55,6 +55,7 @@ class AnyscaleJobRunner(JobRunner):
             f"s3://{self.file_manager.bucket}", self.path_in_bucket
         )
         self.prepare_commands = []
+        self._wait_for_nodes_timeout = 0
 
     def prepare_remote_env(self):
         # Copy anyscale job script to working dir
