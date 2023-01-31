@@ -148,10 +148,6 @@ class DataParallelIngestSpec:
                 Preprocessor.FitStatus.PARTIALLY_FITTED,
             ):
                 prep.fit(ds_to_fit)
-            assert prep.fit_status() in [
-                Preprocessor.FitStatus.FITTED,
-                Preprocessor.FitStatus.NOT_FITTABLE,
-            ]
             new_datasets = {}
 
             for key, dataset in datasets.items():

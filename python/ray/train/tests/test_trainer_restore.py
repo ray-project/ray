@@ -124,7 +124,9 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
     - Results are being logged to the same directory as before.
     """
     exp_name = f"{trainer_cls.__name__}_restore_test"
-    datasets = {"train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])}
+    datasets = {
+        "train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(100)])
+    }
 
     trainer = trainer_cls(
         label_column="y",
