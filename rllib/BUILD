@@ -3331,6 +3331,14 @@ py_test(
     args = ["--stop-iters=4", "--framework=torch"]
 )
 
+py_test(
+    name = "examples/multi_agent_independent_learning",
+    main = "examples/multi_agent_independent_learning.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/multi_agent_independent_learning.py"],
+    args = ["--stop-iters=4", "--framework=torch"]
+)
 
 py_test(
     name = "examples/multi_agent_two_trainers_tf",
