@@ -1119,9 +1119,10 @@ class AlgorithmConfig:
             env: The environment specifier. This can either be a tune-registered env,
                 via `tune.register_env([name], lambda env_ctx: [env object])`,
                 or a string specifier of an RLlib supported type. In the latter case,
-                RLlib will try to interpret the specifier as either an openAI gym env,
-                a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
-                Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+                RLlib will try to interpret the specifier as either an Farama-Foundation
+                gymnasium env, a PyBullet env, a ViZDoomGym env, or a fully qualified
+                classpath to an Env class, e.g.
+                "ray.rllib.examples.env.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
