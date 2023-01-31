@@ -3,6 +3,8 @@ root: index
 parts:
   - caption: Ray
     chapters:
+      - file: ray-overview/what-is-ray
+        title: "What is Ray"
       - file: ray-overview/index
         title: "Getting Started"
       - file: ray-overview/installation
