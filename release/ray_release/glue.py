@@ -273,6 +273,8 @@ def run_release_test(
             if isinstance(cluster_manager, FullClusterManager):
                 buildkite_group(":rocket: Starting up cluster")
                 cluster_manager.start_cluster(timeout=cluster_timeout)
+            elif isinstance(command_runner, AnyscaleJobRunner):
+                command_runner.job_manager.cluster_startup_timeout = cluster_timeout
 
         result.cluster_url = cluster_manager.get_cluster_url()
         result.cluster_id = cluster_manager.cluster_id

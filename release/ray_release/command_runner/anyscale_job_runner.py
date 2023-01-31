@@ -71,7 +71,8 @@ class AnyscaleJobRunner(JobRunner):
         self.prepare_commands.append((command, env, timeout))
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
-        self.job_manager.wait_for_nodes_timeout += timeout
+        self._wait_for_nodes_timeout = timeout
+        self.job_manager.cluster_startup_timeout += timeout
         super().wait_for_nodes(num_nodes, timeout)
 
     def save_metrics(self, start_time: float, timeout: float = 900):
@@ -170,7 +171,7 @@ class AnyscaleJobRunner(JobRunner):
             upload_path=self.upload_path,
             timeout=int(timeout)
             + sum(prepare_command_timeouts)
-            - self.job_manager.wait_for_nodes_timeout,
+            - self._wait_for_nodes_timeout,
         )
         try:
             error = self.job_manager.last_job_result.state.error

@@ -13,7 +13,11 @@ from anyscale.controllers.job_controller import JobController, terminal_state
 
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.exception import CommandTimeout, ClusterNodesWaitTimeout
+from ray_release.exception import (
+    CommandTimeout,
+    ClusterStartupTimeout,
+    ClusterStartupError,
+)
 from ray_release.logger import logger
 from ray_release.util import (
     ANYSCALE_HOST,
@@ -30,7 +34,7 @@ class AnyscaleJobManager:
         self.cluster_manager = cluster_manager
         self._last_job_result = None
         self._last_logs = None
-        self.wait_for_nodes_timeout = 0
+        self.cluster_startup_timeout = 600
 
     def _run_job(
         self,
@@ -53,20 +57,28 @@ class AnyscaleJobManager:
             if upload_path:
                 runtime_env["upload_path"] = upload_path
 
-        job_response = anyscale_client.create_job(
-            CreateProductionJob(
-                name=self.cluster_manager.cluster_name,
-                description=f"Smoke test: {self.cluster_manager.smoke_test}",
-                project_id=self.cluster_manager.project_id,
-                config=dict(
-                    entrypoint=full_cmd,
-                    runtime_env=runtime_env,
-                    build_id=self.cluster_manager.cluster_env_build_id,
-                    compute_config_id=self.cluster_manager.cluster_compute_id,
-                    max_retries=0,
+        try:
+            job_response = anyscale_client.create_job(
+                CreateProductionJob(
+                    name=self.cluster_manager.cluster_name,
+                    description=f"Smoke test: {self.cluster_manager.smoke_test}",
+                    project_id=self.cluster_manager.project_id,
+                    config=dict(
+                        entrypoint=full_cmd,
+                        runtime_env=runtime_env,
+                        build_id=self.cluster_manager.cluster_env_build_id,
+                        compute_config_id=self.cluster_manager.cluster_compute_id,
+                        max_retries=0,
+                    ),
                 ),
-            ),
-        )
+            )
+        except Exception as e:
+            raise ClusterStartupError(
+                "Error starting job with name "
+                f"{self.cluster_manager.cluster_name}: "
+                f"{e}"
+            ) from e
+
         self.last_job_result = job_response.result
         self.cluster_manager.cluster_id = self.last_job_result.state.cluster_id
         self.start_time = time.time()
@@ -126,10 +138,9 @@ class AnyscaleJobManager:
 
     def _wait_job(self, timeout: int):
         start_time = time.monotonic()
-        if self.wait_for_nodes_timeout > 0:
-            timeout_at = start_time + self.wait_for_nodes_timeout
-        else:
-            timeout_at = start_time + timeout
+        # Waiting for cluster needs to be a part of the whole
+        # run.
+        timeout_at = start_time + self.cluster_startup_timeout
         next_status = start_time + 30
         job_running = False
 
@@ -138,9 +149,9 @@ class AnyscaleJobManager:
             if now >= timeout_at:
                 self._terminate_job()
                 if not job_running:
-                    raise ClusterNodesWaitTimeout(
+                    raise ClusterStartupTimeout(
                         "Cluster did not start within "
-                        f"{self.wait_for_nodes_timeout} seconds."
+                        f"{self.cluster_startup_timeout} seconds."
                     )
                 raise CommandTimeout(f"Job timed out after {timeout} seconds.")
 
@@ -162,8 +173,9 @@ class AnyscaleJobManager:
             }:
                 logger.info(f"... job started ...({int(now - start_time)} seconds) ...")
                 job_running = True
-                if self.wait_for_nodes_timeout > 0:
-                    timeout_at = now + timeout
+                # If job has started, we switch from waiting for cluster
+                # to the actual command (incl. prepare commands) timeout.
+                timeout_at = now + timeout
 
             if status in terminal_state:
                 break
