@@ -37,32 +37,31 @@ export const JobDetailChartsPage = ({
   const jobId = params.id;
 
   const { cluster_status } = useRayStatus();
-  console.log(cluster_status?.data.clusterStatus.split("\n"));
 
-  const FormatNodeStatus = (cluster_status: string) => {
+  const formatNodeStatus = (cluster_status: string) => {
     // ==== auto scaling status
     // Node status
     // ....
     // Resources
     // ....
     const sections = cluster_status.split("Resources");
-    return FormatClusterStatus(
+    return formatClusterStatus(
       "Node Status",
       sections[0].split("Node status")[1],
     );
   };
 
-  const FormatResourcesStatus = (cluster_status: string) => {
+  const formatResourcesStatus = (cluster_status: string) => {
     // ==== auto scaling status
     // Node status
     // ....
     // Resources
     // ....
     const sections = cluster_status.split("Resources");
-    return FormatClusterStatus("Resource Status", sections[1]);
+    return formatClusterStatus("Resource Status", sections[1]);
   };
 
-  const FormatClusterStatus = (title: string, cluster_status: string) => {
+  const formatClusterStatus = (title: string, cluster_status: string) => {
     const cluster_status_rows = cluster_status.split("\n");
 
     return (
@@ -198,7 +197,7 @@ export const JobDetailChartsPage = ({
               sx={{ borderRadius: "16px" }}
             >
               {cluster_status?.data
-                ? FormatNodeStatus(cluster_status?.data.clusterStatus)
+                ? formatNodeStatus(cluster_status?.data.clusterStatus)
                 : "No cluster status."}
             </Box>
           </TitleCard>
@@ -217,7 +216,7 @@ export const JobDetailChartsPage = ({
               sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
             >
               {cluster_status?.data
-                ? FormatResourcesStatus(cluster_status?.data.clusterStatus)
+                ? formatResourcesStatus(cluster_status?.data.clusterStatus)
                 : "No cluster status."}
             </Box>
           </TitleCard>
