@@ -83,6 +83,8 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
       [](const std::pair<scheduling::NodeID, float> &a,
          const std::pair<scheduling::NodeID, float> &b) { return a.second < b.second; });
 
+  // If prioritize local node, always pick local node is it has the minimal
+  // score across all candidates.
   if (prioritize_local_node) {
     if (local_node_score <= node_scores.front().second) {
       return local_node_id_;
