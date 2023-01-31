@@ -258,6 +258,59 @@ bool ClusterTaskManager::CancelTask(
       task_id, failure_type, scheduling_failure_message);
 }
 
+void ClusterTaskManager::CancelTaskForOwner(
+    const TaskID &owner_task_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
+       shapes_it++) {
+    auto &work_queue = shapes_it->second;
+    auto work_it = work_queue.begin();
+    while (work_it != work_queue.end()) {
+      const auto &task = (*work_it)->task;
+      if (task.GetTaskSpecification().ParentTaskId() == owner_task_id) {
+        RAY_LOG(DEBUG) << "Canceling task for owner " << owner_task_id
+                       << " from schedule queue.";
+        if (task.GetTaskSpecification().IsDetachedActor()) {
+          RAY_LOG(DEBUG) << "We don't cancel detached actor when its caller exits. Leaving it as pending.";
+        } else {
+          ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
+          work_queue.erase(work_it);
+          if (work_queue.empty()) {
+            tasks_to_schedule_.erase(shapes_it);
+            break;
+          }
+        }
+      }
+      work_it++;
+    }
+  }
+
+  for (auto shapes_it = infeasible_tasks_.begin(); shapes_it != infeasible_tasks_.end();
+       shapes_it++) {
+    auto &work_queue = shapes_it->second;
+    auto work_it = work_queue.begin();
+    while (work_it != work_queue.end()) {
+      const auto &task = (*work_it)->task;
+      if (task.GetTaskSpecification().ParentTaskId() == owner_task_id) {
+        RAY_LOG(DEBUG) << "Canceling task for owner " << owner_task_id
+                       << " from infeasible queue.";
+        if (task.GetTaskSpecification().IsDetachedActor()) {
+          RAY_LOG(DEBUG) << "We don't cancel detached actor when its caller exits. Leaving it as pending.";
+        } else {
+          ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
+          work_queue.erase(work_it);
+          if (work_queue.empty()) {
+            tasks_to_schedule_.erase(shapes_it);
+            break;
+          }
+        }
+      }
+      work_it++;
+    }
+  }
+}
+
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
     const std::shared_ptr<NodeResources> &last_reported_resources) {
