@@ -6,6 +6,7 @@ from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECK
 import ray
 
 from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.core.rl_module.rl_module import (
@@ -330,10 +331,12 @@ class TrainerRunner:
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         if self.is_local:
-            return self._trainer.get_weights(module_ids)
+            weights = self._trainer.get_weights(module_ids)
         else:
             worker = next(iter(self._workers))
-            return ray.get(worker.get_weights.remote(module_ids))
+            weights = ray.get(worker.get_weights.remote(module_ids))
+        
+        return convert_to_numpy(weights)
 
     def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
         """Get the states of the first RLTrainers.
