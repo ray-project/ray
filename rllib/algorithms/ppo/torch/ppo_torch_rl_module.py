@@ -45,7 +45,7 @@ def get_ppo_loss(fwd_in, fwd_out):
 
 @ExperimentalAPI
 @dataclass
-class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to Torch-unspecific file
+class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to non-torch-specific file
     """Configuration for the PPORLModule.
 
     Attributes:
