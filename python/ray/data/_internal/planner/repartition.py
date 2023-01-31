@@ -1,6 +1,10 @@
-from typing import Callable, List, Tuple
+from typing import List, Tuple
 
-from ray.data._internal.execution.interfaces import RefBundle, TaskContext
+from ray.data._internal.execution.interfaces import (
+    AllToAllTransformFn,
+    RefBundle,
+    TaskContext,
+)
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
@@ -15,7 +19,7 @@ from ray.data.context import DatasetContext
 def generate_repartition_fn(
     num_outputs: int,
     shuffle: bool,
-) -> Callable[[List[RefBundle], TaskContext], Tuple[List[RefBundle], StatsDict]]:
+) -> AllToAllTransformFn:
     """Generate function to randomly shuffle each records of blocks."""
     # TODO: support non-shuffle repartition as _internal/fast_repartition.py.
     assert shuffle, "Execution optimizer does not support non-shuffle repartition yet."
