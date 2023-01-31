@@ -138,7 +138,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         )
 
         def auto_shutdown_watcher():
-            auto_shutdown_timeout_millis = auto_shutdown_minutes * 60 * 1000
+            auto_shutdown_millis = auto_shutdown_minutes * 60 * 1000
             while True:
                 if ray_cluster_handler.is_shutdown:
                     # The cluster is shut down. The watcher thread exits.
@@ -146,7 +146,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
                 idle_time = db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
 
-                if idle_time > auto_shutdown_timeout_millis:
+                if idle_time > auto_shutdown_millis:
                     from ray.util.spark import cluster_init
 
                     with cluster_init._active_ray_cluster_rwlock:
