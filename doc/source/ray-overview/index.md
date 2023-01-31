@@ -4,10 +4,33 @@
 (gentle-intro)=
 
 # Getting Started Guide
+  
+  <strong><a href="https://www.ray.io/" target="_blank">Ray</a></strong> is an open-source unified compute framework that makes it easy to scale AI and Python workloads. This guide gives a quick tour of Ray's features.
 
-This tutorial will give you a quick tour of Ray's features.
-To get started, we'll start by installing Ray.
-Most of the examples in this guide are based on Python, but we'll also show you how to use Ray Core in Java.
+Ray provides the compute layer to scale applications without requiring distributed systems expertise. Ray automatically handles the following key processes:
+
+* **Orchestration**--Managing the various components of a distributed system.
+* **Scheduling**--Coordinating when and where tasks are executed.
+* **Fault tolerance**--Ensuring tasks complete regardless of inevitable points of failure.
+* **Auto-scaling**--Adjusting the number of resources allocated to dynamic demand.
+
+To lower the effort needed to scale compute intensive workloads, Ray takes a Python-first approach and integrates with many common data science tools. ML practitioners can then parallelize Python applications from a laptop to a cluster with minimal code changes.
+
+### Ray libraries
+
+|<img src="../images/map-of-ray.png" width="70%" loading="lazy">|
+|:--|
+|Stack of Ray libraries - unified toolkit for ML workloads.|
+
+Ray's unified compute framework comprises of four layers:
+
+1. **Ray cluster**--A set of worker nodes connected to a common Ray head node. Ray clusters can be fixed-size, or they can autoscale up and down according to the resources requested by applications running on the cluster.
+1. **Ray Core**--An open-source, Python, general purpose, distributed computing library that enables ML engineers and Python developers to scale Python applications and accelerate machine learning workloads.
+1. **Ray AI Runtime**--An open-source, Python, domain-specific set of libraries that equip ML engineers, data scientists, and researchers with a scalable and unified toolkit for ML applications.
+1. **Integrations and ecosystem**--A common interface that unifies the most popular Python and machine learning libraries and frameworks to run ML tasks in a distributed way.
+
+## Starting a local Ray cluster
+To get started, install, import, and initialize Ray. Most of the examples in this guide are based on Python, and some examples use Ray Core in Java.
 
 ````{panels}
 :container: text-center
@@ -31,10 +54,7 @@ To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/i
 
 ````
 
-Want to build Ray from source or with docker? Need more details? 
-Check out our detailed [installation guide](installation.rst).
 
-## Starting your first local Ray cluster
 
 ```{raw} html
 
@@ -52,6 +72,8 @@ Check out our detailed [installation guide](installation.rst).
 </div>
 
 ```
+
+To build Ray from source or with Docker, see the detailed [installation instructions](installation.rst).
 
 ## Ray AI Runtime Quick Start
 
