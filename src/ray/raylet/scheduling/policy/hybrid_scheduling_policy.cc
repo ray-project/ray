@@ -104,7 +104,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
   // Nodes that are feasible and currently have available resources.
   std::vector<std::pair<scheduling::NodeID, float>> available_nodes;
   // Nodes that are feasible but currently do not have available resources.
-  std::vector<std::pair<scheduling::NodeID, float>> feasible_nodes;
+  std::vector<std::pair<scheduling::NodeID, float>> feasible_and_unavailable_nodes;
   // Check whether the local node is available and feasible. We'll use this to
   // help prioritize the local node when force_spillback=false.
   bool local_node_is_available = false;
@@ -139,7 +139,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
       if (is_available) {
         available_nodes.push_back({node_id, node_score});
       } else {
-        feasible_nodes.push_back({node_id, node_score});
+        feasible_and_unavailable_nodes.push_back({node_id, node_score});
       }
     }
   }
@@ -157,12 +157,12 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
         prioritize_local_node,
         /* local_node_score*/
         prioritize_local_node ? ComputeLocalNodeScore(spread_threshold) : 1);
-  } else if (!feasible_nodes.empty() && !require_node_available) {
+  } else if (!feasible_and_unavailable_nodes.empty() && !require_node_available) {
     bool prioritize_local_node = !force_spillback && local_node_is_feasible;
     // If there are no available nodes, and the caller is okay with an
     // unavailable node, check the feasible nodes next.
     return GetBestNode(
-        feasible_nodes,
+        feasible_and_unavailable_nodes,
         num_candidate_nodes,
         prioritize_local_node,
         prioritize_local_node ? ComputeLocalNodeScore(spread_threshold) : 1);
