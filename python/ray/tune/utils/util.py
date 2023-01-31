@@ -16,7 +16,7 @@ import psutil
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.remote_storage import delete_at_uri
-from ray.air.util.node import _get_node_id_from_node_ip
+from ray.air.util.node import _get_node_id_from_node_ip, _force_on_node
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.air._internal.json import SafeFallbackEncoder  # noqa
 from ray.air._internal.util import (  # noqa: F401
@@ -182,15 +182,9 @@ def _get_checkpoint_from_remote_node(
         )
         return None
 
-    scheduling_strategy = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-        node_id=node_id,
-        soft=False,
+    fut = _serialize_checkpoint.options(num_cpus=0, **_force_on_node(node_id)).remote(
+        checkpoint_path
     )
-
-    fut = _serialize_checkpoint.options(
-        num_cpus=0,
-        scheduling_strategy=scheduling_strategy,
-    ).remote(checkpoint_path)
     try:
         checkpoint_data = ray.get(fut, timeout=timeout)
     except Exception as e:

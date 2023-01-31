@@ -8,9 +8,8 @@ from typing import Optional, Tuple, Dict, Generator, Union, List
 
 import ray
 from ray.util.annotations import DeveloperAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.air._internal.filelock import TempFileLock
-from ray.air.util.node import _get_node_id_from_node_ip
+from ray.air.util.node import _get_node_id_from_node_ip, _force_on_node
 
 
 _DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024  # 500 MiB
@@ -118,13 +117,7 @@ def _sync_dir_on_same_node(
 
     node_id = _get_node_id_from_node_ip(ip)
 
-    copy_on_node = _remote_copy_dir.options(
-        num_cpus=0,
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node_id=node_id,
-            soft=False,
-        ),
-    )
+    copy_on_node = _remote_copy_dir.options(num_cpus=0, **_force_on_node(node_id))
     copy_future = copy_on_node.remote(
         source_dir=source_path, target_dir=target_path, exclude=exclude
     )
@@ -176,29 +169,17 @@ def _sync_dir_between_different_nodes(
     target_node_id = _get_node_id_from_node_ip(target_ip)
 
     pack_actor_on_source_node = _PackActor.options(
-        num_cpus=0,
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node_id=source_node_id,
-            soft=False,
-        ),
+        num_cpus=0, **_force_on_node(source_node_id)
     )
     unpack_on_target_node = _unpack_from_actor.options(
-        num_cpus=0,
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node_id=target_node_id,
-            soft=False,
-        ),
+        num_cpus=0, **_force_on_node(target_node_id)
     )
 
     if force_all:
         files_stats = None
     else:
         files_stats = _remote_get_recursive_files_and_stats.options(
-            num_cpus=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=target_node_id,
-                soft=False,
-            ),
+            num_cpus=0, **_force_on_node(target_node_id)
         ).remote(target_path)
 
     pack_actor = pack_actor_on_source_node.remote(
@@ -236,13 +217,7 @@ def delete_on_node(
 
     node_id = _get_node_id_from_node_ip(node_ip)
 
-    delete_task = _remote_delete_path.options(
-        num_cpus=0,
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node_id=node_id,
-            soft=False,
-        ),
-    )
+    delete_task = _remote_delete_path.options(num_cpus=0, **_force_on_node(node_id))
     future = delete_task.remote(path)
 
     if return_future:

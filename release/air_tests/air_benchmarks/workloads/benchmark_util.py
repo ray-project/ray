@@ -4,22 +4,10 @@ import subprocess
 from collections import defaultdict
 from contextlib import closing
 from pathlib import Path
+from python.ray.air.util.node import _force_on_node
 
 import ray
 from typing import Any, List, Dict, Union, Callable
-
-
-def _schedule_remote_fn_on_node(node_id: str, remote_fn, *args, **kwargs):
-
-    scheduling_strategy = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-        node_id=node_id,
-        soft=False,
-    )
-
-    return remote_fn.options(scheduling_strategy=scheduling_strategy).remote(
-        *args,
-        **kwargs,
-    )
 
 
 def schedule_remote_fn_on_all_nodes(
@@ -39,7 +27,10 @@ def schedule_remote_fn_on_all_nodes(
 
         node_id = node["NodeID"]
 
-        future = _schedule_remote_fn_on_node(node_id, remote_fn, *args, **kwargs)
+        future = _force_on_node(node_id, remote_fn).remote(
+            *args,
+            **kwargs,
+        )
         futures.append(future)
     return futures
 
