@@ -1,5 +1,6 @@
 import asyncio
 from collections import Counter
+import glob
 import json
 import numpy as np
 import os
@@ -268,21 +269,23 @@ def get_and_run_exp_folder_observer(
                 break  # non-recursive
 
             # next walk each individual trial folder
-            # mapping between trial_id and a list of checkpoint numbers persisted.
+            # mapping between trial_id and a list of checkpoint numbers persisted,
+            # ordered by creation time.
             trial_id_to_checkpoint_ids = {}
             for trial_id, trial_dir in trial_id_to_dir.items():
-                trial_id_to_checkpoint_ids[trial_id] = []
-                for _, dirs, _ in os.walk(
-                    os.path.join(self._experiment_dir, trial_dir)
-                ):
-                    for dir in dirs:
-                        if dir.startswith("checkpoint_"):  # checkpoint_000001
-                            try:
-                                ckpt_id = int(dir.split("_")[1])
-                                trial_id_to_checkpoint_ids[trial_id].append(ckpt_id)
-                            except ValueError:  # cannot be cast to int, ignore
-                                pass
-                    break  # non-recursive
+                ckpt_dirs = list(
+                    filter(
+                        os.path.isdir,
+                        glob.glob(
+                            os.path.join(self._experiment_dir, trial_dir)
+                            + "/checkpoint_0*"
+                        ),
+                    )
+                )
+                ckpt_dirs.sort(key=lambda x: os.path.getmtime(x))
+                trial_id_to_checkpoint_ids[trial_id] = [
+                    int(x.split("/")[-1].split("_")[-1]) for x in ckpt_dirs
+                ]
 
             return trial_id_to_checkpoint_ids
 

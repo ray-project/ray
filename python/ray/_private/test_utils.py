@@ -17,7 +17,7 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 import uuid
 
 import requests
@@ -1805,7 +1805,7 @@ def wandb_populate_run_location_hook():
 
 
 def safe_write_to_results_json(
-    result: str,
+    result: Union[str, Dict],
     default_file_name: str = "/tmp/release_test_output.json",
     env_var: Optional[str] = "TEST_OUTPUT_JSON",
 ):
