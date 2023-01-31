@@ -7,7 +7,7 @@ import multiprocessing
 import json
 import sys
 import logging
-from typing import List
+from typing import List, Tuple
 
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = -1
@@ -140,19 +140,11 @@ def run_bash_command(workload: str, timeout: float):
     return return_code
 
 
-def main(
-    test_workload: str,
-    test_workload_timeout: float,
-    test_long_running: bool,
-    results_s3_uri: str,
-    metrics_s3_uri: str,
-    prepare_commands: List[str],
-    prepare_commands_timeouts: List[str],
-):
-    logger.info("### Starting ###")
-    start_time = time.monotonic()
-
+def run_prepare_commands(
+    prepare_commands: List[str], prepare_commands_timeouts: List[float]
+) -> Tuple[bool, List[int]]:
     prepare_return_codes = []
+    prepare_passed = True
     if prepare_commands:
         logger.info("### Starting prepare commands ###")
         assert len(prepare_commands) == len(prepare_commands_timeouts)
@@ -176,9 +168,29 @@ def main(
                         f"Time taken: {prepare_time_taken}"
                     )
                 logger.error("Prepare command failed.")
+                prepare_passed = False
                 break
+    return prepare_passed, prepare_return_codes
 
-    if not prepare_return_codes or prepare_return_codes[-1] == 0:
+
+def main(
+    test_workload: str,
+    test_workload_timeout: float,
+    test_long_running: bool,
+    results_s3_uri: str,
+    metrics_s3_uri: str,
+    prepare_commands: List[str],
+    prepare_commands_timeouts: List[str],
+):
+    logger.info("### Starting ###")
+    start_time = time.monotonic()
+
+    prepare_passed, prepare_return_codes = run_prepare_commands(
+        prepare_commands, prepare_commands_timeouts
+    )
+    prepare_time_taken = time.monotonic() - start_time
+
+    if prepare_passed:
         logger.info("### Starting entrypoint ###")
         command_start_time = time.monotonic()
         return_code = run_bash_command(test_workload, test_workload_timeout)
@@ -213,7 +225,7 @@ def main(
     output_json = {
         "return_code": return_code,
         "prepare_return_codes": prepare_return_codes,
-        "last_prepare_time_taken": prepare_time_taken,
+        "prepare_time_taken": prepare_time_taken,
         "workload_time_taken": workload_time_taken,
         "total_time_taken": total_time_taken,
         "uploaded_results": uploaded_results,
