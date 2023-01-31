@@ -1213,8 +1213,9 @@ class RayTrialExecutor:
             ###################################################################
             # Prepare for futures to wait
             ###################################################################
-            if self._cached_ready_futures:
-                # If there are cached ready futures, handle the first
+            if self._cached_ready_futures and not next_trial_exists:
+                # If there are cached ready futures, handle the first.
+                # But: If next trial exists, we want to prioritize PG_READY events.
                 ready_futures = [self._cached_ready_futures.pop(0)]
             else:
                 # Otherwise, wait for new futures
@@ -1276,7 +1277,7 @@ class RayTrialExecutor:
             ###################################################################
             # If it is a PG_READY event.
             ###################################################################
-            if ready_future not in self._futures.keys():
+            if ready_future not in self._futures:
                 self._resource_manager.update_state()
                 return _ExecutorEvent(_ExecutorEventType.PG_READY)
 
