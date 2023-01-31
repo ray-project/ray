@@ -203,7 +203,7 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
     useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
-    TimeRangeOptions.THIRTY_MINS,
+    TimeRangeOptions.FIVE_MINS,
   );
   const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,

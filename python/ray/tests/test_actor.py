@@ -1108,6 +1108,20 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
     os.unlink(tmpfile.name)
 
 
+def test_actor_ready(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        pass
+
+    actor = Actor.remote()
+
+    with pytest.raises(TypeError):
+        # Method can't be called directly
+        actor.__ray_ready__()
+
+    assert ray.get(actor.__ray_ready__.remote())
+
+
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
     @ray.remote
     class Inner:
@@ -1148,7 +1162,12 @@ def test_actor_autocomplete(ray_start_regular_shared):
     assert methods == ["method_one"]
 
     all_methods = set(dir(f))
-    assert all_methods == {"__init__", "method_one", "__ray_terminate__"}
+    assert all_methods == {
+        "__init__",
+        "method_one",
+        "__ray_ready__",
+        "__ray_terminate__",
+    }
 
     method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
 
