@@ -142,7 +142,7 @@ def run_bash_command(workload: str, timeout: float):
 
 def run_prepare_commands(
     prepare_commands: List[str], prepare_commands_timeouts: List[float]
-) -> Tuple[bool, List[int]]:
+) -> Tuple[bool, List[int], float]:
     prepare_return_codes = []
     prepare_passed = True
     if prepare_commands:
@@ -170,7 +170,7 @@ def run_prepare_commands(
                 logger.error("Prepare command failed.")
                 prepare_passed = False
                 break
-    return prepare_passed, prepare_return_codes
+    return prepare_passed, prepare_return_codes, prepare_time_taken
 
 
 def main(
@@ -185,10 +185,11 @@ def main(
     logger.info("### Starting ###")
     start_time = time.monotonic()
 
-    prepare_passed, prepare_return_codes = run_prepare_commands(
-        prepare_commands, prepare_commands_timeouts
-    )
-    prepare_time_taken = time.monotonic() - start_time
+    (
+        prepare_passed,
+        prepare_return_codes,
+        last_prepare_time_taken,
+    ) = run_prepare_commands(prepare_commands, prepare_commands_timeouts)
 
     if prepare_passed:
         logger.info("### Starting entrypoint ###")
@@ -225,7 +226,7 @@ def main(
     output_json = {
         "return_code": return_code,
         "prepare_return_codes": prepare_return_codes,
-        "prepare_time_taken": prepare_time_taken,
+        "last_prepare_time_taken": last_prepare_time_taken,
         "workload_time_taken": workload_time_taken,
         "total_time_taken": total_time_taken,
         "uploaded_results": uploaded_results,
