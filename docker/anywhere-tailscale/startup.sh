@@ -156,9 +156,9 @@ if [ "$NODETYPE" = "head" ]; then
 
 else
 
-ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address $HOSTNAME.chimp-beta.ts.net
+    ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address $HOSTNAME.chimp-beta.ts.net
 
-if [ $(ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE| grep -q ALIVE && echo $true || echo $false) ]; then
+    if [ $(ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE| grep -q ALIVE && echo $true || echo $false) ]; then
         /crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
@@ -170,7 +170,7 @@ if [ $(ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE| grep 
                     -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cstats.enabled=false &
-else
+    else
         /crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
@@ -182,6 +182,7 @@ else
                     -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cstats.enabled=false &
+    fi
 fi
 
 

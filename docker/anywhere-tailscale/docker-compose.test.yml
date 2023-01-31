@@ -7,5 +7,5 @@ services:
     network_mode: host
     command: run_tests.sh
     volumes:
-      - /dev/net/tun
-      - /var/run/dbus/system_bus_socket
+      - /dev/net/tun:/dev/net/tun
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
