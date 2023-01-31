@@ -8,7 +8,13 @@ import { useActorList } from "./hook/useActorList";
 /**
  * Represent the embedable actors page.
  */
-const ActorList = ({ jobId = null }: { jobId?: string | null }) => {
+const ActorList = ({
+  jobId = null,
+  newIA = false,
+}: {
+  jobId?: string | null;
+  newIA: boolean;
+}) => {
   const [timeStamp] = useState(dayjs());
   const data: { [actorId: string]: Actor } | undefined = useActorList();
   const actors: { [actorId: string]: Actor } = data ? data : {};
@@ -20,7 +26,7 @@ const ActorList = ({ jobId = null }: { jobId?: string | null }) => {
           Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
         </Grid>
       </Grid>
-      <ActorTable actors={actors} jobId={jobId} />
+      <ActorTable actors={actors} jobId={jobId} newIA={newIA} />
     </div>
   );
 };

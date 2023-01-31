@@ -5,6 +5,10 @@ import React, { useContext } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { DurationText } from "../../common/DurationText";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+} from "../../common/ProfilingLink";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -168,8 +172,22 @@ export const JobDetailChartsPage = ({
               },
             },
             {
-              label: "Logs",
-              content: <JobLogsLink job={job} newIA />,
+              label: "Actions",
+              content: (
+                <div>
+                  <JobLogsLink job={job} newIA />
+                  <br />
+                  <CpuProfilingLink
+                    pid={job.driver_info?.pid}
+                    ip={job.driver_info?.node_ip_address}
+                  />
+                  <br />
+                  <CpuStackTraceLink
+                    pid={job.driver_info?.pid}
+                    ip={job.driver_info?.node_ip_address}
+                  />
+                </div>
+              ),
             },
           ]}
         />
@@ -181,7 +199,9 @@ export const JobDetailChartsPage = ({
       <TitleCard title="Task Table">
         <TaskList jobId={jobId} />
       </TitleCard>
-      <TitleCard title="Actors">{<ActorList jobId={jobId} />}</TitleCard>
+      <TitleCard title="Actors">
+        {<ActorList jobId={jobId} newIA={newIA} />}
+      </TitleCard>
       <TitleCard title="Placement Groups">
         <PlacementGroupList jobId={jobId} />
       </TitleCard>
