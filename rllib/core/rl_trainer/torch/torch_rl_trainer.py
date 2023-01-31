@@ -78,6 +78,7 @@ class TorchRLTrainer(RLTrainer):
         self._world_size = scaling_config.num_workers or 1
         self._use_gpu = scaling_config.use_gpu
 
+        foo = 1
         # These attributes are set in the `build` method.
         self._device = None
 
