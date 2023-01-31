@@ -308,29 +308,29 @@ message JobsAPIInfo {
   // The entrypoint command for this job.
   string entrypoint = 2;
   // A message describing the status in more detail.
-  string message = 3;
+  optional string message = 3;
   // TODO(architkulkarni): Populate this field
   // Error type (e.g. Runtime env setup failure, Internal error, user script error)
-  string error_type = 4;
+  optional string error_type = 4;
   // The time when the job was started.  A Unix timestamp in ms.
-  uint64 start_time = 5;
+  optional uint64 start_time = 5;
   // The time when the job moved into a terminal state.  A Unix timestamp in ms.
-  uint64 end_time = 6;
+  optional uint64 end_time = 6;
   // Arbitrary user-provided metadata for the job.
   map<string, string> metadata = 7;
   // The JSON-serialized runtime environment for the job.
-  string runtime_env_json = 8;
+  optional string runtime_env_json = 8;
   // The quantity of CPU cores to reserve for the entrypoint command.
-  double entrypoint_num_cpus = 9;
+  optional double entrypoint_num_cpus = 9;
   // The number of GPUs to reserve for the entrypoint command.
-  double entrypoint_num_gpus = 10;
+  optional double entrypoint_num_gpus = 10;
   // The quantity of various custom resources to reserve for the entrypoint command.
   map<string, double> entrypoint_resources = 11;
   // Driver agent http address
-  string driver_agent_http_address = 12;
+  optional string driver_agent_http_address = 12;
   // The node id that driver running on. It will be None only when the job status
   // is PENDING, and this field will not be deleted or modified even if the driver dies
-  string driver_node_id = 13;
+  optional string driver_node_id = 13;
 }
 
 message JobTableData {
