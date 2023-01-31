@@ -156,21 +156,32 @@ if [ "$NODETYPE" = "head" ]; then
 
 else
 
-ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address $HOSTNAME.chimp-beta.ts.net \
-&& getclusterhosts
+ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address $HOSTNAME.chimp-beta.ts.net
 
-/crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
-            -Cnode.name=$HOSTNAME \
-            -Cnode.data=true \
-            -Cnode.store.allow_mmap=false \
-            -Chttp.cors.enabled=true \
-            -Chttp.cors.allow-origin="/*" \
-            -Cthread_pool.write.type=scaling \
-            -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
-            -Ccluster.initial_master_nodes=nexus \
-            -Ccluster.graceful_stop.min_availability=primaries \
-            -Cstats.enabled=false &
-
+if [ $(ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE| grep -q ALIVE && echo $true || echo $false) ]; then
+        /crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
+                    -Cnode.name=$HOSTNAME \
+                    -Cnode.data=true \
+                    -Cnode.store.allow_mmap=false \
+                    -Chttp.cors.enabled=true \
+                    -Chttp.cors.allow-origin="/*" \
+                    -Cthread_pool.write.type=scaling \
+                    -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
+                    -Ccluster.initial_master_nodes=nexus \
+                    -Ccluster.graceful_stop.min_availability=primaries \
+                    -Cstats.enabled=false &
+else
+        /crate/bin/crate -Cnetwork.host=_tailscale0_,_local_ \
+                    -Cnode.name=$HOSTNAME \
+                    -Cnode.data=true \
+                    -Cnode.store.allow_mmap=false \
+                    -Chttp.cors.enabled=true \
+                    -Chttp.cors.allow-origin="/*" \
+                    -Cthread_pool.write.type=scaling \
+                    -Cdiscovery.seed_hosts=$(getclusterhosts) \
+                    -Ccluster.initial_master_nodes=nexus \
+                    -Ccluster.graceful_stop.min_availability=primaries \
+                    -Cstats.enabled=false &
 fi
 
 
