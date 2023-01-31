@@ -5,7 +5,6 @@ services:
       TSAPIKEY: "$TSAPIKEY"
       TSKEY: "$TSKEY"
     build: .
-    network_mode: host
     command: run_tests.sh
     volumes:
       - /dev/net/tun:/dev/net/tun
@@ -17,6 +16,8 @@ services:
         hard: -1
     expose:
       - 41641/udp
+    ports:
+      - "41641:41641/udp"
     cap_add:
       - NET_ADMIN
       - SYS_PTRACE
