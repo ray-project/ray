@@ -67,6 +67,28 @@ void StoreClientInternalKV::Get(
       }));
 }
 
+void StoreClientInternalKV::MultiGet(
+    const std::string &ns,
+    const std::vector<std::string> &keys,
+    std::function<void(std::unordered_map<std::string, std::string>)> callback) {
+  if (!callback) {
+    callback = [](auto) {};
+  }
+  std::vector<std::string> prefixed_keys;
+  prefixed_keys.reserve(keys.size());
+  for (const auto &key : keys) {
+    prefixed_keys.emplace_back(MakeKey(ns, key));
+  }
+  RAY_CHECK_OK(delegate_->AsyncMultiGet(
+      table_name_, prefixed_keys, [callback = std::move(callback)](auto result) {
+        std::unordered_map<std::string, std::string> ret;
+        for (const auto &item : result) {
+          ret.emplace(ExtractKey(item.first), item.second);
+        }
+        callback(std::move(ret));
+      }));
+}
+
 void StoreClientInternalKV::Put(const std::string &ns,
                                 const std::string &key,
                                 const std::string &value,
