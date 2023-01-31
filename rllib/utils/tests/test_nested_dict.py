@@ -22,6 +22,9 @@ class TestNestedDict(unittest.TestCase):
             "b": {"c": 200, "d": 300},
             "c": {"e": {"f": 400}},
             "d": {"g": {"h": {"i": 500}}},
+            # An empty dict that has no leafs and thus should be ignored when
+            # counting or iterating
+            "j": {},
         }
 
         desired_keys = [
@@ -39,9 +42,6 @@ class TestNestedDict(unittest.TestCase):
         foo_dict[("b", "d")] = 300
         foo_dict["c", "e"] = {"f": 400}
 
-        # Note: key ("c", "f") should not be a valid key since it is empty
-        foo_dict["c", "f"] = NestedDict()
-
         # test __len__
         self.assertEqual(len(foo_dict), len(desired_keys) - 1)
 
@@ -49,7 +49,8 @@ class TestNestedDict(unittest.TestCase):
         self.assertEqual(list(iter(foo_dict)), desired_keys[:-1])
 
         # this call will use __len__ and __iter__
-        foo_dict["d"] = {"g": NestedDict([(("h"), NestedDict({"i": 500}))])}
+        foo_dict["d"] = {"g": NestedDict([("h", NestedDict({"i": 500}))])}
+        foo_dict["j"] = {}
 
         # test asdict
         check(foo_dict.asdict(), desired_dict)
@@ -98,7 +99,7 @@ class TestNestedDict(unittest.TestCase):
         )
 
         # test shallow_keys()
-        self.assertEqual(list(foo_dict.shallow_keys()), ["aa", "b", "c", "d"])
+        self.assertEqual(list(foo_dict.shallow_keys()), ["aa", "b", "c", "d", "j"])
 
         # test copy()
         foo_dict_copy = foo_dict.copy()
@@ -139,6 +140,27 @@ class TestNestedDict(unittest.TestCase):
         self.assertEqual(
             dict1.filter(dict3, ignore_missing=True).asdict(), {"foo": {"a": 10}}
         )
+
+    def test_init(self):
+        # test init with list
+        foo_dict = NestedDict([(("a", "b"), 1), (("a", "c"), 2)])
+        self.assertEqual(foo_dict.asdict(), {"a": {"b": 1, "c": 2}})
+
+        # test init with dict
+        foo_dict = NestedDict({"a": {"b": 1, "c": 2}})
+        self.assertEqual(foo_dict.asdict(), {"a": {"b": 1, "c": 2}})
+
+        # test init with NestedDict
+        foo_dict = NestedDict(NestedDict({"a": {"b": 1, "c": 2}}))
+        self.assertEqual(foo_dict.asdict(), {"a": {"b": 1, "c": 2}})
+
+        # test init empty element
+        foo_dict = NestedDict({"a": {}})
+        self.assertEqual(foo_dict.asdict(), {"a": {}})
+
+        # test init with nested empty element
+        foo_dict = NestedDict({"a": {"b": {}, "c": 2}})
+        self.assertEqual(foo_dict.asdict(), {"a": {"b": {}, "c": 2}})
 
 
 if __name__ == "__main__":

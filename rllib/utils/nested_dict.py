@@ -72,7 +72,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         x: a representation of a nested dict: it can be an iterable of `SeqStrType`
         to values. e.g. `[(("a", "b") , 1), ("b", 2)]` or a mapping of flattened
         keys to values. e.g. `{("a", "b"): 1, ("b",): 2}` or any nested mapping,
-        e.g. `{"a": {"b": 1}, "b": 2}`.
+        e.g. `{"a": {"b": 1}, "b": {}}`.
 
     Example:
         Basic usage:
@@ -186,8 +186,6 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
     def __setitem__(self, k: SeqStrType, v: Union[T, _NestedMappingType]) -> None:
         """This is a zero-copy operation. The pointer to value if preserved in the
         internal data structure."""
-        if isinstance(v, Mapping) and len(v) == 0:
-            return
         if not k:
             raise IndexError(
                 f"Key for {self.__class__.__name__} cannot be empty. Got {k}."
@@ -299,7 +297,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
 
     def copy(self) -> "NestedDict[T]":
         """Returns a shallow copy of the NestedDict."""
-        return NestedDict(self.items())
+        return NestedDict(self)
 
     def __copy__(self) -> "NestedDict[T]":
         return self.copy()
