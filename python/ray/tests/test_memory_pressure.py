@@ -140,7 +140,7 @@ def has_metric_tagged_with_value(addr, tag, value) -> bool:
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_actor(ray_with_memory_monitor):
+def test_non_restartable_actor_throws_oom_error(ray_with_memory_monitor):
     addr = ray_with_memory_monitor
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
 
@@ -152,7 +152,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold + 0.1
     )
-    with pytest.raises(ray.exceptions.RayActorError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
     wait_for_condition(
@@ -169,7 +169,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
+def test_restartable_actor_throws_oom_error(
     ray_with_memory_monitor,
 ):
     addr = ray_with_memory_monitor
@@ -178,7 +178,7 @@ def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold + 0.1
     )
-    with pytest.raises(ray.exceptions.RayActorError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_refresh_ms * 3))
 
     wait_for_condition(
