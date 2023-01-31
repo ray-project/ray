@@ -1,4 +1,7 @@
-from typing import List
+from typing import List, Dict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import PhysicalOperator
 
 
 class Operator:
@@ -51,11 +54,57 @@ class LogicalOperator(Operator):
             assert isinstance(x, LogicalOperator), x
 
 
+class Plan:
+    """Abstract class for logical/physical execution plans.
+
+    This plan should hold an operator representing the plan DAG and any auxiliary data
+    that's useful for plan optimization or execution.
+    """
+
+    @property
+    def dag(self) -> Operator:
+        raise NotImplementedError
+
+
+class LogicalPlan(Plan):
+    """The plan with a DAG of logical operators."""
+
+    def __init__(self, dag: LogicalOperator):
+        self._dag = dag
+
+    @property
+    def dag(self) -> LogicalOperator:
+        """Get the DAG of logical operators."""
+        return self._dag
+
+
+class PhysicalPlan(Plan):
+    """The plan with a DAG of physical operators."""
+
+    def __init__(
+        self, dag: "PhysicalOperator", op_map: Dict["PhysicalOperator", LogicalOperator]
+    ):
+        self._dag = dag
+        self._op_map = op_map
+
+    @property
+    def dag(self) -> "PhysicalOperator":
+        """Get the DAG of physical operators."""
+        return self._dag
+
+    @property
+    def op_map(self) -> Dict["PhysicalOperator", LogicalOperator]:
+        """
+        Get a mapping from physical operators to their corresponding logical operator.
+        """
+        return self._op_map
+
+
 class Rule:
     """Abstract class for optimization rule."""
 
-    def apply(dag: Operator) -> Operator:
-        """Apply the optimization rule to the DAG of operators."""
+    def apply(plan: Plan) -> Plan:
+        """Apply the optimization rule to the execution plan."""
         raise NotImplementedError
 
 
@@ -70,8 +119,8 @@ class Optimizer:
         """List of predefined rules for this optimizer."""
         raise NotImplementedError
 
-    def optimize(self, dag: Operator) -> Operator:
+    def optimize(self, plan: Plan) -> Plan:
         """Optimize operators with a list of rules."""
         for rule in self.rules:
-            dag = rule.apply(dag)
-        return dag
+            plan = rule.apply(plan)
+        return plan
