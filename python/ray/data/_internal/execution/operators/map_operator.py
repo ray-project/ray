@@ -44,9 +44,7 @@ class MapOperator(PhysicalOperator, ABC):
         # instead.
         # NOTE: This constructor must be called by subclasses.
 
-        # Put the function def in the object store to avoid repeated serialization
-        # in case it's large (i.e., closure captures large objects).
-        self._transform_fn_ref = ray.put(transform_fn)
+        self._transform_fn = transform_fn
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
 
         # Bundles block references up to the min_rows_per_bundle target.
@@ -142,6 +140,9 @@ class MapOperator(PhysicalOperator, ABC):
                 ray.get_runtime_context().get_node_id(),
                 soft=True,
             )
+        # Put the function def in the object store to avoid repeated serialization
+        # in case it's large (i.e., closure captures large objects).
+        self._transform_fn_ref = ray.put(self._transform_fn)
         super().start(options)
 
     def add_input(self, refs: RefBundle, input_index: int):
@@ -260,6 +261,9 @@ class MapOperator(PhysicalOperator, ABC):
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
+
+    def get_transformation_fn(self) -> MapTransformFn:
+        return self._transform_fn
 
     @abstractmethod
     def shutdown(self):
