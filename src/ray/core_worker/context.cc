@@ -86,7 +86,16 @@ struct WorkerThreadContext {
   }
 
   void SetCurrentTask(const TaskSpecification &task_spec) {
-    RAY_CHECK(task_index_ == 0);
+    RAY_LOG(INFO) << "current task id: " << current_task_id_
+                  << "current task internal id: " << current_internal_task_id_;
+    if (current_task_ != nullptr) {
+      RAY_LOG(INFO) << "curren task : " << current_task_->DebugString();
+    }
+    RAY_CHECK(task_index_ == 0)
+        << "| current task_index_ = " << task_index_
+        << "current task id: " << current_task_id_
+        << "current task internal id: " << current_internal_task_id_
+        << ", to be set task " << task_spec.DebugString();
     RAY_CHECK(put_counter_ == 0);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber());
     SetCurrentPlacementGroupId(task_spec.PlacementGroupBundleId().first);
@@ -156,13 +165,16 @@ WorkerContext::WorkerContext(WorkerType worker_type,
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  RAY_CHECK(WorkerType::DRIVER != worker_type_ || !job_id.IsNil())
-      << "job id is required for initializing driver's exec context's task id.";
-  auto task_id =
-      WorkerType::DRIVER == worker_type_ ? TaskID::ForDriverTask(job_id) : TaskID::Nil();
-  InitThreadContext(task_id);
-  GetThreadContext().SetCurrentTaskId(task_id, /*attempt_number=*/0);
+  if (worker_type_ == WorkerType::DRIVER) {
+    RAY_CHECK(!job_id.IsNil())
+        << "job id is required for initializing driver's exec context's task id.";
+    GetThreadContext().SetCurrentTaskId(TaskID::ForDriverTask(job_id),
+                                        /*attempt_number=*/0);
+    InitThreadContextMapping();
+  }
 }
+
+// WorkerContext::~WorkerContext() { thread_context_ = nullptr; }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
@@ -265,42 +277,42 @@ void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mu
 void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
-  InitThreadContext(task_spec.TaskId());
-  {
-    absl::WriterMutexLock lock(&mutex_);
-    SetTaskDepth(task_spec.GetDepth());
-    RAY_CHECK(current_job_id_ == task_spec.JobId());
-    if (task_spec.IsNormalTask()) {
-      current_task_is_direct_call_ = true;
-    } else if (task_spec.IsActorCreationTask()) {
-      if (!current_actor_id_.IsNil()) {
-        RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
-      }
-      current_actor_id_ = task_spec.ActorCreationId();
-      current_actor_is_direct_call_ = true;
-      current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
-      current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
-      is_detached_actor_ = task_spec.IsDetachedActor();
-      current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
-      placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
-    } else if (task_spec.IsActorTask()) {
-      RAY_CHECK(current_actor_id_ == task_spec.ActorId());
-    } else {
-      RAY_CHECK(false);
+  GetThreadContext().SetCurrentTask(task_spec);
+  absl::WriterMutexLock lock(&mutex_);
+  SetTaskDepth(task_spec.GetDepth());
+  RAY_CHECK(current_job_id_ == task_spec.JobId());
+  if (task_spec.IsNormalTask()) {
+    current_task_is_direct_call_ = true;
+  } else if (task_spec.IsActorCreationTask()) {
+    if (!current_actor_id_.IsNil()) {
+      RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
     }
-    if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
-      // TODO(architkulkarni): Once workers are cached by runtime env, we should
-      // only set runtime_env_ once and then RAY_CHECK that we
-      // never see a new one.
-      runtime_env_info_.reset(new rpc::RuntimeEnvInfo());
-      *runtime_env_info_ = task_spec.RuntimeEnvInfo();
-      if (!IsRuntimeEnvEmpty(runtime_env_info_->serialized_runtime_env())) {
-        runtime_env_.reset(new json());
-        *runtime_env_ = json::parse(runtime_env_info_->serialized_runtime_env());
-      }
+    current_actor_id_ = task_spec.ActorCreationId();
+    current_actor_is_direct_call_ = true;
+    current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
+    current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
+    is_detached_actor_ = task_spec.IsDetachedActor();
+    current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
+    placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
+  } else if (task_spec.IsActorTask()) {
+    RAY_CHECK(current_actor_id_ == task_spec.ActorId());
+  } else {
+    RAY_CHECK(false);
+  }
+  if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
+    // TODO(architkulkarni): Once workers are cached by runtime env, we should
+    // only set runtime_env_ once and then RAY_CHECK that we
+    // never see a new one.
+    runtime_env_info_.reset(new rpc::RuntimeEnvInfo());
+    *runtime_env_info_ = task_spec.RuntimeEnvInfo();
+    if (!IsRuntimeEnvEmpty(runtime_env_info_->serialized_runtime_env())) {
+      runtime_env_.reset(new json());
+      *runtime_env_ = json::parse(runtime_env_info_->serialized_runtime_env());
     }
   }
-  GetThreadContext().SetCurrentTask(task_spec);
+  InitThreadContextMapping();
+  RAY_LOG(INFO) << "init thread context for " << task_spec.TaskId()
+                << ", spec: " << task_spec.DebugString();
 }
 
 void WorkerContext::ResetCurrentTask() { GetThreadContext().ResetCurrentTask(); }
@@ -355,19 +367,30 @@ bool WorkerContext::CurrentActorDetached() const {
   return is_detached_actor_;
 }
 
-void WorkerContext::InitThreadContext(const TaskID &task_id) {
-  absl::WriterMutexLock lock(&mutex_);
-  auto thread_ctx = std::make_shared<WorkerThreadContext>(task_id);
-  auto itr_inserted =
-      all_exec_threads_contexts_.insert({std::this_thread::get_id(), thread_ctx});
-  current_exec_context_ = itr_inserted.first->second;
+void WorkerContext::InitThreadContextMapping() {
+  // absl::WriterMutexLock lock(&mutex_);
+  auto itr = all_exec_threads_contexts_.find(std::this_thread::get_id());
+  RAY_CHECK(thread_context_ != nullptr);
+  if (itr == all_exec_threads_contexts_.end()) {
+    RAY_LOG(INFO) << "init thread context mapping for: "
+                  << thread_context_->GetCurrentTaskID();
+    all_exec_threads_contexts_.insert({std::this_thread::get_id(), thread_context_});
+  }
+  current_exec_context_ = thread_context_;
 }
 
 std::shared_ptr<WorkerThreadContext> WorkerContext::GetThreadContextInternal() const {
-  // For non threaded actor/async actors, Ray will only execute one task sequentially.
-  if (!current_actor_is_asyncio_ && current_actor_max_concurrency_ == 1) {
-    RAY_CHECK(current_exec_context_ != nullptr);
-    return current_exec_context_;
+  // For non-actor threads, return the current exec thread context.
+  if (current_exec_context_) {
+    if (current_task_is_direct_call_ || worker_type_ == WorkerType::DRIVER ||
+        (!current_actor_is_asyncio_ && current_actor_max_concurrency_ == 1)) {
+      RAY_CHECK(current_exec_context_ != nullptr);
+      auto child_thread_ctx = std::make_shared<WorkerThreadContext>(
+          current_exec_context_->GetCurrentTaskID());
+      RAY_LOG(INFO) << "returning copy of the current exec thread context: "
+                    << current_exec_context_->GetCurrentTaskID();
+      return child_thread_ctx;
+    }
   }
 
   const auto itr = all_exec_threads_contexts_.find(std::this_thread::get_id());
@@ -390,10 +413,12 @@ WorkerThreadContext &WorkerContext::GetThreadContext() const {
       // Not able to find a proxied thread context.
       RAY_CHECK(!current_job_id_.IsNil())
           << "can't access thread context when job_id is not assigned";
-      thread_context_ =
-          std::make_unique<WorkerThreadContext>(TaskID::FromRandom(current_job_id_));
+      auto task_id = TaskID::FromRandom(current_job_id_);
+      RAY_LOG(INFO) << "nullptr thread ctx, setting new task from job: " << task_id;
+      thread_context_ = std::make_unique<WorkerThreadContext>(task_id);
     } else {
       // Found a proxy thread ctx.
+      RAY_LOG(INFO) << "proxied thread ctx: " << ctx->GetCurrentTaskID();
       thread_context_ = ctx;
     }
   }

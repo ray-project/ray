@@ -178,7 +178,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
             task_spec.ConcurrencyGroups();
         RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
-                      << ", actor_id: " << task_spec.ActorCreationId();
+                      << ", actor_id: " << task_spec.ActorCreationId()
+                      << ", spec :" << task_spec.DebugString();
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will restart the actor.

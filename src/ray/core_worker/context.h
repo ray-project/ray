@@ -142,7 +142,7 @@ class WorkerContext {
   std::shared_ptr<WorkerThreadContext> GetThreadContextInternal() const
       SHARED_LOCKS_REQUIRED(mutex_);
 
-  void InitThreadContext(const TaskID &task_id) LOCKS_EXCLUDED(mutex_);
+  void InitThreadContextMapping() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   WorkerThreadContext &GetThreadContext() const;
 

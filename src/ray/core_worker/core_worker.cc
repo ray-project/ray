@@ -1837,7 +1837,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                             serialized_retry_exception_allowlist,
                             scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
-  RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
+  RAY_LOG(INFO) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     returned_refs = ExecuteTaskLocalMode(task_spec);
@@ -2145,7 +2145,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   actor_handle->SetActorTaskSpec(builder, ObjectID::Nil());
   // Submit task.
   TaskSpecification task_spec = builder.Build();
-  RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
+  RAY_LOG(INFO) << "Submitting actor task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     /// NOTE: The lock should be released in local mode. The user code may
@@ -2411,7 +2411,7 @@ Status CoreWorker::ExecuteTask(
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     bool *is_application_error) {
-  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+  RAY_LOG(INFO) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
@@ -2483,7 +2483,8 @@ Status CoreWorker::ExecuteTask(
                                           rpc_address_,
                                           /*is_self=*/true);
     }
-    RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
+    RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId()
+                  << " spec = " << task_spec.DebugString();
   } else if (task_spec.IsActorTask()) {
     task_type = TaskType::ACTOR_TASK;
   }
