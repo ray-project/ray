@@ -32,9 +32,10 @@ inline std::optional<rpc::RayErrorInfo> GetErrorInfoFromGetWorkerFailureCauseRep
     } else {
       return std::nullopt;
     }
-  } else {
+  } else if (get_worker_failure_cause_reply_status.code() == StatusCode::GrpcUnavailable) {
     RAY_LOG(DEBUG) << "Failed to fetch worker failure with status "
                    << get_worker_failure_cause_reply_status.ToString()
+                   << " worker id: " << addr.worker_id
                    << " node id: " << addr.raylet_id << " ip: " << addr.ip_address;
     std::stringstream buffer;
     buffer << "Worker failed due to the node dying.\n\nThe node (IP: " << addr.ip_address
@@ -49,6 +50,7 @@ inline std::optional<rpc::RayErrorInfo> GetErrorInfoFromGetWorkerFailureCauseRep
     error_info.set_error_type(rpc::ErrorType::NODE_DIED);
     return std::make_optional(error_info);
   }
+  return std::nullopt;
 }
 
 }  // namespace core

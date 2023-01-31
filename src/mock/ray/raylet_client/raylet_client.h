@@ -231,7 +231,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   void GetWorkerFailureCause(
       const WorkerID &worker_id,
-      const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback) {
+      const ray::rpc::ClientCallback<ray::rpc::GetWorkerFailureCauseReply> &callback) override {
     main_io_service_.post(
         [callback]() {
           const rpc::GetWorkerFailureCauseReply reply;
