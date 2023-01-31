@@ -61,7 +61,7 @@ THIRD_PARTY_LIBARY_LIBRARIES_WHITELIST = {
     "jax",
     "numpy",
     "pandas",
-    "pytorch",
+    "torch",
     "pyarrow",
     "scikit-learn",
     "tensorflow",

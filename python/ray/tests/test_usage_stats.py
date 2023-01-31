@@ -725,8 +725,6 @@ with joblib.parallel_backend("ray"):
         "util.multiprocessing.Pool",
         "util.Queue",
         "util.joblib",
-        "pandas",
-        "pyarrow",
     }
     if sys.platform != "win32":
         expected.add("job_submission")
@@ -749,6 +747,72 @@ def test_usage_lib_cluster_metadata_generation_usage_disabled(
         assert "ray_version" in meta
         assert "python_version" in meta
         assert len(meta) == 2
+
+
+def test_third_party_library_usage_finder_parsing():
+    finder = ray_usage_lib._ThirdPartyLibraryUsageFinder()
+    assert finder._get_library_name(".pandas") == ""
+    assert finder._get_library_name("pandas.") == "pandas"
+    assert finder._get_library_name("tensorflow.keras") == "tensorflow"
+    assert finder._get_library_name("") is None
+    assert finder._get_library_name(None) is None
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation "
+    "since we import serve.",
+)
+def test_3rd_party_library_usages(call_ray_start, reset_usage_stats):
+    address = call_ray_start
+    ray.init(address=address)
+
+    driver = f"""
+import ray
+import ray._private.usage.usage_lib as ray_usage_lib
+
+ray.init(address="{address}")
+
+@ray.remote
+def foo():
+    import tensorflow
+    pass
+
+@ray.remote
+def bar():
+    try:
+        import jax
+    except:
+        pass
+
+@ray.remote
+def jaz():
+    from numpy import random
+    pass
+
+@ray.remote
+def wat():
+    import torch.nn as nn
+    pass
+
+@ray.remote
+def not_whitelisted():
+    import collections.abc
+    pass
+
+ray.get([foo.remote(), bar.remote(), jaz.remote(), wat.remote()])
+"""
+    run_string_as_driver(driver)
+    library_usages = ray_usage_lib.get_library_usages_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client()
+    )
+    tmp_path = ray._private.utils.get_ray_temp_dir()
+    lib_usages_from_home_folder = ray_usage_lib.LibUsageRecorder(
+        tmp_path
+    ).read_lib_usages()
+    expected = {"pandas", "pyarrow", "tensorflow", "jax", "numpy", "torch"}
+    assert set(library_usages) == expected
+    assert set(lib_usages_from_home_folder) == expected
 
 
 def test_usage_lib_get_total_num_running_jobs_to_report(
