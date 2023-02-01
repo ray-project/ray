@@ -3763,7 +3763,7 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
   } else {
     num_alive_nodes_++;
   }
-  RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes.load();
+  RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
 }
 
 }  // namespace core

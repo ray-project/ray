@@ -24,6 +24,10 @@
 
 namespace ray {
 namespace core {
+namespace {
+StaticLeaseRequestRateLimiter kOneRateLimiter(1);
+StaticLeaseRequestRateLimiter kTwoRateLimiter(2);
+}  // namespace
 
 // Used to prevent leases from timing out when not testing that logic. It would
 // be better to use a mock clock or lease manager interface, but that's high
@@ -391,7 +395,7 @@ TEST(DirectTaskTransportTest, TestLocalityAwareSubmitOneTask) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -443,7 +447,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -495,7 +499,7 @@ TEST(DirectTaskTransportTest, TestRetryTaskApplicationLevelError) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
@@ -552,7 +556,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -595,7 +599,7 @@ TEST(DirectTaskTransportTest, TestHandleUnschedulableTask) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 2; });
+                                          kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -665,7 +669,7 @@ TEST(DirectTaskTransportTest, TestHandleRuntimeEnvSetupFailed) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 2; });
+                                          kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -735,7 +739,7 @@ TEST(DirectTaskTransportTest, TestWorkerHandleLocalRayletDied) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 2; });
+                                          kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -764,7 +768,7 @@ TEST(DirectTaskTransportTest, TestDriverHandleLocalRayletDied) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 2; });
+                                          kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -808,6 +812,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
 
   int64_t concurrency = 10;
+  StaticLeaseRequestRateLimiter rateLimiter(concurrency);
   CoreWorkerDirectTaskSubmitter submitter(address,
                                           raylet_client,
                                           client_pool,
@@ -820,7 +825,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          [&]() { return concurrency; });
+                                          rateLimiter);
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1109,7 +1114,7 @@ TEST(DirectTaskTransportTest, TestSubmitMultipleTasks) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1181,7 +1186,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1254,7 +1259,7 @@ TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1322,7 +1327,7 @@ TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1387,7 +1392,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
 
@@ -1443,7 +1448,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -1499,7 +1504,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1573,7 +1578,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1651,7 +1656,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
 
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
@@ -1804,7 +1809,7 @@ TEST(DirectTaskTransportTest, TestBacklogReport) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
@@ -1873,7 +1878,7 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
                                           /*lease_timeout_ms=*/5,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1940,7 +1945,7 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -2002,7 +2007,7 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -2047,7 +2052,7 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          []() { return 1; });
+                                          kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());

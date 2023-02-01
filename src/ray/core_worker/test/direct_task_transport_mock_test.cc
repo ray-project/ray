@@ -34,6 +34,7 @@ class DirectTaskTransportTest : public ::testing::Test {
     lease_policy = std::make_shared<MockLeasePolicyInterface>();
     auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
         [&](const rpc::Address &) { return nullptr; });
+    static StaticLeaseRequestRateLimiter kRateLimiter(1);
     task_submitter = std::make_unique<CoreWorkerDirectTaskSubmitter>(
         rpc::Address(), /* rpc_address */
         raylet_client,  /* lease_client */
@@ -47,7 +48,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         0,                  /* lease_timeout_ms */
         actor_creator,
         JobID::Nil() /* job_id */,
-        []() { return 1; });
+        kRateLimiter);
   }
 
   TaskSpecification GetCreatingTaskSpec(const ActorID &actor_id) {
