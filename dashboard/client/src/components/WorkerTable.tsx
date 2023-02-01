@@ -101,7 +101,7 @@ const WorkerDetailTable = ({
 
   return (
     <TableContainer>
-      <ActorTable actors={actors} />
+      <ActorTable actors={actors} detailPathPrefix="" />
     </TableContainer>
   );
 };

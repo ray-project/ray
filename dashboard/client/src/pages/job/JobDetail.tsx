@@ -5,6 +5,10 @@ import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+} from "../../common/ProfilingLink";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -170,8 +174,24 @@ export const JobDetailChartsPage = ({
               },
             },
             {
-              label: "Logs",
-              content: <JobLogsLink job={job} newIA />,
+              label: "Actions",
+              content: (
+                <div>
+                  <JobLogsLink job={job} newIA />
+                  <br />
+                  <CpuProfilingLink
+                    pid={job.driver_info?.pid}
+                    ip={job.driver_info?.node_ip_address}
+                    type="Driver"
+                  />
+                  <br />
+                  <CpuStackTraceLink
+                    pid={job.driver_info?.pid}
+                    ip={job.driver_info?.node_ip_address}
+                    type="Driver"
+                  />
+                </div>
+              ),
             },
           ]}
         />
@@ -229,7 +249,10 @@ export const JobDetailChartsPage = ({
       </TitleCard>
       <TitleCard>
         <CollapsibleSection title="Actors">
-          <ActorList jobId={jobId} />
+          <ActorList
+            jobId={jobId}
+            detailPathPrefix={newIA ? "actors" : "/actors"}
+          />
         </CollapsibleSection>
       </TitleCard>
       <TitleCard>

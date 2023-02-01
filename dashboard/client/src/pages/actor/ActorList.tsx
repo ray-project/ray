@@ -8,10 +8,19 @@ import { useActorList } from "./hook/useActorList";
 /**
  * Represent the embedable actors page.
  */
-const ActorList = ({ jobId = null }: { jobId?: string | null }) => {
+const ActorList = ({
+  jobId = null,
+  detailPathPrefix = null,
+}: {
+  jobId?: string | null;
+  detailPathPrefix: string | null;
+}) => {
   const [timeStamp] = useState(dayjs());
   const data: { [actorId: string]: Actor } | undefined = useActorList();
   const actors: { [actorId: string]: Actor } = data ? data : {};
+  if (detailPathPrefix === null) {
+    detailPathPrefix = "";
+  }
 
   return (
     <div>
@@ -20,7 +29,11 @@ const ActorList = ({ jobId = null }: { jobId?: string | null }) => {
           Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
         </Grid>
       </Grid>
-      <ActorTable actors={actors} jobId={jobId} />
+      <ActorTable
+        actors={actors}
+        jobId={jobId}
+        detailPathPrefix={detailPathPrefix}
+      />
     </div>
   );
 };

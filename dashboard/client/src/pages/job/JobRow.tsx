@@ -4,6 +4,10 @@ import dayjs from "dayjs";
 import React from "react";
 import { Link } from "react-router-dom";
 import { DurationText } from "../../common/DurationText";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+} from "../../common/ProfilingLink";
 import { StatusChip } from "../../components/StatusChip";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
@@ -89,6 +93,18 @@ export const JobRow = ({ job, newIA = false }: JobRowProps) => {
         {/* TODO(aguo): Also show logs for the job id instead
       of just the submission's logs */}
         <JobLogsLink job={job} newIA={newIA} />
+        <br />
+        <CpuProfilingLink
+          pid={job.driver_info?.pid}
+          ip={job.driver_info?.node_ip_address}
+          type="Driver"
+        />
+        <br />
+        <CpuStackTraceLink
+          pid={job.driver_info?.pid}
+          ip={job.driver_info?.node_ip_address}
+          type="Driver"
+        />
       </TableCell>
       <TableCell align="center">
         {dayjs(Number(start_time)).format("YYYY/MM/DD HH:mm:ss")}

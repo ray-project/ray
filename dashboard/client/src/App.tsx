@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import ActorDetailPage from "./pages/actor/ActorDetail";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import JobList, { NewIAJobsPage } from "./pages/job";
@@ -172,6 +173,7 @@ const App = () => {
                   />
                   <Route element={<NodeDetail />} path="/node/:id" />
                   <Route element={<JobDetailChartsPage />} path="/job/:id" />
+                  <Route element={<ActorDetailPage />} path="/actors/:id" />
                   <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
                   <Route element={<Loading />} path="/loading" />
                 </Route>
@@ -227,9 +229,11 @@ const App = () => {
                         }
                         path="actors"
                       />
+                      <Route element={<ActorDetailPage />} path="actors/:id" />
                     </Route>
                   </Route>
                   <Route element={<Actors />} path="actors" />
+                  <Route element={<ActorDetailPage />} path="actors/:id" />
                   <Route element={<Metrics newIA />} path="metrics" />
                   <Route element={<NewIALogsPage />} path="logs">
                     {/* TODO(aguo): Refactor Logs component to use optional query
