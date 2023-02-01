@@ -302,26 +302,6 @@ class TunerInternal:
             "in the same trainable that was passed into the initial `Tuner` object."
         )
 
-    @classmethod
-    def can_restore(cls, path: Union[str, Path]) -> bool:
-        """Checks whether a given directory contains a restorable Tune experiment.
-
-        Args:
-            path: The path to the experiment directory of the Tune experiment.
-                This can be either a local directory (e.g. ~/ray_results/exp_name)
-                or a remote URI (e.g. s3://bucket/exp_name).
-
-        Returns:
-            can_restore: Whether or not this path exists and contains the pickled Tuner,
-                to load on restore.
-        """
-        path = str(path)
-        if is_non_local_path_uri(path):
-            dir_contents = list_at_uri(path)
-        else:
-            dir_contents = [] if not os.path.exists(path) else os.listdir(path)
-        return dir_contents and _TUNER_PKL in dir_contents
-
     def _restore_from_path_or_uri(
         self,
         path_or_uri: str,

@@ -1,14 +1,16 @@
+import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import ray
 
 from ray.air.config import RunConfig
+from ray.air._internal.remote_storage import list_at_uri
 from ray.tune import TuneError
 from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
-from ray.tune.impl.tuner_internal import TunerInternal
+from ray.tune.impl.tuner_internal import TunerInternal, _TUNER_PKL
 from ray.tune.tune_config import TuneConfig
 from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
@@ -262,7 +264,7 @@ class Tuner:
                 tuner = Tuner.restore(exp_dir, resume_errored=True)
             else:
                 tuner = Tuner(
-                    "PPO",
+                    train_fn,
                     run_config=RunConfig(name=name, local_dir=local_dir),
                 )
             tuner.fit()
@@ -271,9 +273,11 @@ class Tuner:
             path: The path to the experiment directory of the Tune experiment.
                 This can be either a local directory (e.g. ~/ray_results/exp_name)
                 or a remote URI (e.g. s3://bucket/exp_name).
-        """
 
-        return TunerInternal.can_restore(path)
+        Returns:
+            bool: True if this path exists and contains the Tuner state to resume from
+        """
+        return _TUNER_PKL in list_at_uri(os.path.expanduser(path))
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
         run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())

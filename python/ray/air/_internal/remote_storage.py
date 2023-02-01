@@ -252,6 +252,10 @@ def _upload_to_uri_with_exclude(
 
 
 def list_at_uri(uri: str) -> List[str]:
+    """Returns the list of filenames at a URI (similar to os.listdir).
+
+    If the URI doesn't exist, returns an empty list.
+    """
     _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(uri)
