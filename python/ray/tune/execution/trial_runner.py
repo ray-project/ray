@@ -826,7 +826,6 @@ class TrialRunner:
             if not ray.util.client.ray.is_connected():
                 trial.init_logdir()  # Create logdir if it does not exist
 
-            trial.refresh_default_resource_request()
             trials.append(trial)
 
         # 4. Set trial statuses according to the resume configuration

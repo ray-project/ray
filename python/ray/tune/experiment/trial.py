@@ -679,15 +679,6 @@ class Trial:
 
         self.invalidate_json_state()
 
-    def refresh_default_resource_request(self):
-        """Update trial resources according to the trainable's default resource
-        request, if it is provided."""
-        trainable_cls = self.get_trainable_cls()
-        if trainable_cls:
-            default_resources = trainable_cls.default_resource_request(self.config)
-            if default_resources:
-                self.update_resources(default_resources)
-
     def set_runner(self, runner):
         self.runner = runner
         if runner:

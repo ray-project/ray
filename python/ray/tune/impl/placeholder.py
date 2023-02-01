@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Tuple
 
-from ray.tune.search.sample import Categorical, Function
+from ray.tune.search.sample import Categorical, Domain, Function
 from ray.tune.search.variant_generator import assign_value, _get_value
 from ray.util.annotations import DeveloperAPI
 
@@ -107,11 +107,14 @@ def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dic
         v = _FunctionResolver(config)
         resolvers[prefix] = v
         return v.get_placeholder()
-    else:
-        # Other reference objects, dataset, actor handle, etc.
+    elif not isinstance(config, Domain):
+        # Other non-search space reference objects, dataset, actor handle, etc.
         v = _RefResolver(config)
         resolvers[prefix] = v
         return v.get_placeholder()
+    else:
+        # All the other cases, do nothing.
+        return config
 
 
 @DeveloperAPI

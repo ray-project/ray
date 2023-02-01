@@ -2,6 +2,7 @@ import unittest
 
 from ray import tune
 from ray.tune.impl.placeholder import inject_placeholders, resolve_placeholders
+from ray.tune.search.sample import Float, Integer
 
 
 class PlaceholderTest(unittest.TestCase):
@@ -136,6 +137,25 @@ class PlaceholderTest(unittest.TestCase):
         self.assertEqual(config["param2"][1][1].value, "ok")
         self.assertTrue(isinstance(config["param3"]["param4"], tuple))
         self.assertEqual(config["param3"]["param4"][1][1].value, "not ok")
+
+    def testOtherDomains(self):
+        class Dummy:
+            def __init__(self, value):
+                self.value = value
+
+        config = {
+            "param1": tune.uniform(0, 1),
+            "param2": tune.randint(2, 3),
+            "param3": tune.qrandn(0, 1, 0.1),
+        }
+
+        replaced = {}
+        config = inject_placeholders(config, replaced)
+
+        # Normal params are not replaced.
+        self.assertTrue(isinstance(config["param1"], Float))
+        self.assertTrue(isinstance(config["param2"], Integer))
+        self.assertTrue(isinstance(config["param3"], Float))
 
 
 if __name__ == "__main__":
