@@ -55,8 +55,9 @@ float ComputeNodeScore(const NodeResources &node_resources, float spread_thresho
 }
 }  // namespace
 
-float HybridSchedulingPolicy::ComputeLocalNodeScore(float spread_threshold) const {
-  const auto local_it = nodes_.find(local_node_id_);
+float HybridSchedulingPolicy::ComputeNodeScore(const scheduling::NodeID &node_id,
+                                               float spread_threshold) const {
+  const auto local_it = nodes_.find(node_id);
   RAY_CHECK(local_it != nodes_.end());
   return ComputeNodeScore(local_it->second.GetLocalView(), spread_threshold);
 }
@@ -64,8 +65,8 @@ float HybridSchedulingPolicy::ComputeLocalNodeScore(float spread_threshold) cons
 scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
     std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
     size_t num_candidate_nodes,
-    bool prioritize_local_node,
-    float local_node_score) const {
+    std::optional<scheduling::NodeID> preferred_node_id,
+    float spread_threshold) const {
   RAY_CHECK(!node_scores.empty());
   RAY_CHECK(num_candidate_nodes >= 1);
   // Pick the top num_candidate_nodes nodes with the lowest score.
@@ -85,9 +86,10 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
 
   // If prioritize local node, always pick local node is it has the minimal
   // score across all candidates.
-  if (prioritize_local_node) {
-    if (local_node_score <= node_scores.front().second) {
-      return local_node_id_;
+  if (preferred_node_id.has_value()) {
+    if (ComputeNodeScore(preferred_node_id.value(), spread_threshold) <=
+        node_scores.front().second) {
+      return preferred_node_id;
     }
   }
   size_t node_index = absl::Uniform<size_t>(
@@ -101,6 +103,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
     bool force_spillback,
     bool require_node_available,
     NodeFilter node_filter,
+    const std::string &preferred_node,
     int32_t schedule_top_k_absolute,
     float scheduler_top_k_fraction) {
   // Nodes that are feasible and currently have available resources.
@@ -109,28 +112,35 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
   std::vector<std::pair<scheduling::NodeID, float>> feasible_and_unavailable_nodes;
   // Check whether the local node is available and feasible. We'll use this to
   // help prioritize the local node when force_spillback=false.
-  bool local_node_is_available = false;
-  bool local_node_is_feasible = false;
+  bool preferred_node_is_available = false;
+  bool preferred_node_is_feasible = false;
+  scheduling::NodeID preferred_node_id = local_node_id_;
+  if (!preferred_node.empty()) {
+    auto new_id = scheduling::NodeID(preferred_node);
+    if (nodes_.contains(new_id)) {
+      preferred_node_id = new_id;
+    }
+  }
   for (const auto &pair : nodes_) {
     const auto &node_id = pair.first;
     const auto &node_resources = pair.second.GetLocalView();
-    if (force_spillback && node_id == local_node_id_) {
+    if (force_spillback && node_id == preferred_node_id) {
       continue;
     }
     if (IsNodeFeasible(node_id, node_filter, node_resources, resource_request)) {
       bool ignore_pull_manager_at_capacity = false;
-      if (node_id == local_node_id_) {
+      if (node_id == preferred_node_id) {
         // It's okay if the local node's pull manager is at
         // capacity because we will eventually spill the task
         // back from the waiting queue if its args cannot be
         // pulled.
         ignore_pull_manager_at_capacity = true;
-        local_node_is_feasible = true;
+        preferred_node_is_feasible = true;
       }
       bool is_available =
           node_resources.IsAvailable(resource_request, ignore_pull_manager_at_capacity);
-      if (node_id == local_node_id_ && is_available) {
-        local_node_is_available = true;
+      if (node_id == preferred_node_id && is_available) {
+        preferred_node_is_available = true;
       }
       float node_score = ComputeNodeScore(node_resources, spread_threshold);
       RAY_LOG(DEBUG) << "Node " << node_id.ToInt() << " is "
@@ -151,23 +161,24 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
                         static_cast<int32_t>(nodes_.size() * scheduler_top_k_fraction));
 
   if (!available_nodes.empty()) {
-    bool prioritize_local_node = !force_spillback && local_node_is_available;
+    bool prioritize_preferred_node = !force_spillback && preferred_node_is_available;
     // First prioritize available nodes.
-    return GetBestNode(
-        available_nodes,
-        num_candidate_nodes,
-        prioritize_local_node,
-        /* local_node_score*/
-        prioritize_local_node ? ComputeLocalNodeScore(spread_threshold) : 1);
+    return GetBestNode(available_nodes,
+                       num_candidate_nodes,
+                       prioritize_preferred_node
+                           ? std::optional<scheduling::NodeID>(preferred_node_id)
+                           : std::optional<scheduling::NodeID>(),
+                       spread_threshold);
   } else if (!feasible_and_unavailable_nodes.empty() && !require_node_available) {
-    bool prioritize_local_node = !force_spillback && local_node_is_feasible;
+    bool prioritize_preferred_node = !force_spillback && preferred_node_is_feasible;
     // If there are no available nodes, and the caller is okay with an
     // unavailable node, check the feasible nodes next.
-    return GetBestNode(
-        feasible_and_unavailable_nodes,
-        num_candidate_nodes,
-        prioritize_local_node,
-        prioritize_local_node ? ComputeLocalNodeScore(spread_threshold) : 1);
+    return GetBestNode(feasible_and_unavailable_nodes,
+                       num_candidate_nodes,
+                       prioritize_preferred_node
+                           ? std::optional<scheduling::NodeID>(preferred_node_id)
+                           : std::optional<scheduling::NodeID>(),
+                       spread_threshold);
   } else {
     return scheduling::NodeID::Nil();
   }

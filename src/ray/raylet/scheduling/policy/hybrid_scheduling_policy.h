@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <optional>
 #include <vector>
 
 #include "absl/random/bit_gen_ref.h"
@@ -63,8 +64,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
  private:
   enum class NodeFilter {
     /// Default scheduling.
-    kAny,
-    /// Schedule on GPU only nodes.
+    kAny,  /// Schedule on GPU only nodes.
     kGPU,
     /// Schedule on nodes that don't have GPU. Since GPUs are more scarce resources, we
     /// need
@@ -80,15 +80,15 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
                       const ResourceRequest &resource_request) const;
 
   /// helper function compute a score between 0-1 indicates
-  /// the preference of the current node (the lower score,
+  /// the preference of the node (the lower score,
   /// the more preferable.
-  float ComputeLocalNodeScore(float spread_threshold) const;
+  float ComputeNodeScore(const scheduling::NodeID &node_id, float spread_threshold) const;
 
   scheduling::NodeID GetBestNode(
       std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
       size_t num_candidate_nodes,
-      bool prioritize_local_node,
-      float local_node_score) const;
+      std::optional<scheduling::NodeID> preferred_node_id,
+      float spread_threshold) const;
 
   /// \param resource_request: The resource request we're attempting to schedule.
   /// \param spread_threshold: The fraction of resource utilization on a node after
@@ -103,6 +103,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   /// \param node_filter: defines the subset of nodes were are allowed to schedule on.
   /// can be one of kAny (can schedule on all nodes), kGPU (can only schedule on kGPU
   /// nodes), kNonGpu (can only schedule on non-GPU nodes.
+  /// \param preferred_node_id: defines the preferred node to schedule on.
   /// \param schedule_top_k_absolute: scheduler will randomly pick
   /// one node from the top k in the cluster to improve load balancing. The
   /// scheduler guarantees k is at least equal to schedule_top_k_absolute.
@@ -118,6 +119,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
                                   bool force_spillback,
                                   bool require_available,
                                   NodeFilter node_filter,
+                                  const std::string &preferred_node_id,
                                   int32_t schedule_top_k_absolute,
                                   float scheduler_top_k_fraction);
 
