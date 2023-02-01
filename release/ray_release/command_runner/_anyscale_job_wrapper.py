@@ -261,6 +261,9 @@ def main(
     else:
         return_code = None
 
+    if return_code == TIMEOUT_RETURN_CODE and test_long_running:
+        return_code = 0
+
     total_time_taken = time.monotonic() - start_time
     output_json = {
         "return_code": return_code,
@@ -290,9 +293,7 @@ def main(
     print("", flush=True)
     print("", file=sys.stderr, flush=True)
 
-    if return_code == TIMEOUT_RETURN_CODE and test_long_running:
-        return_code = 0
-    elif return_code is None:
+    if return_code is None:
         return_code = 1
 
     time.sleep(1)
