@@ -24,6 +24,7 @@ MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 # TODO(Clark): Remove conditional definition once we only support Arrow 9.0.0+.
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 
+NUM_BYTES_PER_UNICODE_CHAR = 4
 
 def _arrow_supports_extension_scalars():
     """
@@ -125,10 +126,58 @@ class ArrowTensorType(pa.PyExtensionType):
             """
             Convert an ExtensionScalar to a tensor element.
             """
-            # TODO(Clark): Construct ndarray view directly on tensor element buffer to
-            # ensure reliable zero-copy semantics.
-            flat_ndarray = scalar.value.values.to_numpy(zero_copy_only=False)
-            return flat_ndarray.reshape(self.shape)
+            shape = scalar.type.shape
+            raw_values = scalar.value.values
+            offset = raw_values.offset
+            if pa.types.is_boolean(raw_values.type):
+                # Arrow boolean array buffers are bit-packed, with 8 entries per byte,
+                # and are accessed via bit offsets.
+                buffer_item_width = raw_values.type.bit_width
+            else:
+                # We assume all other array types are accessed via byte array
+                # offsets.
+                buffer_item_width = raw_values.type.bit_width // 8
+            data_buffer = raw_values.buffers()[1]
+            data_offset = buffer_item_width * offset
+            if pa.types.is_boolean(raw_values.type):
+                # Special handling for boolean arrays, since Arrow bit-packs boolean arrays
+                # while NumPy does not.
+                # Cast as uint8 array and let NumPy unpack into a boolean view.
+                # Offset into uint8 array, where each element is a bucket for 8 booleans.
+                byte_bucket_offset = offset // 8
+                # Offset for a specific boolean, within a uint8 array element.
+                bool_offset = offset % 8
+                # The number of uint8 array elements (buckets) that our slice spans.
+                # Note that, due to the offset for a specific boolean, the slice can span
+                # byte boundaries even if it contains less than 8 booleans.
+                num_boolean_byte_buckets = 1 + ((bool_offset + np.prod(shape) - 1) // 8)
+                # Construct the uint8 array view on the buffer.
+                arr = np.ndarray(
+                    (num_boolean_byte_buckets,),
+                    dtype=np.uint8,
+                    buffer=data_buffer,
+                    offset=byte_bucket_offset,
+                )
+                # Unpack into a byte per boolean, using LSB bit-packed ordering.
+                arr = np.unpackbits(arr, bitorder="little")
+                # Interpret buffer as boolean array.
+                return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
+            # Special handling of ragged string tensors
+            if pa.types.is_fixed_size_binary(raw_values.type):
+                offset = raw_values.offset
+                buffer_item_width = raw_values.type.bit_width // 8
+                ext_dtype = np.dtype(
+                    f"<U{raw_values.type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}"
+                )
+                data_offset = buffer_item_width * offset
+                data_buffer = raw_values.buffers()[1]
+                return np.ndarray(
+                    shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset
+                )
+            ext_dtype = raw_values.type.to_pandas_dtype()
+            return np.ndarray(
+                shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset
+            )
 
     def __str__(self) -> str:
         return (
@@ -315,8 +364,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                     arr.dtype.byteorder == "=" and sys.byteorder == "big"
                 ):
                     raise ValueError(
-                        "Only little-endian string tensors are supported, but got: ",
-                        arr.dtype,
+                        f"Only little-endian string tensors are supported, but got: {arr.dtype}",
                     )
                 pa_dtype = pa.binary(arr.dtype.itemsize)
             outer_len = arr.shape[0]
@@ -331,7 +379,6 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                 # NOTE: Arrow expects LSB bit-packed ordering.
                 # NOTE: This creates a copy.
                 arr = np.packbits(arr, bitorder="little")
-
             data_buffer = pa.py_buffer(arr)
             data_array = pa.Array.from_buffers(
                 pa_dtype, total_num_items, [None, data_buffer]
@@ -438,7 +485,6 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
         # Special handling of binary/string types. Assumes unicode string tensor columns
         if pa.types.is_fixed_size_binary(value_type):
-            NUM_BYTES_PER_UNICODE_CHAR = 4
             ext_dtype = np.dtype(
                 f"<U{value_type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}"
             )
@@ -615,13 +661,61 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
             """
             Convert an ExtensionScalar to a tensor element.
             """
-            # TODO(Clark): Construct ndarray view directly on tensor element buffer to
-            # ensure reliable zero-copy semantics.
-            flat_ndarray = scalar.value.get("data").values.to_numpy(
-                zero_copy_only=False
-            )
+            data = scalar.value.get("data")
             shape = tuple(scalar.value.get("shape").as_py())
-            return flat_ndarray.reshape(shape)
+            raw_values = data.values
+            offset = raw_values.offset
+            if pa.types.is_boolean(raw_values.type):
+                # Arrow boolean array buffers are bit-packed, with 8 entries per byte,
+                # and are accessed via bit offsets.
+                buffer_item_width = raw_values.type.bit_width
+            else:
+                # We assume all other array types are accessed via byte array
+                # offsets.
+                buffer_item_width = raw_values.type.bit_width // 8
+            data_buffer = raw_values.buffers()[1]
+            data_offset = buffer_item_width * offset
+
+            if pa.types.is_boolean(raw_values.type):
+                # Special handling for boolean arrays, since Arrow bit-packs boolean arrays
+                # while NumPy does not.
+                # Cast as uint8 array and let NumPy unpack into a boolean view.
+                # Offset into uint8 array, where each element is a bucket for 8 booleans.
+                byte_bucket_offset = data_offset // 8
+                # Offset for a specific boolean, within a uint8 array element.
+                bool_offset = data_offset % 8
+                # The number of uint8 array elements (buckets) that our slice spans.
+                # Note that, due to the offset for a specific boolean, the slice can span
+                # byte boundaries even if it contains less than 8 booleans.
+                num_boolean_byte_buckets = 1 + ((bool_offset + np.prod(shape) - 1) // 8)
+                # Construct the uint8 array view on the buffer.
+                arr = np.ndarray(
+                    (num_boolean_byte_buckets,),
+                    dtype=np.uint8,
+                    buffer=data_buffer,
+                    offset=byte_bucket_offset,
+                )
+                # Unpack into a byte per boolean, using LSB bit-packed ordering.
+                arr = np.unpackbits(arr, bitorder="little")
+                # Interpret buffer as boolean array.
+                return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
+
+            # Special handling of ragged string tensors
+            if pa.types.is_fixed_size_binary(raw_values.type):
+                offset = raw_values.offset
+                buffer_item_width = raw_values.type.bit_width // 8
+                ext_dtype = np.dtype(
+                    f"<U{raw_values.type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}"
+                )
+                data_offset = buffer_item_width * offset
+                data_buffer = raw_values.buffers()[1]
+                return np.ndarray(
+                    shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset
+                )
+            ext_dtype = raw_values.type.to_pandas_dtype()
+            return np.ndarray(
+                shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset
+            )
 
 
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the
@@ -726,7 +820,7 @@ class ArrowVariableShapedTensorArray(
                 dtype.byteorder == "=" and sys.byteorder == "big"
             ):
                 raise ValueError(
-                    "Only little-endian string tensors are supported, but got: ", dtype
+                    f"Only little-endian string tensors are supported, but got: {dtype}"
                 )
             pa_dtype = pa.binary(dtype.itemsize)
         if dtype.type is np.bool_:
@@ -793,7 +887,6 @@ class ArrowVariableShapedTensorArray(
             # We assume all other array types are accessed via byte array
             # offsets.
             buffer_item_width = value_type.bit_width // 8
-
         offset = data.offsets[index].as_py()
         data_offset = buffer_item_width * offset
         data_buffer = data.buffers()[3]
