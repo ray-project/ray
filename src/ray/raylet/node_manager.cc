@@ -802,8 +802,10 @@ void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest requ
   auto it = task_failure_reasons_.find(task_id);
   if (it != task_failure_reasons_.end()) {
     RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
-                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info);
+                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info)
+                   << ", fail immediately: " << !it->second.should_retry;
     reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
+    reply->set_fail_task_immediately(!it->second.should_retry);
   } else {
     RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
   }
@@ -2880,14 +2882,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           high_memory_eviction_target_ = worker_to_kill;
 
           /// TODO: (clarng) expose these strings in the frontend python error as well.
-          std::string oom_kill_details =
-              this->CreateOomKillMessageDetails(worker_to_kill,
-                                                this->self_node_id_,
-                                                system_memory,
-                                                usage_threshold,
-                                                should_retry);
+          std::string oom_kill_details = this->CreateOomKillMessageDetails(
+              worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
           std::string oom_kill_suggestions =
-              this->CreateOomKillMessageSuggestions(worker_to_kill);
+              this->CreateOomKillMessageSuggestions(worker_to_kill, should_retry);
 
           RAY_LOG(INFO)
               << "Killing worker with task "
@@ -2934,8 +2932,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
     const std::shared_ptr<WorkerInterface> &worker,
     const NodeID &node_id,
     const MemorySnapshot &system_memory,
-    float usage_threshold,
-    bool should_retry) const {
+    float usage_threshold) const {
   float usage_fraction =
       static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
   std::string used_bytes_gb =
@@ -2977,7 +2974,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
 }
 
 const std::string NodeManager::CreateOomKillMessageSuggestions(
-    const std::shared_ptr<WorkerInterface> &worker) const {
+    const std::shared_ptr<WorkerInterface> &worker, bool should_retry) const {
   std::stringstream not_retriable_recommendation_ss;
   if (worker && !worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
     not_retriable_recommendation_ss << "Set ";
@@ -2988,6 +2985,11 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
     }
     not_retriable_recommendation_ss
         << " to enable retry when the task crashes due to OOM. ";
+  }
+  std::stringstream deadlock_recommendation;
+  if (!should_retry) {
+    deadlock_recommendation
+        << "The node has insufficient memory to execute this workload. ";
   }
   std::stringstream oom_kill_suggestions_ss;
   oom_kill_suggestions_ss
