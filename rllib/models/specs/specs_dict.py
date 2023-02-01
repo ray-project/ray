@@ -107,7 +107,7 @@ class SpecDict(NestedDict[Spec], Spec):
             ValueError: If the data doesn't match the spec.
         """
         data = NestedDict(data)
-        data_keys_set = set(data.shallow_keys())
+        data_keys_set = set(data.keys())
         missing_keys = self._keys_set.difference(data_keys_set)
         if missing_keys:
             raise ValueError(

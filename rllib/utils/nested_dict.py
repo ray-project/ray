@@ -210,7 +210,11 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         while stack:
             k, v = stack.pop(0)
             if isinstance(v, NestedDict):
-                stack = [(k + (StrKey(k2),), v) for k2, v in v._data.items()] + stack
+                items = v._data.items()
+                if len(items) == 0:
+                    yield tuple(k)
+                else:
+                    stack = [(k + (StrKey(k2),), v) for k2, v in items] + stack
             else:
                 yield tuple(k)
 
@@ -297,7 +301,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
 
     def copy(self) -> "NestedDict[T]":
         """Returns a shallow copy of the NestedDict."""
-        return NestedDict(self)
+        return NestedDict(self.items())
 
     def __copy__(self) -> "NestedDict[T]":
         return self.copy()
