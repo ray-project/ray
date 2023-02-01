@@ -73,6 +73,35 @@ state, e.g., by taking periodic checkpoints and recovering from the checkpoint
 upon actor restart.
 
 
+Actor checkpointing
+~~~~~~~~~~~~~~~~~~~
+
+Although ``max_restarts`` will restart the crashed actor automatically,
+it doesn't provide ways for you to restore application level state in your actor.
+For this, you can checkpoint your actor's state and recover from the checkpoint upon actor restart.
+
+One way of doing this is letting the actor creator manage the checkpoint and manually restart and recover the actor upon failure:
+
+.. literalinclude:: ../doc_code/actor_checkpointing.py
+  :language: python
+  :start-after: __actor_checkpointing_manual_restart_begin__
+  :end-before: __actor_checkpointing_manual_restart_end__
+
+Or the actor can checkpoint and restore automatically:
+
+.. literalinclude:: ../doc_code/actor_checkpointing.py
+  :language: python
+  :start-after: __actor_checkpointing_auto_restart_begin__
+  :end-before: __actor_checkpointing_auto_restart_end__
+
+.. note::
+
+  If the checkpoint is saved to an external storage, you need to make sure
+  it's accessible to the entire cluster since the actor might be restarted
+  on a different node.
+  You can save the checkpoint to a cloud storage (e.g. S3) or a shared directory (e.g. via NFS).
+
+
 Actor creator failure
 ---------------------
 
