@@ -11,6 +11,7 @@ from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.huggingface import HuggingFaceTrainer
+from ray.train.rl import RLTrainer
 from ray.tune import Callback, TuneError
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessor import Preprocessor
@@ -209,6 +210,33 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     assert result.metrics["training_iteration"] == 5
     assert result.metrics["iterations_since_restore"] == 3
     assert tmpdir / exp_name in result.log_dir.parents
+
+
+def test_rl_trainer_restore(ray_start_4_cpus, tmpdir):
+    """Tests restore for RL trainer. Same success criteria as above."""
+
+    trainer = RLTrainer(
+        algorithm="__fake",
+        config={
+            "rollout_fragment_length": 1,
+        },
+        run_config=RunConfig(
+            local_dir=str(tmpdir),
+            name="rl_trainer_restore",
+            checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
+            callbacks=[FailureInjectionCallback(num_iters=2)],
+            stop={"training_iteration": 5},
+        ),
+    )
+    with pytest.raises(TuneError):
+        result = trainer.fit()
+
+    trainer = RLTrainer.restore(str(tmpdir / "rl_trainer_restore"))
+    result = trainer.fit()
+    assert not result.error
+    assert result.metrics["training_iteration"] == 5
+    assert result.metrics["iterations_since_restore"] == 3
+    assert tmpdir / "rl_trainer_restore" in result.log_dir.parents
 
 
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
