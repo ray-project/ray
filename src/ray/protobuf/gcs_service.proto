@@ -36,7 +36,10 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
-message GetAllJobInfoRequest {}
+message GetAllJobInfoRequest {
+  // The number of jobs to return. If not specified, return all jobs.
+  optional int32 limit = 1;
+}
 
 message GetAllJobInfoReply {
   GcsStatus status = 1;

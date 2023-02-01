@@ -347,8 +347,11 @@ void GcsServer::InitClusterTaskManager() {
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_job_manager_ = std::make_unique<GcsJobManager>(
-      gcs_table_storage_, gcs_publisher_, *runtime_env_manager_, *function_manager_);
+  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_,
+                                                     gcs_publisher_,
+                                                     *runtime_env_manager_,
+                                                     *function_manager_,
+                                                     kv_manager_->GetInstance());
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Register service.
