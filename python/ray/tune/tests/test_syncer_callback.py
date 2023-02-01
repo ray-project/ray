@@ -96,6 +96,9 @@ class TestSyncerCallback(SyncerCallback):
         super(TestSyncerCallback, self).__init__(
             enabled=enabled, sync_period=sync_period
         )
+        self._min_iter_threshold = 0
+        self._min_time_s_threshold = 0
+
         self.local_logdir_override = local_logdir_override
         self.remote_logdir_override = remote_logdir_override
 
@@ -189,10 +192,14 @@ def test_syncer_callback_op_on_no_cloud_checkpointing():
         if isinstance(cb, SyncerCallback):
             syncer_callback = cb
 
+    assert syncer_callback
+
+    syncer_callback._min_iter_threshold = 0
+    syncer_callback._min_time_s_threshold = 0
+
     trial1 = MockTrial(trial_id="a", logdir=None)
     trial1.uses_cloud_checkpointing = False
 
-    assert syncer_callback
     assert syncer_callback._enabled
     assert syncer_callback._sync_trial_dir(trial1)
 
@@ -492,6 +499,7 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
         local_logdir_override=tmp_target,
     )
     syncer_callback.on_trial_complete(iteration=1, trials=[], trial=trial1)
+    syncer_callback.wait_for_all()
 
     # Regular files are synced
     assert_file(True, tmp_target, "level0.txt")

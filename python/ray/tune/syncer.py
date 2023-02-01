@@ -681,9 +681,10 @@ class SyncerCallback(Callback):
 
     def _cleanup_trial_sync_processes(self):
         for trial_id in list(self._trial_sync_processes_to_remove):
-            sync_process = self._sync_processes.pop(trial_id, None)
+            sync_process = self._sync_processes.get(trial_id, None)
             if not sync_process or not sync_process.is_running:
                 self._trial_sync_processes_to_remove.remove(trial_id)
+                self._sync_processes.pop(trial_id, None)
 
     def _should_sync(self, trial: "Trial"):
         iteration, time_trained = self._trial_iter_training_times.setdefault(
@@ -790,8 +791,9 @@ class SyncerCallback(Callback):
         result: Dict,
         **info,
     ):
-        trial_iter = result[TRAINING_ITERATION]
-        trial_time_s = result[TIME_TOTAL_S]
+        # If the results are not found, default to triggering syncing
+        trial_iter = result.get(TRAINING_ITERATION, self._min_iter_threshold)
+        trial_time_s = result.get(TIME_TOTAL_S, self._min_time_s_threshold)
 
         self._trial_iter_training_times[trial.trial_id] = (trial_iter, trial_time_s)
         self._sync_trial_dir(trial, force=False, wait=False)
