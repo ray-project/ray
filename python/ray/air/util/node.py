@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 import ray
 
 
@@ -16,7 +16,7 @@ def _force_on_node(
     remote_func_or_actor_class: Optional[
         Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]
     ] = None,
-) -> Optional[Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]]:
+) -> Union[Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass], Dict]:
     """Schedule a remote function or actor class on a given node.
 
     Args:
@@ -48,7 +48,7 @@ def _force_on_current_node(
     remote_func_or_actor_class: Optional[
         Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]
     ] = None
-) -> Optional[Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]]:
+) -> Union[Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass], Dict]:
     """Schedule a remote function or actor class on the current node.
 
     If using Ray Client, the current node is the client server node.
