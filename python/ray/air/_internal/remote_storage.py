@@ -252,15 +252,23 @@ def _upload_to_uri_with_exclude(
 
 
 def list_at_uri(uri: str) -> List[str]:
+    """Returns the list of filenames at a URI (similar to os.listdir).
+
+    If the URI doesn't exist, returns an empty list.
+    """
     _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(uri)
     if not fs:
         raise ValueError(
-            f"Could not upload to URI: "
+            f"Could not list at URI: "
             f"URI `{uri}` is not a valid or supported cloud target. "
             f"Hint: {fs_hint(uri)}"
         )
+
+    if not is_non_local_path_uri(uri):
+        # Make sure local paths get expanded fully
+        bucket_path = os.path.abspath(os.path.expanduser(bucket_path))
 
     selector = pyarrow.fs.FileSelector(
         bucket_path, allow_not_found=True, recursive=False
