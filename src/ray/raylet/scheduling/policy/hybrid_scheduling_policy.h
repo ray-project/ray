@@ -119,7 +119,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
                                   bool force_spillback,
                                   bool require_available,
                                   NodeFilter node_filter,
-                                  const std::string &preferred_node_id,
+                                  const std::string &preferred_node,
                                   int32_t schedule_top_k_absolute,
                                   float scheduler_top_k_fraction);
 

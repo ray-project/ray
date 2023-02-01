@@ -45,7 +45,7 @@ bool HybridSchedulingPolicy::IsNodeFeasible(
 }
 
 namespace {
-float ComputeNodeScore(const NodeResources &node_resources, float spread_threshold) {
+float ComputeNodeScoreImpl(const NodeResources &node_resources, float spread_threshold) {
   float critical_resource_utilization =
       node_resources.CalculateCriticalResourceUtilization();
   if (critical_resource_utilization < spread_threshold) {
@@ -59,7 +59,7 @@ float HybridSchedulingPolicy::ComputeNodeScore(const scheduling::NodeID &node_id
                                                float spread_threshold) const {
   const auto local_it = nodes_.find(node_id);
   RAY_CHECK(local_it != nodes_.end());
-  return ComputeNodeScore(local_it->second.GetLocalView(), spread_threshold);
+  return ComputeNodeScoreImpl(local_it->second.GetLocalView(), spread_threshold);
 }
 
 scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
@@ -89,7 +89,7 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
   if (preferred_node_id.has_value()) {
     if (ComputeNodeScore(preferred_node_id.value(), spread_threshold) <=
         node_scores.front().second) {
-      return preferred_node_id;
+      return preferred_node_id.value();
     }
   }
   size_t node_index = absl::Uniform<size_t>(
@@ -142,7 +142,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
       if (node_id == preferred_node_id && is_available) {
         preferred_node_is_available = true;
       }
-      float node_score = ComputeNodeScore(node_resources, spread_threshold);
+      float node_score = ComputeNodeScoreImpl(node_resources, spread_threshold);
       RAY_LOG(DEBUG) << "Node " << node_id.ToInt() << " is "
                      << (is_available ? "available" : "not available") << " for request "
                      << resource_request.DebugString()
@@ -194,6 +194,7 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
                         options.avoid_local_node,
                         options.require_node_available,
                         NodeFilter::kAny,
+                        options.preferred_node_id,
                         options.schedule_top_k_absolute,
                         options.scheduler_top_k_fraction);
   }
@@ -204,6 +205,7 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
                                    options.avoid_local_node,
                                    /*require_node_available*/ true,
                                    NodeFilter::kNonGpu,
+                                   options.preferred_node_id,
                                    options.schedule_top_k_absolute,
                                    options.scheduler_top_k_fraction);
   if (!best_node_id.IsNil()) {
@@ -217,6 +219,7 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
                       options.avoid_local_node,
                       options.require_node_available,
                       NodeFilter::kAny,
+                      options.preferred_node_id,
                       options.schedule_top_k_absolute,
                       options.scheduler_top_k_fraction);
 }
