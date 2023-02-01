@@ -2081,7 +2081,6 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   // would otherwise cause a memory leak.
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
-
 }  // namespace core
 }  // namespace ray
 
