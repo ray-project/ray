@@ -107,8 +107,6 @@ class Callback(metaclass=_CallbackMeta):
 
     """
 
-    CKPT_FILE_TMPL = "callback-state-{}.pkl"
-
     # arguments here match Experiment.public_spec
     def setup(
         self,
@@ -306,68 +304,13 @@ class Callback(metaclass=_CallbackMeta):
         """
         pass
 
-    def can_restore(self, checkpoint_dir: str) -> bool:
-        """Check if the checkpoint_dir contains the saved state for this callback.
-
-        Returns:
-            can_restore: True if the checkpoint_dir contains a file of the
-                format `CKPT_FILE_TMPL`. False otherwise.
-        """
-        return bool(
-            glob.glob(os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")))
-        )
-
-    def save_to_dir(self, checkpoint_dir: str, session_str: str = "default"):
-        """Save the state of the callback to the checkpoint_dir.
-
-        Args:
-            checkpoint_dir: directory where the checkpoint is stored.
-            session_str: Unique identifier of the current run session (ex: timestamp).
-
-        Raises:
-            NotImplementedError: if the `get_state` method is not implemented.
-        """
-        state_dict = self.get_state()
-
-        if state_dict:
-            file_name = self.CKPT_FILE_TMPL.format(session_str)
-            tmp_file_name = f".tmp-{file_name}"
-            _atomic_save(
-                state=state_dict,
-                checkpoint_dir=checkpoint_dir,
-                file_name=file_name,
-                tmp_file_name=tmp_file_name,
-            )
-
-    def restore_from_dir(self, checkpoint_dir: str):
-        """Restore the state of the object from the checkpoint_dir.
-
-        You should check if it's possible to restore with `can_restore`
-        before calling this method.
-
-        Args:
-            checkpoint_dir: directory where the checkpoint is stored.
-
-        Raises:
-            RuntimeError: if unable to find checkpoint.
-            NotImplementedError: if the `set_state` method is not implemented.
-        """
-        state_dict = _load_newest_checkpoint(
-            checkpoint_dir, self.CKPT_FILE_TMPL.format("*")
-        )
-        if not state_dict:
-            raise RuntimeError(
-                "Unable to find checkpoint in {}.".format(checkpoint_dir)
-            )
-        self.set_state(state_dict)
-
 
 @DeveloperAPI
 class CallbackList(Callback):
     """Call multiple callbacks at once."""
 
     IS_CALLBACK_CONTAINER = True
-    CKPT_FILE_TMPL = "callback-list-state-{}.pkl"
+    CKPT_FILE_TMPL = "callback-states-{}.pkl"
 
     def __init__(self, callbacks: List[Callback]):
         self._callbacks = callbacks
@@ -429,6 +372,9 @@ class CallbackList(Callback):
             callback.on_experiment_end(**info)
 
     def get_state(self) -> Optional[Dict]:
+        """Gets the state of all callbacks contained within this list.
+        If there are no stateful callbacks, then None will be returned in order
+        to avoid saving an unnecessary callback checkpoint file."""
         state = {}
         any_stateful_callbacks = False
         for i, callback in enumerate(self._callbacks):
@@ -441,7 +387,62 @@ class CallbackList(Callback):
         return state
 
     def set_state(self, state: Dict):
+        """Sets the state for all callbacks contained within this list.
+        Skipps setting state for all stateless callbacks where `get_state`
+        returned None."""
         for i, callback in enumerate(self._callbacks):
             callback_state = state.get(i, None)
             if callback_state:
                 callback.set_state(callback_state)
+
+    def save_to_dir(self, checkpoint_dir: str, session_str: str = "default"):
+        """Save the state of the callback list to the checkpoint_dir.
+
+        Args:
+            checkpoint_dir: directory where the checkpoint is stored.
+            session_str: Unique identifier of the current run session (ex: timestamp).
+        """
+        state_dict = self.get_state()
+
+        if state_dict:
+            file_name = self.CKPT_FILE_TMPL.format(session_str)
+            tmp_file_name = f".tmp-{file_name}"
+            _atomic_save(
+                state=state_dict,
+                checkpoint_dir=checkpoint_dir,
+                file_name=file_name,
+                tmp_file_name=tmp_file_name,
+            )
+
+    def restore_from_dir(self, checkpoint_dir: str):
+        """Restore the state of the list of callbacks from the checkpoint_dir.
+
+        You should check if it's possible to restore with `can_restore`
+        before calling this method.
+
+        Args:
+            checkpoint_dir: directory where the checkpoint is stored.
+
+        Raises:
+            RuntimeError: if unable to find checkpoint.
+            NotImplementedError: if the `set_state` method is not implemented.
+        """
+        state_dict = _load_newest_checkpoint(
+            checkpoint_dir, self.CKPT_FILE_TMPL.format("*")
+        )
+        if not state_dict:
+            raise RuntimeError(
+                "Unable to find checkpoint in {}.".format(checkpoint_dir)
+            )
+        self.set_state(state_dict)
+
+    def can_restore(self, checkpoint_dir: str) -> bool:
+        """Check if the checkpoint_dir contains the saved state for this callback list.
+
+        Returns:
+            can_restore: True if the checkpoint_dir contains a file of the
+                format `CKPT_FILE_TMPL`. False otherwise.
+        """
+        return bool(
+            glob.glob(os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")))
+        )
