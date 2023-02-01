@@ -196,7 +196,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
-def test_map_operator_min_rows_per_bundle(shutdown_only, use_actors):
+def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     # Simple sanity check of batching behavior.
     def _check_batch(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
         block_iter = list(block_iter)
@@ -233,7 +233,56 @@ def test_map_operator_min_rows_per_bundle(shutdown_only, use_actors):
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
+@pytest.mark.parametrize("preserve_order", [False, True])
+def test_map_operator_output_unbundling(
+    ray_start_regular_shared, use_actors, preserve_order
+):
+    # Tests that the MapOperator's output queue unbundles the bundles returned from
+    # tasks; this facilitates features such as dynamic block splitting.
+    def noop(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        for block in block_iter:
+            yield block
+
+    # Create with inputs.
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
+    compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
+    op = MapOperator.create(
+        noop,
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+        # Send the everything in a single bundle of 10 blocks.
+        min_rows_per_bundle=10,
+    )
+
+    # Feed data and block on exec.
+    op.start(ExecutionOptions(preserve_order=preserve_order))
+    inputs = []
+    while input_op.has_next():
+        inputs.append(input_op.get_next())
+    # Sanity check: the op will get 10 input bundles.
+    assert len(inputs) == 10
+    for input_ in inputs:
+        op.add_input(input_, 0)
+    op.inputs_done()
+    work_refs = op.get_work_refs()
+    while work_refs:
+        for work_ref in work_refs:
+            ray.get(work_ref)
+            op.notify_work_completed(work_ref)
+        work_refs = op.get_work_refs()
+
+    # Check that bundles are unbundled in the output queue.
+    outputs = []
+    while op.has_next():
+        outputs.append(op.get_next())
+    assert len(outputs) == 10
+    assert op.completed()
+
+
+@pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_ray_args(shutdown_only, use_actors):
+    ray.shutdown()
     ray.init(num_cpus=0, num_gpus=1)
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
@@ -267,6 +316,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_shutdown(shutdown_only, use_actors):
+    ray.shutdown()
     ray.init(num_cpus=0, num_gpus=1)
 
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
