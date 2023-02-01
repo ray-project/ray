@@ -398,6 +398,8 @@ class Trial:
         self._state_json = None
         self._state_valid = False
 
+    # TODO(jungong): maybe we should implicitly call this by making
+    # self.placement_group_factory into a getter.
     def create_placement_group_factory(self):
         """Compute placement group factor if needed.
 

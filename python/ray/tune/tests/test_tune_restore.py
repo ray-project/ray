@@ -323,7 +323,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             fail_fast=True,
             config={
                 "test": tune.grid_search([1, 2, 3]),
-                "test2": tune.grid_search([1, 2, 3]),
+                "test2": tune.grid_search([4, 5, 6, 7]),
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
@@ -341,8 +341,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
             )
 
         config["config"] = {
-            "test": tune.grid_search([7, 8, 9]),
-            "test2": tune.grid_search([7, 8, 9]),
+            "test": tune.grid_search([8, 9, 10]),
+            "test2": tune.grid_search([11, 12, 13, 14]),
         }
 
         analysis = tune.run(
@@ -353,8 +353,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert len(analysis.trials) == 9
         for t in analysis.trials:
             # Make sure that test and test2 are updated.
-            assert t.config["test"] in [7, 8, 9]
-            assert t.config["test2"] in [7, 8, 9]
+            assert t.config["test"] in [8, 9, 10]
+            assert t.config["test2"] in [11, 12, 13, 14]
 
     def testFailResumeWithPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
