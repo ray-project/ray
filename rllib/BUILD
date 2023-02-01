@@ -3851,7 +3851,6 @@ py_test(
 # --------------------------------------------------------------------
 # examples/rl_trainer directory
 #
-# Tag: rlm
 # 
 # Description: These are RLlib tests for the new multi-gpu enabled 
 # training stack via RLTrainers.
