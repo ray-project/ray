@@ -114,6 +114,10 @@ class _TFStub:
     def __init__(self) -> None:
         self.keras = _KerasStub()
 
+    def __bool__(self):
+        # if tf should return False
+        return False
+
 
 # Fake module for tf.keras.
 class _KerasStub:

@@ -33,6 +33,8 @@ from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomShuffle,
     RandomizeBlocks,
+    Repartition,
+    Sort,
 )
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.map_operator import (
@@ -963,7 +965,16 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = Repartition(
+                logical_plan.dag,
+                num_outputs=num_blocks,
+                shuffle=shuffle,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def random_shuffle(
         self,
@@ -1996,7 +2007,16 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(SortStage(self, key, descending))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = Sort(
+                logical_plan.dag,
+                key=key,
+                descending=descending,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
