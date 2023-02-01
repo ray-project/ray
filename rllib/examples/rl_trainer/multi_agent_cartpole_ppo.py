@@ -105,8 +105,9 @@ if __name__ == "__main__":
         .resources(**scaling_config)
     )
 
+    stop_reward = args.stop_reward_per_agent * args.num_agents
     stop = {
-        "episode_reward_mean": args.stop_reward_per_agent * args.num_agents,
+        "episode_reward_mean": stop_reward,
         "timesteps_total": args.stop_timesteps,
         "training_iteration": args.stop_iters,
     }
@@ -118,5 +119,5 @@ if __name__ == "__main__":
     ).fit()
 
     if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
+        check_learning_achieved(results, stop_reward)
     ray.shutdown()
