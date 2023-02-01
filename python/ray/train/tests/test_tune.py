@@ -273,7 +273,7 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
                 resume_errored=True,
             )
         # Should warn about the RunConfig being ignored
-        assert "RunConfig" in str(warn_record[0].message)
+        assert any("RunConfig" in str(record.message) for record in warn_record)
         assert "The trainable will be overwritten" in caplog.text
 
     results = tuner.fit()
