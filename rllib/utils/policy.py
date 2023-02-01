@@ -1,9 +1,19 @@
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
 import re
-from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Mapping
-import tree
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    TYPE_CHECKING,
+)
+import tree  # pip install dm_tree
 
 
 import ray.cloudpickle as pickle
@@ -68,7 +78,7 @@ def validate_policy_id(policy_id: str, error: bool = False) -> None:
 @PublicAPI
 def create_policy_for_framework(
     policy_id: str,
-    policy_class: "Policy",
+    policy_class: Type["Policy"],
     merged_config: PartialAlgorithmConfigDict,
     observation_space: gym.Space,
     action_space: gym.Space,
@@ -101,14 +111,17 @@ def create_policy_for_framework(
         # and create a new session for it.
         if framework == "tf":
             with tf1.Graph().as_default():
+                # Session creator function provided manually -> Use this one to
+                # create the tf1 session.
                 if session_creator:
                     sess = session_creator()
+                # Use a default session creator, based only on our `tf_session_args` in
+                # the config.
                 else:
                     sess = tf1.Session(
-                        config=tf1.ConfigProto(
-                            gpu_options=tf1.GPUOptions(allow_growth=True)
-                        )
+                        config=tf1.ConfigProto(**merged_config["tf_session_args"])
                     )
+
                 with sess.as_default():
                     # Set graph-level seed.
                     if seed is not None:
@@ -165,9 +178,10 @@ def local_policy_inference(
     env_id: str,
     agent_id: str,
     obs: TensorStructType,
-    reward: float = None,
-    done: bool = None,
-    info: Mapping = None,
+    reward: Optional[float] = None,
+    terminated: Optional[bool] = None,
+    truncated: Optional[bool] = None,
+    info: Optional[Mapping] = None,
 ) -> TensorStructType:
     """Run a connector enabled policy using environment observation.
 
@@ -190,8 +204,12 @@ def local_policy_inference(
             may be left empty. Some policies have ViewRequirements that require this.
             This can be set to zero at the first inference step - for example after
             calling gmy.Env.reset.
-        done: Done that is potentially used during inference. If not required,
-            may be left empty. Some policies have ViewRequirements that require this.
+        terminated: `Terminated` flag that is potentially used during inference. If not
+            required, may be left None. Some policies have ViewRequirements that
+            require this extra information.
+        truncated: `Truncated` flag that is potentially used during inference. If not
+            required, may be left None. Some policies have ViewRequirements that
+            require this extra information.
         info: Info that is potentially used durin inference. If not required,
             may be left empty. Some policies have ViewRequirements that require this.
 
@@ -213,8 +231,10 @@ def local_policy_inference(
     input_dict = {SampleBatch.NEXT_OBS: obs}
     if reward is not None:
         input_dict[SampleBatch.REWARDS] = reward
-    if done is not None:
-        input_dict[SampleBatch.DONES] = done
+    if terminated is not None:
+        input_dict[SampleBatch.TERMINATEDS] = terminated
+    if truncated is not None:
+        input_dict[SampleBatch.TRUNCATEDS] = truncated
     if info is not None:
         input_dict[SampleBatch.INFOS] = info
 
@@ -294,10 +314,8 @@ def __check_atari_obs_space(obs):
     # TODO(Artur): Remove this after we have migrated deepmind style preprocessing into
     #  connectors (and don't auto-wrap in RW anymore)
     if any(
-        [
-            o.shape == ATARI_OBS_SHAPE if isinstance(o, np.ndarray) else False
-            for o in tree.flatten(obs)
-        ]
+        o.shape == ATARI_OBS_SHAPE if isinstance(o, np.ndarray) else False
+        for o in tree.flatten(obs)
     ):
         if log_once("warn_about_possibly_non_wrapped_atari_env"):
             logger.warning(

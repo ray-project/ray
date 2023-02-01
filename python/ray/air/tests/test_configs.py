@@ -33,6 +33,19 @@ def test_repr(config):
     assert len(representation) < MAX_REPR_LENGTH
 
 
+def test_failure_config_init():
+    FailureConfig(fail_fast=True)
+    FailureConfig(fail_fast=False)
+    FailureConfig(fail_fast="raise")
+
+    with pytest.raises(ValueError):
+        FailureConfig(fail_fast="fail")
+
+    FailureConfig(fail_fast=True, max_failures=0)
+    with pytest.raises(ValueError):
+        FailureConfig(fail_fast=True, max_failures=1)
+
+
 if __name__ == "__main__":
     import sys
 

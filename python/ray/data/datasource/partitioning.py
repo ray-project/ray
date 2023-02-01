@@ -481,9 +481,7 @@ class PathPartitionFilter:
                 unpartitioned files:
                 ``lambda d: True if d else False``
                 This raises an assertion error for any unpartitioned file found:
-                ``def do_assert(val, msg):
-                    assert val, msg
-                  lambda d: do_assert(d, "Expected all files to be partitioned!")``
+                ``lambda d: assert d, "Expected all files to be partitioned!"``
                 And this only reads files from January, 2022 partitions:
                 ``lambda d: d["month"] == "January" and d["year"] == "2022"``
         """

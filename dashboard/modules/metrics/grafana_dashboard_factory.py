@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 
-from typing import List
+from typing import List, Dict
 
 
 @dataclass
@@ -39,6 +39,8 @@ class Panel:
         id: Integer id used to reference the graph from Metrics.tsx.
         unit: The unit to display on the y-axis of the graph.
         targets: List of query targets.
+        fill: Whether or not the graph will be filled by a color.
+        stack: Whether or not the lines in the graph will be stacked.
     """
 
     title: str
@@ -46,10 +48,32 @@ class Panel:
     id: int
     unit: str
     targets: List[Target]
+    fill: int = 10
+    stack: bool = True
 
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
+
+"""
+Queries for autoscaler resources.
+"""
+# Note: MAX & USED resources are reported from raylet to provide the most up to date information.
+# But MAX + PENDING data is coming from the autoscaler. That said, MAX + PENDING can be
+# more outdated. it is harmless because the actual MAX will catch up with MAX + PENDING
+# eventually.
+MAX_CPUS = 'sum(autoscaler_cluster_resources{{resource="CPU",{global_filters}}})'
+PENDING_CPUS = 'sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})'
+MAX_GPUS = 'sum(autoscaler_cluster_resources{{resource="GPU",{global_filters}}})'
+PENDING_GPUS = 'sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})'
+
+
+def max_plus_pending(max_resource, pending_resource):
+    return f"({max_resource} or vector(0)) + ({pending_resource} or vector(0))"
+
+
+MAX_PLUS_PENDING_CPUS = max_plus_pending(MAX_CPUS, PENDING_CPUS)
+MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -59,25 +83,33 @@ GRAFANA_PANELS = [
     Panel(
         id=26,
         title="Scheduler Task State",
-        description="Current number of tasks in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto.",
+        description="Current number of tasks in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
             Target(
-                expr='sum(max_over_time(ray_tasks{{State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
+                expr='sum(max_over_time(ray_tasks{{IsRetry="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
                 legend="{{State}}",
-            )
+            ),
+            Target(
+                expr='sum(max_over_time(ray_tasks{{IsRetry!="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
+                legend="{{State}} (retry)",
+            ),
         ],
     ),
     Panel(
         id=35,
         title="Active Tasks by Name",
-        description="Current number of (live) tasks with a particular name.",
+        description="Current number of (live) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
             Target(
-                expr='sum(ray_tasks{{State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
+                expr='sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
                 legend="{{Name}}",
-            )
+            ),
+            Target(
+                expr='sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
+                legend="{{Name}} (retry)",
+            ),
         ],
     ),
     Panel(
@@ -107,7 +139,7 @@ GRAFANA_PANELS = [
     Panel(
         id=27,
         title="Scheduler CPUs (logical slots)",
-        description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors.\n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
+        description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. PENDING means the number of CPUs that will be available when new nodes are up after the autoscaler scales up.\n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
         unit="cores",
         targets=[
             Target(
@@ -117,6 +149,12 @@ GRAFANA_PANELS = [
             Target(
                 expr='sum(ray_resources{{Name="CPU",{global_filters}}})',
                 legend="MAX",
+            ),
+            # If max + pending > max, we display this value.
+            # (A and predicate) means to return A when the predicate satisfies in PromSql.
+            Target(
+                expr=f"({MAX_PLUS_PENDING_CPUS} and {MAX_PLUS_PENDING_CPUS} > ({MAX_CPUS} or vector(0)))",
+                legend="MAX + PENDING",
             ),
         ],
     ),
@@ -139,7 +177,7 @@ GRAFANA_PANELS = [
     Panel(
         id=28,
         title="Scheduler GPUs (logical slots)",
-        description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. ",
+        description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. PENDING means the number of GPUs that will be available when new nodes are up after the autoscaler scales up.",
         unit="GPUs",
         targets=[
             Target(
@@ -149,6 +187,12 @@ GRAFANA_PANELS = [
             Target(
                 expr='sum(ray_resources{{Name="GPU",{global_filters}}})',
                 legend="MAX",
+            ),
+            # If max + pending > max, we display this value.
+            # (A and predicate) means to return A when the predicate satisfies in PromSql.
+            Target(
+                expr=f"({MAX_PLUS_PENDING_GPUS} and {MAX_PLUS_PENDING_GPUS} > ({MAX_GPUS} or vector(0)))",
+                legend="MAX + PENDING",
             ),
         ],
     ),
@@ -247,11 +291,24 @@ GRAFANA_PANELS = [
     Panel(
         id=34,
         title="Node Memory by Component",
-        description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed USS (unique set size) per Ray component.",
+        description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed USS (unique set size) per Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.",
         unit="bytes",
         targets=[
             Target(
                 expr="sum(ray_component_uss_mb{{{global_filters}}} * 1e6) by (Component)",
+                legend="{{Component}}",
+            )
+        ],
+    ),
+    Panel(
+        id=37,
+        title="Node CPU by Component",
+        description="The physical (hardware) CPU usage across the cluster, broken down by component. This reports the summed CPU usage per Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.",
+        unit="cores",
+        targets=[
+            Target(
+                # ray_component_cpu_percentage returns a percentage that can be > 100. It means that it uses more than 1 CPU.
+                expr="sum(ray_component_cpu_percentage{{{global_filters}}}) by (Component) / 100",
                 legend="{{Component}}",
             )
         ],
@@ -308,7 +365,54 @@ GRAFANA_PANELS = [
             ),
         ],
     ),
+    Panel(
+        id=41,
+        title="Cluster Utilization",
+        description="Aggregated utilization of all physical resources (CPU, GPU, memory, disk, or etc.) across the cluster.",
+        unit="%",
+        targets=[
+            # CPU
+            Target(
+                expr="avg(ray_node_cpu_utilization{{{global_filters}}})",
+                legend="CPU (physical)",
+            ),
+            # GPU
+            Target(
+                expr="sum(ray_node_gpus_utilization{{{global_filters}}}) / on() (sum(autoscaler_cluster_resources{{resource='GPU',{global_filters}}}) or vector(0))",
+                legend="GPU (physical)",
+            ),
+            # Memory
+            Target(
+                expr="sum(ray_node_mem_used{{{global_filters}}}) / on() (sum(ray_node_mem_total{{{global_filters}}})) * 100",
+                legend="Memory (RAM)",
+            ),
+            # GRAM
+            Target(
+                expr="sum(ray_node_gram_used{{{global_filters}}}) / on() (sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 100",
+                legend="GRAM",
+            ),
+            # Object Store
+            Target(
+                expr='sum(ray_object_store_memory{{{global_filters}}}) / on() sum(ray_resources{{Name="object_store_memory",{global_filters}}}) * 100',
+                legend="Object Store Memory",
+            ),
+            # Disk
+            Target(
+                expr="sum(ray_node_disk_usage{{{global_filters}}}) / on() (sum(ray_node_disk_free{{{global_filters}}}) + sum(ray_node_disk_usage{{{global_filters}}})) * 100",
+                legend="Disk",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
 ]
+
+ids = []
+for panel in GRAFANA_PANELS:
+    ids.append(panel.id)
+assert len(ids) == len(
+    set(ids)
+), f"Duplicated id found. Use unique id for each panel. {ids}"
 
 
 TARGET_TEMPLATE = {
@@ -371,6 +475,14 @@ PANEL_TEMPLATE = {
             "$$hashKey": "object:78",
             "alias": "/FINISHED|FAILED|DEAD|REMOVED/",
             "hiddenSeries": True,
+        },
+        {
+            "$$hashKey": "object:2987",
+            "alias": "MAX + PENDING",
+            "dashes": True,
+            "color": "#777777",
+            "fill": 0,
+            "stack": False,
         },
     ],
     "spaceLength": 10,
@@ -438,6 +550,8 @@ def _generate_grafana_panels() -> List[dict]:
         template["gridPos"]["y"] = i // 2
         template["gridPos"]["x"] = 12 * (i % 2)
         template["yaxes"][0]["format"] = panel.unit
+        template["fill"] = panel.fill
+        template["stack"] = panel.stack
         panels.append(template)
     return panels
 
@@ -445,10 +559,18 @@ def _generate_grafana_panels() -> List[dict]:
 GLOBAL_FILTERS = ['SessionName="$SessionName"']
 
 
+def gen_incrementing_alphabets(length):
+    assert 65 + length < 96, "we only support up to 26 targets at a time."
+    # 65: ascii code of 'A'.
+    return list(map(chr, range(65, 65 + length)))
+
+
 def _generate_targets(panel: Panel) -> List[dict]:
     global_filters = ",".join(GLOBAL_FILTERS)
     targets = []
-    for target, ref_id in zip(panel.targets, ["A", "B", "C", "D"]):
+    for target, ref_id in zip(
+        panel.targets, gen_incrementing_alphabets(len(panel.targets))
+    ):
         template = copy.deepcopy(TARGET_TEMPLATE)
         template.update(
             {

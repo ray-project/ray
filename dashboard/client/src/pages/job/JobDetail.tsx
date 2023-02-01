@@ -1,31 +1,39 @@
 import { makeStyles } from "@material-ui/core";
 import dayjs from "dayjs";
-import React from "react";
+import React, { useContext } from "react";
+import { Link } from "react-router-dom";
+import { GlobalContext } from "../../App";
+import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import { UnifiedJob } from "../../type/job";
+import ActorList from "../actor/ActorList";
+import PlacementGroupList from "../state/PlacementGroup";
+import TaskList from "../state/task";
 
 import { useJobDetail } from "./hook/useJobDetail";
-import { useJobProgress } from "./hook/useJobProgress";
-import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
-import { TaskProgressBar } from "./TaskProgressBar";
+import { JobProgressBar } from "./JobProgressBar";
+import { TaskTimeline } from "./TaskTimeline";
 
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
   },
-  taskProgressTable: {
-    marginTop: theme.spacing(2),
-  },
 }));
 
-const JobDetailPage = () => {
+type JobDetailChartsPageProps = {
+  newIA?: boolean;
+};
+
+export const JobDetailChartsPage = ({
+  newIA = false,
+}: JobDetailChartsPageProps) => {
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
-  const { progress } = useJobProgress(jobId);
 
   if (!job) {
     return (
@@ -105,21 +113,80 @@ const JobDetailPage = () => {
                   : "-",
               },
             },
+            {
+              label: "Logs",
+              content: <JobLogsLink job={job} newIA />,
+            },
           ]}
         />
       </TitleCard>
       <TitleCard title="Tasks">
-        <TaskProgressBar
-          {...progress}
-          showAsComplete={job.status === "SUCCEEDED" || job.status === "FAILED"}
-        />
-        <JobTaskNameProgressTable
-          className={classes.taskProgressTable}
-          jobId={jobId}
-        />
+        <JobProgressBar jobId={jobId} job={job} />
+      </TitleCard>
+      <TitleCard title="Task Timeline">
+        <TaskTimeline jobId={jobId} />
+      </TitleCard>
+      <TitleCard>
+        <CollapsibleSection title="Task Table">
+          <TaskList jobId={jobId} />
+        </CollapsibleSection>
+      </TitleCard>
+      <TitleCard>
+        <CollapsibleSection title="Actors">
+          <ActorList jobId={jobId} />
+        </CollapsibleSection>
+      </TitleCard>
+      <TitleCard>
+        <CollapsibleSection title="Placement Groups">
+          <PlacementGroupList jobId={jobId} />
+        </CollapsibleSection>
       </TitleCard>
     </div>
   );
 };
 
-export default JobDetailPage;
+type JobLogsLinkProps = {
+  job: Pick<
+    UnifiedJob,
+    | "driver_agent_http_address"
+    | "driver_info"
+    | "job_id"
+    | "submission_id"
+    | "type"
+  >;
+  newIA?: boolean;
+};
+
+export const JobLogsLink = ({
+  job: { driver_agent_http_address, driver_info, job_id, submission_id, type },
+  newIA = false,
+}: JobLogsLinkProps) => {
+  const { ipLogMap } = useContext(GlobalContext);
+
+  let link: string | undefined;
+
+  const baseLink = newIA ? "/new/logs" : "/log";
+
+  if (driver_agent_http_address) {
+    link = `${baseLink}/${encodeURIComponent(
+      `${driver_agent_http_address}/logs`,
+    )}`;
+  } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
+    link = `${baseLink}/${encodeURIComponent(
+      ipLogMap[driver_info.node_ip_address],
+    )}`;
+  }
+
+  if (link) {
+    link += `?fileName=${
+      type === "DRIVER" ? job_id : `driver-${submission_id}`
+    }`;
+    return (
+      <Link to={link} target="_blank">
+        Log
+      </Link>
+    );
+  }
+
+  return <span>-</span>;
+};

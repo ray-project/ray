@@ -42,6 +42,7 @@ from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
+    PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
     SampleBatchType,
@@ -104,7 +105,6 @@ class ImpalaConfig(AlgorithmConfig):
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0
-        self.replay_ratio = 0.0
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
@@ -271,9 +271,6 @@ class ImpalaConfig(AlgorithmConfig):
             self.num_sgd_iter = num_sgd_iter
         if replay_proportion is not NotProvided:
             self.replay_proportion = replay_proportion
-            self.replay_ratio = (
-                (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
-            )
         if replay_buffer_num_slots is not NotProvided:
             self.replay_buffer_num_slots = replay_buffer_num_slots
         if learner_queue_size is not NotProvided:
@@ -307,8 +304,6 @@ class ImpalaConfig(AlgorithmConfig):
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
-            if entropy_coeff < 0.0:
-                raise ValueError("`entropy_coeff` must be >= 0.0!")
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
@@ -330,6 +325,10 @@ class ImpalaConfig(AlgorithmConfig):
             deprecation_warning(
                 "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
             )
+
+        # Check `entropy_coeff` for correctness.
+        if self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0!")
 
         # Check whether worker to aggregation-worker ratio makes sense.
         if self.num_aggregation_workers > self.num_rollout_workers:
@@ -362,6 +361,13 @@ class ImpalaConfig(AlgorithmConfig):
                     "term/optimizer! Try setting config.training("
                     "_tf_policy_handles_more_than_one_loss=True)."
                 )
+
+    def get_replay_ratio(self) -> float:
+        """Returns replay ratio (between 0.0 and 1.0) based off self.replay_proportion.
+
+        Formula: ratio = 1 / proportion
+        """
+        return (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
 
 
 def make_learner_thread(local_worker, config):
@@ -511,7 +517,7 @@ class Impala(Algorithm):
                     if self.config.replay_buffer_num_slots > 0
                     else 1
                 ),
-                replay_ratio=self.config.replay_ratio,
+                replay_ratio=self.config.get_replay_ratio(),
                 replay_mode=ReplayMode.LOCKSTEP,
             )
             self._aggregator_actor_manager = None
@@ -579,16 +585,25 @@ class Impala(Algorithm):
         # Aggregation workers are stateless, so we do not need to restore any
         # state here.
         if self._aggregator_actor_manager:
-            self._aggregator_actor_manager.probe_unhealthy_actors()
+            self._aggregator_actor_manager.probe_unhealthy_actors(
+                timeout_seconds=self.config.worker_health_probe_timeout_s,
+                mark_healthy=True,
+            )
 
         return train_results
 
     @classmethod
     @override(Algorithm)
-    def default_resource_request(cls, config):
-        cf = dict(cls.get_default_config(), **config)
+    def default_resource_request(
+        cls,
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+    ):
+        if isinstance(config, AlgorithmConfig):
+            cf: ImpalaConfig = config
+        else:
+            cf: ImpalaConfig = cls.get_default_config().update_from_dict(config)
 
-        eval_config = cf["evaluation_config"]
+        eval_config = cf.get_evaluation_config_object()
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -602,18 +617,18 @@ class Impala(Algorithm):
                     # from RolloutWorkers (n rollout workers map to m
                     # aggregation workers, where m < n) and always use 1 CPU
                     # each.
-                    "CPU": cf["num_cpus_for_driver"] + cf["num_aggregation_workers"],
-                    "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+                    "CPU": cf.num_cpus_for_local_worker + cf.num_aggregation_workers,
+                    "GPU": 0 if cf._fake_gpus else cf.num_gpus,
                 }
             ]
             + [
                 {
                     # RolloutWorkers.
-                    "CPU": cf["num_cpus_per_worker"],
-                    "GPU": cf["num_gpus_per_worker"],
-                    **cf["custom_resources_per_worker"],
+                    "CPU": cf.num_cpus_per_worker,
+                    "GPU": cf.num_gpus_per_worker,
+                    **cf.custom_resources_per_worker,
                 }
-                for _ in range(cf["num_workers"])
+                for _ in range(cf.num_rollout_workers)
             ]
             + (
                 [
@@ -621,23 +636,16 @@ class Impala(Algorithm):
                         # Evaluation (remote) workers.
                         # Note: The local eval worker is located on the driver
                         # CPU or not even created iff >0 eval workers.
-                        "CPU": eval_config.get(
-                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                        ),
-                        "GPU": eval_config.get(
-                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
-                        ),
-                        **eval_config.get(
-                            "custom_resources_per_worker",
-                            cf["custom_resources_per_worker"],
-                        ),
+                        "CPU": eval_config.num_cpus_per_worker,
+                        "GPU": eval_config.num_gpus_per_worker,
+                        **eval_config.custom_resources_per_worker,
                     }
-                    for _ in range(cf["evaluation_num_workers"])
+                    for _ in range(cf.evaluation_num_workers)
                 ]
-                if cf["evaluation_interval"]
+                if cf.evaluation_interval
                 else []
             ),
-            strategy=config.get("placement_strategy", "PACK"),
+            strategy=cf.placement_strategy,
         )
 
     def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]):
@@ -811,7 +819,9 @@ class Impala(Algorithm):
         """
         local_worker = self.workers.local_worker()
 
-        # Only need to update workers if there are remote workers.
+        # Update global vars of the local worker.
+        if self.config.policy_states_are_swappable:
+            local_worker.lock()
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_TRAINED],
             "num_grad_updates_per_policy": {
@@ -819,6 +829,11 @@ class Impala(Algorithm):
                 for pid in policy_ids or []
             },
         }
+        local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
+        if self.config.policy_states_are_swappable:
+            local_worker.unlock()
+
+        # Only need to update workers if there are remote workers.
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
             self.workers.num_remote_workers() > 0
@@ -826,7 +841,12 @@ class Impala(Algorithm):
             >= self.config.broadcast_interval
             and workers_that_need_updates
         ):
-            weights = ray.put(local_worker.get_weights(policy_ids))
+            if self.config.policy_states_are_swappable:
+                local_worker.lock()
+            weights = local_worker.get_weights(policy_ids)
+            if self.config.policy_states_are_swappable:
+                local_worker.unlock()
+            weights = ray.put(weights)
 
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
@@ -838,9 +858,6 @@ class Impala(Algorithm):
                 remote_worker_ids=list(workers_that_need_updates),
                 timeout_seconds=0,  # Don't wait for the workers to finish.
             )
-
-        # Update global vars of the local worker.
-        local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
 
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
@@ -863,7 +880,7 @@ class AggregatorWorker(FaultAwareApply):
                 if self.config.replay_buffer_num_slots > 0
                 else 1
             ),
-            replay_ratio=self.config.replay_ratio,
+            replay_ratio=self.config.get_replay_ratio(),
             replay_mode=ReplayMode.LOCKSTEP,
         )
 

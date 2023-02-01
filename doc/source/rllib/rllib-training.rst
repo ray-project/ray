@@ -38,7 +38,7 @@ You can train DQN with the following commands:
     has a number of options you can show by running `rllib train --help`.
 
 Note that you choose any supported RLlib algorithm (``--algo``) and environment (``--env``).
-RLlib supports any OpenAI Gym environment, as well as a number of other environments
+RLlib supports any Farama-Foundation Gymnasium environment, as well as a number of other environments
 (see :ref:`rllib-environments-doc`).
 It also supports a large number of algorithms (see :ref:`rllib-algorithms-doc`) to
 choose from.
@@ -572,7 +572,7 @@ traces to ``/tmp/debug``.
 
 .. code-block:: bash
 
-    rllib train --run=PPO --env=CartPole-v0 \
+    rllib train --run=PPO --env=CartPole-v1 \
         --config='{"output": "/tmp/debug", "output_compress_columns": []}'
 
     # episode traces will be saved in /tmp/debug, for example

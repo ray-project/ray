@@ -28,7 +28,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DatasetContext
-from ray.data.dataset import BatchType, Dataset
+from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI
 
 
@@ -247,7 +247,7 @@ class GroupedDataset(Generic[T]):
 
     def map_groups(
         self,
-        fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+        fn: Union[CallableClass, Callable[[DataBatch], DataBatch]],
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "default",
@@ -329,8 +329,7 @@ class GroupedDataset(Generic[T]):
 
             boundaries = []
             # Get the keys of the batch in numpy array format
-            keys_block = block_accessor.select([self._key])
-            keys = BlockAccessor.for_block(keys_block).to_numpy()
+            keys = block_accessor.to_numpy(self._key)
             start = 0
             while start < keys.size:
                 end = start + np.searchsorted(keys[start:], keys[start], side="right")
@@ -395,7 +394,7 @@ class GroupedDataset(Generic[T]):
     def sum(
         self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
     ) -> Dataset[U]:
-        """Compute grouped sum aggregation.
+        r"""Compute grouped sum aggregation.
 
         This is a blocking operation.
 

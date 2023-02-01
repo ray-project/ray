@@ -15,7 +15,6 @@ dmc-dreamer:
         discount: 0.99
         lambda: 0.95
         dreamer_train_iters: 100
-        horizon: 1000
         batch_size: 50
         batch_length: 50
         imagine_horizon: 15

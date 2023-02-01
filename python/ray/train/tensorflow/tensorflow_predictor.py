@@ -10,7 +10,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -107,8 +107,9 @@ class TensorflowPredictor(DLPredictor):
             use_gpu=use_gpu,
         )
 
+    @DeveloperAPI
     def call_model(
-        self, tensor: Union[tf.Tensor, Dict[str, tf.Tensor]]
+        self, inputs: Union[tf.Tensor, Dict[str, tf.Tensor]]
     ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
         """Runs inference on a single batch of tensor data.
 
@@ -130,8 +131,8 @@ class TensorflowPredictor(DLPredictor):
 
                 # Use a custom predictor to format model output as a dict.
                 class CustomPredictor(TensorflowPredictor):
-                    def call_model(self, tensor):
-                        model_output = super().call_model(tensor)
+                    def call_model(self, inputs):
+                        model_output = super().call_model(inputs)
                         return {
                             str(i): model_output[i] for i in range(len(model_output))
                         }
@@ -140,8 +141,8 @@ class TensorflowPredictor(DLPredictor):
                 predictions = predictor.predict(data_batch)
 
         Args:
-            tensor: A batch of data to predict on, represented as either a single
-                PyTorch tensor or for multi-input models, a dictionary of tensors.
+            inputs: A batch of data to predict on, represented as either a single
+                TensorFlow tensor or for multi-input models, a dictionary of tensors.
 
         Returns:
             The model outputs, either as a single tensor or a dictionary of tensors.
@@ -149,9 +150,9 @@ class TensorflowPredictor(DLPredictor):
         """
         if self.use_gpu:
             with tf.device("GPU:0"):
-                return self._model(tensor)
+                return self._model(inputs)
         else:
-            return self._model(tensor)
+            return self._model(inputs)
 
     def predict(
         self,

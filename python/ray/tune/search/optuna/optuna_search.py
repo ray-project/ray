@@ -602,27 +602,15 @@ class OptunaSearch(Searcher):
         self._ot_study.add_trial(trial)
 
     def save(self, checkpoint_path: str):
-        save_object = (
-            self._sampler,
-            self._ot_trials,
-            self._ot_study,
-            self._points_to_evaluate,
-            self._evaluated_rewards,
-        )
+        save_object = self.__dict__.copy()
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
             save_object = pickle.load(inputFile)
-        if len(save_object) == 5:
-            (
-                self._sampler,
-                self._ot_trials,
-                self._ot_study,
-                self._points_to_evaluate,
-                self._evaluated_rewards,
-            ) = save_object
+        if isinstance(save_object, dict):
+            self.__dict__.update(save_object)
         else:
             # Backwards compatibility
             (
@@ -630,6 +618,7 @@ class OptunaSearch(Searcher):
                 self._ot_trials,
                 self._ot_study,
                 self._points_to_evaluate,
+                self._evaluated_rewards,
             ) = save_object
 
     @staticmethod

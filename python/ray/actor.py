@@ -544,7 +544,7 @@ class ActorClass:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.accelerators` for accelerator types.
+                See `ray.util.accelerators` for accelerator types.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
@@ -596,7 +596,9 @@ class ActorClass:
                 "DEFAULT": default hybrid scheduling;
                 "SPREAD": best effort spread scheduling;
                 `PlacementGroupSchedulingStrategy`:
-                placement group based scheduling.
+                placement group based scheduling;
+                `NodeAffinitySchedulingStrategy`:
+                node id based affinity scheduling.
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
@@ -1162,10 +1164,7 @@ class ActorHandle:
             ), "Cross language remote actor method cannot be executed locally."
 
         if num_returns == "dynamic":
-            # TODO(swang): Support dynamic generators for actors.
-            raise NotImplementedError(
-                'num_returns="dynamic" not yet supported for actor tasks.'
-            )
+            num_returns = -1
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
@@ -1190,7 +1189,7 @@ class ActorHandle:
             raise AttributeError(
                 f"'{type(self).__name__}' object has " f"no attribute '{item}'"
             )
-        if item in ["__ray_terminate__", "__ray_checkpoint__"]:
+        if item in ["__ray_terminate__"]:
 
             class FakeActorMethod(object):
                 def __call__(self, *args, **kwargs):
@@ -1317,10 +1316,13 @@ def _modify_class(cls):
             "'class ClassName(object):' instead of 'class ClassName:'."
         )
 
-    # Modify the class to have an additional method that will be used for
-    # terminating the worker.
+    # Modify the class to have additional methods
+    # for checking actor alive status and to terminate the worker.
     class Class(cls):
         __ray_actor_class__ = cls  # The original actor class
+
+        def __ray_ready__(self):
+            return True
 
         def __ray_terminate__(self):
             worker = ray._private.worker.global_worker

@@ -20,6 +20,7 @@
 #include <thread>
 
 #include "absl/container/btree_map.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -184,7 +185,7 @@ class GcsRpcClient {
         gcs_port_(port),
         io_context_(&client_call_manager.GetMainService()),
         timer_(std::make_unique<boost::asio::deadline_timer>(*io_context_)) {
-    grpc::ChannelArguments arguments;
+    grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
     arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
                      ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
     arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
@@ -217,10 +218,6 @@ class GcsRpcClient {
     node_resource_info_grpc_client_ =
         std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(channel_,
                                                                  client_call_manager);
-    heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
-        channel_, client_call_manager);
-    stats_grpc_client_ =
-        std::make_unique<GrpcClient<StatsGcsService>>(channel_, client_call_manager);
     worker_info_grpc_client_ =
         std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
     placement_group_info_grpc_client_ =
@@ -230,6 +227,9 @@ class GcsRpcClient {
         std::make_unique<GrpcClient<InternalKVGcsService>>(channel_, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
         channel_, client_call_manager);
+
+    task_info_grpc_client_ =
+        std::make_unique<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
 
     SetupCheckTimer();
   }
@@ -360,22 +360,16 @@ class GcsRpcClient {
                              node_resource_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Report heartbeat of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService,
-                             ReportHeartbeat,
-                             heartbeat_info_grpc_client_,
+  /// Add task events info to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
+                             AddTaskEventData,
+                             task_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Add profile data to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService,
-                             AddProfileData,
-                             stats_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
-  /// Get information of all profiles from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService,
-                             GetAllProfileInfo,
-                             stats_grpc_client_,
+  /// Add task events info to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
+                             GetTaskEvents,
+                             task_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Report a worker failure to GCS Service.
@@ -534,10 +528,20 @@ class GcsRpcClient {
       if (!gcs_is_down_) {
         gcs_is_down_ = true;
       } else {
-        RAY_CHECK(absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) <
-                  ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s())
-            << "Failed to connect to GCS within "
-            << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() << " seconds";
+        if (absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) >=
+            ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()) {
+          RAY_LOG(ERROR) << "Failed to connect to GCS within "
+                         << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
+                         << " seconds. "
+                         << "GCS may have been killed. It's either GCS is terminated by "
+                            "`ray stop` or "
+                         << "is killed unexpectedly. If it is killed unexpectedly, "
+                         << "see the log file gcs_server.out. "
+                         << "https://docs.ray.io/en/master/ray-observability/"
+                            "ray-logging.html#logging-directory-structure. "
+                         << "The program will terminate.";
+          std::_Exit(EXIT_FAILURE);
+        }
       }
       break;
     case GRPC_CHANNEL_SHUTDOWN:
@@ -575,13 +579,13 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
-  std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
-  std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
+
+  std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
 
   std::shared_ptr<grpc::Channel> channel_;
   bool gcs_is_down_ = false;

@@ -9,7 +9,6 @@ spec:
     replicas: 1
     rayStartParams: {}
     template:
-      metadata:
       spec:
         containers:
           - name: ray-test

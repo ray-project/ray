@@ -56,7 +56,7 @@ Next, let's execute the DAG we defined and inspect the result:
 
     # You can also run the workflow asynchronously and fetch the output via
     # 'ray.get'
-    output_ref = workflow.run_async(dag)
+    output_ref = workflow.run_async(output)
     print(ray.get(output_ref))
 
 

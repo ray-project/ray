@@ -1,7 +1,7 @@
 .. _tune-sklearn-docs:
 
-Scikit-Learn API  (tune.sklearn)
-================================
+Tune Scikit-Learn API  (tune.sklearn)
+=====================================
 
 .. _tunegridsearchcv-docs:
 

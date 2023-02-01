@@ -43,8 +43,7 @@ ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd, int64_t map_size)
 void ClientMmapTableEntry::MaybeMadviseDontdump() {
   if (!RayConfig::instance().worker_core_dump_exclude_plasma_store()) {
     RAY_LOG(DEBUG) << "worker_core_dump_exclude_plasma_store disabled, worker coredumps "
-                      "will contain "
-                   << "the object store mappings.";
+                      "will contain the object store mappings.";
     return;
   }
 

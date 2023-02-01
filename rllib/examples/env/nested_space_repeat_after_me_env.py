@@ -1,5 +1,5 @@
-import gym
-from gym.spaces import Box, Dict, Discrete, Tuple
+import gymnasium as gym
+from gymnasium.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -23,9 +23,9 @@ class NestedSpaceRepeatAfterMeEnv(gym.Env):
         self.flattened_action_space = flatten_space(self.action_space)
         self.episode_len = config.get("episode_len", 100)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return self._next_obs()
+        return self._next_obs(), {}
 
     def step(self, action):
         self.steps += 1
@@ -40,8 +40,8 @@ class NestedSpaceRepeatAfterMeEnv(gym.Env):
             # Discrete: +1.0 if exact match.
             if isinstance(space, gym.spaces.Discrete):
                 reward += 1.0 if a == o else 0.0
-        done = self.steps >= self.episode_len
-        return self._next_obs(), reward, done, {}
+        done = truncated = self.steps >= self.episode_len
+        return self._next_obs(), reward, done, truncated, {}
 
     def _next_obs(self):
         self.current_obs = self.observation_space.sample()
