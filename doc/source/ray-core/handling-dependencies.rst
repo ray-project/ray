@@ -572,7 +572,8 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 
     - ``runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}``
 
-
+Note that the ``smart_open``, ``boto3``, and ``google-cloud-storage`` packages are not installed by default, and it is not sufficient to specify them in the ``pip`` section of your ``runtime_env``.
+The relevant packages must already be installed on all nodes of the cluster when Ray starts.
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------
