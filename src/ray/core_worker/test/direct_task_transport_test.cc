@@ -891,6 +891,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamic) {
 
   int64_t current_concurrency = 0;
   int64_t concurrency = 10;
+  StaticLeaseRequestRateLimiter rateLimiter(concurrency);
   CoreWorkerDirectTaskSubmitter submitter(address,
                                           raylet_client,
                                           client_pool,
@@ -903,7 +904,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamic) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          [&]() { return current_concurrency; });
+                                          rateLimiter);
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -998,6 +999,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
 
   int64_t current_concurrency = 0;
   int64_t concurrency = 10;
+  StaticLeaseRequestRateLimiter rateLimiter(concurrency);
   CoreWorkerDirectTaskSubmitter submitter(address,
                                           raylet_client,
                                           client_pool,
@@ -1010,7 +1012,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
                                           kLongTimeout,
                                           actor_creator,
                                           JobID::Nil(),
-                                          [&]() { return current_concurrency; });
+                                          rateLimiter);
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
