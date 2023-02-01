@@ -382,6 +382,7 @@ def test_actor_summary(ray_start_cluster):
         summary = summary["cluster"]["summary"]
         actor_summary = None
         infeasible_summary = None
+        print(summary)
         for actor_class_name, s in summary.items():
             if ".Actor" in actor_class_name:
                 actor_summary = s
