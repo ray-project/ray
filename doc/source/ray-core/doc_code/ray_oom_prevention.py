@@ -76,7 +76,7 @@ second_actor_task = second_actor.allocate.remote(allocate_bytes)
 error_thrown = False
 try:
     ray.get(first_actor_task)
-except ray.exceptions.RayActorError as ex:
+except ray.exceptions.OutOfMemoryError as ex:
     error_thrown = True
     print("first actor was killed by memory monitor")
 assert error_thrown
