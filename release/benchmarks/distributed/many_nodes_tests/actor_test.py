@@ -118,7 +118,16 @@ def main():
             result["perf_metrics"] = perf
             dashboard_test.update_release_test_result(result)
 
+        print(f"Writing data into file: {os.environ['TEST_OUTPUT_JSON']}")
         json.dump(result, out_file)
+    print(f"Result: {json.dumps(result, indent=2)}")
+    print("Test finished successfully!")
+    ray.shutdown()
+
+    # We need to make sure GCS cool down otherwise, testing infra
+    # might get timeout when fetching the result.
+    print("Sleep for 60s, waiting for the cluster to cool down.")
+    sleep(60)
 
 
 if __name__ == "__main__":
