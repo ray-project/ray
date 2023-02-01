@@ -193,8 +193,8 @@ class BaseTrainer(abc.ABC):
         """Restores a Train experiment from a previously interrupted/failed run.
 
         Restore should be used for experiment-level fault tolerance in the event
-        that the head node crashes (e.g. OOM or some other runtime error) or the
-        entire cluster goes down (e.g. network error affecting all nodes).
+        that the head node crashes (e.g., OOM or some other runtime error) or the
+        entire cluster goes down (e.g., network error affecting all nodes).
 
         The following example can be paired with implementing job retry using
         :ref:`Ray Jobs <jobs-overview>` to produce a Train experiment that will
@@ -328,8 +328,8 @@ class BaseTrainer(abc.ABC):
 
         Args:
             path: The path to the experiment directory of the Train experiment.
-                This can be either a local directory (e.g. ~/ray_results/exp_name)
-                or a remote URI (e.g. s3://bucket/exp_name).
+                This can be either a local directory (e.g., ~/ray_results/exp_name)
+                or a remote URI (e.g., s3://bucket/exp_name).
 
         Returns:
             bool: Whether or not this path exists and contains the pickled Trainer
