@@ -442,11 +442,13 @@ ray.get(parent.remote())
         timeout=10,
         retry_interval_ms=500,
     )
+    time_sleep_s = 2
+    time.sleep(time_sleep_s)
 
     proc.kill()
 
     def verify():
-        tasks = list_tasks()
+        tasks = list_tasks(detail=True)
         assert len(tasks) == 7, (
             "Incorrect number of tasks are reported. "
             "Expected length: 1 parent + 2 finished child +  2 failed child + "
@@ -461,6 +463,12 @@ ray.get(parent.remote())
                 assert (
                     task["state"] == "FAILED"
                 ), f"task {task['func_or_class_name']} has wrong state"
+
+                duration_ms = task["end_time_ms"] - task["start_time_ms"]
+                assert (
+                    duration_ms > time_sleep_s * 1000
+                    and duration_ms < 2 * time_sleep_s * 1000
+                )
 
         return True
 
