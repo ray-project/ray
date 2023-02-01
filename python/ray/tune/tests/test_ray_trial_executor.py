@@ -617,8 +617,11 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         register_trainable("resettable", train)
 
         trial1 = Trial("resettable", placement_group_factory=pgf1)
+        trial1.create_placement_group_factory()
         trial2 = Trial("resettable", placement_group_factory=pgf1)
+        trial2.create_placement_group_factory()
         trial3 = Trial("resettable", placement_group_factory=pgf2)
+        trial3.create_placement_group_factory()
 
         assert executor.has_resources_for_trial(trial1)
         assert executor.has_resources_for_trial(trial2)

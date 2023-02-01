@@ -310,11 +310,6 @@ class Trial:
         self._default_placement_group_factory = placement_group_factory
         # Will be created in create_placement_group_factory().
         self.placement_group_factory = None
-        if not self._setup_default_resource or not config:
-            # For convenience. If we do not have to resolve the config,
-            # or look at default resources from trainables, we can simply
-            # create the placement group factory here immediately.
-            self.create_placement_group_factory()
 
         self.log_to_file = log_to_file
         # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
@@ -411,10 +406,6 @@ class Trial:
         Note: this must be called after all the placeholders in
         self.config are resolved.
         """
-        if self.placement_group_factory:
-            # Already created. Do nothing.
-            return
-
         trainable_cls = self.get_trainable_cls()
         if not trainable_cls or not self._setup_default_resource:
             # Create placement group factory using default resources.
