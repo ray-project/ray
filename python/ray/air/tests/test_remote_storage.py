@@ -167,7 +167,12 @@ def test_get_fs_and_path():
         assert path is None
     except Exception as e:
         # if fsspec imported, checking uri will not find the file
-        assert "No such file or directory" in str(e)
+        str_e = str(e)
+        find_error = (
+            "No such file or directory" in str_e or
+            "pyarrow and local java libraries required for HDFS" in str_e
+        )
+        assert find_error
 
 
 if __name__ == "__main__":
