@@ -486,9 +486,17 @@ class _OrderedOutputQueue(_OutputQueue):
         )
 
     def get_next(self) -> RefBundle:
-        i = self._next_output_index
-        self._next_output_index += 1
-        return self._tasks_by_output_order.pop(i).output
+        # Get the output RefBundle for the current task.
+        out_bundle = self._tasks_by_output_order[self._next_output_index].output
+        # Pop out the next single-block bundle.
+        next_bundle = RefBundle(
+            [out_bundle.blocks.pop(0)], owns_blocks=out_bundle.owns_blocks
+        )
+        if not out_bundle.blocks:
+            # If this task's RefBundle is exhausted, move to the next one.
+            del self._tasks_by_output_order[self._next_output_index]
+            self._next_output_index += 1
+        return next_bundle
 
 
 class _UnorderedOutputQueue(_OutputQueue):
@@ -504,7 +512,16 @@ class _UnorderedOutputQueue(_OutputQueue):
         return len(self._completed_tasks) > 0
 
     def get_next(self) -> RefBundle:
-        return self._completed_tasks.pop(0).output
+        # Get the output RefBundle for the oldest completed task.
+        out_bundle = self._completed_tasks[0].output
+        # Pop out the next single-block bundle.
+        next_bundle = RefBundle(
+            [out_bundle.blocks.pop(0)], owns_blocks=out_bundle.owns_blocks
+        )
+        if not out_bundle.blocks:
+            # If this task's RefBundle is exhausted, move to the next one.
+            del self._completed_tasks[0]
+        return next_bundle
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
