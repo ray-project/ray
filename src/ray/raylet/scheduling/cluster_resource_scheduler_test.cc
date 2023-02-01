@@ -393,6 +393,45 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
             (std::set<scheduling::NodeID>{local_node_id, remote_node_id}));
 }
 
+TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
+  absl::flat_hash_map<std::string, double> resource_total({{"CPU", 10}});
+  auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  ClusterResourceScheduler resource_scheduler(
+      local_node_id, resource_total, is_node_available_fn_);
+  AssertPredefinedNodeResources();
+  auto remote_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+      remote_node_id, resource_total, resource_total);
+
+  absl::flat_hash_map<std::string, double> resource_request({{"CPU", 5}});
+  int64_t violations;
+  bool is_infeasible;
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  // Select node with the remote node preferred.
+  auto node_id_1 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             remote_node_id.Binary(),
+                                                             &violations,
+                                                             &is_infeasible);
+
+  // If no preferred node specified, then still prefer the local one.
+  auto node_id_2 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
+
+  ASSERT_EQ((std::set<scheduling::NodeID>{node_id_1, node_id_2}),
+            (std::set<scheduling::NodeID>{remote_node_id, local_node_id}));
+}
+
 TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
   // Create cluster resources.
   NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 10},
