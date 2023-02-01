@@ -152,6 +152,7 @@ def run_prepare_commands(
 ) -> Tuple[bool, List[int], float]:
     prepare_return_codes = []
     prepare_passed = True
+    prepare_time_taken = None
     if prepare_commands:
         logger.info("### Starting prepare commands ###")
         assert len(prepare_commands) == len(prepare_commands_timeouts)
