@@ -314,6 +314,48 @@ class TuneFailResumeGridTest(unittest.TestCase):
         )
         assert len(analysis.trials) == 27
 
+    # Unfinished trials' resources should be updated.
+    def testConfigUpdateInResume(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
+        config = dict(
+            num_samples=1,
+            fail_fast=True,
+            config={
+                "test": tune.grid_search([1, 2, 3]),
+                "test2": tune.grid_search([1, 2, 3]),
+            },
+            stop={"training_iteration": 2},
+            local_dir=self.logdir,
+            verbose=1,
+        )
+
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                "trainable",
+                callbacks=[
+                    self.FailureInjectorCallback(num_trials=1),
+                    self.CheckTrialResourcesCallback(1),
+                ],
+                **config,
+            )
+
+        config["config"] = {
+            "test": tune.grid_search([7, 8, 9]),
+            "test2": tune.grid_search([7, 8, 9]),
+        }
+
+        analysis = tune.run(
+            "trainable",
+            resume=True,
+            **config,
+        )
+        assert len(analysis.trials) == 9
+        for t in analysis.trials:
+            # Make sure that test and test2 are updated.
+            assert t.config["test"] in [7, 8, 9]
+            assert t.config["test2"] in [7, 8, 9]
+
     def testFailResumeWithPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
