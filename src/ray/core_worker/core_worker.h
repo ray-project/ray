@@ -1464,7 +1464,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Rate limit the concurrent pending lease requests for submitting
   // tasks.
-  std::unique_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
+  std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;

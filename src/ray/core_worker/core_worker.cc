@@ -446,7 +446,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator_,
       worker_context_.GetCurrentJobID(),
-      *lease_request_rate_limiter_,
+      lease_request_rate_limiter_,
       boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
