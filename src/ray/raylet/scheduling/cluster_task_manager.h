@@ -94,9 +94,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void CancelTaskForOwner(
       const TaskID &owner_task_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-                  const std::string &scheduling_failure_message = "") override;
-
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "") override;
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in

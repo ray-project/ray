@@ -14,12 +14,12 @@
 
 #pragma once
 
+#include <deque>
 #include <map>
 #include <set>
 #include <sstream>
 #include <unordered_set>
 #include <vector>
-#include <deque>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -106,13 +106,12 @@ void remove_elements(std::function<bool(T)> matcher, std::deque<T> &container) {
   auto itr = container.begin();
   while (itr != container.end()) {
     if (matcher(*itr)) {
-        itr = container.erase(itr);
+      itr = container.erase(itr);
     }
     if (itr != container.end()) {
       itr++;
     }
   }
 }
-
 
 }  // namespace ray

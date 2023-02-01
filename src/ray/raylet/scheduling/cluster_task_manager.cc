@@ -262,18 +262,20 @@ void ClusterTaskManager::CancelTaskForOwner(
     const TaskID &owner_task_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
-
-  std::function<bool(std::shared_ptr<internal::Work>)> filter([owner_task_id, failure_type, scheduling_failure_message](std::shared_ptr<internal::Work> work) {
-    auto task = work->task;
-    if (task.GetTaskSpecification().ParentTaskId() == owner_task_id) {
-      if (!task.GetTaskSpecification().IsDetachedActor()) {
-        RAY_LOG(DEBUG) << "Canceling task from owner " << owner_task_id << " for task " << task.GetTaskSpecification().DebugString();
-        ReplyCancelled(*work, failure_type, scheduling_failure_message);
-        return true;
-      }
-    }
-    return false;
-  });
+  std::function<bool(std::shared_ptr<internal::Work>)> filter(
+      [owner_task_id, failure_type, scheduling_failure_message](
+          std::shared_ptr<internal::Work> work) {
+        auto task = work->task;
+        if (task.GetTaskSpecification().ParentTaskId() == owner_task_id) {
+          if (!task.GetTaskSpecification().IsDetachedActor()) {
+            RAY_LOG(DEBUG) << "Canceling task from owner " << owner_task_id
+                           << " for task " << task.GetTaskSpecification().DebugString();
+            ReplyCancelled(*work, failure_type, scheduling_failure_message);
+            return true;
+          }
+        }
+        return false;
+      });
 
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
        shapes_it++) {
