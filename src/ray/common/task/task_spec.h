@@ -222,7 +222,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID ParentTaskId() const;
 
-  TaskID MainThreadParentTaskId() const;
+  TaskID SubmitterTaskId() const;
 
   size_t ParentCounter() const;
 

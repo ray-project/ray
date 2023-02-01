@@ -663,7 +663,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   auto main_thread_task_id = task_spec.TaskId();
   auto thread_func2 = [&context, &main_thread_task_id]() {
     // Verify the main thread task id matches.
-    ASSERT_EQ(context.GetMainThreadCurrentTaskID(), main_thread_task_id);
+    ASSERT_EQ(context.GetMainThreadOrActorCreationTaskID(), main_thread_task_id);
   };
   std::thread async_thread2(thread_func2);
   async_thread2.join();

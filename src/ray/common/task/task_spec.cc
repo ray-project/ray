@@ -160,11 +160,11 @@ TaskID TaskSpecification::ParentTaskId() const {
   return TaskID::FromBinary(message_->parent_task_id());
 }
 
-TaskID TaskSpecification::MainThreadParentTaskId() const {
-  if (message_->main_thread_parent_task_id().empty() /* e.g., empty proto default */) {
+TaskID TaskSpecification::SubmitterTaskId() const {
+  if (message_->submitter_task_id().empty() /* e.g., empty proto default */) {
     return TaskID::Nil();
   }
-  return TaskID::FromBinary(message_->main_thread_parent_task_id());
+  return TaskID::FromBinary(message_->submitter_task_id());
 }
 
 size_t TaskSpecification::ParentCounter() const { return message_->parent_counter(); }

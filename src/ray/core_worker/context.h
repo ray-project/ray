@@ -40,7 +40,7 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
-  const TaskID GetMainThreadCurrentTaskID() const;
+  const TaskID GetMainThreadOrActorCreationTaskID() const;
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const LOCKS_EXCLUDED(mutex_);
 
@@ -132,9 +132,10 @@ class WorkerContext {
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
   const boost::thread::id main_thread_id_;
-  /// The currently executing main thread's task id. Used merely for observability
-  /// purposes to track task hierarchy.
-  TaskID main_thread_current_task_id_;
+  /// The currently executing main thread's task id. It's the actor creation task id
+  /// for actor, or the main thread's task id for normal tasks.
+  /// Used merely for observability purposes to track task hierarchy.
+  TaskID main_thread_or_actor_creation_task_id;
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
 

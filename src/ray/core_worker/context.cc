@@ -161,7 +161,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
     GetThreadContext().SetCurrentTaskId(TaskID::ForDriverTask(job_id),
                                         /*attempt_number=*/0);
     // Driver runs in the main thread.
-    main_thread_current_task_id_ = TaskID::ForDriverTask(job_id);
+    main_thread_or_actor_creation_task_id = TaskID::ForDriverTask(job_id);
   }
 }
 
@@ -268,17 +268,18 @@ void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
   absl::WriterMutexLock lock(&mutex_);
-  if (CurrentThreadIsMain()) {
-    main_thread_current_task_id_ = task_spec.TaskId();
-  }
   SetTaskDepth(task_spec.GetDepth());
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
+    if (CurrentThreadIsMain()) {
+      main_thread_or_actor_creation_task_id = task_spec.TaskId();
+    }
   } else if (task_spec.IsActorCreationTask()) {
     if (!current_actor_id_.IsNil()) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
     }
+    main_thread_or_actor_creation_task_id = task_spec.TaskId();
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
@@ -319,9 +320,9 @@ bool WorkerContext::CurrentThreadIsMain() const {
   return boost::this_thread::get_id() == main_thread_id_;
 }
 
-const TaskID WorkerContext::GetMainThreadCurrentTaskID() const {
+const TaskID WorkerContext::GetMainThreadOrActorCreationTaskID() const {
   absl::ReaderMutexLock lock(&mutex_);
-  return main_thread_current_task_id_;
+  return main_thread_or_actor_creation_task_id;
 }
 
 bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {

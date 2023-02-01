@@ -861,7 +861,7 @@ rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
   task_info.set_job_id(task_spec.JobId().Binary());
 
   task_info.set_task_id(task_spec.TaskId().Binary());
-  task_info.set_parent_task_id(task_spec.MainThreadParentTaskId().Binary());
+  task_info.set_parent_task_id(task_spec.SubmitterTaskId().Binary());
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info.mutable_required_resources()->insert(resources_map.begin(),
                                                  resources_map.end());

@@ -1833,7 +1833,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info,
-                      worker_context_.GetMainThreadCurrentTaskID(),
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true);
   builder.SetNormalTaskSpec(max_retries,
@@ -1917,7 +1917,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       "" /* debugger_breakpoint */,
                       depth,
                       actor_creation_options.serialized_runtime_env_info,
-                      worker_context_.GetMainThreadCurrentTaskID(),
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true);
 
@@ -2142,7 +2142,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       "",    /* debugger_breakpoint */
                       depth, /*depth*/
                       "{}",  /* serialized_runtime_env_info */
-                      worker_context_.GetMainThreadCurrentTaskID(),
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
                       task_options.concurrency_group_name,
                       /*include_job_config*/ false);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
