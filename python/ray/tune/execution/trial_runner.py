@@ -1095,6 +1095,9 @@ class TrialRunner:
         if self._placeholder_resolvers:
             trial.resolve_config_placeholders(self._placeholder_resolvers)
 
+        # With trial.config resolved, create placement group factory if needed.
+        trial.create_placement_group_factory()
+
         self._trials.append(trial)
         if trial.status != Trial.TERMINATED:
             self._live_trials.add(trial)

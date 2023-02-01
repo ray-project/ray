@@ -303,34 +303,11 @@ class Trial:
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
         self.location = _Location()
-        trainable_cls = self.get_trainable_cls()
-        if trainable_cls and _setup_default_resource:
-            default_resources = trainable_cls.default_resource_request(self.config)
-
-            # If Trainable returns resources, do not allow manual override via
-            # `resources_per_trial` by the user.
-            if default_resources:
-                if resources or placement_group_factory:
-                    raise ValueError(
-                        "Resources for {} have been automatically set to {} "
-                        "by its `default_resource_request()` method. Please "
-                        "clear the `resources_per_trial` option.".format(
-                            trainable_cls, default_resources
-                        )
-                    )
-
-                if isinstance(default_resources, PlacementGroupFactory):
-                    placement_group_factory = default_resources
-                    resources = None
-                else:
-                    placement_group_factory = None
-                    resources = default_resources
-
-        self.placement_group_factory = _to_pg_factory(
-            resources, placement_group_factory
-        )
-
         self.stopping_criterion = stopping_criterion or {}
+
+        self._setup_default_resource = _setup_default_resource
+        self._resources = resources
+        self._placement_group_factory = placement_group_factory
 
         self.log_to_file = log_to_file
         # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
@@ -420,6 +397,41 @@ class Trial:
 
         self._state_json = None
         self._state_valid = False
+
+    def create_placement_group_factory(self):
+        """Compute placement group factor if needed.
+
+        Note: this must be called after all the placeholders in
+        self.config are resolved.
+        """
+        trainable_cls = self.get_trainable_cls()
+        if not trainable_cls or not self._setup_default_resource:
+            return
+
+        default_resources = trainable_cls.default_resource_request(self.config)
+
+        # If Trainable returns resources, do not allow manual override via
+        # `resources_per_trial` by the user.
+        if default_resources:
+            if self._resources or self._placement_group_factory:
+                raise ValueError(
+                    "Resources for {} have been automatically set to {} "
+                    "by its `default_resource_request()` method. Please "
+                    "clear the `resources_per_trial` option.".format(
+                        trainable_cls, default_resources
+                    )
+                )
+
+            if isinstance(default_resources, PlacementGroupFactory):
+                self._placement_group_factory = default_resources
+                self._resources = None
+            else:
+                self._placement_group_factory = None
+                self._resources = default_resources
+
+        self.placement_group_factory = _to_pg_factory(
+            self._resources, self._placement_group_factory
+        )
 
     def _get_default_result_or_future(self) -> Optional[dict]:
         """Calls ray.get on self._default_result_or_future and assigns back.
