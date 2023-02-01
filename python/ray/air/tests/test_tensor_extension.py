@@ -239,7 +239,7 @@ def test_arrow_variable_shaped_bool_tensor_array_slice():
     indices = [0, 1, 2]
     for i in indices:
         np.testing.assert_array_equal(ata[i], arr[i])
-    
+
     slices = [
         slice(0, 1),
         slice(1, 2),
@@ -618,7 +618,9 @@ pytest_tensor_array_concat_arrs = [
     for shape in pytest_tensor_array_concat_shapes
 ]
 pytest_tensor_array_concat_arrs += [
-    _create_strict_ragged_ndarray([np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))])
+    _create_strict_ragged_ndarray(
+        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))]
+    )
 ]
 pytest_tensor_array_concat_arr_combinations = list(
     itertools.combinations(pytest_tensor_array_concat_arrs, 2)
