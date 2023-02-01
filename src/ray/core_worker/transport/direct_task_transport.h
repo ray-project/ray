@@ -87,7 +87,7 @@ class CoreWorkerDirectTaskSubmitter {
       int64_t lease_timeout_ms,
       std::shared_ptr<ActorCreatorInterface> actor_creator,
       const JobID &job_id,
-      LeaseRequestRateLimiter &lease_request_rate_limiter,
+      std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
@@ -361,7 +361,7 @@ class CoreWorkerDirectTaskSubmitter {
   absl::flat_hash_map<TaskID, rpc::WorkerAddress> executing_tasks_ GUARDED_BY(mu_);
 
   // Ratelimiter controls the num of pending lease requests.
-  LeaseRequestRateLimiter &lease_request_rate_limiter_;
+  std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Retries cancelation requests if they were not successful.
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;

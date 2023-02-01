@@ -272,24 +272,22 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       });
 
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
-    lease_request_rate_limiter_ = std::make_unique<StaticLeaseRequestRateLimiter>(
+    lease_request_rate_limiter_ = std::make_shared<StaticLeaseRequestRateLimiter>(
         RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
   } else {
     RAY_CHECK(
         RayConfig::instance().max_pending_lease_requests_per_scheduling_category() != 0)
         << "max_pending_lease_requests_per_scheduling_category can't be 0";
     lease_request_rate_limiter_ =
-        std::make_unique<ClusterSizeBasedLeaseRequestRateLimiter>(
+        std::make_shared<ClusterSizeBasedLeaseRequestRateLimiter>(
             /*kMinConcurrentLeaseCap*/ 10);
   }
 
   // Register a callback to monitor add/removed nodes.
-  // Note we capture a shared ownership of reference_counter_
+  // Note we capture a shared ownership of reference_counter_ and rate_limiter
   // here to avoid destruction order fiasco between gcs_client and reference_counter_.
   auto on_node_change = [reference_counter = this->reference_counter_,
-                         rate_limiter =
-                             dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(
-                                 lease_request_rate_limiter_.get())](
+                         rate_limiter = this->lease_request_rate_limiter_](
                             const NodeID &node_id, const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::DEAD) {
       RAY_LOG(INFO) << "Node failure from " << node_id
@@ -297,8 +295,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                        "reconstruction is not enabled.";
       reference_counter->ResetObjectsOnRemovedNode(node_id);
     }
-    if (rate_limiter) {
-      rate_limiter->OnNodeChanges(data);
+    auto cluster_size_based_rate_limiter =
+        dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(rate_limiter.get());
+    if (cluster_size_based_rate_limiter) {
+      cluster_size_based_rate_limiter->OnNodeChanges(data);
     }
   };
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));

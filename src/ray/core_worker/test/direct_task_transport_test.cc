@@ -25,8 +25,10 @@
 namespace ray {
 namespace core {
 namespace {
-StaticLeaseRequestRateLimiter kOneRateLimiter(1);
-StaticLeaseRequestRateLimiter kTwoRateLimiter(2);
+std::shared_ptr<LeaseRequestRateLimiter> kOneRateLimiter =
+    std::make_shared<StaticLeaseRequestRateLimiter>(1);
+std::shared_ptr<LeaseRequestRateLimiter> kTwoRateLimiter =
+    std::make_shared<StaticLeaseRequestRateLimiter>(2);
 
 class DynamicRateLimiter : public LeaseRequestRateLimiter {
  public:
@@ -821,7 +823,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
 
   int64_t concurrency = 10;
-  StaticLeaseRequestRateLimiter rateLimiter(concurrency);
+  auto rateLimiter = std::make_shared<StaticLeaseRequestRateLimiter>(concurrency);
   CoreWorkerDirectTaskSubmitter submitter(address,
                                           raylet_client,
                                           client_pool,
@@ -899,7 +901,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamic) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
 
   int64_t concurrency = 10;
-  DynamicRateLimiter rateLimiter(1);
+  auto rateLimiter = std::make_shared<DynamicRateLimiter>(concurrency);
   CoreWorkerDirectTaskSubmitter submitter(address,
                                           raylet_client,
                                           client_pool,
@@ -938,7 +940,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamic) {
   ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
 
   // Increase max concurrency. Should request leases up to the max concurrency.
-  rateLimiter.limit = concurrency;
+  rateLimiter->limit = concurrency;
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 2 + concurrency);
   ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
@@ -948,7 +950,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamic) {
   // Decrease max concurrency again. Should not request any more leases even as
   // previous requests are granted, since we are still over the current
   // concurrency.
-  rateLimiter.limit = 1;
+  rateLimiter->limit = 1;
   for (int i = 0; i < concurrency - 1; i++) {
     ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
     ASSERT_EQ(lease_policy->num_lease_policy_consults, 2 + concurrency);
@@ -1006,7 +1008,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
 
   int64_t concurrency = 10;
-  DynamicRateLimiter rateLimiter(1);
+  auto rateLimiter = std::make_shared<DynamicRateLimiter>(concurrency);
   CoreWorkerDirectTaskSubmitter submitter(address,
                                           raylet_client,
                                           client_pool,
@@ -1045,7 +1047,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
 
   // Increase max concurrency.
-  rateLimiter.limit = concurrency;
+  rateLimiter->limit = concurrency;
   // The outstanding lease request is spilled back to a remote raylet.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::FromRandom()));
   // We should request one lease request from the spillback raylet and then the
@@ -1058,7 +1060,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   // Decrease max concurrency again. Should not request any more leases even as
   // previous requests are granted, since we are still over the current
   // concurrency.
-  rateLimiter.limit = 1;
+  rateLimiter->limit = 1;
   for (int i = 0; i < concurrency - 1; i++) {
     ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
     ASSERT_EQ(lease_policy->num_lease_policy_consults, concurrency + 1);

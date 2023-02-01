@@ -327,7 +327,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   const size_t kMaxPendingLeaseRequestsPerSchedulingCategory =
-      lease_request_rate_limiter_.GetMaxPendingLeaseRequestsPerSchedulingCategory();
+      lease_request_rate_limiter_->GetMaxPendingLeaseRequestsPerSchedulingCategory();
 
   if (scheduling_key_entry.pending_lease_requests.size() >=
       kMaxPendingLeaseRequestsPerSchedulingCategory) {
