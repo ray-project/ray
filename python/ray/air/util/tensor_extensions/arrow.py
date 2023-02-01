@@ -165,19 +165,12 @@ class ArrowTensorType(pa.PyExtensionType):
                 arr = np.unpackbits(arr, bitorder="little")
                 # Interpret buffer as boolean array.
                 return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
+            ext_dtype = raw_values.type.to_pandas_dtype()
             # Special handling of ragged string tensors
             if pa.types.is_fixed_size_binary(raw_values.type):
-                offset = raw_values.offset
-                buffer_item_width = raw_values.type.bit_width // 8
                 ext_dtype = np.dtype(
                     f"<U{raw_values.type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}"
                 )
-                data_offset = buffer_item_width * offset
-                data_buffer = raw_values.buffers()[1]
-                return np.ndarray(
-                    shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset
-                )
-            ext_dtype = raw_values.type.to_pandas_dtype()
             return np.ndarray(
                 shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset
             )
@@ -705,20 +698,12 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
                 arr = np.unpackbits(arr, bitorder="little")
                 # Interpret buffer as boolean array.
                 return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
-
+            ext_dtype = raw_values.type.to_pandas_dtype()
             # Special handling of ragged string tensors
             if pa.types.is_fixed_size_binary(raw_values.type):
-                offset = raw_values.offset
-                buffer_item_width = raw_values.type.bit_width // 8
                 ext_dtype = np.dtype(
                     f"<U{raw_values.type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}"
                 )
-                data_offset = buffer_item_width * offset
-                data_buffer = raw_values.buffers()[1]
-                return np.ndarray(
-                    shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset
-                )
-            ext_dtype = raw_values.type.to_pandas_dtype()
             return np.ndarray(
                 shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset
             )
