@@ -87,7 +87,6 @@ class AnyscaleJobManager:
             ) from e
 
         self.last_job_result = job_response.result
-        self.cluster_manager.cluster_id = self.last_job_result.state.cluster_id
         self.start_time = time.time()
 
         logger.info(f"Link to job: " f"{format_link(self.job_url)}")
@@ -103,13 +102,14 @@ class AnyscaleJobManager:
 
     @last_job_result.setter
     def last_job_result(self, value):
-        self._last_job_result = value
         cluster_id = value.state.cluster_id
-        if cluster_id:
+        # Set this only once.
+        if self._last_job_result is None and cluster_id:
             self.cluster_manager.cluster_id = value.state.cluster_id
             self.cluster_manager.cluster_name = get_cluster_name(
                 value.state.cluster_id, self.sdk
             )
+        self._last_job_result = value
 
     @property
     def job_id(self) -> str:
