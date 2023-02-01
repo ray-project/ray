@@ -276,7 +276,7 @@ class Tuner:
         Returns:
             bool: True if this path exists and contains the Tuner state to resume from
         """
-        return _TUNER_PKL in list_at_uri(path)
+        return _TUNER_PKL in list_at_uri(str(path))
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
         run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
