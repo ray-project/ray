@@ -17,7 +17,6 @@ from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
-from ray.tune.impl.placeholder import resolve_placeholders
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList, Callback
@@ -847,7 +846,7 @@ class TrialRunner:
                 trial_to_add.status = Trial.TERMINATED
             # Resumed trials already have resolved values.
             # So skip placeholder resolution.
-            self.add_trial(trial_to_add, resolve=False)
+            self.add_trial(trial_to_add)
 
     def update_pending_trial_resources(
         self, resources: Union[dict, PlacementGroupFactory]
@@ -1083,7 +1082,7 @@ class TrialRunner:
         """Returns the set of trials that are not in Trial.TERMINATED state."""
         return self._live_trials
 
-    def add_trial(self, trial: Trial, resolve: bool):
+    def add_trial(self, trial: Trial):
         """Adds a new trial to this TrialRunner.
 
         Trials may be added at any time.
@@ -1091,10 +1090,10 @@ class TrialRunner:
         Args:
             trial: Trial to queue.
         """
-        # If the config map has had all the references replaced,
+        # If the config map has had all the references replaced with placeholders,
         # resolve them before adding the trial.
-        if resolve and self._placeholder_resolvers:
-            resolve_placeholders(trial.config, self._placeholder_resolvers)
+        if self._placeholder_resolvers:
+            trial.resolve_config_placeholders(self._placeholder_resolvers)
 
         self._trials.append(trial)
         if trial.status != Trial.TERMINATED:
@@ -1498,7 +1497,7 @@ class TrialRunner:
 
         if trial:
             # New trial needs to have all the placeholders resolved.
-            self.add_trial(trial, resolve=True)
+            self.add_trial(trial)
             return True
 
         return False

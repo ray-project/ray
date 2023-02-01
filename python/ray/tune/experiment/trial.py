@@ -9,7 +9,7 @@ import platform
 import re
 import shutil
 import time
-from typing import Dict, Optional, Sequence, Union, Callable, List, Tuple
+from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
@@ -292,8 +292,12 @@ class Trial:
         # Trial config
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
-        self.config = config or {}
         self._local_dir = local_dir  # This remains unexpanded for syncing.
+
+        self.config = config or {}
+        # Save a copy of the original unresolved config so that we can swap
+        # out and update any reference config values after restoration.
+        self.__unresolved_config = self.config
 
         # Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
@@ -438,6 +442,12 @@ class Trial:
                 )
             )
         return self._default_result_or_future
+
+    def resolve_config_placeholders(self, placeholder_resolvers: Dict[Tuple, Any]):
+        from ray.tune.impl.placeholder import resolve_placeholders
+        # Make a copy of the unresolved config before resolve it.
+        self.config = copy.deepcopy(self.__unresolved_config)
+        resolve_placeholders(self.config, placeholder_resolvers)
 
     @property
     def last_result(self) -> dict:

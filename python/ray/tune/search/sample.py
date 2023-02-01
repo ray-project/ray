@@ -464,8 +464,9 @@ class Function(Domain):
         ):
             try:
                 return domain.func(config)
-            except KeyError as e:
-                r = domain.func({"config": config})
+            except (AttributeError, KeyError) as e:
+                from ray.tune.search.variant_generator import _UnresolvedAccessGuard
+                r = domain.func(_UnresolvedAccessGuard({"config": config}))
                 logger.warning(
                     "sample_from functions that take a spec dict are "
                     "deprecated. Please update your function to work with "

@@ -64,6 +64,10 @@ class PlaceholderTest(unittest.TestCase):
             "param4": {
                 "param4": tune.sample_from(lambda config: config["param1"]),
             },
+            # Make sure dot notation also works with spec passed in.
+            "param5": {
+                "param4": tune.sample_from(lambda spec: spec.config["param1"]),
+            },
         }
 
         replaced = {}
@@ -71,11 +75,15 @@ class PlaceholderTest(unittest.TestCase):
 
         self.assertEqual(config["param2"][1], "fn_ph")
         self.assertEqual(config["param3"]["param4"], "fn_ph")
+        self.assertEqual(config["param4"]["param4"], "fn_ph")
+        self.assertEqual(config["param5"]["param4"], "fn_ph")
 
         resolve_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1], "not ok")
         self.assertEqual(config["param3"]["param4"], "ok")
+        self.assertEqual(config["param4"]["param4"], "ok")
+        self.assertEqual(config["param5"]["param4"], "ok")
 
     def testRefValue(self):
         class Dummy:
