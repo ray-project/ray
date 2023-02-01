@@ -275,6 +275,31 @@ def test_lazy_block_list(
         assert block_metadata.schema is not None
 
 
+def test_filter(
+    ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
+):
+    # Test 10 blocks from 1 task, each block is 1024 bytes.
+    num_blocks = 10
+    block_size = 1024
+
+    ds = ray.data.read_datasource(
+        RandomBytesDatasource(),
+        parallelism=1,
+        num_blocks=num_blocks,
+        block_size=block_size,
+    )
+
+    ds = ds.filter(lambda _: True)
+    ds.fully_executed()
+    assert ds.count() == num_blocks
+    assert ds.num_blocks() == num_blocks
+
+    ds = ds.filter(lambda _: False)
+    ds.fully_executed()
+    assert ds.count() == 0
+    assert ds.num_blocks() == num_blocks
+
+
 def test_read_large_data(ray_start_cluster, enable_dynamic_block_splitting):
     # Test 20G input with single task
     num_blocks = 20
