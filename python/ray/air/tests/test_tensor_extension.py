@@ -50,22 +50,6 @@ def test_arrow_scalar_tensor_array_roundtrip_boolean():
     np.testing.assert_array_equal(out, arr)
 
 
-def test_arrow_scalar_tensor_array_roundtrip_string():
-    arr = np.array(
-        [
-            ["Philip", "Fry"],
-            ["Leela", "Turanga"],
-            ["Hubert", "Farnsworth"],
-            ["Lrrr", ""],
-        ]
-    )
-    ata = ArrowTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, pa.DataType)
-    assert len(ata) == len(arr)
-    out = ata.to_numpy()
-    np.testing.assert_array_equal(out, arr)
-
-
 def test_scalar_tensor_array_roundtrip():
     arr = np.arange(10)
     ta = TensorArray(arr)
@@ -146,24 +130,6 @@ def test_arrow_variable_shaped_tensor_array_roundtrip():
 def test_arrow_variable_shaped_tensor_array_roundtrip_boolean():
     arr = np.array(
         [[True, False], [False, False, True], [False], [True, True, False, True]],
-        dtype=object,
-    )
-    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, ArrowVariableShapedTensorType)
-    assert len(ata) == len(arr)
-    out = ata.to_numpy()
-    for o, a in zip(out, arr):
-        np.testing.assert_array_equal(o, a)
-
-
-def test_arrow_variable_shaped_tensor_array_roundtrip_string():
-    arr = np.array(
-        [
-            ["Philip", "J", "Fry"],
-            ["Leela", "Turanga"],
-            ["Professor", "Hubert", "J", "Farnsworth"],
-            ["Lrrr"],
-        ],
         dtype=object,
     )
     ata = ArrowVariableShapedTensorArray.from_numpy(arr)
@@ -595,8 +561,6 @@ def test_arrow_variable_shaped_tensor_array_getitem(chunked):
         ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float32),
         ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float16),
         ([[False, True], [True, False], [True, True], [False, False]], None),
-        ([["Aa", "Bb"], ["Cc", "Dd"], ["Ee", "Ff"], ["Gg", "Hh"]], None),
-        ([["Aa", "Bb"], ["Cc", "Dd"], ["Ee", "Ff"], ["Gg", "Hh"]], np.str_),
     ],
 )
 def test_arrow_tensor_array_slice(test_arr, dtype):
