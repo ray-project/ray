@@ -4,6 +4,7 @@ import sys
 import ray
 import json
 
+
 @ray.remote(num_cpus=1)
 class Worker:
     def __init__(self):
@@ -36,7 +37,7 @@ class Controller:
         while True:
             i = i + 1
             try:
-                ray.get(self.worker.execute_task.remote(crash=(i%2==1)))
+                ray.get(self.worker.execute_task.remote(crash=(i % 2 == 1)))
                 # Checkpoint the latest worker state
                 self.worker_state = ray.get(self.worker.checkpoint.remote())
                 return
@@ -53,6 +54,7 @@ controller.execute_task_with_fault_tolerance()
 assert ray.get(controller.worker.checkpoint.remote())["num_tasks_executed"] == 2
 # __actor_checkpointing_manual_restart_end__
 
+
 # __actor_checkpointing_auto_restart_begin__
 @ray.remote(max_restarts=-1, max_task_retries=-1)
 class ImmortalActor:
@@ -63,16 +65,18 @@ class ImmortalActor:
                 self.state = json.load(f)
         else:
             # Heavy init
-            self.state = {str(i):i for i in range(10)}
+            self.state = {str(i): i for i in range(10)}
             with open("/tmp/checkpoint.json", "w") as f:
                 json.dump(self.state, f)
 
     def query(self, key):
         import random
+
         if random.randrange(10) < 5:
             sys.exit(1)
 
         return self.state[key]
+
 
 actor = ImmortalActor.remote()
 assert ray.get(actor.query.remote("3")) == 3
