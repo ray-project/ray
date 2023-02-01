@@ -58,7 +58,7 @@ using SchedulingKey =
 class LeaseRequestRateLimiter {
  public:
   virtual size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() = 0;
-  ~LeaseRequestRateLimiter() = default;
+  virtual ~LeaseRequestRateLimiter() = default;
 };
 
 // Lease request rate-limiter with fixed number.

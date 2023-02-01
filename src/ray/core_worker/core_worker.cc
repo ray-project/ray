@@ -271,19 +271,22 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
 
-  lease_request_rate_limiter_ =
-      RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0
-          ? std::make_unique<StaticLeaseRequestRateLimiter>(
-                RayConfig::instance()
-                    .max_pending_lease_requests_per_scheduling_category())
-          : std::make_unique<ClusterSizeBasedLeaseRequestRateLimiter>(
-                /*kMinConcurrentLeaseCap*/ 10);
+  if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
+    lease_request_rate_limiter_ = std::make_unique<StaticLeaseRequestRateLimiter>(
+        RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
+  } else {
+    RAY_CHECK(
+        RayConfig::instance().max_pending_lease_requests_per_scheduling_category() != 0)
+        << "max_pending_lease_requests_per_scheduling_category can't be 0";
+    lease_request_rate_limiter_ =
+        std::make_unique<ClusterSizeBasedLeaseRequestRateLimiter>(
+            /*kMinConcurrentLeaseCap*/ 10);
+  }
 
   // Register a callback to monitor add/removed nodes.
   // Note we capture a shared ownership of reference_counter_
   // here to avoid destruction order fiasco between gcs_client and reference_counter_.
-  auto on_node_change = [this,
-                         reference_counter = this->reference_counter_,
+  auto on_node_change = [reference_counter = this->reference_counter_,
                          rate_limiter =
                              dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(
                                  lease_request_rate_limiter_.get())](
@@ -3761,7 +3764,6 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
     num_alive_nodes_++;
   }
 }
-};
 
 }  // namespace core
 }  // namespace ray
