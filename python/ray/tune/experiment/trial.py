@@ -429,14 +429,17 @@ class Trial:
                 )
 
             if isinstance(default_resources, PlacementGroupFactory):
-                self._default_placement_group_factory = default_resources
-                self._resources = None
+                default_placement_group_factory = default_resources
+                resources = None
             else:
-                self._default_placement_group_factory = None
-                self._resources = default_resources
+                default_placement_group_factory = None
+                resources = default_resources
+        else:
+            default_placement_group_factory = self._default_placement_group_factory
+            resources = self._resources
 
         self.placement_group_factory = _to_pg_factory(
-            self._resources, self._default_placement_group_factory
+            resources, default_placement_group_factory
         )
 
     def _get_default_result_or_future(self) -> Optional[dict]:
