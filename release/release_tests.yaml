@@ -2225,6 +2225,7 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
+  env: staging_v2
   legacy:
     test_name: jobs_check_cuda_available
     test_suite: jobs_tests
@@ -2241,7 +2242,6 @@
 - name: jobs_specify_num_gpus
   group: Jobs tests
   team: serve
-  env: staging_v2
   frequency: nightly
   working_dir: jobs_tests
   legacy:
