@@ -59,7 +59,7 @@ def format_link(link: str) -> str:
     # Use ANSI escape code to allow link to be clickable
     # https://buildkite.com/docs/pipelines/links-and-images
     # -in-log-output
-    if os.environ.get("BUILDKITE_COMMIT"):
+    if os.environ.get("BUILDKITE_COMMIT") and link:
         return "\033]1339;url='" + link + "'\a\n"
     # Else, no buildkite:
     return link

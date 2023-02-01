@@ -19,6 +19,10 @@ class Result:
     wheels_url: Optional[str] = None
     cluster_url: Optional[str] = None
 
+    # Anyscale Jobs specific
+    job_url: Optional[str] = None
+    job_id: Optional[str] = None
+
     buildkite_job_id: Optional[str] = None
     cluster_id: Optional[str] = None
 

@@ -375,6 +375,14 @@ def run_release_test(
         pipeline_exception = e
         metrics = {}
 
+    # Obtain the cluster URL again as it is set after the
+    # command was run in case of anyscale jobs
+    if isinstance(command_runner, AnyscaleJobRunner):
+        result.cluster_url = cluster_manager.get_cluster_url()
+        result.cluster_id = cluster_manager.cluster_id
+        result.job_url = command_runner.job_manager.job_url
+        result.job_id = command_runner.job_manager.job_id
+
     try:
         last_logs = command_runner.get_last_logs()
     except Exception as e:

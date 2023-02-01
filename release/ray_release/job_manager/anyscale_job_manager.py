@@ -90,17 +90,8 @@ class AnyscaleJobManager:
         self.cluster_manager.cluster_id = self.last_job_result.state.cluster_id
         self.start_time = time.time()
 
-        logger.info(
-            f"Link to job: " f"{format_link(anyscale_job_url(self.last_job_result.id))}"
-        )
-
+        logger.info(f"Link to job: " f"{format_link(self.job_url)}")
         return
-
-    @property
-    def job_id(self):
-        if not self.last_job_result:
-            return None
-        return self.last_job_result.id
 
     @property
     def sdk(self):
@@ -121,8 +112,24 @@ class AnyscaleJobManager:
             )
 
     @property
-    def last_job_status(self):
+    def job_id(self) -> str:
+        if not self.last_job_result:
+            return None
+        return self.last_job_result.id
+
+    @property
+    def job_url(self) -> str:
+        if not self.job_id:
+            return None
+        return anyscale_job_url(self.job_id)
+
+    @property
+    def last_job_status(self) -> HaJobStates:
         return self._last_job_result.state.current_state
+
+    @property
+    def in_progress(self) -> bool:
+        return self.last_job_result and self.last_job_status not in terminal_state
 
     def _get_job_status_with_retry(self):
         anyscale_client = self.cluster_manager.sdk
@@ -137,7 +144,7 @@ class AnyscaleJobManager:
         self._terminate_job()
 
     def _terminate_job(self, raise_exceptions: bool = False):
-        if not self.last_job_result:
+        if not self.in_progress:
             return
         try:
             self.sdk.terminate_job(self.job_id)
@@ -200,7 +207,6 @@ class AnyscaleJobManager:
         assert status in terminal_state
         retcode = job_status_to_return_code[status]
         duration = time.time() - self.start_time
-        self._last_logs = None
         return retcode, duration
 
     def run_and_wait(
@@ -227,14 +233,15 @@ class AnyscaleJobManager:
 
         # TODO: replace with an actual API call.
         def _get_logs():
-            job_controller = JobController()
             buf = io.StringIO()
-            with redirect_stdout(buf), redirect_stderr(None):
-                job_controller.logs(
-                    job_id=self.job_id,
-                    should_follow=False,
-                )
-                print("", flush=True)
+            with open(os.devnull, "w") as devnull:
+                with redirect_stdout(buf), redirect_stderr(devnull):
+                    job_controller = JobController()
+                    job_controller.logs(
+                        job_id=self.job_id,
+                        should_follow=False,
+                    )
+                    print("", flush=True)
             output = buf.getvalue().strip()
             assert "### Starting ###" in output, "No logs fetched"
             return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
@@ -245,6 +252,6 @@ class AnyscaleJobManager:
             initial_retry_delay_s=30,
             max_retries=5,
         )
-        if ret:
+        if ret and not self.in_progress:
             self._last_logs = ret
         return ret

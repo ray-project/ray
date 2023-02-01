@@ -2236,6 +2236,7 @@
     script: python workloads/jobs_check_cuda_available.py
     wait_for_nodes:
       num_nodes: 2
+    type: anyscale_job
 
 - name: jobs_specify_num_gpus
   group: Jobs tests
@@ -2254,7 +2255,6 @@
     script: python workloads/jobs_specify_num_gpus.py --working-dir "workloads"
     wait_for_nodes:
       num_nodes: 2
-    type: anyscale_job
 
 
 ########################
