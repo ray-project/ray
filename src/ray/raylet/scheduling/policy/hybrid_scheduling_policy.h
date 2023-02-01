@@ -36,6 +36,9 @@ namespace raylet_scheduling_policy {
 ///   1. Generate a traversal.
 ///   2. Run a priority scheduler.
 ///   3. Randomly choose one node from top-k nodes according to the priority.
+///      If preferred node is specified, and the preferred node has the highest
+///      priority (lowest score), we always skip top k but directly pick
+///      the preferred node.
 ///
 /// A node's priorities are determined by the following factors:
 ///   * Always skip infeasible nodes
@@ -43,13 +46,6 @@ namespace raylet_scheduling_policy {
 ///   * Break ties in available/feasible by critical resource utilization.
 ///   * Critical resource utilization below a threshold should be truncated to 0.
 ///
-/// The traversal order should:
-///   * Prioritize the local node above all others.
-///   * All other nodes should have a globally fixed priority across the cluster.
-///
-/// We call this a hybrid policy because below the threshold, the traversal and
-/// truncation properties will lead to packing of nodes. Above the threshold, the policy
-/// will act like a traditional weighted round robin.
 class HybridSchedulingPolicy : public ISchedulingPolicy {
  public:
   HybridSchedulingPolicy(scheduling::NodeID local_node_id,
