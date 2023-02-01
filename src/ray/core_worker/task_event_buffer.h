@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <boost/circular_buffer.hpp>
 #include <memory>
 #include <string>
 
@@ -92,6 +93,9 @@ class TaskEventBuffer {
   ///
   /// The TaskEventBuffer will be disabled if Start() returns not ok.
   virtual bool Enabled() const = 0;
+
+  /// Return a string that describes the task event buffer stats.
+  virtual const std::string DebugString() = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -117,11 +121,13 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   bool Enabled() const override;
 
+  const std::string DebugString() LOCKS_EXCLUDED(mutex_) override;
+
  private:
   /// Test only functions.
   std::vector<rpc::TaskEvents> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
-    std::vector<rpc::TaskEvents> copy(buffer_);
+    std::vector<rpc::TaskEvents> copy(buffer_.begin(), buffer_.end());
     return copy;
   }
 
@@ -164,11 +170,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
 
-  /// Buffered task events.
-  std::vector<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
-
-  /// A iterator into buffer_ that determines which element to be overwritten.
-  size_t next_idx_to_overwrite_ GUARDED_BY(mutex_) = 0;
+  /// Circular buffered task events.
+  boost::circular_buffer_space_optimized<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
 
   /// Number of profile task events dropped since the last report flush.
   size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
@@ -188,6 +191,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   uint64_t total_num_events_ GUARDED_BY(mutex_) = 0;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
+  FRIEND_TEST(TaskEventBufferTestBatchSend, TestBatchedSend);
   FRIEND_TEST(TaskEventBufferTest, TestAddEvent);
   FRIEND_TEST(TaskEventBufferTest, TestFlushEvents);
   FRIEND_TEST(TaskEventBufferTest, TestFailedFlush);
