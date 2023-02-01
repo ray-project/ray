@@ -756,6 +756,7 @@ class Link:
     #: The id of the entity to link to
     id: str
 
+
 @dataclass(init=True)
 class NestedTaskSummary:
     #: The name of this task group
@@ -774,6 +775,7 @@ class NestedTaskSummary:
     children: List["NestedTaskSummary"] = field(default_factory=list)
     #: A link to more details about this summary.
     link: Optional[Link] = None
+
 
 @dataclass
 class TaskSummaries:
@@ -903,7 +905,7 @@ class TaskSummaries:
                 key=task_id,
                 type=task["type"],
                 timestamp=task["creation_time_ms"],
-                link=Link(type="task", id=task_id)
+                link=Link(type="task", id=task_id),
             )
 
             # Set summary in right place under parent
@@ -958,7 +960,7 @@ class TaskSummaries:
                     key=key,
                     type="ACTOR",
                     timestamp=task["creation_time_ms"],
-                    link=Link(type="actor", id=actor_id)
+                    link=Link(type="actor", id=actor_id),
                 )
 
                 parent_task_id = creation_task["parent_task_id"]
