@@ -205,6 +205,8 @@ class RayTrialExecutor:
 
         # future --> (type, trial/pg)
         self._futures = {}
+        # Cache futures that are ready to reduce the number times we iterate through
+        # all futures (and e.g. shuffle them)
         self._cached_ready_futures = []
 
         # Cleanup
