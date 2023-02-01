@@ -236,13 +236,20 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
-      const JobID &job_id, const std::string &ray_namespace) {
+      const JobID &job_id,
+      const std::string &ray_namespace,
+      const std::optional<std::string> &submission_id = std::nullopt) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
 
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->mutable_config()->CopyFrom(*job_config_data);
+
+    if (submission_id.has_value()) {
+      job_table_data->mutable_config()->mutable_metadata()->insert(
+          {"job_submission_id", submission_id.value()});
+    }
 
     auto add_job_request = std::make_shared<rpc::AddJobRequest>();
     add_job_request->mutable_data()->CopyFrom(*job_table_data);
