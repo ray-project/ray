@@ -91,6 +91,7 @@ RUN sudo groupadd crate \
 
 #for direct connections from tailscale
 EXPOSE 41641/udp
+EXPOSE 4300
 
 VOLUME /data
 RUN sudo mkdir -p $CRATE_HEAP_DUMP_PATH $CRATE_GC_LOG_DIR $TS_STATEDIR
