@@ -1846,8 +1846,15 @@ py_test(
 py_test(
     name = "test_trainer_runner",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
-    size = "large",
+    size = "medium",
     srcs = ["core/rl_trainer/tests/test_trainer_runner.py"]
+)
+
+py_test(
+    name = "test_trainer_runner_local",
+    tags = ["team:rllib", "core", "exclusive"],
+    size = "medium",
+    srcs = ["core/rl_trainer/tests/test_trainer_runner_local.py"]
 )
 
 py_test(
@@ -3337,7 +3344,7 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_independent_learning.py"],
-    args = ["--stop-iters=4", "--framework=torch"]
+    args = ["--num-gpus=0", "--as-test"]
 )
 
 py_test(

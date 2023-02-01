@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterable, Tuple
+from typing import Dict, List, Optional, Iterable, Tuple, Callable
 
 import ray
 from ray.data._internal.logical.interfaces import Operator
@@ -8,7 +8,6 @@ from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.types import ObjectRef
-from typing import Callable
 
 
 @dataclass
@@ -236,6 +235,13 @@ class PhysicalOperator(Operator):
         obj_store_mem_allocated, obj_store_mem_freed.
         """
         return {}
+
+    def get_transformation_fn(self) -> Callable:
+        """Returns the underlying transformation function for this operator.
+
+        This is used by the physical plan optimizer for e.g. operator fusion.
+        """
+        raise NotImplementedError
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
