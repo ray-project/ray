@@ -34,9 +34,12 @@ class TestNestedDict(unittest.TestCase):
             ("b", "d"),
             ("c", "e", "f"),
             ("d", "g", "h", "i"),
+            ("j", "k"),
+            ("l",),
         ]
 
-        desired_values = [100, 200, 300, 400, 500]
+        # We have 5 leafs that are not empty and two empty leafs
+        desired_values = [100, 200, 300, 400, 500, NestedDict({}), NestedDict({})]
 
         foo_dict["aa"] = 100
         foo_dict["b", "c"] = 200
@@ -44,10 +47,11 @@ class TestNestedDict(unittest.TestCase):
         foo_dict["c", "e"] = {"f": 400}
 
         # test __len__
-        self.assertEqual(len(foo_dict), len(desired_keys) - 1)
+        # We have not yet included d, j and l in foo_dict
+        self.assertEqual(len(foo_dict), len(desired_keys) - 3)
 
         # test __iter__
-        self.assertEqual(list(iter(foo_dict)), desired_keys[:-1])
+        self.assertEqual(list(iter(foo_dict)), desired_keys[:-3])
 
         # this call will use __len__ and __iter__
         foo_dict["d"] = {"g": NestedDict([("h", NestedDict({"i": 500}))])}
@@ -58,7 +62,9 @@ class TestNestedDict(unittest.TestCase):
         check(foo_dict.asdict(), desired_dict)
 
         # test __len__ again
-        self.assertEqual(len(foo_dict), len(desired_keys))
+        # We have included d, j and l in foo_dict, but j and l don't contribute to
+        # the length
+        self.assertEqual(len(foo_dict), len(desired_keys) - 2)
 
         # test __iter__ again
         self.assertEqual(list(iter(foo_dict)), desired_keys)
