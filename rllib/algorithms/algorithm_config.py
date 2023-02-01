@@ -16,7 +16,11 @@ from typing import (
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_trainer import TrainerRunnerConfig
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_trainer.trainer_runner_config import (
+    TrainerRunnerConfig,
+    ModuleSpec,
+)
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -278,6 +282,7 @@ class AlgorithmConfig:
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
         self.is_atari = None
+        self.auto_wrap_old_gym_envs = True
 
         # `self.rollouts()`
         self.num_rollout_workers = 0
@@ -1070,6 +1075,7 @@ class AlgorithmConfig:
         clip_actions: Optional[bool] = NotProvided,
         disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
+        auto_wrap_old_gym_envs: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1077,9 +1083,10 @@ class AlgorithmConfig:
             env: The environment specifier. This can either be a tune-registered env,
                 via `tune.register_env([name], lambda env_ctx: [env object])`,
                 or a string specifier of an RLlib supported type. In the latter case,
-                RLlib will try to interpret the specifier as either an openAI gym env,
-                a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
-                Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+                RLlib will try to interpret the specifier as either an Farama-Foundation
+                gymnasium env, a PyBullet env, a ViZDoomGym env, or a fully qualified
+                classpath to an Env class, e.g.
+                "ray.rllib.examples.env.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
@@ -1113,6 +1120,13 @@ class AlgorithmConfig:
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
                 this during config validation.
+            auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
+                the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
+                dict). If True, RLlib will automatically wrap the given gym env class
+                with the gym-provided compatibility wrapper
+                (gym.wrappers.EnvCompatibility). If False, RLlib will produce a
+                descriptive error on which steps to perform to upgrade to gymnasium
+                (or to switch this flag to True).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1143,6 +1157,8 @@ class AlgorithmConfig:
             self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
             self.is_atari = is_atari
+        if auto_wrap_old_gym_envs is not NotProvided:
+            self.auto_wrap_old_gym_envs = auto_wrap_old_gym_envs
 
         return self
 
@@ -2599,8 +2615,24 @@ class AlgorithmConfig:
         raise NotImplementedError
 
     def get_trainer_runner_config(
-        self, observation_space: Space, action_space: Space
+        self, module_spec: Optional[ModuleSpec] = None
     ) -> TrainerRunnerConfig:
+
+        if module_spec is None:
+            module_spec = SingleAgentRLModuleSpec()
+
+        if isinstance(module_spec, SingleAgentRLModuleSpec):
+            if module_spec.module_class is None:
+                module_spec.module_class = self.rl_module_class
+
+            if module_spec.observation_space is None:
+                module_spec.observation_space = self.observation_space
+
+            if module_spec.action_space is None:
+                module_spec.action_space = self.action_space
+
+            if module_spec.model_config is None:
+                module_spec.model_config = self.model
 
         if not self._is_frozen:
             raise ValueError(
@@ -2610,12 +2642,7 @@ class AlgorithmConfig:
 
         config = (
             TrainerRunnerConfig()
-            .module(
-                module_class=self.rl_module_class,
-                observation_space=observation_space,
-                action_space=action_space,
-                model_config=self.model,
-            )
+            .module(module_spec)
             .trainer(
                 trainer_class=self.rl_trainer_class,
                 eager_tracing=self.eager_tracing,

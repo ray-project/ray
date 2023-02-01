@@ -156,7 +156,7 @@ const TaskTable = ({
               start_time_ms,
               end_time_ms,
             }) => (
-              <TableRow>
+              <TableRow key={task_id}>
                 <TableCell align="center">
                   <Tooltip
                     className={classes.idCol}
@@ -170,7 +170,7 @@ const TaskTable = ({
                 <TableCell align="center">{name ? name : "-"}</TableCell>
                 <TableCell align="center">{job_id}</TableCell>
                 <TableCell align="center">
-                  <StatusChip type="actor" status={state} />
+                  <StatusChip type="task" status={state} />
                 </TableCell>
                 <TableCell align="center">
                   {start_time_ms && start_time_ms > 0 ? (

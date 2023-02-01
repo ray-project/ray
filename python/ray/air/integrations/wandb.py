@@ -30,7 +30,6 @@ try:
     from wandb.sdk.lib.disabled import RunDisabled
     from wandb.sdk.data_types.base_types.wb_value import WBValue
 except ImportError:
-    logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = json_dumps_safer = Run = RunDisabled = WBValue = None
 
 
@@ -355,8 +354,8 @@ class _QueueItem(enum.Enum):
 
 class _WandbLoggingActor:
     """
-    We need a separate process to allow multiple concurrent
-    wandb logging instances locally. We use Ray actors as forking multiprocessing
+    Wandb assumes that each trial's information should be logged from a
+    separate process. We use Ray actors as forking multiprocessing
     processes is not supported by Ray and spawn processes run into pickling
     problems.
 
@@ -544,6 +543,11 @@ class WandbLoggerCallback(LoggerCallback):
         save_checkpoints: bool = False,
         **kwargs,
     ):
+        if not wandb:
+            raise RuntimeError(
+                "Wandb was not found - please install with `pip install wandb`"
+            )
+
         if save_checkpoints:
             warnings.warn(
                 "`save_checkpoints` is deprecated. Use `upload_checkpoints` instead.",
