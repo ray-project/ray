@@ -3,7 +3,7 @@ from typing import Mapping, Any, List
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.experimental.configs import MLPConfig, IdentityConfig
+from ray.rllib.models.experimental.configs import MLPModelConfig, IdentityConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
@@ -160,7 +160,7 @@ class PPOTfRLModule(TfRLModule):
         if use_lstm:
             raise ValueError("LSTM not supported by PPOTfRLModule yet.")
         if vf_share_layers:
-            encoder_config = MLPConfig(
+            encoder_config = MLPModelConfig(
                 input_dim=obs_dim,
                 hidden_layer_dims=fcnet_hiddens,
                 hidden_layer_activation=activation,
@@ -179,8 +179,8 @@ class PPOTfRLModule(TfRLModule):
         assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
             "This simple PPOModule only supports Discrete and Box action space.",
         )
-        pi_config = MLPConfig()
-        vf_config = MLPConfig()
+        pi_config = MLPModelConfig()
+        vf_config = MLPModelConfig()
         encoder_config.input_dim = observation_space.shape[0]
         pi_config.input_dim = encoder_config.output_dim
         pi_config.hidden_layer_dims = fcnet_hiddens

@@ -41,7 +41,7 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
 
 
 @dataclass
-class MLPConfig(ModelConfig):
+class MLPModelConfig(ModelConfig):
     """Configuration for a fully connected network.
 
     Attributes:
@@ -54,7 +54,7 @@ class MLPConfig(ModelConfig):
 
     input_dim: int = None
     hidden_layer_dims: List[int] = field(default_factory=lambda: [256, 256])
-    hidden_layer_activation: str = "ReLU"
+    hidden_layer_activation: str = "relu"
     output_activation: str = "linear"
 
     @_framework_implemented()
@@ -70,7 +70,7 @@ class MLPConfig(ModelConfig):
 
 
 @dataclass
-class MLPEncoderConfig(MLPConfig):
+class MLPEncoderConfig(MLPModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
         if framework == "torch":
@@ -113,3 +113,20 @@ class IdentityConfig(ModelConfig):
             from ray.rllib.models.experimental.tf.encoder import TfIdentityEncoder
 
             return TfIdentityEncoder(self)
+
+
+@dataclass
+class ActorCriticEncoderConfig(ModelConfig):
+    """Configuration for an actor-critic encoder."""
+
+    base_encoder_config: ModelConfig = None
+    shared: bool = True
+
+    @_framework_implemented(tf2=False)
+    def build(self, framework: str = "torch") -> Model:
+        if framework == "torch":
+            from ray.rllib.models.experimental.torch.encoder import (
+                TorchActorCriticEncoder,
+            )
+
+            return TorchActorCriticEncoder(self)

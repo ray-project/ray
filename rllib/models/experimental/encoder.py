@@ -1,12 +1,19 @@
 import abc
 
-from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
-from ray.rllib.models.temp_spec_classes import TensorDict
-from ray.rllib.utils.typing import TensorType
 from ray.rllib.models.experimental.base import Model, ForwardOutputType
+from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
+from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.temp_spec_classes import TensorDict
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.typing import TensorType
 
+# Top level keys that unify model i/o.
 STATE_IN: str = "state_in"
 STATE_OUT: str = "state_out"
+ENCODER_OUT: str = "encoder_out"
+# For Actor-Critic algorithms, these signify data related to the actor and critic
+ACTOR: str = "actor"
+CRITIC: str = "critic"
 
 
 class Encoder(Model):
@@ -22,6 +29,7 @@ class Encoder(Model):
     That is, for time-series data, we encode into the latent space for each time step.
     This should be reflected in the output_spec.
     """
+
     def get_initial_state(self) -> TensorType:
         """Returns the initial state of the encoder.
 
@@ -33,6 +41,14 @@ class Encoder(Model):
             >>> out = encoder.forward({"obs": ..., STATE_IN: state})
         """
         return {}
+
+    @property
+    def input_spec(self) -> SpecDict:
+        return SpecDict({SampleBatch.OBS: None, STATE_IN: None})
+
+    @property
+    def output_spec(self) -> SpecDict:
+        return [ENCODER_OUT, STATE_OUT]
 
     @check_input_specs("input_spec", cache=True)
     @check_output_specs("output_spec", cache=True)

@@ -5,14 +5,12 @@ import gymnasium as gym
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.experimental.encoder import STATE_OUT
-from ray.rllib.models.experimental.configs import MLPConfig, MLPEncoderConfig
+from ray.rllib.models.experimental.encoder import STATE_OUT, ACTOR, CRITIC, ENCODER_OUT
 from ray.rllib.models.experimental.configs import (
-    LSTMEncoderConfig,
+    MLPModelConfig,
+    ActorCriticEncoderConfig,
 )
-from ray.rllib.models.experimental.torch.encoder import (
-    ENCODER_OUT,
-)
+from ray.rllib.models.experimental.catalog import Catalog
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.torch_distributions import (
@@ -43,43 +41,82 @@ def get_ppo_loss(fwd_in, fwd_out):
     return loss
 
 
+class PPOCatalog(Catalog):
+    def __init__(self, observation_space, action_space, model_config):
+        super().__init__(observation_space, action_space, model_config)
+        latent_dim = self.encoder_config.output_dim
+
+        # Replace EncoderConfig by ActorCriticEncoderConfig
+        self.actor_critic_encoder_config = ActorCriticEncoderConfig(
+            output_dim=latent_dim,
+            base_encoder_config=self.encoder_config,
+            shared=self.model_config["vf_share_layers"],
+        )
+
+        if isinstance(action_space, gym.spaces.Discrete):
+            pi_output_dim = action_space.n
+        else:
+            pi_output_dim = action_space.shape[0] * 2
+
+        self.pi_head_config = MLPModelConfig(
+            input_dim=latent_dim, hidden_layer_dims=[32], output_dim=pi_output_dim
+        )
+        self.vf_head_config = MLPModelConfig(
+            input_dim=latent_dim, hidden_layer_dims=[32], output_dim=1
+        )
+
+    def build_actor_critic_encoder(self, framework="torch"):
+        return self.actor_critic_encoder_config.build(framework=framework)
+
+    @override(Catalog)
+    def build_encoder(self, framework="torch"):
+        raise NotImplementedError("Use PPOCatalog.build_actor_critic_encoder() instead")
+
+    def build_pi_head(self, framework="torch"):
+        return self.pi_head_config.build(framework=framework)
+
+    def build_vf_head(self, framework="torch"):
+        return self.vf_head_config.build(framework=framework)
+
+
+# TODO (Artur): Move to Torch-unspecific file
 @ExperimentalAPI
 @dataclass
-class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to Torch-unspecific file
+class PPOModuleConfig(RLModuleConfig):
     """Configuration for the PPORLModule.
 
     Attributes:
         observation_space: The observation space of the environment.
         action_space: The action space of the environment.
-        encoder_config: The configuration for the encoder network.
-        pi_config: The configuration for the policy head.
-        vf_config: The configuration for the value function head.
+        catalog: The PPOCatalog object to use for building the models.
         free_log_std: For DiagGaussian action distributions, make the second half of
             the model outputs floating bias variables instead of state-dependent. This
             only has an effect is using the default fully connected net.
     """
 
-    encoder_config: MLPConfig = None
-    pi_config: MLPConfig = None
-    vf_config: MLPConfig = None
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    catalog: Catalog = None
     free_log_std: bool = False
+
+    def build(self, framework="torch"):
+        if framework == "torch":
+            return PPOTorchRLModule(self)
+        else:
+            from ray.rllib.algorithms.ppo.ppo_tf_rl_module import PPOTfRLModule
+
+            return PPOTfRLModule(self)
 
 
 class PPOTorchRLModule(TorchRLModule):
     def __init__(self, config: PPOModuleConfig) -> None:
         super().__init__()
+        assert type(config) is PPOModuleConfig
         self.config = config
-        self.setup()
 
-    def setup(self) -> None:
-        assert self.config.pi_config, "pi_config must be provided."
-        assert self.config.vf_config, "vf_config must be provided."
-        assert self.config.encoder_config, "shared encoder config must be " "provided."
-
-        # TODO(Artur): Unify to tf and torch setup with Catalog
-        self.encoder = self.config.model_builder.build_encoder(framework="torch")
-        self.pi = self.config.model_builder.build_pi(framework="torch")
-        self.vf = self.config.model_builder.build_vf(framework="torch")
+        self.encoder = self.config.catalog.build_actor_critic_encoder(framework="torch")
+        self.pi = self.config.catalog.build_pi_head(framework="torch")
+        self.vf = self.config.catalog.build_vf_head(framework="torch")
 
         self._is_discrete = isinstance(
             convert_old_gym_space_to_gymnasium_space(self.config.action_space),
@@ -95,8 +132,8 @@ class PPOTorchRLModule(TorchRLModule):
         *,
         model_config: Mapping[str, Any],
     ) -> Union["RLModule", Mapping[str, Any]]:
-
-
+        free_log_std = model_config["free_log_std"]
+        assert not free_log_std, "free_log_std not supported yet."
 
         assert isinstance(
             observation_space, gym.spaces.Box
@@ -109,26 +146,22 @@ class PPOTorchRLModule(TorchRLModule):
         assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
             "This simple PPOModule only supports Discrete and Box action space.",
         )
-
-        # build policy network head
-        encoder_config.input_dim = observation_space.shape[0]
-        pi_config.input_dim = encoder_config.output_dim
-        if isinstance(action_space, gym.spaces.Discrete):
-            pi_config.output_dim = action_space.n
-        else:
-            pi_config.output_dim = action_space.shape[0] * 2
-
-        config_ = PPOModuleConfig(
+        catalog = PPOCatalog(
             observation_space=observation_space,
             action_space=action_space,
-            encoder_config=encoder_config,
-            pi_config=pi_config,
-            vf_config=vf_config,
+            model_config=model_config,
+        )
+
+        config = PPOModuleConfig(
+            observation_space=observation_space,
+            action_space=action_space,
+            encoder_config=catalog.encoder_config,
+            pi_config=catalog.pi_config,
+            vf_config=catalog.vf_config,
             free_log_std=free_log_std,
         )
 
-        module = PPOTorchRLModule(config_)
-        return module
+        return config.build(framework="torch")
 
     def get_initial_state(self) -> NestedDict:
         if hasattr(self.encoder, "get_initial_state"):
@@ -148,12 +181,11 @@ class PPOTorchRLModule(TorchRLModule):
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
-        encoder_out = self.encoder(batch)
-        if STATE_OUT in encoder_out:
-            output[STATE_OUT] = encoder_out[STATE_OUT]
+        encoder_outs = self.encoder(batch)
+        output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Actions
-        action_logits = self.pi(encoder_out[ENCODER_OUT])
+        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         if self._is_discrete:
             action = torch.argmax(action_logits, dim=-1)
         else:
@@ -165,7 +197,7 @@ class PPOTorchRLModule(TorchRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self):
-        return self.encoder.input_spec
+        return SpecDict(self.encoder.input_spec)
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
@@ -193,16 +225,15 @@ class PPOTorchRLModule(TorchRLModule):
         output = {}
 
         # Shared encoder
-        encoder_out = self.encoder(batch)
-        if STATE_OUT in encoder_out:
-            output[STATE_OUT] = encoder_out[STATE_OUT]
+        encoder_outs = self.encoder(batch)
+        output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Value head
-        vf_out = self.vf(encoder_out[ENCODER_OUT])
+        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
         output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
 
         # Policy head
-        pi_out = self.pi(encoder_out[ENCODER_OUT])
+        pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         action_logits = pi_out
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
@@ -224,7 +255,8 @@ class PPOTorchRLModule(TorchRLModule):
             action_dim = self.config.action_space.shape[0]
             action_spec = TorchTensorSpec("b, h", h=action_dim)
 
-        spec_dict = self.encoder.input_spec
+        # Convert to SpecDict if needed.
+        spec_dict = SpecDict(self.encoder.input_spec)
         spec_dict.update({SampleBatch.ACTIONS: action_spec})
         if SampleBatch.OBS in spec_dict:
             spec_dict[SampleBatch.NEXT_OBS] = spec_dict[SampleBatch.OBS]
@@ -248,16 +280,15 @@ class PPOTorchRLModule(TorchRLModule):
         output = {}
 
         # Shared encoder
-        encoder_out = self.encoder(batch)
-        if STATE_OUT in encoder_out:
-            output[STATE_OUT] = encoder_out[STATE_OUT]
+        encoder_outs = self.encoder(batch)
+        output[STATE_OUT] = encoder_outs[STATE_OUT]
 
         # Value head
-        vf_out = self.vf(encoder_out[ENCODER_OUT])
+        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
         output[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
 
         # Policy head
-        pi_out = self.pi(encoder_out[ENCODER_OUT])
+        pi_out = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
         action_logits = pi_out
         if self._is_discrete:
             action_dist = TorchCategorical(logits=action_logits)
