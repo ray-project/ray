@@ -654,13 +654,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::shared_ptr<WorkerInterface> &worker,
       const NodeID &node_id,
       const MemorySnapshot &system_memory,
-      float usage_threshold,
-      bool should_retry) const;
+      float usage_threshold) const;
 
   /// Creates the suggestion message for the worker that is killed due to memory running
   /// low.
   const std::string CreateOomKillMessageSuggestions(
-      const std::shared_ptr<WorkerInterface> &worker) const;
+      const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.

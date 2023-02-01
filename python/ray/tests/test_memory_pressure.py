@@ -216,28 +216,6 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_retryable_task_killed_by_memory_monitor_with_oom_error(
-    ray_with_memory_monitor,
-):
-    addr = ray_with_memory_monitor
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        ray.get(allocate_memory.options(max_retries=1).remote(bytes_to_alloc))
-
-    wait_for_condition(
-        has_metric_tagged_with_value,
-        timeout=10,
-        retry_interval_ms=100,
-        addr=addr,
-        tag="MemoryManager.TaskEviction.Total",
-        value=2.0,
-    )
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
-)
 def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold - 0.1
@@ -391,6 +369,10 @@ def test_task_oom_only_uses_oom_retry(
     ray_with_memory_monitor,
 ):
     addr = ray_with_memory_monitor
+
+    leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
+    ray.get(leaker.allocate.remote(1))
+
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
 
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
@@ -466,6 +448,33 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
                 allocate_bytes=bytes_to_alloc,
             ),
             timeout=90,
+        )
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_last_task_of_the_group_fail_immediately():
+    @ray.remote(max_retries=-1)
+    def infinite_retry_task():
+        chunks = []
+        bytes_per_chunk = 1024 * 1024 * 1024
+        while True:
+            chunks.append([0] * bytes_per_chunk)
+            time.sleep(5)
+
+    with ray.init() as addr:
+        with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+            ray.get(infinite_retry_task.remote())
+
+        wait_for_condition(
+            has_metric_tagged_with_value,
+            timeout=10,
+            retry_interval_ms=100,
+            addr=addr,
+            tag="MemoryManager.TaskEviction.Total",
+            value=1.0,
         )
 
 
