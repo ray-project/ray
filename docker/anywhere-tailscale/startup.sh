@@ -56,6 +56,7 @@ functiodetermine_cloud_provider() {
   return "OnPrem"
 }
 
+location=functiodetermine_cloud_provider
 
 set -ae
 
@@ -148,7 +149,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cnode.store.allow_mmap=false \
-                    -Cnode.attr.$(determine_cloud_provider) \
+                    -Cnode.attr=$(determine_cloud_provider) \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cstats.enabled=false &
@@ -160,7 +161,7 @@ if [ "$NODETYPE" = "head" ]; then
                    # -Cnode.master=true \
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=false \
-                    -Cnode.attr.$(determine_cloud_provider)  \
+                    -Cnode.attr=$(determine_cloud_provider)  \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts \
@@ -175,7 +176,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.master=true \
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=false \
-                    -Cnode.attr.$(determine_cloud_provider)  \
+                    -Cnode.attr=$(determine_cloud_provider)  \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 \
@@ -194,7 +195,7 @@ else
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
-                    -Cnode.attr.$(determine_cloud_provider) \
+                    -Cnode.attr=$(determine_cloud_provider) \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
@@ -207,7 +208,7 @@ else
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
-                    -Cnode.attr.$(determine_cloud_provider)  \
+                    -Cnode.attr=$(determine_cloud_provider)  \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts \
