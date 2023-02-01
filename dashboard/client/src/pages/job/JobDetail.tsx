@@ -1,6 +1,6 @@
 import { makeStyles } from "@material-ui/core";
 import dayjs from "dayjs";
-import React, { useContext } from "react";
+import React, { useContext, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -9,7 +9,7 @@ import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
-import { UnifiedJob } from "../../type/job";
+import { NestedJobProgressLink, UnifiedJob } from "../../type/job";
 import ActorList from "../actor/ActorList";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
@@ -35,6 +35,14 @@ export const JobDetailChartsPage = ({
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
 
+  const [taskListFilter, setTaskListFilter] = useState<string>();
+  const [taskTableExpanded, setTaskTableExpanded] = useState(false);
+  const taskTableRef = useRef<HTMLDivElement>(null);
+
+  const [actorListFilter, setActorListFilter] = useState<string>();
+  const [actorTableExpanded, setActorTableExpanded] = useState(false);
+  const actorTableRef = useRef<HTMLDivElement>(null);
+
   if (!job) {
     return (
       <div className={classes.root}>
@@ -47,6 +55,40 @@ export const JobDetailChartsPage = ({
       </div>
     );
   }
+
+  const handleClickLink = (link: NestedJobProgressLink) => {
+    if (link.type === "task") {
+      setTaskListFilter(link.id);
+      if (!taskTableExpanded) {
+        setTaskTableExpanded(true);
+        setTimeout(() => {
+          // Wait a few ms to give the collapsible view some time to render.
+          taskTableRef.current?.scrollIntoView();
+        }, 50);
+      } else {
+        taskTableRef.current?.scrollIntoView();
+      }
+    } else if (link.type === "actor") {
+      setActorListFilter(link.id);
+      if (!actorTableExpanded) {
+        setActorTableExpanded(true);
+        setTimeout(() => {
+          // Wait a few ms to give the collapsible view some time to render.
+          actorTableRef.current?.scrollIntoView();
+        }, 50);
+      } else {
+        actorTableRef.current?.scrollIntoView();
+      }
+    }
+  };
+
+  const handleTaskListFilterChange = () => {
+    setTaskListFilter(undefined);
+  };
+
+  const handleActorListFilterChange = () => {
+    setActorListFilter(undefined);
+  };
 
   return (
     <div className={classes.root}>
@@ -115,25 +157,49 @@ export const JobDetailChartsPage = ({
             },
             {
               label: "Logs",
-              content: <JobLogsLink job={job} newIA />,
+              content: <JobLogsLink job={job} newIA={newIA} />,
             },
           ]}
         />
       </TitleCard>
-      <TitleCard title="Tasks">
-        <JobProgressBar jobId={jobId} job={job} />
+      <TitleCard title="Tasks (beta)">
+        <JobProgressBar jobId={jobId} job={job} onClickLink={handleClickLink} />
       </TitleCard>
-      <TitleCard title="Task Timeline">
+      <TitleCard title="Task Timeline (beta)">
         <TaskTimeline jobId={jobId} />
       </TitleCard>
       <TitleCard>
-        <CollapsibleSection title="Task Table">
-          <TaskList jobId={jobId} />
+        <CollapsibleSection
+          ref={taskTableRef}
+          title="Task Table"
+          expanded={taskTableExpanded}
+          onExpandButtonClick={() => {
+            setTaskTableExpanded(!taskTableExpanded);
+          }}
+        >
+          <TaskList
+            jobId={jobId}
+            filterToTaskId={taskListFilter}
+            onFilterChange={handleTaskListFilterChange}
+            newIA={newIA}
+          />
         </CollapsibleSection>
       </TitleCard>
       <TitleCard>
-        <CollapsibleSection title="Actors">
-          <ActorList jobId={jobId} />
+        <CollapsibleSection
+          ref={actorTableRef}
+          title="Actors"
+          expanded={actorTableExpanded}
+          onExpandButtonClick={() => {
+            setActorTableExpanded(!actorTableExpanded);
+          }}
+        >
+          <ActorList
+            jobId={jobId}
+            newIA={newIA}
+            filterToActorId={actorListFilter}
+            onFilterChange={handleActorListFilterChange}
+          />
         </CollapsibleSection>
       </TitleCard>
       <TitleCard>

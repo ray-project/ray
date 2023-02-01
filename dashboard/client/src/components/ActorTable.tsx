@@ -28,17 +28,32 @@ import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
 
+export type ActorTableProps = {
+  actors: { [actorId: string]: Actor };
+  workers?: Worker[];
+  jobId?: string | null;
+  newIA?: boolean;
+  filterToActorId?: string;
+  onFilterChange?: () => void;
+};
+
 const ActorTable = ({
   actors = {},
   workers = [],
   jobId = null,
-}: {
-  actors: { [actorId: string]: Actor };
-  workers?: Worker[];
-  jobId?: string | null;
-}) => {
+  newIA = false,
+  filterToActorId,
+  onFilterChange,
+}: ActorTableProps) => {
   const [pageNo, setPageNo] = useState(1);
-  const { changeFilter, filterFunc } = useFilter();
+  const { changeFilter, filterFunc } = useFilter<string>({
+    overrideFilters:
+      filterToActorId !== undefined
+        ? [{ key: "actorId", val: filterToActorId }]
+        : undefined,
+    onFilterChange,
+  });
+  const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
   const { ipLogMap } = useContext(GlobalContext);
   const actorList = Object.values(actors || {}).filter(filterFunc);
@@ -158,7 +173,7 @@ const ActorTable = ({
         />
         <Autocomplete
           style={{ margin: 8, width: 150 }}
-          defaultValue={jobId}
+          defaultValue={filterToActorId === undefined ? jobId : undefined}
           options={Array.from(
             new Set(Object.values(actors).map((e) => e.jobId)),
           )}
@@ -212,12 +227,14 @@ const ActorTable = ({
           }}
         />
         <TextField
+          value={filterToActorId ?? actorIdFilterValue}
           style={{ margin: 8, width: 120 }}
           label="Actor ID"
           size="small"
           InputProps={{
             onChange: ({ target: { value } }) => {
               changeFilter("actorId", value.trim());
+              setActorIdFilterValue(value);
             },
             endAdornment: (
               <InputAdornment position="end">
@@ -253,161 +270,177 @@ const ActorTable = ({
           <StateCounter type="actor" list={actorList} />
         </div>
       </div>
-      <Table>
-        <TableHead>
-          <TableRow>
-            {columns.map(({ label, helpInfo }) => (
-              <TableCell align="center" key={label}>
-                <Box display="flex" justifyContent="center" alignItems="center">
-                  {label}
-                  {helpInfo && (
-                    <HelpInfo className={classes.helpInfo}>{helpInfo}</HelpInfo>
-                  )}
-                </Box>
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {list.map(
-            ({
-              actorId,
-              actorClass,
-              jobId,
-              pid,
-              address,
-              state,
-              name,
-              numRestarts,
-              startTime,
-              endTime,
-              exitDetail,
-              requiredResources,
-            }) => (
-              <ExpandableTableRow
-                length={
-                  workers.filter(
-                    (e) =>
-                      e.pid === pid &&
-                      address.ipAddress === e.coreWorkerStats[0].ipAddress,
-                  ).length
-                }
-                expandComponent={
-                  <RayletWorkerTable
-                    actorMap={{}}
-                    workers={workers.filter(
+      <div className={classes.tableContainer}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              {columns.map(({ label, helpInfo }) => (
+                <TableCell align="center" key={label}>
+                  <Box
+                    display="flex"
+                    justifyContent="center"
+                    alignItems="center"
+                  >
+                    {label}
+                    {helpInfo && (
+                      <HelpInfo className={classes.helpInfo}>
+                        {helpInfo}
+                      </HelpInfo>
+                    )}
+                  </Box>
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {list.map(
+              ({
+                actorId,
+                actorClass,
+                jobId,
+                pid,
+                address,
+                state,
+                name,
+                numRestarts,
+                startTime,
+                endTime,
+                exitDetail,
+                requiredResources,
+              }) => (
+                <ExpandableTableRow
+                  length={
+                    workers.filter(
                       (e) =>
                         e.pid === pid &&
                         address.ipAddress === e.coreWorkerStats[0].ipAddress,
-                    )}
-                    mini
-                  />
-                }
-                key={actorId}
-              >
-                <TableCell align="center">
-                  <Tooltip
-                    className={classes.idCol}
-                    title={actorId}
-                    arrow
-                    interactive
-                  >
-                    <div>{actorId}</div>
-                  </Tooltip>
-                </TableCell>
-                <TableCell align="center">{actorClass}</TableCell>
-                <TableCell align="center">{name ? name : "-"}</TableCell>
-                <TableCell align="center">
-                  <StatusChip type="actor" status={state} />
-                </TableCell>
-                <TableCell align="center">
-                  {ipLogMap[address?.ipAddress] && (
-                    <React.Fragment>
-                      <Link
-                        target="_blank"
-                        to={`/log/${encodeURIComponent(
-                          ipLogMap[address?.ipAddress],
-                        )}?fileName=${jobId}-${pid}`}
-                      >
-                        Log
-                      </Link>
-                      <br />
-                      <a
-                        href={`worker/traceback?pid=${pid}&ip=${address?.ipAddress}&native=0`}
-                        target="_blank"
-                        title="Sample the current Python stack trace for this worker."
-                        rel="noreferrer"
-                      >
-                        Stack&nbsp;Trace
-                      </a>
-                      <br />
-                      <a
-                        href={`worker/cpu_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5&native=0`}
-                        target="_blank"
-                        title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-                        rel="noreferrer"
-                      >
-                        CPU&nbsp;Flame&nbsp;Graph
-                      </a>
-                      <br />
-                    </React.Fragment>
-                  )}
-                </TableCell>
-                <TableCell align="center">
-                  {startTime && startTime > 0 ? (
-                    <DurationText startTime={startTime} endTime={endTime} />
-                  ) : (
-                    "-"
-                  )}
-                </TableCell>
-                <TableCell align="center">{jobId}</TableCell>
-                <TableCell align="center">{pid ? pid : "-"}</TableCell>
-                <TableCell align="center">
-                  {address?.ipAddress ? address?.ipAddress : "-"}
-                </TableCell>
-                <TableCell
-                  align="center"
-                  style={{
-                    color: Number(numRestarts) > 0 ? orange[500] : "inherit",
-                  }}
+                    ).length
+                  }
+                  expandComponent={
+                    <RayletWorkerTable
+                      actorMap={{}}
+                      workers={workers.filter(
+                        (e) =>
+                          e.pid === pid &&
+                          address.ipAddress === e.coreWorkerStats[0].ipAddress,
+                      )}
+                      mini
+                      newIA={newIA}
+                    />
+                  }
+                  key={actorId}
                 >
-                  {numRestarts}
-                </TableCell>
-                <TableCell align="center">
-                  <Tooltip
-                    className={classes.OverflowCol}
-                    title={Object.entries(requiredResources || {}).map(
-                      ([key, val]) => (
-                        <div style={{ margin: 4 }}>
-                          {key}: {val}
-                        </div>
-                      ),
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.idCol}
+                      title={actorId}
+                      arrow
+                      interactive
+                    >
+                      <div>{actorId}</div>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">{actorClass}</TableCell>
+                  <TableCell align="center">{name ? name : "-"}</TableCell>
+                  <TableCell align="center">
+                    <StatusChip type="actor" status={state} />
+                  </TableCell>
+                  <TableCell align="center">
+                    {ipLogMap[address?.ipAddress] && (
+                      <React.Fragment>
+                        <Link
+                          target="_blank"
+                          to={
+                            newIA
+                              ? `/new/logs/${encodeURIComponent(
+                                  ipLogMap[address?.ipAddress],
+                                )}?fileName=${jobId}-${pid}`
+                              : `/log/${encodeURIComponent(
+                                  ipLogMap[address?.ipAddress],
+                                )}?fileName=${jobId}-${pid}`
+                          }
+                        >
+                          Log
+                        </Link>
+                        <br />
+                      </React.Fragment>
                     )}
-                    arrow
-                    interactive
+
+                    <a
+                      href={`worker/traceback?pid=${pid}&ip=${address?.ipAddress}&native=0`}
+                      target="_blank"
+                      title="Sample the current Python stack trace for this worker."
+                      rel="noreferrer"
+                    >
+                      Stack&nbsp;Trace
+                    </a>
+                    <br />
+                    <a
+                      href={`worker/cpu_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5&native=0`}
+                      target="_blank"
+                      title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
+                      rel="noreferrer"
+                    >
+                      CPU&nbsp;Flame&nbsp;Graph
+                    </a>
+                    <br />
+                  </TableCell>
+                  <TableCell align="center">
+                    {startTime && startTime > 0 ? (
+                      <DurationText startTime={startTime} endTime={endTime} />
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
+                  <TableCell align="center">{jobId}</TableCell>
+                  <TableCell align="center">{pid ? pid : "-"}</TableCell>
+                  <TableCell align="center">
+                    {address?.ipAddress ? address?.ipAddress : "-"}
+                  </TableCell>
+                  <TableCell
+                    align="center"
+                    style={{
+                      color: Number(numRestarts) > 0 ? orange[500] : "inherit",
+                    }}
                   >
-                    <div>
-                      {Object.entries(requiredResources || {})
-                        .map(([key, val]) => `${key}: ${val}`)
-                        .join(", ")}
-                    </div>
-                  </Tooltip>
-                </TableCell>
-                <TableCell align="center">
-                  <Tooltip
-                    className={classes.OverflowCol}
-                    title={exitDetail}
-                    arrow
-                    interactive
-                  >
-                    <div>{exitDetail}</div>
-                  </Tooltip>
-                </TableCell>
-              </ExpandableTableRow>
-            ),
-          )}
-        </TableBody>
-      </Table>
+                    {numRestarts}
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.OverflowCol}
+                      title={Object.entries(requiredResources || {}).map(
+                        ([key, val]) => (
+                          <div style={{ margin: 4 }}>
+                            {key}: {val}
+                          </div>
+                        ),
+                      )}
+                      arrow
+                      interactive
+                    >
+                      <div>
+                        {Object.entries(requiredResources || {})
+                          .map(([key, val]) => `${key}: ${val}`)
+                          .join(", ")}
+                      </div>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.OverflowCol}
+                      title={exitDetail}
+                      arrow
+                      interactive
+                    >
+                      <div>{exitDetail}</div>
+                    </Tooltip>
+                  </TableCell>
+                </ExpandableTableRow>
+              ),
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </React.Fragment>
   );
 };

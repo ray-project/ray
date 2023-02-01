@@ -549,7 +549,7 @@ class TaskState(StateSchema):
     #: The placement group id that's associated with this task.
     placement_group_id: str = state_column(detail=True, filterable=True)
     #: The worker id that's associated with this task.
-    worker_id: str = state_column(detail=True, filterable=True)
+    worker_id: str = state_column(filterable=True)
     #: The list of events of the given task.
     #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
     #: breakdowns and typical state transition flow.
@@ -749,6 +749,13 @@ class TaskSummaryPerFuncOrClassName:
     state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
 
 
+@dataclass
+class Link:
+    #: The type of entity to link to
+    type: str
+    #: The id of the entity to link to
+    id: str
+
 @dataclass(init=True)
 class NestedTaskSummary:
     #: The name of this task group
@@ -765,7 +772,8 @@ class NestedTaskSummary:
     state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
     #: The child
     children: List["NestedTaskSummary"] = field(default_factory=list)
-
+    #: A link to more details about this summary.
+    link: Optional[Link] = None
 
 @dataclass
 class TaskSummaries:
@@ -895,6 +903,7 @@ class TaskSummaries:
                 key=task_id,
                 type=task["type"],
                 timestamp=task["creation_time_ms"],
+                link=Link(type="task", id=task_id)
             )
 
             # Set summary in right place under parent
@@ -949,6 +958,7 @@ class TaskSummaries:
                     key=key,
                     type="ACTOR",
                     timestamp=task["creation_time_ms"],
+                    link=Link(type="actor", id=actor_id)
                 )
 
                 parent_task_id = creation_task["parent_task_id"]
