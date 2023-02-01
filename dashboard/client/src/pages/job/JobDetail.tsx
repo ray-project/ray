@@ -81,7 +81,7 @@ export const JobDetailChartsPage = ({
           // See format_info_string in util.py
           if (i.startsWith("-----") || i.startsWith("=====")) {
             // Separator
-            return <div />;
+            return <div key={key} />;
           } else if (i.endsWith(":")) {
             return (
               <div key={key}>
@@ -89,7 +89,7 @@ export const JobDetailChartsPage = ({
               </div>
             );
           } else if (i === "") {
-            return <br />;
+            return <br key={key} />;
           } else {
             return <div key={key}>{i}</div>;
           }
