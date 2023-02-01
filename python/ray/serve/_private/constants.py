@@ -67,6 +67,9 @@ RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
+#: Default Serve application name
+SERVE_DEFAULT_APP_NAME = "default"
+
 #: Number of historically deleted deployments to store in the checkpoint.
 MAX_NUM_DELETED_DEPLOYMENTS = 1000
 

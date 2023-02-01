@@ -243,7 +243,7 @@ class DeploymentSchema(
 @PublicAPI(stability="beta")
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     name: str = Field(
-        default="",
+        default="default",
         description=(
             "Application name, the name should be unique within the serve instance"
         ),
@@ -412,7 +412,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
 @PublicAPI(stability="beta")
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
-    name: str = Field(description="Application name", default="")
+    name: str = Field(description="Application name", default="default")
     app_status: ApplicationStatusInfo = Field(
         ...,
         description=(

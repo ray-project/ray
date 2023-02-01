@@ -19,6 +19,7 @@ from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_NAMESPACE,
+    SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
@@ -385,7 +386,7 @@ class ServeControllerClient:
         return ray.get(self._controller.get_app_config.remote())
 
     @_ensure_connected
-    def get_serve_status(self, name: str = "") -> StatusOverview:
+    def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> StatusOverview:
         proto = StatusOverviewProto.FromString(
             ray.get(self._controller.get_serve_status.remote(name))
         )

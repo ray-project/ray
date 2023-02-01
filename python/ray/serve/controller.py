@@ -30,6 +30,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     CONTROLLER_MAX_CONCURRENCY,
     SERVE_ROOT_URL_ENV_KEY,
+    SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
 )
@@ -585,7 +586,7 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
-    def get_serve_status(self, name: str = "") -> bytes:
+    def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
         Args:
             name: application name. If application name doesn't exist, app_status
@@ -609,7 +610,7 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, name: str = "") -> Dict:
+    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is None:
             return ServeApplicationSchema.get_empty_schema_dict()
@@ -733,7 +734,7 @@ def run_graph(
     graph_env: Dict,
     deployment_override_options: List[Dict],
     deployment_versions: Dict,
-    name: str = "",
+    name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = "/",
 ):
     """

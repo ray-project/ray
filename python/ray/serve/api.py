@@ -19,6 +19,7 @@ from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    SERVE_DEFAULT_APP_NAME,
     MIGRATION_MESSAGE,
 )
 from ray.serve.context import (
@@ -457,7 +458,7 @@ def run(
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-    name: str = "",
+    name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = "/",
 ) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.

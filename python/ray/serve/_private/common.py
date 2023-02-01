@@ -93,7 +93,7 @@ class DeploymentStatusInfo:
 @dataclass(eq=True)
 class StatusOverview:
     app_status: ApplicationStatusInfo
-    name: str = ""
+    name: str = "default"
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
 
     def debug_string(self):
