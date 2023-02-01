@@ -631,16 +631,27 @@ class SyncerCallback(Callback):
 
     def __init__(self, enabled: bool = True, sync_period: float = DEFAULT_SYNC_PERIOD):
         self._enabled = enabled
+
+        # Map from trial id to syncer process
         self._sync_processes: Dict[str, _BackgroundProcess] = {}
+
+        # Last time we synced a trial
         self._sync_times: Dict[str, float] = {}
+
+        # How often we should sync (in seconds)
         self._sync_period = sync_period
+
+        # Map of trial id to IP
         self._trial_ips: Dict[str, str] = {}
 
+        # Set of sync processes that are flagged to remove
         self._trial_sync_processes_to_remove: Set[str] = set()
 
         # Recorded training iterations + training times
         self._trial_iter_training_times: Dict[str, Tuple[int, float]] = {}
 
+        # Only sync if this many items OR this much time has passed
+        # for each individual trial.
         self._min_iter_threshold = os.environ.get(
             "TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD",
             _DEFAULT_NODE_SYNCING_MIN_ITER_THRESHOLD,
@@ -657,6 +668,12 @@ class SyncerCallback(Callback):
         )
 
     def _remove_trial_sync_process(self, trial: "Trial", force: bool = False):
+        """Remove trial sync process.
+
+        If ``force=True``, we remove it immediately. If ``force=False``, we flag
+        it for removal and only remove it when it resolved. This is so we can await
+        the sync process at the end of the experiment.
+        """
         if force:
             self._sync_processes.pop(trial.trial_id, None)
         else:
@@ -674,10 +691,15 @@ class SyncerCallback(Callback):
             trial.trial_id, (0, 0.0)
         )
 
-        if iteration < self._min_iter_threshold:
-            return False
-
-        if time_trained < self._min_time_s_threshold:
+        # If neither the min iter nor the min time threshold were met, we don't sync.
+        # This is to avoid eager syncing when we have many short running trials -
+        # in that case we only want to sync once at the end of training. For longer
+        # running trials the threshold is usually small enough to not make a difference
+        # in practice.
+        if (
+            iteration < self._min_iter_threshold
+            and time_trained < self._min_time_s_threshold
+        ):
             return False
 
         last_sync_time = self._sync_times.setdefault(trial.trial_id, float("-inf"))
