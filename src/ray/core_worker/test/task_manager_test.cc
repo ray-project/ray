@@ -62,6 +62,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   MOCK_METHOD(void, Stop, (), (override));
 
   MOCK_METHOD(bool, Enabled, (), (const, override));
+
+  MOCK_METHOD(const std::string, DebugString, (), (override));
 };
 
 class TaskManagerTest : public ::testing::Test {
