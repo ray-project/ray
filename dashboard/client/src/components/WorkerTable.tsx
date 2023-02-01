@@ -101,7 +101,7 @@ const WorkerDetailTable = ({
 
   return (
     <TableContainer>
-      <ActorTable actors={actors} newIA={true} />
+      <ActorTable actors={actors} detailPathPrefix="" />
     </TableContainer>
   );
 };

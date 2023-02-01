@@ -178,11 +178,13 @@ const ActorDetailPage = () => {
                   <CpuProfilingLink
                     pid={actorDetail.pid}
                     ip={actorDetail.address?.ipAddress}
+                    type=""
                   />
                   <br />
                   <CpuStackTraceLink
                     pid={actorDetail.pid}
                     ip={actorDetail.address?.ipAddress}
+                    type=""
                   />
                 </div>
               ),

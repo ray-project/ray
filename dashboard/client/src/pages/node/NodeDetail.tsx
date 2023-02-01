@@ -235,7 +235,7 @@ const NodeDetailPage = () => {
               <ActorTable
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
-                newIA={true}
+                detailPathPrefix="/new/actors"
               />
             </TableContainer>
           </React.Fragment>

@@ -33,12 +33,12 @@ const ActorTable = ({
   actors = {},
   workers = [],
   jobId = null,
-  newIA = false,
+  detailPathPrefix = null,
 }: {
   actors: { [actorId: string]: Actor };
   workers?: Worker[];
   jobId?: string | null;
-  newIA: boolean;
+  detailPathPrefix: string | null;
 }) => {
   const [pageNo, setPageNo] = useState(1);
   const { changeFilter, filterFunc } = useFilter();
@@ -47,6 +47,9 @@ const ActorTable = ({
   const actorList = Object.values(actors || {}).filter(filterFunc);
   const list = actorList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
   const classes = rowStyles();
+  if (detailPathPrefix === null) {
+    detailPathPrefix = "";
+  }
 
   const columns = [
     { label: "" },
@@ -327,7 +330,9 @@ const ActorTable = ({
                   >
                     <Link
                       to={
-                        newIA ? `/new/actors/${actorId}` : `/actors/${actorId}`
+                        detailPathPrefix
+                          ? `${detailPathPrefix}/${actorId}`
+                          : actorId
                       }
                     >
                       {actorId}
@@ -351,9 +356,17 @@ const ActorTable = ({
                         Log
                       </Link>
                       <br />
-                      <CpuProfilingLink pid={pid} ip={address?.ipAddress} />
+                      <CpuProfilingLink
+                        pid={pid}
+                        ip={address?.ipAddress}
+                        type=""
+                      />
                       <br />
-                      <CpuStackTraceLink pid={pid} ip={address?.ipAddress} />
+                      <CpuStackTraceLink
+                        pid={pid}
+                        ip={address?.ipAddress}
+                        type=""
+                      />
                     </React.Fragment>
                   )}
                 </TableCell>

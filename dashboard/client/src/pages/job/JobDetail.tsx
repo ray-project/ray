@@ -126,11 +126,13 @@ export const JobDetailChartsPage = ({
                   <CpuProfilingLink
                     pid={job.driver_info?.pid}
                     ip={job.driver_info?.node_ip_address}
+                    type="Driver"
                   />
                   <br />
                   <CpuStackTraceLink
                     pid={job.driver_info?.pid}
                     ip={job.driver_info?.node_ip_address}
+                    type="Driver"
                   />
                 </div>
               ),
@@ -151,7 +153,10 @@ export const JobDetailChartsPage = ({
       </TitleCard>
       <TitleCard>
         <CollapsibleSection title="Actors">
-          <ActorList jobId={jobId} newIA={newIA} />
+          <ActorList
+            jobId={jobId}
+            detailPathPrefix={newIA ? "actors" : "/actors"}
+          />
         </CollapsibleSection>
       </TitleCard>
       <TitleCard>

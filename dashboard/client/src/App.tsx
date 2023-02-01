@@ -154,8 +154,7 @@ const App = () => {
                   <Route element={<Index />} path="/summary" />
                   <Route element={<Job />} path="/job" />
                   <Route element={<Node />} path="/node" />
-                  <Route element={<Actors newIA={false} />} path="/actors" />
-                  <Route element={<ActorDetailPage />} path="/actors/:id" />
+                  <Route element={<Actors />} path="/actors" />
                   <Route element={<Events />} path="/events" />
                   <Route element={<Metrics />} path="/metrics" />
                   {/* TODO(aguo): Refactor Logs component to use optional query
@@ -174,6 +173,7 @@ const App = () => {
                   />
                   <Route element={<NodeDetail />} path="/node/:id" />
                   <Route element={<JobDetailChartsPage />} path="/job/:id" />
+                  <Route element={<ActorDetailPage />} path="/actors/:id" />
                   <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
                   <Route element={<Loading />} path="/loading" />
                 </Route>
@@ -229,9 +229,10 @@ const App = () => {
                         }
                         path="actors"
                       />
+                      <Route element={<ActorDetailPage />} path="actors/:id" />
                     </Route>
                   </Route>
-                  <Route element={<Actors newIA />} path="actors" />
+                  <Route element={<Actors />} path="actors" />
                   <Route element={<ActorDetailPage />} path="actors/:id" />
                   <Route element={<Metrics newIA />} path="metrics" />
                   <Route element={<NewIALogsPage />} path="logs">

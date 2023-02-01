@@ -10,14 +10,17 @@ import { useActorList } from "./hook/useActorList";
  */
 const ActorList = ({
   jobId = null,
-  newIA = false,
+  detailPathPrefix = null,
 }: {
   jobId?: string | null;
-  newIA: boolean;
+  detailPathPrefix: string | null;
 }) => {
   const [timeStamp] = useState(dayjs());
   const data: { [actorId: string]: Actor } | undefined = useActorList();
   const actors: { [actorId: string]: Actor } = data ? data : {};
+  if (detailPathPrefix === null) {
+    detailPathPrefix = "";
+  }
 
   return (
     <div>
@@ -26,7 +29,11 @@ const ActorList = ({
           Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
         </Grid>
       </Grid>
-      <ActorTable actors={actors} jobId={jobId} newIA={newIA} />
+      <ActorTable
+        actors={actors}
+        jobId={jobId}
+        detailPathPrefix={detailPathPrefix}
+      />
     </div>
   );
 };

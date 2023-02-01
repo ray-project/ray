@@ -5,10 +5,15 @@ type CpuProfilingLinkProps = PropsWithChildren<
   {
     pid: string | number | null | undefined;
     ip: string | null | undefined;
+    type: string | null;
   } & ClassNameProps
 >;
 
-export const CpuProfilingLink = ({ pid, ip }: CpuProfilingLinkProps) => {
+export const CpuProfilingLink = ({
+  pid,
+  ip,
+  type = "",
+}: CpuProfilingLinkProps) => {
   if (!pid || !ip || typeof pid === "undefined" || typeof ip === "undefined") {
     return <div></div>;
   }
@@ -20,12 +25,16 @@ export const CpuProfilingLink = ({ pid, ip }: CpuProfilingLinkProps) => {
       title="Sample the current Python stack trace for this worker."
       rel="noreferrer"
     >
-      Stack&nbsp;Trace
+      Stack&nbsp;Trace{type ? ` (${type})` : ""}
     </a>
   );
 };
 
-export const CpuStackTraceLink = ({ pid, ip }: CpuProfilingLinkProps) => {
+export const CpuStackTraceLink = ({
+  pid,
+  ip,
+  type = "",
+}: CpuProfilingLinkProps) => {
   if (!pid || !ip) {
     return <div></div>;
   }
@@ -37,7 +46,7 @@ export const CpuStackTraceLink = ({ pid, ip }: CpuProfilingLinkProps) => {
       title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
       rel="noreferrer"
     >
-      CPU&nbsp;Flame&nbsp;Graph
+      CPU&nbsp;Flame&nbsp;Graph{type ? ` (${type})` : ""}
     </a>
   );
 };

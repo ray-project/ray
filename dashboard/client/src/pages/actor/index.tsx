@@ -14,7 +14,7 @@ const useStyles = makeStyles((theme) => ({
 /**
  * Represent the standalone actors page.
  */
-const Actors = ({ newIA = false }: { newIA: boolean }) => {
+const Actors = () => {
   const classes = useStyles();
 
   return (
@@ -27,7 +27,7 @@ const Actors = ({ newIA = false }: { newIA: boolean }) => {
         }}
       />
       <TitleCard title="ACTORS">
-        <ActorList newIA={newIA} />
+        <ActorList detailPathPrefix="" />
       </TitleCard>
     </div>
   );
