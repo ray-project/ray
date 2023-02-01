@@ -77,9 +77,6 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     else sudo apt-get autoremove -y wget; \
     fi;) \
     && sudo rm -rf /var/lib/apt/lists/* \
-    && sudo apt-get clean \
-    # Ensure all users are able to write to /home/ray because OpenShift uses a random UID when logging into
-    # pods. See #30959 for more context.
-    && chmod --recursive 777 /home/ray
+    && sudo apt-get clean
 
 WORKDIR $HOME

@@ -378,7 +378,7 @@ GRAFANA_PANELS = [
             ),
             # GPU
             Target(
-                expr="avg(ray_node_gpus_utilization{{{global_filters}}})",
+                expr="sum(ray_node_gpus_utilization{{{global_filters}}}) / on() (sum(autoscaler_cluster_resources{{resource='GPU',{global_filters}}}) or vector(0))",
                 legend="GPU (physical)",
             ),
             # Memory
