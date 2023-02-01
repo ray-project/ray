@@ -389,7 +389,7 @@ def test_actor_summary(ray_start_cluster):
             elif ".Infeasible" in actor_class_name:
                 infeasible_summary = s
 
-        assert actor_summary["state_counts"]["PENDING_CREATION"] == 1
+        assert actor_summary["state_counts"]["DEPENDENCY_UNREADY"] == 1
         assert actor_summary["state_counts"]["ALIVE"] == 2
         assert infeasible_summary["state_counts"]["PENDING_CREATION"] == 1
         return True
