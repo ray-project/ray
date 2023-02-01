@@ -459,6 +459,7 @@ class Trial:
 
     def resolve_config_placeholders(self, placeholder_resolvers: Dict[Tuple, Any]):
         from ray.tune.impl.placeholder import resolve_placeholders
+
         # Make a copy of the unresolved config before resolve it.
         self.config = copy.deepcopy(self.__unresolved_config)
         resolve_placeholders(self.config, placeholder_resolvers)

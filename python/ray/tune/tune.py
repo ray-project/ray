@@ -576,7 +576,9 @@ def run(
     placeholder_resolvers = {}
     config = inject_placeholders(
         # Make a deep copy here to avoid modifying the original config dict.
-        copy.deepcopy(config), placeholder_resolvers, prefix=()
+        copy.deepcopy(config),
+        placeholder_resolvers,
+        prefix=(),
     )
 
     if isinstance(run_or_experiment, list):

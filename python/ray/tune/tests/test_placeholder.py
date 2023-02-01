@@ -109,6 +109,34 @@ class PlaceholderTest(unittest.TestCase):
         self.assertEqual(config["param2"][1].value, "ok")
         self.assertEqual(config["param3"]["param4"].value, "not ok")
 
+    def testTuple(self):
+        class Dummy:
+            def __init__(self, value):
+                self.value = value
+
+        config = {
+            "param1": ("ok", "not ok"),
+            "param2": ["not ok", (1, Dummy("ok"))],
+            "param3": {
+                "param4": (1, [2, Dummy("not ok")], 3),
+            },
+        }
+
+        replaced = {}
+        config = inject_placeholders(config, replaced)
+
+        self.assertTrue(isinstance(config["param1"], tuple))
+        self.assertEqual(config["param1"], ("ok", "not ok"))
+        self.assertTrue(isinstance(config["param2"][1], tuple))
+        self.assertTrue(isinstance(config["param3"]["param4"], tuple))
+
+        resolve_placeholders(config, replaced)
+
+        self.assertTrue(isinstance(config["param2"][1], tuple))
+        self.assertEqual(config["param2"][1][1].value, "ok")
+        self.assertTrue(isinstance(config["param3"]["param4"], tuple))
+        self.assertEqual(config["param3"]["param4"][1][1].value, "not ok")
+
 
 if __name__ == "__main__":
     import pytest

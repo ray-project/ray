@@ -459,13 +459,12 @@ class Categorical(Domain):
 @DeveloperAPI
 class Function(Domain):
     class _CallSampler(BaseSampler):
-        def __try_fn(
-            self, domain: "Function", config: Dict[str, Any]
-        ):
+        def __try_fn(self, domain: "Function", config: Dict[str, Any]):
             try:
                 return domain.func(config)
-            except (AttributeError, KeyError) as e:
+            except (AttributeError, KeyError):
                 from ray.tune.search.variant_generator import _UnresolvedAccessGuard
+
                 r = domain.func(_UnresolvedAccessGuard({"config": config}))
                 logger.warning(
                     "sample_from functions that take a spec dict are "
@@ -486,7 +485,8 @@ class Function(Domain):
             if domain.pass_config:
                 items = [
                     self.__try_fn(domain, config[i])
-                    if isinstance(config, list) else self.__try_fn(domain, config)
+                    if isinstance(config, list)
+                    else self.__try_fn(domain, config)
                     for i in range(size)
                 ]
             else:
