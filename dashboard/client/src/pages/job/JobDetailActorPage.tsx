@@ -31,7 +31,9 @@ export const JobDetailActorsPage = () => {
   return (
     <div className={classes.root}>
       <MainNavPageInfo pageInfo={pageInfo} />
-      <TitleCard title="Actors">{<ActorList jobId={params.id} />}</TitleCard>
+      <TitleCard title="Actors">
+        {<ActorList jobId={params.id} detailPathPrefix="" />}
+      </TitleCard>
     </div>
   );
 };

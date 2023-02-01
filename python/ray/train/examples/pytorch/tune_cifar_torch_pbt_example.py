@@ -70,6 +70,10 @@ def train_func(config):
 
     model = resnet18()
 
+    # Note that `prepare_model` needs to be called before setting optimizer.
+    if not session.get_checkpoint():  # fresh start
+        model = train.torch.prepare_model(model)
+
     # Create optimizer.
     optimizer_config = {
         "lr": config.get("lr"),
@@ -84,6 +88,7 @@ def train_func(config):
         # Load in model
         model_state = checkpoint_dict["model"]
         model.load_state_dict(model_state)
+        model = train.torch.prepare_model(model)
 
         # Load in optimizer
         optimizer_state = checkpoint_dict["optimizer_state_dict"]
@@ -96,8 +101,6 @@ def train_func(config):
         # The current epoch increments the loaded epoch by 1
         checkpoint_epoch = checkpoint_dict["epoch"]
         starting_epoch = checkpoint_epoch + 1
-
-    model = train.torch.prepare_model(model)
 
     # Load in training and validation data.
     transform_train = transforms.Compose(
