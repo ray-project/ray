@@ -222,6 +222,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID ParentTaskId() const;
 
+  TaskID MainThreadParentTaskId() const;
+
   size_t ParentCounter() const;
 
   ray::FunctionDescriptor FunctionDescriptor() const;

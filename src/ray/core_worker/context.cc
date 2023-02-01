@@ -160,6 +160,8 @@ WorkerContext::WorkerContext(WorkerType worker_type,
     RAY_CHECK(!current_job_id_.IsNil());
     GetThreadContext().SetCurrentTaskId(TaskID::ForDriverTask(job_id),
                                         /*attempt_number=*/0);
+    // Driver runs in the main thread.
+    main_thread_current_task_id_ = TaskID::ForDriverTask(job_id);
   }
 }
 
@@ -266,6 +268,9 @@ void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
   absl::WriterMutexLock lock(&mutex_);
+  if (CurrentThreadIsMain()) {
+    main_thread_current_task_id_ = task_spec.TaskId();
+  }
   SetTaskDepth(task_spec.GetDepth());
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
@@ -312,6 +317,11 @@ const ActorID &WorkerContext::GetCurrentActorID() const {
 
 bool WorkerContext::CurrentThreadIsMain() const {
   return boost::this_thread::get_id() == main_thread_id_;
+}
+
+const TaskID WorkerContext::GetMainThreadCurrentTaskID() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return main_thread_current_task_id_;
 }
 
 bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {

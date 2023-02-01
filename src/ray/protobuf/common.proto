@@ -401,6 +401,10 @@ message TaskSpec {
   repeated bytes dynamic_return_ids = 31;
   // Job config for the task. Only set for normal task or actor creation task.
   optional JobConfig job_config = 32;
+  // TODO(rickyx): Remove this once we figure out a way to handle task ids
+  // across multiple threads properly.
+  // The task id of the CoreWorker's main thread from which the task is submitted.
+  bytes main_thread_parent_task_id = 33;
 }
 
 message TaskInfoEntry {
