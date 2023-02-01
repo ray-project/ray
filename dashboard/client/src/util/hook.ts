@@ -13,9 +13,12 @@ export const useFilter = <KeyType extends string>() => {
     setFilters([...filters]);
   };
   const filterFunc = (instance: { [key: string]: any }) => {
-    return filters.every(
-      (f) => !f.val || get(instance, f.key, "").toString().includes(f.val),
-    );
+    return filters.every((f) => {
+      const instance_val = get(instance, f.key, "");
+      return (
+        !f.val || (instance_val && instance_val.toString().includes(f.val))
+      );
+    });
   };
 
   return {

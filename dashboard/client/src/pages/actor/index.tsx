@@ -27,7 +27,7 @@ const Actors = () => {
         }}
       />
       <TitleCard title="ACTORS">
-        <ActorList />
+        <ActorList detailPathPrefix="" />
       </TitleCard>
     </div>
   );
