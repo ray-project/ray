@@ -1052,43 +1052,6 @@ TEST(TestOverrideRuntimeEnv, TestCondaOverride) {
   ASSERT_EQ(result, child);
 }
 
-TEST(LeaseRequestRateLimiterTest, StaticLeaseRequestRateLimiter) {
-  StaticLeaseRequestRateLimiter limiter(10);
-  ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 10);
-}
-
-TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedLeaseRequestRateLimiter) {
-  rpc::GcsNodeInfo dead_node;
-  dead_node.set_state(rpc::GcsNodeInfo::DEAD);
-  rpc::GcsNodeInfo alive_node;
-  alive_node.set_state(rpc::GcsNodeInfo::ALIVE);
-  {
-    ClusterSizeBasedLeaseRequestRateLimiter limiter(1);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(alive_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(alive_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 2);
-    limiter.OnNodeChanges(dead_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(dead_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-  }
-
-  {
-    ClusterSizeBasedLeaseRequestRateLimiter limiter(0);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
-    limiter.OnNodeChanges(alive_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(dead_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
-    limiter.OnNodeChanges(dead_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
-    limiter.OnNodeChanges(alive_node);
-    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-  }
-}
-
 }  // namespace core
 }  // namespace ray
 

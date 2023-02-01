@@ -18,6 +18,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -901,7 +902,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamic) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
 
   int64_t concurrency = 10;
-  auto rateLimiter = std::make_shared<DynamicRateLimiter>(concurrency);
+  auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
   CoreWorkerDirectTaskSubmitter submitter(address,
                                           raylet_client,
                                           client_pool,
@@ -1008,7 +1009,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
 
   int64_t concurrency = 10;
-  auto rateLimiter = std::make_shared<DynamicRateLimiter>(concurrency);
+  auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
   CoreWorkerDirectTaskSubmitter submitter(address,
                                           raylet_client,
                                           client_pool,
@@ -2083,6 +2084,44 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   // would otherwise cause a memory leak.
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
+
+TEST(LeaseRequestRateLimiterTest, StaticLeaseRequestRateLimiter) {
+  StaticLeaseRequestRateLimiter limiter(10);
+  ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 10);
+}
+
+TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedLeaseRequestRateLimiter) {
+  rpc::GcsNodeInfo dead_node;
+  dead_node.set_state(rpc::GcsNodeInfo::DEAD);
+  rpc::GcsNodeInfo alive_node;
+  alive_node.set_state(rpc::GcsNodeInfo::ALIVE);
+  {
+    ClusterSizeBasedLeaseRequestRateLimiter limiter(1);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+    limiter.OnNodeChanges(alive_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+    limiter.OnNodeChanges(alive_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 2);
+    limiter.OnNodeChanges(dead_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+    limiter.OnNodeChanges(dead_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+  }
+
+  {
+    ClusterSizeBasedLeaseRequestRateLimiter limiter(0);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
+    limiter.OnNodeChanges(alive_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+    limiter.OnNodeChanges(dead_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
+    limiter.OnNodeChanges(dead_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
+    limiter.OnNodeChanges(alive_node);
+    ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+  }
+}
+
 }  // namespace core
 }  // namespace ray
 
