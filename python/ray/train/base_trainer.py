@@ -332,15 +332,9 @@ class BaseTrainer(abc.ABC):
                 or a remote URI (e.g., s3://bucket/exp_name).
 
         Returns:
-            bool: Whether or not this path exists and contains the pickled Trainer
+            bool: Whether this path exists and contains the trainer state to resume from
         """
-        path = str(path)
-        if is_non_local_path_uri(path):
-            dir_contents = list_at_uri(path)
-        else:
-            path = os.path.expanduser(path)
-            dir_contents = [] if not os.path.exists(path) else os.listdir(path)
-        return dir_contents and _TRAINER_PKL in dir_contents
+        return _TRAINER_PKL in list_at_uri(str(path))
 
     def __repr__(self):
         # A dictionary that maps parameters to their default values.
