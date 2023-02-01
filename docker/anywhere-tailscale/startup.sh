@@ -56,7 +56,7 @@ functiodetermine_cloud_provider() {
   return "OnPrem"
 }
 
-location=functiodetermine_cloud_provider
+#location=functiodetermine_cloud_provider
 
 set -ae
 

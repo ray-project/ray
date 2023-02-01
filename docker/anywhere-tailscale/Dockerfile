@@ -103,19 +103,12 @@ RUN sudo mkdir -p $CRATE_HEAP_DUMP_PATH $CRATE_GC_LOG_DIR $TS_STATEDIR
 #  sudo install juicefs /usr/bin && \
 #  rm juicefs "juicefs-${JFS_LATEST_TAG}-linux-amd64.tar.gz"
 
-##COPY startup.sh /home/ray/startup.sh
-##COPY run_tests.sh /home/ray/run_tests.sh
-
-RUN curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh" \
-&& sudo chmod +x /home/ray/startup.sh \
-&& curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/run_tests.sh" \
-&& sudo chmod +x /home/ray/run_tests.sh \
-&& echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf \
+RUN echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf \
 && echo "net.ipv6.conf.default.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf \
 && echo "net.ipv6.conf.lo.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
 
 
-ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
+ENTRYPOINT ["/bin/bash", "/home/ray/getstartup.sh"]
 HEALTHCHECK --interval=300s --timeout=60s --start-period=300s \
 CMD curl -s localhost:4200 | jq -r '.ok' | grep -q true && ray list nodes -f NODE_NAME=$HOSTNAME.chimp-beta.ts.net -f STATE=ALIVE | grep -q ALIVE
 #CMD sh /home/ray/run_tests.sh
