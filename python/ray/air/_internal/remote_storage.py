@@ -266,6 +266,10 @@ def list_at_uri(uri: str) -> List[str]:
             f"Hint: {fs_hint(uri)}"
         )
 
+    if not is_non_local_path_uri(uri):
+        # Make sure local paths get expanded fully
+        bucket_path = os.path.abspath(os.path.expanduser(bucket_path))
+
     selector = pyarrow.fs.FileSelector(
         bucket_path, allow_not_found=True, recursive=False
     )
