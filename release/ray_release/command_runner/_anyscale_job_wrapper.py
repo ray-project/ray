@@ -9,9 +9,10 @@ import sys
 import logging
 from typing import Optional, List, Tuple
 
+OUTPUT_JSON_FILENAME = "output.json"
 AWS_CLI_INSTALLED = False
 AWS_CP_TIMEOUT = 300
-TIMEOUT_RETURN_CODE = -1
+TIMEOUT_RETURN_CODE = 124  # same as bash timeout
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -46,7 +47,7 @@ def exponential_backoff_retry(
 def run_aws_cp(source: str, target: str):
     global AWS_CLI_INSTALLED
 
-    if not source:
+    if not source or not target:
         return False
 
     if not Path(source).exists():
@@ -84,6 +85,9 @@ def run_aws_cp(source: str, target: str):
 
 
 def collect_metrics(time_taken: float) -> bool:
+    if "METRICS_OUTPUT_JSON" not in os.environ:
+        return False
+
     # Timeout is the time the test took divided by 200
     # (~7 minutes for a 24h test) but no less than 90s
     # and no more than 900s
@@ -171,7 +175,6 @@ def run_prepare_commands(
     prepare_time_taken = None
     if prepare_commands:
         logger.info("### Starting prepare commands ###")
-        assert len(prepare_commands) == len(prepare_commands_timeouts)
         for prepare_command, timeout in zip(
             prepare_commands, prepare_commands_timeouts
         ):
@@ -210,11 +213,22 @@ def main(
     logger.info("### Starting ###")
     start_time = time.monotonic()
 
+    if len(prepare_commands) != len(prepare_commands_timeouts):
+        raise ValueError(
+            "`prepare_commands` and `prepare_commands_timeouts` must "
+            "have the same length."
+        )
+
     (
         prepare_passed,
         prepare_return_codes,
         last_prepare_time_taken,
     ) = run_prepare_commands(prepare_commands, prepare_commands_timeouts)
+
+    uploaded_results = False
+    collected_metrics = False
+    uploaded_metrics = False
+    workload_time_taken = None
 
     if prepare_passed:
         logger.info("### Starting entrypoint ###")
@@ -235,12 +249,14 @@ def main(
                 f"Time taken: {workload_time_taken}"
             )
 
-        uploaded_results = run_aws_cp(os.environ["TEST_OUTPUT_JSON"], results_s3_uri)
+        uploaded_results = run_aws_cp(
+            os.environ.get("TEST_OUTPUT_JSON", None), results_s3_uri
+        )
 
         collected_metrics = collect_metrics(workload_time_taken)
         if collected_metrics:
             uploaded_metrics = run_aws_cp(
-                os.environ["METRICS_OUTPUT_JSON"], metrics_s3_uri
+                os.environ.get("METRICS_OUTPUT_JSON", None), metrics_s3_uri
             )
     else:
         return_code = None
@@ -260,7 +276,7 @@ def main(
         output_json, ensure_ascii=True, sort_keys=True, separators=(",", ":")
     )
 
-    output_json_file = (Path.cwd() / "output.json").resolve()
+    output_json_file = (Path.cwd() / OUTPUT_JSON_FILENAME).resolve()
     with open(output_json_file, "w") as fp:
         fp.write(output_json)
 
@@ -274,16 +290,13 @@ def main(
     print("", flush=True)
     print("", file=sys.stderr, flush=True)
 
-    if return_code == TIMEOUT_RETURN_CODE:
-        if test_long_running:
-            return_code = 0
-        else:
-            return_code = 1
+    if return_code == TIMEOUT_RETURN_CODE and test_long_running:
+        return_code = 0
     elif return_code is None:
         return_code = 1
 
     time.sleep(1)
-    sys.exit(return_code)
+    return return_code
 
 
 if __name__ == "__main__":
@@ -332,4 +345,4 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    main(**args.__dict__)
+    sys.exit(main(**args.__dict__))

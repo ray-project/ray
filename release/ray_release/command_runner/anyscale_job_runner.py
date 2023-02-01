@@ -114,7 +114,7 @@ class AnyscaleJobRunner(JobRunner):
             prepare_return_codes = output_json["prepare_return_codes"]
             last_prepare_time_taken = output_json["last_prepare_time_taken"]
 
-            if prepare_return_codes[-1] != 0:
+            if prepare_return_codes and prepare_return_codes[-1] != 0:
                 if prepare_return_codes[-1] == TIMEOUT_RETURN_CODE:
                     raise PrepareCommandTimeout(
                         "Prepare command timed out after "
