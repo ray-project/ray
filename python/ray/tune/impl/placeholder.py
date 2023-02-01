@@ -82,17 +82,12 @@ def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dic
             k: inject_placeholders(v, resolvers, prefix + (k,))
             for k, v in config.items()
         }
-    elif isinstance(config, list):
+    elif isinstance(config, (list, tuple)):
         return [
             inject_placeholders(elem, resolvers, prefix + (i,))
             for i, elem in enumerate(config)
         ]
-    elif isinstance(config, tuple):
-        return tuple(
-            inject_placeholders(elem, resolvers, prefix + (i,))
-            for i, elem in enumerate(config)
-        )
-    elif isinstance(config, (int, float, str, type(None))):
+    elif isinstance(config, (int, float, str)) or config is None:
         # Primitive types.
         return config
     elif isinstance(config, Categorical):
