@@ -272,7 +272,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **write_args,
-    ):
+    ) -> WriteResult:
         """Creates and returns write tasks for a file-based datasource."""
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
@@ -297,12 +297,18 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block = _block_udf(block)
 
             with fs.open_output_stream(write_path, **open_stream_args) as f:
-                _write_block_to_file(
-                    f,
-                    BlockAccessor.for_block(block),
-                    writer_args_fn=write_args_fn,
-                    **write_args,
-                )
+                try:
+                    _write_block_to_file(
+                        f,
+                        BlockAccessor.for_block(block),
+                        writer_args_fn=write_args_fn,
+                        **write_args,
+                    )
+                    # TODO: decide if we want to return richer object when the task
+                    # succeeds.
+                    return "ok"
+                except Exception as e:
+                    return e
 
         file_format = self._FILE_EXTENSION
         if isinstance(file_format, list):

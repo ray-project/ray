@@ -174,20 +174,23 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
     ds0 = ray.data.range(10, parallelism=2)
     ds = maybe_pipeline(ds0, pipelined)
     ds.write_datasource(output)
-    assert ray.get(output.data_sink.get_num_ok.remote()) == 2
-    assert ray.get(output.data_sink.get_num_failed.remote()) == 0
+    if pipelined:
+        assert output.num_ok == 2
+    else:
+        assert output.num_ok == 1
+    assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
     ray.get(output.data_sink.set_enabled.remote(False))
     ds = maybe_pipeline(ray.data.range(10, parallelism=2), pipelined)
     with pytest.raises(ValueError):
         ds.write_datasource(output, ray_remote_args={"max_retries": 0})
-    assert ray.get(output.data_sink.get_num_ok.remote()) == 2
-    assert ray.get(output.data_sink.get_rows_written.remote()) == 10
     if pipelined:
-        assert ray.get(output.data_sink.get_num_failed.remote()) == 1
+        assert output.num_ok == 2
     else:
-        assert ray.get(output.data_sink.get_num_failed.remote()) == 2
+        assert output.num_ok == 1
+    assert output.num_failed == 1
+    assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
 
 def test_from_tf(ray_start_regular_shared):
@@ -229,8 +232,6 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
                 self.rows_written = 0
                 self.enabled = True
                 self.node_ids = set()
-                self.num_ok = 0
-                self.num_failed = 0
 
             def write(self, node_id: str, block: Block) -> str:
                 block = BlockAccessor.for_block(block)
@@ -249,19 +250,9 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
             def set_enabled(self, enabled):
                 self.enabled = enabled
 
-            def increment_ok(self):
-                self.num_ok += 1
-
-            def get_num_ok(self):
-                return self.num_ok
-
-            def increment_failed(self):
-                self.num_failed += 1
-
-            def get_num_failed(self):
-                return self.num_failed
-
         self.data_sink = DataSink.remote()
+        self.num_ok = 0
+        self.num_failed = 0
 
     def direct_write(
         self,
@@ -273,20 +264,25 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
         def write(b):
             node_id = ray.get_runtime_context().get_node_id()
-            return ray.get(data_sink.write.remote(node_id, b))
+            return data_sink.write.remote(node_id, b)
 
+        tasks = []
         for b in blocks:
-            result = write(b)
-        return result
+            tasks.append(write(b))
+        try:
+            ray.get(tasks)
+            return "ok"
+        except Exception as e:
+            return e
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
         assert all(w == "ok" for w in write_results), write_results
-        self.data_sink.increment_ok.remote()
+        self.num_ok += 1
 
     def on_write_failed(
         self, write_results: List[ObjectRef[WriteResult]], error: Exception
     ) -> None:
-        self.data_sink.increment_failed.remote()
+        self.num_failed += 1
 
 
 def test_write_datasource_ray_remote_args(ray_start_cluster):
@@ -310,8 +306,8 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
     ds = ray.data.range(100, parallelism=10)
     # Pin write tasks to
     ds.write_datasource(output, ray_remote_args={"resources": {"bar": 1}})
-    assert ray.get(output.data_sink.get_num_ok.remote()) == 10
-    assert ray.get(output.data_sink.get_num_failed.remote()) == 0
+    assert output.num_ok == 1
+    assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 100
 
     node_ids = ray.get(output.data_sink.get_node_ids.remote())

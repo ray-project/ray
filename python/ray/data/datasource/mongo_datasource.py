@@ -7,6 +7,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
 )
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.types import ObjectRef
@@ -46,25 +47,33 @@ class MongoDatasource(Datasource):
         uri: str,
         database: str,
         collection: str,
-    ) -> List[ObjectRef[WriteResult]]:
+    ) -> WriteResult:
         import pymongo
 
-        _validate_database_collection_exist(
-            pymongo.MongoClient(uri), database, collection
-        )
+        try:
+            _validate_database_collection_exist(
+                pymongo.MongoClient(uri), database, collection
+            )
 
-        def write_block(uri: str, database: str, collection: str, block: Block):
-            from pymongoarrow.api import write
+            def write_block(uri: str, database: str, collection: str, block: Block):
+                from pymongoarrow.api import write
 
-            block = BlockAccessor.for_block(block).to_arrow()
-            client = pymongo.MongoClient(uri)
-            write(client[database][collection], block)
+                block = BlockAccessor.for_block(block).to_arrow()
+                client = pymongo.MongoClient(uri)
+                write(client[database][collection], block)
 
-        write_tasks = []
-        for block in blocks:
-            write_task = write_block(uri, database, collection, block)
-            write_tasks.append(write_task)
-        return write_tasks
+            builder = DelegatingBlockBuilder()
+            for block in blocks:
+                builder.add_block(block)
+            block = builder.build()
+
+            write_block(uri, database, collection, block)
+
+            # TODO: decide if we want to return richer object when the task
+            # succeeds.
+            return "ok"
+        except Exception as e:
+            return e
 
     @Deprecated
     def do_write(
