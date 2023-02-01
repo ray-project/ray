@@ -187,7 +187,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "_test1": "val1",
             "_test2": "val2",
             "actor_num_created": "0",
-            "task_num_created": "0",
+            "task_num_created": "1",
             "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
@@ -204,7 +204,7 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
             "actor_num_created": "0",
-            "task_num_created": "0",
+            "task_num_created": "1",
             "pg_num_created": "0",
         }
 
