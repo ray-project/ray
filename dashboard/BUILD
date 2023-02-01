@@ -22,10 +22,10 @@ py_test_run_all_subdirectory(
     exclude = [
         "client/node_modules/**",
         "modules/test/**", 
+        "modules/job/tests/test_cli_integration.py",
         "modules/node/tests/test_node.py", 
         "tests/test_dashboard.py", 
         "tests/test_state_head.py",
-        "modules/job/tests/test_cli_integration.py"
     ],
     extra_srcs = [],
     data = [
@@ -41,7 +41,7 @@ py_test_run_all_subdirectory(
 )
 
 py_test(
-    name="test_job_cli",
+    name="test_cli_integration",
     size="large",
     srcs = ["modules/job/tests/test_cli_integration.py"],
     deps = [":conftest"],
