@@ -107,8 +107,8 @@ RUN echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf \
 && echo "net.ipv6.conf.default.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf \
 && echo "net.ipv6.conf.lo.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
 
-RUN curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/buildfiles/getstartup.sh \
-&& chmod +x /home/ray/getstartup.sh
+COPY getstartup.sh
+RUN chmod +x /home/ray/getstartup.sh
 
 ENTRYPOINT ["/bin/bash", "/home/ray/getstartup.sh"]
 HEALTHCHECK --interval=300s --timeout=60s --start-period=300s \
