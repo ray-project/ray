@@ -1,4 +1,4 @@
-import { makeStyles } from "@material-ui/core";
+import { Box, Grid, makeStyles, Typography } from "@material-ui/core";
 import dayjs from "dayjs";
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
@@ -14,6 +14,7 @@ import ActorList from "../actor/ActorList";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
 
+import { useRayStatus } from "./hook/useClusterStatus";
 import { useJobDetail } from "./hook/useJobDetail";
 import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
@@ -34,6 +35,61 @@ export const JobDetailChartsPage = ({
   const classes = useStyle();
   const { job, msg, params } = useJobDetail();
   const jobId = params.id;
+
+  const { cluster_status } = useRayStatus();
+
+  const formatNodeStatus = (cluster_status: string) => {
+    // ==== auto scaling status
+    // Node status
+    // ....
+    // Resources
+    // ....
+    const sections = cluster_status.split("Resources");
+    return formatClusterStatus(
+      "Node Status",
+      sections[0].split("Node status")[1],
+    );
+  };
+
+  const formatResourcesStatus = (cluster_status: string) => {
+    // ==== auto scaling status
+    // Node status
+    // ....
+    // Resources
+    // ....
+    const sections = cluster_status.split("Resources");
+    return formatClusterStatus("Resource Status", sections[1]);
+  };
+
+  const formatClusterStatus = (title: string, cluster_status: string) => {
+    const cluster_status_rows = cluster_status.split("\n");
+
+    return (
+      <div>
+        <Typography variant="h6">
+          <b>{title}</b>
+        </Typography>
+        {cluster_status_rows.map((i, key) => {
+          // Format the output.
+          // See format_info_string in util.py
+          if (i.startsWith("-----") || i.startsWith("=====")) {
+            // Separator
+            return <div />;
+          } else if (i.endsWith(":")) {
+            return (
+              <div key={key}>
+                <b>{i}</b>
+              </div>
+            );
+          } else if (i === "") {
+            return <br />;
+          } else {
+            return <div key={key}>{i}</div>;
+          }
+        })}
+      </div>
+    );
+  };
 
   if (!job) {
     return (
@@ -126,6 +182,46 @@ export const JobDetailChartsPage = ({
       <TitleCard title="Task Timeline">
         <TaskTimeline jobId={jobId} />
       </TitleCard>
+      <Grid container>
+        <Grid item xs={4}>
+          <TitleCard title="">
+            <Box
+              mb={2}
+              display="flex"
+              flexDirection="column"
+              height="300px"
+              style={{
+                overflow: "hidden",
+                overflowY: "scroll",
+              }}
+              sx={{ borderRadius: "16px" }}
+            >
+              {cluster_status?.data
+                ? formatNodeStatus(cluster_status?.data.clusterStatus)
+                : "No cluster status."}
+            </Box>
+          </TitleCard>
+        </Grid>
+        <Grid item xs={4}>
+          <TitleCard title="">
+            <Box
+              mb={2}
+              display="flex"
+              flexDirection="column"
+              height="300px"
+              style={{
+                overflow: "hidden",
+                overflowY: "scroll",
+              }}
+              sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
+            >
+              {cluster_status?.data
+                ? formatResourcesStatus(cluster_status?.data.clusterStatus)
+                : "No cluster status."}
+            </Box>
+          </TitleCard>
+        </Grid>
+      </Grid>
       <TitleCard>
         <CollapsibleSection title="Task Table">
           <TaskList jobId={jobId} />
