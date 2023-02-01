@@ -1,4 +1,6 @@
+import os
 import pytest
+import pandas as pd
 
 import ray
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -10,6 +12,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomShuffle,
     RandomizeBlocks,
     Repartition,
+    Sort,
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.map_operator import (
@@ -21,6 +24,7 @@ from ray.data._internal.logical.operators.map_operator import (
 from ray.data._internal.planner.planner import Planner
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
+from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
@@ -514,6 +518,47 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
     assert ds.take_all() == [-2, 2, -6, 6, -10, 10, -14, 14, -18, 18]
     name = "DoRead->Filter->MapRows->MapBatches->FlatMap:"
     assert name in ds.stats()
+
+
+def test_sort_operator(ray_start_regular_shared, enable_optimizer):
+    planner = Planner()
+    read_op = Read(ParquetDatasource())
+    op = Sort(
+        read_op,
+        key="col1",
+        descending=False,
+    )
+    plan = LogicalPlan(op)
+    physical_op = planner.plan(plan).dag
+
+    assert op.name == "Sort"
+    assert isinstance(physical_op, AllToAllOperator)
+    assert len(physical_op.input_dependencies) == 1
+    assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+
+def test_sort_e2e(
+    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle, local_path
+):
+    ds = ray.data.range(100, parallelism=4)
+    ds = ds.random_shuffle()
+    ds = ds.sort()
+    assert ds.take_all() == list(range(100))
+
+    df = pd.DataFrame({"one": list(range(100)), "two": ["a"] * 100})
+    ds = ray.data.from_pandas([df])
+    path = os.path.join(local_path, "test_parquet_dir")
+    os.mkdir(path)
+    ds.write_parquet(path)
+
+    ds = ray.data.read_parquet(path)
+    ds = ds.random_shuffle()
+    ds1 = ds.sort("one")
+    ds2 = ds.sort("one", descending=True)
+    r1 = ds1.select_columns(["one"]).take_all()
+    r2 = ds2.select_columns(["one"]).take_all()
+    assert [d["one"] for d in r1] == list(range(100))
+    assert [d["one"] for d in r2] == list(reversed(range(100)))
 
 
 if __name__ == "__main__":
