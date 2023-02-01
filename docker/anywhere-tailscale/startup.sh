@@ -29,6 +29,34 @@ CRATE_HEAP_SIZE=$(echo $shm_memory | awk '{print int($0+0.5)}')
 export CRATE_HEAP_SIZE=$CRATE_HEAP_SIZE"G"
 export shm_memory=$shm_memory"G"
 
+functiodetermine_cloud_provider) {
+  if [ -f "/sys/hypervisor/uuid" ]; then
+    # Check if the instance is running on GCP (not tested and probably wrong)
+    UUID=$(cat /sys/hypervisor/uuid)
+    if [[ $UUID =~ "gce" ]]; then
+      echo "GCP"
+      return "GCP"
+    fi
+  elif [ -f "/sys/devices/virtual/dmi/id/product_uuid" ]; then
+    # Check if the instance is running on AWS
+    UUID=$(cat /sys/devices/virtual/dmi/id/sys_vendor)
+    if [[ $UUID =~ "EC2" ]]; then
+      echo "AWS"
+      return "AWS"
+    fi
+  elif [ -f "/proc/version" ]; then
+    # Check if the instance is running on Azure (not tested and probably wrong)
+    VERSION=$(cat /proc/version)
+    if [[ $VERSION =~ "Microsoft" ]]; then
+      echo "Azure"
+      return "Azure"
+    fi
+  fi
+
+  return "OnPrem"
+}
+
+
 set -ae
 
 ## add in code to search and remove the machine name from tailscale if it already exists
@@ -120,6 +148,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Ccluster.initial_master_nodes=nexus \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cnode.store.allow_mmap=false \
+                    -Cnode.attr.$(determine_cloud_provider) \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cstats.enabled=false &
@@ -131,6 +160,7 @@ if [ "$NODETYPE" = "head" ]; then
                    # -Cnode.master=true \
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=false \
+                    -Cnode.attr.$(determine_cloud_provider)  \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts \
@@ -145,6 +175,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.master=true \
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=false \
+                    -Cnode.attr.$(determine_cloud_provider)  \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 \
@@ -157,12 +188,13 @@ else
 
     ray start --address='nexus.chimp-beta.ts.net:6379' --disable-usage-stats --node-ip-address $HOSTNAME.chimp-beta.ts.net
 
-    if [ $(ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE | grep -q ALIVE && echo true || echo false) ]; then
+    if [ $(ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE | grep -q ALIVE && echo $true || echo $false) ]; then
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_,_local_ \
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
+                    -Cnode.attr.$(determine_cloud_provider) \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
@@ -175,6 +207,7 @@ else
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
+                    -Cnode.attr.$(determine_cloud_provider)  \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts \
