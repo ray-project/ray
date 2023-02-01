@@ -585,7 +585,13 @@ class BaseTrainer(abc.ABC):
         return result
 
     def _save(self, experiment_path: Union[str, Path]):
-        """Saves the"""
+        """Saves the trainer to a directory.
+
+        This is used to populate a newly constructed trainer on restore.
+        Unless a parameter is re-specified during restoration (only a limited
+        set of parameters can be passed in again), the argument will be loaded
+        from this saved one.
+        """
         experiment_path = Path(experiment_path)
         with open(experiment_path / _TRAINER_PKL, "wb") as fp:
             pickle.dump(self, fp)
