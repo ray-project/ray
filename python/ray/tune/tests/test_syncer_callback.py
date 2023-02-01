@@ -12,6 +12,7 @@ from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedChec
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
+from ray.tune.result import TRAINING_ITERATION, TIME_TOTAL_S
 from ray.tune.syncer import (
     DEFAULT_SYNC_PERIOD,
     SyncConfig,
@@ -373,6 +374,45 @@ def test_syncer_callback_force_on_complete(ray_start_2_cpus, temp_data_dirs):
 
         assert_file(True, tmp_target, "level0.txt")
         assert_file(True, tmp_target, "level0_new.txt")
+
+
+@pytest.mark.parametrize("threshold", [TRAINING_ITERATION, TIME_TOTAL_S])
+def test_syncer_callback_min_thresholds(ray_start_2_cpus, temp_data_dirs, threshold):
+    """Check that the min_iter/min_time_s thresholds are respected."""
+    tmp_source, tmp_target = temp_data_dirs
+
+    # Keep the other metric at 0
+    other = TRAINING_ITERATION if threshold == TIME_TOTAL_S else TIME_TOTAL_S
+
+    syncer_callback = TestSyncerCallback(local_logdir_override=tmp_target)
+
+    syncer_callback._min_iter_threshold = 8
+    syncer_callback._min_time_s_threshold = 8
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    syncer_callback._trial_ips[trial1.trial_id] = "invalid"
+    syncer_callback.on_trial_start(iteration=0, trials=[], trial=trial1)
+
+    for i in range(7):
+        syncer_callback.on_trial_result(
+            iteration=i, trials=[], trial=trial1, result={threshold: i, other: 0}
+        )
+        syncer_callback.wait_for_all()
+        assert_file(False, tmp_target, "level0.txt")
+
+    syncer_callback.on_trial_result(
+        iteration=8, trials=[], trial=trial1, result={threshold: 8, other: 0}
+    )
+    syncer_callback.wait_for_all()
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(True, tmp_target, "level0_exclude.txt")
+    assert_file(True, tmp_target, "subdir/level1.txt")
+    assert_file(True, tmp_target, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_target, "subdir/nested/level2.txt")
+    assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
+    assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
 
 
 def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):

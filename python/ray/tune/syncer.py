@@ -652,13 +652,17 @@ class SyncerCallback(Callback):
 
         # Only sync if this many items OR this much time has passed
         # for each individual trial.
-        self._min_iter_threshold = os.environ.get(
-            "TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD",
-            _DEFAULT_NODE_SYNCING_MIN_ITER_THRESHOLD,
+        self._min_iter_threshold = int(
+            os.environ.get(
+                "TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD",
+                _DEFAULT_NODE_SYNCING_MIN_ITER_THRESHOLD,
+            )
         )
-        self._min_time_s_threshold = os.environ.get(
-            "TUNE_NODE_SYNCING_MIN_TIME_S_THRESHOLD",
-            _DEFAULT_NODE_SYNCING_MIN_TIME_S_THRESHOLD,
+        self._min_time_s_threshold = float(
+            os.environ.get(
+                "TUNE_NODE_SYNCING_MIN_TIME_S_THRESHOLD",
+                _DEFAULT_NODE_SYNCING_MIN_TIME_S_THRESHOLD,
+            )
         )
 
     def _get_trial_sync_process(self, trial: "Trial"):
