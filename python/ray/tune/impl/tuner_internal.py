@@ -251,7 +251,7 @@ class TunerInternal:
                 "# Reconstruct the trainable with the same parameters\n"
                 "trainable_with_params = tune.with_parameters(trainable, ...)\n"
                 "tuner = tune.Tuner.restore(\n"
-                "    ..., overwrite_trainable=trainable_with_params\n"
+                "    ..., trainable=trainable_with_params\n"
                 ")\n\nSee https://docs.ray.io/en/master/tune/api_docs/trainable.html"
                 "#tune-with-parameters for more details."
             )
@@ -259,9 +259,8 @@ class TunerInternal:
             return
 
         error_message = (
-            "Usage of `overwrite_trainable` is limited to re-specifying the "
-            "same trainable that was passed to `Tuner`, in the case "
-            "that the trainable is not serializable (e.g. it holds object references)."
+            "Invalid trainable input. To avoid errors, pass in the same trainable "
+            "that was used to initialize the Tuner."
         )
 
         if type(original_trainable) != type(overwrite_trainable):
