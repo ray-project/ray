@@ -34,6 +34,9 @@ namespace raylet {
 class ClusterTaskManagerTest;
 class SchedulingPolicyTest;
 }  // namespace raylet
+namespace raylet_scheduling_policy {
+class HybridSchedulingPolicyTest;
+}
 namespace gcs {
 class GcsActorSchedulerTest;
 }  // namespace gcs
@@ -185,6 +188,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
 
   friend class raylet::SchedulingPolicyTest;
+  friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;
 };
 
 }  // end namespace ray
