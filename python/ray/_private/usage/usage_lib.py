@@ -50,6 +50,7 @@ import re
 import sys
 import time
 import uuid
+from collections import Counter
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
 from pathlib import Path
@@ -546,7 +547,7 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
 
 def get_subnets_to_report(gcs_client, timeout=None) -> Dict[str, int]:
     """Return the the subnets in the form of {subnet: num_nodes} of the cluster"""
-    subnets = {}
+    subnets = Counter()
     try:
         result = gcs_client.get_all_node_info(timeout=timeout)
         for node in result.node_info_list:
@@ -558,10 +559,10 @@ def get_subnets_to_report(gcs_client, timeout=None) -> Dict[str, int]:
             )
             if num_matches == 0:
                 address = "0.0.0.0"  # unknown address
-            subnets[address] = subnets.get(address, 0) + 1
+            Counter[address] += 1
     except Exception as e:
         logger.info(f"Faile to query number of nodes in the cluster: {e}")
-    return subnets
+    return dict(subnets)
 
 
 def get_library_usages_to_report(gcs_client) -> List[str]:
