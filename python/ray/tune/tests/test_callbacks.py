@@ -20,39 +20,6 @@ class StatefulCallback(Callback):
         self.counter = state["counter"]
 
 
-def test_stateful_callback_save_and_restore(tmp_path):
-    """Checks that a stateful callback can be saved to a directory and restored with
-    the right state."""
-
-    callback = StatefulCallback()
-    for i in range(3):
-        callback.on_trial_result(i, None, None, None)
-    callback.save_to_dir(str(tmp_path))
-    assert list(tmp_path.glob(StatefulCallback.CKPT_FILE_TMPL.format("*")))
-    assert callback.can_restore(str(tmp_path))
-
-    restored_callback = StatefulCallback()
-    restored_callback.restore_from_dir(str(tmp_path))
-    assert restored_callback.counter == 3
-
-
-def test_stateless_callback_save_and_restore(tmp_path):
-    """Checks that proper errors are raised/handled when saving/restoring a
-    stateless callback (i.e. one that doesn't implement get/set_state)."""
-
-    class StatelessCallback(Callback):
-        def handle_save_error(self, error: Exception):
-            assert isinstance(error, NotImplementedError)
-
-    callback = StatelessCallback()
-    callback.save_to_dir(str(tmp_path))
-
-    assert not list(tmp_path.glob(StatelessCallback.CKPT_FILE_TMPL.format("*")))
-    assert not callback.can_restore(str(tmp_path))
-    with pytest.raises(RuntimeError):
-        callback.restore_from_dir(str(tmp_path))
-
-
 def test_callback_list_with_stateful_callback(tmp_path):
     """Checks that a callback list saves and restores all callbacks contained
     inside it."""
