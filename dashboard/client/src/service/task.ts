@@ -2,10 +2,18 @@ import { StateApiResponse } from "../type/stateApi";
 import { Task } from "../type/task";
 import { get } from "./requestHandlers";
 
-export const getTasks = () => {
-  return get<StateApiResponse<Task>>("api/v0/tasks?detail=1&limit=10000");
+export const getTasks = (jobId: string | null) => {
+  let url = "api/v0/tasks?detail=1&limit=10000";
+  if (jobId) {
+    url += `&job_id=${jobId}`;
+  }
+  return get<StateApiResponse<Task>>(url);
 };
 
-export const downloadTaskTimelineHref = (jobId: string) => {
-  return `/api/v0/tasks/timeline?job_id=${jobId}&download=1`;
+export const downloadTaskTimelineHref = (jobId: string | null) => {
+  let url = "/api/v0/tasks/timeline?download=1";
+  if (jobId) {
+    url += `&job_id=${jobId}`;
+  }
+  return url;
 };

@@ -17,7 +17,9 @@ const TaskList = ({
   actorId?: string | null;
 }) => {
   const [timeStamp] = useState(dayjs());
-  const data: Task[] | undefined = useStateApiList("useTasks", getTasks);
+  const data: Task[] | undefined = useStateApiList("useTasks", () =>
+    getTasks(jobId),
+  );
   const tasks = data ? data : [];
 
   return (
