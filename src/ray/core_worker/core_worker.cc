@@ -363,7 +363,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                               // Driver has no parent task
                               /* parent_task_id */ TaskID::Nil(),
                               GetCallerId(),
-                              rpc_address_);
+                              rpc_address_,
+                              TaskID::Nil());
     // Drivers are never re-executed.
     SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
 
@@ -1751,6 +1752,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &debugger_breakpoint,
     int64_t depth,
     const std::string &serialized_runtime_env_info,
+    const TaskID &main_thread_current_task_id,
     const std::string &concurrency_group_name,
     bool include_job_config) {
   // Build common task spec.
@@ -1783,6 +1785,7 @@ void CoreWorker::BuildCommonTaskSpec(
       required_placement_resources,
       debugger_breakpoint,
       depth,
+      main_thread_current_task_id,
       override_runtime_env_info,
       concurrency_group_name);
   // Set task arguments.
@@ -1833,6 +1836,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info,
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true);
   builder.SetNormalTaskSpec(max_retries,
@@ -1916,6 +1920,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       "" /* debugger_breakpoint */,
                       depth,
                       actor_creation_options.serialized_runtime_env_info,
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true);
 
@@ -2140,6 +2145,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       "",    /* debugger_breakpoint */
                       depth, /*depth*/
                       "{}",  /* serialized_runtime_env_info */
+                      worker_context_.GetMainThreadOrActorCreationTaskID(),
                       task_options.concurrency_group_name,
                       /*include_job_config*/ false);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
