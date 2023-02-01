@@ -66,7 +66,7 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
     std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
     size_t num_candidate_nodes,
     std::optional<scheduling::NodeID> preferred_node_id,
-    float spread_threshold) const {
+    float preferred_node_score) const {
   RAY_CHECK(!node_scores.empty());
   RAY_CHECK(num_candidate_nodes >= 1);
   // Pick the top num_candidate_nodes nodes with the lowest score.
@@ -87,8 +87,7 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
   // If prioritize local node, always pick local node is it has the minimal
   // score across all candidates.
   if (preferred_node_id.has_value()) {
-    if (ComputeNodeScore(preferred_node_id.value(), spread_threshold) <=
-        node_scores.front().second) {
+    if (preferred_node_score <= node_scores.front().second) {
       return preferred_node_id.value();
     }
   }
@@ -168,7 +167,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
                        prioritize_preferred_node
                            ? std::optional<scheduling::NodeID>(preferred_node_id)
                            : std::optional<scheduling::NodeID>(),
-                       spread_threshold);
+                       ComputeNodeScore(preferred_node_id, spread_threshold));
   } else if (!feasible_and_unavailable_nodes.empty() && !require_node_available) {
     bool prioritize_preferred_node = !force_spillback && preferred_node_is_feasible;
     // If there are no available nodes, and the caller is okay with an
@@ -178,7 +177,7 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
                        prioritize_preferred_node
                            ? std::optional<scheduling::NodeID>(preferred_node_id)
                            : std::optional<scheduling::NodeID>(),
-                       spread_threshold);
+                       ComputeNodeScore(preferred_node_id, spread_threshold));
   } else {
     return scheduling::NodeID::Nil();
   }

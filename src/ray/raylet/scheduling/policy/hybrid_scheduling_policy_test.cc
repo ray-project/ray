@@ -91,8 +91,8 @@ TEST_F(HybridSchedulingPolicyTest, GetBestNode) {
     EXPECT_EQ(n1,
               policy.GetBestNode(node_scores,
                                  /*num_candidate_nodes*/ 1,
-                                 /*prioritize_local_node*/ false,
-                                 /*local_node_score*/ 1));
+                                 /*preferred_node*/ {},
+                                 /*preferred_node_score*/ 1));
   }
 
   // Test return 3 node calls to the random generator.
@@ -107,22 +107,22 @@ TEST_F(HybridSchedulingPolicyTest, GetBestNode) {
     EXPECT_EQ(n2,
               policy.GetBestNode(node_scores,
                                  /*num_candidate_nodes*/ 3,
-                                 /*prioritize_local_node*/ false,
-                                 /*local_node_score*/ 1));
+                                 /*preferred_node_id*/ {},
+                                 /*preferred_node_score*/ 1));
     EXPECT_EQ(n3,
               policy.GetBestNode(node_scores,
                                  /*num_candidate_nodes*/ 3,
-                                 /*prioritize_local_node*/ false,
-                                 /*local_node_score*/ 1));
+                                 /*preferred_node_id*/ {},
+                                 /*preferred_node_score*/ 1));
     EXPECT_EQ(n1,
               policy.GetBestNode(node_scores,
                                  /*num_candidate_nodes*/ 3,
-                                 /*prioritize_local_node*/ false,
-                                 /*local_node_score*/ 1));
+                                 /*preferred_node_id*/ {},
+                                 /*preferred_node_score*/ 1));
   }
 }
 
-TEST_F(HybridSchedulingPolicyTest, GetBestNodePrioritizeLocalNode) {
+TEST_F(HybridSchedulingPolicyTest, GetBestNodePrioritizePreferredNode) {
   {
     std::vector<std::pair<scheduling::NodeID, float>> node_scores{
         {n3, 0.6},
@@ -136,15 +136,21 @@ TEST_F(HybridSchedulingPolicyTest, GetBestNodePrioritizeLocalNode) {
     EXPECT_EQ(n1,
               policy.GetBestNode(node_scores,
                                  /*num_candidate_nodes*/ 1,
-                                 /*prioritize_local_node*/ true,
-                                 /*local_node_score*/ 0.1));
+                                 /*preferred_node_id*/ {local_node},
+                                 /*preferred_node_score*/ 0.5));
 
     // local node score is equal to the smallest one.
     EXPECT_EQ(local_node,
               policy.GetBestNode(node_scores,
                                  /*num_candidate_nodes*/ 1,
-                                 /*prioritize_local_node*/ true,
-                                 /*local_node_score*/ 0));
+                                 /*preferred_node_id*/ {local_node},
+                                 /*preferred_node_score*/ 0));
+    // preferred node score is equal to the smallest one.
+    EXPECT_EQ(n2,
+              policy.GetBestNode(node_scores,
+                                 /*num_candidate_nodes*/ 1,
+                                 /*preferred_node_id*/ {n2},
+                                 /*preferred_node_score*/ 0));
   }
 }
 

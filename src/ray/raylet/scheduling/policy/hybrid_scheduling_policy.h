@@ -88,7 +88,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
       std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
       size_t num_candidate_nodes,
       std::optional<scheduling::NodeID> preferred_node_id,
-      float spread_threshold) const;
+      float preferred_node_score) const;
 
   /// \param resource_request: The resource request we're attempting to schedule.
   /// \param spread_threshold: The fraction of resource utilization on a node after
@@ -136,7 +136,7 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   mutable absl::BitGenRef bitgenref_;
 
   FRIEND_TEST(HybridSchedulingPolicyTest, GetBestNode);
-  FRIEND_TEST(HybridSchedulingPolicyTest, GetBestNodePrioritizeLocalNode);
+  FRIEND_TEST(HybridSchedulingPolicyTest, GetBestNodePrioritizePreferredNode);
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray
