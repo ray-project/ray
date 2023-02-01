@@ -2,8 +2,6 @@ import datetime
 
 from typing import Dict, Optional
 
-REQ_NON_EMPTY_RESULT = False
-
 
 def handle_result(
     created_on: datetime.datetime,

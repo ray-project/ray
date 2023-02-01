@@ -3,8 +3,6 @@ from typing import Optional
 from ray_release.config import Test
 from ray_release.result import Result
 
-REQ_NON_EMPTY_RESULT = False
-
 
 def handle_result(
     test: Test,

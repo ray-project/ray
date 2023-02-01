@@ -4,9 +4,6 @@ from ray_release.config import Test
 from ray_release.result import Result
 
 
-REQ_NON_EMPTY_RESULT = True
-
-
 def handle_result(
     test: Test,
     result: Result,

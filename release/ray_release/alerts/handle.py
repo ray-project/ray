@@ -12,19 +12,22 @@ from ray_release.alerts import (
 )
 
 
+# The second bit in the tuple indicates whether a result is required to pass the alert.
+# If true, the release test will throw a FetchResultError when result cannot be fetched
+# successfully.
 result_to_handle_map = {
-    "default": (default.handle_result, default.REQ_NON_EMPTY_RESULT),
+    "default": (default.handle_result, False),
     "long_running_tests": (
         long_running_tests.handle_result,
-        long_running_tests.REQ_NON_EMPTY_RESULT,
+        True,
     ),
-    "rllib_tests": (rllib_tests.handle_result, rllib_tests.REQ_NON_EMPTY_RESULT),
-    "tune_tests": (tune_tests.handle_result, tune_tests.REQ_NON_EMPTY_RESULT),
-    "xgboost_tests": (xgboost_tests.handle_result, xgboost_tests.REQ_NON_EMPTY_RESULT),
+    "rllib_tests": (rllib_tests.handle_result, False),
+    "tune_tests": (tune_tests.handle_result, True),
+    "xgboost_tests": (xgboost_tests.handle_result, True),
 }
 
 
-def require_non_empty_result(test: Test) -> bool:
+def require_result(test: Test) -> bool:
     alert_suite = test.get("alert", "default")
     if alert_suite not in result_to_handle_map:
         raise ReleaseTestConfigError(f"Alert suite {alert_suite} not found.")
