@@ -18,7 +18,6 @@ from typing import (
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
@@ -420,10 +419,7 @@ class _FileBasedDatasourceReader(Reader):
             logger.debug(f"Reading {len(read_paths)} files.")
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
-            ctx = DatasetContext.get_current()
-            output_buffer = BlockOutputBuffer(
-                block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
-            )
+
             for read_path in read_paths:
                 compression = open_stream_args.pop("compression", None)
                 if compression is None:
@@ -464,13 +460,9 @@ class _FileBasedDatasourceReader(Reader):
                         if partitions:
                             data = convert_block_to_tabular_block(data, column_name)
                             data = _add_partitions(data, partitions)
-
-                        output_buffer.add_block(data)
-                        if output_buffer.has_next():
-                            yield output_buffer.next()
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
+                        if _block_udf:
+                            data = _block_udf(data)
+                        yield data
 
         # fix https://github.com/ray-project/ray/issues/24296
         parallelism = min(parallelism, len(paths))

@@ -1,9 +1,12 @@
 import pytest
 
 import ray
+from ray.data.block import BlockMetadata
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.bulk_executor import BulkExecutor
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.operators.all_to_all_operator import (
@@ -22,6 +25,7 @@ from ray.data._internal.logical.operators.map_operator import (
 from ray.data._internal.planner.planner import Planner
 from ray.data.aggregate import Count
 from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data.datasource.datasource import Datasource, Reader, ReadTask
 
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -234,6 +238,115 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+
+
+class BlockDatasource(Datasource):
+    def __init__(self, num_blocks, block_size):
+        self.num_blocks = num_blocks
+        self.block_size = block_size
+
+    def create_reader(self, **read_args):
+        return BlockReader(self.num_blocks, self.block_size)
+
+
+class BlockReader(Reader):
+    def __init__(self, num_blocks: int, block_size: int):
+        self.num_blocks = num_blocks
+        self.block_size = block_size
+
+    def estimate_inmemory_data_size(self):
+        return None
+
+    def get_read_tasks(self, parallelism: int):
+        def _blocks_generator():
+            for _ in range(self.num_blocks):
+                yield [1] * self.block_size
+
+        return parallelism * [
+            ReadTask(
+                lambda: _blocks_generator(),
+                BlockMetadata(
+                    num_rows=self.num_blocks,
+                    size_bytes=self.num_blocks * self.block_size * 8,
+                    schema=None,
+                    input_files=None,
+                    exec_stats=None,
+                ),
+            )
+        ]
+
+
+def test_operator_fusion_zero_copy_blocks_to_batches_e2e(
+    ray_start_regular_shared, enable_optimizer
+):
+    # Test that fused Read and MapBatches streams read-level blocks directly to
+    # MapBatches UDF.
+    num_blocks = 10
+    block_size = 5
+
+    def check_batch(batch):
+        # Check that the batch is the same size as the input block size.
+        assert len(batch) == block_size
+        return batch
+
+    planner = Planner()
+    read_op = Read(BlockDatasource(num_blocks, block_size), parallelism=8)
+    map_op = MapBatches(
+        read_op,
+        check_batch,
+        batch_size=None,
+    )
+    logical_plan = LogicalPlan(map_op)
+    physical_plan = planner.plan(logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    op = physical_plan.dag
+
+    executor = BulkExecutor(ExecutionOptions())
+    outputs = executor.execute(op)
+    out_bundles = [ray.get([block for block, _ in bundle.blocks]) for bundle in outputs]
+
+    # Sanity check.
+    assert len(out_bundles) == 8
+
+
+def test_operator_fusion_zero_copy_batch_to_batch_e2e(
+    ray_start_regular_shared, enable_optimizer
+):
+    # Test that fused MapBatches ops streams doesn't materialize batches into large
+    # blocks between the MapBatches.
+    num_blocks = 10
+    block_size = 10
+    batch_size = 5
+
+    planner = Planner()
+    read_op = Read(BlockDatasource(num_blocks, block_size), parallelism=8)
+    map_op1 = MapBatches(
+        read_op,
+        lambda x: x,
+        batch_size=batch_size,
+    )
+
+    def check_batch(batch):
+        # Check that the batch is the same size as the batch size if the upstream map.
+        assert len(batch) == batch_size
+        return batch
+
+    map_op2 = MapBatches(
+        map_op1,
+        check_batch,
+        batch_size=None,
+    )
+    logical_plan = LogicalPlan(map_op2)
+    physical_plan = planner.plan(logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    op = physical_plan.dag
+
+    executor = BulkExecutor(ExecutionOptions())
+    outputs = executor.execute(op)
+    out_bundles = [ray.get([block for block, _ in bundle.blocks]) for bundle in outputs]
+
+    # Sanity check.
+    assert len(out_bundles) == 8
 
 
 def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimizer):

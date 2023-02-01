@@ -1,11 +1,17 @@
-from typing import Iterator
-
-from ray.data.block import Block
+from typing import List
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
 from ray.data._internal.compute import is_task_compute, CallableClass, get_compute
-from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
-from ray.data._internal.logical.interfaces import Rule, PhysicalPlan
+from ray.data._internal.execution.interfaces import PhysicalOperator, MapTransformFn
+from ray.data._internal.logical.interfaces import Rule, PhysicalPlan, LogicalOperator
+from ray.data._internal.planner.transforms import (
+    generate_data_transform_for_op,
+    generate_adapted_transform,
+    InputAdapter,
+    OutputAdapter,
+    OpAdapter,
+)
+from ray.data._internal.planner.transforms.utils import _pairwise
 
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
@@ -29,11 +35,15 @@ class OperatorFusionRule(Rule):
             op: The op that we're trying to fuse with its input.
         """
         upstream_ops = op.input_dependencies
-        # Fuse with upstream ops while possible.
+        # Gather ops to fuse.
+        ops_to_fuse = [op]
         while len(upstream_ops) == 1 and self._can_fuse(op, upstream_ops[0]):
-            # Fuse operator with its upstream op.
-            op = self._fuse(op, upstream_ops[0])
+            op = upstream_ops[0]
+            ops_to_fuse.append(op)
             upstream_ops = op.input_dependencies
+        if len(ops_to_fuse) >= 2:
+            # Fuse all fusable ops together in a single pass.
+            op = self._fuse(ops_to_fuse)
         # Can no longer fuse with upstream ops, proceed up the DAG.
         op._input_dependencies = [
             self._apply(upstream_op) for upstream_op in upstream_ops
@@ -109,54 +119,53 @@ class OperatorFusionRule(Rule):
         # Otherwise, ops are compatible for fusion.
         return True
 
-    def _fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator):
-        """Fuse the downstream operator with its upstream operator."""
+    def _fuse(self, ops: List[PhysicalOperator]):
+        """Fuse the provided fusable ops together into a single op."""
         from ray.data._internal.execution.operators.map_operator import MapOperator
         from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 
-        assert self._can_fuse(down_op, up_op)
+        assert len(ops) >= 2
 
+        for down_op, up_op in _pairwise(ops):
+            assert self._can_fuse(down_op, up_op)
+
+        # Set op order from source to sink.
+        ops = list(reversed(ops))
         # Fuse operator names.
-        name = up_op.name + "->" + down_op.name
-
-        down_logical_op = self._op_map.pop(down_op)
-        up_logical_op = self._op_map.pop(up_op)
+        name = "->".join([op.name for op in ops])
+        # We pop the logical ops from the map since they should no longer be needed.
+        logical_ops = [self._op_map.pop(op) for op in ops]
 
         # Merge target block sizes.
-        down_target_block_size = down_logical_op._target_block_size
-        up_target_block_size = (
-            up_logical_op._target_block_size
-            if isinstance(up_logical_op, AbstractUDFMap)
-            else None
-        )
-        if down_target_block_size is not None and up_target_block_size is not None:
-            target_block_size = max(down_target_block_size, up_target_block_size)
-        elif up_target_block_size is not None:
-            target_block_size = up_target_block_size
-        else:
-            target_block_size = down_target_block_size
-
-        # Fuse transformation functions.
-        down_transform_fn = down_op.get_transformation_fn()
-        up_transform_fn = up_op.get_transformation_fn()
-
-        def transform_fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
-            blocks = up_transform_fn(blocks, ctx)
-            # TODO(Clark): Add zero-copy batching between transform functions.
-            return down_transform_fn(blocks, ctx)
+        target_block_sizes = [
+            op._target_block_size
+            if isinstance(op, AbstractUDFMap) and op._target_block_size is not None
+            else 0
+            for op in logical_ops
+        ]
+        target_block_size = max(target_block_sizes) or None
 
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
-        compute = get_compute(down_logical_op._compute)
-        ray_remote_args = down_logical_op._ray_remote_args
+        logical_output_op = logical_ops[-1]
+        assert isinstance(logical_output_op, AbstractUDFMap)
+        compute = get_compute(logical_output_op._compute)
+
+        # TODO(Clark): Support merging compatible remote args, e.g. taking the max of
+        # the num_cpus requests.
+        ray_remote_args = logical_output_op._ray_remote_args
+
         # Make the upstream operator's inputs the new, fused operator's inputs.
-        input_deps = up_op.input_dependencies
+        input_deps = ops[0].input_dependencies
         assert len(input_deps) == 1
         input_op = input_deps[0]
 
+        # Create fused block transform.
+        fused_transform_fn = _ops_to_fused_transform(logical_ops)
+
         # Fused physical map operator.
         op = MapOperator.create(
-            transform_fn,
+            fused_transform_fn,
             input_op,
             name=name,
             compute_strategy=compute,
@@ -164,28 +173,8 @@ class OperatorFusionRule(Rule):
             ray_remote_args=ray_remote_args,
         )
 
-        # Build a map logical operator to be used as a reference for further fusion.
-        # TODO(Clark): This is hacky, remove this once we push fusion to be purely based
-        # on a lower-level operator spec.
-        if isinstance(up_logical_op, AbstractUDFMap):
-            input_op = up_logical_op.input_dependencies[0]
-        else:
-            # Bottom out at the source logical op (e.g. Read()).
-            input_op = up_logical_op
-        logical_op = AbstractUDFMap(
-            name,
-            input_op,
-            down_logical_op._fn,
-            down_logical_op._fn_args,
-            down_logical_op._fn_kwargs,
-            down_logical_op._fn_constructor_args,
-            down_logical_op._fn_constructor_kwargs,
-            target_block_size,
-            compute,
-            ray_remote_args,
-        )
-        self._op_map[op] = logical_op
-        # Return the fused physical operator.
+        # TODO(Clark): Build a map logical operator to be used as a reference for other
+        # optimization rules.
         return op
 
 
@@ -204,3 +193,36 @@ def _are_remote_args_compatible(up_args, down_args):
     if up_args != remote_args:
         return False
     return True
+
+
+def _ops_to_fused_transform(ops: List[LogicalOperator]) -> MapTransformFn:
+    """Create a fused block transform function from a list of fusable logical
+    operators.
+    """
+    from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
+
+    adapters = []
+    transforms = []
+    # Get input adapter and op transform.
+    input_adapter = InputAdapter.from_downstream_op(ops[0])
+    adapters.append(input_adapter)
+    input_transform = generate_data_transform_for_op(ops[0])
+    transforms.append(input_transform)
+    # Get all intermediate op adapters and all op transforms.
+    for up_op, down_op in _pairwise(ops):
+        op_adapter = OpAdapter.from_ops(up_op, down_op)
+        adapters.append(op_adapter)
+        assert isinstance(down_op, AbstractUDFMap)
+        op_transform = generate_data_transform_for_op(down_op)
+        transforms.append(op_transform)
+
+    # Get output adapter.
+    # NOTE: Output op transform should have already been added by the above for
+    # loop.
+    output_adapter = OutputAdapter.from_upstream_op(ops[-1])
+    adapters.append(output_adapter)
+
+    assert len(transforms) == len(ops)
+    assert len(adapters) == len(ops) + 1
+
+    return generate_adapted_transform(transforms, adapters)

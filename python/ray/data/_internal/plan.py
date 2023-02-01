@@ -1117,6 +1117,9 @@ def _rewrite_read_stage(
         new stats for the block list, and the new list of stages.
     """
     from ray.data._internal.stage_impl import RandomizeBlocksStage
+    from ray.data._internal.planner.transforms.read import (
+        generate_read_legacy_transform,
+    )
 
     # Generate the "GetReadTasks" stage blocks.
     remote_args = in_blocks._remote_args
@@ -1128,12 +1131,7 @@ def _rewrite_read_stage(
         blocks, metadata, owned_by_consumer=in_blocks._owned_by_consumer
     )
 
-    @_adapt_for_multiple_blocks
-    def block_fn(
-        read_fn: Callable[[], Iterator[Block]], ctx: TaskContext
-    ) -> Iterator[Block]:
-        for block in read_fn():
-            yield block
+    block_fn = generate_read_legacy_transform()
 
     name = "read"
 

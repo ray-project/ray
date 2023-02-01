@@ -66,7 +66,8 @@ class SimpleBlockBuilder(BlockBuilder[T]):
         return list(self._items)
 
     def get_estimated_memory_usage(self) -> int:
-        return self._size_estimator.size_bytes()
+        mem = self._size_estimator.size_bytes()
+        return mem
 
     def get_metrics(self) -> DataMungingMetrics:
         return self._metrics

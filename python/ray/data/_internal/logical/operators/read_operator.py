@@ -17,4 +17,4 @@ class Read(AbstractMap):
         super().__init__("Read", None, ray_remote_args)
         self._datasource = datasource
         self._parallelism = parallelism
-        self._read_args = read_args
+        self._read_args = read_args or {}

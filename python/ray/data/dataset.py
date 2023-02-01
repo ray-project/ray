@@ -43,11 +43,21 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     Write,
 )
-from ray.data._internal.planner.filter import generate_filter_fn
-from ray.data._internal.planner.flat_map import generate_flat_map_fn
-from ray.data._internal.planner.map_batches import generate_map_batches_fn
-from ray.data._internal.planner.map_rows import generate_map_rows_fn
-from ray.data._internal.planner.write import generate_write_fn
+from ray.data._internal.planner.transforms.filter import (
+    generate_filter_legacy_transform,
+)
+from ray.data._internal.planner.transforms.flat_map import (
+    generate_flat_map_legacy_transform,
+)
+from ray.data._internal.planner.transforms.map_batches import (
+    generate_map_batches_legacy_transform,
+)
+from ray.data._internal.planner.transforms.map_rows import (
+    generate_map_rows_legacy_transform,
+)
+from ray.data._internal.planner.transforms.write import (
+    generate_write_legacy_transform,
+)
 from ray.data.dataset_iterator import DatasetIterator
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
@@ -348,7 +358,7 @@ class Dataset(Generic[T]):
 
         self._warn_slow()
 
-        transform_fn = generate_map_rows_fn()
+        transform_fn = generate_map_rows_legacy_transform()
 
         plan = self._plan.with_stage(
             OneToOneStage(
@@ -630,7 +640,7 @@ class Dataset(Generic[T]):
                     f"{fn}"
                 )
 
-        transform_fn = generate_map_batches_fn(
+        transform_fn = generate_map_batches_legacy_transform(
             batch_size=batch_size,
             batch_format=batch_format,
             prefetch_batches=prefetch_batches,
@@ -870,7 +880,7 @@ class Dataset(Generic[T]):
 
         self._warn_slow()
 
-        transform_fn = generate_flat_map_fn()
+        transform_fn = generate_flat_map_legacy_transform()
 
         plan = self._plan.with_stage(
             OneToOneStage("flat_map", transform_fn, compute, ray_remote_args, fn=fn)
@@ -936,7 +946,7 @@ class Dataset(Generic[T]):
 
         self._warn_slow()
 
-        transform_fn = generate_filter_fn()
+        transform_fn = generate_filter_legacy_transform()
 
         plan = self._plan.with_stage(
             OneToOneStage("filter", transform_fn, compute, ray_remote_args, fn=fn)
@@ -2697,7 +2707,7 @@ class Dataset(Generic[T]):
             plan = self._plan.with_stage(
                 OneToOneStage(
                     "write",
-                    generate_write_fn(datasource, **write_args),
+                    generate_write_legacy_transform(datasource, **write_args),
                     "tasks",
                     ray_remote_args,
                     fn=lambda x: x,
