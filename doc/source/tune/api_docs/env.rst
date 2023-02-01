@@ -50,10 +50,12 @@ These are the environment variables Ray Tune currently considers:
   to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1``
   for any other search algorithms.
 * **TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD**: When syncing trial data between nodes, only sync if this many
-  iterations were recorded for the trial or the minimum time threshold was met. Defaults to ``2``. Disabled
+  iterations were recorded for the trial or the minimum time threshold was met. This will prevent unnecessary
+  double syncing for trials that finish quickly or report only once. Defaults to ``2``. Disabled
   when using external storage (e.g., cloud storage).
 * **TUNE_NODE_SYNCING_MIN_TIME_S_THRESHOLD**: When syncing trial data between nodes, only sync if this much
-  time has been spent training or the minimum iteration threshold was met. Defaults to ``10`` (seconds).
+  time has been spent training or the minimum iteration threshold was met. This will prevent unnecessary
+  double syncing for trials that finish quickly or report only once. Defaults to ``10`` (seconds).
   Disabled when using external storage (e.g., cloud storage).
 * **TUNE_PLACEMENT_GROUP_PREFIX**: Prefix for placement groups created by Ray Tune. This prefix is used
   e.g. to identify placement groups that should be cleaned up on start/stop of the tuning run. This is

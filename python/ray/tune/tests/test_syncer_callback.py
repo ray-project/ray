@@ -414,6 +414,14 @@ def test_syncer_callback_min_thresholds(ray_start_2_cpus, temp_data_dirs, thresh
     assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
     assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
 
+    # Also trigger delayed syncer process removal
+    syncer_callback._remove_trial_sync_process(trial=trial1)
+    assert trial1.trial_id in syncer_callback._trial_sync_processes_to_remove
+
+    # Syncing finished so syncer should be removed now
+    syncer_callback._cleanup_trial_sync_processes()
+    assert trial1.trial_id not in syncer_callback._trial_sync_processes_to_remove
+
 
 def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):
     """Check that syncer errors are caught correctly in wait_for_all()"""
