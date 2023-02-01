@@ -21,7 +21,8 @@ def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
-    ray.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
 
 
 @pytest.fixture
@@ -29,7 +30,8 @@ def ray_start_6_cpus():
     address_info = ray.init(num_cpus=6)
     yield address_info
     # The code after the yield will run as teardown code.
-    ray.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
 
 
 def _failing_train_fn(config):
@@ -97,7 +99,7 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
     with pytest.raises(RayTaskError):
         result = trainer.fit()
 
-    # TODO(justinvyu): Figure out how to clear object refs in a better way.
+    # Explicit shutdown. Otherwise, object references may still be used
     # ray.shutdown()
     # ray.init(num_cpus=4)
 
@@ -294,8 +296,10 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir, new_preprocessor):
 def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
     """Re-specifying the preprocessor allows restoration when the preprocessor
     includes some non-serializable (across clusters) objects.
-    In this test, the preprocessor consists of 2 calls to a dummy preprocessor
-    object that is put on the object store and used as a remote actor."""
+    In this test, the preprocessor consists of a calls to a dummy preprocessor
+    object that is put on the object store.
+    NOTE: Capturing a remote actor would actually break this on restore, since
+    unpickling an actor handle immediately throws an exception from a new cluster."""
 
     class ModelPreprocessor:
         def transform(self, x):
@@ -303,11 +307,9 @@ def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
 
     def create_preprocessor():
         model_prep_ref = ray.put(ModelPreprocessor())
-        model_actor_handle = ray.remote(ModelPreprocessor).remote()
 
         def preprocess_fn(batch):
             batch = ray.get(model_prep_ref).transform(batch)
-            batch = ray.get(model_actor_handle.transform.remote(batch))
             return batch
 
         return BatchMapper(preprocess_fn, batch_format="numpy")
@@ -327,13 +329,17 @@ def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
     )
     trainer._save(tmpdir)
 
+    # Explicit shutdown. Otherwise, old object references may still be usable
+    ray.shutdown()
+    ray.init(num_cpus=4)
+
+    datasets = {"train": ray.data.from_items([{"x": 1}])}
     trainer = DataParallelTrainer.restore(
         str(tmpdir), datasets=datasets, preprocessor=create_preprocessor()
     )
     trainer.preprocess_datasets()
 
-    # Applying preprocessor to the dataset 2 times -> 3
-    assert trainer.datasets["train"].take()[0]["x"] == 3
+    assert trainer.datasets["train"].take()[0]["x"] == 2
 
 
 def test_restore_with_different_trainer(tmpdir):
