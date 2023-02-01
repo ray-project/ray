@@ -165,14 +165,15 @@ outputs are *NOT* synced to cloud and can only be found in the worker nodes that
     This can get ugly when the trainable is moved across different nodes throughout its lifetime.
     This can happen with some schedulers or with node failures.
     We may prioritize enabling this if there are enough user requests.
-    Please open an issue on Ray GitHub if this impacts you.
+    If this impacts your workflow, consider commenting on
+    [this ticket](https://github.com/ray-project/ray/issues/32142).
 
 
 Leave us feedback on this feature
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 We know that logging and observability can be a huge performance boost for your workflow. Let us know what is your
-ideal way of interacting with logging that happens in trainables. To leave your thoughts, please go to
-[Ray GitHub](https://github.com/ray-project/ray/issues)
+ideal way of interacting with logging that happens in trainables. To leave your thoughts, please comment on
+[this ticket](https://github.com/ray-project/ray/issues/32142).
 
 .. _trainable-logging:
 
