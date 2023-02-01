@@ -151,6 +151,7 @@ class _ExperimentCheckpointManager:
         trial_runner: "TrialRunner",
         trial_executor: RayTrialExecutor,
         search_alg: SearchAlgorithm,
+        callbacks: CallbackList,
         force: bool = False,
     ):
         """Saves execution state to `self._local_checkpoint_dir`.
@@ -188,6 +189,9 @@ class _ExperimentCheckpointManager:
 
             os.replace(tmp_file_name, checkpoint_file)
             search_alg.save_to_dir(
+                self._local_checkpoint_dir, session_str=self._session_str
+            )
+            callbacks.save_to_dir(
                 self._local_checkpoint_dir, session_str=self._session_str
             )
 
@@ -347,6 +351,7 @@ class TrialRunner:
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
+        self._callbacks = CallbackList(callbacks or [])
         self._insufficient_resources_manager = _InsufficientResourcesManager()
         self._pending_trial_queue_times = {}
 
@@ -468,8 +473,6 @@ class TrialRunner:
                 self._local_checkpoint_dir,
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str),
             )
-
-        self._callbacks = CallbackList(callbacks or [])
 
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
@@ -751,6 +754,7 @@ class TrialRunner:
                 trial_runner=self,
                 trial_executor=self.trial_executor,
                 search_alg=self._search_alg,
+                callbacks=self._callbacks,
                 force=force,
             )
 
@@ -795,9 +799,12 @@ class TrialRunner:
         # 1. Restore trial runner state
         self.__setstate__(runner_state["runner_data"])
 
-        # 2. Restore search algorithm state
+        # 2. Restore search algorithm and callback state
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
+
+        if self._callbacks.can_restore(self._local_checkpoint_dir):
+            self._callbacks.restore_from_dir(self._local_checkpoint_dir)
 
         # 3. Load trial table from experiment checkpoint
         trials = []
