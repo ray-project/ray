@@ -970,9 +970,10 @@ def test_tuner_can_restore(tmp_path, upload_dir):
     local/remote path and only returns True if it's at the experiment dir root.
     """
     name = "exp_name"
-    path = tmp_path / name
     if upload_dir:
         path = Path(upload_dir) / name
+    else:
+        path = tmp_path / name
 
     assert not Tuner.can_restore(path)
     Tuner(
