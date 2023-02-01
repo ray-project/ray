@@ -12,11 +12,7 @@ import urllib.parse
 import ray
 import ray.cloudpickle as pickle
 from ray.util import inspect_serializability
-from ray.air._internal.remote_storage import (
-    download_from_uri,
-    is_non_local_path_uri,
-    list_at_uri,
-)
+from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.trial_runner import _ResumeConfig
