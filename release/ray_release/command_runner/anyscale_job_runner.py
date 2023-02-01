@@ -16,6 +16,7 @@ from ray_release.exception import (
     JobBrokenError,
     ResultsError,
     JobTerminatedError,
+    JobNoLogsError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager import AnyscaleJobManager
@@ -54,6 +55,7 @@ class AnyscaleJobRunner(JobRunner):
         self.upload_path = join_s3_paths(
             f"s3://{self.file_manager.bucket}", self.path_in_bucket
         )
+        self.output_json = "/tmp/output.json"
         self.prepare_commands = []
         self._wait_for_nodes_timeout = 0
 
@@ -81,15 +83,32 @@ class AnyscaleJobRunner(JobRunner):
         return
 
     def _handle_command_output(self, job_status_code: int, error: str):
+        if job_status_code == -2:
+            raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
+
+        if job_status_code == -3:
+            raise JobTerminatedError(
+                "Job entered 'TERMINATED' state (terminated manually, nodes "
+                "could not have been provisioned or Ray was stopped):"
+                f"\n{error}\n"
+            )
+
+        # First try to obtain the output.json from S3.
+        # If that fails, try logs.
         try:
-            logs = self.get_last_logs()
-            output_json = re.search(r"### JSON \|([^\|]*)\| ###", logs)
+            output_json = self.fetch_output()
         except Exception:
-            output_json = None
+            logger.exception()
+            try:
+                logs = self.get_last_logs()
+                output_json = re.search(r"### JSON \|([^\|]*)\| ###", logs)
+                output_json = json.loads(output_json.group(1))
+            except Exception:
+                output_json = None
 
         workload_status_code = None
         if output_json:
-            output_json = json.loads(output_json.group(1))
+            logger.info(f"Output: {output_json}")
             workload_status_code = output_json["return_code"]
             workload_time_taken = output_json["workload_time_taken"]
             prepare_return_codes = output_json["prepare_return_codes"]
@@ -106,16 +125,8 @@ class AnyscaleJobRunner(JobRunner):
                     f"non-success status: {prepare_return_codes[-1]} with error:"
                     f"\n{error}\n"
                 )
-
-        if job_status_code == -2:
-            raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
-
-        if job_status_code == -3:
-            raise JobTerminatedError(
-                "Job entered 'TERMINATED' state (terminated manually, nodes "
-                "could not have been provisioned or Ray was stopped):"
-                f"\n{error}\n"
-            )
+        else:
+            raise JobNoLogsError("Could not obtain logs for the job.")
 
         if workload_status_code == TIMEOUT_RETURN_CODE:
             raise TestCommandTimeout(
@@ -181,6 +192,8 @@ class AnyscaleJobRunner(JobRunner):
             f"'{join_s3_paths(self.upload_path, self.result_output_json)}' "
             "--metrics-s3-uri "
             f"'{join_s3_paths(self.upload_path, self.metrics_output_json)}' "
+            "--output-s3-uri "
+            f"'{join_s3_paths(self.upload_path, self.output_json)}' "
             f"--prepare-commands {prepare_commands} "
             f"--prepare-commands-timeouts {prepare_commands_timeouts}"
         )
@@ -189,6 +202,10 @@ class AnyscaleJobRunner(JobRunner):
             full_env,
             working_dir=".",
             upload_path=self.upload_path,
+            # The timeout set here is just for the prepare commands + test workload
+            # WITHOUT wait for nodes time included, as that is set separately.
+            # Since wait for nodes is a part of prepare_commands, we manually
+            # subtract the timeout for it here.
             timeout=int(timeout)
             + sum(prepare_command_timeouts)
             - self._wait_for_nodes_timeout,
@@ -227,6 +244,9 @@ class AnyscaleJobRunner(JobRunner):
         return self._fetch_json(
             join_s3_paths(self.path_in_bucket, self.metrics_output_json)
         )
+
+    def fetch_output(self) -> Dict[str, Any]:
+        return self._fetch_json(join_s3_paths(self.path_in_bucket, self.output_json))
 
     def cleanup(self):
         try:

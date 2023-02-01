@@ -1,7 +1,7 @@
 import io
 import os
 import time
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from typing import Any, Dict, Optional, Tuple
 
 
@@ -190,6 +190,7 @@ class AnyscaleJobManager:
                 timeout_at = now + timeout
 
             if status in terminal_state:
+                logger.info(f"Job entered terminal state {status}.")
                 break
             time.sleep(1)
 
@@ -228,11 +229,12 @@ class AnyscaleJobManager:
         def _get_logs():
             job_controller = JobController()
             buf = io.StringIO()
-            with redirect_stdout(buf):
+            with redirect_stdout(buf), redirect_stderr(None):
                 job_controller.logs(
                     job_id=self.job_id,
                     should_follow=False,
                 )
+                print("", flush=True)
             output = buf.getvalue().strip()
             assert "### Starting ###" in output, "No logs fetched"
             return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])

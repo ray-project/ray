@@ -142,7 +142,7 @@ class ResultsAlert(CommandError):
 
 
 class JobBrokenError(ReleaseTestError):
-    exit_code = ExitCode.JOB_BROKEN_ERROR
+    exit_code = ExitCode.ANYSCALE_ERROR
 
 
 class JobTerminatedError(ReleaseTestError):
@@ -155,3 +155,7 @@ class JobStartupFailed(ClusterStartupFailed):
 
 class JobStartupTimeout(ClusterStartupTimeout):
     pass
+
+
+class JobNoLogsError(ReleaseTestError):
+    exit_code = ExitCode.ANYSCALE_ERROR

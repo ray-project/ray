@@ -7,8 +7,9 @@ import multiprocessing
 import json
 import sys
 import logging
-from typing import List, Tuple
+from typing import Optional, List, Tuple
 
+AWS_CLI_INSTALLED = False
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = -1
 
@@ -43,9 +44,20 @@ def exponential_backoff_retry(
 
 
 def run_aws_cp(source: str, target: str):
+    global AWS_CLI_INSTALLED
+
+    if not source:
+        return False
+
     if not Path(source).exists():
         logger.error(f"Couldn't upload to s3: '{source}' does not exist.")
         return False
+
+    if not AWS_CLI_INSTALLED:
+        # Install awscli for uploading to s3
+        subprocess.run(["pip", "install", "-q", "awscli"], check=True)
+        AWS_CLI_INSTALLED = True
+
     try:
         exponential_backoff_retry(
             lambda: subprocess.run(
@@ -111,12 +123,16 @@ def run_bash_command(workload: str, timeout: float):
     timeout = timeout if timeout > 0 else None
     cwd = Path.cwd()
     workload_path = cwd / "workload.sh"
-    workload_path = workload_path.absolute().resolve()
+    workload_path = workload_path.resolve()
     with open(workload_path, "w") as fp:
         fp.write(workload)
 
     command = ["bash", "-x", str(workload_path)]
     logger.info(f"Running command {workload}")
+
+    # Pop job's runtime env to allow workload's runtime env to take precedence
+    # TODO: Confirm this is safe
+    os.environ.pop("RAY_JOB_CONFIG_JSON_ENV_VAR", None)
 
     # We use multiprocessing with 'spawn' context to avoid
     # forking (as happens when using subprocess directly),
@@ -185,8 +201,9 @@ def main(
     test_workload: str,
     test_workload_timeout: float,
     test_long_running: bool,
-    results_s3_uri: str,
-    metrics_s3_uri: str,
+    results_s3_uri: Optional[str],
+    metrics_s3_uri: Optional[str],
+    output_s3_uri: Optional[str],
     prepare_commands: List[str],
     prepare_commands_timeouts: List[str],
 ):
@@ -218,8 +235,6 @@ def main(
                 f"Time taken: {workload_time_taken}"
             )
 
-        # Install awscli for uploading to s3
-        subprocess.run(["pip", "install", "-q", "awscli"], check=True)
         uploaded_results = run_aws_cp(os.environ["TEST_OUTPUT_JSON"], results_s3_uri)
 
         collected_metrics = collect_metrics(workload_time_taken)
@@ -245,6 +260,12 @@ def main(
         output_json, ensure_ascii=True, sort_keys=True, separators=(",", ":")
     )
 
+    output_json_file = (Path.cwd() / "output.json").resolve()
+    with open(output_json_file, "w") as fp:
+        fp.write(output_json)
+
+    run_aws_cp(str(output_json_file), output_s3_uri)
+
     logger.info("### Finished ###")
     logger.info(f"### JSON |{output_json}| ###")
 
@@ -257,7 +278,7 @@ def main(
         if test_long_running:
             return_code = 0
         else:
-            return_code = 124
+            return_code = 1
     elif return_code is None:
         return_code = 1
 
@@ -282,10 +303,22 @@ if __name__ == "__main__":
         help="is test long running (don't fail on timeout)",
     )
     parser.add_argument(
-        "--results-s3-uri", type=str, help="bucket address to upload results.json to"
+        "--results-s3-uri",
+        type=str,
+        help="bucket address to upload results.json to",
+        required=False,
     )
     parser.add_argument(
-        "--metrics-s3-uri", type=str, help="bucket address to upload metrics.json to"
+        "--metrics-s3-uri",
+        type=str,
+        help="bucket address to upload metrics.json to",
+        required=False,
+    )
+    parser.add_argument(
+        "--output-s3-uri",
+        type=str,
+        help="bucket address to upload output.json to",
+        required=False,
     )
     parser.add_argument(
         "--prepare-commands", type=str, nargs="*", help="prepare commands to run"

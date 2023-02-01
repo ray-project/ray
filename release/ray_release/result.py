@@ -44,8 +44,7 @@ class ExitCode(enum.Enum):
     CLUSTER_STARTUP_ERROR = 15
     LOCAL_ENV_SETUP_ERROR = 16
     REMOTE_ENV_SETUP_ERROR = 17
-    JOB_BROKEN_ERROR = 18
-    # ANYSCALE_SDK_ERROR = 19
+    ANYSCALE_ERROR = 18
 
     # Infra timeouts (retryable)
     RAY_WHEELS_TIMEOUT = 30
