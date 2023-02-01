@@ -29,6 +29,7 @@ from ray.air._internal.remote_storage import (
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.callback import Callback
+from ray.tune.result import TRAINING_ITERATION, TIME_TOTAL_S
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
@@ -43,6 +44,12 @@ DEFAULT_SYNC_PERIOD = 300
 
 # Default sync timeout after which syncing processes are aborted
 DEFAULT_SYNC_TIMEOUT = 1800
+
+# Trigger first node-to-node sync only after this many iterations arrived
+_DEFAULT_NODE_SYNCING_MIN_ITER_THRESHOLD = 2
+# ... or until at least this much time (in seconds) passed
+_DEFAULT_NODE_SYNCING_MIN_TIME_S_THRESHOLD = 10.0
+
 
 _EXCLUDE_FROM_SYNC = [
     "./checkpoint_-00001",
@@ -626,7 +633,19 @@ class SyncerCallback(Callback):
         self._sync_processes: Dict[str, _BackgroundProcess] = {}
         self._sync_times: Dict[str, float] = {}
         self._sync_period = sync_period
-        self._trial_ips = {}
+        self._trial_ips: Dict[str, str] = {}
+
+        # Recorded training iterations + training times
+        self._trial_iter_training_times: Dict[str, Tuple[int, float]] = {}
+
+        self._min_iter_threshold = os.environ.get(
+            "TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD",
+            _DEFAULT_NODE_SYNCING_MIN_ITER_THRESHOLD,
+        )
+        self._min_time_s_threshold = os.environ.get(
+            "TUNE_NODE_SYNCING_MIN_TIME_S_THRESHOLD",
+            _DEFAULT_NODE_SYNCING_MIN_TIME_S_THRESHOLD,
+        )
 
     def _get_trial_sync_process(self, trial: "Trial"):
         return self._sync_processes.setdefault(
@@ -638,8 +657,22 @@ class SyncerCallback(Callback):
         self._sync_processes.pop(trial.trial_id, None)
 
     def _should_sync(self, trial: "Trial"):
+        iteration, time_trained = self._trial_iter_training_times.setdefault(
+            trial.trial_id, (0, 0.0)
+        )
+
+        if iteration < self._min_iter_threshold:
+            return False
+
+        if time_trained < self._min_time_s_threshold:
+            return False
+
         last_sync_time = self._sync_times.setdefault(trial.trial_id, float("-inf"))
-        return time.time() - last_sync_time >= self._sync_period
+
+        if time.time() - last_sync_time < self._sync_period:
+            return False
+
+        return True
 
     def _mark_as_synced(self, trial: "Trial"):
         self._sync_times[trial.trial_id] = time.time()
@@ -723,6 +756,10 @@ class SyncerCallback(Callback):
         result: Dict,
         **info,
     ):
+        trial_iter = result[TRAINING_ITERATION]
+        trial_time_s = result[TIME_TOTAL_S]
+
+        self._trial_iter_training_times[trial.trial_id] = (trial_iter, trial_time_s)
         self._sync_trial_dir(trial, force=False, wait=False)
 
     def on_trial_complete(
