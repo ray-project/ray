@@ -948,4 +948,4 @@ def _ray_auto_init():
             "For cluster usage or custom Ray initialization, "
             "call `ray.init(...)` before `tune.run`."
         )
-        ray.init(local_mode=True, ignore_reinit_error=True)
+        ray.init()

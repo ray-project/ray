@@ -434,7 +434,7 @@ class TrialRunnerTest3(unittest.TestCase):
             def __init__(self, name):
                 self.name = name
 
-        ray.init(num_cpus=8, local_mode=True)
+        ray.init(num_cpus=8)
 
         config = {
             "param1": {
