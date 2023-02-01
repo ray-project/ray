@@ -261,6 +261,7 @@ message ActorDeathCause {
     RuntimeEnvFailedContext runtime_env_failed_context = 2;
     ActorDiedErrorContext actor_died_error_context = 3;
     ActorUnschedulableContext actor_unschedulable_context = 4;
+    OomContext oom_context = 5;
   }
 }
 // ---Actor death contexts start----
@@ -296,6 +297,16 @@ message ActorDiedErrorContext {
   // before scheduling had completed.
   bool never_started = 10;
 }
+
+// Context for task OOM.
+message OomContext {
+  // The error message
+  string error_message = 1;
+
+  // Whether the task / actor should fail immediately and not be retried.
+  bool fail_immediately = 2;
+}
+
 // ---Actor death contexts end----
 
 message JobConfig {

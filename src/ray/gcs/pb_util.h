@@ -147,6 +147,8 @@ inline rpc::ErrorType GenErrorTypeFromDeathCause(
     return rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
   } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
     return rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR;
+  } else if (death_cause.context_case() == ContextCase::kOomContext) {
+    return rpc::ErrorType::OUT_OF_MEMORY;
   } else {
     return rpc::ErrorType::ACTOR_DIED;
   }
@@ -159,7 +161,8 @@ inline const std::string &GetActorDeathCauseString(
       {ContextCase::kRuntimeEnvFailedContext, "RuntimeEnvFailedContext"},
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
       {ContextCase::kActorUnschedulableContext, "ActorUnschedulableContext"},
-      {ContextCase::kActorDiedErrorContext, "ActorDiedErrorContext"}};
+      {ContextCase::kActorDiedErrorContext, "ActorDiedErrorContext"},
+      {ContextCase::kOomContext, "OOMContext"}};
   auto it = death_cause_string.find(death_cause.context_case());
   RAY_CHECK(it != death_cause_string.end())
       << "Given death cause case " << death_cause.context_case() << " doesn't exist.";
@@ -182,6 +185,9 @@ inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
   } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
     *(error_info.mutable_error_message()) =
         death_cause.actor_unschedulable_context().error_message();
+  } else if (death_cause.context_case() == ContextCase::kOomContext) {
+    error_info.mutable_actor_died_error()->CopyFrom(death_cause);
+    *(error_info.mutable_error_message()) = death_cause.oom_context().error_message();
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
   }
