@@ -1462,6 +1462,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // A class to subscribe object status from other raylets/workers.
   std::unique_ptr<pubsub::Subscriber> object_info_subscriber_;
 
+  // Rate limit the concurrent pending lease requests for submitting
+  // tasks.
+  std::unique_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
+
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
@@ -1567,10 +1571,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// A shared pointer between various components that emitting task state events.
   /// e.g. CoreWorker, TaskManager.
   std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
-
-  /// keep track of the number of live nodes in the cluster.
-  std::atomic<int64_t> num_alive_nodes_ = 0;
 };
 
+// Lease request rate-limiter based on cluster node size.
+// It returns max(num_nodes_in_cluster, min_concurrent_lease_limit)
+class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
+ public:
+  explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
+  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
+
+ private:
+  void OnNodeChanges(const rpc::GcsNodeInfo &data);
+
+ private:
+  const size_t kMinConcurrentLeaseCap;
+  std::atomic<size_t> num_alive_nodes_;
+};
 }  // namespace core
 }  // namespace ray

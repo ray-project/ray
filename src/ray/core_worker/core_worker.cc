@@ -36,9 +36,6 @@
 
 namespace ray {
 namespace core {
-namespace {
-const uint64_t kMinConcurrentLeaseCap = 10;
-}
 
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
   if (options.worker_type == WorkerType::DRIVER) {
@@ -274,19 +271,31 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
 
+  lease_request_rate_limiter_ =
+      RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0
+          ? std::make_unique<StaticLeaseRequestRateLimiter>(
+                RayConfig::instance()
+                    .max_pending_lease_requests_per_scheduling_category())
+          : std::make_unique<ClusterSizeBasedLeaseRequestRateLimiter>(
+                /*kMinConcurrentLeaseCap*/ 10);
+
   // Register a callback to monitor add/removed nodes.
   // Note we capture a shared ownership of reference_counter_
   // here to avoid destruction order fiasco between gcs_client and reference_counter_.
-  auto on_node_change = [this, reference_counter = this->reference_counter_](
+  auto on_node_change = [this,
+                         reference_counter = this->reference_counter_,
+                         rate_limiter =
+                             dynamic_cast<ClusterSizeBasedLeaseRequestRateLimiter *>(
+                                 lease_request_rate_limiter_.get())](
                             const NodeID &node_id, const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::DEAD) {
       RAY_LOG(INFO) << "Node failure from " << node_id
                     << ". All objects pinned on that node will be lost if object "
                        "reconstruction is not enabled.";
       reference_counter->ResetObjectsOnRemovedNode(node_id);
-      num_alive_nodes_--;
-    } else {
-      num_alive_nodes_++;
+    }
+    if (rate_limiter) {
+      rate_limiter->OnNodeChanges(data);
     }
   };
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
@@ -421,13 +430,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                           : std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalLeasePolicy>(rpc_address_));
 
-  std::function<uint64_t()> get_max_pending_lease_requests_per_scheduling_category =
-      [this]() -> uint64_t {
-    if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
-      return RayConfig::instance().max_pending_lease_requests_per_scheduling_category();
-    }
-    return std::max<int64_t>(kMinConcurrentLeaseCap, num_alive_nodes_.load());
-  };
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_,
       local_raylet_client_,
@@ -441,7 +443,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator_,
       worker_context_.GetCurrentJobID(),
-      get_max_pending_lease_requests_per_scheduling_category,
+      *lease_request_rate_limiter_,
       boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -3736,6 +3738,30 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
   }
   return return_ids;
 }
+
+ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
+    size_t min_concurrent_lease_limit)
+    : kMinConcurrentLeaseCap(min_concurrent_lease_limit), num_alive_nodes_(0) {}
+
+size_t ClusterSizeBasedLeaseRequestRateLimiter::
+    GetMaxPendingLeaseRequestsPerSchedulingCategory() {
+  return std::max<size_t>(kMinConcurrentLeaseCap, num_alive_nodes_.load());
+}
+
+void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
+    const rpc::GcsNodeInfo &data) {
+  if (data.state() == rpc::GcsNodeInfo::DEAD) {
+    if (num_alive_nodes_ != 0) {
+      num_alive_nodes_--;
+    } else {
+      RAY_LOG(WARNING) << "Node" << data.node_manager_address()
+                       << " change state to DEAD but num_alive_node is 0.";
+    }
+  } else {
+    num_alive_nodes_++;
+  }
+}
+};
 
 }  // namespace core
 }  // namespace ray

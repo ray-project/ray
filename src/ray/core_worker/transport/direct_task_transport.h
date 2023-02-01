@@ -53,6 +53,24 @@ typedef int RuntimeEnvHash;
 using SchedulingKey =
     std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash>;
 
+// Interface that controls the max concurrent pending lease requests
+// per scheduling category.
+class LeaseRequestRateLimiter {
+ public:
+  virtual size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() = 0;
+  ~LeaseRequestRateLimiter() = default;
+};
+
+// Lease request rate-limiter with fixed number.
+class StaticLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
+ public:
+  StaticLeaseRequestRateLimiter(size_t limit) : kLimit(limit) {}
+  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override { return kLimit; }
+
+ private:
+  const size_t kLimit;
+};
+
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
@@ -69,7 +87,7 @@ class CoreWorkerDirectTaskSubmitter {
       int64_t lease_timeout_ms,
       std::shared_ptr<ActorCreatorInterface> actor_creator,
       const JobID &job_id,
-      std::function<uint64_t()> get_max_pending_lease_requests_per_scheduling_category,
+      LeaseRequestRateLimiter &lease_request_rate_limiter,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
@@ -83,8 +101,7 @@ class CoreWorkerDirectTaskSubmitter {
         actor_creator_(actor_creator),
         client_cache_(core_worker_client_pool),
         job_id_(job_id),
-        get_max_pending_lease_requests_per_scheduling_category_(
-            get_max_pending_lease_requests_per_scheduling_category),
+        lease_request_rate_limiter_(lease_request_rate_limiter),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -343,7 +360,8 @@ class CoreWorkerDirectTaskSubmitter {
   // Keeps track of where currently executing tasks are being run.
   absl::flat_hash_map<TaskID, rpc::WorkerAddress> executing_tasks_ GUARDED_BY(mu_);
 
-  const std::function<uint64_t()> get_max_pending_lease_requests_per_scheduling_category_;
+  // Ratelimiter controls the num of pending lease requests.
+  LeaseRequestRateLimiter &lease_request_rate_limiter_;
 
   // Retries cancelation requests if they were not successful.
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
