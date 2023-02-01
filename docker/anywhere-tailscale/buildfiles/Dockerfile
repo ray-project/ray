@@ -107,7 +107,6 @@ RUN echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf \
 && echo "net.ipv6.conf.default.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf \
 && echo "net.ipv6.conf.lo.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
 
-COPY getstartup.sh /home/ray/getstartup.sh
 RUN curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/buildfiles/getstartup.sh \
 && chmod +x /home/ray/getstartup.sh
 
