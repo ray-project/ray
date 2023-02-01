@@ -564,7 +564,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().failed_ts(), 5000);
+      EXPECT_EQ(task_event.state_updates().failed_ts(), /* 5 ms to ns */ 5 * 1000 * 1000);
     }
   }
 

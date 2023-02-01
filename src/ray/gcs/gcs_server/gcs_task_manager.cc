@@ -479,7 +479,7 @@ void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_
         absl::MutexLock lock(&mutex_);
         // If there are any non-terminated tasks from the job, mark them failed since all
         // workers associated with the job will be killed.
-        task_event_storage_->MarkTasksFailed(job_id, job_finish_time_ms * 1000);
+        task_event_storage_->MarkTasksFailed(job_id, job_finish_time_ms * 1000 * 1000);
       });
 }
 
