@@ -295,7 +295,7 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
   // logic below.
   int wait_count = 0;
   while (!(subscriber_1->CheckNoLeaks() && subscriber_2->CheckNoLeaks())) {
-    ASSERT_LT(wait_count, 60) << "Subscribers still have inflight operations after 60s";
+    ASSERT_LT(wait_count, 15) << "Subscribers still have inflight operations after 15s";
     ++wait_count;
     absl::SleepFor(absl::Seconds(1));
   }
