@@ -97,10 +97,12 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// ignored. This retry counter is only used when the process is killed due to memory, and
 /// the retry counter of the task or actor is only used when it fails in other ways
 /// that is not related to running out of memory. Retries indefinitely if the value is -1.
-RAY_CONFIG(uint64_t, task_oom_retries, 15)
+RAY_CONFIG(uint64_t, task_oom_retries, -1)
 
-/// The worker killing policy to use, as defined in worker_killing_policy.h.
-RAY_CONFIG(std::string, worker_killing_policy, "retriable_lifo")
+/// The worker killing policy to use, available options are
+/// group_by_owner
+/// retriable_lifo
+RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
 
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
