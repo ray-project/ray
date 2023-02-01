@@ -649,6 +649,11 @@ async def download_and_unpack_package(
             elif protocol in Protocol.remote_protocols():
                 # Download package from remote URI
                 tp = None
+                install_warning = (
+                    "Note that these must be preinstalled "
+                    "on all nodes in the Ray cluster; it is not "
+                    "sufficient to install them in the runtime_env."
+                )
 
                 if protocol == Protocol.S3:
                     try:
@@ -658,7 +663,7 @@ async def download_and_unpack_package(
                         raise ImportError(
                             "You must `pip install smart_open` and "
                             "`pip install boto3` to fetch URIs in s3 "
-                            "bucket."
+                            "bucket. " + install_warning
                         )
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
@@ -670,6 +675,7 @@ async def download_and_unpack_package(
                             "You must `pip install smart_open` and "
                             "`pip install google-cloud-storage` "
                             "to fetch URIs in Google Cloud Storage bucket."
+                            + install_warning
                         )
                 elif protocol == Protocol.FILE:
                     pkg_uri = pkg_uri[len("file://") :]
@@ -683,7 +689,8 @@ async def download_and_unpack_package(
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` "
-                            f"to fetch {protocol.value.upper()} URIs."
+                            f"to fetch {protocol.value.upper()} URIs. "
+                            + install_warning
                         )
 
                 with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
