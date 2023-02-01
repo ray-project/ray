@@ -52,9 +52,6 @@ class TorchRLTrainer(RLTrainer):
     ):
         super().__init__(trainer_scaling_config=trainer_scaling_config, **kwargs)
 
-        # pick the stuff that we need from the scaling config
-        self._use_gpu = trainer_scaling_config.num_gpus_per_worker > 0
-
         self._device = None
 
     @property
@@ -107,33 +104,31 @@ class TorchRLTrainer(RLTrainer):
         # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
         # api in ray.train but allow for session to be None without any errors raised.
         if self._use_gpu:
-            self._device = _TorchAccelerator().get_device()
+            if self._distributed:
+                self._device = _TorchAccelerator().get_device()
+            else:
+                self._device = torch.device(self._local_gpu_id)
         else:
             self._device = torch.device("cpu")
         super().build()
-
-    @override(RLTrainer)
-    def _make_module(self) -> MultiAgentRLModule:
-        module = super()._make_module()
-        self._map_module_to_device(module)
-        return module
-
-    @override(RLTrainer)
-    def _make_distributed_module(self) -> MultiAgentRLModule:
-        module = self._make_module()
-
         # if the module is a MultiAgentRLModule and nn.Module we can simply assume
         # all the submodules are registered. Otherwise, we need to loop through
         # each submodule and move it to the correct device.
         # TODO (Kourosh): This can result in missing modules if the user does not
         # register them in the MultiAgentRLModule. We should find a better way to
         # handle this.
-        if isinstance(module, torch.nn.Module):
-            module = TorchDDPRLModule(module)
+        if isinstance(self._module, torch.nn.Module):
+            self._module = TorchDDPRLModule(self._module)
         else:
-            for key in module.keys():
-                module.add_module(key, TorchDDPRLModule(module[key]), override=True)
+            for key in self._module.keys():
+                self._module.add_module(
+                    key, TorchDDPRLModule(self._module[key]), override=True
+                )
 
+    @override(RLTrainer)
+    def _make_module(self) -> MultiAgentRLModule:
+        module = super()._make_module()
+        self._map_module_to_device(module)
         return module
 
     @override(RLTrainer)

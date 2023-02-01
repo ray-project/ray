@@ -246,6 +246,7 @@ class AlgorithmConfig:
         self.num_trainer_workers = 0
         self.num_gpus_per_trainer_worker = 0
         self.num_cpus_per_trainer_worker = 1
+        self.local_gpu_id = 0
         self.custom_resources_per_worker = {}
         self.placement_strategy = "PACK"
 
@@ -962,6 +963,7 @@ class AlgorithmConfig:
         num_trainer_workers: Optional[int] = NotProvided,
         num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
+        local_gpu_id: Optional[int] = NotProvided,
         custom_resources_per_worker: Optional[dict] = NotProvided,
         placement_strategy: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -995,6 +997,9 @@ class AlgorithmConfig:
                 `num_trainer_workers = 0`, any value greater than 0 will run the
                 training on a single GPU on the head node, while a value of 0 will run
                 the training on head node CPU cores.
+            local_gpu_id: The gpu id to use if doing local gpu training. Note local gpu
+                training is enabled if `num_gpus_per_worker` is greater than 0 and
+                `num_trainer_workers = 0`.
             custom_resources_per_worker: Any custom Ray resources to allocate per
                 worker.
             num_cpus_for_local_worker: Number of CPUs to allocate for the algorithm.
@@ -1041,6 +1046,8 @@ class AlgorithmConfig:
             self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
         if num_gpus_per_trainer_worker is not NotProvided:
             self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
+        if local_gpu_id is not NotProvided:
+            self.local_gpu_id = local_gpu_id
 
         return self
 
@@ -2688,6 +2695,7 @@ class AlgorithmConfig:
                 num_trainer_workers=self.num_trainer_workers,
                 num_cpus_per_trainer_worker=self.num_cpus_per_trainer_worker,
                 num_gpus_per_trainer_worker=self.num_gpus_per_trainer_worker,
+                local_gpu_id=self.local_gpu_id,
             )
             .framework(eager_tracing=self.eager_tracing)
         )

@@ -168,7 +168,7 @@ class RLTrainer:
         self.config = trainer_hyperparameters
 
         # pick the configs that we need for the trainer from scaling config
-        self._distributed = trainer_scaling_config.num_workers > 1
+        self._distributed = trainer_scaling_config.num_workers > 0
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
@@ -176,6 +176,12 @@ class RLTrainer:
         self._optim_to_param: Dict[Optimizer, List[ParamRef]] = {}
         self._param_to_optim: Dict[ParamRef, Optimizer] = {}
         self._params: ParamDictType = {}
+
+        # pick the stuff that we need from the scaling config
+        self._use_gpu = trainer_scaling_config.num_gpus_per_worker > 0
+
+        # if we are using gpu but we are not distributed, use this gpu for training
+        self._local_gpu_id = trainer_scaling_config.local_gpu_id
 
     @property
     def distributed(self) -> bool:
@@ -550,11 +556,7 @@ class RLTrainer:
 
     def build(self) -> None:
         """Initialize the model."""
-        if self.distributed:
-            self._module = self._make_distributed_module()
-        else:
-            self._module = self._make_module()
-
+        self._module = self._make_module()
         for param_seq, optimizer in self.configure_optimizers():
             self._optim_to_param[optimizer] = []
             for param in param_seq:

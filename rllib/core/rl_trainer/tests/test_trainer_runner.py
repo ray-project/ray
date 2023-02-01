@@ -55,7 +55,7 @@ class TestTrainerRunner(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
             ray.init(ignore_reinit_error=True)
             scaling_config = self.scaling_configs[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config)
+            runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
             local_trainer = get_rl_trainer(fw, env)
             local_trainer.build()
 
@@ -104,7 +104,7 @@ class TestTrainerRunner(unittest.TestCase):
             env = gym.make("CartPole-v1")
 
             scaling_config = self.scaling_configs[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config)
+            runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
             reader = get_cartpole_dataset_reader(batch_size=1024)
 
             min_loss = float("inf")
@@ -146,7 +146,7 @@ class TestTrainerRunner(unittest.TestCase):
             ray.init(ignore_reinit_error=True)
             env = gym.make("CartPole-v1")
             scaling_config = self.scaling_configs[scaling_mode]
-            runner = get_trainer_runner(fw, env, scaling_config)
+            runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
             reader = get_cartpole_dataset_reader(batch_size=500)
             batch = reader.next()
 

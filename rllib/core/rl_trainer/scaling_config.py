@@ -14,8 +14,11 @@ class TrainerScalingConfig:
         num_gpus_per_worker: The number of GPUs to allocate per worker. If
             num_workers=0, any number greater than 0 will run the training on a single
             GPU. A value of zero will run the training on a single CPU.
+        local_gpu_id: if num_gpus_per_worker > 0, and num_workers=0, then this gpu id
+            will be used for training.
     """
 
     num_workers: int = 0
     num_cpus_per_worker: int = 1
     num_gpus_per_worker: int = 0
+    local_gpu_id: int = 0

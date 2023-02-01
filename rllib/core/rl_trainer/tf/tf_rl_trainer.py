@@ -25,7 +25,6 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -102,10 +101,32 @@ class TfRLTrainer(RLTrainer):
         tf1.enable_eager_execution()
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
-        if self._enable_tf_function:
-            self._update_fn = tf.function(self._do_update_fn)
+
+    @override(RLTrainer)
+    def build(self) -> None:
+        # TODO (Kourosh): Does strategy has to be an attribute here? if so it's very
+        # hidden to the user of this class that there is such an attribute.
+        if not self._distributed:
+            if self._use_gpu:
+                # mirrored strategy is typically used for multi-gpu training
+                # on a single machine, however we can use it for single-gpu
+                local_gpu = [f"GPU:{self._local_gpu_id}"]
+                self.strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+            else:
+                # the default strategy is a no-op that can be used in the local mode
+                # cpu only case
+                self.strategy = tf.distribute.get_strategy()
         else:
-            self._update_fn = self._do_update_fn
+            self.strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        with self.strategy.scope():
+            super().build()
+        if self._enable_tf_function:
+            self._update_fn = tf.function(self._traced_update_helper)
+        else:
+            self._update_fn = self._traced_update_helper
+
+    def _traced_update_helper(self, batch):
+        return self.strategy.run(self._do_update_fn, args=(batch,))
 
     def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         with tf.GradientTape() as tape:
@@ -138,10 +159,7 @@ class TfRLTrainer(RLTrainer):
                 "currently support training of only some modules and not others"
             )
         batch = self.convert_batch_to_tf_tensor(batch)
-        if self.distributed:
-            update_outs = self.do_distributed_update(batch)
-        else:
-            update_outs = self._update_fn(batch)
+        update_outs = self._update_fn(batch)
         loss = update_outs["loss"]
         fwd_out = update_outs["fwd_out"]
         postprocessed_gradients = update_outs["postprocessed_gradients"]
@@ -168,19 +186,6 @@ class TfRLTrainer(RLTrainer):
             optim.apply_gradients(zip(gradient_list, variable_list))
 
     @override(RLTrainer)
-    def _make_distributed_module(self) -> MultiAgentRLModule:
-        # TODO (Kourosh): Does strategy has to be an attribute here? if so it's very
-        # hidden to the user of this class that there is such an attribute.
-
-        # TODO (Kourosh, Avnish): The optimizers still need to be created within
-        # strategy.scope. Otherwise parameters of optimizers won't be properly
-        # synced
-        self.strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        with self.strategy.scope():
-            module = self._make_module()
-        return module
-
-    @override(RLTrainer)
     def add_module(
         self,
         *,
@@ -189,15 +194,7 @@ class TfRLTrainer(RLTrainer):
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
-        if self.distributed:
-            with self.strategy.scope():
-                super().add_module(
-                    module_id=module_id,
-                    module_spec=module_spec,
-                    set_optimizer_fn=set_optimizer_fn,
-                    optimizer_cls=optimizer_cls,
-                )
-        else:
+        with self.strategy.scope():
             super().add_module(
                 module_id=module_id,
                 module_spec=module_spec,
@@ -205,17 +202,14 @@ class TfRLTrainer(RLTrainer):
                 optimizer_cls=optimizer_cls,
             )
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._do_update_fn)
+            self._update_fn = tf.function(self._traced_update_helper)
 
     @override(RLTrainer)
     def remove_module(self, module_id: ModuleID) -> None:
-        if self.distributed:
-            with self.strategy.scope():
-                super().remove_module(module_id)
-        else:
+        with self.strategy.scope():
             super().remove_module(module_id)
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._do_update_fn)
+            self._update_fn = tf.function(self._traced_update_helper)
 
     @override(RLTrainer)
     def do_distributed_update(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -234,7 +228,7 @@ class TfRLTrainer(RLTrainer):
             The converted batch.
 
         """
-        # TODO(sven): This is a hack to get around the fact that
+        # TODO(avnishn): This is a hack to get around the fact that
         # SampleBatch.count becomes 0 after decorating the function with
         # tf.function. This messes with input spec checking. Other fields of
         # the sample batch are possibly modified by tf.function which may lead
