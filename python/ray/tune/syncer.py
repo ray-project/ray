@@ -9,6 +9,7 @@ from typing import (
     TYPE_CHECKING,
     Union,
     Optional,
+    Set,
     Tuple,
 )
 
@@ -217,7 +218,7 @@ class _BackgroundProcess:
         self._start_time = time.time()
 
     def wait(self, timeout: Optional[float] = None) -> Any:
-        """Waits for the backgrond process to finish running. Waits until the
+        """Waits for the background process to finish running. Waits until the
         background process has run for at least `timeout` seconds, counting from
         the time when the process was started."""
         if not self._process:
@@ -635,6 +636,8 @@ class SyncerCallback(Callback):
         self._sync_period = sync_period
         self._trial_ips: Dict[str, str] = {}
 
+        self._trial_sync_processes_to_remove: Set[str] = set()
+
         # Recorded training iterations + training times
         self._trial_iter_training_times: Dict[str, Tuple[int, float]] = {}
 
@@ -653,8 +656,18 @@ class SyncerCallback(Callback):
             _BackgroundProcess(partial(sync_dir_between_nodes, max_size_bytes=None)),
         )
 
-    def _remove_trial_sync_process(self, trial: "Trial"):
-        self._sync_processes.pop(trial.trial_id, None)
+    def _remove_trial_sync_process(self, trial: "Trial", force: bool = False):
+        if force:
+            self._sync_processes.pop(trial.trial_id, None)
+        else:
+            self._trial_sync_processes_to_remove.add(trial.trial_id)
+
+    def _cleanup_trial_sync_processes(self):
+        for trial_id in list(self._trial_sync_processes_to_remove):
+            sync_process = self._sync_processes[trial_id]
+            if not sync_process.is_running:
+                self._sync_processes.pop(trial_id, None)
+                self._trial_sync_processes_to_remove.remove(trial_id)
 
     def _should_sync(self, trial: "Trial"):
         iteration, time_trained = self._trial_iter_training_times.setdefault(
@@ -765,15 +778,17 @@ class SyncerCallback(Callback):
     def on_trial_complete(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
-        self._sync_trial_dir(trial, force=True, wait=True)
-        self._remove_trial_sync_process(trial)
+        self._sync_trial_dir(trial, force=True, wait=False)
+        self._remove_trial_sync_process(trial, force=False)
         self._trial_ips.pop(trial.trial_id, None)
+        self._cleanup_trial_sync_processes()
 
     def on_trial_error(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
-        self._remove_trial_sync_process(trial)
+        self._remove_trial_sync_process(trial, force=True)
         self._trial_ips.pop(trial.trial_id, None)
+        self._cleanup_trial_sync_processes()
 
     def on_checkpoint(
         self,
@@ -795,6 +810,8 @@ class SyncerCallback(Callback):
             )
 
     def wait_for_all(self):
+        self._cleanup_trial_sync_processes()
+
         failed_syncs = {}
         for trial, sync_process in self._sync_processes.items():
             try:
