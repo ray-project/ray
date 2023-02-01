@@ -923,7 +923,6 @@ class ArrowVariableShapedTensorArray(
             return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
         # Special handling of binary/string types. Assumes unicode string tensor columns
         if pa.types.is_fixed_size_binary(value_type):
-            NUM_BYTES_PER_UNICODE_CHAR = 4
             ext_dtype = np.dtype(
                 f"<U{value_type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}"
             )
