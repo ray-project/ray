@@ -1145,6 +1145,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
+      const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",
       bool include_job_config = false);
   void SetCurrentTaskId(const TaskID &task_id,
