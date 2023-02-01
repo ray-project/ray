@@ -55,7 +55,7 @@ Check out our detailed [installation guide](installation.rst).
 
 ## Ray AI Runtime Quick Start
 
-To use Ray's AI Runtime install Ray with the optional extra `air` packages:
+Ray AI Runtime (AIR) is an open-source, Python-based, domain-specific library that equips ML engineers, data scientists, and researchers with a scalable and unified toolkit for ML applications. To use Ray's AI Runtime install Ray with the optional extra `air` packages:
 
 ```
 pip install "ray[air]"
