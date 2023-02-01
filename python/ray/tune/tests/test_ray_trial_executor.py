@@ -453,6 +453,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         while not suggester.is_finished():
             trial = suggester.next_trial()
             if trial:
+                trial.create_placement_group_factory()
                 trials.append(trial)
             else:
                 break

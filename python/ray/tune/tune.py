@@ -218,6 +218,7 @@ def run(
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
+    _enable_placeholder_config: Optional[bool] = True,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -411,6 +412,10 @@ def run(
         _remote: Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
+        _enable_placeholder_config: Whether to enable placeholder
+            replacement and resolution for config dict. Set this flag
+            to False when using Hyperparam searches that are not compatible
+            with placeholder values, e.g. nested Categorical values.
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
@@ -574,12 +579,13 @@ def run(
     #   search algorithms, since a lot of them do not support non-primitive
     #   config values.
     placeholder_resolvers = {}
-    config = inject_placeholders(
-        # Make a deep copy here to avoid modifying the original config dict.
-        copy.deepcopy(config),
-        placeholder_resolvers,
-        prefix=(),
-    )
+    if _enable_placeholder_config:
+        config = inject_placeholders(
+            # Make a deep copy here to avoid modifying the original config dict.
+            copy.deepcopy(config),
+            placeholder_resolvers,
+            prefix=(),
+        )
 
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
@@ -942,4 +948,4 @@ def _ray_auto_init():
             "For cluster usage or custom Ray initialization, "
             "call `ray.init(...)` before `tune.run`."
         )
-        ray.init()
+        ray.init(local_mode=True, ignore_reinit_error=True)
