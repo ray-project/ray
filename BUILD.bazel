@@ -1711,7 +1711,7 @@ cc_test(
 
 cc_test(
     name = "pubsub_integration_test",
-    timeout = "short",
+    timeout = "small",
     srcs = ["src/ray/pubsub/test/integration_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
