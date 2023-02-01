@@ -595,7 +595,7 @@ class GlueTest(unittest.TestCase):
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
     def testFetchResultFailsReqNonEmptyResult(self):
-        # set `require_non_empty_result` bit.
+        # set `require_result` bit.
         new_handler = (result_to_handle_map["unit_test_alerter"], True)
         result_to_handle_map["unit_test_alerter"] = new_handler
 

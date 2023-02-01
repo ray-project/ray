@@ -2,7 +2,7 @@ import os
 import time
 from typing import Optional, List
 
-from ray_release.alerts.handle import handle_result, require_non_empty_result
+from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
@@ -378,7 +378,7 @@ def run_release_test(
     os.chdir(old_wd)
 
     if not pipeline_exception:
-        if require_non_empty_result(test) and fetch_result_exception:
+        if require_result(test) and fetch_result_exception:
             pipeline_exception = fetch_result_exception
         else:
             buildkite_group(":mag: Interpreting results")
