@@ -8,7 +8,6 @@ def handle_result(
     test: Test,
     result: Result,
 ) -> Optional[str]:
-
     last_update_diff = result.results.get("last_update_diff", float("inf"))
 
     test_name = test["legacy"]["test_name"]
