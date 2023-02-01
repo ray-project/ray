@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
 from ray.air import CheckpointConfig
+from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -54,7 +55,6 @@ from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils.node import _force_on_current_node
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
