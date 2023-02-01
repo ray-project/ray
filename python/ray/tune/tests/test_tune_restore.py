@@ -327,9 +327,15 @@ class TuneFailResumeGridTest(unittest.TestCase):
             fail_fast=True,
             config={
                 "test": tune.grid_search(
-                    [FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]),
+                    [FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]
+                ),
                 "test2": tune.grid_search(
-                    [FakeDataset("4"), FakeDataset("5"), FakeDataset("6"), FakeDataset("7")]
+                    [
+                        FakeDataset("4"),
+                        FakeDataset("5"),
+                        FakeDataset("6"),
+                        FakeDataset("7"),
+                    ]
                 ),
             },
             stop={"training_iteration": 2},
@@ -349,9 +355,15 @@ class TuneFailResumeGridTest(unittest.TestCase):
 
         config["config"] = {
             "test": tune.grid_search(
-                [FakeDataset("8"), FakeDataset("9"), FakeDataset("10")]),
+                [FakeDataset("8"), FakeDataset("9"), FakeDataset("10")]
+            ),
             "test2": tune.grid_search(
-                [FakeDataset("11"), FakeDataset("12"), FakeDataset("13"), FakeDataset("14")]
+                [
+                    FakeDataset("11"),
+                    FakeDataset("12"),
+                    FakeDataset("13"),
+                    FakeDataset("14"),
+                ]
             ),
         }
 

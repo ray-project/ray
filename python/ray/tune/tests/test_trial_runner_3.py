@@ -438,7 +438,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         config = {
             "param1": {
-                "param2": grid_search([FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]),
+                "param2": grid_search(
+                    [FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]
+                ),
             },
             "param4": sample_from(lambda: 1),
             "param5": sample_from(lambda spec: spec.config["param1"]["param2"]),
@@ -461,7 +463,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         restored_config = {
             "param1": {
-                "param2": grid_search([FakeDataset("4"), FakeDataset("5"), FakeDataset("6")]),
+                "param2": grid_search(
+                    [FakeDataset("4"), FakeDataset("5"), FakeDataset("6")]
+                ),
             },
             "param4": sample_from(lambda: 8),
             "param5": sample_from(lambda spec: spec["config"]["param1"]["param2"]),
