@@ -110,7 +110,7 @@ RUN echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf \
 RUN curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/startup.sh" \
 && sudo chmod +x /home/ray/startup.sh \
 && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/cluster-anywhere/master/docker/anywhere-tailscale/run_tests.sh" \
-&& sudo chmod +x /home/ray/run_tests.sh \
+&& sudo chmod +x /home/ray/run_tests.sh
 
 ENTRYPOINT ["/bin/bash", "/home/ray/startup.sh"]
 HEALTHCHECK --interval=300s --timeout=60s --start-period=300s \
