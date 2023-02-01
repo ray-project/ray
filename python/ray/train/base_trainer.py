@@ -492,7 +492,7 @@ class BaseTrainer(abc.ABC):
 
         if self.preprocessor:
             train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
-            if train_dataset and self.preprocessor.fit_status in (
+            if train_dataset and self.preprocessor.fit_status() in (
                 ray.data.Preprocessor.FitStatus.NOT_FITTED,
                 ray.data.Preprocessor.FitStatus.PARTIALLY_FITTED,
             ):
