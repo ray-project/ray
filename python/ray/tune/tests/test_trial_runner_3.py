@@ -32,6 +32,7 @@ from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.tests.tune_test_util import TrialResultObserver
+from ray.tune.tests.test_callbacks import StatefulCallback
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -401,6 +402,29 @@ class TrialRunnerTest3(unittest.TestCase):
         evaluated = [t.evaluated_params["test_variable"] for t in runner2.get_trials()]
         count = Counter(evaluated)
         assert all(v <= 3 for v in count.values())
+
+    def testCallbackSaveRestore(self):
+        """Check that experiment state save + restore handles stateful callbacks."""
+        ray.init(num_cpus=2)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            callbacks=[StatefulCallback()],
+            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
+        )
+        runner.add_trial(Trial("__fake", stub=True))
+        for i in range(3):
+            runner._callbacks.on_trial_result(
+                iteration=i, trials=None, trial=None, result=None
+            )
+        runner.checkpoint(force=True)
+        callback = StatefulCallback()
+        runner2 = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            callbacks=[callback],
+        )
+        assert callback.counter == 0
+        runner2.resume()
+        assert callback.counter == 3
 
     def testTrialErrorResumeFalse(self):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
