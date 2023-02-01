@@ -168,6 +168,7 @@ RayTask CreateTask(
                                  {},
                                  "",
                                  0,
+                                 TaskID::Nil(),
                                  runtime_env_info);
 
   if (!args.empty()) {
@@ -290,7 +291,9 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /* announce_infeasible_task= */
             [this](const RayTask &task) { announce_infeasible_task_calls_++; },
             local_task_manager_,
-            /*get_time=*/[this]() { return current_time_ms_; }) {}
+            /*get_time=*/[this]() { return current_time_ms_; }) {
+    RayConfig::instance().initialize("{\"scheduler_top_k_absolute\": 1}");
+  }
 
   void SetUp() {
     static rpc::GcsNodeInfo node_info;
