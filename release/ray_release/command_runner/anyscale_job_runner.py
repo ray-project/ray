@@ -82,7 +82,9 @@ class AnyscaleJobRunner(JobRunner):
         # Handled in run_command
         return
 
-    def _handle_command_output(self, job_status_code: int, error: str):
+    def _handle_command_output(
+        self, job_status_code: int, error: str, is_long_running: bool = False
+    ):
         if job_status_code == -2:
             raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
 
@@ -129,6 +131,10 @@ class AnyscaleJobRunner(JobRunner):
             raise JobNoLogsError("Could not obtain logs for the job.")
 
         if workload_status_code == TIMEOUT_RETURN_CODE:
+            if is_long_running:
+                # Expected - treat as success.
+                return
+
             raise TestCommandTimeout(
                 f"Command timed out after {workload_time_taken} seconds."
             )
@@ -215,7 +221,9 @@ class AnyscaleJobRunner(JobRunner):
         except AttributeError:
             error = None
 
-        self._handle_command_output(job_status_code, error)
+        self._handle_command_output(
+            job_status_code, error, is_long_running=is_long_running
+        )
 
         return time_taken
 
