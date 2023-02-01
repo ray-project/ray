@@ -162,7 +162,7 @@ If your Tune workload is instead configured with syncing to cloud, then the corr
 outputs are *NOT* synced to cloud and can only be found in the worker nodes that the corresponding trial happens.
 
 .. note::
-    This can get ugly when the trainable is moved across different nodes throughout its lifetime.
+    This can cause problems when the trainable is moved across different nodes throughout its lifetime.
     This can happen with some schedulers or with node failures.
     We may prioritize enabling this if there are enough user requests.
     If this impacts your workflow, consider commenting on
@@ -172,7 +172,7 @@ outputs are *NOT* synced to cloud and can only be found in the worker nodes that
 Leave us feedback on this feature
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 We know that logging and observability can be a huge performance boost for your workflow. Let us know what is your
-ideal way of interacting with logging that happens in trainables. To leave your thoughts, please comment on
+preferred way to interact with logging that happens in trainables. Leave you comments in
 [this ticket](https://github.com/ray-project/ray/issues/32142).
 
 .. _trainable-logging:
