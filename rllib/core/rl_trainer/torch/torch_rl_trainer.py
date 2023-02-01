@@ -8,7 +8,6 @@ from typing import (
     Hashable,
     Optional,
     Callable,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.core.rl_module.rl_module import (
@@ -16,10 +15,7 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
-)
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_trainer.rl_trainer import (
     RLTrainer,
     ParamOptimizerPairs,
@@ -28,6 +24,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     ParamDictType,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
+from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
@@ -37,11 +34,8 @@ from ray.rllib.utils.framework import try_import_torch
 torch, nn = try_import_torch()
 
 if torch:
-    from ray.air.config import ScalingConfig
     from ray.train.torch.train_loop_utils import _TorchAccelerator
 
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 logger = logging.getLogger(__name__)
 
@@ -53,31 +47,14 @@ class TorchRLTrainer(RLTrainer):
     def __init__(
         self,
         *,
-        module_spec: Optional[
-            Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
-        ] = None,
-        module: Optional[RLModule] = None,
-        optimizer_config: Mapping[str, Any],
-        distributed: bool = False,
-        scaling_config: Optional["ScalingConfig"] = None,
-        algorithm_config: Optional["AlgorithmConfig"] = None,
+        trainer_scaling_config: TrainerScalingConfig = TrainerScalingConfig(),
+        **kwargs,
     ):
-        super().__init__(
-            module_spec=module_spec,
-            module=module,
-            optimizer_config=optimizer_config,
-            distributed=distributed,
-            scaling_config=scaling_config,
-            algorithm_config=algorithm_config,
-        )
+        super().__init__(trainer_scaling_config=trainer_scaling_config, **kwargs)
 
-        # TODO (Kourosh): Scaling config is required for torch trainer to do proper DDP
-        # wraping setup but not so much required for tf. we need to
-        scaling_config = scaling_config or ScalingConfig()
-        self._world_size = scaling_config.num_workers or 1
-        self._use_gpu = scaling_config.use_gpu
+        # pick the stuff that we need from the scaling config
+        self._use_gpu = trainer_scaling_config.num_gpus_per_worker > 0
 
-        # These attributes are set in the `build` method.
         self._device = None
 
     @property
@@ -136,6 +113,12 @@ class TorchRLTrainer(RLTrainer):
         super().build()
 
     @override(RLTrainer)
+    def _make_module(self) -> MultiAgentRLModule:
+        module = super()._make_module()
+        self._map_module_to_device(module)
+        return module
+
+    @override(RLTrainer)
     def _make_distributed_module(self) -> MultiAgentRLModule:
         module = self._make_module()
 
@@ -146,11 +129,9 @@ class TorchRLTrainer(RLTrainer):
         # register them in the MultiAgentRLModule. We should find a better way to
         # handle this.
         if isinstance(module, torch.nn.Module):
-            module.to(self._device)
             module = TorchDDPRLModule(module)
         else:
             for key in module.keys():
-                module[key].to(self._device)
                 module.add_module(key, TorchDDPRLModule(module[key]), override=True)
 
         return module
@@ -210,3 +191,11 @@ class TorchRLTrainer(RLTrainer):
             self._module.add_module(
                 module_id, TorchDDPRLModule(self._module[module_id]), override=True
             )
+
+    def _map_module_to_device(self, module: MultiAgentRLModule) -> None:
+        """Moves the module to the correct device."""
+        if isinstance(module, torch.nn.Module):
+            module.to(self._device)
+        else:
+            for key in module.keys():
+                module[key].to(self._device)
