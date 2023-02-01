@@ -309,7 +309,7 @@ def test_task_stats(reset_usage_stats):
         pass
 
     with ray.init(
-        _system_config={"metrics_report_interval_ms": 10},
+        _system_config={"metrics_report_interval_ms": 1000},
     ) as ctx:
         gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
 
