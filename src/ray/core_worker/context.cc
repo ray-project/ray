@@ -161,7 +161,10 @@ WorkerContext::WorkerContext(WorkerType worker_type,
     GetThreadContext().SetCurrentTaskId(TaskID::ForDriverTask(job_id),
                                         /*attempt_number=*/0);
     // Driver runs in the main thread.
-    main_thread_or_actor_creation_task_id_ = TaskID::ForDriverTask(job_id);
+    {
+      absl::WriterMutexLock lock(&mutex_);
+      main_thread_or_actor_creation_task_id_ = TaskID::ForDriverTask(job_id);
+    }
   }
 }
 
