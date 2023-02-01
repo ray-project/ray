@@ -272,17 +272,16 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
   absl::WriterMutexLock lock(&mutex_);
   SetTaskDepth(task_spec.GetDepth());
+  if (CurrentThreadIsMain()) {
+    main_thread_or_actor_creation_task_id_ = task_spec.TaskId();
+  }
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
-    if (CurrentThreadIsMain()) {
-      main_thread_or_actor_creation_task_id_ = task_spec.TaskId();
-    }
   } else if (task_spec.IsActorCreationTask()) {
     if (!current_actor_id_.IsNil()) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
     }
-    main_thread_or_actor_creation_task_id_ = task_spec.TaskId();
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
