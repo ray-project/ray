@@ -135,7 +135,7 @@ class WorkerContext {
   /// The currently executing main thread's task id. It's the actor creation task id
   /// for actor, or the main thread's task id for normal tasks.
   /// Used merely for observability purposes to track task hierarchy.
-  TaskID main_thread_or_actor_creation_task_id;
+  TaskID main_thread_or_actor_creation_task_id_ GUARDED_BY(mutex_);
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
 
