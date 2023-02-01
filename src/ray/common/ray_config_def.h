@@ -196,8 +196,8 @@ RAY_CONFIG(float, scheduler_spread_threshold, 0.5)
 RAY_CONFIG(float, scheduler_top_k_fraction, 0.2);
 
 /// Used by the default hybrid policy only. The scheduler will randomly pick
-/// one node from the top k in the cluster to improve load balancing. Set this
-/// value to a positive integer to set k.
+/// one node from the top k in the cluster to improve load balancing. The
+/// scheduler guarantees k is at least equal to scheduler_top_k_absolute.
 RAY_CONFIG(int32_t, scheduler_top_k_absolute, 1);
 
 /// Whether to only report the usage of pinned copies of objects in the
