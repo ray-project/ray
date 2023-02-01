@@ -117,12 +117,10 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
         except Exception:
             _logger.warning(
-                "Databricks `getIdleTimeMillisSinceLastNotebookExecution` API "
-                "is unavailable, it is probably because that "
-                "your current Databricks Runtime version does not support API "
-                "`getIdleTimeMillisSinceLastNotebookExecution`, we cannot "
-                "automatically shut down Ray cluster when databricks notebook "
-                "is inactive, you need to manually detach databricks notebook "
+                "Failed to retrieve idle time since last notebook execution,"
+                "so that we cannot automatically shut down Ray cluster when "
+                "databricks notebook is inactive. "
+                "You need to manually detach databricks notebook "
                 "or call `ray.util.spark.shutdown_ray_cluster()` to shut down "
                 "Ray cluster on spark."
             )
@@ -132,7 +130,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             "The Ray cluster will be shut down automatically if you don't run "
             "commands on the databricks notebook for "
             f"{auto_shutdown_minutes} minutes. You can change the "
-            "automatically shutdown minutes by setting "
+            "automatic shutdown minutes by setting "
             f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES}' environment "
             "variable, setting it to 0 means that the Ray cluster keeps running "
             "until you manually call `ray.util.spark.shutdown_ray_cluster()` or "

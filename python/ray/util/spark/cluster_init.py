@@ -127,7 +127,8 @@ class RayClusterOnSpark:
                 # in this case, raise error directly.
                 if self.background_job_exception is not None:
                     raise RuntimeError(
-                        "Ray workers have exited."
+                        "Ray workers failed to start. You can check root "
+                        "cause from exception's `__cause__` attribute."
                     ) from self.background_job_exception
 
                 cur_alive_worker_count = (
