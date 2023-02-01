@@ -5,13 +5,34 @@ from ray.tune.impl.placeholder import inject_placeholders, resolve_placeholders
 from ray.tune.search.sample import Float, Integer
 
 
+class Dummy:
+    def __init__(self, value):
+        self.value = value
+
+
 class PlaceholderTest(unittest.TestCase):
-    def testGridSearch(self):
+    def testNotReplaced(self):
         config = {
             "param1": "ok",
             "param2": ["not ok", tune.grid_search(["ok", "not ok"])],
             "param3": {
-                "param4": tune.grid_search(["ok", "not ok"]),
+                "param4": tune.choice(["ok", "not ok"]),
+            },
+        }
+
+        replaced = {}
+        config = inject_placeholders(config, replaced)
+
+        # Primitive typed choices are not replaced.
+        self.assertEqual(config["param2"][1]["grid_search"], ["ok", "not ok"])
+        self.assertEqual(config["param3"]["param4"].categories, ["ok", "not ok"])
+
+    def testGridSearch(self):
+        config = {
+            "param1": "ok",
+            "param2": ["not ok", tune.grid_search(["ok", Dummy("not ok")])],
+            "param3": {
+                "param4": tune.grid_search([Dummy("ok"), "not ok"]),
             },
         }
 
@@ -33,9 +54,9 @@ class PlaceholderTest(unittest.TestCase):
     def testCategorical(self):
         config = {
             "param1": "ok",
-            "param2": ["not ok", tune.choice(["ok", "not ok"])],
+            "param2": ["not ok", tune.choice([Dummy("ok"), "not ok"])],
             "param3": {
-                "param4": tune.choice(["ok", "not ok"]),
+                "param4": tune.choice([Dummy("ok"), "not ok"]),
             },
         }
 
@@ -51,7 +72,7 @@ class PlaceholderTest(unittest.TestCase):
 
         resolve_placeholders(config, replaced)
 
-        self.assertEqual(config["param2"][1], "ok")
+        self.assertEqual(config["param2"][1].value, "ok")
         self.assertEqual(config["param3"]["param4"], "not ok")
 
     def testFunction(self):
@@ -87,10 +108,6 @@ class PlaceholderTest(unittest.TestCase):
         self.assertEqual(config["param5"]["param4"], "ok")
 
     def testRefValue(self):
-        class Dummy:
-            def __init__(self, value):
-                self.value = value
-
         config = {
             "param1": "ok",
             "param2": ["not ok", Dummy("ok")],
@@ -160,7 +177,7 @@ class PlaceholderTest(unittest.TestCase):
     def testPointToEval(self):
         config = {
             "param1": "ok",
-            "param2": ["not ok", tune.choice(["ok", "not ok"])],
+            "param2": ["not ok", tune.choice([Dummy("ok"), "not ok"])],
             "param3": {
                 "param4": tune.sample_from(lambda spec: spec["config"]["param1"]),
             },

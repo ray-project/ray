@@ -843,8 +843,6 @@ class TrialRunner:
                     trial_to_add.restore_path = None
             elif trial.status != Trial.TERMINATED and not resume_unfinished:
                 trial_to_add.status = Trial.TERMINATED
-            # Resumed trials already have resolved values.
-            # So skip placeholder resolution.
             self.add_trial(trial_to_add)
 
     def update_pending_trial_resources(
@@ -1498,7 +1496,6 @@ class TrialRunner:
                 time.sleep(1)
 
         if trial:
-            # New trial needs to have all the placeholders resolved.
             self.add_trial(trial)
             return True
 

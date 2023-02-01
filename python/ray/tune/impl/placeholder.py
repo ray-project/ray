@@ -61,6 +61,14 @@ class _RefResolver:
         return "ref_ph"
 
 
+def _is_primitive_type(x):
+    """Returns True if x is a primitive type.
+
+    Primitive types are int, float, str, bool, and None.
+    """
+    return isinstance(x, (int, float, str, bool)) or not x
+
+
 @DeveloperAPI
 def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dict:
     """Replaces reference objects contained by a config dict with placeholders.
@@ -81,6 +89,10 @@ def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dic
         The config with all references replaced.
     """
     if isinstance(config, dict) and "grid_search" in config and len(config) == 1:
+        if all([_is_primitive_type(c) for c in config["grid_search"]]):
+            # Doesn't require special handling for this grid_search.
+            return config
+
         # Special case for grid search spec.
         v = _CategoricalResolver(config["grid_search"])
         resolvers[prefix] = v
@@ -102,10 +114,14 @@ def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dic
             inject_placeholders(elem, resolvers, prefix + (i,))
             for i, elem in enumerate(config)
         )
-    elif isinstance(config, (int, float, str)) or config is None:
+    elif _is_primitive_type(config):
         # Primitive types.
         return config
     elif isinstance(config, Categorical):
+        if all([_is_primitive_type(c) for c in config.categories]):
+            # Doesn't require special handling for these Categorical choices.
+            return config
+
         # Categorical type.
         v = _CategoricalResolver(config.categories)
         resolvers[prefix] = v

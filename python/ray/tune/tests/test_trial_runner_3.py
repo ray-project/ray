@@ -430,11 +430,15 @@ class TrialRunnerTest3(unittest.TestCase):
         assert callback.counter == 3
 
     def testSearcherCorrectReferencesAfterRestore(self):
+        class FakeDataset:
+            def __init__(self, name):
+                self.name = name
+
         ray.init(num_cpus=8, local_mode=True)
 
         config = {
             "param1": {
-                "param2": grid_search([1, 2, 3]),
+                "param2": grid_search([FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]),
             },
             "param4": sample_from(lambda: 1),
             "param5": sample_from(lambda spec: spec.config["param1"]["param2"]),
@@ -451,13 +455,13 @@ class TrialRunnerTest3(unittest.TestCase):
             }
             experiments = [Experiment.from_json("test", experiment_spec)]
             search_alg.add_configurations(experiments)
-            return experiments, search_alg
+            return search_alg
 
-        experiments, searcher = create_searcher()
+        searcher = create_searcher()
 
         restored_config = {
             "param1": {
-                "param2": grid_search([4, 5, 6]),
+                "param2": grid_search([FakeDataset("4"), FakeDataset("5"), FakeDataset("6")]),
             },
             "param4": sample_from(lambda: 8),
             "param5": sample_from(lambda spec: spec["config"]["param1"]["param2"]),
@@ -480,9 +484,9 @@ class TrialRunnerTest3(unittest.TestCase):
         assert len(runner.get_trials()) == 3, [t.config for t in runner.get_trials()]
         for t in runner.get_trials():
             # Make sure that all the trials carry updated config values.
-            assert t.config["param1"]["param2"] in [4, 5, 6]
+            assert t.config["param1"]["param2"].name in ["4", "5", "6"]
             assert t.config["param4"] == 8
-            assert t.config["param5"] in [4, 5, 6]
+            assert t.config["param5"].name in ["4", "5", "6"]
 
     def testTrialErrorResumeFalse(self):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
