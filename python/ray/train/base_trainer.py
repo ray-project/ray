@@ -338,8 +338,9 @@ class BaseTrainer(abc.ABC):
         if is_non_local_path_uri(path):
             dir_contents = list_at_uri(path)
         else:
+            path = os.path.expanduser(path)
             dir_contents = [] if not os.path.exists(path) else os.listdir(path)
-        return bool(dir_contents) and _TRAINER_PKL in dir_contents
+        return dir_contents and _TRAINER_PKL in dir_contents
 
     def __repr__(self):
         # A dictionary that maps parameters to their default values.
