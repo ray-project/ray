@@ -681,9 +681,8 @@ class SyncerCallback(Callback):
 
     def _cleanup_trial_sync_processes(self):
         for trial_id in list(self._trial_sync_processes_to_remove):
-            sync_process = self._sync_processes[trial_id]
-            if not sync_process.is_running:
-                self._sync_processes.pop(trial_id, None)
+            sync_process = self._sync_processes.pop(trial_id, None)
+            if not sync_process or not sync_process.is_running:
                 self._trial_sync_processes_to_remove.remove(trial_id)
 
     def _should_sync(self, trial: "Trial"):
