@@ -39,7 +39,6 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
             timer = self.timers[str(c)]
             with timer:
                 ret = c(ret)
-            timer.push_units_processed(1)
         return ret
 
     def to_state(self):

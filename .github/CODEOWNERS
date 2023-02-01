@@ -10,6 +10,7 @@
 # Authors responsible for copy-editing of the documentation.
 # NOTE: Add @ray-project/ray-docs to all following docs subdirs.
 /doc/ @ray-project/ray-docs
+/doc/source/use-cases.rst @ericl @pcmoritz
 
 # ==== Ray core ====
 
@@ -32,6 +33,9 @@
 
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
+
+# GCS
+/src/ray/gcs/ @iycheng @scv119 @rkooo567 @ericl
 
 # Dependencies
 /python/setup.py @richardliaw @ericl @edoakes

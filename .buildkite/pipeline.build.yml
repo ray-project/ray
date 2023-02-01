@@ -573,6 +573,7 @@
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
     - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
     - bazel clean --expunge
+    - export WANDB_MODE=offline
     - ./ci/ci.sh build
 
 - label: ":octopus: Tune multinode tests"
@@ -598,6 +599,15 @@
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
 
+- label: ":hadoop: Ray AIR HDFS tests"
+  conditions: ["RAY_CI_ML_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - cat /tmp/hdfs_env
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_tag_filters=hdfs python/ray/air/...
 
 
 # Test to see if Train can be used without torch, tf, etc. installed
@@ -623,7 +633,7 @@
     - pip install -U typing-extensions
     - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat_py36 
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat_py36
       python/ray/tests/horovod/...
       python/ray/tests/lightgbm/...
       python/ray/tests/ml_py36_compat/...
@@ -648,8 +658,8 @@
       set -x;
       {
         python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py36_compat/... python/ray/tests/xgboost/... python/ray/tests/ray_lightning/... &&
-        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-needs_credentials python/ray/air/... &&
-        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-needs_credentials python/ray/train/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-needs_credentials,-hdfs python/ray/air/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-needs_credentials,-hdfs python/ray/train/... &&
         python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
       } > test_shard.txt
     - cat test_shard.txt

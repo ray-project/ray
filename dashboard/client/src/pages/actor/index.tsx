@@ -1,6 +1,7 @@
 import { makeStyles } from "@material-ui/core";
 import React from "react";
 import TitleCard from "../../components/TitleCard";
+import { MainNavPageInfo } from "../layout/mainNavContext";
 import ActorList from "./ActorList";
 
 const useStyles = makeStyles((theme) => ({
@@ -18,8 +19,15 @@ const Actors = () => {
 
   return (
     <div className={classes.root}>
+      <MainNavPageInfo
+        pageInfo={{
+          id: "actors",
+          title: "Actors",
+          path: "/new/actors",
+        }}
+      />
       <TitleCard title="ACTORS">
-        <ActorList />
+        <ActorList detailPathPrefix="" />
       </TitleCard>
     </div>
   );

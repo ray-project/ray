@@ -24,13 +24,17 @@ export enum TypeTaskType {
 export type Task = {
   task_id: string;
   name: string;
-  scheduling_state: TypeTaskStatus;
+  state: TypeTaskStatus;
   job_id: string;
   node_id: string;
   actor_id: string;
+  placement_group_id: string | null;
   type: TypeTaskType;
   func_or_class_name: string;
   language: string;
   required_resources: { [key: string]: number };
   runtime_env_info: string;
+  events: { [key: string]: string }[];
+  start_time_ms: number | null;
+  end_time_ms: number | null;
 };

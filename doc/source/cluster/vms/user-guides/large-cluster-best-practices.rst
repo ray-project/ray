@@ -56,10 +56,13 @@ architecture means that the head node will have extra stress due to GCS.
   resource on the head node is outbound bandwidth. For large clusters (see the
   scalability envelope), we recommend using machines networking characteristics
   at least as good as an r5dn.16xlarge on AWS EC2.
-* Set ``resources: {"CPU": 0}`` on the head node. (For Ray clusters deployed using Helm,
-  set ``rayResources: {"CPU": 0}``.) Due to the heavy networking
-  load (and the GCS and dashboard processes), we recommend setting the number of
-  CPUs to 0 on the head node to avoid scheduling additional tasks on it.
+* Set ``resources: {"CPU": 0}`` on the head node.
+  (For Ray clusters deployed using KubeRay,
+  set ``rayStartParams: {"num-cpus": "0"}``.
+  See the :ref:`configuration guide for KubeRay clusters <kuberay-num-cpus>`.)
+  Due to the heavy networking load (and the GCS and dashboard processes), we
+  recommend setting the number of CPUs to 0 on the head node to avoid
+  scheduling additional tasks on it.
 
 Configuring the autoscaler
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -94,8 +97,8 @@ General recommendations with AWS instance types:
 
 * The latest gen GPU is almost always the best bang for your buck (p3 > p2, g4
   > g3), for most well designed applications the performance outweighs the
-  price (the instance price may be higher, but you’ll use the instance for less
-  time.
+  price. (The instance price may be higher, but you use the instance for less
+  time.)
 * You may want to consider using older instances if you’re doing dev work and
   won’t actually fully utilize the GPUs though.
 * If you’re doing training (ML or RL), you should use a P instance. If you’re

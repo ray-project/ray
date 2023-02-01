@@ -565,7 +565,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
-  task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id);
+  task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id, addr.worker_id);
   client.PushNormalTask(
       std::move(request),
       [this,
@@ -652,13 +652,16 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
   if (get_task_failure_cause_reply_status.ok()) {
     RAY_LOG(DEBUG) << "Task failure cause for task " << task_id << ": "
                    << ray::gcs::RayErrorInfoToString(
-                          get_task_failure_cause_reply.failure_cause());
+                          get_task_failure_cause_reply.failure_cause())
+                   << " fail immedediately: "
+                   << get_task_failure_cause_reply.fail_task_immediately();
     if (get_task_failure_cause_reply.has_failure_cause()) {
       task_error_type = get_task_failure_cause_reply.failure_cause().error_type();
       error_info = std::make_unique<rpc::RayErrorInfo>(
           get_task_failure_cause_reply.failure_cause());
       // TODO(clarng): track and append task retry history to the error message.
     }
+    fail_immediately = get_task_failure_cause_reply.fail_task_immediately();
   } else {
     RAY_LOG(DEBUG) << "Failed to fetch task result with status "
                    << get_task_failure_cause_reply_status.ToString()

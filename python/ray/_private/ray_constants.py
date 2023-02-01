@@ -254,6 +254,8 @@ LOG_PREFIX_INFO_MESSAGE = ":info_message:"
 LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 # Task names are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_TASK_NAME = ":task_name:"
+# Job ids are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_JOB_ID = ":job_id:"
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
@@ -353,6 +355,8 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
+# Please keep this in sync with the definition kRayInternalNamespacePrefix
+# in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 
 

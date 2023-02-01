@@ -145,7 +145,7 @@ def _update_env_seed_if_necessary(
     computed_seed: int = worker_idx * max_num_envs_per_workers + vector_idx + seed
 
     # Gymnasium.env.
-    # This will silently fail for most OpenAI gyms
+    # This will silently fail for most Farama-foundation gymnasium environments.
     # (they do nothing and return None per default)
     if not hasattr(env, "reset"):
         if log_once("env_has_no_reset_method"):
@@ -520,6 +520,9 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             and not tf1.executing_eagerly()
         ):
             tf1.enable_eager_execution()
+
+        if self.config.log_level:
+            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
 
         if self.worker_index > 1:
             disable_log_once_globally()  # only need 1 worker to log

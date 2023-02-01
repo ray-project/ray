@@ -7,9 +7,15 @@ import { Task } from "../../type/task";
 import { useStateApiList } from "./hook/useStateApi";
 
 /**
- * Represent the embedable actors page.
+ * Represent the embedable tasks page.
  */
-const TaskList = ({ jobId = null }: { jobId?: string | null }) => {
+const TaskList = ({
+  jobId = null,
+  actorId = null,
+}: {
+  jobId?: string | null;
+  actorId?: string | null;
+}) => {
   const [timeStamp] = useState(dayjs());
   const data: Task[] | undefined = useStateApiList("useTasks", getTasks);
   const tasks = data ? data : [];
@@ -21,7 +27,7 @@ const TaskList = ({ jobId = null }: { jobId?: string | null }) => {
           Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
         </Grid>
       </Grid>
-      <TaskTable tasks={tasks} jobId={jobId} />
+      <TaskTable tasks={tasks} jobId={jobId} actorId={actorId} />
     </div>
   );
 };

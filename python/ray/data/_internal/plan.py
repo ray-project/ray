@@ -29,6 +29,7 @@ from ray.data._internal.compute import (
     is_task_compute,
 )
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block
@@ -43,6 +44,30 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
 logger = DatasetLogger(__name__)
+
+
+def capfirst(s: str):
+    """Capitalize the first letter of a string
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+       Capitalized string
+    """
+    return s[0].upper() + s[1:]
+
+
+def capitalize(s: str):
+    """Capitalize a string, removing '_' and keeping camelcase.
+
+    Args:
+        s: String to capitalize
+
+    Returns:
+        Capitalized string with no underscores.
+    """
+    return "".join(capfirst(x) for x in s.split("_"))
 
 
 class Stage:
@@ -157,7 +182,7 @@ class ExecutionPlan:
             # Get string representation of each stage in reverse order.
             for stage in self._stages_after_snapshot[::-1]:
                 # Get name of each stage in camel case.
-                stage_name = stage.name.title().replace("_", "")
+                stage_name = capitalize(stage.name)
                 if num_stages == 0:
                     plan_str += f"{stage_name}\n"
                 else:
@@ -224,6 +249,14 @@ class ExecutionPlan:
         copy = self.copy()
         copy._stages_after_snapshot.append(stage)
         return copy
+
+    def link_logical_plan(self, logical_plan):
+        """Link the logical plan into this execution plan.
+
+        This is used for triggering execution for optimizer code path in this legacy
+        execution plan.
+        """
+        self._logical_plan = logical_plan
 
     def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.
@@ -399,7 +432,12 @@ class ExecutionPlan:
         """
         if self._stages_after_snapshot:
             return None
-        # Snapshot is now guaranteed to be the output of the final stage or None.
+        elif self._in_blocks is not None and self._snapshot_blocks is None:
+            # If the plan only has input blocks, we execute it, so snapshot has output.
+            # This applies to newly created dataset. For example, initial dataset from
+            # read, and output datasets of Dataset.split().
+            self.execute()
+        # Snapshot is now guaranteed to be the final block or None.
         return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
 
     def _get_num_rows_from_blocks_metadata(self, blocks: BlockList) -> Optional[int]:
@@ -436,12 +474,11 @@ class ExecutionPlan:
             )
 
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
-        from ray.data._internal.execution.interfaces import ExecutionOptions
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_block_iterator,
         )
 
-        executor = StreamingExecutor(ExecutionOptions())
+        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,
@@ -485,19 +522,13 @@ class ExecutionPlan:
                 "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
             )
         if not self.has_computed_output():
-            # Read stage is handled with the legacy execution impl for now.
-            if (
-                context.new_execution_backend
-                and not self.is_read_stage_equivalent()
-                and self._stages_after_snapshot
-            ):
+            if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
-                from ray.data._internal.execution.interfaces import ExecutionOptions
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )
 
-                executor = BulkExecutor(ExecutionOptions())
+                executor = BulkExecutor(copy.deepcopy(context.execution_options))
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
@@ -687,6 +718,29 @@ class ExecutionPlan:
             and not self._snapshot_blocks.is_cleared()
         )
 
+    def _run_with_new_execution_backend(self) -> bool:
+        """Whether this plan should run with new backend."""
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
+        # The read-equivalent stage is handled in the following way:
+        # - Read only: handle with legacy backend
+        # - Read->randomize_block_order: handle with new backend
+        # Note that both are considered read equivalent, hence this extra check.
+        context = DatasetContext.get_current()
+        trailing_randomize_block_order_stage = (
+            self._stages_after_snapshot
+            and len(self._stages_after_snapshot) == 1
+            and isinstance(self._stages_after_snapshot[0], RandomizeBlocksStage)
+        )
+        return (
+            context.new_execution_backend
+            and (
+                not self.is_read_stage_equivalent()
+                or trailing_randomize_block_order_stage
+            )
+            and self._stages_after_snapshot
+        )
+
 
 def _pack_args(
     self_fn_args: Iterable[Any],
@@ -851,6 +905,7 @@ class OneToOneStage(Stage):
 
         def block_fn(
             blocks: Iterable[Block],
+            ctx: TaskContext,
             fn: UDF,
             *fn_args,
             **fn_kwargs,
@@ -868,8 +923,8 @@ class OneToOneStage(Stage):
             prev_fn_args = (
                 prev_fn_args if prev_fn_ is None else (prev_fn_,) + prev_fn_args
             )
-            blocks = block_fn1(blocks, *prev_fn_args, **prev_fn_kwargs)
-            return block_fn2(blocks, *self_fn_args, **self_fn_kwargs)
+            blocks = block_fn1(blocks, ctx, *prev_fn_args, **prev_fn_kwargs)
+            return block_fn2(blocks, ctx, *self_fn_args, **self_fn_kwargs)
 
         return OneToOneStage(
             name,
@@ -962,19 +1017,20 @@ class AllToAllStage(Stage):
         prev_block_fn = prev.block_fn
         if self.block_udf is None:
 
-            def block_udf(blocks: Iterable[Block]) -> Iterable[Block]:
-                yield from prev_block_fn(blocks, *prev_fn_args, **prev_fn_kwargs)
+            def block_udf(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+                yield from prev_block_fn(blocks, ctx, *prev_fn_args, **prev_fn_kwargs)
 
         else:
             self_block_udf = self.block_udf
 
-            def block_udf(blocks: Iterable[Block]) -> Iterable[Block]:
+            def block_udf(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
                 blocks = prev_block_fn(
                     blocks,
+                    ctx,
                     *prev_fn_args,
                     **prev_fn_kwargs,
                 )
-                yield from self_block_udf(blocks)
+                yield from self_block_udf(blocks, ctx)
 
         return AllToAllStage(
             name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
@@ -1050,7 +1106,9 @@ def _rewrite_read_stage(
     )
 
     @_adapt_for_multiple_blocks
-    def block_fn(read_fn: Callable[[], Iterator[Block]]) -> Iterator[Block]:
+    def block_fn(
+        read_fn: Callable[[], Iterator[Block]], ctx: TaskContext
+    ) -> Iterator[Block]:
         for block in read_fn():
             yield block
 
@@ -1169,8 +1227,8 @@ def _adapt_for_multiple_blocks(
     fn: Callable[..., Iterable[Block]],
 ) -> Callable[..., Iterable[Block]]:
     @functools.wraps(fn)
-    def wrapper(blocks: Iterable[Block], *args, **kwargs):
+    def wrapper(blocks: Iterable[Block], ctx: TaskContext, *args, **kwargs):
         for block in blocks:
-            yield from fn(block, *args, **kwargs)
+            yield from fn(block, ctx, *args, **kwargs)
 
     return wrapper
