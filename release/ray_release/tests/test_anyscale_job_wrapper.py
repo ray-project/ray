@@ -9,10 +9,11 @@ from ray_release.command_runner._anyscale_job_wrapper import (
 )
 
 s3_kwargs = dict(
-            results_s3_uri=None,
-            metrics_s3_uri=None,
-            output_s3_uri=None,
+    results_s3_uri=None,
+    metrics_s3_uri=None,
+    output_s3_uri=None,
 )
+
 
 def test_run_bash_command_success():
     assert run_bash_command("exit 0", 1000) == 0
@@ -26,14 +27,14 @@ def test_run_bash_command_timeout():
     assert run_bash_command("sleep 10", 1) == TIMEOUT_RETURN_CODE
 
 
-def _check_output_json(expected_return_code, prepare_return_codes=[]):
+def _check_output_json(expected_return_code, prepare_return_codes=None):
     with open(OUTPUT_JSON_FILENAME, "r") as fp:
         output = json.load(fp)
     assert output["return_code"] == expected_return_code
-    assert output["prepare_return_codes"] == prepare_return_codes
-    assert output["uploaded_results"] == False
-    assert output["collected_metrics"] == False
-    assert output["uploaded_metrics"] == False
+    assert output["prepare_return_codes"] == (prepare_return_codes or [])
+    assert output["uploaded_results"] is False
+    assert output["collected_metrics"] is False
+    assert output["uploaded_metrics"] is False
 
 
 def test_prepare_commands_validation(tmpdir):
