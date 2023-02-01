@@ -297,7 +297,7 @@ class DataParallelTrainer(BaseTrainer):
         Args:
             train_loop_per_worker: Optionally re-specified train loop function.
                 This should be used to re-specify a function that is not
-                restorable in a new Ray cluster (e.g. it holds onto outdated
+                restorable in a new Ray cluster (e.g., it holds onto outdated
                 object references). This should be the same training loop
                 that was passed to the original trainer constructor.
             train_loop_config: Optionally re-specified train config.
