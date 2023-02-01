@@ -157,6 +157,33 @@ class PlaceholderTest(unittest.TestCase):
         self.assertTrue(isinstance(config["param2"], Integer))
         self.assertTrue(isinstance(config["param3"], Float))
 
+    def testPointToEval(self):
+        config = {
+            "param1": "ok",
+            "param2": ["not ok", tune.choice(["ok", "not ok"])],
+            "param3": {
+                "param4": tune.sample_from(lambda spec: spec["config"]["param1"]),
+            },
+        }
+
+        replaced = {}
+        config = inject_placeholders(config, replaced)
+
+        # Normal params are not replaced.
+        self.assertEqual(config["param2"][1].categories, ["cat_0", "cat_1"])
+        self.assertEqual(config["param3"]["param4"], "fn_ph")
+
+        # Now, say we manually resolved the placeholders based on
+        # points_to_evaluate.
+        config["param2"][1] = "not_ok"
+        config["param3"]["param4"] = "ok"
+
+        resolve_placeholders(config, replaced)
+
+        # Params stays the same.
+        self.assertEqual(config["param2"][1], "not_ok")
+        self.assertEqual(config["param3"]["param4"], "ok")
+
 
 if __name__ == "__main__":
     import pytest

@@ -12,6 +12,11 @@ class _CategoricalResolver:
         self._choices = choices
 
     def resolve(self, placeholder: str) -> Any:
+        if type(placeholder) != str or not placeholder.startswith("cat_"):
+            # Not a categorical placeholder value.
+            # This value is likely from points_to_evaluate.
+            # Simply return it unchanged.
+            return placeholder
         ca, i = placeholder.split("_")
         assert ca == "cat", "Categorical placeholder should start with cat_"
         return self._choices[int(i)]
@@ -26,12 +31,17 @@ class _FunctionResolver:
     def __init__(self, fn):
         self._fn = fn
 
-    def resolve(self, config):
+    def resolve(self, placeholder: str, config):
         """Some functions take a resolved spec dict as input.
 
         Note: Function placeholders are independently sampled during
         resolution. Therefore their random states are not restored.
         """
+        if placeholder != "fn_ph":
+            # Not a placeholder value.
+            # This value is likely from points_to_evaluate.
+            # Simply return it unchanged.
+            return placeholder
         return self._fn.sample(config=config)
 
     def get_placeholder(self) -> str:
@@ -132,8 +142,8 @@ def resolve_placeholders(config: Any, replaced: Dict):
             sampled = _get_value(config, path)
             resolved = resolver.resolve(sampled)
         elif isinstance(resolver, _FunctionResolver):
-            # Function domain expects the full spec dict.
-            resolved = resolver.resolve(config)
+            sampled = _get_value(config, path)
+            resolved = resolver.resolve(sampled, config)
         elif isinstance(resolver, _RefResolver):
             resolved = resolver.resolve()
 

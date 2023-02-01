@@ -104,6 +104,9 @@ class TunerInternal:
 
         self._missing_params_error_message = None
 
+        self._param_space = param_space or {}
+        self._process_scaling_config()
+
         # Restore from Tuner checkpoint.
         if restore_path:
             self._restore_from_path_or_uri(
@@ -127,9 +130,6 @@ class TunerInternal:
         )
 
         self._experiment_analysis = None
-
-        self._param_space = param_space or {}
-        self._process_scaling_config()
 
         # This needs to happen before `tune.run()` is kicked in.
         # This is because currently tune does not exit gracefully if

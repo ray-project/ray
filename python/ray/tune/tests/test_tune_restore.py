@@ -350,7 +350,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             resume=True,
             **config,
         )
-        assert len(analysis.trials) == 9
+        assert len(analysis.trials) == 12
         for t in analysis.trials:
             # Make sure that test and test2 are updated.
             assert t.config["test"] in [8, 9, 10]

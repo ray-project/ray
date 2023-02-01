@@ -307,7 +307,14 @@ class Trial:
 
         self._setup_default_resource = _setup_default_resource
         self._resources = resources
-        self._placement_group_factory = placement_group_factory
+        self._default_placement_group_factory = placement_group_factory
+        # Will be created in create_placement_group_factory().
+        self.placement_group_factory = None
+        if not self._setup_default_resource or not config:
+            # For convenience. If we do not have to resolve the config,
+            # or look at default resources from trainables, we can simply
+            # create the placement group factory here immediately.
+            self.create_placement_group_factory()
 
         self.log_to_file = log_to_file
         # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
@@ -398,16 +405,22 @@ class Trial:
         self._state_json = None
         self._state_valid = False
 
-    # TODO(jungong): maybe we should implicitly call this by making
-    # self.placement_group_factory into a getter.
     def create_placement_group_factory(self):
         """Compute placement group factor if needed.
 
         Note: this must be called after all the placeholders in
         self.config are resolved.
         """
+        if self.placement_group_factory:
+            # Already created. Do nothing.
+            return
+
         trainable_cls = self.get_trainable_cls()
         if not trainable_cls or not self._setup_default_resource:
+            # Create placement group factory using default resources.
+            self.placement_group_factory = _to_pg_factory(
+                self._resources, self._default_placement_group_factory
+            )
             return
 
         default_resources = trainable_cls.default_resource_request(self.config)
@@ -415,7 +428,7 @@ class Trial:
         # If Trainable returns resources, do not allow manual override via
         # `resources_per_trial` by the user.
         if default_resources:
-            if self._resources or self._placement_group_factory:
+            if self._resources or self._default_placement_group_factory:
                 raise ValueError(
                     "Resources for {} have been automatically set to {} "
                     "by its `default_resource_request()` method. Please "
@@ -425,14 +438,14 @@ class Trial:
                 )
 
             if isinstance(default_resources, PlacementGroupFactory):
-                self._placement_group_factory = default_resources
+                self._default_placement_group_factory = default_resources
                 self._resources = None
             else:
-                self._placement_group_factory = None
+                self._default_placement_group_factory = None
                 self._resources = default_resources
 
         self.placement_group_factory = _to_pg_factory(
-            self._resources, self._placement_group_factory
+            self._resources, self._default_placement_group_factory
         )
 
     def _get_default_result_or_future(self) -> Optional[dict]:
