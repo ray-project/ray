@@ -26,7 +26,7 @@ from ray_release.util import get_anyscale_sdk, generate_tmp_s3_path, join_s3_pat
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
-TIMEOUT_RETURN_CODE = -1
+TIMEOUT_RETURN_CODE = 124
 
 
 class AnyscaleJobRunner(JobRunner):
