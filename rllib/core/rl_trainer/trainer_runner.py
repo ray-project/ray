@@ -89,6 +89,7 @@ class TrainerRunner:
                 train_cls=rl_trainer_class,
                 train_cls_kwargs=rl_trainer_spec.get_params_dict(),
             )
+            self._backend_executor = backend_executor
 
             self._workers = [w.actor for w in backend_executor.worker_group.workers]
 
@@ -255,3 +256,12 @@ class TrainerRunner:
             for worker in self._workers:
                 refs.append(worker.set_state.remote(state))
             ray.get(refs)
+
+    def shutdown(self):
+        """Shuts down the TrainerRunner."""
+        if not self._is_local:
+            self._backend_executor.shutdown()
+
+    def __del__(self):
+        self.shutdown()
+        super().__del__()
