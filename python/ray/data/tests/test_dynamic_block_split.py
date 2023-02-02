@@ -45,7 +45,7 @@ class RandomBytesReader(Reader):
         ]
 
 
-def test_disable_in_ray_client(ray_start_cluster_enabled):
+def test_enable_in_ray_client(ray_start_cluster_enabled):
     cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4)
     cluster.head_node._ray_params.ray_client_server_port = "10004"
@@ -58,9 +58,9 @@ def test_disable_in_ray_client(ray_start_cluster_enabled):
 
     assert DatasetContext.get_current().block_splitting_enabled
 
-    # Verify Ray client disabling dynamic block splitting.
+    # Verify Ray client also has dynamic block splitting enabled.
     ray.init(address)
-    assert not DatasetContext.get_current().block_splitting_enabled
+    assert DatasetContext.get_current().block_splitting_enabled
 
 
 @pytest.mark.parametrize(
@@ -173,6 +173,31 @@ def test_dataset_pipeline(
 
     dsp = ds.repeat().map_batches(lambda x: x)
     assert len(dsp.take(5)) == 5
+
+
+def test_filter(
+    ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
+):
+    # Test 10 blocks from 1 task, each block is 1024 bytes.
+    num_blocks = 10
+    block_size = 1024
+
+    ds = ray.data.read_datasource(
+        RandomBytesDatasource(),
+        parallelism=1,
+        num_blocks=num_blocks,
+        block_size=block_size,
+    )
+
+    ds = ds.filter(lambda _: True)
+    ds.fully_executed()
+    assert ds.count() == num_blocks
+    assert ds.num_blocks() == num_blocks
+
+    ds = ds.filter(lambda _: False)
+    ds.fully_executed()
+    assert ds.count() == 0
+    assert ds.num_blocks() == num_blocks
 
 
 def test_lazy_block_list(

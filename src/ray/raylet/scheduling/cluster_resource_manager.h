@@ -34,6 +34,9 @@ namespace raylet {
 class ClusterTaskManagerTest;
 class SchedulingPolicyTest;
 }  // namespace raylet
+namespace raylet_scheduling_policy {
+class HybridSchedulingPolicyTest;
+}
 namespace gcs {
 class GcsActorSchedulerTest;
 }  // namespace gcs
@@ -168,6 +171,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest,
@@ -184,6 +188,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
 
   friend class raylet::SchedulingPolicyTest;
+  friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;
 };
 
 }  // end namespace ray

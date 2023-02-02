@@ -5,5 +5,5 @@ class RayOnSparkStartHook:
     def on_ray_dashboard_created(self, port):
         pass
 
-    def on_spark_background_job_created(self, job_group):
+    def on_cluster_created(self, ray_cluster_handler):
         pass

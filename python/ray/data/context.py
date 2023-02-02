@@ -1,10 +1,12 @@
 import os
 import threading
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-import ray
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import ExecutionOptions
 
 # The context singleton on this process.
 _default_context: "Optional[DatasetContext]" = None
@@ -68,7 +70,7 @@ DEFAULT_USE_POLARS = False
 
 # Whether to use the new executor backend.
 DEFAULT_NEW_EXECUTION_BACKEND = bool(
-    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "0"))
+    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "1"))
 )
 
 # Whether to use the streaming executor. This only has an effect if the new execution
@@ -96,6 +98,11 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 # Whether to automatically print Dataset stats after execution.
 # If disabled, users can still manually print stats with Dataset.stats().
 DEFAULT_AUTO_LOG_STATS = False
+
+# Whether to enable optimizer.
+DEFAULT_OPTIMIZER_ENABLED = bool(
+    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_OPTIMIZER", "0"))
+)
 
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
@@ -139,6 +146,8 @@ class DatasetContext:
         enable_tensor_extension_casting: bool,
         enable_auto_log_stats: bool,
         trace_allocations: bool,
+        optimizer_enabled: bool,
+        execution_options: "ExecutionOptions",
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -165,6 +174,9 @@ class DatasetContext:
         self.enable_tensor_extension_casting = enable_tensor_extension_casting
         self.enable_auto_log_stats = enable_auto_log_stats
         self.trace_allocations = trace_allocations
+        self.optimizer_enabled = optimizer_enabled
+        # TODO: expose execution options in Dataset public APIs.
+        self.execution_options = execution_options
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -173,6 +185,8 @@ class DatasetContext:
         If the context has not yet been created in this process, it will be
         initialized with default settings.
         """
+        from ray.data._internal.execution.interfaces import ExecutionOptions
+
         global _default_context
 
         with _context_lock:
@@ -206,11 +220,9 @@ class DatasetContext:
                     ),
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
+                    optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
+                    execution_options=ExecutionOptions(),
                 )
-
-            # Check if using Ray client and disable dynamic block splitting.
-            if ray.util.client.ray.is_connected():
-                _default_context.block_splitting_enabled = False
 
             return _default_context
 

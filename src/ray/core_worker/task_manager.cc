@@ -548,7 +548,8 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
-                 << rpc::ErrorType_Name(error_type);
+                 << rpc::ErrorType_Name(error_type) << " Fail immediately? "
+                 << fail_immediately;
   bool will_retry = false;
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(
@@ -783,7 +784,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
 }
 
 void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
-                                              const NodeID &node_id) {
+                                              const NodeID &node_id,
+                                              const WorkerID &worker_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
@@ -796,7 +798,8 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
                         it->second.spec,
                         rpc::TaskStatus::SUBMITTED_TO_WORKER,
                         /* include_task_info */ false,
-                        node_id);
+                        node_id,
+                        worker_id);
 }
 
 void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
@@ -840,6 +843,8 @@ rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
   rpc::TaskType type;
   if (task_spec.IsNormalTask()) {
     type = rpc::TaskType::NORMAL_TASK;
+  } else if (task_spec.IsDriverTask()) {
+    type = rpc::TaskType::DRIVER_TASK;
   } else if (task_spec.IsActorCreationTask()) {
     type = rpc::TaskType::ACTOR_CREATION_TASK;
     task_info.set_actor_id(task_spec.ActorCreationId().Binary());
@@ -857,11 +862,20 @@ rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
   task_info.set_job_id(task_spec.JobId().Binary());
 
   task_info.set_task_id(task_spec.TaskId().Binary());
-  task_info.set_parent_task_id(task_spec.ParentTaskId().Binary());
+  // NOTE: we set the parent task id of a task to be submitter's task id, where
+  // the submitter depends on the owner coreworker's:
+  // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
+  // - if the owner coreworker runs an actor, the submitter's task id will be the actor's
+  // creation task id.
+  task_info.set_parent_task_id(task_spec.SubmitterTaskId().Binary());
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info.mutable_required_resources()->insert(resources_map.begin(),
                                                  resources_map.end());
   task_info.mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+  const auto &pg_id = task_spec.PlacementGroupBundleId().first;
+  if (!pg_id.IsNil()) {
+    task_info.set_placement_group_id(pg_id.Binary());
+  }
 
   return task_info;
 }
@@ -921,7 +935,8 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
                                         const TaskSpecification &spec,
                                         rpc::TaskStatus status,
                                         bool include_task_info,
-                                        absl::optional<NodeID> node_id) {
+                                        absl::optional<NodeID> node_id,
+                                        absl::optional<WorkerID> worker_id) {
   if (!task_event_buffer_.Enabled()) {
     return;
   }
@@ -941,6 +956,12 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
     RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "Node ID should be included when task status changes to SUBMITTED_TO_WORKER.";
     state_updates->set_node_id(node_id->Binary());
+  }
+  if (worker_id.has_value()) {
+    RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+        << "Worker ID should be included when task status changes to "
+           "SUBMITTED_TO_WORKER.";
+    state_updates->set_worker_id(worker_id->Binary());
   }
   gcs::FillTaskStatusUpdateTime(status, absl::GetCurrentTimeNanos(), state_updates);
   task_event_buffer_.AddTaskEvent(std::move(task_event));
