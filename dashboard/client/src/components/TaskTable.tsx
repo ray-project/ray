@@ -347,7 +347,7 @@ const TaskTableActions = ({ task, newIA = false }: TaskTableActionsProps) => {
     setShowErrorDetailsDialog(true);
   };
 
-  const executeEvent = task.profiling_data?.events.find(
+  const executeEvent = task.profiling_data?.events?.find(
     ({ event_name }) => event_name === "task:execute",
   );
   const errorDetails =
