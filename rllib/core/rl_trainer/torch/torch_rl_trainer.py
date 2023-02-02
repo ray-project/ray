@@ -117,13 +117,14 @@ class TorchRLTrainer(RLTrainer):
         # TODO (Kourosh): This can result in missing modules if the user does not
         # register them in the MultiAgentRLModule. We should find a better way to
         # handle this.
-        if isinstance(self._module, torch.nn.Module):
-            self._module = TorchDDPRLModule(self._module)
-        else:
-            for key in self._module.keys():
-                self._module.add_module(
-                    key, TorchDDPRLModule(self._module[key]), override=True
-                )
+        if self._distributed:
+            if isinstance(self._module, torch.nn.Module):
+                self._module = TorchDDPRLModule(self._module)
+            else:
+                for key in self._module.keys():
+                    self._module.add_module(
+                        key, TorchDDPRLModule(self._module[key]), override=True
+                    )
 
     @override(RLTrainer)
     def _make_module(self) -> MultiAgentRLModule:
