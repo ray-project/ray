@@ -470,7 +470,7 @@ class TrialRunnerTest3(unittest.TestCase):
             "param4": sample_from(lambda: 8),
             "param5": sample_from(lambda spec: spec["config"]["param1"]["param2"]),
         }
-        replaced_resolvers = {}
+        replaced_resolvers = create_resolvers_map()
         restored_config = inject_placeholders(restored_config, replaced_resolvers)
 
         runner = TrialRunner(
