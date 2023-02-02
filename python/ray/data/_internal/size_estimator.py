@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List
 
 import ray
 from ray import cloudpickle
@@ -26,6 +26,18 @@ class SizeEstimator:
                 self._running_mean.add(self._real_size(item), weight=10)
         elif self._count % 100 == 0:
             self._running_mean.add(self._real_size(item), weight=100)
+
+    def add_block(self, block: List[Any]) -> None:
+        self._count += len(block)
+        if self._count < 10:
+            for item in block[: 10 - self._count]:
+                self._running_mean.add(self._real_size(item), weight=1)
+        elif self._count < 100:
+            for item in block[self._count % 10 : 100 - self._count : 10]:
+                self._running_mean.add(self._real_size(item), weight=10)
+        elif (len(block) + (self._count % 100)) // 100 > 1:
+            for item in block[self._count % 100 :: 100]:
+                self._running_mean.add(self._real_size(item), weight=100)
 
     def size_bytes(self) -> int:
         return int(self._running_mean.mean * self._count)

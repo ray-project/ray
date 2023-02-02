@@ -1,3 +1,4 @@
+import functools
 from typing import Any
 
 import ray
@@ -20,7 +21,15 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
             "retry_exceptions": True,
             "scheduling_strategy": ctx.scheduling_strategy,
         }
+
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            # Wrapper that sets the DatasetContext that existed on the driver/task
+            # submitter.
+            DatasetContext._set_current(ctx)
+            return fn(*args, **kwargs)
+
         CACHED_FUNCTIONS[fn] = ray.remote(
             **{**default_ray_remote_args, **ray_remote_args}
-        )(fn)
+        )(wrapper)
     return CACHED_FUNCTIONS[fn]
