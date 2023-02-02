@@ -366,10 +366,10 @@ const TaskTableActions = ({ task, newIA = false }: TaskTableActionsProps) => {
                 newIA
                   ? `/new/logs/${encodeURIComponent(
                       ipLogMap[task.profiling_data.node_ip_address],
-                    )}?fileName=worker-${task.worker_id}-${task.job_id}`
+                    )}?fileName=worker-${task.worker_id}`
                   : `/log/${encodeURIComponent(
                       ipLogMap[task.profiling_data.node_ip_address],
-                    )}?fileName=worker-${task.worker_id}-${task.job_id}`
+                    )}?fileName=worker-${task.worker_id}`
               }
             >
               Log
