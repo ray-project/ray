@@ -138,6 +138,11 @@ export type StateApiJobProgressByTaskNameRsp = {
   result: boolean;
 };
 
+export type NestedJobProgressLink = {
+  type: "actor" | "task";
+  id: string;
+};
+
 export type NestedJobProgress = {
   name: string;
   key: string;
@@ -146,6 +151,7 @@ export type NestedJobProgress = {
   };
   children: NestedJobProgress[];
   type: TypeTaskType | "GROUP" | "ACTOR";
+  link?: NestedJobProgressLink;
 };
 
 export type JobProgressGroup = {
@@ -154,6 +160,7 @@ export type JobProgressGroup = {
   progress: TaskProgress;
   children: JobProgressGroup[];
   type: TypeTaskType | "GROUP" | "ACTOR";
+  link?: NestedJobProgressLink;
 };
 
 export type StateApiNestedJobProgress = {

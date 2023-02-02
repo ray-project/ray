@@ -1,7 +1,7 @@
 import { Grid } from "@material-ui/core";
 import dayjs from "dayjs";
 import React, { useState } from "react";
-import TaskTable from "../../components/TaskTable";
+import TaskTable, { TaskTableProps } from "../../components/TaskTable";
 import { getTasks } from "../../service/task";
 import { Task } from "../../type/task";
 import { useStateApiList } from "./hook/useStateApi";
@@ -10,12 +10,13 @@ import { useStateApiList } from "./hook/useStateApi";
  * Represent the embedable tasks page.
  */
 const TaskList = ({
-  jobId = null,
-  actorId = null,
+  jobId,
+  actorId,
+  ...taskTableProps
 }: {
-  jobId?: string | null;
-  actorId?: string | null;
-}) => {
+  jobId?: string;
+  actorId?: string;
+} & Pick<TaskTableProps, "filterToTaskId" | "onFilterChange" | "newIA">) => {
   const [timeStamp] = useState(dayjs());
   const data: Task[] | undefined = useStateApiList("useTasks", () =>
     getTasks(jobId),
@@ -29,7 +30,12 @@ const TaskList = ({
           Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
         </Grid>
       </Grid>
-      <TaskTable tasks={tasks} jobId={jobId} actorId={actorId} />
+      <TaskTable
+        tasks={tasks}
+        jobId={jobId}
+        actorId={actorId}
+        {...taskTableProps}
+      />
     </div>
   );
 };
