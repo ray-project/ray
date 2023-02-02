@@ -3873,14 +3873,14 @@ def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     assert nan_agg_ds.count() == 3
     result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
     expected = nan_df.groupby("A")["B"].std().to_numpy()
-    np.testing.assert_allclose(result, expected, equal_nan=True)
+    np.testing.assert_array_almost_equal(result, expected)
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.std("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
     result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
     expected = nan_df.groupby("A")["B"].std()
     expected[0] = None
-    np.testing.assert_allclose(result, expected, equal_nan=True)
+    np.testing.assert_array_almost_equal(result, expected)
     # Test all nans
     nan_df = pd.DataFrame({"A": [x % 3 for x in xs], "B": [None] * len(xs)})
     ds = ray.data.from_pandas(nan_df).repartition(num_parts)
@@ -3889,16 +3889,8 @@ def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     nan_agg_ds = ds.groupby("A").std("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
     result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
-
-    # Arrow supports nullable types, which is represented as `pd.NA` in pandas
-    # during the arrow to pandas conversion. Here, the desired check is:
-    # `result == pd.Series([pd.NA, pd.NA, pd.NA])`. However, equality checks
-    # between two `pd.NA` values are ambiguous, so `pd.NA == pd.NA` evaluate to `pd.NA`.
-    # Moreover, a `TypeError` is raised when `np.testing.assert_...()` receives inputs
-    # that result in comparing `pd.NA` values. Therefore, a workaround for the desired
-    # check is to verify that: (a) the array is of length 3, and (b) all elements
-    # satisfy `pd.isna(elem)`.
-    assert len(result) == 3 and all(pd.isna(result))
+    expected = pd.Series([None] * 3)
+    np.testing.assert_array_equal(result, expected)
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])

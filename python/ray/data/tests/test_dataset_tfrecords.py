@@ -44,11 +44,11 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     # Protobuf serializes features in a non-deterministic order.
     assert is_int64_dtype(dict(df.dtypes)["int64"])
     assert is_object_dtype(dict(df.dtypes)["int64_list"])
-    assert is_int64_dtype(dict(df.dtypes)["int64_empty"])
+    assert is_object_dtype(dict(df.dtypes)["int64_empty"])
 
     assert is_float_dtype(dict(df.dtypes)["float"])
     assert is_object_dtype(dict(df.dtypes)["float_list"])
-    assert is_float_dtype(dict(df.dtypes)["float_empty"])
+    assert is_object_dtype(dict(df.dtypes)["float_empty"])
 
     assert is_object_dtype(dict(df.dtypes)["bytes"])
     assert is_object_dtype(dict(df.dtypes)["bytes_list"])
@@ -56,15 +56,15 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
 
     assert list(df["int64"]) == [1]
     assert np.array_equal(df["int64_list"][0], np.array([1, 2, 3, 4]))
-    assert list(df["int64_empty"]) == [pd.NA]
+    assert np.array_equal(df["int64_empty"][0], np.array([], dtype=np.int64))
 
     assert list(df["float"]) == [1.0]
     assert np.array_equal(df["float_list"][0], np.array([1.0, 2.0, 3.0, 4.0]))
-    assert list(df["float_empty"]) == [pd.NA]
+    assert np.array_equal(df["float_empty"][0], np.array([], dtype=np.float32))
 
     assert list(df["bytes"]) == [b"abc"]
     assert np.array_equal(df["bytes_list"][0], np.array([b"abc", b"1234"]))
-    assert list(df["bytes_empty"]) == [pd.NA]
+    assert np.array_equal(df["bytes_empty"][0], np.array([], dtype=np.bytes_))
 
 
 def test_write_tfrecords(ray_start_regular_shared, tmp_path):
@@ -84,19 +84,25 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
             {
                 "int_item": 1,
                 "int_list": [2, 2, 3],
+                "int_empty": np.array([], dtype=np.int64),
                 "float_item": 1.0,
                 "float_list": [2.0, 3.0, 4.0],
+                "float_empty": np.array([], dtype=np.float32),
                 "bytes_item": b"abc",
                 "bytes_list": [b"abc", b"1234"],
+                "bytes_empty": np.array([], dtype=np.bytes_),
             },
             # Row two.
             {
                 "int_item": 2,
                 "int_list": [3, 3, 4],
+                "int_empty": np.array([], dtype=np.int64),
                 "float_item": 2.0,
                 "float_list": [2.0, 2.0, 3.0],
+                "float_empty": np.array([], dtype=np.float32),
                 "bytes_item": b"def",
                 "bytes_list": [b"def", b"1234"],
+                "bytes_empty": np.array([], dtype=np.bytes_),
             },
         ]
     )
@@ -115,17 +121,26 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
                     "int_list": tf.train.Feature(
                         int64_list=tf.train.Int64List(value=[2, 2, 3])
                     ),
+                    "int_empty": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[])
+                    ),
                     "float_item": tf.train.Feature(
                         float_list=tf.train.FloatList(value=[1.0])
                     ),
                     "float_list": tf.train.Feature(
                         float_list=tf.train.FloatList(value=[2.0, 3.0, 4.0])
                     ),
+                    "float_empty": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[])
+                    ),
                     "bytes_item": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[b"abc"])
                     ),
                     "bytes_list": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[b"abc", b"1234"])
+                    ),
+                    "bytes_empty": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
                     ),
                 }
             )
@@ -140,17 +155,26 @@ def test_write_tfrecords(ray_start_regular_shared, tmp_path):
                     "int_list": tf.train.Feature(
                         int64_list=tf.train.Int64List(value=[3, 3, 4])
                     ),
+                    "int_empty": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[])
+                    ),
                     "float_item": tf.train.Feature(
                         float_list=tf.train.FloatList(value=[2.0])
                     ),
                     "float_list": tf.train.Feature(
                         float_list=tf.train.FloatList(value=[2.0, 2.0, 3.0])
                     ),
+                    "float_empty": tf.train.Feature(
+                        float_list=tf.train.FloatList(value=[])
+                    ),
                     "bytes_item": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[b"def"])
                     ),
                     "bytes_list": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[b"def", b"1234"])
+                    ),
+                    "bytes_empty": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
                     ),
                 }
             )
@@ -191,19 +215,25 @@ def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
             {
                 "int_item": 1,
                 "int_list": [2, 2, 3],
+                "int_empty": np.array([], dtype=np.int64),
                 "float_item": 1.0,
                 "float_list": [2.0, 3.0, 4.0],
+                "float_empty": np.array([], dtype=np.float32),
                 "bytes_item": b"abc",
                 "bytes_list": [b"abc", b"1234"],
+                "bytes_empty": np.array([], dtype=np.bytes_),
             },
             # Row two.
             {
                 "int_item": 2,
                 "int_list": [3, 3, 4],
+                "int_empty": np.array([], dtype=np.int64),
                 "float_item": 2.0,
                 "float_list": [2.0, 2.0, 3.0],
+                "float_empty": np.array([], dtype=np.float32),
                 "bytes_item": b"def",
                 "bytes_list": [b"def", b"1234"],
+                "bytes_empty": np.array([], dtype=np.bytes_),
             },
         ]
     )
@@ -241,4 +271,4 @@ def test_read_invalid_tfrecords(ray_start_regular_shared, tmp_path):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))
