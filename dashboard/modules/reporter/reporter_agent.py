@@ -357,6 +357,8 @@ class ReporterAgent(
 
     @staticmethod
     def _get_cpu_percent(in_k8s: bool):
+        return psutil.cpu_percent()
+    
         if in_k8s:
             return k8s_utils.cpu_percent()
         else:
