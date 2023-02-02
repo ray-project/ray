@@ -221,6 +221,7 @@ const TaskTable = ({
                 required_resources,
                 start_time_ms,
                 end_time_ms,
+                worker_id,
               } = task;
               return (
                 <TableRow key={task_id}>
@@ -236,6 +237,7 @@ const TaskTable = ({
                   </TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
                   <TableCell align="center">{job_id}</TableCell>
+                  <TableCell align="center">{worker_id}</TableCell>
                   <TableCell align="center">
                     <StatusChip type="task" status={state} />
                   </TableCell>
