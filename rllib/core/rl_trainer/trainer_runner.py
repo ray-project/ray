@@ -261,3 +261,7 @@ class TrainerRunner:
         """Shuts down the TrainerRunner."""
         if not self._is_local:
             self._backend_executor.shutdown()
+
+    def __del__(self):
+        self.shutdown()
+        super().__del__()
