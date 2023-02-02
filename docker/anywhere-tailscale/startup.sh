@@ -71,14 +71,21 @@ curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY
 ### getting a list of remaining devices
 # Make the GET request to the Tailscale API to retrieve the list of all devices
 # This could be updated to grab the DNS domain too to be more flexable.
-clusterhosts=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].name')
-# Output the clusterhosts left as a comma-separated list. This will be used by the crate seed host parameter
-#clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr '\n' ',')
-if [ -z $(clusterhosts) ]; then
-    clusterhosts="nexus.chimp-beta.ts.net:4300"
+clusterhosts=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices 2>/dev/null)
+if [ $? -ne 0 ]; then
+  echo "Error: failed to fetch list of devices from Tailscale API"
 fi
+clusterhosts=$(echo $clusterhosts | jq -r '.devices[].name')
+if [ $? -ne 0 ]; then
+  echo "Error: failed to parse list of devices from Tailscale API response"
+  clusterhosts="nexus.chimp-beta.ts.net:4300"
+fi
+# Output the clusterhosts left as a comma-separated list. This will be used by the crate seed host parameter
+#clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr 'n' ',')
 
-#export clusterhosts=$(clusterhosts)
+
+
+export clusterhosts=$(clusterhosts)
 
 
 
@@ -142,7 +149,6 @@ if [ "$NODETYPE" = "head" ]; then
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
-                   # -Cnode.master=true \
                     -Cnode.data=false \
                     -Cdiscovery.seed_hosts=$clusterhosts \
                     -Ccluster.initial_master_nodes=nexus \
@@ -153,11 +159,11 @@ if [ "$NODETYPE" = "head" ]; then
                     -Chttp.cors.allow-origin="/*" \
                     -Cstats.enabled=false &
     #but if there are servers in the cluster but nexus lacks state data we'll recover
+                       # -Cnode.master=true \
     elif [ ! $clusterhosts=="nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
-                   # -Cnode.master=true \
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
