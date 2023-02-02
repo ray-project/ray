@@ -83,10 +83,10 @@ Pass datasets to Ray tasks or actors, and access records with methods like
     .. testoutput::
         :options: +NORMALIZE_WHITESPACE
 
-           sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
-        0                5.2               2.7                3.9               1.4       1
-        1                5.4               3.0                4.5               1.5       1
-        2                4.9               2.5                4.5               1.7       2
+           sepal length (cm)  ...  target
+        0                5.2  ...       1
+        1                5.4  ...       1
+        2                4.9  ...       2
 
 .. tabbed:: Tasks
 
