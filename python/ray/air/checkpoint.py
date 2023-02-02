@@ -29,6 +29,8 @@ from ray.air._internal.remote_storage import (
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
+from python.ray.constants import WINDOWS_OS
+
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
@@ -455,7 +457,7 @@ class Checkpoint:
         """Return the name for the temporary checkpoint dir."""
         tmp_dir_path = tempfile.gettempdir()
         checkpoint_dir_name = _CHECKPOINT_DIR_PREFIX + self._uuid.hex
-        if platform.system() == "Windows":
+        if platform.system() == WINDOWS_OS:
             # Max path on Windows is 260 chars, -1 for joining \
             # Also leave a little for the del lock
             del_lock_name = _get_del_lock_path("")
