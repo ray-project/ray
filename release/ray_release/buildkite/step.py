@@ -1,5 +1,6 @@
 import copy
 import os
+import shlex
 from typing import Any, Dict, Optional
 
 from ray_release.aws import RELEASE_AWS_BUCKET
@@ -75,7 +76,7 @@ def get_step(
     if ray_wheels:
         cmd += f" --ray-wheels {ray_wheels}"
 
-    step["command"] = cmd
+    step["command"] = shlex.split(cmd)
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
