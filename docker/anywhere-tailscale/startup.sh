@@ -169,20 +169,9 @@ if [ "$NODETYPE" = "head" ]; then
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cstats.enabled=false &
     else
-        #otherwise just start fresh
-        /crate/bin/crate \
-                    -Cnetwork.host=_tailscale0_ \
-                    -Cnode.name=nexus \
-                    -Cnode.master=true \
-                    -Cnode.data=false \
-                    -Cnode.store.allow_mmap=false \
-                    -Cnode.attr.location=$location \
-                    -Chttp.cors.enabled=true \
-                    -Chttp.cors.allow-origin="/*" \
-                    -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net:4300 \
-                    -Ccluster.initial_master_nodes=nexus \
-                    -Ccluster.graceful_stop.min_availability=primaries \
-                    -Cstats.enabled=false &
+        print($clusterhosts)
+        print($statedata)
+        exit 1
     fi
 
 else
