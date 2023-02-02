@@ -624,6 +624,14 @@ class FaultTolerantActorManager:
         Returns:
             The number of async requests that are actually fired.
         """
+        # TODO(avnishn, jungong): so thinking about this a bit more, it would be the
+        # best if we can attach multiple tags to an async all, like basically this
+        # parameter should be tags:
+        # for sync alls, tags would be ()
+        # for async call users, they can attached multiple tags for a single call, like
+        # ("rollout_worker", "sync_weight")
+        # for async fetch result, we can also specify a single, or list of tags. for
+        # example, ("eval", "sample") will fetch all the sample() calls on eval workers.
         remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
 
         if healthy_only:
@@ -691,11 +699,9 @@ class FaultTolerantActorManager:
             A tuple of corresponding (remote_calls, remote_actor_ids, valid_tags)
 
         """
-        if tags == ():
-            pass
-        elif isinstance(tags, str):
+        if isinstance(tags, str):
             tags = {tags}
-        elif isinstance(tags, list):
+        elif isinstance(tags, (list, tuple)):
             tags = set(tags)
         else:
             raise ValueError(
@@ -706,7 +712,7 @@ class FaultTolerantActorManager:
         valid_tags = []
         for call, (tag, actor_id) in self.__in_flight_req_to_actor_id.items():
             # the default behavior is to return all ready results.
-            if tags == () or tag in tags:
+            if not len(tags) or tag in tags:
                 remote_calls.append(call)
                 remote_actor_ids.append(actor_id)
                 valid_tags.append(tag)
