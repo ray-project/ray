@@ -1,7 +1,9 @@
 import io
 import os
 import time
-from contextlib import redirect_stdout, redirect_stderr
+import sys
+import signal
+from contextlib import redirect_stdout, redirect_stderr, contextmanager
 from typing import Any, Dict, Optional, Tuple
 
 
@@ -140,17 +142,55 @@ class AnyscaleJobManager:
             max_retries=3,
         ).result
 
-    def __del__(self):
-        self._terminate_job()
-
     def _terminate_job(self, raise_exceptions: bool = False):
         if not self.in_progress:
             return
+        logger.info(f"Terminating job {self.job_id}...")
         try:
             self.sdk.terminate_job(self.job_id)
+            logger.info(f"Job {self.job_id} terminated!")
         except Exception:
+            msg = f"Couldn't terminate job {self.job_id}!"
             if raise_exceptions:
+                logger.error(msg)
                 raise
+            else:
+                logger.exception(msg)
+
+    @contextmanager
+    def _terminate_job_context(self):
+        """
+        Context to ensure the job is terminated.
+
+        Aside from running _terminate_job at exit, it also registers
+        a signal handler to terminate the job if the program is interrupted
+        or terminated. It restores the original handlers on exit.
+        """
+        original_handlers = {
+            sig: signal.getsignal(sig)
+            for sig in (
+                signal.SIGTERM,
+                signal.SIGINT,
+                signal.SIGQUIT,
+                signal.SIGABRT,
+                signal.SIGUSR1,
+            )
+            if hasattr(signal, sig.name)
+        }
+
+        def terminate_handler(signum=None, frame=None):
+            self._terminate_job()
+            if signum is not None:
+                sys.exit(signum)
+
+        for sig in original_handlers:
+            signal.signal(sig, terminate_handler)
+
+        yield
+
+        for sig, original_handler in original_handlers.items():
+            signal.signal(sig, original_handler)
+        self._terminate_job()
 
     def _wait_job(self, timeout: int):
         start_time = time.monotonic()
@@ -220,7 +260,10 @@ class AnyscaleJobManager:
         self._run_job(
             cmd_to_run, env_vars, working_dir=working_dir, upload_path=upload_path
         )
-        return self._wait_job(timeout)
+        # The context ensures the job always either finishes normally
+        # or is terminated.
+        with self._terminate_job_context():
+            return self._wait_job(timeout)
 
     def get_last_logs(self):
         if not self.job_id:
