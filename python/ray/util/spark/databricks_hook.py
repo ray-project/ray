@@ -93,7 +93,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             _logger.warning(
                 "Registering Ray cluster spark job as background job failed. "
                 "You need to manually call `ray.util.spark.shutdown_ray_cluster()` "
-                "before detaching your databricks notebook."
+                "before detaching your Databricks notebook."
             )
 
         auto_shutdown_minutes = float(
@@ -102,7 +102,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         if auto_shutdown_minutes == 0:
             _logger.info(
                 "The Ray cluster will keep running until you manually detach the "
-                "databricks notebook or call "
+                "Databricks notebook or call "
                 "`ray.util.spark.shutdown_ray_cluster()`."
             )
             return
@@ -117,12 +117,10 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             db_api_entry.getIdleTimeMillisSinceLastNotebookExecution()
         except Exception:
             _logger.warning(
-                "Databricks `getIdleTimeMillisSinceLastNotebookExecution` API "
-                "is unavailable, it is probably because that "
-                "your current Databricks Runtime version does not support API "
-                "`getIdleTimeMillisSinceLastNotebookExecution`, we cannot "
-                "automatically shut down Ray cluster when databricks notebook "
-                "is inactive, you need to manually detach databricks notebook "
+                "Failed to retrieve idle time since last notebook execution, "
+                "so that we cannot automatically shut down Ray cluster when "
+                "Databricks notebook is inactive for the specified minutes. "
+                "You need to manually detach Databricks notebook "
                 "or call `ray.util.spark.shutdown_ray_cluster()` to shut down "
                 "Ray cluster on spark."
             )
@@ -130,13 +128,13 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
         _logger.info(
             "The Ray cluster will be shut down automatically if you don't run "
-            "commands on the databricks notebook for "
+            "commands on the Databricks notebook for "
             f"{auto_shutdown_minutes} minutes. You can change the "
-            "automatically shutdown minutes by setting "
+            "auto-shutdown minutes by setting "
             f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES}' environment "
             "variable, setting it to 0 means that the Ray cluster keeps running "
             "until you manually call `ray.util.spark.shutdown_ray_cluster()` or "
-            "detach databricks notebook."
+            "detach Databricks notebook."
         )
 
         def auto_shutdown_watcher():
