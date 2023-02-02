@@ -1,5 +1,11 @@
+from typing import Dict
+
 from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalPlan,
+    PhysicalPlan,
+)
 from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.map_operator import AbstractMap
@@ -15,24 +21,32 @@ class Planner:
     done by physical optimizer.
     """
 
-    def plan(self, logical_dag: LogicalOperator) -> PhysicalOperator:
+    def __init__(self):
+        self._physical_op_to_logical_op: Dict[PhysicalOperator, LogicalOperator] = {}
+
+    def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
         """Convert logical to physical operators recursively in post-order."""
+        physical_dag = self._plan(logical_plan.dag)
+        return PhysicalPlan(physical_dag, self._physical_op_to_logical_op)
+
+    def _plan(self, logical_op: LogicalOperator) -> PhysicalOperator:
         # Plan the input dependencies first.
         physical_children = []
-        for child in logical_dag.input_dependencies:
-            physical_children.append(self.plan(child))
+        for child in logical_op.input_dependencies:
+            physical_children.append(self._plan(child))
 
-        if isinstance(logical_dag, Read):
+        if isinstance(logical_op, Read):
             assert not physical_children
-            physical_dag = _plan_read_op(logical_dag)
-        elif isinstance(logical_dag, AbstractMap):
+            physical_op = _plan_read_op(logical_op)
+        elif isinstance(logical_op, AbstractMap):
             assert len(physical_children) == 1
-            physical_dag = _plan_map_op(logical_dag, physical_children[0])
-        elif isinstance(logical_dag, AbstractAllToAll):
+            physical_op = _plan_map_op(logical_op, physical_children[0])
+        elif isinstance(logical_op, AbstractAllToAll):
             assert len(physical_children) == 1
-            physical_dag = _plan_all_to_all_op(logical_dag, physical_children[0])
+            physical_op = _plan_all_to_all_op(logical_op, physical_children[0])
         else:
             raise ValueError(
-                f"Found unknown logical operator during planning: {logical_dag}"
+                f"Found unknown logical operator during planning: {logical_op}"
             )
-        return physical_dag
+        self._physical_op_to_logical_op[physical_op] = logical_op
+        return physical_op
