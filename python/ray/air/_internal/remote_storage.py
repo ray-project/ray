@@ -86,7 +86,18 @@ def get_fs_and_path(
         return None, None
 
     parsed = urllib.parse.urlparse(uri)
-    path = parsed.netloc + parsed.path
+    # for uri="hdfs://48bb8ca83706:8020/test":
+    # netloc="48bb8ca83706:8020/"
+    # netloc's information is taken into account from the pyarrow client.
+    # so path should not include netloc.
+    # On the other hand, for uri="s3://my_bucket/test":
+    # netloc="my_bucket/" and path="test/"
+    # netloc's information is not part of the pyarrow client.
+    # so path should include netloc information hence the concatenation.
+    if uri.startswith("hdfs://"):
+        path = parsed.path
+    else:
+        path = parsed.netloc + parsed.path
 
     cache_key = (parsed.scheme, parsed.netloc)
 
@@ -241,15 +252,23 @@ def _upload_to_uri_with_exclude(
 
 
 def list_at_uri(uri: str) -> List[str]:
+    """Returns the list of filenames at a URI (similar to os.listdir).
+
+    If the URI doesn't exist, returns an empty list.
+    """
     _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(uri)
     if not fs:
         raise ValueError(
-            f"Could not upload to URI: "
+            f"Could not list at URI: "
             f"URI `{uri}` is not a valid or supported cloud target. "
             f"Hint: {fs_hint(uri)}"
         )
+
+    if not is_non_local_path_uri(uri):
+        # Make sure local paths get expanded fully
+        bucket_path = os.path.abspath(os.path.expanduser(bucket_path))
 
     selector = pyarrow.fs.FileSelector(
         bucket_path, allow_not_found=True, recursive=False
