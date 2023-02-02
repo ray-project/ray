@@ -5,51 +5,28 @@ from ray.tune.search.variant_generator import assign_value, _get_value
 from ray.util.annotations import DeveloperAPI
 
 
-class _CategoricalResolver:
-    """Replaced value for categorical typed objects."""
-
-    def __init__(self, choices):
-        self._choices = choices
-
-    def resolve(self, placeholder: str) -> Any:
-        if type(placeholder) != str or not placeholder.startswith("cat_"):
-            # Not a categorical placeholder value.
-            # This value is likely from points_to_evaluate.
-            # Simply return it unchanged.
-            return placeholder
-        ca, i = placeholder.split("_")
-        assert ca == "cat", "Categorical placeholder should start with cat_"
-        return self._choices[int(i)]
-
-    def get_placeholders(self) -> List[str]:
-        return [f"cat_{i}" for i in range(len(self._choices))]
-
-
 class _FunctionResolver:
     """Replaced value for function typed objects."""
+    TOKEN = "__fn_ph"
 
     def __init__(self, fn):
         self._fn = fn
 
-    def resolve(self, placeholder: str, config):
+    def resolve(self, config: Dict):
         """Some functions take a resolved spec dict as input.
 
         Note: Function placeholders are independently sampled during
         resolution. Therefore their random states are not restored.
         """
-        if placeholder != "fn_ph":
-            # Not a placeholder value.
-            # This value is likely from points_to_evaluate.
-            # Simply return it unchanged.
-            return placeholder
         return self._fn.sample(config=config)
 
-    def get_placeholder(self) -> str:
-        return "fn_ph"
+    def get_placeholder(self, path) -> str:
+        return (self.TOKEN,) + path
 
 
 class _RefResolver:
     """Replaced value for all other non-primitive objects."""
+    TOKEN = "__ref_ph"
 
     def __init__(self, value):
         self._value = value
@@ -57,8 +34,8 @@ class _RefResolver:
     def resolve(self):
         return self._value
 
-    def get_placeholder(self) -> str:
-        return "ref_ph"
+    def get_placeholder(self, path) -> str:
+        return (self.TOKEN,) + path
 
 
 def _is_primitive(x):
@@ -89,15 +66,10 @@ def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dic
         The config with all references replaced.
     """
     if isinstance(config, dict) and "grid_search" in config and len(config) == 1:
-        if all([_is_primitive(c) for c in config["grid_search"]]):
-            # Doesn't require special handling for this grid_search.
-            return config
-
-        # Special case for grid search spec.
-        v = _CategoricalResolver(config["grid_search"])
-        resolvers[prefix] = v
-        # Here we return the original grid_search spec, but with the choices replaced.
-        config["grid_search"] = v.get_placeholders()
+        config["grid_search"] = [
+            inject_placeholders(choice, resolvers, prefix + (i,))
+            for i, choice in enumerate(config["grid_search"])
+        ]
         return config
     elif isinstance(config, dict):
         return {
@@ -118,29 +90,54 @@ def inject_placeholders(config: Any, resolvers: Dict, prefix: Tuple = ()) -> Dic
         # Primitive types.
         return config
     elif isinstance(config, Categorical):
-        if all([_is_primitive(c) for c in config.categories]):
-            # Doesn't require special handling for these Categorical choices.
-            return config
-
-        # Categorical type.
-        v = _CategoricalResolver(config.categories)
-        resolvers[prefix] = v
-        # Here we return the original Categorical spec, but with the choices replaced.
-        config.categories = v.get_placeholders()
+        config.categories = [
+            inject_placeholders(choice, resolvers, prefix + (i,))
+            for i, choice in enumerate(config.categories)
+        ]
         return config
     elif isinstance(config, Function):
         # Function type.
         v = _FunctionResolver(config)
         resolvers[prefix] = v
-        return v.get_placeholder()
+        return v.get_placeholder(prefix)
     elif not isinstance(config, Domain):
         # Other non-search space reference objects, dataset, actor handle, etc.
         v = _RefResolver(config)
         resolvers[prefix] = v
-        return v.get_placeholder()
+        return v.get_placeholder(prefix)
     else:
         # All the other cases, do nothing.
         return config
+
+
+def _get_placeholder(config: Any, prefix: Tuple, path: Tuple):
+    if not path:
+        return prefix, config
+
+    key = path[0]
+    if (
+        (isinstance(config, dict) and key in config) or
+        (isinstance(config, list) and key < len(config))
+    ):
+        # Expand config tree recursively.
+        return _get_placeholder(
+            config[key], prefix=prefix+(path[0],), path=path[1:]
+        )
+    if isinstance(config, tuple):
+        if (
+            config[0] in (_FunctionResolver.TOKEN, _RefResolver.TOKEN) and
+            config[1:] == (prefix + path)
+        ):
+            # Found the matching placeholder.
+            return prefix, config
+        elif key < len(config):
+            return _get_placeholder(
+                config[key], prefix=prefix+(path[0],), path=path[1:]
+            )
+
+    # Can not find a matching placeholder.
+    # This is ok, since the path may represent a value that is not chosen.
+    return None, None
 
 
 @DeveloperAPI
@@ -152,15 +149,20 @@ def resolve_placeholders(config: Any, replaced: Dict):
         replaced: A dict from path to replaced objects.
     """
     for path, resolver in replaced.items():
-        resolved = None
+        # RefResolvers first.
+        if isinstance(resolver, _RefResolver):
+            prefix, ph = _get_placeholder(config, (), path)
+            if not ph:
+                # Represents an unchosen value. Just skip.
+                continue
+            assign_value(config, prefix, resolver.resolve())
 
-        if isinstance(resolver, _CategoricalResolver):
-            sampled = _get_value(config, path)
-            resolved = resolver.resolve(sampled)
-        elif isinstance(resolver, _FunctionResolver):
-            sampled = _get_value(config, path)
-            resolved = resolver.resolve(sampled, config)
-        elif isinstance(resolver, _RefResolver):
-            resolved = resolver.resolve()
-
-        assign_value(config, path, resolved)
+    for path, resolver in replaced.items():
+        # Functions need to be resolved after RefResolvers, in case they are
+        # referencing values from the RefResolvers.
+        if isinstance(resolver, _FunctionResolver):
+            prefix, ph = _get_placeholder(config, (), path)
+            if not ph:
+                # Represents an unchosen value. Just skip.
+                continue
+            assign_value(config, prefix, resolver.resolve(config))

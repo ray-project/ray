@@ -239,6 +239,8 @@ class Trial:
         "param_config",
         "extra_arg",
         "placement_group_factory",
+        "_resources",
+        "_default_placement_group_factory",
     ]
 
     PENDING = "PENDING"
