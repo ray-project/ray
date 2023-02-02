@@ -406,6 +406,8 @@ def _setup_ray_cluster(
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
     ray_head_port = get_random_unused_port(ray_head_ip, min_port=9000, max_port=10000)
 
+    # Make a copy for head_node_options to avoid changing original dict in user code.
+    head_node_options = head_node_options.copy()
     include_dashboard = head_node_options.pop("include_dashboard", None)
     ray_dashboard_port = head_node_options.pop("dashboard_port", None)
 
