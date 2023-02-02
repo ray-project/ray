@@ -4,6 +4,7 @@ from typing import Optional, Union
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy
 from ray.data.dataset import Dataset
+from ray.data.context import DatasetContext
 
 from benchmark import Benchmark
 
@@ -39,6 +40,8 @@ def map_batches(
 
 
 def run_map_batches_benchmark(benchmark: Benchmark):
+    ctx = DatasetContext.get_current()
+    ctx.optimizer_enabled = True
     input_ds = ray.data.read_parquet(
         "s3://air-example-data/ursa-labs-taxi-data/by_year/2018/01"
     )
