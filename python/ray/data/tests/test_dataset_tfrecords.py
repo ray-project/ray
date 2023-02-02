@@ -40,7 +40,7 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     assert dict(df.dtypes) == {
         "int64": np.int64,
         "int64_list": object,
-        "float": np.float,
+        "float": np.float_,
         "float_list": object,
         "bytes": object,
         "bytes_list": object,

@@ -15,6 +15,7 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorType
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
@@ -889,7 +890,7 @@ def test_tensor_array_block_slice():
 def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data, a, b):
     is_variable_shaped = len({len(elem) for elem in test_data}) > 1
     n = len(test_data)
-    test_arr = np.array(test_data)
+    test_arr = _create_possibly_ragged_ndarray(test_data)
     df = pd.DataFrame({"one": TensorArray(test_arr), "two": ["a"] * n})
     if init_with_pandas:
         table = pa.Table.from_pandas(df)
@@ -998,7 +999,9 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     ds_df = ds.to_pandas()
     expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
-        expected_df.loc[:, "two"] = list(expected_df["two"].to_numpy())
+        expected_df.loc[:, "two"] = _create_possibly_ragged_ndarray(
+            expected_df["two"].to_numpy()
+        )
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
