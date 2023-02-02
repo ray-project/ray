@@ -390,7 +390,7 @@ class TestActorManager(unittest.TestCase):
         self.assertEquals(len(list(results)), 8)
         for result in results:
             data = result.get()
-            self.assertEqual(result.tag, "default")
+            self.assertEqual(result.tag, None)
             if isinstance(data, str):
                 self.assertEqual(data, "pong")
             elif isinstance(data, int):

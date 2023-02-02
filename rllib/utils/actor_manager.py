@@ -593,7 +593,7 @@ class FaultTolerantActorManager:
         _, remote_results = self.__fetch_result(
             remote_actor_ids=remote_actor_ids,
             remote_calls=remote_calls,
-            tags=["default"] * len(remote_calls),
+            tags=[None] * len(remote_calls),
             timeout_seconds=timeout_seconds,
             return_obj_refs=return_obj_refs,
             mark_healthy=mark_healthy,
@@ -605,7 +605,7 @@ class FaultTolerantActorManager:
     def foreach_actor_async(
         self,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
-        tag: str = "default",
+        tag: str = None,
         *,
         healthy_only=True,
         remote_actor_ids: List[int] = None,
