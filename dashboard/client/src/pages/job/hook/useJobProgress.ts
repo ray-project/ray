@@ -213,6 +213,7 @@ const formatToJobProgressGroup = (
     progress: formattedProgress,
     children: nestedJobProgress.children.map(formatToJobProgressGroup),
     type: nestedJobProgress.type,
+    link: nestedJobProgress.link,
   };
 };
 
