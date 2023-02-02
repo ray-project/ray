@@ -851,7 +851,7 @@ def setup_ray_cluster(
             collect their logs to the specified path. On Databricks Runtime, we
             recommend you to specify a local path starts with '/dbfs/', because the
             path mounts with a centralized storage device and stored data is persisted
-            after databricks spark cluster terminated.
+            after Databricks spark cluster terminated.
 
     Returns:
         The address of the initiated Ray cluster on spark.
