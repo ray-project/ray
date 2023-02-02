@@ -37,7 +37,7 @@ def update_progress(result):
     anyscale product runs in each releaser test
     """
     result["last_update"] = time.time()
-    safe_write_to_results_json(result, default_file_name="/tmp/release_test_out.json")
+    safe_write_to_results_json(result)
 
 
 cluster = Cluster()
