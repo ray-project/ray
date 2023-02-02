@@ -130,7 +130,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             "The Ray cluster will be shut down automatically if you don't run "
             "commands on the Databricks notebook for "
             f"{auto_shutdown_minutes} minutes. You can change the "
-            "automatic shutdown minutes by setting "
+            "auto-shutdown minutes by setting "
             f"'{DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES}' environment "
             "variable, setting it to 0 means that the Ray cluster keeps running "
             "until you manually call `ray.util.spark.shutdown_ray_cluster()` or "
