@@ -107,11 +107,12 @@ RayServerBidiReactor::RayServerBidiReactor(
 void RayServerBidiReactor::Disconnect() {
   io_context_.dispatch(
       [this]() {
-        if(!disconnected_) {
+        if (!disconnected_) {
           disconnected_ = true;
           Finish(grpc::Status::OK);
         }
-      }, "");
+      },
+      "");
 }
 
 void RayServerBidiReactor::OnCancel() { Disconnect(); }
@@ -153,11 +154,12 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
 void RayClientBidiReactor::Disconnect() {
   io_context_.dispatch(
       [this]() {
-        if(!disconnected_) {
+        if (!disconnected_) {
           disconnected_ = true;
           StartWritesDone();
         }
-      }, "");
+      },
+      "");
 }
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
