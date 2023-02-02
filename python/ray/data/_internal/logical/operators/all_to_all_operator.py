@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data.block import KeyFn
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -62,3 +63,37 @@ class RandomShuffle(AbstractAllToAll):
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
+
+
+class Repartition(AbstractAllToAll):
+    """Logical operator for repartition."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        num_outputs: int,
+        shuffle: bool,
+    ):
+        super().__init__(
+            "Repartition",
+            input_op,
+            num_outputs=num_outputs,
+        )
+        self._shuffle = shuffle
+
+
+class Sort(AbstractAllToAll):
+    """Logical operator for sort."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        key: Optional[KeyFn],
+        descending: bool,
+    ):
+        super().__init__(
+            "Sort",
+            input_op,
+        )
+        self._key = key
+        self._descending = descending
