@@ -74,12 +74,11 @@ curl -s -X DELETE https://api.tailscale.com/api/v2/device/$deviceid -u $TSAPIKEY
 clusterhosts=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].name')
 # Output the clusterhosts left as a comma-separated list. This will be used by the crate seed host parameter
 #clusterhosts=$(echo $response | tr ' ' '\n' | awk '{print $0".chimp-beta.ts.net:4300"}' | tr '\n' ',')
-if [ ! -z $clusterhosts ]; then
-    clusterhosts=${clusterhosts}
-else
+if [ -z $(clusterhosts) ]; then
     clusterhosts="nexus.chimp-beta.ts.net:4300"
 fi
-export clusterhosts=$clusterhosts
+
+#export clusterhosts=$(clusterhosts)
 
 
 
