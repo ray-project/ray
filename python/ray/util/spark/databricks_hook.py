@@ -119,7 +119,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             _logger.warning(
                 "Failed to retrieve idle time since last notebook execution, "
                 "so that we cannot automatically shut down Ray cluster when "
-                "Databricks notebook is inactive. "
+                "Databricks notebook is inactive for the specified minutes. "
                 "You need to manually detach Databricks notebook "
                 "or call `ray.util.spark.shutdown_ray_cluster()` to shut down "
                 "Ray cluster on spark."
