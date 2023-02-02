@@ -29,7 +29,7 @@ the owner of an object keeps running even after the corresponding task or actor 
 If the owner fails, Ray :ref:`cannot recover <fault-tolerance-ownership>` the object automatically for those who try to access the object.
 One example of creating such outlived objects is returning ``ray.put()`` ObjectRefs:
 
-.. literalinclude:: ../doc_code/fault_tolerance_tips.py
+.. literalinclude:: doc_code/fault_tolerance_tips.py
     :language: python
     :start-after: __return_ray_put_start__
     :end-before: __return_ray_put_end__
@@ -42,7 +42,7 @@ See :doc:`/ray-core/patterns/return-ray-put` for more details.
 
 Returning a child task result ObjectRef can also create an object that outlives its owner:
 
-.. literalinclude:: ../doc_code/fault_tolerance_tips.py
+.. literalinclude:: doc_code/fault_tolerance_tips.py
     :language: python
     :start-after: __return_child_task_start__
     :end-before: __return_child_task_end__
@@ -50,7 +50,7 @@ Returning a child task result ObjectRef can also create an object that outlives 
 Second, avoid using :ref:`custom resource requirements <custom-resources>` that can only be satisfied by a particular node.
 If the particular node fails, the running tasks or actors cannot be retried since there will be no other nodes that meet the resource requirements.
 
-.. literalinclude:: ../doc_code/fault_tolerance_tips.py
+.. literalinclude:: doc_code/fault_tolerance_tips.py
     :language: python
     :start-after: __node_ip_resource_start__
     :end-before: __node_ip_resource_end__
