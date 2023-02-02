@@ -4,6 +4,7 @@ from ray import tune
 from ray.tune.impl.placeholder import (
     inject_placeholders,
     resolve_placeholders,
+    ResolversType,
     _FunctionResolver,
     _RefResolver,
 )
@@ -25,7 +26,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = {}
+        replaced = ResolversType()
         config = inject_placeholders(config, replaced)
 
         # Primitive typed choices are not replaced.
@@ -41,20 +42,20 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = {}
+        replaced = ResolversType()
         config = inject_placeholders(config, replaced)
 
         self.assertEqual(
             config["param2"][1]["grid_search"],
-            ["ok", (_RefResolver.TOKEN, "param2", 1, 1)],
+            ["ok", (_RefResolver.TOKEN, "e1eaa08f")],
         )
         self.assertEqual(
             config["param3"]["param4"]["grid_search"],
-            [(_RefResolver.TOKEN, "param3", "param4", 0), "not ok"],
+            [(_RefResolver.TOKEN, "35397f1a"), "not ok"],
         )
 
         # Pretend we picked a choice from the grid searches.
-        config["param2"][1] = (_RefResolver.TOKEN, "param2", 1, 1)
+        config["param2"][1] = (_RefResolver.TOKEN, "e1eaa08f")
         config["param3"]["param4"] = "not ok"
 
         resolve_placeholders(config, replaced)
@@ -71,20 +72,20 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = {}
+        replaced = ResolversType()
         config = inject_placeholders(config, replaced)
 
         self.assertEqual(
             config["param2"][1].categories,
-            [(_RefResolver.TOKEN, "param2", 1, 0), "not ok"],
+            [(_RefResolver.TOKEN, "e6a5a3d5"), "not ok"],
         )
         self.assertEqual(
             config["param3"]["param4"].categories,
-            [(_RefResolver.TOKEN, "param3", "param4", 0), "not ok"],
+            [(_RefResolver.TOKEN, "35397f1a"), "not ok"],
         )
 
         # Pretend we picked a choice from the grid searches.
-        config["param2"][1] = (_RefResolver.TOKEN, "param2", 1, 0)
+        config["param2"][1] = (_RefResolver.TOKEN, "e6a5a3d5")
         config["param3"]["param4"] = "not ok"
 
         resolve_placeholders(config, replaced)
@@ -109,7 +110,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = {}
+        replaced = ResolversType()
         config = inject_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1][0], _FunctionResolver.TOKEN)
@@ -133,7 +134,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = {}
+        replaced = ResolversType()
         config = inject_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1][0], _RefResolver.TOKEN)
@@ -157,7 +158,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = {}
+        replaced = ResolversType()
         config = inject_placeholders(config, replaced)
 
         self.assertTrue(isinstance(config["param1"], tuple))
@@ -183,7 +184,7 @@ class PlaceholderTest(unittest.TestCase):
             "param3": tune.qrandn(0, 1, 0.1),
         }
 
-        replaced = {}
+        replaced = ResolversType()
         config = inject_placeholders(config, replaced)
 
         # Normal params are not replaced.
@@ -200,16 +201,16 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = {}
+        replaced = ResolversType()
         config = inject_placeholders(config, replaced)
 
         # Normal params are not replaced.
         self.assertEqual(
             config["param2"][1].categories,
-            [(_RefResolver.TOKEN, "param2", 1, 0), "not ok"],
+            [(_RefResolver.TOKEN, "e6a5a3d5"), "not ok"],
         )
         self.assertEqual(
-            config["param3"]["param4"], (_FunctionResolver.TOKEN, "param3", "param4")
+            config["param3"]["param4"], (_FunctionResolver.TOKEN, "843363f5")
         )
 
         # Now, say we manually resolved the placeholders based on
@@ -234,15 +235,37 @@ class PlaceholderTest(unittest.TestCase):
             ),
         }
 
-        replaced = {}
+        replaced = ResolversType()
         config = inject_placeholders(config, replaced)
 
         # Manually resolve. Select the Dummy value.
-        config["param2"] = (_RefResolver.TOKEN, "param2", 0, 0)
+        config["param2"] = (_RefResolver.TOKEN, "41821403")
 
         resolve_placeholders(config, replaced)
 
         self.assertEqual(config["param2"].value, 1)
+
+    def testSimpleNestedSearchSpaces2(self):
+        config = {
+            "param1": "ok",
+            "param2": tune.choice(
+                [
+                    (None, Dummy(1), None),
+                    (Dummy(2), None, None),
+                    (None, None, Dummy(3)),
+                ]
+            ),
+        }
+
+        replaced = ResolversType()
+        config = inject_placeholders(config, replaced)
+
+        # Manually resolve. Select the Dummy value.
+        config["param2"] = (None, None, (_RefResolver.TOKEN, "49964529"))
+
+        resolve_placeholders(config, replaced)
+
+        self.assertEqual(config["param2"][2].value, 3)
 
     def testResolveFunctionAfterRef(self):
         config = {
@@ -253,11 +276,11 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = {}
+        replaced = ResolversType()
         config = inject_placeholders(config, replaced)
 
         # Manually resolve param2.
-        config["param2"] = (_RefResolver.TOKEN, "param2", 0)
+        config["param2"] = (_RefResolver.TOKEN, "60238385")
 
         resolve_placeholders(config, replaced)
 
