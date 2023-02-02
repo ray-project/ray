@@ -104,13 +104,14 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   fi
 
   set +e
-  # Ensure the termination/interrupt signal is passed
-  trap 'echo signal received!; kill "${python_pid}"; wait "${python_pid}"' SIGINT SIGTERM
+  # Ensure the termination/interrupt signal is passed to python
+  trap 'kill "${python_pid}"; wait "${python_pid}"' SIGINT SIGTERM
   python "${RAY_TEST_SCRIPT}" "$@" &
   python_pid="$!"
   wait "${python_pid}"
   EXIT_CODE=$?
   set -e
+
   REASON=$(reason "${EXIT_CODE}")
   ALL_EXIT_CODES[${#ALL_EXIT_CODES[@]}]=$EXIT_CODE
 
