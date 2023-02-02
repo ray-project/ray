@@ -29,18 +29,20 @@ import { HelpInfo } from "./Tooltip";
 
 export type TaskTableProps = {
   tasks: Task[];
-  jobId?: string | null;
+  jobId?: string;
   filterToTaskId?: string;
   onFilterChange?: () => void;
   newIA?: boolean;
+  actorId?: string;
 };
 
 const TaskTable = ({
   tasks = [],
-  jobId = null,
+  jobId,
   filterToTaskId,
   onFilterChange,
   newIA = false,
+  actorId,
 }: TaskTableProps) => {
   const [pageNo, setPageNo] = useState(1);
   const { changeFilter, filterFunc } = useFilter<keyof Task>({
@@ -81,6 +83,7 @@ const TaskTable = ({
     { label: "Actor_id" },
     { label: "Worker_id" },
     { label: "Type" },
+    { label: "Placement Group Id" },
     { label: "Required Resources" },
   ];
 
@@ -119,6 +122,19 @@ const TaskTable = ({
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="Job Id" />
+          )}
+        />
+        <Autocomplete
+          style={{ margin: 8, width: 150 }}
+          defaultValue={filterToTaskId === undefined ? actorId : undefined}
+          options={Array.from(
+            new Set(tasks.map((e) => (e.actor_id ? e.actor_id : ""))),
+          )}
+          onInputChange={(_: any, value: string) => {
+            changeFilter("actor_id", value.trim());
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Actor Id" />
           )}
         />
         <Autocomplete
@@ -200,11 +216,11 @@ const TaskTable = ({
                 func_or_class_name,
                 node_id,
                 actor_id,
+                placement_group_id,
                 type,
                 required_resources,
                 start_time_ms,
                 end_time_ms,
-                worker_id,
               } = task;
               return (
                 <TableRow key={task_id}>
@@ -238,15 +254,36 @@ const TaskTable = ({
                   </TableCell>
                   <TableCell align="center">{func_or_class_name}</TableCell>
                   <TableCell align="center">
-                    {node_id ? node_id : "-"}
+                    <Tooltip
+                      className={classes.idCol}
+                      title={node_id ? node_id : "-"}
+                      arrow
+                      interactive
+                    >
+                      <div>{node_id ? node_id : "-"}</div>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    {actor_id ? actor_id : "-"}
-                  </TableCell>
-                  <TableCell align="center">
-                    {worker_id ? worker_id : "-"}
+                    <Tooltip
+                      className={classes.idCol}
+                      title={actor_id ? actor_id : "-"}
+                      arrow
+                      interactive
+                    >
+                      <div>{actor_id ? actor_id : "-"}</div>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="center">{type}</TableCell>
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.idCol}
+                      title={placement_group_id ? placement_group_id : "-"}
+                      arrow
+                      interactive
+                    >
+                      <div>{placement_group_id ? placement_group_id : "-"}</div>
+                    </Tooltip>
+                  </TableCell>
                   <TableCell align="center">
                     <Tooltip
                       className={classes.OverflowCol}

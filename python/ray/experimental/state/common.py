@@ -544,7 +544,9 @@ class TaskState(StateSchema):
     required_resources: dict = state_column(detail=True, filterable=False)
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
-    #: The parent task id.
+    #: The parent task id. If the parent is a normal task, it will be the task's id.
+    #: If the parent runs in a concurrent actor (async actor or threaded actor),
+    #: it will be the actor's creation task id.
     parent_task_id: str = state_column(filterable=True)
     #: The placement group id that's associated with this task.
     placement_group_id: str = state_column(detail=True, filterable=True)

@@ -11,10 +11,12 @@ import { useActorList } from "./hook/useActorList";
 const ActorList = ({
   jobId = null,
   newIA = false,
+  detailPathPrefix = "",
   ...actorTableProps
 }: {
   jobId?: string | null;
   newIA?: boolean;
+  detailPathPrefix?: string;
 } & Pick<ActorTableProps, "filterToActorId" | "onFilterChange">) => {
   const [timeStamp] = useState(dayjs());
   const data: { [actorId: string]: Actor } | undefined = useActorList();
@@ -31,6 +33,7 @@ const ActorList = ({
         actors={actors}
         jobId={jobId}
         newIA={newIA}
+        detailPathPrefix={detailPathPrefix}
         {...actorTableProps}
       />
     </div>

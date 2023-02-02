@@ -20,8 +20,10 @@
 namespace ray {
 namespace raylet {
 class SchedulingPolicyTest;
-}
+}  // namespace raylet
 namespace raylet_scheduling_policy {
+
+class HybridSchedulingPolicyTest;
 
 // Different scheduling types. Please refer to
 // scheduling_policy.h to see detailed behaviors.
@@ -160,16 +162,21 @@ struct SchedulingOptions {
   // The node where the task is preferred to be placed. By default, this node id
   // is empty, which means no preferred node.
   std::string preferred_node_id;
+  int32_t schedule_top_k_absolute;
+  float scheduler_top_k_fraction;
 
  private:
-  SchedulingOptions(SchedulingType type,
-                    float spread_threshold,
-                    bool avoid_local_node,
-                    bool require_node_available,
-                    bool avoid_gpu_nodes,
-                    double max_cpu_fraction_per_node = 1.0,
-                    std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
-                    const std::string &preferred_node_id = std::string())
+  SchedulingOptions(
+      SchedulingType type,
+      float spread_threshold,
+      bool avoid_local_node,
+      bool require_node_available,
+      bool avoid_gpu_nodes,
+      double max_cpu_fraction_per_node = 1.0,
+      std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
+      const std::string &preferred_node_id = std::string(),
+      int32_t schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
+      float scheduler_top_k_fraction = RayConfig::instance().scheduler_top_k_fraction())
       : scheduling_type(type),
         spread_threshold(spread_threshold),
         avoid_local_node(avoid_local_node),
@@ -177,9 +184,12 @@ struct SchedulingOptions {
         avoid_gpu_nodes(avoid_gpu_nodes),
         max_cpu_fraction_per_node(max_cpu_fraction_per_node),
         scheduling_context(std::move(scheduling_context)),
-        preferred_node_id(preferred_node_id) {}
+        preferred_node_id(preferred_node_id),
+        schedule_top_k_absolute(schedule_top_k_absolute),
+        scheduler_top_k_fraction(scheduler_top_k_fraction) {}
 
   friend class ::ray::raylet::SchedulingPolicyTest;
+  friend class HybridSchedulingPolicyTest;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

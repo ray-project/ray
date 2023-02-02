@@ -243,6 +243,7 @@ const NodeDetailPage = ({ newIA = false }: { newIA?: boolean }) => {
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
                 newIA={newIA}
+                detailPathPrefix="/new/actors"
               />
             </TableContainer>
           </React.Fragment>

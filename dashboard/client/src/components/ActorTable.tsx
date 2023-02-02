@@ -19,6 +19,7 @@ import React, { useContext, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { DurationText } from "../common/DurationText";
+import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { Actor } from "../type/actor";
 import { Worker } from "../type/worker";
@@ -35,6 +36,7 @@ export type ActorTableProps = {
   newIA?: boolean;
   filterToActorId?: string;
   onFilterChange?: () => void;
+  detailPathPrefix?: string;
 };
 
 const ActorTable = ({
@@ -44,6 +46,7 @@ const ActorTable = ({
   newIA = false,
   filterToActorId,
   onFilterChange,
+  detailPathPrefix = "",
 }: ActorTableProps) => {
   const [pageNo, setPageNo] = useState(1);
   const { changeFilter, filterFunc } = useFilter<string>({
@@ -125,6 +128,15 @@ const ActorTable = ({
       helpInfo: (
         <Typography>
           The total number of the count this actor has been restarted.
+        </Typography>
+      ),
+    },
+    {
+      label: "Placement Group Id",
+      helpInfo: (
+        <Typography>
+          The id of the placement group this actor is scheduled to.
+          <br />
         </Typography>
       ),
     },
@@ -247,7 +259,6 @@ const ActorTable = ({
           style={{ margin: 8, width: 120 }}
           label="Page Size"
           size="small"
-          defaultValue={10}
           InputProps={{
             onChange: ({ target: { value } }) => {
               setPageSize(Math.min(Number(value), 500) || 10);
@@ -298,6 +309,7 @@ const ActorTable = ({
                 actorId,
                 actorClass,
                 jobId,
+                placementGroupId,
                 pid,
                 address,
                 state,
@@ -325,7 +337,6 @@ const ActorTable = ({
                           address.ipAddress === e.coreWorkerStats[0].ipAddress,
                       )}
                       mini
-                      newIA={newIA}
                     />
                   }
                   key={actorId}
@@ -337,7 +348,15 @@ const ActorTable = ({
                       arrow
                       interactive
                     >
-                      <div>{actorId}</div>
+                      <Link
+                        to={
+                          detailPathPrefix
+                            ? `${detailPathPrefix}/${actorId}`
+                            : actorId
+                        }
+                      >
+                        {actorId}
+                      </Link>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{actorClass}</TableCell>
@@ -363,27 +382,19 @@ const ActorTable = ({
                           Log
                         </Link>
                         <br />
+                        <CpuProfilingLink
+                          pid={pid}
+                          ip={address?.ipAddress}
+                          type=""
+                        />
+                        <br />
+                        <CpuStackTraceLink
+                          pid={pid}
+                          ip={address?.ipAddress}
+                          type=""
+                        />
                       </React.Fragment>
                     )}
-
-                    <a
-                      href={`worker/traceback?pid=${pid}&ip=${address?.ipAddress}&native=0`}
-                      target="_blank"
-                      title="Sample the current Python stack trace for this worker."
-                      rel="noreferrer"
-                    >
-                      Stack&nbsp;Trace
-                    </a>
-                    <br />
-                    <a
-                      href={`worker/cpu_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5&native=0`}
-                      target="_blank"
-                      title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-                      rel="noreferrer"
-                    >
-                      CPU&nbsp;Flame&nbsp;Graph
-                    </a>
-                    <br />
                   </TableCell>
                   <TableCell align="center">
                     {startTime && startTime > 0 ? (
@@ -404,6 +415,16 @@ const ActorTable = ({
                     }}
                   >
                     {numRestarts}
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.idCol}
+                      title={placementGroupId ? placementGroupId : "-"}
+                      arrow
+                      interactive
+                    >
+                      <div>{placementGroupId ? placementGroupId : "-"}</div>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip
