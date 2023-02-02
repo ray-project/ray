@@ -237,7 +237,6 @@ const TaskTable = ({
                   </TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
                   <TableCell align="center">{job_id}</TableCell>
-                  <TableCell align="center">{worker_id}</TableCell>
                   <TableCell align="center">
                     <StatusChip type="task" status={state} />
                   </TableCell>
@@ -273,6 +272,16 @@ const TaskTable = ({
                       interactive
                     >
                       <div>{actor_id ? actor_id : "-"}</div>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.idCol}
+                      title={worker_id ? worker_id : "-"}
+                      arrow
+                      interactive
+                    >
+                      <div>{worker_id ? worker_id : "-"}</div>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{type}</TableCell>
