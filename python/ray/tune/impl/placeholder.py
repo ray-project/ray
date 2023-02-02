@@ -1,12 +1,13 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Tuple
 
 from ray.tune.search.sample import Categorical, Domain, Function
-from ray.tune.search.variant_generator import assign_value, _get_value
+from ray.tune.search.variant_generator import assign_value
 from ray.util.annotations import DeveloperAPI
 
 
 class _FunctionResolver:
     """Replaced value for function typed objects."""
+
     TOKEN = "__fn_ph"
 
     def __init__(self, fn):
@@ -26,6 +27,7 @@ class _FunctionResolver:
 
 class _RefResolver:
     """Replaced value for all other non-primitive objects."""
+
     TOKEN = "__ref_ph"
 
     def __init__(self, value):
@@ -115,24 +117,20 @@ def _get_placeholder(config: Any, prefix: Tuple, path: Tuple):
         return prefix, config
 
     key = path[0]
-    if (
-        (isinstance(config, dict) and key in config) or
-        (isinstance(config, list) and key < len(config))
+    if (isinstance(config, dict) and key in config) or (
+        isinstance(config, list) and key < len(config)
     ):
         # Expand config tree recursively.
-        return _get_placeholder(
-            config[key], prefix=prefix+(path[0],), path=path[1:]
-        )
+        return _get_placeholder(config[key], prefix=prefix + (path[0],), path=path[1:])
     if isinstance(config, tuple):
-        if (
-            config[0] in (_FunctionResolver.TOKEN, _RefResolver.TOKEN) and
-            config[1:] == (prefix + path)
-        ):
+        if config[0] in (_FunctionResolver.TOKEN, _RefResolver.TOKEN) and config[
+            1:
+        ] == (prefix + path):
             # Found the matching placeholder.
             return prefix, config
         elif key < len(config):
             return _get_placeholder(
-                config[key], prefix=prefix+(path[0],), path=path[1:]
+                config[key], prefix=prefix + (path[0],), path=path[1:]
             )
 
     # Can not find a matching placeholder.

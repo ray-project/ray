@@ -45,10 +45,12 @@ class PlaceholderTest(unittest.TestCase):
         config = inject_placeholders(config, replaced)
 
         self.assertEqual(
-            config["param2"][1]["grid_search"], ["ok", (_RefResolver.TOKEN, "param2", 1, 1)]
+            config["param2"][1]["grid_search"],
+            ["ok", (_RefResolver.TOKEN, "param2", 1, 1)],
         )
         self.assertEqual(
-            config["param3"]["param4"]["grid_search"], [(_RefResolver.TOKEN, "param3", "param4", 0), "not ok"]
+            config["param3"]["param4"]["grid_search"],
+            [(_RefResolver.TOKEN, "param3", "param4", 0), "not ok"],
         )
 
         # Pretend we picked a choice from the grid searches.
@@ -73,10 +75,12 @@ class PlaceholderTest(unittest.TestCase):
         config = inject_placeholders(config, replaced)
 
         self.assertEqual(
-            config["param2"][1].categories, [(_RefResolver.TOKEN, "param2", 1, 0), "not ok"]
+            config["param2"][1].categories,
+            [(_RefResolver.TOKEN, "param2", 1, 0), "not ok"],
         )
         self.assertEqual(
-            config["param3"]["param4"].categories, [(_RefResolver.TOKEN, "param3", "param4", 0), "not ok"]
+            config["param3"]["param4"].categories,
+            [(_RefResolver.TOKEN, "param3", "param4", 0), "not ok"],
         )
 
         # Pretend we picked a choice from the grid searches.
@@ -201,7 +205,8 @@ class PlaceholderTest(unittest.TestCase):
 
         # Normal params are not replaced.
         self.assertEqual(
-            config["param2"][1].categories, [(_RefResolver.TOKEN, "param2", 1, 0), "not ok"]
+            config["param2"][1].categories,
+            [(_RefResolver.TOKEN, "param2", 1, 0), "not ok"],
         )
         self.assertEqual(
             config["param3"]["param4"], (_FunctionResolver.TOKEN, "param3", "param4")
@@ -221,10 +226,12 @@ class PlaceholderTest(unittest.TestCase):
     def testSimpleNestedSearchSpaces(self):
         config = {
             "param1": "ok",
-            "param2": tune.choice([
-                tune.choice([Dummy(1), 2, 3]),
-                tune.uniform(5, 6),
-            ]),
+            "param2": tune.choice(
+                [
+                    tune.choice([Dummy(1), 2, 3]),
+                    tune.uniform(5, 6),
+                ]
+            ),
         }
 
         replaced = {}
