@@ -106,9 +106,10 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   _term() {
     echo "[SCRIPT $(date +'%Y-%m-%d %H:%M:%S'),...] Caught SIGTERM signal, sending SIGTERM to release test script"
     kill -TERM "$proc" 2>/dev/null
+    wait "$proc"
   }
 
-  trap _term SIGTERM
+  trap _term SIGINT SIGTERM
 
   set +e
   python "${RAY_TEST_SCRIPT}" "$@" &
@@ -118,6 +119,9 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   EXIT_CODE=$?
 
   set -e
+
+  trap -  # reset trap
+
   REASON=$(reason "${EXIT_CODE}")
   ALL_EXIT_CODES[${#ALL_EXIT_CODES[@]}]=$EXIT_CODE
 

@@ -44,7 +44,6 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
                     f"{DEFAULT_ARTIFACTS_DIR_HOST}:{DEFAULT_ARTIFACTS_DIR_HOST}",
                 ],
                 "environment": ["BUILDKITE_BUILD_PATH=/var/lib/buildkite/builds"],
-                "shell": ["/bin/bash", "-e", "-c", "-i", "-l"],
             }
         }
     ],
@@ -65,18 +64,18 @@ def get_step(
 
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
-    cmd = f"./release/run_release_test.sh \"{test['name']}\" "
+    cmd = ["./release/run_release_test.sh", test["name"]]
 
     if report and not bool(int(os.environ.get("NO_REPORT_OVERRIDE", "0"))):
-        cmd += " --report"
+        cmd += ["--report"]
 
     if smoke_test:
-        cmd += " --smoke-test"
+        cmd += ["--smoke-test"]
 
     if ray_wheels:
-        cmd += f" --ray-wheels {ray_wheels}"
+        cmd += ["--ray-wheels", ray_wheels]
 
-    step["command"] = cmd
+    step["plugins"][0]["docker#v5.2.0"]["command"] = cmd
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
