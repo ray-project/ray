@@ -72,6 +72,6 @@ def D():
     return 1
 
 # If the node with ip 127.0.0.3 fails while task D is running,
-# Ray won't be able to retry the task on other nodes.
+# Ray cannot retry the task on other nodes.
 D.options(resources={"node:127.0.0.3":1}).remote()
 # __node_ip_resource_end__
