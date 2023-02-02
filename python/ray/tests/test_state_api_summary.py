@@ -548,7 +548,6 @@ def test_summarize_by_lineage():
                                 "FINISHED": 110,
                                 "RUNNING": 10,
                             },
-                            link=None,
                             children=[
                                 NestedTaskSummary(
                                     name="TrainActor",
@@ -579,7 +578,6 @@ def test_summarize_by_lineage():
                                             state_counts={
                                                 "FINISHED": 10,
                                             },
-                                            link=None,
                                             children=[
                                                 NestedTaskSummary(
                                                     name="TrainActor.train_step_map",
@@ -592,8 +590,11 @@ def test_summarize_by_lineage():
                                                     state_counts={
                                                         "FINISHED": 1,
                                                     },
-                                                    link=Link("task", "train-actor-train-step-map-"
-                                                        f"{i}-{j}"),
+                                                    link=Link(
+                                                        "task",
+                                                        "train-actor-train-step-map-"
+                                                        f"{i}-{j}",
+                                                    ),
                                                 )
                                                 for j in range(10)
                                             ],
@@ -606,7 +607,10 @@ def test_summarize_by_lineage():
                                             state_counts={
                                                 "RUNNING": 1,
                                             },
-                                            link=Link("task", f"train-actor-train-step-reduce-{i}"),
+                                            link=Link(
+                                                "task",
+                                                f"train-actor-train-step-reduce-{i}",
+                                            ),
                                         ),
                                     ],
                                 )
