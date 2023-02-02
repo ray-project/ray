@@ -34,29 +34,29 @@ functiontodetermine_cloud_provider() {
     # Check if the instance is running on GCP (not tested and probably wrong)
     UUID=$(cat /sys/hypervisor/uuid)
     if [[ $UUID =~ "gce" ]]; then
-      echo "GCP"
+      location="GCP"
       return
     fi
   elif [ -f "/sys/devices/virtual/dmi/id/product_uuid" ]; then
     # Check if the instance is running on AWS
     UUID=$(cat /sys/devices/virtual/dmi/id/sys_vendor)
     if [[ $UUID =~ "EC2" ]]; then
-      echo "AWS"
+      location="AWS"
       return
     fi
   elif [ -f "/proc/version" ]; then
     # Check if the instance is running on Azure (not tested and probably wrong)
     VERSION=$(cat /proc/version)
     if [[ $VERSION =~ "Microsoft" ]]; then
-      echo "Azure"
+      location="Azure"
       return
     fi
   fi
-  echo "OnPrem"
+  location="OnPrem"
   return
 }
 
-location=functiontodetermine_cloud_provider
+functiontodetermine_cloud_provider
 
 set -ae
 
