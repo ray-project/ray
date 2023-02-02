@@ -29,7 +29,7 @@ CRATE_HEAP_SIZE=$(echo $shm_memory | awk '{print int($0+0.5)}')
 export CRATE_HEAP_SIZE=$CRATE_HEAP_SIZE"G"
 export shm_memory=$shm_memory"G"
 
-functiodetermine_cloud_provider() {
+functiontodetermine_cloud_provider() {
   if [ -f "/sys/hypervisor/uuid" ]; then
     # Check if the instance is running on GCP (not tested and probably wrong)
     UUID=$(cat /sys/hypervisor/uuid)
@@ -56,7 +56,7 @@ functiodetermine_cloud_provider() {
   return "OnPrem"
 }
 
-location=functiodetermine_cloud_provider
+location=${functiontodetermine_cloud_provider}
 
 set -ae
 
