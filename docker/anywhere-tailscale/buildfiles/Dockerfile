@@ -33,7 +33,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         sudo apt update \
         && sudo apt install -y --no-install-recommends ca-certificates curl bc wget jq lsb-release
 
-RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
+RUN --mount=type=cache,target=/home/ray/.cache,sharing=locked \
+    $HOME/anaconda3/bin/pip install -U pip \
     pandas \
     'dask==2022.2.0' \
     modin[dask] \
