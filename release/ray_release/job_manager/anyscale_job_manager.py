@@ -114,20 +114,22 @@ class AnyscaleJobManager:
         self._last_job_result = value
 
     @property
-    def job_id(self) -> str:
+    def job_id(self) -> Optional[str]:
         if not self.last_job_result:
             return None
         return self.last_job_result.id
 
     @property
-    def job_url(self) -> str:
+    def job_url(self) -> Optional[str]:
         if not self.job_id:
             return None
         return anyscale_job_url(self.job_id)
 
     @property
-    def last_job_status(self) -> HaJobStates:
-        return self._last_job_result.state.current_state
+    def last_job_status(self) -> Optional[HaJobStates]:
+        if not self.last_job_result:
+            return None
+        return self.last_job_result.state.current_state
 
     @property
     def in_progress(self) -> bool:
@@ -193,53 +195,60 @@ class AnyscaleJobManager:
         self._terminate_job()
 
     def _wait_job(self, timeout: int):
-        start_time = time.monotonic()
-        # Waiting for cluster needs to be a part of the whole
-        # run.
-        timeout_at = start_time + self.cluster_startup_timeout
-        next_status = start_time + 30
-        job_running = False
+        # The context ensures the job always either finishes normally
+        # or is terminated.
+        with self._terminate_job_context():
+            assert self.job_id, "Job must have been started"
 
-        while True:
-            now = time.monotonic()
-            if now >= timeout_at:
-                self._terminate_job()
-                if not job_running:
-                    raise JobStartupTimeout(
-                        "Cluster did not start within "
-                        f"{self.cluster_startup_timeout} seconds."
+            start_time = time.monotonic()
+            # Waiting for cluster needs to be a part of the whole
+            # run.
+            timeout_at = start_time + self.cluster_startup_timeout
+            next_status = start_time + 30
+            job_running = False
+
+            while True:
+                now = time.monotonic()
+                if now >= timeout_at:
+                    self._terminate_job()
+                    if not job_running:
+                        raise JobStartupTimeout(
+                            "Cluster did not start within "
+                            f"{self.cluster_startup_timeout} seconds."
+                        )
+                    raise CommandTimeout(f"Job timed out after {timeout} seconds.")
+
+                if now >= next_status:
+                    if job_running:
+                        msg = "... job still running ..."
+                    else:
+                        msg = "... job not yet running ..."
+                    logger.info(
+                        f"{msg}({int(now - start_time)} seconds, "
+                        f"{int(timeout_at - now)} seconds to timeout) ..."
                     )
-                raise CommandTimeout(f"Job timed out after {timeout} seconds.")
+                    next_status += 30
 
-            if now >= next_status:
-                if job_running:
-                    msg = "... job still running ..."
-                else:
-                    msg = "... job not yet running ..."
-                logger.info(
-                    f"{msg}({int(now - start_time)} seconds, "
-                    f"{int(timeout_at - now)} seconds to timeout) ..."
-                )
-                next_status += 30
+                result = self._get_job_status_with_retry()
+                self.last_job_result = result
+                status = self.last_job_status
 
-            result = self._get_job_status_with_retry()
-            self.last_job_result = result
-            status = self.last_job_status
+                if not job_running and status in {
+                    HaJobStates.RUNNING,
+                    HaJobStates.ERRORED,
+                }:
+                    logger.info(
+                        f"... job started ...({int(now - start_time)} seconds) ..."
+                    )
+                    job_running = True
+                    # If job has started, we switch from waiting for cluster
+                    # to the actual command (incl. prepare commands) timeout.
+                    timeout_at = now + timeout
 
-            if not job_running and status in {
-                HaJobStates.RUNNING,
-                HaJobStates.ERRORED,
-            }:
-                logger.info(f"... job started ...({int(now - start_time)} seconds) ...")
-                job_running = True
-                # If job has started, we switch from waiting for cluster
-                # to the actual command (incl. prepare commands) timeout.
-                timeout_at = now + timeout
-
-            if status in terminal_state:
-                logger.info(f"Job entered terminal state {status}.")
-                break
-            time.sleep(1)
+                if status in terminal_state:
+                    logger.info(f"Job entered terminal state {status}.")
+                    break
+                time.sleep(1)
 
         result = self._get_job_status_with_retry()
         self.last_job_result = result
@@ -260,10 +269,7 @@ class AnyscaleJobManager:
         self._run_job(
             cmd_to_run, env_vars, working_dir=working_dir, upload_path=upload_path
         )
-        # The context ensures the job always either finishes normally
-        # or is terminated.
-        with self._terminate_job_context():
-            return self._wait_job(timeout)
+        return self._wait_job(timeout)
 
     def get_last_logs(self):
         if not self.job_id:
