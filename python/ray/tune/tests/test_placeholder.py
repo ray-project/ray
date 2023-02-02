@@ -4,7 +4,7 @@ from ray import tune
 from ray.tune.impl.placeholder import (
     inject_placeholders,
     resolve_placeholders,
-    ResolversType,
+    create_resolvers_map,
     _FunctionResolver,
     _RefResolver,
 )
@@ -26,7 +26,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         # Primitive typed choices are not replaced.
@@ -42,7 +42,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         self.assertEqual(
@@ -72,7 +72,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         self.assertEqual(
@@ -110,7 +110,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1][0], _FunctionResolver.TOKEN)
@@ -134,7 +134,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         self.assertEqual(config["param2"][1][0], _RefResolver.TOKEN)
@@ -158,7 +158,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         self.assertTrue(isinstance(config["param1"], tuple))
@@ -184,7 +184,7 @@ class PlaceholderTest(unittest.TestCase):
             "param3": tune.qrandn(0, 1, 0.1),
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         # Normal params are not replaced.
@@ -201,7 +201,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         # Normal params are not replaced.
@@ -235,7 +235,7 @@ class PlaceholderTest(unittest.TestCase):
             ),
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         # Manually resolve. Select the Dummy value.
@@ -257,7 +257,7 @@ class PlaceholderTest(unittest.TestCase):
             ),
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         # Manually resolve. Select the Dummy value.
@@ -276,7 +276,7 @@ class PlaceholderTest(unittest.TestCase):
             },
         }
 
-        replaced = ResolversType()
+        replaced = create_resolvers_map()
         config = inject_placeholders(config, replaced)
 
         # Manually resolve param2.

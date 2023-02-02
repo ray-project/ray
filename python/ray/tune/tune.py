@@ -16,7 +16,7 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
-from ray.tune.impl.placeholder import ResolversType, inject_placeholders
+from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
@@ -573,7 +573,7 @@ def run(
     # 2. the config dictionary will then be compatible with all supported
     #   search algorithms, since a lot of them do not support non-primitive
     #   config values.
-    placeholder_resolvers = ResolversType()
+    placeholder_resolvers = create_resolvers_map()
     config = inject_placeholders(
         # Make a deep copy here to avoid modifying the original config dict.
         copy.deepcopy(config),

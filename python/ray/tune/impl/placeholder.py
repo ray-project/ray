@@ -7,8 +7,11 @@ from ray.tune.search.variant_generator import assign_value
 from ray.util.annotations import DeveloperAPI
 
 
-ResolversType = lambda: defaultdict(list)
 ID_HASH_LENGTH = 8
+
+
+def create_resolvers_map():
+    return defaultdict(list)
 
 
 def _id_hash(path_tuple):
@@ -183,12 +186,13 @@ def _get_placeholder(config: Any, prefix: Tuple, path: Tuple):
     ):
         # Expand config tree recursively.
         return _get_placeholder(config[key], prefix=prefix + (path[0],), path=path[1:])
+
     if isinstance(config, tuple):
         if config[0] in (_FunctionResolver.TOKEN, _RefResolver.TOKEN):
             # Found a matching placeholder.
-            # Note that we do not require that the full path are consumed before declaring
-            # a match. Because this placeholder may be part of a nested search space.
-            # For example, the following config:
+            # Note that we do not require that the full path are consumed before
+            # declaring a match. Because this placeholder may be part of a nested
+            # search space. For example, the following config:
             #   config = {
             #       "param1": tune.grid_search([
             #           tune.grid_search([Object1, 2, 3]),

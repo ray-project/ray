@@ -19,7 +19,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 from ray.tune import TuneError
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
-from ray.tune.impl.placeholder import ResolversType, inject_placeholders
+from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
@@ -445,7 +445,7 @@ class TrialRunnerTest3(unittest.TestCase):
             "param4": sample_from(lambda: 1),
             "param5": sample_from(lambda spec: spec.config["param1"]["param2"]),
         }
-        resolvers = ResolversType()
+        resolvers = create_resolvers_map()
         config = inject_placeholders(config, resolvers)
 
         def create_searcher():
