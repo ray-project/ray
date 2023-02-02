@@ -535,7 +535,7 @@ class Policy(metaclass=ABCMeta):
     def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-        explore: bool = None,
+        explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         episodes: Optional[List["Episode"]] = None,
         **kwargs,
