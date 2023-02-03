@@ -414,54 +414,19 @@ results = trainer.fit()
 
 ## Evaluate the model on test data
 
-
-### Define a custom predictor
-
-
-`Predictors` perform inference on batches of data.
-
-To make `fasterrcnn_resnet50_fpn` outputs compatible with the `Predictor` interface,
-subclass  `TorchPredictor` and override the `_predict_numpy` method.
-
-```python
-import collections
-
-from ray.train.torch import TorchPredictor
-from ray.air.util.tensor_extensions.utils import create_possibly_ragged_ndarray
-
-
-class CustomTorchPredictor(TorchPredictor):
-    def _predict_numpy(
-        self, data: np.ndarray, dtype: torch.dtype
-    ) -> Dict[str, np.ndarray]:
-        device = torch.device("cuda") if self.use_gpu else torch.device("cpu")
-        inputs = [torch.as_tensor(image).to(device) for image in data["image"]]
-        assert all(image.dim() == 3 for image in inputs)
-        outputs = self.call_model(inputs)
-
-        predictions = collections.defaultdict(list)
-        for output in outputs:
-            for key, value in output.items():
-                predictions[key].append(value.cpu().detach().numpy())
-
-        for key, value in predictions.items():
-            predictions[key] = create_possibly_ragged_ndarray(value)
-        predictions = {"pred_" + key: value for key, value in predictions.items()}
-        return predictions
-```
-
 ### Generate predictions on the test data
 
 
-Create a `BatchPredictor` and pass `CustomTorchPredictor` to the constructor. Then,
+Create a `BatchPredictor` and pass `TorchDetectionPredictor` to the constructor. Then,
 call `BatchPredictor.predict` to detect objects in the test dataset.
 
 ```python
 from ray.train.batch_predictor import BatchPredictor
+from ray.train.torch import TorchDetectionPredictor
 
 
 model = models.detection.fasterrcnn_resnet50_fpn(num_classes=21)
-predictor = BatchPredictor.from_checkpoint(results.checkpoint, CustomTorchPredictor, model=model)
+predictor = BatchPredictor.from_checkpoint(results.checkpoint, TorchDetectionPredictor, model=model)
 
 predictions = predictor.predict(
     test_dataset,
