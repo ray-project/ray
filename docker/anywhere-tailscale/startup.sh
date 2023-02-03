@@ -174,8 +174,8 @@ if [ "$NODETYPE" = "head" ]; then
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Cstats.enabled=false &
     else
-        print($clusterhosts)
-        print($statedata)
+        echo $clusterhosts
+        echo $statedata
         exit 1
     fi
 
