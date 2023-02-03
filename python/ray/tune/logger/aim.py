@@ -51,7 +51,7 @@ class AimCallback(LoggerCallback):
         log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
             git info, environment variables, etc.
 
-    For more arguments please check the aim documentation: https://aimstack.readthedocs.io/en/latest/refs/sdk.html
+    For more arguments please see the Aim documentation: https://aimstack.readthedocs.io/en/latest/refs/sdk.html
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
