@@ -66,7 +66,7 @@ class AimCallback(LoggerCallback):
         **aim_run_kwargs
     ):
         """
-        Please see help(AimCallback) for more information about parameters.
+        See help(AimCallback) for more information about parameters.
         """
         assert Run is not None, (
             "aim must be installed!. You can install aim with"
