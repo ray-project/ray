@@ -1,5 +1,13 @@
 #!/bin/bash
 
+
+echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv6.conf.default.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv6.conf.lo.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
+echo "vm.max_map_count = 262144" | sudo tee -a /etc/sysctl.conf
+
+
+
 # Pull external IP
 IPADDRESS=$(curl -s http://ifconfig.me/ip)
 export IPADDRESS=$IPADDRESS
@@ -116,10 +124,6 @@ while [ ! $status = "Running" ]
         status="$(tailscale status -json | jq -r .BackendState)"
 done
 
-echo "net.ipv6.conf.all.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
-echo "net.ipv6.conf.default.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
-echo "net.ipv6.conf.lo.disable_ipv6=1" | sudo tee -a /etc/sysctl.conf
-echo "vm.max_map_count = 262144" | sudo tee -a /etc/sysctl.conf
 
 # check if we already have state data
 if [ -d "$CRATE_HEAP_DUMP_PATH" ]; then
