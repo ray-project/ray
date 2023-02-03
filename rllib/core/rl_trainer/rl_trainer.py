@@ -168,7 +168,7 @@ class RLTrainer:
         self.config = trainer_hyperparameters
 
         # pick the configs that we need for the trainer from scaling config
-        self._distributed = trainer_scaling_config.num_workers > 0
+        self._distributed = trainer_scaling_config.num_workers > 1
 
         # These are the attributes that are set during build
         self._module: MultiAgentRLModule = None
@@ -181,7 +181,7 @@ class RLTrainer:
         self._use_gpu = trainer_scaling_config.num_gpus_per_worker > 0
 
         # if we are using gpu but we are not distributed, use this gpu for training
-        self._local_gpu_id = trainer_scaling_config.local_gpu_id
+        self._local_gpu_idx = trainer_scaling_config.local_gpu_idx
 
     @property
     def distributed(self) -> bool:

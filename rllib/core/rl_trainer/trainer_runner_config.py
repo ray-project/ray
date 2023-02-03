@@ -46,7 +46,7 @@ class TrainerRunnerConfig:
         # local gpu id to use when training with gpu and local mode. I doubt this will
         # be used much since users who have multiple gpus will probably be fine with
         # using the 0th gpu or will use multi gpu training.
-        self.local_gpu_id = 0
+        self.local_gpu_idx = 0
 
         # `self.framework()`
         self.eager_tracing = False
@@ -77,7 +77,7 @@ class TrainerRunnerConfig:
             num_workers=self.num_trainer_workers,
             num_gpus_per_worker=self.num_gpus_per_trainer_worker,
             num_cpus_per_worker=self.num_cpus_per_trainer_worker,
-            local_gpu_id=self.local_gpu_id,
+            local_gpu_idx=self.local_gpu_idx,
         )
 
         framework_hps = FrameworkHPs(eager_tracing=self.eager_tracing)
@@ -116,7 +116,7 @@ class TrainerRunnerConfig:
         num_trainer_workers: Optional[int] = NotProvided,
         num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
         num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
-        local_gpu_id: Optional[int] = NotProvided,
+        local_gpu_idx: Optional[int] = NotProvided,
     ) -> "TrainerRunnerConfig":
 
         if num_trainer_workers is not NotProvided:
@@ -125,8 +125,8 @@ class TrainerRunnerConfig:
             self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
         if num_cpus_per_trainer_worker is not NotProvided:
             self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
-        if local_gpu_id is not NotProvided:
-            self.local_gpu_id = local_gpu_id
+        if local_gpu_idx is not NotProvided:
+            self.local_gpu_idx = local_gpu_idx
 
         return self
 

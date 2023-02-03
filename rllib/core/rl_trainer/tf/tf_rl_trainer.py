@@ -107,16 +107,19 @@ class TfRLTrainer(RLTrainer):
             if self._use_gpu:
                 # mirrored strategy is typically used for multi-gpu training
                 # on a single machine, however we can use it for single-gpu
-                local_gpu = [f"GPU:{self._local_gpu_id}"]
+                devices = tf.config.list_logical_devices("GPU")
+                assert self._local_gpu_idx < len(devices), (
+                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
+                    " not available."
+                )
+                local_gpu = [devices[self._local_gpu_idx].name]
                 self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
-            else:
-                # the default strategy is a no-op that can be used in the local mode
-                # cpu only case
-                self._strategy = tf.distribute.get_strategy()
         with self._strategy.scope():
             super().build()
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._traced_update_helper)
+            self._update_fn = tf.function(
+                self._traced_update_helper, reduce_retracing=True
+            )
         else:
             self._update_fn = self._traced_update_helper
 
@@ -170,7 +173,6 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def apply_gradients(self, gradients: Dict[ParamRef, TensorType]) -> None:
-
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
         # only some agents have a sample batch that is passed but not others.
         # This is probably because of the way that we are iterating over the
@@ -197,14 +199,18 @@ class TfRLTrainer(RLTrainer):
                 optimizer_cls=optimizer_cls,
             )
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._traced_update_helper)
+            self._update_fn = tf.function(
+                self._traced_update_helper, reduce_retracing=True
+            )
 
     @override(RLTrainer)
     def remove_module(self, module_id: ModuleID) -> None:
         with self._strategy.scope():
             super().remove_module(module_id)
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._traced_update_helper)
+            self._update_fn = tf.function(
+                self._traced_update_helper, reduce_retracing=True
+            )
 
     def convert_batch_to_tf_tensor(self, batch: MultiAgentBatch) -> NestedDict:
         """Convert the arrays of batch to tf.Tensor's.
