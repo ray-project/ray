@@ -1,4 +1,3 @@
-import importlib
 import json
 import os
 import shutil
@@ -35,7 +34,14 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     type=str,
     help="File containing test configurations",
 )
-def main(test_collection_file: Optional[str] = None):
+@click.option(
+    "--clone_repo",
+    is_flag=True,
+    show_default=True,
+    default=True,
+    help="Whether to clone the test repository if specified in configuration.",
+)
+def main(test_collection_file: Optional[str] = None, clone_repo: bool = True):
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
@@ -48,29 +54,30 @@ def main(test_collection_file: Optional[str] = None):
         # the test configuration file. Otherwise we might be missing newly
         # added test.
         repo = settings["ray_test_repo"]
-        tmpdir = tempfile.mktemp()
 
-        current_release_dir = os.path.abspath(
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-        )
+        if clone_repo:
+            tmpdir = tempfile.mktemp()
 
-        clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {tmpdir}"
-        try:
-            subprocess.check_output(clone_cmd, shell=True)
-        except Exception as e:
-            raise ReleaseTestCLIError(
-                f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
-            ) from e
-        subprocess.check_output(
-            ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
-        )
-
-        for module in sys.modules.values():
-            if module.__name__.startswith("ray_release"):
-                try:
-                    importlib.reload(module)
-                except Exception:
-                    pass
+            current_release_dir = os.path.abspath(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                )
+            )
+            clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {tmpdir}"
+            try:
+                subprocess.check_output(clone_cmd, shell=True)
+            except Exception as e:
+                raise ReleaseTestCLIError(
+                    f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
+                ) from e
+            subprocess.check_output(
+                ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
+            )
+            cmd = [sys.executable, __file__]
+            if test_collection_file:
+                cmd += ["--test-collection-file", test_collection_file]
+            subprocess.run(cmd, capture_output=False, check=True)
+            return
 
         env = {
             "RAY_TEST_REPO": repo,
