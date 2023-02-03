@@ -8,9 +8,7 @@ memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 
 # Convert kB to GB
 gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
-
 shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
-
 num_cpus=$(nproc)
 
 if [ -z "$TSAPIKEY" ]; then
