@@ -3559,6 +3559,7 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
       Status::OK(),
       [this, is_idle]() {
         // If the worker is idle, we exit.
+        RAY_LOG(ERROR) << "worker exit " << this->GetCurrentTaskId();
         if (is_idle) {
           Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                "Worker exits because it was idle (it doesn't have objects it owns while "
@@ -3567,6 +3568,7 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
       },
       // We need to kill it regardless if the RPC failed.
       [this]() {
+        RAY_LOG(ERROR) << "worker exit rpc fail" << this->GetCurrentTaskId();
         Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
              "Worker exits because it was idle (it doesn't have objects it owns while "
              "no task or actor has been scheduled) for a long time.");

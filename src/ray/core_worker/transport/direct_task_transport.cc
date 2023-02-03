@@ -178,6 +178,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     bool worker_exiting,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   auto &lease_entry = worker_to_lease_entry_[addr];
+  RAY_LOG(DEBUG) << "OnWorkerIdle " << addr.worker_id;
   if (!lease_entry.lease_client) {
     return;
   }
@@ -192,6 +193,8 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       current_queue.empty()) {
     RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 
+    RAY_LOG(DEBUG) << "ReturnWorker busy " << lease_entry.is_busy;
+
     // Return the worker only if there are no tasks to do.
     if (!lease_entry.is_busy) {
       ReturnWorker(addr, was_error, worker_exiting, scheduling_key);
@@ -200,6 +203,9 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
 
     while (!current_queue.empty() && !lease_entry.is_busy) {
+
+      RAY_LOG(DEBUG) << "has more work " << lease_entry.is_busy;
+
       auto task_spec = current_queue.front();
       lease_entry.is_busy = true;
 
