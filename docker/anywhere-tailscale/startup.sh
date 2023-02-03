@@ -190,6 +190,7 @@ else
 
     if [ $(ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE | grep -q ALIVE && echo $true || echo $false) ]; then
         /crate/bin/crate \
+                    -Cnetwork.host=_tailscale0_,_local_ \
                     -Cnode.name=$HOSTNAME \
                     -Ccluster.initial_master_nodes=nexus \
                     -Cnode.data=true \
@@ -204,6 +205,7 @@ else
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net &
     else
         /crate/bin/crate \
+                    -Cnetwork.host=_tailscale0_,_local_ \
                     -Cnode.name=$HOSTNAME \
                     -Ccluster.initial_master_nodes=nexus \
                     -Cnode.data=true \
