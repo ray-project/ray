@@ -107,6 +107,8 @@ class FullClusterManager(MinimalClusterManager):
                 cluster_id=self.cluster_id, terminate_cluster_options={}
             )
 
+            logger.info(f"Terminate request for cluster with ID {self.cluster_id} sent")
+
             if not wait:
                 return
 
