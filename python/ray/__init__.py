@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 
-from python.ray.constants import DARWIN_OS, LINUX_OS
+from ray.constants import DARWIN_OS, LINUX_OS
 
 logger = logging.getLogger(__name__)
 

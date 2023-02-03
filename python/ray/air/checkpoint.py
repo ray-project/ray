@@ -29,7 +29,7 @@ from ray.air._internal.remote_storage import (
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-from python.ray.constants import WINDOWS_OS
+from ray.constants import WINDOWS_OS
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

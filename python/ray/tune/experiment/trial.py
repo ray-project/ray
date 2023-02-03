@@ -47,7 +47,7 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
 
-from python.ray.constants import WINDOWS_OS, LINUX_OS
+from ray.constants import WINDOWS_OS, LINUX_OS
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
