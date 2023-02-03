@@ -43,7 +43,7 @@ class AimCallback(LoggerCallback):
             If skipped, default Repo is used.
         experiment (:obj:`str`, optional): Sets Run's `experiment` property. 'default' if not specified.
             Can be used later to query runs/sequences.
-        metrics (:obj:`List[str]`, optional): Specific metrics to track,
+        metrics (:obj:`List[str]`, optional): Specific metrics to track.
             If no metric is specified, log everything that is reported.
         as_multirun (:obj:`bool`, optional): Enable/Disable creating new runs for each trial.
         system_tracking_interval (:obj:`int`, optional): Sets the tracking interval in seconds for system usage
