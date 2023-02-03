@@ -146,6 +146,7 @@ if [ "$NODETYPE" = "head" ]; then
 
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
+                    -Ccluster.initial_master_nodes:nexus \
                     -Cnode.store.allow_mmap=true \
                     -Cnode.attr.location=$location \
                     -Cnode.master=true \
@@ -158,6 +159,7 @@ if [ "$NODETYPE" = "head" ]; then
     elif [ ! "$clusterhosts" = "nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
+                    -Ccluster.initial_master_nodes:nexus \
                     -Cnode.master=true \
                     -Cnode.name=nexus \
                     -Cnode.data=false \
@@ -177,6 +179,7 @@ else
     if [ $(ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE | grep -q ALIVE && echo $true || echo $false) ]; then
         /crate/bin/crate \
                     -Cnode.name=$HOSTNAME \
+                    -Ccluster.initial_master_nodes:nexus \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
@@ -184,6 +187,7 @@ else
     else
         /crate/bin/crate \
                     -Cnode.name=$HOSTNAME \
+                    -Ccluster.initial_master_nodes:nexus \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
