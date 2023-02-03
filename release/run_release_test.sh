@@ -120,8 +120,6 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
 
   set -e
 
-  trap -  # reset trap
-
   REASON=$(reason "${EXIT_CODE}")
   ALL_EXIT_CODES[${#ALL_EXIT_CODES[@]}]=$EXIT_CODE
 
