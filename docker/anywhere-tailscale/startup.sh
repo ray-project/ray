@@ -152,12 +152,11 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.data=false \
                     -Cdiscovery.seed_hosts=$clusterhosts \
                     -Ccluster.initial_master_nodes=nexus \
-                    -Ccluster.graceful_stop.min_availability=primaries \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
-                    -Chttp.cors.enabled=true \
-                    -Chttp.cors.allow-origin="/*" \
-                    -Cstats.enabled=false &
+                    -Ccluster.routing.allocation.awareness.attributes:location \
+                    -Cgateway.recover_after_nodes: 3 \
+                    &
     #but if there are servers in the cluster but nexus lacks state data we'll recover
                        # -Cnode.master=true \
     elif [ ! "$clusterhosts" = "nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
@@ -167,12 +166,11 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
-                    -Chttp.cors.enabled=true \
-                    -Chttp.cors.allow-origin="/*" \
+                    -Ccluster.routing.allocation.awareness.attributes:location \
                     -Cdiscovery.seed_hosts=$clusterhosts \
                     -Ccluster.initial_master_nodes=nexus \
-                    -Ccluster.graceful_stop.min_availability=primaries \
-                    -Cstats.enabled=false &
+                    -Cgateway.recover_after_nodes: 2 \
+                    &
     else
         echo $clusterhosts
         echo $statedata
@@ -185,29 +183,27 @@ else
 
     if [ $(ray list nodes -f NODE_NAME=nexus.chimp-beta.ts.net -f STATE=ALIVE | grep -q ALIVE && echo $true || echo $false) ]; then
         /crate/bin/crate \
-                    -Cnetwork.host=_tailscale0_,_local_ \
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
-                    -Chttp.cors.enabled=true \
-                    -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
+                    -Ccluster.routing.allocation.awareness.attributes:location \
                     -Ccluster.initial_master_nodes=nexus \
-                    -Ccluster.graceful_stop.min_availability=primaries \
-                    -Cstats.enabled=false &
+                    -Cgateway.recover_after_nodes: 3 \
+                    &
     else
         /crate/bin/crate \
-                    -Cnetwork.host=_tailscale0_,_local_ \
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts \
+                    -Ccluster.routing.allocation.awareness.attributes:location \
                     -Ccluster.initial_master_nodes=nexus \
-                    -Ccluster.graceful_stop.min_availability=primaries \
-                    -Cstats.enabled=false &
+                    -Cgateway.recover_after_nodes: 3 \
+                    &
     fi
 fi
 
