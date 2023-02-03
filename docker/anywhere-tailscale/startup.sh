@@ -152,6 +152,12 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.master=true \
                     -Cnode.name=nexus \
                     -Cnode.data=false \
+                    -Ccluster.graceful_stop.min_availability:primaries \
+                    -Ccluster.routing.allocation.awareness.attributes:location \
+                    -Cstats.enabled:false \
+                    -Cgateway.recover_after_nodes:3 \
+                    -Chttp.cors.enabled:true \
+                    -Chttp.cors.allow-origin:"/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts &
 
     #but if there are servers in the cluster but nexus lacks state data we'll recover
@@ -165,6 +171,12 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=true \
                     -Cnode.attr.location=$location \
+                    -Ccluster.graceful_stop.min_availability:primaries \
+                    -Ccluster.routing.allocation.awareness.attributes:location \
+                    -Cstats.enabled:false \
+                    -Cgateway.recover_after_nodes:3 \
+                    -Chttp.cors.enabled:true \
+                    -Chttp.cors.allow-origin:"/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts &
     else
         echo $clusterhosts
@@ -183,6 +195,12 @@ else
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
+                    -Ccluster.graceful_stop.min_availability:primaries \
+                    -Ccluster.routing.allocation.awareness.attributes:location \
+                    -Cstats.enabled:false \
+                    -Cgateway.recover_after_nodes:3 \
+                    -Chttp.cors.enabled:true \
+                    -Chttp.cors.allow-origin:"/*" \
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net &
     else
         /crate/bin/crate \
@@ -191,6 +209,12 @@ else
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
+                    -Ccluster.graceful_stop.min_availability:primaries \
+                    -Ccluster.routing.allocation.awareness.attributes:location \
+                    -Cstats.enabled:false \
+                    -Cgateway.recover_after_nodes:3 \
+                    -Chttp.cors.enabled:true \
+                    -Chttp.cors.allow-origin:"/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts &
     fi
 fi
