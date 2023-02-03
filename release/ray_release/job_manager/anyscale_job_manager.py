@@ -1,8 +1,6 @@
 import io
 import os
 import time
-import sys
-import signal
 from contextlib import redirect_stdout, redirect_stderr, contextmanager
 from typing import Any, Dict, Optional, Tuple
 
@@ -21,6 +19,7 @@ from ray_release.exception import (
     JobStartupFailed,
 )
 from ray_release.logger import logger
+from ray_release.signal_handling import register_handler, unregister_handler
 from ray_release.util import (
     ANYSCALE_HOST,
     exponential_backoff_retry,
@@ -168,31 +167,16 @@ class AnyscaleJobManager:
         a signal handler to terminate the job if the program is interrupted
         or terminated. It restores the original handlers on exit.
         """
-        original_handlers = {
-            sig: signal.getsignal(sig)
-            for sig in (
-                signal.SIGTERM,
-                signal.SIGINT,
-                signal.SIGQUIT,
-                signal.SIGABRT,
-                signal.SIGUSR1,
-            )
-            if hasattr(signal, sig.name)
-        }
 
-        def terminate_handler(signum=None, frame=None):
+        def terminate_handler(signum, frame):
             self._terminate_job()
-            if signum is not None:
-                sys.exit(signum)
 
-        for sig in original_handlers:
-            signal.signal(sig, terminate_handler)
+        register_handler(terminate_handler)
 
         yield
 
-        for sig, original_handler in original_handlers.items():
-            signal.signal(sig, original_handler)
         self._terminate_job()
+        unregister_handler(terminate_handler)
 
     def _wait_job(self, timeout: int):
         # The context ensures the job always either finishes normally
