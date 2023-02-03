@@ -82,10 +82,10 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
             # the modules are reloaded and use the newest files, instead of
             # old ones, which may not have the changes introduced on the
             # checked out branch.
-            cmd = [sys.executable, __file__, "--no-clone-repo"]
+            cmd = f"{sys.executable} '{__file__}' --no-clone-repo"
             if test_collection_file:
-                cmd += ["--test-collection-file", test_collection_file]
-            subprocess.run(cmd, capture_output=False, check=True)
+                cmd += f"--test-collection-file '{test_collection_file}'"
+            subprocess.run(cmd, capture_output=False, check=True, shell=True)
             return
 
         env = {
