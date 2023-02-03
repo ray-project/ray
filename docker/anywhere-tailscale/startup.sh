@@ -160,7 +160,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cstats.enabled=false &
     #but if there are servers in the cluster but nexus lacks state data we'll recover
                        # -Cnode.master=true \
-    elif [ ! $clusterhosts = "nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
+    elif [ ! "$clusterhosts" = "nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
