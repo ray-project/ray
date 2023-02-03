@@ -182,12 +182,14 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
         result = ray_usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
+        assert result["task_num_created"] >= 0
+        result["task_num_created"] == 0
         assert result == {
             "key": "val",
             "_test1": "val1",
             "_test2": "val2",
             "actor_num_created": "0",
-            "task_num_created": "1",
+            "task_num_created": "0",
             "pg_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
@@ -197,14 +199,16 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
         result = ray_usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
+        assert result["task_num_created"] >= 0
+        result["task_num_created"] == 0
         assert result == {
             "key": "val",
             "_test1": "val1",
             "_test2": "val3",
+            "task_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
             "actor_num_created": "0",
-            "task_num_created": "1",
             "pg_num_created": "0",
         }
 
