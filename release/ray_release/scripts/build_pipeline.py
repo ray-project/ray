@@ -1,3 +1,4 @@
+import importlib
 import json
 import os
 import shutil
@@ -7,22 +8,6 @@ import tempfile
 from typing import Optional
 
 import click
-
-from ray_release.buildkite.filter import filter_tests, group_tests
-from ray_release.buildkite.settings import get_pipeline_settings
-from ray_release.buildkite.step import get_step
-from ray_release.config import (
-    read_and_validate_release_test_collection,
-    DEFAULT_WHEEL_WAIT_TIMEOUT,
-    parse_python_version,
-)
-from ray_release.exception import ReleaseTestCLIError
-from ray_release.logger import logger
-from ray_release.wheels import (
-    find_and_wait_for_ray_wheels_url,
-    find_ray_wheels_url,
-    get_buildkite_repo_branch,
-)
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 
@@ -45,6 +30,29 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     ),
 )
 def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False):
+    for name, module in sys.modules.items():
+        if name.startswith("ray_release"):
+            try:
+                importlib.reload(module)
+            except Exception:
+                pass
+
+    from ray_release.buildkite.filter import filter_tests, group_tests
+    from ray_release.buildkite.settings import get_pipeline_settings
+    from ray_release.buildkite.step import get_step
+    from ray_release.config import (
+        read_and_validate_release_test_collection,
+        DEFAULT_WHEEL_WAIT_TIMEOUT,
+        parse_python_version,
+    )
+    from ray_release.exception import ReleaseTestCLIError
+    from ray_release.logger import logger
+    from ray_release.wheels import (
+        find_and_wait_for_ray_wheels_url,
+        find_ray_wheels_url,
+        get_buildkite_repo_branch,
+    )
+
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
