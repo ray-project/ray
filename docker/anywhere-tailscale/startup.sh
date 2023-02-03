@@ -85,7 +85,7 @@ fi
 
 
 
-export clusterhosts=$(clusterhosts)
+#export clusterhosts=$clusterhosts
 
 
 
