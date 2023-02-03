@@ -406,6 +406,14 @@ RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
+RAY_CONFIG(bool, task_events_record_task_info_worker, false)
+RAY_CONFIG(bool, task_events_skip_status, false)
+RAY_CONFIG(bool, task_events_skip_args, false)
+RAY_CONFIG(bool, task_events_skip_node, false)
+RAY_CONFIG(bool, task_events_skip_submit, false)
+RAY_CONFIG(bool, task_events_skip_running, false)
+RAY_CONFIG(bool, task_events_skip_over, false)
+
 /// Whether to start a background thread to import Python dependencies eagerly.
 /// When set to false, Python dependencies will still be imported, only when
 /// they are needed.

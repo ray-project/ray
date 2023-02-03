@@ -937,7 +937,28 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
                                         bool include_task_info,
                                         absl::optional<NodeID> node_id,
                                         absl::optional<WorkerID> worker_id) {
-  if (!task_event_buffer_.Enabled()) {
+  if (!task_event_buffer_.Enabled() || RayConfig::instance().task_events_skip_status()) {
+    return;
+  }
+
+  if (RayConfig::instance().task_events_skip_args() &&
+      status == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
+    return;
+  }
+  if (RayConfig::instance().task_events_skip_node() &&
+      status == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT) {
+    return;
+  }
+  if (RayConfig::instance().task_events_skip_submit() &&
+      status == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
+    return;
+  }
+  if (RayConfig::instance().task_events_skip_running() &&
+      status == rpc::TaskStatus::RUNNING) {
+    return;
+  }
+  if (RayConfig::instance().task_events_skip_over() &&
+      (status == rpc::TaskStatus::FINISHED || status == rpc::TaskStatus::FAILED)) {
     return;
   }
   // Make task event
