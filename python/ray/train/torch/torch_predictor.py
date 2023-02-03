@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 import numpy as np
 import torch
 
-from ray.util import log_once
-from ray.train.predictor import DataBatchType
-from ray.air.checkpoint import Checkpoint
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.air.checkpoint import Checkpoint
 from ray.train._internal.dl_predictor import DLPredictor
+from ray.train.predictor import DataBatchType
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -39,11 +39,14 @@ class TorchPredictor(DLPredictor):
         self.model = model
         self.model.eval()
 
-        # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
-        self.use_gpu = use_gpu
         if use_gpu:
-            # Ensure input tensor and model live on GPU for GPU inference
-            self.model.to(torch.device("cuda"))
+            # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+
+        # Ensure input tensor and model live on the same device
+        self.model.to(self.device)
 
         if (
             not use_gpu
@@ -231,7 +234,7 @@ class TorchPredictor(DLPredictor):
         return convert_ndarray_batch_to_torch_tensor_batch(
             numpy_arrays,
             dtypes=dtypes,
-            device="cuda" if self.use_gpu else None,
+            device=self.device,
         )
 
     def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:

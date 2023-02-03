@@ -91,7 +91,11 @@ def test_metrics(shutdown_only):
                 return True
 
         zero_reported_condition = get_metric_check_condition(
-            {"autoscaler_cluster_resources": 0, "autoscaler_pending_resources": 0},
+            {
+                "autoscaler_cluster_resources": 0,
+                "autoscaler_pending_resources": 0,
+                "autoscaler_pending_nodes": 0,
+            },
             export_addr=autoscaler_export_addr,
         )
         wait_for_condition(zero_reported_condition)
@@ -100,7 +104,11 @@ def test_metrics(shutdown_only):
         ray.get([actor.ping.remote() for actor in actors])
 
         two_cpu_no_pending_condition = get_metric_check_condition(
-            {"autoscaler_cluster_resources": 2, "autoscaler_pending_resources": 0},
+            {
+                "autoscaler_cluster_resources": 2,
+                "autoscaler_pending_resources": 0,
+                "autoscaler_pending_nodes": 0,
+            },
             export_addr=autoscaler_export_addr,
         )
         wait_for_condition(two_cpu_no_pending_condition)

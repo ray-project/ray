@@ -42,7 +42,7 @@ Tensor Column Extension API
 .. autosummary::
    :toctree: doc/
 
-   extensions.tensor_extension.create_possibly_ragged_ndarray
+   extensions.tensor_extension.create_ragged_ndarray
    extensions.tensor_extension.TensorDtype
    extensions.tensor_extension.TensorArray
    extensions.tensor_extension.ArrowTensorType

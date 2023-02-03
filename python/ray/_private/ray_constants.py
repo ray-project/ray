@@ -355,6 +355,8 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
+# Please keep this in sync with the definition kRayInternalNamespacePrefix
+# in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 
 
