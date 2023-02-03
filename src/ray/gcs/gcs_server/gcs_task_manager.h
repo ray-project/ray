@@ -250,9 +250,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// Get the number of task events stored.
     size_t GetTaskEventsCount() const { return task_events_.size(); }
 
-    /// Get the total number of task events, including the ones have been overwritten.
-    size_t GetTotalNumTasks() const { return total_num_tasks_; }
-
     /// Get the total number of bytes of task events stored.
     uint64_t GetTaskEventsBytes() const { return num_bytes_task_events_; }
 
@@ -262,8 +259,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// A iterator into task_events_ that determines which element to be overwritten.
     size_t next_idx_to_overwrite_ = 0;
 
-    /// Total number of tasks, including the ones have been overwritten.
-    size_t total_num_tasks_ = 0;
+    /// Total number of tasks by types, including ones have been evicted/finished.
+    absl::flat_hash_map<rpc::TaskType, size_t> num_tasks_by_type_;
 
     /// TODO(rickyx): Refactor this into LRI(least recently inserted) buffer:
     /// https://github.com/ray-project/ray/issues/31158

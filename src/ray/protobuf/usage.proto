@@ -77,10 +77,8 @@ enum TagKey {
   // Core
   // Total number of placement groups created.
   PG_NUM_CREATED = 300;
-  // Total number of actors created.
+  // Total number of placement groups created.
   ACTOR_NUM_CREATED = 301;
-  // Total number of tasks created.
-  TASK_NUM_CREATED = 306;
   // The count(int) of worker crash with exit type 'system error' since
   // the cluster started, emitted from GCS
   WORKER_CRASH_SYSTEM_ERROR = 302;
@@ -91,4 +89,9 @@ enum TagKey {
   // This is to track usage of the buggy behavior that will be fixed.
   // See https://github.com/ray-project/ray/issues/28465 for more details.
   RAY_GET_TIMEOUT_ZERO = 304;
+  // Total number of tasks created.
+  NUM_ACTOR_CREATION_TASKS = 305;
+  NUM_ACTOR_TASKS = 306;
+  NUM_NORMAL_TASKS = 307;
+  NUM_DRIVERS = 308;
 }
