@@ -127,7 +127,7 @@ class RayClusterOnSpark:
                 # in this case, raise error directly.
                 if self.background_job_exception is not None:
                     raise RuntimeError(
-                        "Ray workers have exited."
+                        "Ray workers failed to start."
                     ) from self.background_job_exception
 
                 cur_alive_worker_count = (
@@ -406,6 +406,8 @@ def _setup_ray_cluster(
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
     ray_head_port = get_random_unused_port(ray_head_ip, min_port=9000, max_port=10000)
 
+    # Make a copy for head_node_options to avoid changing original dict in user code.
+    head_node_options = head_node_options.copy()
     include_dashboard = head_node_options.pop("include_dashboard", None)
     ray_dashboard_port = head_node_options.pop("dashboard_port", None)
 
@@ -851,7 +853,7 @@ def setup_ray_cluster(
             collect their logs to the specified path. On Databricks Runtime, we
             recommend you to specify a local path starts with '/dbfs/', because the
             path mounts with a centralized storage device and stored data is persisted
-            after databricks spark cluster terminated.
+            after Databricks spark cluster terminated.
 
     Returns:
         The address of the initiated Ray cluster on spark.

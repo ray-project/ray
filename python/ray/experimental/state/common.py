@@ -544,12 +544,14 @@ class TaskState(StateSchema):
     required_resources: dict = state_column(detail=True, filterable=False)
     #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
-    #: The parent task id.
+    #: The parent task id. If the parent is a normal task, it will be the task's id.
+    #: If the parent runs in a concurrent actor (async actor or threaded actor),
+    #: it will be the actor's creation task id.
     parent_task_id: str = state_column(filterable=True)
     #: The placement group id that's associated with this task.
     placement_group_id: str = state_column(detail=True, filterable=True)
     #: The worker id that's associated with this task.
-    worker_id: str = state_column(detail=True, filterable=True)
+    worker_id: str = state_column(filterable=True)
     #: The list of events of the given task.
     #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
     #: breakdowns and typical state transition flow.
@@ -749,6 +751,14 @@ class TaskSummaryPerFuncOrClassName:
     state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
 
 
+@dataclass
+class Link:
+    #: The type of entity to link to
+    type: str
+    #: The id of the entity to link to
+    id: str
+
+
 @dataclass(init=True)
 class NestedTaskSummary:
     #: The name of this task group
@@ -765,6 +775,8 @@ class NestedTaskSummary:
     state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
     #: The child
     children: List["NestedTaskSummary"] = field(default_factory=list)
+    #: A link to more details about this summary.
+    link: Optional[Link] = None
 
 
 @dataclass
@@ -831,7 +843,7 @@ class TaskSummaries:
         Step 1: Iterate through all tasks and keep track of them by id and ownership
         Step 2: Put the tasks in a tree structure based on ownership
         Step 3: Merge together siblings in the tree if there are more
-                than one with the same name.
+        than one with the same name.
         Step 4: Total the children
 
         This can probably be more efficient if we merge together some steps to
@@ -895,6 +907,7 @@ class TaskSummaries:
                 key=task_id,
                 type=task["type"],
                 timestamp=task["creation_time_ms"],
+                link=Link(type="task", id=task_id),
             )
 
             # Set summary in right place under parent
@@ -949,6 +962,7 @@ class TaskSummaries:
                     key=key,
                     type="ACTOR",
                     timestamp=task["creation_time_ms"],
+                    link=Link(type="actor", id=actor_id),
                 )
 
                 parent_task_id = creation_task["parent_task_id"]
