@@ -813,11 +813,11 @@ import numpy as np
 import tensorflow
 
 def leak_repro(obj):
-    # tensorflow
+    tensorflow
     return []
 
 ds = ray.data.from_numpy(np.ones((100_000)))
-ds.map(leak_repro)
+ds.map(leak_repro, max_retries=0)
   """
     try:
         run_string_as_driver(driver)
