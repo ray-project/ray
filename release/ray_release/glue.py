@@ -40,6 +40,11 @@ from ray_release.file_manager.session_controller import SessionControllerFileMan
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, handle_exception
+from ray_release.signal_handling import (
+    setup_signal_handling,
+    reset_signal_handling,
+    register_handler,
+)
 from ray_release.util import (
     run_bash_script,
     get_pip_packages,
@@ -174,6 +179,7 @@ def run_release_test(
 
     pipeline_exception = None
     try:
+        setup_signal_handling()
         # Load configs
         cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
         cluster_compute = load_test_cluster_compute(test)
@@ -255,6 +261,11 @@ def run_release_test(
         pip_packages = get_pip_packages()
         pip_package_string = "\n".join(pip_packages)
         logger.info(f"Installed python packages:\n{pip_package_string}")
+
+        if isinstance(cluster_manager, FullClusterManager):
+            register_handler(
+                lambda sig, frame: cluster_manager.terminate_cluster(wait=True)
+            )
 
         # Start cluster
         if cluster_id:
@@ -400,6 +411,8 @@ def run_release_test(
 
     if hasattr(command_runner, "cleanup"):
         command_runner.cleanup()
+
+    reset_signal_handling()
 
     time_taken = time.monotonic() - start_time
     result.runtime = time_taken

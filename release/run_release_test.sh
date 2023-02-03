@@ -39,7 +39,7 @@ INSTALL_MATCHING_RAY=${BUILDKITE-false}
 export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip install -q -r requirements.txt
+  pip install --use-deprecated=legacy-resolver -q -r requirements.txt
   pip install -q -U boto3 botocore
 
   if [ "${INSTALL_MATCHING_RAY-false}" == "true" ]; then
@@ -103,14 +103,24 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     sudo rm -rf "${RELEASE_RESULTS_DIR}"/* || true
   fi
 
+  _term() {
+    echo "[SCRIPT $(date +'%Y-%m-%d %H:%M:%S'),...] Caught SIGTERM signal, sending SIGTERM to release test script"
+    kill "$proc"
+    wait "$proc"
+  }
+
   set +e
-  # Ensure the termination/interrupt signal is passed to python
-  trap 'kill "${python_pid}"; wait "${python_pid}"' SIGINT SIGTERM
+
+  trap _term SIGINT SIGTERM
   python "${RAY_TEST_SCRIPT}" "$@" &
-  python_pid="$!"
-  wait "${python_pid}"
+  proc=$!
+
+  wait "$proc"
   EXIT_CODE=$?
+
   set -e
+
+  trap -  # reset trap
 
   REASON=$(reason "${EXIT_CODE}")
   ALL_EXIT_CODES[${#ALL_EXIT_CODES[@]}]=$EXIT_CODE
