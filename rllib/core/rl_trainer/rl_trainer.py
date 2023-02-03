@@ -348,12 +348,6 @@ class RLTrainer:
             A dictionary of results.
         """
         self.__check_if_build_called()
-        if not self.distributed:
-            return self._update(batch)
-        else:
-            return self.do_distributed_update(batch)
-
-    def _update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
         # NestedDict from the base class.
         batch = self._convert_batch_type(batch)
@@ -564,30 +558,6 @@ class RLTrainer:
                 self._optim_to_param[optimizer].append(param_ref)
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
-
-    def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
-        """Perform a distributed update on this Trainer.
-
-        Args:
-            batch: A batch of data.
-
-        Returns:
-            A dictionary of results.
-        """
-        raise NotImplementedError
-
-    def _make_distributed_module(self) -> MultiAgentRLModule:
-        """Initialize this trainer in a distributed training setting.
-
-        This method should be overriden in the framework specific trainer. It is
-        expected the the module creation is wrapped in some context manager that will
-        handle the distributed training. This is a common patterns used in torch and
-        tf.
-
-        Returns:
-            The distributed module.
-        """
-        raise NotImplementedError
 
     @abc.abstractmethod
     def get_param_ref(self, param: ParamType) -> Hashable:

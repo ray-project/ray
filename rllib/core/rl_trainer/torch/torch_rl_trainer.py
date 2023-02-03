@@ -144,11 +144,6 @@ class TorchRLTrainer(RLTrainer):
         return batch
 
     @override(RLTrainer)
-    def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
-        # in torch the distributed update is no different than the normal update
-        return self._update(batch)
-
-    @override(RLTrainer)
     def get_param_ref(self, param: ParamType) -> Hashable:
         return param
 

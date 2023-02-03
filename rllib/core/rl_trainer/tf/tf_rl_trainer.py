@@ -92,33 +92,28 @@ class TfRLTrainer(RLTrainer):
     ):
         super().__init__(framework_hyperparameters=framework_hyperparameters, **kwargs)
 
-        # TODO (Kourosh): This is required to make sure tf computes the values in the
-        # end. Two question remains:
-        # 1. Why is it not eager by default. Do we do anything in try_import_tf() that
-        # changes this default?
-        # 2. What is the implication of this on the performance? The tf documentation
-        # does not mention this as a requirement?
         tf1.enable_eager_execution()
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
+        # the default strategy is a no-op that can be used in the local mode
+        # cpu only case
+        self._strategy = tf.distribute.get_strategy()
 
     @override(RLTrainer)
     def build(self) -> None:
-        # TODO (Kourosh): Does strategy has to be an attribute here? if so it's very
-        # hidden to the user of this class that there is such an attribute.
-        if not self._distributed:
+        if self._distributed:
+            self._strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        else:
             if self._use_gpu:
                 # mirrored strategy is typically used for multi-gpu training
                 # on a single machine, however we can use it for single-gpu
                 local_gpu = [f"GPU:{self._local_gpu_id}"]
-                self.strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+                self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
             else:
                 # the default strategy is a no-op that can be used in the local mode
                 # cpu only case
-                self.strategy = tf.distribute.get_strategy()
-        else:
-            self.strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        with self.strategy.scope():
+                self._strategy = tf.distribute.get_strategy()
+        with self._strategy.scope():
             super().build()
         if self._enable_tf_function:
             self._update_fn = tf.function(self._traced_update_helper)
@@ -126,7 +121,7 @@ class TfRLTrainer(RLTrainer):
             self._update_fn = self._traced_update_helper
 
     def _traced_update_helper(self, batch):
-        return self.strategy.run(self._do_update_fn, args=(batch,))
+        return self._strategy.run(self._do_update_fn, args=(batch,))
 
     def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         with tf.GradientTape() as tape:
@@ -194,7 +189,7 @@ class TfRLTrainer(RLTrainer):
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
-        with self.strategy.scope():
+        with self._strategy.scope():
             super().add_module(
                 module_id=module_id,
                 module_spec=module_spec,
@@ -206,15 +201,10 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def remove_module(self, module_id: ModuleID) -> None:
-        with self.strategy.scope():
+        with self._strategy.scope():
             super().remove_module(module_id)
         if self._enable_tf_function:
             self._update_fn = tf.function(self._traced_update_helper)
-
-    @override(RLTrainer)
-    def do_distributed_update(self, batch: NestedDict) -> Mapping[str, Any]:
-        update_outs = self.strategy.run(self._update_fn, args=(batch,))
-        return update_outs
 
     def convert_batch_to_tf_tensor(self, batch: MultiAgentBatch) -> NestedDict:
         """Convert the arrays of batch to tf.Tensor's.
