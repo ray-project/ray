@@ -35,13 +35,16 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     help="File containing test configurations",
 )
 @click.option(
-    "--clone_repo",
+    "--no-clone-repo",
     is_flag=True,
     show_default=True,
-    default=True,
-    help="Whether to clone the test repository if specified in configuration.",
+    default=False,
+    help=(
+        "Will not clone the test repository even if specified in configuration "
+        "(for internal use)."
+    ),
 )
-def main(test_collection_file: Optional[str] = None, clone_repo: bool = True):
+def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False):
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
@@ -55,7 +58,7 @@ def main(test_collection_file: Optional[str] = None, clone_repo: bool = True):
         # added test.
         repo = settings["ray_test_repo"]
 
-        if clone_repo:
+        if not no_clone_repo:
             tmpdir = tempfile.mktemp()
 
             current_release_dir = os.path.abspath(
@@ -73,7 +76,7 @@ def main(test_collection_file: Optional[str] = None, clone_repo: bool = True):
             subprocess.check_output(
                 ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
             )
-            cmd = [sys.executable, __file__]
+            cmd = [sys.executable, __file__, "--no-clone-repo"]
             if test_collection_file:
                 cmd += ["--test-collection-file", test_collection_file]
             subprocess.run(cmd, capture_output=False, check=True)
