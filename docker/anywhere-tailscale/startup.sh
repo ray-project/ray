@@ -148,15 +148,13 @@ if [ "$NODETYPE" = "head" ]; then
 
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
+                    -Cnode.store.allow_mmap=true \
+                    -Cnode.attr.location=$location \
                     -Cnode.master=true \
                     -Cnode.name=nexus \
                     -Cnode.data=false \
-                    -Cdiscovery.seed_hosts=$clusterhosts \
-                    -Ccluster.initial_master_nodes=nexus \
-                    -Cnode.store.allow_mmap=true \
-                    -Cnode.attr.location=$location \
-                    -Cgateway.recover_after_nodes: 3 \
-                    &
+                    -Cdiscovery.seed_hosts=$clusterhosts &
+
     #but if there are servers in the cluster but nexus lacks state data we'll recover
                        # -Cnode.master=true \
     elif [ ! "$clusterhosts" = "nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
@@ -167,10 +165,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=true \
                     -Cnode.attr.location=$location \
-                    -Cdiscovery.seed_hosts=$clusterhosts \
-                    -Ccluster.initial_master_nodes=nexus \
-                    -Cgateway.recover_after_nodes: 3 \
-                    &
+                    -Cdiscovery.seed_hosts=$clusterhosts &
     else
         echo $clusterhosts
         echo $statedata
@@ -187,20 +182,14 @@ else
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
-                    -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
-                    -Ccluster.initial_master_nodes=nexus \
-                    -Cgateway.recover_after_nodes: 3 \
-                    &
+                    -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net &
     else
         /crate/bin/crate \
                     -Cnode.name=$HOSTNAME \
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
-                    -Cdiscovery.seed_hosts=$clusterhosts \
-                    -Ccluster.initial_master_nodes=nexus \
-                    -Cgateway.recover_after_nodes: 3 \
-                    &
+                    -Cdiscovery.seed_hosts=$clusterhosts &
     fi
 fi
 
