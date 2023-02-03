@@ -105,13 +105,13 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
 
   _term() {
     echo "[SCRIPT $(date +'%Y-%m-%d %H:%M:%S'),...] Caught SIGTERM signal, sending SIGTERM to release test script"
-    kill -TERM "$proc" 2>/dev/null
+    kill "$proc"
     wait "$proc"
   }
 
-  trap _term SIGINT SIGTERM
-
   set +e
+
+  trap _term SIGINT SIGTERM
   python "${RAY_TEST_SCRIPT}" "$@" &
   proc=$!
 
