@@ -33,7 +33,7 @@ class AimCallback(LoggerCallback):
 
     Aim is an open-source, self-hosted ML experiment tracking tool.
     It's good at tracking lots (1000s) of training runs, and it allows you to compare them with a
-    performant and beautiful UI.
+    performant and well-designed UI.
 
     Source: https://github.com/aimhubio/aim
 
