@@ -358,7 +358,7 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "out")
     ds = ray.data.range(100).map_batches(lambda x: x)
     ds.write_csv(path)
-    stats = ds.stats()
+    stats = ds._write_ds.stats()
     assert "read->MapBatches(<lambda>)->write" in stats, stats
 
     ds = (
@@ -368,7 +368,7 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
         .map_batches(lambda x: x)
     )
     ds.write_csv(path)
-    stats = ds.stats()
+    stats = ds._write_ds.stats()
     assert "read->MapBatches(<lambda>)" in stats, stats
     assert "random_shuffle" in stats, stats
     assert "MapBatches(<lambda>)->write" in stats, stats
