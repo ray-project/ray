@@ -77,7 +77,7 @@ enum TagKey {
   // Core
   // Total number of placement groups created.
   PG_NUM_CREATED = 300;
-  // Total number of placement groups created.
+  // Total number of actors created.
   ACTOR_NUM_CREATED = 301;
   // The count(int) of worker crash with exit type 'system error' since
   // the cluster started, emitted from GCS

@@ -182,15 +182,16 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
         result = ray_usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
-        assert result["task_num_created"] >= 0
-        result["task_num_created"] == 0
         assert result == {
             "key": "val",
             "_test1": "val1",
             "_test2": "val2",
             "actor_num_created": "0",
-            "task_num_created": "0",
             "pg_num_created": "0",
+            "num_actor_creation_tasks": "0",
+            "num_actor_tasks": "0",
+            "num_normal_tasks": "0",
+            "num_drivers": "2",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
@@ -199,17 +200,18 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
         result = ray_usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
-        assert result["task_num_created"] >= 0
-        result["task_num_created"] == 0
         assert result == {
             "key": "val",
             "_test1": "val1",
             "_test2": "val3",
-            "task_num_created": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
             "actor_num_created": "0",
             "pg_num_created": "0",
+            "num_actor_creation_tasks": "0",
+            "num_actor_tasks": "0",
+            "num_normal_tasks": "0",
+            "num_drivers": "2",
         }
 
 
@@ -254,7 +256,8 @@ def test_worker_crash_increment_stats():
 def test_actor_stats(reset_usage_stats):
     @ray.remote
     class Actor:
-        pass
+        def foo(self):
+            pass
 
     with ray.init(
         _system_config={"metrics_report_interval_ms": 1000},
@@ -266,6 +269,10 @@ def test_actor_stats(reset_usage_stats):
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
                 "actor_num_created"
             )
+            == "1"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_actor_creation_tasks"
+            )
             == "1",
             timeout=10,
         )
@@ -274,7 +281,32 @@ def test_actor_stats(reset_usage_stats):
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
                 "actor_num_created"
             )
-            == "2",
+            == "2"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_actor_creation_tasks"
+            )
+            == "1"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_actor_tasks"
+            )
+            == "0",
+            timeout=10,
+        )
+
+        ray.get(actor.foo.remote())
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "actor_num_created"
+            )
+            == "2"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_actor_creation_tasks"
+            )
+            == "1"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_actor_tasks"
+            )
+            == "1",
             timeout=10,
         )
         del actor
@@ -319,7 +351,11 @@ def test_task_stats(reset_usage_stats):
 
         wait_for_condition(
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
-                "task_num_created"
+                "num_normal_tasks"
+            )
+            == "0"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_drivers"
             )
             == "1",
             timeout=10,
@@ -327,17 +363,21 @@ def test_task_stats(reset_usage_stats):
         ray.get(foo.remote())
         wait_for_condition(
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
-                "task_num_created"
+                "num_normal_tasks"
             )
-            == "2",
+            == "1",
             timeout=10,
         )
         ray.get(foo.remote())
         wait_for_condition(
             lambda: ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
-                "task_num_created"
+                "num_normal_tasks"
             )
-            == "3",
+            == "2"
+            and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
+                "num_drivers"
+            )
+            == "1",
             timeout=10,
         )
 
