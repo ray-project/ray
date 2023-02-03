@@ -154,7 +154,6 @@ if [ "$NODETYPE" = "head" ]; then
                     -Ccluster.initial_master_nodes=nexus \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
-                    -Ccluster.routing.allocation.awareness.attributes:location \
                     -Cgateway.recover_after_nodes: 3 \
                     &
     #but if there are servers in the cluster but nexus lacks state data we'll recover
@@ -166,10 +165,9 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cnode.data=false \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
-                    -Ccluster.routing.allocation.awareness.attributes:location \
                     -Cdiscovery.seed_hosts=$clusterhosts \
                     -Ccluster.initial_master_nodes=nexus \
-                    -Cgateway.recover_after_nodes: 2 \
+                    -Cgateway.recover_after_nodes: 3 \
                     &
     else
         echo $clusterhosts
@@ -188,7 +186,6 @@ else
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net \
-                    -Ccluster.routing.allocation.awareness.attributes:location \
                     -Ccluster.initial_master_nodes=nexus \
                     -Cgateway.recover_after_nodes: 3 \
                     &
@@ -198,9 +195,7 @@ else
                     -Cnode.data=true \
                     -Cnode.store.allow_mmap=false \
                     -Cnode.attr.location=$location \
-                    -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts \
-                    -Ccluster.routing.allocation.awareness.attributes:location \
                     -Ccluster.initial_master_nodes=nexus \
                     -Cgateway.recover_after_nodes: 3 \
                     &
