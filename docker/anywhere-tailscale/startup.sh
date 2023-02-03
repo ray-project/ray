@@ -235,7 +235,7 @@ fi
 # SIGTERM-handler this funciton will be executed when the container receives the SIGTERM signal (when stopping)
 term_handler(){
     echo "***Stopping"
-    ray stop -g 30 -v
+    ray stop -g 60 -v
     echo "Running Cluster Election"
     /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
     echo "Running Decommission"
