@@ -139,6 +139,10 @@ RayClientBidiReactor::RayClientBidiReactor(
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
   stub_->async()->StartSync(&client_context_, this);
+  // Prevent this call from being terminated.
+  // Check https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md
+  // for details.
+  AddHold();
   StartPull();
 }
 
@@ -157,6 +161,8 @@ void RayClientBidiReactor::Disconnect() {
         if (!disconnected_) {
           disconnected_ = true;
           StartWritesDone();
+          // Free the hold to allow OnDone being called.
+          RemoveHold();
         }
       },
       "");
