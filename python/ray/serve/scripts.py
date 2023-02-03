@@ -498,6 +498,46 @@ def build(
         f.write(config_str)
 
 
+@cli.command(
+    short_help="Convert a Serve config file to Kubernetes format.",
+    help=(
+        "Reads Serve config at CONFIG_PATH and generates an equivalent "
+        "config that can be included in a KubeRay config."
+    ),
+)
+@click.argument("config_path")
+@click.option(
+    "--output-path",
+    "-o",
+    default=None,
+    type=str,
+    help=(
+        "Local path where the output config will be written in YAML format. "
+        "If not provided, the config will be printed to STDOUT."
+    ),
+)
+def convert(import_path, output_path: Optional[str]):
+    with open(import_path, "r+") as f:
+        config_dict = yaml.safe_load(f)
+
+    schema = ServeApplicationSchema.parse_obj(config_dict)
+    k8s_dict = schema.kubernetes_dict(exclude_unset=True)
+    config_str = (
+        "# This file was generated using the `serve convert` command "
+        f"on Ray v{ray.__version__}.\n\n"
+    )
+
+    config_str += yaml.dump(
+        k8s_dict, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
+    )
+
+    # Ensure file ends with only one newline
+    config_str = config_str.rstrip("\n") + "\n"
+
+    with open(output_path, "w") if output_path else sys.stdout as f:
+        f.write(config_str)
+
+
 class ServeBuildDumper(yaml.SafeDumper):
     """YAML dumper object with custom formatting for `serve build` command.
 
