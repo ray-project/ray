@@ -516,8 +516,8 @@ def build(
         "If not provided, the config will be printed to STDOUT."
     ),
 )
-def convert(import_path, output_path: Optional[str]):
-    with open(import_path, "r+") as f:
+def convert(config_path, output_path: Optional[str]):
+    with open(config_path, "r+") as f:
         config_dict = yaml.safe_load(f)
 
     schema = ServeApplicationSchema.parse_obj(config_dict)

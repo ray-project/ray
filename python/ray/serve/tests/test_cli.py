@@ -614,20 +614,34 @@ k8sFNode = global_f.options(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_build_kubernetes_flag():
+@pytest.mark.parametrize("use_build_flag", [True, False])
+def test_kubernetes_format(use_build_flag: bool):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+        build_command = [
+            "serve",
+            "build",
+            "ray.serve.tests.test_cli.k8sFNode",
+            "-o",
+            tmp.name,
+        ]
+
+        if use_build_flag:
+            build_command.append("-k")
+
         print("Building k8sFNode.")
-        subprocess.check_output(
-            [
-                "serve",
-                "build",
-                "ray.serve.tests.test_cli.k8sFNode",
-                "-o",
-                tmp.name,
-                "-k",
-            ]
-        )
+        subprocess.check_output(build_command)
         print("Build succeeded!")
+
+        if not use_build_flag:
+            subprocess.check_output(
+                [
+                    "serve",
+                    "convert",
+                    tmp.name,
+                    "-o",
+                    tmp.name,
+                ]
+            )
 
         tmp.seek(0)
         config = yaml.safe_load(tmp.read())
