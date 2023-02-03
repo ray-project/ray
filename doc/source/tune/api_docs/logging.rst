@@ -19,7 +19,7 @@ Aim
 
 .. autoclass:: ray.tune.logger.AimCallback
 
-You can install Aim via ``pip install aim``.
+Install Aim via ``pip install aim``.
 You can see the :doc:`tutorial here </tune/examples/tune-aim>`
 
 Viskit
