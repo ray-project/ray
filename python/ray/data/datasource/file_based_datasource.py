@@ -297,18 +297,15 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block = _block_udf(block)
 
             with fs.open_output_stream(write_path, **open_stream_args) as f:
-                try:
-                    _write_block_to_file(
-                        f,
-                        BlockAccessor.for_block(block),
-                        writer_args_fn=write_args_fn,
-                        **write_args,
-                    )
-                    # TODO: decide if we want to return richer object when the task
-                    # succeeds.
-                    return "ok"
-                except Exception as e:
-                    return e
+                _write_block_to_file(
+                    f,
+                    BlockAccessor.for_block(block),
+                    writer_args_fn=write_args_fn,
+                    **write_args,
+                )
+            # TODO: decide if we want to return richer object when the task
+            # succeeds.
+            return "ok"
 
         file_format = self._FILE_EXTENSION
         if isinstance(file_format, list):

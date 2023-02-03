@@ -337,20 +337,16 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
             def write(self, block: Block) -> str:
                 block = BlockAccessor.for_block(block)
-                if not self.enabled:
-                    raise ValueError("disabled")
                 self.rows_written += block.num_rows()
                 return "ok"
 
             def get_rows_written(self):
                 return self.rows_written
 
-            def set_enabled(self, enabled):
-                self.enabled = enabled
-
         self.data_sink = DataSink.remote()
         self.num_ok = 0
         self.num_failed = 0
+        self.enabled = True
 
     def direct_write(
         self,
@@ -359,16 +355,15 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         **write_args,
     ) -> WriteResult:
         tasks = []
+        if not self.enabled:
+            raise ValueError("disabled")
         for b in blocks:
             tasks.append(self.data_sink.write.remote(b))
-        try:
-            ray.get(tasks)
-            return "ok"
-        except Exception as e:
-            return e
+        ray.get(tasks)
+        return "ok"
 
-    def on_write_complete(self, write_results: List[WriteResult]) -> None:
-        assert all(w == "ok" for w in write_results), write_results
+    def on_write_complete(self, write_results: List[ObjectRef[WriteResult]]) -> None:
+        assert all(ray.get(w) == ["ok"] for w in write_results), write_results
         self.num_ok += 1
 
     def on_write_failed(

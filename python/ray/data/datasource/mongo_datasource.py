@@ -50,30 +50,27 @@ class MongoDatasource(Datasource):
     ) -> WriteResult:
         import pymongo
 
-        try:
-            _validate_database_collection_exist(
-                pymongo.MongoClient(uri), database, collection
-            )
+        _validate_database_collection_exist(
+            pymongo.MongoClient(uri), database, collection
+        )
 
-            def write_block(uri: str, database: str, collection: str, block: Block):
-                from pymongoarrow.api import write
+        def write_block(uri: str, database: str, collection: str, block: Block):
+            from pymongoarrow.api import write
 
-                block = BlockAccessor.for_block(block).to_arrow()
-                client = pymongo.MongoClient(uri)
-                write(client[database][collection], block)
+            block = BlockAccessor.for_block(block).to_arrow()
+            client = pymongo.MongoClient(uri)
+            write(client[database][collection], block)
 
-            builder = DelegatingBlockBuilder()
-            for block in blocks:
-                builder.add_block(block)
-            block = builder.build()
+        builder = DelegatingBlockBuilder()
+        for block in blocks:
+            builder.add_block(block)
+        block = builder.build()
 
-            write_block(uri, database, collection, block)
+        write_block(uri, database, collection, block)
 
-            # TODO: decide if we want to return richer object when the task
-            # succeeds.
-            return "ok"
-        except Exception as e:
-            return e
+        # TODO: decide if we want to return richer object when the task
+        # succeeds.
+        return "ok"
 
     @Deprecated
     def do_write(

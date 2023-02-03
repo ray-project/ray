@@ -181,7 +181,7 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
     assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
-    ray.get(output.data_sink.set_enabled.remote(False))
+    output.enabled = False
     ds = maybe_pipeline(ray.data.range(10, parallelism=2), pipelined)
     with pytest.raises(ValueError):
         ds.write_datasource(output, ray_remote_args={"max_retries": 0})
@@ -230,13 +230,10 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
         class DataSink:
             def __init__(self):
                 self.rows_written = 0
-                self.enabled = True
                 self.node_ids = set()
 
             def write(self, node_id: str, block: Block) -> str:
                 block = BlockAccessor.for_block(block)
-                if not self.enabled:
-                    raise ValueError("disabled")
                 self.rows_written += block.num_rows()
                 self.node_ids.add(node_id)
                 return "ok"
@@ -246,9 +243,6 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
             def get_node_ids(self):
                 return self.node_ids
-
-            def set_enabled(self, enabled):
-                self.enabled = enabled
 
         self.data_sink = DataSink.remote()
         self.num_ok = 0
@@ -269,14 +263,11 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
         tasks = []
         for b in blocks:
             tasks.append(write(b))
-        try:
-            ray.get(tasks)
-            return "ok"
-        except Exception as e:
-            return e
+        ray.get(tasks)
+        return "ok"
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
-        assert all(w == "ok" for w in write_results), write_results
+        assert all(ray.get(w) == ["ok"] for w in write_results), write_results
         self.num_ok += 1
 
     def on_write_failed(
@@ -304,7 +295,7 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
 
     output = NodeLoggerOutputDatasource()
     ds = ray.data.range(100, parallelism=10)
-    # Pin write tasks to
+    # Pin write tasks to node with "bar" resource.
     ds.write_datasource(output, ray_remote_args={"resources": {"bar": 1}})
     assert output.num_ok == 1
     assert output.num_failed == 0

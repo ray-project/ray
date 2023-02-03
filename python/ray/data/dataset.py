@@ -2627,12 +2627,11 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        # The resulting Dataset from a write operator is a "status Dataset"
-        # indicating the result status of each write task launched by the
-        # write operator. Specifically, it will contain N blocks, where
-        # each block has a single row (i.e. WriteResult, indicating the result
-        # status of the write task) and N is the number of write tasks.
-        def transform(blocks: Iterable[Block], ctx, fn) -> List[List[WriteResult]]:
+        # If the write operator succeeds, the resulting Dataset is a list of
+        # WriteResult (one element per write task). Otherwise, an error will
+        # be raised. The Datasource can handle execution outcomes with the
+        # on_write_complete() and on_write_failed().
+        def transform(blocks: Iterable[Block], ctx, fn) -> List[ObjectRef[WriteResult]]:
             return [[datasource.direct_write(blocks, ctx, **write_args)]]
 
         plan = self._plan.with_stage(
@@ -2645,15 +2644,12 @@ class Dataset(Generic[T]):
             )
         )
         ds = Dataset(plan, self._epoch, self._lazy)
-        ds = ds.fully_executed()
-        results = list(ds.iter_rows())
-        if all(not isinstance(w, Exception) for w in results):
-            datasource.on_write_complete(results)
-        else:
-            datasource.on_write_failed(results, None)
-            for r in results:
-                if isinstance(r, Exception):
-                    raise r
+        try:
+            ds = ds.fully_executed()
+            datasource.on_write_complete(ds._plan.execute().get_blocks())
+        except Exception as e:
+            datasource.on_write_failed([], e)
+            raise
 
     def iterator(self) -> DatasetIterator:
         """Return a :class:`~ray.data.DatasetIterator` that
