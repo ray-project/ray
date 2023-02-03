@@ -116,19 +116,22 @@ class TfRLTrainer(RLTrainer):
                 self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
         with self._strategy.scope():
             super().build()
-        if self._enable_tf_function:
-            self._update_fn = tf.function(
-                self._traced_update_helper, reduce_retracing=True
-            )
-        else:
-            self._update_fn = self._traced_update_helper
+        # if self._enable_tf_function:
+        #     # self._update_fn = tf.function(
+        #     #     self._traced_update_helper, reduce_retracing=True
+        #     # )
+        #     self._update_fn = self._traced_update_helper
+        # else:
+        #     self._update_fn = self._traced_update_helper
+        self._update_fn = None
 
-    def _traced_update_helper(self, batch):
-        return self._strategy.run(self._do_update_fn, args=(batch,))
+    @tf.function(reduce_retracing=True)
+    def _traced_update_helper(self, batch, rl_module):
+        return self._strategy.run(self._do_update_fn, args=(batch, rl_module))
 
-    def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+    def _do_update_fn(self, batch: MultiAgentBatch, rl_module) -> Mapping[str, Any]:
         with tf.GradientTape() as tape:
-            fwd_out = self._module.forward_train(batch)
+            fwd_out = rl_module.forward_train(batch)
             loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
             if isinstance(loss, tf.Tensor):
                 loss = {"total_loss": loss}
@@ -157,7 +160,8 @@ class TfRLTrainer(RLTrainer):
                 "currently support training of only some modules and not others"
             )
         batch = self.convert_batch_to_tf_tensor(batch)
-        update_outs = self._update_fn(batch)
+        # self._update_fn.pretty_printed_concrete_signatures()
+        update_outs = self._update_fn(batch, self._module)
         loss = update_outs["loss"]
         fwd_out = update_outs["fwd_out"]
         postprocessed_gradients = update_outs["postprocessed_gradients"]
@@ -232,6 +236,7 @@ class TfRLTrainer(RLTrainer):
         batch = NestedDict(batch.policy_batches)
         for key, value in batch.items():
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
+        batch = batch.asdict()
         return batch
 
     @override(RLTrainer)
