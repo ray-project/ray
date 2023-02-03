@@ -32,7 +32,7 @@ from ray.dag.utils import _DAGNodeNameGenerator
 from ray.experimental.gradio_utils import type_to_string
 
 
-def build(ray_dag_root_node: DAGNode, name: str = None) -> List[Deployment]:
+def build(ray_dag_root_node: DAGNode, name: str) -> List[Deployment]:
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
     DAG authored with Ray DAG API.

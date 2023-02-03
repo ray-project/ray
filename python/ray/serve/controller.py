@@ -758,7 +758,7 @@ def run_graph(
 
         # Import and build the graph
         graph = import_attr(import_path)
-        app = build(graph)
+        app = build(graph, name)
 
         # Override options for each deployment
         for options in deployment_override_options:
