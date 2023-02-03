@@ -144,7 +144,7 @@ if [ "$NODETYPE" = "head" ]; then
     ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address nexus.chimp-beta.ts.net
 
     #there is state data then and we can see other hosts in the cluster, just start up
-    if [ $statedata ] && [ ! $clusterhosts=="nexus.chimp-beta.ts.net:4300" ]; then
+    if [ $statedata ] && [ ! $clusterhosts = "nexus.chimp-beta.ts.net:4300" ]; then
 
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
@@ -160,7 +160,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Cstats.enabled=false &
     #but if there are servers in the cluster but nexus lacks state data we'll recover
                        # -Cnode.master=true \
-    elif [ ! $clusterhosts=="nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
+    elif [ ! $clusterhosts = "nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
                     -Cnode.name=nexus \
