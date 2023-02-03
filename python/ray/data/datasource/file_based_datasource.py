@@ -273,7 +273,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **write_args,
     ) -> WriteResult:
-        """Creates and returns write tasks for a file-based datasource."""
+        """Write blocks for a file-based datasource."""
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
         if try_create_dir:
