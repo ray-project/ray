@@ -1,3 +1,4 @@
+import copy
 import os
 import posixpath
 
@@ -272,6 +273,14 @@ def assert_base_partitioned_ds():
     yield _assert_base_partitioned_ds
 
 
+@pytest.fixture
+def restore_dataset_context(request):
+    """Restore any DatasetContext changes after the test runs"""
+    original = copy.deepcopy(ray.data.context.DatasetContext.get_current())
+    yield
+    ray.data.context.DatasetContext._set_current(original)
+
+
 @pytest.fixture(params=[True, False])
 def use_push_based_shuffle(request):
     ctx = ray.data.context.DatasetContext.get_current()
@@ -317,14 +326,14 @@ def target_max_block_size(request):
     ctx.target_max_block_size = original
 
 
-@pytest.fixture(params=[True])
-def enable_optimizer(request):
+@pytest.fixture
+def enable_optimizer():
     ctx = ray.data.context.DatasetContext.get_current()
     original_backend = ctx.new_execution_backend
     original_optimizer = ctx.optimizer_enabled
-    ctx.new_execution_backend = request.param
-    ctx.optimizer_enabled = request.param
-    yield request.param
+    ctx.new_execution_backend = True
+    ctx.optimizer_enabled = True
+    yield
     ctx.new_execution_backend = original_backend
     ctx.optimizer_enabled = original_optimizer
 

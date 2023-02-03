@@ -100,11 +100,6 @@ class RayClusterOnSpark:
     def wait_until_ready(self):
         import ray
 
-        if self.background_job_exception is not None:
-            raise RuntimeError(
-                "Ray workers has exited."
-            ) from self.background_job_exception
-
         if self.is_shutdown:
             raise RuntimeError(
                 "The ray cluster has been shut down or it failed to start."
@@ -125,6 +120,16 @@ class RayClusterOnSpark:
             last_progress_move_time = time.time()
             while True:
                 time.sleep(_RAY_CLUSTER_STARTUP_PROGRESS_CHECKING_INTERVAL)
+
+                # Inside the waiting ready loop,
+                # checking `self.background_job_exception`, if it is not None,
+                # it means the background spark job has failed,
+                # in this case, raise error directly.
+                if self.background_job_exception is not None:
+                    raise RuntimeError(
+                        "Ray workers failed to start."
+                    ) from self.background_job_exception
+
                 cur_alive_worker_count = (
                     len([node for node in ray.nodes() if node["Alive"]]) - 1
                 )  # Minus 1 means excluding the head node.
@@ -144,12 +149,17 @@ class RayClusterOnSpark:
                         time.time() - last_progress_move_time
                         > _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT
                     ):
+                        if cur_alive_worker_count == 0:
+                            raise RuntimeError(
+                                "Current spark cluster has no resources to launch "
+                                "Ray worker nodes."
+                            )
                         _logger.warning(
                             "Timeout in waiting for all ray workers to start. "
                             "Started / Total requested: "
                             f"({cur_alive_worker_count} / {self.num_worker_nodes}). "
-                            "Please check ray logs to see why some ray workers "
-                            "failed to start."
+                            "Current spark cluster does not have sufficient resources "
+                            "to launch requested number of Ray worker nodes."
                         )
                         return
         finally:
@@ -396,6 +406,8 @@ def _setup_ray_cluster(
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
     ray_head_port = get_random_unused_port(ray_head_ip, min_port=9000, max_port=10000)
 
+    # Make a copy for head_node_options to avoid changing original dict in user code.
+    head_node_options = head_node_options.copy()
     include_dashboard = head_node_options.pop("include_dashboard", None)
     ray_dashboard_port = head_node_options.pop("dashboard_port", None)
 
@@ -678,7 +690,7 @@ def _setup_ray_cluster(
         ).start()
 
         # Call hook immediately after spark job started.
-        start_hook.on_spark_background_job_created(spark_job_group_id)
+        start_hook.on_cluster_created(ray_cluster_handler)
 
         # wait background spark task starting.
         for _ in range(_BACKGROUND_JOB_STARTUP_WAIT):
@@ -699,6 +711,7 @@ def _setup_ray_cluster(
 
 
 _active_ray_cluster = None
+_active_ray_cluster_rwlock = threading.RLock()
 
 
 def _create_resource_profile(num_cpus_per_node, num_gpus_per_node):
@@ -840,7 +853,7 @@ def setup_ray_cluster(
             collect their logs to the specified path. On Databricks Runtime, we
             recommend you to specify a local path starts with '/dbfs/', because the
             path mounts with a centralized storage device and stored data is persisted
-            after databricks spark cluster terminated.
+            after Databricks spark cluster terminated.
 
     Returns:
         The address of the initiated Ray cluster on spark.
@@ -1007,23 +1020,24 @@ def setup_ray_cluster(
         else:
             _logger.warning("\n".join(insufficient_resources))
 
-    cluster = _setup_ray_cluster(
-        num_worker_nodes=num_worker_nodes,
-        num_cpus_per_node=num_cpus_per_node,
-        num_gpus_per_node=num_gpus_per_node,
-        using_stage_scheduling=using_stage_scheduling,
-        heap_memory_per_node=ray_worker_node_heap_mem_bytes,
-        object_store_memory_per_node=ray_worker_node_object_store_mem_bytes,
-        head_node_options=head_node_options,
-        worker_node_options=worker_node_options,
-        ray_temp_root_dir=ray_temp_root_dir,
-        collect_log_to_path=collect_log_to_path,
-    )
-    cluster.wait_until_ready()  # NB: this line might raise error.
+    with _active_ray_cluster_rwlock:
+        cluster = _setup_ray_cluster(
+            num_worker_nodes=num_worker_nodes,
+            num_cpus_per_node=num_cpus_per_node,
+            num_gpus_per_node=num_gpus_per_node,
+            using_stage_scheduling=using_stage_scheduling,
+            heap_memory_per_node=ray_worker_node_heap_mem_bytes,
+            object_store_memory_per_node=ray_worker_node_object_store_mem_bytes,
+            head_node_options=head_node_options,
+            worker_node_options=worker_node_options,
+            ray_temp_root_dir=ray_temp_root_dir,
+            collect_log_to_path=collect_log_to_path,
+        )
+        cluster.wait_until_ready()  # NB: this line might raise error.
 
-    # If connect cluster successfully, set global _active_ray_cluster to be the started
-    # cluster.
-    _active_ray_cluster = cluster
+        # If connect cluster successfully, set global _active_ray_cluster to be the
+        # started cluster.
+        _active_ray_cluster = cluster
     return cluster.address
 
 
@@ -1033,8 +1047,10 @@ def shutdown_ray_cluster() -> None:
     Shut down the active ray cluster.
     """
     global _active_ray_cluster
-    if _active_ray_cluster is None:
-        raise RuntimeError("No active ray cluster to shut down.")
 
-    _active_ray_cluster.shutdown()
-    _active_ray_cluster = None
+    with _active_ray_cluster_rwlock:
+        if _active_ray_cluster is None:
+            raise RuntimeError("No active ray cluster to shut down.")
+
+        _active_ray_cluster.shutdown()
+        _active_ray_cluster = None
