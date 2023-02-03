@@ -105,10 +105,26 @@ def get_fs_and_path(
         fs = _cached_fs[cache_key]
         return fs, path
 
+    # In case of hdfs filesystem, if uri does not have the netloc part below will
+    # fail with hdfs access error.  For example 'hdfs:///user_folder/...' will
+    # fail, while only 'hdfs://namenode_server/user_foler/...' will work
+    # we consider the two cases of uri: short_hdfs_uri or other_uri,
+    # other_uri includes long hdfs uri and other filesystem uri, like s3 or gcp
+    # filesystem. Two cases of imported module of fsspec: yes or no. So we need
+    # to handle 4 cases:
+    # (uri,             fsspec)
+    # (short_hdfs_uri,  yes) --> use fsspec
+    # (short_hdfs_uri,  no) --> return None and avoid init pyarrow
+    # (other_uri,       yes) --> try pyarrow, if throw use fsspec
+    # (other_uri,       no) --> try pyarrow, if throw return None
+    short_hdfs_uri = parsed.scheme == "hdfs" and parsed.netloc == ""
     try:
-        fs, path = pyarrow.fs.FileSystem.from_uri(uri)
-        _cached_fs[cache_key] = fs
-        return fs, path
+        if short_hdfs_uri and not fsspec:
+            return None, None
+        if not short_hdfs_uri:
+            fs, path = pyarrow.fs.FileSystem.from_uri(uri)
+            _cached_fs[cache_key] = fs
+            return fs, path
     except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
         # Raised when URI not recognized
         if not fsspec:
