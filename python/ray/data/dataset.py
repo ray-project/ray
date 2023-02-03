@@ -2634,7 +2634,7 @@ class Dataset(Generic[T]):
         def transform(blocks: Iterable[Block], ctx, fn) -> List[ObjectRef[WriteResult]]:
             return [[datasource.direct_write(blocks, ctx, **write_args)]]
 
-        plan = self._plan.with_stage(
+        self._plan = self._plan.with_stage(
             OneToOneStage(
                 "write",
                 transform,
@@ -2643,10 +2643,9 @@ class Dataset(Generic[T]):
                 fn=lambda x: x,
             )
         )
-        ds = Dataset(plan, self._epoch, self._lazy)
         try:
-            ds = ds.fully_executed()
-            datasource.on_write_complete(ds._plan.execute().get_blocks())
+            self._plan.execute(force_read=True)
+            datasource.on_write_complete(self._plan.execute().get_blocks())
         except Exception as e:
             datasource.on_write_failed([], e)
             raise
