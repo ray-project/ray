@@ -127,3 +127,5 @@ class FullClusterManager(MinimalClusterManager):
             while result.result.state != "Terminated":
                 time.sleep(1)
                 result = self.sdk.get_cluster(self.cluster_id)
+
+            logger.info(f"Terminated cluster with ID {self.cluster_id}")
