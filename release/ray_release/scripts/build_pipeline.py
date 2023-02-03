@@ -76,6 +76,12 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
             subprocess.check_output(
                 ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
             )
+
+            # We run the script again in a subprocess without entering this if again.
+            # This is necessary as we update the ray_release files. This way,
+            # the modules are reloaded and use the newest files, instead of
+            # old ones, which may not have the changes introduced on the
+            # checked out branch.
             cmd = [sys.executable, __file__, "--no-clone-repo"]
             if test_collection_file:
                 cmd += ["--test-collection-file", test_collection_file]
