@@ -687,6 +687,7 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // unfinished_jobs_.erase(job_id);
   auto job_config = GetJobConfig(job_id);
   RAY_CHECK(job_config);
+  RAY_LOG(ERROR) << "job finished " << job_id;
   // Check eager install here because we only add URI reference when runtime
   // env install really happens.
   if (NeedToEagerInstallRuntimeEnv(*job_config)) {
@@ -734,7 +735,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   STATS_worker_register_time_ms.Record(duration.count());
   RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
                  << ", port: " << port << ", register cost: " << duration.count()
-                 << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
+                 << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType())
+                 << ", startup token: " << worker_startup_token;
   worker->SetAssignedPort(port);
 
   state.registered_workers.insert(worker);
@@ -942,8 +944,8 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     const PopWorkerStatus &status,
     bool *found,
     bool *worker_used,
-    TaskID *task_id) {
-  *found = false;
+    TaskID *task_id) {  
+  RAY_LOG(DEBUG) << "InvokePopWorkerCallbackForProcess " << worker->GetAssignedTask().DebugString() << " wid " << worker->WorkerId() << " token " << startup_token;
   *worker_used = false;
   auto it = starting_workers_to_tasks.find(startup_token);
   if (it != starting_workers_to_tasks.end()) {
@@ -975,12 +977,19 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
                                     &found,
                                     &used,
                                     &task_id);
+  RAY_LOG(DEBUG)  << "PushWorker " << used << " " << task_id << " token " << worker->GetStartupToken() << " " << worker->GetAssignedTask().DebugString() << " wid " << worker->WorkerId();
+  if (!found) {
+    RAY_LOG(WARNING) << "Worker not found, may be a worker leak:";
+  }
   if (!used) {
     // Put the worker to the idle pool.
     state.idle.insert(worker);
     int64_t now = get_time_();
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
+  } else if (!found) {
+    RAY_LOG(WARNING) << "Worker not returned to the idle pool after being used. This may cause a worker leak:";
+  }
   }
   // We either have an idle worker or a slot to start a new worker.
   if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
@@ -995,6 +1004,7 @@ void WorkerPool::TryKillingIdleWorkers() {
   size_t running_size = 0;
   for (const auto &worker : GetAllRegisteredWorkers()) {
     if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+      RAY_LOG(DEBUG)  << "GetAllRegisteredWorkers " << worker->GetAssignedTask().GetTaskSpecification().DebugString() << " wid " << worker->WorkerId();
       running_size++;
     }
   }
@@ -1006,8 +1016,14 @@ void WorkerPool::TryKillingIdleWorkers() {
   for (const auto &idle_pair : idle_of_all_languages_) {
     const auto &idle_worker = idle_pair.first;
     const auto &job_id = idle_worker->GetAssignedJobId();
+
+    RAY_LOG(DEBUG)  << "idle_of_all_languages_ " << idle_worker->GetAssignedTask().GetTaskSpecification().DebugString()
+    << "\n" << running_size
+    << "  " << num_workers_soft_limit_
+    << " " << !finished_jobs_.count(job_id);
+
     if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
-      if (!finished_jobs_.count(job_id)) {
+      if (!finished_jobs_.contains(job_id)) {
         // Ignore the soft limit for jobs that have already finished, as we
         // should always clean up these workers.
         break;
@@ -1080,7 +1096,10 @@ void WorkerPool::TryKillingIdleWorkers() {
                      << " has been idle for a a while. Kill it.";
       // To avoid object lost issue caused by forcibly killing, send an RPC request to the
       // worker to allow it to do cleanup before exiting.
-      if (!worker->IsDead()) {
+      RAY_LOG(DEBUG) << "kill idle worker " << worker->IsDead() << "finished_jobs_ "
+                     << finished_jobs_.contains(job_id) << "job_id " << job_id;
+
+      if (!worker->IsDead() && !finished_jobs_.contains(job_id)) {
         // Register the worker to pending exit so that we can correctly calculate the
         // running_size.
         // This also means that there's an inflight `Exit` RPC request to the worker.
@@ -1094,7 +1113,7 @@ void WorkerPool::TryKillingIdleWorkers() {
             request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
               RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
               if (!status.ok()) {
-                RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
+                RAY_LOG(ERROR) << "wrequest: " << status.ToString();
               }
 
               // In case of failed to send request, we remove it from pool as well
@@ -1111,6 +1130,8 @@ void WorkerPool::TryKillingIdleWorkers() {
                   worker->MarkDead();
                 }
               } else {
+                RAY_LOG(ERROR) << " failed to exit worker " << worker->GetAssignedTask().GetTaskSpecification().DebugString();
+  
                 // We re-insert the idle worker to the back of the queue if it fails to
                 // kill the worker (e.g., when the worker owns the object). Without this,
                 // if the first N workers own objects, it can't kill idle workers that are
@@ -1146,8 +1167,6 @@ void WorkerPool::TryKillingIdleWorkers() {
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                            const PopWorkerCallback &callback,
                            const std::string &allocated_instances_serialized_json) {
-  RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " task name "
-                 << task_spec.FunctionDescriptor()->ToString();
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
@@ -1167,6 +1186,9 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                                     task_spec.GetRuntimeEnvHash(),
                                                     serialized_runtime_env_context,
                                                     task_spec.RuntimeEnvInfo());
+    RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " task name "
+                   << task_spec.FunctionDescriptor()->ToString()
+                   << " startup token " << startup_token;                                                                             
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();

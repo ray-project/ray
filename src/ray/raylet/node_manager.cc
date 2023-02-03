@@ -1397,6 +1397,8 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
 
+  RAY_LOG(DEBUG) << "worker id " << worker->WorkerId() << " task spec " << worker->GetAssignedTask().GetTaskSpecification().DebugString();
+
   if (worker->GetWorkerType() == rpc::WorkerType::SPILL_WORKER) {
     // Return the worker to the idle pool.
     worker_pool_.PushSpillWorker(worker);
@@ -1969,6 +1971,8 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   auto worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
 
+  RAY_LOG(DEBUG) << "worker id " << worker->WorkerId() << " task spec " << worker->GetAssignedTask().GetTaskSpecification().DebugString();
+  
   Status status;
   leased_workers_.erase(worker_id);
 
