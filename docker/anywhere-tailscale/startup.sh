@@ -148,11 +148,12 @@ if [ "$NODETYPE" = "head" ]; then
 
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
+                    -Cnode.master=true \
                     -Cnode.name=nexus \
                     -Cnode.data=false \
                     -Cdiscovery.seed_hosts=$clusterhosts \
                     -Ccluster.initial_master_nodes=nexus \
-                    -Cnode.store.allow_mmap=false \
+                    -Cnode.store.allow_mmap=true \
                     -Cnode.attr.location=$location \
                     -Cgateway.recover_after_nodes: 3 \
                     &
@@ -161,9 +162,10 @@ if [ "$NODETYPE" = "head" ]; then
     elif [ ! "$clusterhosts" = "nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_ \
+                    -Cnode.master=true \
                     -Cnode.name=nexus \
                     -Cnode.data=false \
-                    -Cnode.store.allow_mmap=false \
+                    -Cnode.store.allow_mmap=true \
                     -Cnode.attr.location=$location \
                     -Cdiscovery.seed_hosts=$clusterhosts \
                     -Ccluster.initial_master_nodes=nexus \
