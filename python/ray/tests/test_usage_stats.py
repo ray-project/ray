@@ -1211,11 +1211,17 @@ provider:
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
         assert int(payload["extra_usage_tags"]["actor_num_created"]) >= 0
-        assert int(payload["extra_usage_tags"]["task_num_created"]) >= 0
         assert int(payload["extra_usage_tags"]["pg_num_created"]) >= 0
+        assert int(payload["extra_usage_tags"]["num_actor_creation_tasks"]) >= 0
+        assert int(payload["extra_usage_tags"]["num_actor_tasks"]) >= 0
+        assert int(payload["extra_usage_tags"]["num_normal_tasks"]) >= 0
+        assert int(payload["extra_usage_tags"]["num_drivers"]) >= 0
         payload["extra_usage_tags"]["actor_num_created"] = "0"
-        payload["extra_usage_tags"]["task_num_created"] = "0"
         payload["extra_usage_tags"]["pg_num_created"] = "0"
+        payload["extra_usage_tags"]["num_actor_creation_tasks"] = "0"
+        payload["extra_usage_tags"]["num_actor_tasks"] = "0"
+        payload["extra_usage_tags"]["num_normal_tasks"] = "0"
+        payload["extra_usage_tags"]["num_drivers"] = "0"
         assert payload["extra_usage_tags"] == {
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
@@ -1225,8 +1231,11 @@ provider:
             "serve_num_deployments": "1",
             "serve_api_version": "v1",
             "actor_num_created": "0",
-            "task_num_created": "0",
             "pg_num_created": "0",
+            "num_actor_creation_tasks": "0",
+            "num_actor_tasks": "0",
+            "num_normal_tasks": "0",
+            "num_drivers": "0",
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
@@ -1569,7 +1578,6 @@ def test_usage_stats_tags(
                 "gcs_storage": gcs_storage_type,
                 "dashboard_used": "False",
                 "actor_num_created": "0",
-                "task_num_created": "0",
                 "pg_num_created": "0",
             }
             assert num_nodes == 2
