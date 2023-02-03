@@ -258,7 +258,7 @@ def run_release_test(
 
         if isinstance(cluster_manager, FullClusterManager):
             register_handler(
-                lambda sig, frame: cluster_manager.terminate_cluster(wait=False)
+                lambda sig, frame: cluster_manager.terminate_cluster(wait=True)
             )
 
         # Start cluster
