@@ -3555,6 +3555,7 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
   bool force_exit = request.force_exit();
+  RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
   if (!is_idle && force_exit) {
     RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other workers that depends on the object to lose it. "
     << "Own objects: " << own_objects << " # Pins in flight: " << pins_in_flight;
@@ -3565,7 +3566,6 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
       Status::OK(),
       [this, will_exit]() {
         // If the worker is idle, we exit.
-        RAY_LOG(ERROR) << "worker exit " << this->GetCurrentTaskId();
         if (will_exit) {
           Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                "Worker exits because it was idle (it doesn't have objects it owns while "
@@ -3574,7 +3574,6 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
       },
       // We need to kill it regardless if the RPC failed.
       [this]() {
-        RAY_LOG(ERROR) << "worker exit rpc fail" << this->GetCurrentTaskId();
         Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
              "Worker exits because it was idle (it doesn't have objects it owns while "
              "no task or actor has been scheduled) for a long time.");
