@@ -945,7 +945,6 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     bool *worker_used,
     TaskID *task_id) {
   *found = false;
-  RAY_LOG(DEBUG) << "InvokePopWorkerCallbackForProcess " << worker->GetAssignedTask().DebugString() << " wid " << worker->WorkerId() << " token " << startup_token;
   *worker_used = false;
   auto it = starting_workers_to_tasks.find(startup_token);
   if (it != starting_workers_to_tasks.end()) {
@@ -977,7 +976,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
                                     &found,
                                     &used,
                                     &task_id);
-  RAY_LOG(DEBUG)  << "PushWorker " << used << " " << task_id << " token " << worker->GetStartupToken() << " " << worker->GetAssignedTask().DebugString() << " wid " << worker->WorkerId();
   if (!used) {
     // Put the worker to the idle pool.
     state.idle.insert(worker);
@@ -985,7 +983,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
   } else if (!found) {
-    RAY_LOG(WARNING) << "Worker not returned to the idle pool after being used. This may cause a worker leak:";
+    RAY_LOG(INFO) << "Worker not returned to the idle pool after being used. This may "
+                     "cause a worker leak:";
   }
   // We either have an idle worker or a slot to start a new worker.
   if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
@@ -1000,7 +999,6 @@ void WorkerPool::TryKillingIdleWorkers() {
   size_t running_size = 0;
   for (const auto &worker : GetAllRegisteredWorkers()) {
     if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
-      RAY_LOG(DEBUG)  << "GetAllRegisteredWorkers " << worker->GetAssignedTask().GetTaskSpecification().DebugString() << " wid " << worker->WorkerId();
       running_size++;
     }
   }
@@ -1013,7 +1011,9 @@ void WorkerPool::TryKillingIdleWorkers() {
     const auto &idle_worker = idle_pair.first;
     const auto &job_id = idle_worker->GetAssignedJobId();
 
-    RAY_LOG(DEBUG)  << " Checking idle worker " << idle_worker->GetAssignedTask().GetTaskSpecification().DebugString() << " worker id " << idle_worker->WorkerId();
+    RAY_LOG(DEBUG) << " Checking idle worker "
+                   << idle_worker->GetAssignedTask().GetTaskSpecification().DebugString()
+                   << " worker id " << idle_worker->WorkerId();
 
     if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
       if (!finished_jobs_.contains(job_id)) {
@@ -1092,10 +1092,8 @@ void WorkerPool::TryKillingIdleWorkers() {
                      << " with pid " << process.GetId()
                      << " has been idle for a a while. Kill it.";
       // To avoid object lost issue caused by forcibly killing, send an RPC request to the
-      // worker to allow it to do cleanup before exiting.
-      RAY_LOG(DEBUG) << "kill idle worker " << worker->IsDead() << "finished_jobs_ "
-                      << finished_jobs_.contains(job_id) << "job_id " << job_id;
-
+      // worker to allow it to do cleanup before exiting. We kill it anyway if the driver
+      // is already exited.
       if (!worker->IsDead()) {
         RAY_LOG(DEBUG) << "Sending exit message to worker";
         // Register the worker to pending exit so that we can correctly calculate the
@@ -1108,7 +1106,7 @@ void WorkerPool::TryKillingIdleWorkers() {
         running_size--;
         rpc::ExitRequest request;
         if (finished_jobs_.contains(job_id)) {
-          RAY_LOG(INFO) << "Force exiting worker whose job is dead";
+          RAY_LOG(INFO) << "Force exiting worker whose job has exited";
           request.set_force_exit(true);
         }
         rpc_client->Exit(
@@ -1147,7 +1145,7 @@ void WorkerPool::TryKillingIdleWorkers() {
             });
       } else {
         RAY_LOG(DEBUG) << "Removing dead worker ";
-        
+
         // Even it's a dead worker, we still need to remove them from the pool.
         RemoveWorker(worker_state.idle, worker);
       }

@@ -3557,8 +3557,10 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
   bool force_exit = request.force_exit();
   RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
   if (!is_idle && force_exit) {
-    RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other workers that depends on the object to lose it. "
-    << "Own objects: " << own_objects << " # Pins in flight: " << pins_in_flight;
+    RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other "
+                     "workers that depends on the object to lose it. "
+                  << "Own objects: " << own_objects
+                  << " # Pins in flight: " << pins_in_flight;
   }
   bool will_exit = is_idle || force_exit;
   reply->set_success(will_exit);
