@@ -1020,8 +1020,15 @@ void WorkerPool::TryKillingIdleWorkers() {
         // Ignore the soft limit for jobs that have already finished, as we
         // should always clean up these workers.
         RAY_LOG(DEBUG) << "job not finished. Not going to kill worker";
-        continue;
+        break;
       }
+    }
+
+    if (now - idle_pair.second <
+        RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+      break;
+    }
+
     if (idle_worker->IsDead()) {
       RAY_LOG(DEBUG) << "idle worker is already dead. Not going to kill worker";
       // This worker has already been killed.
