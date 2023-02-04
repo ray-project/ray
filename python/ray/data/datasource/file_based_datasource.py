@@ -345,58 +345,30 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         **write_args,
     ) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
-        path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
-        path = path[0]
-        if try_create_dir:
-            # Arrow's S3FileSystem doesn't allow creating buckets by default, so we add
-            # a query arg enabling bucket creation if an S3 URI is provided.
-            tmp = _add_creatable_buckets_param_if_s3_uri(path)
-            filesystem.create_dir(tmp, recursive=True)
-        filesystem = _wrap_s3_serialization_workaround(filesystem)
-
-        _write_block_to_file = self._write_block
-
-        if open_stream_args is None:
-            open_stream_args = {}
-
         if ray_remote_args is None:
             ray_remote_args = {}
 
-        def write_block(write_path: str, block: Block):
-            logger.debug(f"Writing {write_path} file.")
-            fs = filesystem
-            if isinstance(fs, _S3FileSystemWrapper):
-                fs = fs.unwrap()
-            if _block_udf is not None:
-                block = _block_udf(block)
-
-            with fs.open_output_stream(write_path, **open_stream_args) as f:
-                _write_block_to_file(
-                    f,
-                    BlockAccessor.for_block(block),
-                    writer_args_fn=write_args_fn,
-                    **write_args,
-                )
+        def write_block(block_idx, block):
+            ctx = TaskContext(task_idx=block_idx)
+            return self.direct_write(
+                [block],
+                ctx,
+                path,
+                dataset_uuid,
+                filesystem,
+                try_create_dir,
+                open_stream_args,
+                block_path_provider,
+                write_args_fn,
+                _block_udf,
+                **write_args,
+            )
 
         write_block = cached_remote_fn(write_block).options(**ray_remote_args)
 
-        file_format = self._FILE_EXTENSION
-        if isinstance(file_format, list):
-            file_format = file_format[0]
-
         write_tasks = []
-        if not block_path_provider:
-            block_path_provider = DefaultBlockWritePathProvider()
         for block_idx, block in enumerate(blocks):
-            write_path = block_path_provider(
-                path,
-                filesystem=filesystem,
-                dataset_uuid=dataset_uuid,
-                block=block,
-                block_index=block_idx,
-                file_format=file_format,
-            )
-            write_task = write_block.remote(write_path, block)
+            write_task = write_block.remote(block_idx, block)
             write_tasks.append(write_task)
 
         return write_tasks
