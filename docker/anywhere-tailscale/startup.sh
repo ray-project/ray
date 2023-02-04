@@ -205,7 +205,7 @@ else
                 -Cgateway.expected_data_nodes=5 \
                 -Chttp.cors.enabled=true \
                 -Chttp.cors.allow-origin="/*" \
-                -Cdiscovery.seed_hosts=$clusterhosts &
+                -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net &
 
 fi
 
