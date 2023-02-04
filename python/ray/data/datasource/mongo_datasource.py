@@ -82,26 +82,17 @@ class MongoDatasource(Datasource):
         database: str,
         collection: str,
     ) -> List[ObjectRef[WriteResult]]:
-        import pymongo
-
-        _validate_database_collection_exist(
-            pymongo.MongoClient(uri), database, collection
-        )
-
-        def write_block(uri: str, database: str, collection: str, block: Block):
-            from pymongoarrow.api import write
-
-            block = BlockAccessor.for_block(block).to_arrow()
-            client = pymongo.MongoClient(uri)
-            write(client[database][collection], block)
+        def write_block(block_idx, block):
+            ctx = TaskContext(task_idx=block_idx)
+            return self.direct_write([block], ctx, uri, database, collection)
 
         if ray_remote_args is None:
             ray_remote_args = {}
 
         write_block = cached_remote_fn(write_block).options(**ray_remote_args)
         write_tasks = []
-        for block in blocks:
-            write_task = write_block.remote(uri, database, collection, block)
+        for idx, block in enumerate(blocks):
+            write_task = write_block.remote(idx, block)
             write_tasks.append(write_task)
         return write_tasks
 
