@@ -85,5 +85,3 @@ ray.get(second_actor_task)
 print("second actor finished.")
 # __two_actors_end__
 # fmt: on
-
-
