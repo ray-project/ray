@@ -10,6 +10,7 @@ from fastapi import FastAPI
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.application import Application
 from ray.serve.drivers import DAGDriver
 
@@ -439,8 +440,8 @@ def test_run_delete_old_deployments(serve_instance):
     ingress_handle = serve.run(g.bind())
     assert ray.get(ingress_handle.remote()) == "got g"
 
-    assert "g" in serve.list_deployments()
-    assert "f" not in serve.list_deployments()
+    assert f"{SERVE_DEFAULT_APP_NAME}_g" in serve.list_deployments()
+    assert f"{SERVE_DEFAULT_APP_NAME}_f" not in serve.list_deployments()
 
 
 class TestSetOptions:
@@ -573,7 +574,7 @@ def test_deployment_name_with_app_name():
 
     serve.run(g.bind())
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert "g" in deployment_info
+    assert f"{SERVE_DEFAULT_APP_NAME}_g" in deployment_info
 
     @serve.deployment
     def f():

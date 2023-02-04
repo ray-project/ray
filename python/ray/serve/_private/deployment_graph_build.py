@@ -5,6 +5,7 @@ from collections import OrderedDict
 
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.deployment_method_node import DeploymentMethodNode
 from ray.serve._private.deployment_node import DeploymentNode
 from ray.serve._private.deployment_function_node import DeploymentFunctionNode
@@ -32,7 +33,7 @@ from ray.dag.utils import _DAGNodeNameGenerator
 from ray.experimental.gradio_utils import type_to_string
 
 
-def build(ray_dag_root_node: DAGNode, name: str) -> List[Deployment]:
+def build(ray_dag_root_node: DAGNode, name: str = SERVE_DEFAULT_APP_NAME) -> List[Deployment]:
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
     DAG authored with Ray DAG API.
