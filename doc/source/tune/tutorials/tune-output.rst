@@ -108,15 +108,15 @@ You can use a :ref:`Reporter <tune-reporter-doc>` object to customize the consol
 
 .. _tune-log_to_file:
 
-How to redirect stdout and stderr to files in a Tune run?
+How to redirect Trainable logs to files in a Tune run?
 ---------------------------------------------------------
 
-The stdout and stderr streams are usually printed to the console.
-For remote actors, Ray collects these logs and prints them to the head process.
-
-However, if you would like to collect the stream outputs in files for later
-analysis or troubleshooting, Tune offers an utility parameter, ``log_to_file``,
-for this.
+In Tune, Trainables are run as remote actors. By default, Ray collects actors' stdout and stderr and prints them to
+the head process (see :ref:`ray worker logs <ray-worker-logs>` for more information).
+Logging that happens within Tune Trainables follows this handling by default.
+However, if you wish to collect Trainable logs in files for analysis, Tune offers the option
+``log_to_file`` for this.
+This applies to print statements, ``warnings.warn`` and ``logger.info`` etc.
 
 By passing ``log_to_file=True`` to ``air.RunConfig``, which is taken in by ``Tuner``, stdout and stderr will be logged
 to ``trial_logdir/stdout`` and ``trial_logdir/stderr``, respectively:
@@ -149,8 +149,31 @@ respectively:
 The file names are relative to the trial's logdir. You can pass absolute paths,
 too.
 
-If ``log_to_file`` is set, Tune will automatically register a new logging handler
-for Ray's base logger and log the output to the specified stderr output file.
+Caveats
+^^^^^^^
+Logging that happens in distributed training workers (if you happen to use Ray Tune together with Ray Train)
+is not part of this ``log_to_file`` configuration.
+
+Where to find ``log_to_file`` files?
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+If your Tune workload is configured with syncing to head node, then the corresponding ``log_to_file`` outputs
+can be located under each trial folder.
+If your Tune workload is instead configured with syncing to cloud, then the corresponding ``log_to_file``
+outputs are *NOT* synced to cloud and can only be found in the worker nodes that the corresponding trial happens.
+
+.. note::
+    This can cause problems when the trainable is moved across different nodes throughout its lifetime.
+    This can happen with some schedulers or with node failures.
+    We may prioritize enabling this if there are enough user requests.
+    If this impacts your workflow, consider commenting on
+    [this ticket](https://github.com/ray-project/ray/issues/32142).
+
+
+Leave us feedback on this feature
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+We know that logging and observability can be a huge performance boost for your workflow. Let us know what is your
+preferred way to interact with logging that happens in trainables. Leave you comments in
+[this ticket](https://github.com/ray-project/ray/issues/32142).
 
 .. _trainable-logging:
 
