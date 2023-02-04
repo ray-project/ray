@@ -682,8 +682,7 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
 }
 
 void WorkerPool::HandleJobFinished(const JobID &job_id) {
-  // Currently we don't er
-  ase the job from `all_jobs_` , as a workaround for
+  // Currently we don't erase the job from `all_jobs_` , as a workaround for
   // https://github.com/ray-project/ray/issues/11437.
   // unfinished_jobs_.erase(job_id);
   auto job_config = GetJobConfig(job_id);
@@ -979,9 +978,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
                                     &used,
                                     &task_id);
   RAY_LOG(DEBUG)  << "PushWorker " << used << " " << task_id << " token " << worker->GetStartupToken() << " " << worker->GetAssignedTask().DebugString() << " wid " << worker->WorkerId();
-  if (!found) {
-    RAY_LOG(WARNING) << "Worker not found, may be a worker leak:";
-  }
   if (!used) {
     // Put the worker to the idle pool.
     state.idle.insert(worker);
@@ -1187,7 +1183,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                                     dynamic_options,
                                                     task_spec.GetRuntimeEnvHash(),
                                                     serialized_runtime_env_context,
-                                                    task_spec.RuntimeEnvInfo());                                                                  
+                                                    task_spec.RuntimeEnvInfo());
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
@@ -1509,7 +1505,7 @@ void WorkerPool::WarnAboutSize() {
           "worker_pool_large", warning_message_str, get_time_());
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
-  } 
+  }
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language) {
