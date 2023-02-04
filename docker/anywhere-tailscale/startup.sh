@@ -143,7 +143,7 @@ fi
 # If NODETYPE is "head", run the supernode command and append some text to .bashrc
 if [ "$NODETYPE" = "head" ]; then
 
-    ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --dashboard-host 0.0.0.0 --node-ip-address nexus.chimp-beta.ts.net
+    ray start --head --num-cpus=0 --num-gpus=0 --disable-usage-stats --include-dashboard=True --dashboard-host 0.0.0.0 --node-ip-address nexus.chimp-beta.ts.net
 
     #there is state data then and we can see other hosts in the cluster, just start up
     if [ $statedata ] && [ ! $clusterhosts = "nexus.chimp-beta.ts.net:4300" ]; then

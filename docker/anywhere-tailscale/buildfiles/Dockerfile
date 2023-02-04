@@ -21,11 +21,12 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         CRATE_HEAP_SIZE=5G \
         CRATE_HOME=/crate/bin/ \
         CRATE_USE_IPV4=true \
-        DISABLE_IPV6=true \
-        IPv6=false \
         SQLALCHEMY_SILENCE_UBER_WARNING=1
+#        IPv6=false \
+#       DISABLE_IPV6=true \
 #        TS_STATEDIR="/data/tailscale/" \
 #        TS_STATE="tailscale.state"
+
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN sudo rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/keep-cache
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -93,7 +94,8 @@ RUN sudo groupadd crate \
 
 #for direct connections from tailscale
 EXPOSE 41641/udp
-EXPOSE 4300
+# Can't expose the admin UI by exposing the port. It's too insecure.
+#EXPOSE 4200/TCP
 
 VOLUME /data
 RUN sudo mkdir -p $CRATE_HEAP_DUMP_PATH $CRATE_GC_LOG_DIR $TS_STATEDIR
