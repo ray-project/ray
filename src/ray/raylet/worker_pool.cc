@@ -1114,12 +1114,14 @@ void WorkerPool::TryKillingIdleWorkers() {
         rpc_client->Exit(
             request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
               RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
+              }
 
               // In case of failed to send request, we remove it from pool as well
               // TODO (iycheng): We should handle the grpc failure in better way.
               if (!status.ok() || r.success()) {
                 RAY_LOG(DEBUG) << "Removed worker ";
-        
                 auto &worker_state = GetStateForLanguage(worker->GetLanguage());
                 // If we could kill the worker properly, we remove them from the idle
                 // pool.
@@ -1132,7 +1134,6 @@ void WorkerPool::TryKillingIdleWorkers() {
                 }
               } else {
                 RAY_LOG(DEBUG) << "Failed to remove worker ";
-
                 // We re-insert the idle worker to the back of the queue if it fails to
                 // kill the worker (e.g., when the worker owns the object). Without this,
                 // if the first N workers own objects, it can't kill idle workers that are
@@ -1171,7 +1172,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                            const PopWorkerCallback &callback,
                            const std::string &allocated_instances_serialized_json) {
   RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " task name "
-                 << task_spec.FunctionDescriptor()->ToString();                      
+                 << task_spec.FunctionDescriptor()->ToString();
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
