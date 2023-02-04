@@ -31,9 +31,9 @@ The memory monitor is controlled by the following environment variables:
   capacity. If the memory usage is above this value and the free space is
   below min_memory_free_bytes then it will start killing processes to free up space. Ranges from [0, 1].
 
-- ``RAY_task_oom_retries (int, defaults to 15):`` The number of retries for the task or actor when
-  it fails due to the process being killed by the memory monitor.
-  If the task or actor is not retriable then this value is not used. This value is used
+- ``RAY_task_oom_retries (int, defaults to -1):`` The number of retries for the task when
+  it fails due to the process being killed by the memory monitor. By default it retries
+  indefinitely. If the task is not retriable then this value is not used. This value is used
   only when the process is killed by the memory monitor, and the retry counter of the
   task or actor (:ref:`max_retries <task-fault-tolerance>` or :ref:`max_restarts <actor-fault-tolerance>`) is used when it fails 
   in other ways. If the process is killed by the operating system OOM killer it will use the task retry and not ``task_oom_retries``.
@@ -46,13 +46,10 @@ The memory monitor is controlled by the following environment variables:
       delay_seconds = 2 ^ attempt
 
   Where the first retry will be delayed by 1 second as ``attempt`` starts from 0.
-
-  .. note::
-
-      Keep the value of ``RAY_task_oom_retries`` low, below 25, to avoid extremely long delays as it is using exponential backoff.
-      The delay is capped at 1 minute.
   
+  There is a cap on the maximum delay, which is 60 seconds.
 
+      
 Using the Memory Monitor
 ------------------------
 
@@ -69,55 +66,15 @@ Let's create an application oom.py that will trigger the out-of-memory condition
       :end-before: __oom_end__
 
 
-To speed up the example, set ``RAY_task_oom_retries=1`` on the application so the task will only retry once if it is killed by the memory monitor. Also set ``RAY_event_stats_print_interval_ms=1000`` so it prints the worker kill summary, which by default is every minute.
+Set ``RAY_event_stats_print_interval_ms=1000`` so it prints the worker kill summary every second, since by default it is every minute.
 
 .. code-block:: bash
 
-    RAY_event_stats_print_interval_ms=1000 RAY_task_oom_retries=1 python oom.py
-
-    2022-11-17 09:16:40,792 INFO worker.py:1534 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
-
-    (raylet) [2022-11-17 09:16:52,264 E 90996 90996] (raylet) node_manager.cc:3096: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: 90efe99b630d4b1f6ac1504df64764732d555b526049638f9d86552f, IP: 172.17.0.2) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.17.0.2`
+    (raylet) [2023-02-03 15:28:16,750 E 152312 152312] (raylet) node_manager.cc:3040: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: 2c82620270df6b9dd7ae2791ef51ee4b5a9d5df9f795986c10dd219c, IP: 172.31.183.172) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.31.183.172`
     (raylet) 
     (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
-
-    (raylet) [2022-11-17 09:17:03,461 E 90996 90996] (raylet) node_manager.cc:3096: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: 90efe99b630d4b1f6ac1504df64764732d555b526049638f9d86552f, IP: 172.17.0.2) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.17.0.2`
-    (raylet) 
-    (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
-
-    Traceback (most recent call last):
-      File "oom.py", line 11, in <module>
-        ray.get(allocate_memory.remote())
-      File "/home/ray/github/rayclarng/ray/python/ray/_private/client_mode_hook.py", line 105, in wrapper
-        return func(*args, **kwargs)
-      File "/home/ray/github/rayclarng/ray/python/ray/_private/worker.py", line 2310, in get
-        raise value
-    ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory.
-    Memory on the node (IP: 172.17.0.2, ID: 90efe99b630d4b1f6ac1504df64764732d555b526049638f9d86552f) where the task (task ID: a6755d1708846b10007fda8a687eb57eb8a083c001000000, name=allocate_memory, pid=91085, memory used=24.99GB) was running was 32.62GB / 33.28GB (0.980175), which exceeds the memory usage threshold of 0.96. Ray killed this worker (ID: a8101629b7605f88776a08193f108adcc637248d976add819bbecbba) because it was the most recently scheduled task; to see more information about memory usage on this node, use `ray logs raylet.out -ip 172.17.0.2`. To see the logs of the worker, use `ray logs worker-a8101629b7605f88776a08193f108adcc637248d976add819bbecbba*out -ip 172.17.0.2.Top 10 memory users:
-    PID     MEM(GB) COMMAND
-    91085   24.99   ray::allocate_memory
-    57330   2.63    /home/ray/.vscode-server/extensions/ms-vscode.cpptools-1.12.4-linux-x64/bin/cpptools
-    48949   1.70    /home/ray/.vscode-server/bin/d045a5eda657f4d7b676dedbfa7aab8207f8a075/node /home/ray/.vscode-server/...
-    54387   0.80    bazel(ray) -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/home/ray/.cache/bazel/_bazel_ray/8c472b...
-    35099   0.66    /home/ray/.vscode-server/extensions/ms-vscode.cpptools-1.12.4-linux-x64/bin/cpptools-srv 57330 {1729...
-    16821   0.23    /home/ray/.vscode-server/bin/d045a5eda657f4d7b676dedbfa7aab8207f8a075/node /home/ray/.vscode-server/...
-    61800   0.17    /home/ray/.vscode-server/extensions/ms-vscode.cpptools-1.12.4-linux-x64/bin/cpptools-srv 57330 {54EF...
-    91043   0.07    /home/ray/anaconda3/bin/python -u /home/ray/github/rayclarng/ray/python/ray/dashboard/agent.py --nod...
-    90935   0.07    /home/ray/anaconda3/bin/python /home/ray/github/rayclarng/ray/python/ray/dashboard/dashboard.py --ho...
-    90870   0.07    python oom.py
-    Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
-
-Verify the task was indeed executed twice via ``task_oom_retry``:
-
-.. code-block:: bash
-
-    $ grep -r "retries left" /tmp/ray/session_latest/logs/
-
-    /tmp/ray/session_latest/logs/python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff_87487.log:[2022-11-15 13:50:27,653 I 87487 87703] task_manager.cc:458: task c8ef45ccd0112571ffffffffffffffffffffffff01000000 retries left: 3, oom retries left: 1, task failed due to oom: 1
-
-    /tmp/ray/session_latest/logs/python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff_87487.log:[2022-11-15 13:50:36,671 I 87487 87703] task_manager.cc:458: task c8ef45ccd0112571ffffffffffffffffffffffff01000000 retries left: 3, oom retries left: 0, task failed due to oom: 1
-
-    /tmp/ray/session_latest/logs/python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff_87487.log:[2022-11-15 13:50:36,671 I 87487 87703] task_manager.cc:466: No retries left for task c8ef45ccd0112571ffffffffffffffffffffffff01000000, not going to resubmit.
+             task failed with OutOfMemoryError, which is expected
+             Verify the task was indeed executed twice via ``task_oom_retry``:
 
 .. note::
 
