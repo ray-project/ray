@@ -19,11 +19,11 @@ ENV __MODIN_AUTOIMPORT_PANDAS__=1 \
         CRATE_JAVA_OPTS="-XX:+IgnoreUnrecognizedVMOptions -XX:+UseContainerSupport -XX:+IdleTuningCompactOnIdle -XX:+IdleTuningGcOnIdle -Xtune:virtualized -Des.cgroups.hierarchy.override=/ $CRATE_JAVA_OPTS" \
         PATH=/crate/bin/:$PATH \
         CRATE_HEAP_SIZE=5G \
+        IPv6=false \
+        DISABLE_IPV6=true \
         CRATE_HOME=/crate/bin/ \
         CRATE_USE_IPV4=true \
         SQLALCHEMY_SILENCE_UBER_WARNING=1
-#        IPv6=false \
-#       DISABLE_IPV6=true \
 #        TS_STATEDIR="/data/tailscale/" \
 #        TS_STATE="tailscale.state"
 

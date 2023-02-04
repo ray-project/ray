@@ -16,7 +16,7 @@ memory=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 
 # Convert kB to GB
 gb_memory=$(echo "scale=2; $memory / 1048576" | bc)
-shm_memory=$(echo "scale=2; $gb_memory / 3" | bc)
+shm_memory=$(echo "scale=2; $gb_memory / 5" | bc)
 num_cpus=$(nproc)
 
 if [ -z "$TSAPIKEY" ]; then
@@ -159,7 +159,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Ccluster.routing.allocation.awareness.attributes=location \
                     -Cstats.enabled=false \
-                    -Cgateway.recover_after_nodes=3 \
+                    -Cgateway.expected_data_nodes=5 \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts &
@@ -178,7 +178,7 @@ if [ "$NODETYPE" = "head" ]; then
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Ccluster.routing.allocation.awareness.attributes=location \
                     -Cstats.enabled=false \
-                    -Cgateway.recover_after_nodes=3 \
+                    -Cgateway.expected_data_nodes=5 \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts &
@@ -203,7 +203,7 @@ else
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Ccluster.routing.allocation.awareness.attributes=location \
                     -Cstats.enabled=false \
-                    -Cgateway.recover_after_nodes=3 \
+                    -Cgateway.expected_data_nodes=5 \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=nexus.chimp-beta.ts.net &
@@ -218,7 +218,7 @@ else
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Ccluster.routing.allocation.awareness.attributes=location \
                     -Cstats.enabled=false \
-                    -Cgateway.recover_after_nodes=3 \
+                    -Cgateway.expected_data_nodes=5 \
                     -Chttp.cors.enabled=true \
                     -Chttp.cors.allow-origin="/*" \
                     -Cdiscovery.seed_hosts=$clusterhosts &
