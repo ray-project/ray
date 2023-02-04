@@ -190,7 +190,7 @@ const MainNavBar = () => {
       <div className={classes.actionItemsContainer}>
         <Link
           className={classNames(classes.actionItem, classes.backToOld)}
-          to="/"
+          to="/node"
         >
           <Typography
             variant="body2"

@@ -147,7 +147,7 @@ const App = () => {
             {/* Dummy MainNavContext so we can re-use existing pages in new layout */}
             <MainNavContext.Provider value={DEFAULT_VALUE}>
               <Routes>
-                <Route element={<Navigate replace to="/node" />} path="/" />
+                <Route element={<Navigate replace to="/new" />} path="/" />
                 <Route
                   element={<BasicLayout setTheme={setTheme} theme={theme} />}
                 >
