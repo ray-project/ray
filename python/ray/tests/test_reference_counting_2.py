@@ -22,7 +22,6 @@ from ray._private.test_utils import (
 )
 import ray._private.gcs_utils as gcs_utils
 
-
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 logger = logging.getLogger(__name__)
