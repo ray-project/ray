@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 RUN --mount=type=cache,target=$HOME/.cache,sharing=locked \
     --mount=type=cache,target=$HOME/anaconda3/lib/python3.8/site-packages,sharing=locked \
-    sudo -H $HOME/anaconda3/bin/pip install -U pip \
+    sudo -H /home/ray/anaconda3/bin/pip install -U pip \
     pandas \
     'dask==2022.2.0' \
     modin[dask] \
