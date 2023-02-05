@@ -642,7 +642,7 @@
     wait_for_nodes:
       num_nodes: 4
 
-    type: client
+    type: job
 
   alert: xgboost_tests
 
@@ -886,7 +886,7 @@
     wait_for_nodes:
       num_nodes: 4
 
-    type: client
+    type: job
 
   alert: default
 
@@ -1073,7 +1073,7 @@
     script: python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
-    type: client
+    type: job
 
   alert: default
 
@@ -1099,7 +1099,7 @@
     script: python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
-    type: client
+    type: job
 
   alert: default
 
@@ -1125,7 +1125,7 @@
     script: python train/train_tensorflow_mnist_test.py
     wait_for_nodes:
       num_nodes: 3
-    type: client
+    type: job
 
   alert: default
 
@@ -1151,7 +1151,7 @@
     script: python train/train_torch_linear_test.py
     wait_for_nodes:
       num_nodes: 3
-    type: client
+    type: job
 
   alert: default
 
@@ -1176,7 +1176,7 @@
     script: python xgboost/train_gpu_connect.py
     wait_for_nodes:
       num_nodes: 5
-    type: client
+    type: job
 
   alert: default
 
@@ -1201,7 +1201,7 @@
     script: python xgboost/train_gpu_connect.py
     wait_for_nodes:
       num_nodes: 5
-    type: client
+    type: job
 
   alert: default
 
@@ -1227,7 +1227,7 @@
     script: python ray-lightning/ray_lightning_user_test.py
     wait_for_nodes:
       num_nodes: 3
-    type: client
+    type: job
 
   alert: default
 
@@ -1253,7 +1253,7 @@
     script: python ray-lightning/ray_lightning_user_test.py
     wait_for_nodes:
       num_nodes: 3
-    type: client
+    type: job
 
   alert: default
 
@@ -1279,7 +1279,7 @@
     script: python tune_rllib/run_connect_tests.py
     wait_for_nodes:
       num_nodes: 9
-    type: client
+    type: job
 
   alert: default
 
@@ -1452,7 +1452,7 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
-    type: client
+    type: job
 
     wait_for_nodes:
       num_nodes: 4
@@ -1482,7 +1482,7 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
-    type: client
+    type: job
 
     wait_for_nodes:
       num_nodes: 4
@@ -1512,7 +1512,7 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
-    type: client
+    type: job
 
     wait_for_nodes:
       num_nodes: 4
@@ -1741,7 +1741,7 @@
   run:
     timeout: 600
     script: python workloads/torch_tune_serve_test.py
-    type: client
+    type: job
     wait_for_nodes:
       num_nodes: 2
 
@@ -2323,7 +2323,7 @@
     wait_for_nodes:
       num_nodes: 1
 
-    type: client
+    type: job
 
   alert: default
 
@@ -3486,7 +3486,7 @@
   run:
     timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=leela_chess_zero
-    type: sdk_command
+    type: job
     file_manager: job
 
   alert: default
@@ -3533,7 +3533,7 @@
   run:
     timeout: 7200
     script: python stress_tests/test_placement_group.py
-    type: sdk_command
+    type: job
 
 - name: shuffle_1tb_5000_partitions
   group: core-multi-test
@@ -4378,7 +4378,7 @@
     timeout: 300
     script: python read_parquet_benchmark.py
 
-    type: sdk_command
+    type: job
 
 - name: read_images_benchmark_single_node
   group: data-tests
@@ -4410,7 +4410,7 @@
     timeout: 1800
     script: python read_tfrecords_benchmark.py
 
-    type: sdk_command
+    type: job
 
 - name: map_batches_benchmark_single_node
   group: data-tests
@@ -4427,7 +4427,7 @@
     timeout: 2400
     script: python map_batches_benchmark.py
 
-    type: sdk_command
+    type: job
 
 - name: iter_tensor_batches_benchmark_single_node
   group: data-tests
@@ -4444,7 +4444,7 @@
     timeout: 2400
     script: python iter_tensor_batches_benchmark.py
 
-    type: sdk_command
+    type: job
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
@@ -4461,7 +4461,7 @@
     timeout: 1080
     script: python iter_batches_benchmark.py
 
-    type: sdk_command
+    type: job
 
 - name: pipelined_training_50_gb
   group: data-tests
