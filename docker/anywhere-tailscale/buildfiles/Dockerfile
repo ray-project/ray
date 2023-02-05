@@ -78,7 +78,6 @@ RUN sudo groupadd crate \
         && sudo chgrp -R crate /crate \
         && export CRATE_URL=https://cdn.crate.io/downloads/releases/cratedb/${PLATFORM}/crate-5.1.2.tar.gz \
         && curl -fSL -O ${CRATE_URL} \
-        && curl -fSL -O ${CRATE_URL}.asc \
         && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/fb90674b15c6d7fac738a112458a18d72c4b5a77/config/crate.yml" \
         && curl -fSL -O "https://raw.githubusercontent.com/jcoffi/docker-crate/master/config/log4j2.properties" \
         && sudo tar -xf crate-5.1.2.tar.gz -C /crate --strip-components=1 \
@@ -88,7 +87,6 @@ RUN sudo groupadd crate \
         && sudo mv log4j2.properties /crate/config/log4j2.properties \
         && rm crate-5.1.2.tar.gz \
         && curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0 \
-        && curl -fSL -O https://cdn.crate.io/downloads/releases/crash_standalone_0.28.0.asc \
         && sudo mv crash_standalone_0.28.0 /usr/local/bin/crash \
         && sudo chmod +x /usr/local/bin/crash
 
