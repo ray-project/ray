@@ -15,6 +15,8 @@ if __name__ == "__main__":
     client = JobSubmissionClient("http://127.0.0.1:8265")
     job_id = client.submit_job(
         # Entrypoint shell command to execute
+        # NOTE (shomilj): Don't we need to specify the working dir here in order for workload.py to be provided to the job?
+        # This test sees failures due to "workload.py not being available.
         entrypoint="python workload.py",
     )
     print(job_id)
