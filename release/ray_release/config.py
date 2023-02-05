@@ -25,11 +25,11 @@ DEFAULT_WAIT_FOR_NODES_TIMEOUT = 3000
 
 DEFAULT_CLOUD_ID = DeferredEnvVar(
     "RELEASE_DEFAULT_CLOUD_ID",
-    "cld_4F7k8814aZzGG8TNUGPKnc",
+    "cld_kvedZWag2qA8i5BjxUevf5i7",
 )
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
-    "prj_FKRmeV5pA6X72aVscFALNC32",
+    "prj_ksaufjuihy7h6ww7abh5gwlqjh",
 )
 DEFAULT_PYTHON_VERSION = tuple(
     int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
