@@ -91,6 +91,11 @@ class FullClusterManager(MinimalClusterManager):
             )
             completed = result.result.completed
 
+        # Sleep 30 seconds to let everything come up (this is a short-term hack to see if
+        # we can get release tests working on the new stack, since it seems like session
+        # state operations are not indicative of the cluster being externally available).
+        time.sleep(30)
+
         result = self.sdk.get_cluster(self.cluster_id)
         if result.result.state != "Running":
             raise ClusterStartupFailed(
