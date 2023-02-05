@@ -149,7 +149,7 @@ if [ "$NODETYPE" = "head" ]; then
     if [ $statedata ] && [ ! $clusterhosts = "nexus.chimp-beta.ts.net:4300" ]; then
 
         /crate/bin/crate \
-                    -Cnetwork.host=_tailscale0_ \
+                    -Cnetwork.host=_tailscale0_,_local_ \
                     -Ccluster.initial_master_nodes=nexus \
                     -Cnode.store.allow_mmap=true \
                     -Cnode.attr.location=$location \
@@ -168,7 +168,7 @@ if [ "$NODETYPE" = "head" ]; then
                        # -Cnode.master=true \
     elif [ ! "$clusterhosts" = "nexus.chimp-beta.ts.net:4300" ] && [ ! $statedata ]; then
         /crate/bin/crate \
-                    -Cnetwork.host=_tailscale0_ \
+                    -Cnetwork.host=_tailscale0_,_local_ \
                     -Ccluster.initial_master_nodes=nexus \
                     -Cnode.master=true \
                     -Cnode.name=nexus \
