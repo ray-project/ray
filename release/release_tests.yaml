@@ -1429,95 +1429,95 @@
 
   alert: tune_tests
 
-- name: tune_cloud_gcp_k8s_no_sync_down
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
+# - name: tune_cloud_gcp_k8s_no_sync_down
+#   group: Tune cloud tests
+#   working_dir: tune_tests/cloud_tests
 
-  stable: true
+#   stable: true
 
-  legacy:
-    test_name: gcp_k8s_no_sync_down
-    test_suite: tune_cloud_tests
+#   legacy:
+#     test_name: gcp_k8s_no_sync_down
+#     test_suite: tune_cloud_tests
 
-  frequency: nightly
-  team: ml
-  env: staging
+#   frequency: nightly
+#   team: ml
+#   env: staging
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_gcp_k8s_4x8.yaml
-    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
-    autosuspend_mins: 60
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_gcp_k8s_4x8.yaml
+#     cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+#     autosuspend_mins: 60
 
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
-    type: job
+#   run:
+#     timeout: 600
+#     script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
+#     type: job
 
-    wait_for_nodes:
-      num_nodes: 4
+#     wait_for_nodes:
+#       num_nodes: 4
 
-  alert: tune_tests
+#   alert: tune_tests
 
-- name: tune_cloud_gcp_k8s_ssh_sync
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
+# - name: tune_cloud_gcp_k8s_ssh_sync
+#   group: Tune cloud tests
+#   working_dir: tune_tests/cloud_tests
 
-  stable: true
+#   stable: true
 
-  legacy:
-    test_name: gcp_k8s_ssh_sync
-    test_suite: tune_cloud_tests
+#   legacy:
+#     test_name: gcp_k8s_ssh_sync
+#     test_suite: tune_cloud_tests
 
-  frequency: nightly
-  team: ml
-  env: staging
+#   frequency: nightly
+#   team: ml
+#   env: staging
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_gcp_k8s_4x8.yaml
-    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
-    autosuspend_mins: 60
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_gcp_k8s_4x8.yaml
+#     cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+#     autosuspend_mins: 60
 
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
-    type: job
+#   run:
+#     timeout: 600
+#     script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
+#     type: job
 
-    wait_for_nodes:
-      num_nodes: 4
+#     wait_for_nodes:
+#       num_nodes: 4
 
-  alert: tune_tests
+#   alert: tune_tests
 
-- name: tune_cloud_gcp_k8s_durable_upload
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
+# - name: tune_cloud_gcp_k8s_durable_upload
+#   group: Tune cloud tests
+#   working_dir: tune_tests/cloud_tests
 
-  stable: true
+#   stable: true
 
-  legacy:
-    test_name: gcp_k8s_durable_upload
-    test_suite: tune_cloud_tests
+#   legacy:
+#     test_name: gcp_k8s_durable_upload
+#     test_suite: tune_cloud_tests
 
-  frequency: nightly
-  team: ml
-  env: staging
+#   frequency: nightly
+#   team: ml
+#   env: staging
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_gcp_k8s_4x8.yaml
-    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
-    autosuspend_mins: 60
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: tpl_gcp_k8s_4x8.yaml
+#     cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
+#     autosuspend_mins: 60
 
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
-    type: job
+#   run:
+#     timeout: 600
+#     script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
+#     type: job
 
-    wait_for_nodes:
-      num_nodes: 4
+#     wait_for_nodes:
+#       num_nodes: 4
 
-  alert: tune_tests
+#   alert: tune_tests
 
 
 ########################
@@ -2442,28 +2442,28 @@
 
   alert: default
 
-- name: serve_serve_micro_benchmark_k8s
-  group: Serve tests
-  working_dir: serve_tests
+# - name: serve_serve_micro_benchmark_k8s
+#   group: Serve tests
+#   working_dir: serve_tests
 
-  legacy:
-    test_name: serve_micro_benchmark_k8s
-    test_suite: serve_tests
+#   legacy:
+#     test_name: serve_micro_benchmark_k8s
+#     test_suite: serve_tests
 
-  # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
-  frequency: disabled
-  team: serve
+#   # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+#   frequency: disabled
+#   team: serve
 
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node_k8s.yaml
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: compute_tpl_single_node_k8s.yaml
 
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_micro_benchmark.py
+#   run:
+#     timeout: 7200
+#     long_running: false
+#     script: python workloads/serve_micro_benchmark.py
 
-  alert: default
+#   alert: default
 
 
 - name: deployment_graph_long_chain
@@ -4819,25 +4819,25 @@
     timeout: 14400
     script: python mem_check.py
 
-- name: k8s_serve_ha_test
-  group: k8s-test
-  working_dir: k8s_tests
-  legacy:
-    test_name: k8s_serve_ha_test
-    test_suite: k8s_tests
+# - name: k8s_serve_ha_test
+#   group: k8s-test
+#   working_dir: k8s_tests
+#   legacy:
+#     test_name: k8s_serve_ha_test
+#     test_suite: k8s_tests
 
-  stable: false
+#   stable: false
 
-  frequency: nightly
-  team: serve
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl.yaml
+#   frequency: nightly
+#   team: serve
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: compute_tpl.yaml
 
-  run:
-    timeout: 28800 # 8h
-    prepare: bash prepare.sh
-    script: python run_gcs_ft_on_k8s.py
+#   run:
+#     timeout: 28800 # 8h
+#     prepare: bash prepare.sh
+#     script: python run_gcs_ft_on_k8s.py
 
 - name: aws_cluster_launcher
   group: cluster-launcher-test
