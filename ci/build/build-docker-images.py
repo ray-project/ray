@@ -40,6 +40,7 @@ PY_MATRIX = {
 }
 
 BASE_IMAGES = {
+    "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04",
     "cu116": "nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04",
     "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04",
     "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
@@ -52,6 +53,7 @@ BASE_IMAGES = {
 }
 
 CUDA_FULL = {
+    "cu118": "CUDA 11.8",
     "cu116": "CUDA 11.6",
     "cu113": "CUDA 11.3",
     "cu112": "CUDA 11.2",
