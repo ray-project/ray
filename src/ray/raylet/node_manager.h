@@ -46,6 +46,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
+#include "ray/raylet/worker_killing_policy.h"
 // clang-format on
 
 namespace ray {
@@ -653,13 +654,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::shared_ptr<WorkerInterface> &worker,
       const NodeID &node_id,
       const MemorySnapshot &system_memory,
-      float usage_threshold,
-      bool should_retry) const;
+      float usage_threshold) const;
 
   /// Creates the suggestion message for the worker that is killed due to memory running
   /// low.
   const std::string CreateOomKillMessageSuggestions(
-      const std::shared_ptr<WorkerInterface> &worker) const;
+      const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
@@ -832,6 +832,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;
+
+  /// The Policy for selecting the worker to kill when the node runs out of memory.
+  std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;

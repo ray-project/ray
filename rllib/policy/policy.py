@@ -405,6 +405,24 @@ class Policy(metaclass=ABCMeta):
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
 
+    def get_connector_metrics(self) -> Dict:
+        """Get metrics on timing from connectors."""
+        return {
+            "agent_connectors": {
+                name + "_ms": 1000 * timer.mean
+                for name, timer in self.agent_connectors.timers.items()
+            },
+            "action_connectors": {
+                name + "_ms": 1000 * timer.mean
+                for name, timer in self.agent_connectors.timers.items()
+            },
+        }
+
+    def reset_connectors(self, env_id) -> None:
+        """Reset action- and agent-connectors for this policy."""
+        self.agent_connectors.reset(env_id=env_id)
+        self.action_connectors.reset(env_id=env_id)
+
     @DeveloperAPI
     def compute_single_action(
         self,
@@ -517,7 +535,7 @@ class Policy(metaclass=ABCMeta):
     def compute_actions_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-        explore: bool = None,
+        explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         episodes: Optional[List["Episode"]] = None,
         **kwargs,

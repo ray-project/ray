@@ -44,7 +44,6 @@ else:
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.import_thread as import_thread
-import ray._private.memory_monitor as memory_monitor
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
@@ -426,7 +425,6 @@ class Worker:
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray._private.utils.get_cuda_visible_devices()
-        self.memory_monitor = memory_monitor.MemoryMonitor()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -1923,7 +1921,7 @@ def connect(
             it during startup as a command line argument.
         ray_debugger_external: If True, make the debugger external to the
             node this worker is running on.
-        entrypoint: The name of the entrypoint script. Ignored unless the
+        entrypoint: The name of the entrypoint script. Ignored if the
             mode != SCRIPT_MODE
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
@@ -2106,12 +2104,19 @@ def connect(
             " and will be removed in the future."
         )
 
-    # Start the import thread
+    # Setup import thread and start the import thread
+    # if the worker has job_id initialized.
+    # Otherwise, defer the start up of
+    # import thread until job_id is initialized.
+    # (python/ray/_raylet.pyx maybe_initialize_job_config)
     if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped
         )
-        if ray._raylet.Config.start_python_importer_thread():
+        if (
+            worker.current_job_id != JobID.nil()
+            and ray._raylet.Config.start_python_importer_thread()
+        ):
             worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
@@ -2201,6 +2206,19 @@ def disconnect(exiting_interpreter=False):
         ray_actor = None  # This can occur during program termination
     if ray_actor is not None:
         ray_actor._ActorClassMethodMetadata.reset_cache()
+
+
+def start_import_thread():
+    """Start the import thread if the worker is connected."""
+    worker = global_worker
+    worker.check_connected()
+
+    assert _mode() not in (
+        RESTORE_WORKER_MODE,
+        SPILL_WORKER_MODE,
+    ), "import thread can not be used in IO workers."
+    if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
+        worker.import_thread.start()
 
 
 @contextmanager

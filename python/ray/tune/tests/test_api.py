@@ -1081,7 +1081,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             return actor
 
         # This actor should create a default aws syncer, so check should fail
-        actor1 = _create_remote_actor(TestDurable, None)
+        actor1 = _create_remote_actor(TestDurable, "auto")
         self.assertFalse(ray.get(actor1.has_custom_syncer.remote()))
 
         # This actor should create a custom syncer, so check should pass
@@ -1806,55 +1806,22 @@ class ApiTestFast(unittest.TestCase):
         self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
 
     def testSearcherSchedulerStr(self):
-        def train(config):
-            tune.report(metric=1)
-
         capture = {}
 
         class MockTrialRunner(TrialRunner):
-            def __init__(
-                self,
-                search_alg=None,
-                scheduler=None,
-                local_checkpoint_dir=None,
-                remote_checkpoint_dir=None,
-                sync_config=None,
-                stopper=None,
-                resume=False,
-                server_port=None,
-                fail_fast=False,
-                checkpoint_period=None,
-                trial_executor=None,
-                callbacks=None,
-                metric=None,
-                trial_checkpoint_config=None,
-                driver_sync_trial_checkpoints=True,
-            ):
-                # should be converted from strings at this case
-                # and not None
+            def __init__(self, search_alg=None, scheduler=None, **kwargs):
+                # should be converted from strings at this case and not None
                 capture["search_alg"] = search_alg
                 capture["scheduler"] = scheduler
                 super().__init__(
                     search_alg=search_alg,
                     scheduler=scheduler,
-                    local_checkpoint_dir=local_checkpoint_dir,
-                    remote_checkpoint_dir=remote_checkpoint_dir,
-                    sync_config=sync_config,
-                    stopper=stopper,
-                    resume=resume,
-                    server_port=server_port,
-                    fail_fast=fail_fast,
-                    checkpoint_period=checkpoint_period,
-                    trial_executor=trial_executor,
-                    callbacks=callbacks,
-                    metric=metric,
-                    trial_checkpoint_config=trial_checkpoint_config,
-                    driver_sync_trial_checkpoints=True,
+                    **kwargs,
                 )
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
             tune.run(
-                train,
+                lambda config: tune.report(metric=1),
                 search_alg="random",
                 scheduler="async_hyperband",
                 metric="metric",
@@ -1889,42 +1856,14 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
         capture = {}
 
         class MockTrialRunner(TrialRunner):
-            def __init__(
-                self,
-                search_alg=None,
-                scheduler=None,
-                local_checkpoint_dir=None,
-                remote_checkpoint_dir=None,
-                sync_config=None,
-                stopper=None,
-                resume=False,
-                server_port=None,
-                fail_fast=False,
-                checkpoint_period=None,
-                trial_executor=None,
-                callbacks=None,
-                metric=None,
-                trial_checkpoint_config=None,
-                driver_sync_trial_checkpoints=True,
-            ):
+            def __init__(self, search_alg=None, scheduler=None, **kwargs):
+                # should be converted from strings at this case and not None
                 capture["search_alg"] = search_alg
                 capture["scheduler"] = scheduler
                 super().__init__(
                     search_alg=search_alg,
                     scheduler=scheduler,
-                    local_checkpoint_dir=local_checkpoint_dir,
-                    remote_checkpoint_dir=remote_checkpoint_dir,
-                    sync_config=sync_config,
-                    stopper=stopper,
-                    resume=resume,
-                    server_port=server_port,
-                    fail_fast=fail_fast,
-                    checkpoint_period=checkpoint_period,
-                    trial_executor=trial_executor,
-                    callbacks=callbacks,
-                    metric=metric,
-                    trial_checkpoint_config=trial_checkpoint_config,
-                    driver_sync_trial_checkpoints=driver_sync_trial_checkpoints,
+                    **kwargs,
                 )
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):

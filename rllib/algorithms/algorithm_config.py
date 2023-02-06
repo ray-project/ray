@@ -15,8 +15,14 @@ from typing import (
 )
 
 import ray
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_trainer.rl_trainer import RLTrainerHPs
+from ray.rllib.core.rl_trainer.trainer_runner_config import (
+    TrainerRunnerConfig,
+    ModuleSpec,
+)
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -37,7 +43,7 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.from_config import from_config, NotProvided
 from ray.rllib.utils.gym import (
     convert_old_gym_space_to_gymnasium_space,
     try_import_gymnasium_and_gym,
@@ -86,49 +92,9 @@ path: /tmp/
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.core.rl_module import RLModule
+    from ray.rllib.core.rl_trainer import RLTrainer
 
 logger = logging.getLogger(__name__)
-
-
-class _NotProvided:
-    """Singleton class to provide a "not provided" value for AlgorithmConfig signatures.
-
-    Using the only instance of this class indicates that the user does NOT wish to
-    change the value of some property.
-
-    Examples:
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        >>> config = AlgorithmConfig()
-        >>> # Print out the default learning rate.
-        >>> print(config.lr)
-        ... 0.001
-        >>> # Print out the default `preprocessor_pref`.
-        >>> print(config.preprocessor_pref)
-        ... "deepmind"
-        >>> # Will only set the `preprocessor_pref` property (to None) and leave
-        >>> # all other properties at their default values.
-        >>> config.training(preprocessor_pref=None)
-        >>> config.preprocessor_pref is None
-        ... True
-        >>> # Still the same value (didn't touch it in the call to `.training()`.
-        >>> print(config.lr)
-        ... 0.001
-    """
-
-    class __NotProvided:
-        pass
-
-    instance = None
-
-    def __init__(self):
-        if _NotProvided.instance is None:
-            _NotProvided.instance = _NotProvided.__NotProvided()
-
-
-# Use this object as default values in all method signatures of
-# AlgorithmConfig, indicating that the respective property should NOT be touched
-# in the call.
-NotProvided = _NotProvided()
 
 
 # TODO (Kourosh): Move this to rllib.utils.importlib
@@ -277,6 +243,9 @@ class AlgorithmConfig:
         self.num_gpus_per_worker = 0
         self._fake_gpus = False
         self.num_cpus_for_local_worker = 1
+        self.num_trainer_workers = 0
+        self.num_gpus_per_trainer_worker = 0
+        self.num_cpus_per_trainer_worker = 1
         self.custom_resources_per_worker = {}
         self.placement_strategy = "PACK"
 
@@ -317,6 +286,7 @@ class AlgorithmConfig:
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
         self.is_atari = None
+        self.auto_wrap_old_gym_envs = True
 
         # `self.rollouts()`
         self.num_rollout_workers = 0
@@ -324,7 +294,7 @@ class AlgorithmConfig:
         self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
         self.sample_async = False
-        self.enable_connectors = False
+        self.enable_connectors = True
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
@@ -340,6 +310,8 @@ class AlgorithmConfig:
         self.compress_observations = False
         self.enable_tf1_exec_eagerly = False
         self.sampler_perf_stats_ema_coef = None
+        self.worker_health_probe_timeout_s = 60
+        self.worker_restore_timeout_s = 1800
 
         # `self.training()`
         self.gamma = 0.99
@@ -348,6 +320,12 @@ class AlgorithmConfig:
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
+        self.rl_trainer_class = None
+        self._enable_rl_trainer_api = False
+        # experimental: this will contain the hyper-parameters that are passed to the
+        # RLTrainer, for computing loss, etc. New algorithms have to set this to their
+        # own default. .training() will modify the fields of this object.
+        self._rl_trainer_hps = RLTrainerHPs()
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -420,7 +398,7 @@ class AlgorithmConfig:
         # `self.debugging()`
         self.logger_creator = None
         self.logger_config = None
-        self.log_level = DEPRECATED_VALUE
+        self.log_level = "WARN"
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
@@ -472,6 +450,10 @@ class AlgorithmConfig:
         self.horizon = DEPRECATED_VALUE
         self.soft_horizon = DEPRECATED_VALUE
         self.no_done_at_end = DEPRECATED_VALUE
+
+    @property
+    def rl_trainer_hps(self) -> RLTrainerHPs:
+        return self._rl_trainer_hps
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -901,6 +883,11 @@ class AlgorithmConfig:
             rl_module_class_path = self.get_default_rl_module_class()
             self.rl_module_class = _resolve_class_path(rl_module_class_path)
 
+        # resolve rl_trainer class
+        if self._enable_rl_trainer_api and self.rl_trainer_class is None:
+            rl_trainer_class_path = self.get_default_rl_trainer_class()
+            self.rl_trainer_class = _resolve_class_path(rl_trainer_class_path)
+
     def build(
         self,
         env: Optional[Union[str, EnvType]] = None,
@@ -972,6 +959,9 @@ class AlgorithmConfig:
         num_cpus_per_worker: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_worker: Optional[Union[float, int]] = NotProvided,
         num_cpus_for_local_worker: Optional[int] = NotProvided,
+        num_trainer_workers: Optional[int] = NotProvided,
+        num_cpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
+        num_gpus_per_trainer_worker: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_worker: Optional[dict] = NotProvided,
         placement_strategy: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -991,6 +981,20 @@ class AlgorithmConfig:
                 fractional. This is usually needed only if your env itself requires a
                 GPU (i.e., it is a GPU-intensive video game), or model inference is
                 unusually expensive.
+            num_trainer_workers: Number of workers used for training. A value of 0
+                means training will take place on a local worker on head node CPUs or 1
+                GPU (determined by `num_gpus_per_trainer_worker`). For multi-gpu
+                training, set number of workers greater than 1 and set
+                `num_gpus_per_trainer_worker` accordingly (e.g. 4 GPUs total, and model
+                needs 2 GPUs: `num_trainer_workers = 2` and
+                `num_gpus_per_trainer_worker = 2`)
+            num_cpus_per_trainer_worker: Number of CPUs allocated per trainer worker.
+                Only necessary for custom processing pipeline inside each RLTrainer
+                requiring multiple CPU cores. Ignored if `num_trainer_workers = 0`.
+            num_gpus_per_trainer_worker: Number of GPUs allocated per worker. If
+                `num_trainer_workers = 0`, any value greater than 0 will run the
+                training on a single GPU on the head node, while a value of 0 will run
+                the training on head node CPU cores.
             custom_resources_per_worker: Any custom Ray resources to allocate per
                 worker.
             num_cpus_for_local_worker: Number of CPUs to allocate for the algorithm.
@@ -1030,6 +1034,13 @@ class AlgorithmConfig:
             self.custom_resources_per_worker = custom_resources_per_worker
         if placement_strategy is not NotProvided:
             self.placement_strategy = placement_strategy
+
+        if num_trainer_workers is not NotProvided:
+            self.num_trainer_workers = num_trainer_workers
+        if num_cpus_per_trainer_worker is not NotProvided:
+            self.num_cpus_per_trainer_worker = num_cpus_per_trainer_worker
+        if num_gpus_per_trainer_worker is not NotProvided:
+            self.num_gpus_per_trainer_worker = num_gpus_per_trainer_worker
 
         return self
 
@@ -1100,6 +1111,7 @@ class AlgorithmConfig:
         clip_actions: Optional[bool] = NotProvided,
         disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
+        auto_wrap_old_gym_envs: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1107,9 +1119,10 @@ class AlgorithmConfig:
             env: The environment specifier. This can either be a tune-registered env,
                 via `tune.register_env([name], lambda env_ctx: [env object])`,
                 or a string specifier of an RLlib supported type. In the latter case,
-                RLlib will try to interpret the specifier as either an openAI gym env,
-                a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
-                Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+                RLlib will try to interpret the specifier as either an Farama-Foundation
+                gymnasium env, a PyBullet env, a ViZDoomGym env, or a fully qualified
+                classpath to an Env class, e.g.
+                "ray.rllib.examples.env.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
                 object (which is a dict plus the properties: num_rollout_workers,
                 worker_index, vector_index, and remote).
@@ -1143,6 +1156,13 @@ class AlgorithmConfig:
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
                 this during config validation.
+            auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
+                the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
+                dict). If True, RLlib will automatically wrap the given gym env class
+                with the gym-provided compatibility wrapper
+                (gym.wrappers.EnvCompatibility). If False, RLlib will produce a
+                descriptive error on which steps to perform to upgrade to gymnasium
+                (or to switch this flag to True).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1173,6 +1193,8 @@ class AlgorithmConfig:
             self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
             self.is_atari = is_atari
+        if auto_wrap_old_gym_envs is not NotProvided:
+            self.auto_wrap_old_gym_envs = auto_wrap_old_gym_envs
 
         return self
 
@@ -1200,6 +1222,8 @@ class AlgorithmConfig:
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
+        worker_health_probe_timeout_s: int = NotProvided,
+        worker_restore_timeout_s: int = NotProvided,
         horizon=DEPRECATED_VALUE,
         soft_horizon=DEPRECATED_VALUE,
         no_done_at_end=DEPRECATED_VALUE,
@@ -1314,6 +1338,11 @@ class AlgorithmConfig:
                 is the coeff of how much new data points contribute to the averages.
                 Default is None, which uses simple global average instead.
                 The EMA update rule is: updated = (1 - ema_coef) * old + ema_coef * new
+            worker_health_probe_timeout_s: Max amount of time we should spend waiting
+                for health probe calls to finish. Health pings are very cheap, so the
+                default is 1 minute.
+            worker_restore_timeout_s: Max amount of time we should wait to restore
+                states on recovered worker actors. Default is 30 mins.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1364,6 +1393,10 @@ class AlgorithmConfig:
             self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
         if sampler_perf_stats_ema_coef is not NotProvided:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
+        if worker_health_probe_timeout_s is not NotProvided:
+            self.worker_health_probe_timeout_s = worker_health_probe_timeout_s
+        if worker_restore_timeout_s is not NotProvided:
+            self.worker_restore_timeout_s = worker_restore_timeout_s
 
         # Deprecated settings.
         if horizon != DEPRECATED_VALUE:
@@ -1396,6 +1429,8 @@ class AlgorithmConfig:
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
+        _enable_rl_trainer_api: Optional[bool] = NotProvided,
+        rl_trainer_class: Optional[Type["RLTrainer"]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1419,6 +1454,9 @@ class AlgorithmConfig:
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
+            _enable_rl_trainer_api: Whether to enable the TrainerRunner and RLTrainer
+                for training. This API uses ray.train to run the training loop which
+                allows for a more flexible distributed training.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1459,6 +1497,10 @@ class AlgorithmConfig:
             self.max_requests_in_flight_per_sampler_worker = (
                 max_requests_in_flight_per_sampler_worker
             )
+        if _enable_rl_trainer_api is not NotProvided:
+            self._enable_rl_trainer_api = _enable_rl_trainer_api
+        if rl_trainer_class is not NotProvided:
+            self.rl_trainer_class = rl_trainer_class
 
         return self
 
@@ -2062,7 +2104,7 @@ class AlgorithmConfig:
         *,
         logger_creator: Optional[Callable[[], Logger]] = NotProvided,
         logger_config: Optional[dict] = NotProvided,
-        log_level: Optional[str] = DEPRECATED_VALUE,
+        log_level: Optional[str] = NotProvided,
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
@@ -2096,16 +2138,8 @@ class AlgorithmConfig:
             self.logger_creator = logger_creator
         if logger_config is not NotProvided:
             self.logger_config = logger_config
-        if log_level != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.log_level",
-                help=(
-                    "RLlib no longer has a separate logging configuration from the rest"
-                    " of Ray. Configure logging on the root logger; RLlib messages "
-                    "will be propagated up the logger hierarchy to be handled there."
-                ),
-                error=False,
-            )
+        if log_level is not NotProvided:
+            self.log_level = log_level
         if log_sys_usage is not NotProvided:
             self.log_sys_usage = log_sys_usage
         if fake_sampler is not NotProvided:
@@ -2130,9 +2164,8 @@ class AlgorithmConfig:
             rl_module_class: The RLModule class to use for this config.
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
                 By default if you call `config.rl_module(rl_module=MyRLModule)`, the
-                RLModule API will be enabled. If you want to disable it, you can call
-                `config.rl_module(_enable_rl_module_api=False)`.
-
+                RLModule API will NOT be enabled. If you want to enable it, you can call
+                `config.rl_module(_enable_rl_module_api=True)`.
         Returns:
             This updated AlgorithmConfig object.
         """
@@ -2301,7 +2334,7 @@ class AlgorithmConfig:
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
     ) -> Tuple[MultiAgentPolicyConfigDict, Callable[[PolicyID, SampleBatchType], bool]]:
-        """Compiles complete multi-agent config (dict) from the information in `self`.
+        r"""Compiles complete multi-agent config (dict) from the information in `self`.
 
         Infers the observation- and action spaces, the policy classes, and the policy's
         configs. The returned `MultiAgentPolicyConfigDict` is fully unified and strictly
@@ -2601,9 +2634,66 @@ class AlgorithmConfig:
 
         Returns:
             The RLModule class to use for this algorithm either as a class type or as
-            a string (e.g. x.y.z).
+            a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCModule).
         """
         raise NotImplementedError
+
+    def get_default_rl_trainer_class(self) -> Union[Type["RLTrainer"], str]:
+        """Returns the RLTrainer class to use for this algorithm.
+
+        Override this method in the sub-class to return the RLTrainer class type given
+        the input framework.
+
+        Returns:
+            The RLTrainer class to use for this algorithm either as a class type or as
+            a string (e.g. ray.rllib.core.rl_trainer.testing.torch.BCTrainer).
+        """
+        raise NotImplementedError
+
+    def get_trainer_runner_config(
+        self, module_spec: Optional[ModuleSpec] = None
+    ) -> TrainerRunnerConfig:
+
+        if module_spec is None:
+            module_spec = SingleAgentRLModuleSpec()
+
+        if isinstance(module_spec, SingleAgentRLModuleSpec):
+            if module_spec.module_class is None:
+                module_spec.module_class = self.rl_module_class
+
+            if module_spec.observation_space is None:
+                module_spec.observation_space = self.observation_space
+
+            if module_spec.action_space is None:
+                module_spec.action_space = self.action_space
+
+            if module_spec.model_config is None:
+                module_spec.model_config = self.model
+
+        if not self._is_frozen:
+            raise ValueError(
+                "Cannot call `get_trainer_runner_config()` on an unfrozen "
+                "AlgorithmConfig! Please call `freeze()` first."
+            )
+
+        config = (
+            TrainerRunnerConfig()
+            .module(module_spec)
+            .trainer(
+                trainer_class=self.rl_trainer_class,
+                # TODO (Kourosh): optimizer config can now be more complicated.
+                optimizer_config={"lr": self.lr},
+                rl_trainer_hps=self.rl_trainer_hps,
+            )
+            .resources(
+                num_trainer_workers=self.num_trainer_workers,
+                num_cpus_per_trainer_worker=self.num_cpus_per_trainer_worker,
+                num_gpus_per_trainer_worker=self.num_gpus_per_trainer_worker,
+            )
+            .framework(eager_tracing=self.eager_tracing)
+        )
+
+        return config
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""

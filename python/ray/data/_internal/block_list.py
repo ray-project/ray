@@ -33,6 +33,9 @@ class BlockList:
         # eagerly deleted after read by the consumer.
         self._owned_by_consumer = owned_by_consumer
 
+    def __repr__(self):
+        return f"BlockList(owned_by_consumer={self._owned_by_consumer})"
+
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
         return self._metadata.copy()

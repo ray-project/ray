@@ -35,9 +35,12 @@ class WorkerContext {
 
   const WorkerID &GetWorkerID() const;
 
-  const JobID &GetCurrentJobID() const;
+  JobID GetCurrentJobID() const LOCKS_EXCLUDED(mutex_);
+  rpc::JobConfig GetCurrentJobConfig() const LOCKS_EXCLUDED(mutex_);
 
   const TaskID &GetCurrentTaskID() const;
+
+  const TaskID GetMainThreadOrActorCreationTaskID() const;
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const LOCKS_EXCLUDED(mutex_);
 
@@ -49,6 +52,11 @@ class WorkerContext {
   const std::string &GetCurrentSerializedRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
   std::shared_ptr<json> GetCurrentRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
+
+  // Initialize worker's job_id and job_config if they haven't already.
+  // Note a worker's job config can't be changed after initialization.
+  void MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
+      LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
@@ -104,7 +112,11 @@ class WorkerContext {
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;
-  const JobID current_job_id_;
+
+  // a worker's job infomation might be lazily initialized.
+  JobID current_job_id_ GUARDED_BY(mutex_);
+  std::optional<rpc::JobConfig> job_config_ GUARDED_BY(mutex_);
+
   int64_t task_depth_ GUARDED_BY(mutex_) = 0;
   ActorID current_actor_id_ GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ GUARDED_BY(mutex_) = 1;
@@ -120,6 +132,10 @@ class WorkerContext {
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
   const boost::thread::id main_thread_id_;
+  /// The currently executing main thread's task id. It's the actor creation task id
+  /// for concurrent actor, or the main thread's task id for other cases.
+  /// Used merely for observability purposes to track task hierarchy.
+  TaskID main_thread_or_actor_creation_task_id_ GUARDED_BY(mutex_);
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
 
