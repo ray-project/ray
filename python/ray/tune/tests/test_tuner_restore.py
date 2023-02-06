@@ -481,7 +481,7 @@ def test_tuner_restore_latest_available_checkpoint(
     assert result.metrics["iterations_since_restore"] == 5
 
 
-@pytest.mark.parametrize("retry_num", [2])
+@pytest.mark.parametrize("retry_num", [0, 2])
 def test_restore_retry(ray_start_4_cpus, tmpdir, retry_num):
     """Test retrying restore on a trial level by setting `TUNE_RESTORE_RETRY_NUM`."""
 
