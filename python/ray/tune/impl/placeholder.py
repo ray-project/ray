@@ -223,9 +223,7 @@ def resolve_placeholders(config: Any, replaced: defaultdict):
 
     def __resolve(resolver_type, args):
         for path, resolvers in replaced.items():
-            if not resolvers:
-                # Should never happen.
-                continue
+            assert resolvers
 
             if not isinstance(resolvers[0], resolver_type):
                 continue
