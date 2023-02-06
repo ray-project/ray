@@ -35,6 +35,7 @@ from ray.tune.result import (
     STDOUT_FILE,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
+    TIMESTAMP,
     TIMESTEPS_THIS_ITER,
     TIMESTEPS_TOTAL,
     TRAINING_ITERATION,
@@ -238,6 +239,7 @@ class Trainable:
         self,
         now: Optional[datetime] = None,
         time_this_iter: Optional[float] = None,
+        timestamp: Optional[int] = None,
         debug_metrics_only: bool = False,
     ) -> dict:
         """Return a dict with metrics auto-filled by the trainable.
@@ -344,7 +346,7 @@ class Trainable:
             `date` (str): A formatted date of when the result was processed.
 
             `timestamp` (str): A UNIX timestamp of when the result
-            was processed.
+            was processed. This may be overridden.
 
             `hostname` (str): Hostname of the machine hosting the training
             process.
@@ -380,6 +382,9 @@ class Trainable:
         self._time_total += time_this_iter
         self._time_since_restore += time_this_iter
 
+        if result.get(TIMESTAMP) is not None:
+            result_timestamp = result[TIMESTAMP]
+
         result.setdefault(DONE, False)
 
         # self._timesteps_total should only be tracked if increments are provided
@@ -405,7 +410,11 @@ class Trainable:
             result.setdefault("neg_mean_loss", -result["mean_loss"])
 
         now = datetime.today()
-        result.update(self.get_auto_filled_metrics(now, time_this_iter))
+        result.update(
+            self.get_auto_filled_metrics(
+                now=now, time_this_iter=time_this_iter, timestamp=result_timestamp
+            )
+        )
 
         monitor_data = self._monitor.get_data()
         if monitor_data:

@@ -44,6 +44,10 @@ EPISODES_THIS_ITER = "episodes_this_iter"
 # (Optional/Auto-filled) Accumulated number of episodes for this trial.
 EPISODES_TOTAL = "episodes_total"
 
+# The timestamp of when the result is generated.
+# Default to when the result is processed by tune.
+TIMESTAMP = "timestamp"
+
 # Number of timesteps in this iteration.
 TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 
@@ -76,7 +80,7 @@ DEBUG_METRICS = (
     TRIAL_ID,
     "experiment_id",
     "date",
-    "timestamp",
+    TIMESTAMP,
     PID,
     HOSTNAME,
     NODE_IP,
@@ -93,7 +97,7 @@ AUTO_RESULT_KEYS = (
     PID,
     TIME_TOTAL_S,
     TIME_THIS_ITER_S,
-    "timestamp",
+    TIMESTAMP,
     "date",
     "time_since_restore",
     "iterations_since_restore",
