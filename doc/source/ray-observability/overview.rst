@@ -28,7 +28,7 @@ the API raises an exception if anything goes wrong with a related task, actor or
 
 - :class:`RayTaskError <ray.exceptions.RayTaskError>` is raised when there's an error from user code that throws an exception.
 - :class:`RayActorError <ray.exceptions.RayActorError>` is raised when an actor is dead (by a system failure such as node failure or user-level failure such as an exception from ``__init__`` method).
-- :ref:`RuntimeEnvSetupError <ray-core-exceptions-runtime-env-setup-error>` is raised when the actor or task couldn't be started because :ref:`a runtime environment <runtime-environments>` failed to be created.
+- :class:`RuntimeEnvSetupError <ray.exceptions.RuntimeEnvSetupError>` is raised when the actor or task couldn't be started because :ref:`a runtime environment <runtime-environments>` failed to be created.
 
 See :ref:`Exceptions Reference <ray-core-exceptions>` for more details.
 
