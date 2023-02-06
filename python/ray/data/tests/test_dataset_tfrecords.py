@@ -243,7 +243,8 @@ def test_readback_tfrecords(ray_start_regular_shared, tmp_path):
 
     # Read the TFRecords.
     readback_ds = ray.data.read_tfrecords(tmp_path)
-    assert ds.take() == readback_ds.take()
+    # Convert to pandas to properly compare entries with (empty) numpy arrays
+    pd.testing.assert_frame_equal(ds.to_pandas(), readback_ds.to_pandas())
 
 
 def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
@@ -271,4 +272,4 @@ def test_read_invalid_tfrecords(ray_start_regular_shared, tmp_path):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-vv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))

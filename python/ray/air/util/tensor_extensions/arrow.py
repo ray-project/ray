@@ -314,7 +314,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                 # We only natively support C-contiguous ndarrays.
                 arr = np.ascontiguousarray(arr)
             pa_dtype = pa.from_numpy_dtype(arr.dtype)
-            if pa.types.is_string(pa_dtype):
+            if pa.types.is_string(pa_dtype) or pa.types.is_binary(pa_dtype):
                 if arr.dtype.byteorder == ">" or (
                     arr.dtype.byteorder == "=" and sys.byteorder == "big"
                 ):
@@ -327,10 +327,6 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             element_shape = arr.shape[1:]
             total_num_items = arr.size
             num_items_per_element = np.prod(element_shape) if element_shape else 1
-
-            # Special type handling for empty binary array ===>?
-            if num_items_per_element == 0 and pa.types.is_binary(pa_dtype):
-                pa_dtype = pa.binary(0)
 
             # Data buffer.
             if pa.types.is_boolean(pa_dtype):

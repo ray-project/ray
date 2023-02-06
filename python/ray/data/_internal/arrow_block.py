@@ -18,7 +18,6 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray._private.utils import _get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import ArrowTensorType
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.table_block import (
     TableBlockAccessor,
@@ -79,8 +78,9 @@ class ArrowRow(TableRow):
         )
 
         schema = self._row.schema
+        col_type = schema.field(key).type
         if isinstance(
-            schema.field(key).type,
+            col_type,
             (ArrowTensorType, ArrowVariableShapedTensorType),
         ):
             # Build a tensor row.
@@ -96,6 +96,8 @@ class ArrowRow(TableRow):
         except AttributeError:
             # Assume that this row is an element of an extension array, and
             # that it is bypassing pyarrow's scalar model for Arrow < 8.0.0.
+            if isinstance(item, pyarrow.ListScalar) and len(item) == 0:
+                return np.array([], dtype=col_type.value_type.to_pandas_dtype())
             return item
 
     def __iter__(self) -> Iterator:
@@ -114,30 +116,14 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
-        schema_items = []
         for col_name, col in columns.items():
-            first_elem = next(iter(col), None)
-            if col_name == TENSOR_COLUMN_NAME or isinstance(first_elem, np.ndarray):
+            if col_name == TENSOR_COLUMN_NAME or isinstance(
+                next(iter(col), None), np.ndarray
+            ):
                 from ray.data.extensions.tensor_extension import ArrowTensorArray
 
                 columns[col_name] = ArrowTensorArray.from_numpy(col)
-                pa_dtype = pyarrow.from_numpy_dtype(first_elem.dtype)
-                if len(first_elem) == 0 and pyarrow.types.is_binary(pa_dtype):
-                    pa_dtype = pyarrow.binary(0)
-                col_type = ArrowTensorType(first_elem.shape, pa_dtype)
-            elif isinstance(first_elem, list):
-                first_elem = next(iter(first_elem), None)
-                col_type = pyarrow.from_numpy_dtype(type(first_elem))
-                col_type = pyarrow.list_(col_type)
-            else:
-                try:
-                    col_type = pyarrow.from_numpy_dtype(type(first_elem))
-                except pyarrow.ArrowNotImplementedError:
-                    col_type = type(first_elem)
-            schema_items.append((col_name, col_type))
-        print("===> final columns:", columns)
-        print("===> final schema:", pyarrow.schema(schema_items))
-        return pyarrow.Table.from_pydict(columns, schema=pyarrow.schema(schema_items))
+        return pyarrow.Table.from_pydict(columns)
 
     @staticmethod
     def _concat_tables(tables: List[Block]) -> Block:

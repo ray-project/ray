@@ -1,18 +1,7 @@
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Tuple,
-    Union,
-    Iterable,
-    Iterator,
-)
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union, Iterable, Iterator
 import struct
 
 import numpy as np
-from ray.air.util.tensor_extensions.arrow import ArrowTensorType
 
 from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _check_import
@@ -46,12 +35,7 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"record in '{path}'. This error can occur if your TFRecord "
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
-            mapping, schema = _convert_example_to_dict(example)
-            raw_table = pa.Table.from_pydict(
-                mapping=mapping,
-                schema=schema,
-            )
-            yield raw_table
+            yield pa.Table.from_pydict(_convert_example_to_dict(example))
 
     def _write_block(
         self,
@@ -79,45 +63,42 @@ class TFRecordDatasource(FileBasedDatasource):
 
 def _convert_example_to_dict(
     example: "tf.train.Example",
-) -> Tuple[
-    Dict[
-        str,
-        Union[
-            List[bytes],
-            List[List[bytes]],
-            List[float],
-            List[List[float]],
-            List[int],
-            List[List[int]],
-        ],
+) -> Dict[
+    str,
+    Union[
+        List[bytes],
+        List[List[bytes]],
+        List[float],
+        List[List[float]],
+        List[int],
+        List[List[int]],
     ],
-    "pyarrow.Schema",
 ]:
     import pyarrow as pa
 
     record = {}
-    schema_items = []
     for feature_name, feature in example.features.feature.items():
-        value, feature_type = _get_feature_value_and_type(feature)
-
-        # Return value itself if the list has single value.
-        # This is to give better user experience when writing preprocessing UDF on
-        # these single-value lists.
-        if len(value) == 1:
-            value = value[0]
-        # For values with more than one element, convert to list type.
+        value = _get_feature_value(feature)
+        if len(value) == 0:
+            if pa.types.is_binary(value.type):
+                value = np.array(value, dtype=np.bytes_)
+            else:
+                value = np.array(value, dtype=value.type.to_pandas_dtype())
         else:
-            feature_type = pa.list_(feature_type)
-        schema_items.append((feature_name, feature_type))
+            value = value.to_pylist()
+            # Return value itself if the list has single value.
+            # This is to give better user experience when writing preprocessing UDF on
+            # these single-value lists.
+            if len(value) == 1:
+                value = value[0]
         record[feature_name] = [value]
-    return record, pa.schema(schema_items)
+    return record
 
 
 def _convert_arrow_table_to_examples(
     arrow_table: "pyarrow.Table",
 ) -> Iterable["tf.train.Example"]:
     import tensorflow as tf
-    import pyarrow as pa
 
     # Serialize each row[i] of the block to a tf.train.Example and yield it.
     for i in range(arrow_table.num_rows):
@@ -125,19 +106,11 @@ def _convert_arrow_table_to_examples(
         # First, convert row[i] to a dictionary.
         features: Dict[str, "tf.train.Feature"] = {}
         for name in arrow_table.column_names:
-            col_type = arrow_table.field(name).type
-            if pa.types.is_list(col_type):
-                features[name] = _value_to_feature(
-                    arrow_table[name][i].as_py(), col_type.value_type
-                )
-            elif isinstance(col_type, ArrowTensorType) and col_type.shape == (0,):
-                features[name] = _value_to_feature(
-                    arrow_table[name][i], col_type.scalar_type
-                )
+            col_value = arrow_table[name][i]
+            if isinstance(col_value, np.ndarray):
+                features[name] = _value_to_feature(col_value)
             else:
-                features[name] = _value_to_feature(
-                    arrow_table[name][i].as_py(), col_type
-                )
+                features[name] = _value_to_feature(col_value.as_py())
 
         # Convert the dictionary to an Example proto.
         proto = tf.train.Example(features=tf.train.Features(feature=features))
@@ -145,66 +118,54 @@ def _convert_arrow_table_to_examples(
         yield proto
 
 
-def _get_feature_value_and_type(
+def _get_feature_value(
     feature: "tf.train.Feature",
-) -> Tuple[Union[List[bytes], List[float], List[int]], "pyarrow.DataType"]:
+) -> Union[List[bytes], List[float], List[int]]:
     import pyarrow as pa
 
     values = (
-        feature.bytes_list.value,
-        feature.float_list.value,
-        feature.int64_list.value,
+        feature.HasField("int64_list"),
+        feature.HasField("float_list"),
+        feature.HasField("bytes_list"),
     )
+    # Exactly one of `bytes_list`, `float_list`, and `int64_list` should contain data.
+    # Otherwise, all three should be empty lists, indicating an empty feature value.
+    assert sum(values) == 1
 
-    # For Feature objects with non-null values, exactly one of
-    # `bytes_list`, `float_list`, and `int64_list` should contain data.
-    # If the Feature object has no values, all three type lists will be empty.
-    assert sum(bool(value) for value in values) <= 1
-
-    if feature.bytes_list.value:
-        return list(feature.bytes_list.value), pa.binary()
-    if feature.float_list.value:
-        return list(feature.float_list.value), pa.float32()
-    if feature.int64_list.value:
-        return list(feature.int64_list.value), pa.int64()
-
+    if feature.HasField("bytes_list"):
+        return pa.array(feature.bytes_list.value, type=pa.binary())
+    if feature.HasField("float_list"):
+        return pa.array(feature.float_list.value, type=pa.float32())
     if feature.HasField("int64_list"):
-        return np.array([], dtype=np.int64), pa.int64()
-    elif feature.HasField("float_list"):
-        return np.array([], dtype=np.float32), pa.float32()
-    elif feature.HasField("bytes_list"):
-        return np.array([], dtype=np.bytes_), pa.binary()
-    return np.array([], dtype=object), pa.null()
+        return pa.array(feature.int64_list.value, type=pa.int64())
+    raise AssertionError(
+        "tf.train.Feature should have at least one value field set, "
+        "so this should never be reached."
+    )
 
 
 def _value_to_feature(
-    value: Union[bytes, float, int, List],
-    col_type: "pyarrow.DataType",
+    value: Union[bytes, float, int, np.ndarray]
 ) -> "tf.train.Feature":
     import tensorflow as tf
-    import pyarrow as pa
+
+    if isinstance(value, np.ndarray) and len(value) == 0:
+        # Checking for an empty list of byte type
+        if value.dtype == "<U0":
+            return tf.train.Feature(bytes_list=tf.train.BytesList(value=[]))
+        if value.dtype == np.float32:
+            return tf.train.Feature(float_list=tf.train.FloatList(value=[]))
+        if value.dtype == np.int64:
+            return tf.train.Feature(int64_list=tf.train.Int64List(value=[]))
 
     # A Feature stores a list of values.
     # If we have a single value, convert it to a singleton list first.
-    if not value:
-        values = value
-    else:
-        values = [value] if not isinstance(value, list) else value
-
+    values = [value] if not isinstance(value, list) else value
     if not values:
-        if pa.types.is_fixed_size_binary(col_type) or pa.types.is_binary(col_type):
-            return tf.train.Feature(bytes_list=tf.train.BytesList(value=values))
-        elif pa.types.is_float32(col_type):
-            return tf.train.Feature(float_list=tf.train.FloatList(value=values))
-        elif pa.types.is_int64(col_type):
-            return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
-        else:
-            raise ValueError(
-                f"Value of empty feature is of type {col_type}, "
-                "which is not a supported tf.train.Feature storage type "
-                "(bytes, float, or int)."
-            )
-    if isinstance(values[0], bytes):
+        raise ValueError(
+            "Storing an empty value in a tf.train.Feature is not supported."
+        )
+    elif isinstance(values[0], bytes):
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=values))
     elif isinstance(values[0], float):
         return tf.train.Feature(float_list=tf.train.FloatList(value=values))
