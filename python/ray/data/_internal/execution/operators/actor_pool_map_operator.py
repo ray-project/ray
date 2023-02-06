@@ -102,12 +102,20 @@ class ActorPoolMapOperator(MapOperator):
         """
         while self._bundle_queue:
             # Pick an actor from the pool.
-            actor = self._actor_pool.pick_actor()
-            if actor is None:
-                # No actors available for executing the next task.
-                break
+            if self._options.actor_locality_enabled:
+                selected_pair = self._actor_pool.pick_actor_and_bundle_locality_aware(
+                    self._bundle_queue
+                )
+                if selected_pair is None:
+                    break
+                actor, bundle = selected_pair
+            else:
+                actor = self._actor_pool.pick_actor()
+                if actor is None:
+                    # No actors available for executing the next task.
+                    break
+                bundle = self._bundle_queue.popleft()
             # Submit the map task.
-            bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(task_idx=self._next_task_idx)
             ref = actor.submit.options(num_returns="dynamic").remote(

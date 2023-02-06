@@ -154,6 +154,10 @@ class ExecutionOptions:
     # don't require it.
     preserve_order: bool = True
 
+    # Whether to enable locality-aware task dispatch to actors. This requires also
+    # that preserve_order = False.
+    actor_locality_enabled: bool = False
+
 
 @dataclass
 class TaskContext:
@@ -378,6 +382,11 @@ class Executor:
     def __init__(self, options: ExecutionOptions):
         """Create the executor."""
         self._options = options
+        if options.actor_locality_enabled and options.preserve_order:
+            # TODO(ekl) decouple this.
+            raise NotImplementedError(
+                "preserve_order must be set to False if actor_locality_enabled is set"
+            )
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
