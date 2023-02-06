@@ -35,6 +35,7 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"record in '{path}'. This error can occur if your TFRecord "
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
+
             yield pa.Table.from_pydict(_convert_example_to_dict(example))
 
     def _write_block(
@@ -130,7 +131,7 @@ def _get_feature_value(
     )
     # Exactly one of `bytes_list`, `float_list`, and `int64_list` should contain data.
     # Otherwise, all three should be empty lists, indicating an empty feature value.
-    assert sum(values) == 1
+    assert sum(bool(value) for value in values) == 1
 
     if feature.HasField("bytes_list"):
         return pa.array(feature.bytes_list.value, type=pa.binary())
