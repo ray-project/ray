@@ -64,7 +64,7 @@ class AimCallback(LoggerCallback):
     def __init__(
         self,
         repo: Optional[Union[str, "Repo"]] = None,
-        experiment: Optional[str] = None,
+        experiment_name: Optional[str] = None,
         metrics: Optional[List[str]] = None,
         as_multirun: Optional[bool] = False,
         **aim_run_kwargs
