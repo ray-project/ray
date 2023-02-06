@@ -67,7 +67,7 @@ CUDA_FULL = {
 # If changing the CUDA version in the below line, you should also change the base Docker
 # image being used in ~/ci/docker/Dockerfile.gpu to match the same image being used
 # here.
-ML_CUDA_VERSION = "cu116"
+ML_CUDA_VERSION = "cu118"
 
 DEFAULT_PYTHON_VERSION = "py37"
 
