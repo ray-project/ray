@@ -2,7 +2,7 @@ Ray Workflows API
 =================
 
 .. toctree::
-    :maxdepth: 2
+    :maxdepth: 1
 
     execution.rst
     management.rst
