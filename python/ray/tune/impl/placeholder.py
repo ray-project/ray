@@ -181,12 +181,6 @@ def _get_placeholder(config: Any, prefix: Tuple, path: Tuple):
         return prefix, config
 
     key = path[0]
-    if (isinstance(config, dict) and key in config) or (
-        isinstance(config, list) and key < len(config)
-    ):
-        # Expand config tree recursively.
-        return _get_placeholder(config[key], prefix=prefix + (path[0],), path=path[1:])
-
     if isinstance(config, tuple):
         if config[0] in (_FunctionResolver.TOKEN, _RefResolver.TOKEN):
             # Found a matching placeholder.
@@ -207,6 +201,11 @@ def _get_placeholder(config: Any, prefix: Tuple, path: Tuple):
             return _get_placeholder(
                 config[key], prefix=prefix + (path[0],), path=path[1:]
             )
+    elif (isinstance(config, dict) and key in config) or (
+        isinstance(config, list) and key < len(config)
+    ):
+        # Expand config tree recursively.
+        return _get_placeholder(config[key], prefix=prefix + (path[0],), path=path[1:])
 
     # Can not find a matching placeholder.
     return None, None
