@@ -67,7 +67,6 @@ DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", EXPERIMENT_TAG, TRIAL_ID)
 DEFAULT_RESULT_KEYS = (
     TRAINING_ITERATION,
     TIME_TOTAL_S,
-    TIMESTEPS_TOTAL,
     MEAN_ACCURACY,
     MEAN_LOSS,
 )
@@ -89,20 +88,16 @@ AUTO_RESULT_KEYS = (
     TRAINING_ITERATION,
     TIME_TOTAL_S,
     EPISODES_TOTAL,
-    TIMESTEPS_TOTAL,
     NODE_IP,
     HOSTNAME,
     PID,
     TIME_TOTAL_S,
     TIME_THIS_ITER_S,
     "timestamp",
-    "experiment_id",
     "date",
     "time_since_restore",
     "iterations_since_restore",
-    "timesteps_since_restore",
     "config",
-    "warmup_time",
 )
 
 # __duplicate__ is a magic keyword used internally to

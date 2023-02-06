@@ -164,10 +164,10 @@ class Trainable:
         self._stdout_file = stdout_file
         self._stderr_file = stderr_file
 
-        start_time = time.time()
+        self._start_time = time.time()
         self._local_ip = ray.util.get_node_ip_address()
         self.setup(copy.deepcopy(self.config))
-        setup_time = time.time() - start_time
+        setup_time = time.time() - self._start_time
         if setup_time > SETUP_TIME_THRESHOLD:
             logger.info(
                 "Trainable.setup took {:.3f} seconds. If your "
@@ -176,8 +176,6 @@ class Trainable:
                 "overheads.".format(setup_time)
             )
         log_sys_usage = self.config.get("log_sys_usage", False)
-        self._start_time = start_time
-        self._warmup_time = None
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
@@ -264,7 +262,6 @@ class Trainable:
             "time_since_restore": self._time_since_restore,
             "timesteps_since_restore": self._timesteps_since_restore,
             "iterations_since_restore": self._iterations_since_restore,
-            "warmup_time": self._warmup_time,
         }
         if debug_metrics_only:
             autofilled = {k: v for k, v in autofilled.items() if k in DEBUG_METRICS}
@@ -358,8 +355,6 @@ class Trainable:
         Returns:
             A dict that describes training progress.
         """
-        if self._warmup_time is None:
-            self._warmup_time = time.time() - self._start_time
         start = time.time()
         try:
             result = self.step()
@@ -387,7 +382,7 @@ class Trainable:
 
         result.setdefault(DONE, False)
 
-        # self._timesteps_total should only be tracked if increments provided
+        # self._timesteps_total should only be tracked if increments are provided
         if result.get(TIMESTEPS_THIS_ITER) is not None:
             if self._timesteps_total is None:
                 self._timesteps_total = 0
