@@ -1105,7 +1105,7 @@ void WorkerPool::TryKillingIdleWorkers() {
         RAY_CHECK(running_size > 0);
         running_size--;
         rpc::ExitRequest request;
-        if (finished_jobs_.contains(job_id)) {
+        if (finished_jobs_.contains(job_id) && RayConfig::instance().kill_idle_workers_of_terminated_job()) {
           RAY_LOG(INFO) << "Force exiting worker whose job has exited";
           request.set_force_exit(true);
         }
