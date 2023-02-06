@@ -23,7 +23,7 @@ available_node_types:
                 # Set to false to use non-preemptible TPUs
                 preemptible: false
     ray_tpu:
-        min_workers: 7
+        min_workers: 1
         resources: {"TPU": 1}  # use TPU custom resource in your code
         node_config:
             acceleratorType: v2-8
