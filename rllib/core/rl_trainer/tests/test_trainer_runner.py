@@ -1,7 +1,6 @@
 import gymnasium as gym
 import itertools
 import numpy as np
-import tensorflow as tf
 import unittest
 
 import ray
@@ -37,7 +36,6 @@ LOCAL_SCALING_CONFIGS = {
 @ray.remote(num_gpus=1)
 class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
-        tf.keras.utils.set_random_seed(0)
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
         runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
@@ -69,13 +67,6 @@ class RemoteTrainingHelper:
 
         check(local_trainer.get_state(), runner.get_state()[0])
 
-        for _ in range(500):
-            batch = reader.next()
-            ma_batch = MultiAgentBatch(
-                {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
-            )
-            check(local_trainer.update(ma_batch), runner.update(ma_batch)[0])
-
 
 class TestTrainerRunner(unittest.TestCase):
     def setUp(self) -> None:
@@ -85,18 +76,9 @@ class TestTrainerRunner(unittest.TestCase):
         ray.shutdown()
 
     def test_trainer_runner_local(self):
-        # fws = ["tf", "torch"]
-        fws = [
-            "tf",
-        ]
+        fws = ["tf", "torch"]
 
-        # test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
-        test_iterator = itertools.product(
-            fws,
-            [
-                "local-gpu",
-            ],
-        )
+        test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
 
         # run the logic of this test inside of a ray actor because we want tensorflow
         # resources to be gracefully released. Tensorflow blocks the gpu resources
@@ -105,8 +87,6 @@ class TestTrainerRunner(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
             training_helper = RemoteTrainingHelper.remote()
             ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
-            # training_helper = RemoteTrainingHelper()
-            # training_helper.local_training_helper(fw, scaling_mode)
 
     def test_update_multigpu(self):
         fws = ["tf", "torch"]

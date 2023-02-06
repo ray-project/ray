@@ -95,7 +95,6 @@ class TfRLTrainer(RLTrainer):
         tf1.enable_eager_execution()
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
-        tf.config.run_functions_eagerly(not self._enable_tf_function)
         # the default strategy is a no-op that can be used in the local mode
         # cpu only case
         self._strategy = tf.distribute.get_strategy()
@@ -118,21 +117,28 @@ class TfRLTrainer(RLTrainer):
         with self._strategy.scope():
             super().build()
 
-        self._update_fn = tf.function(self._traced_update_helper, reduce_retracing=True)
-
-    def _traced_update_helper(self, batch):
-        return self._strategy.run(self._do_update_fn, args=(batch,))
+        if self._enable_tf_function:
+            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
+        else:
+            self._update_fn = self._do_update_fn
 
     def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
-        with tf.GradientTape() as tape:
-            fwd_out = self._module.forward_train(batch)
-            loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
-            if isinstance(loss, tf.Tensor):
-                loss = {"total_loss": loss}
-        gradients = self.compute_gradients(loss, tape)
-        gradients = self.postprocess_gradients(gradients)
-        self.apply_gradients(gradients)
-        return {"loss": loss, "fwd_out": fwd_out, "postprocessed_gradients": gradients}
+        def helper(_batch):
+            with tf.GradientTape() as tape:
+                fwd_out = self._module.forward_train(_batch)
+                loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
+                if isinstance(loss, tf.Tensor):
+                    loss = {"total_loss": loss}
+            gradients = self.compute_gradients(loss, tape)
+            gradients = self.postprocess_gradients(gradients)
+            self.apply_gradients(gradients)
+            return {
+                "loss": loss,
+                "fwd_out": fwd_out,
+                "postprocessed_gradients": gradients,
+            }
+
+        return self._strategy.run(helper, args=(batch,))
 
     @override(RLTrainer)
     def configure_optimizers(self) -> ParamOptimizerPairs:
@@ -203,13 +209,15 @@ class TfRLTrainer(RLTrainer):
                 set_optimizer_fn=set_optimizer_fn,
                 optimizer_cls=optimizer_cls,
             )
-        self._update_fn = tf.function(self._traced_update_helper, reduce_retracing=True)
+        if self._enable_tf_function:
+            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
 
     @override(RLTrainer)
     def remove_module(self, module_id: ModuleID) -> None:
         with self._strategy.scope():
             super().remove_module(module_id)
-        self._update_fn = tf.function(self._traced_update_helper, reduce_retracing=True)
+        if self._enable_tf_function:
+            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
 
     def convert_batch_to_tf_tensor(self, batch: MultiAgentBatch) -> NestedDict:
         """Convert the arrays of batch to tf.Tensor's.
