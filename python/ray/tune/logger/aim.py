@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
-from typing import TYPE_CHECKING, Dict, Optional, List
+from typing import TYPE_CHECKING, Dict, Optional, List, Union
 
 from ray.tune.logger.logger import LoggerCallback
 from ray.tune.result import (
@@ -15,6 +15,7 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
+
 try:
     from aim.sdk import Run
 except ImportError:
@@ -28,34 +29,31 @@ VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
 @PublicAPI
 class AimCallback(LoggerCallback):
-    """Aim Logger, logs metrics in Aim format.
+    """Aim Logger: logs metrics in Aim format.
 
     Aim is an open-source, self-hosted ML experiment tracking tool.
-    It's good at tracking lots (1000s) of training runs, and it allows you to compare them with a
-    performant and well-designed UI.
+    It's good at tracking lots (thousands) of training runs, and it allows you to
+    compare them with a performant and well-designed UI.
 
     Source: https://github.com/aimhubio/aim
 
-
-        """
-        Args:
-            repo: Aim repository directory or a `Repo` object that the Run object will
-                log results to. If not provided, a default repo will be set up in the
-                experiment directory (one level above trial directories).
-            experiment: Sets the `experiment` property of each Run object, which is the
-                experiment name associated with it. Can be used later to query
-                runs/sequences.
-                If not provided, the default will be the Tune experiment name set
-                by `RunConfig(name=...)`.
-            metrics: List of metric names (out of the metrics reported by Tune) to
-                track in Aim. If no metric are specified, log everything that
-                is reported.
-            as_multirun: If True, create a new Run for each trial.
-            **aim_run_kwargs: Additional arguments that will be passed when creating the
-                individual `Run` objects for each trial. For the full list of arguments,
-                please see the Aim documentation:
-                https://aimstack.readthedocs.io/en/latest/refs/sdk.html
-        """
+    Args:
+        repo: Aim repository directory or a `Repo` object that the Run object will
+            log results to. If not provided, a default repo will be set up in the
+            experiment directory (one level above trial directories).
+        experiment: Sets the `experiment` property of each Run object, which is the
+            experiment name associated with it. Can be used later to query
+            runs/sequences.
+            If not provided, the default will be the Tune experiment name set
+            by `RunConfig(name=...)`.
+        metrics: List of metric names (out of the metrics reported by Tune) to
+            track in Aim. If no metric are specified, log everything that
+            is reported.
+        as_multirun: If True, create a new Run for each trial.
+        **aim_run_kwargs: Additional arguments that will be passed when creating the
+            individual `Run` objects for each trial. For the full list of arguments,
+            please see the Aim documentation:
+            https://aimstack.readthedocs.io/en/latest/refs/sdk.html
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
@@ -67,7 +65,7 @@ class AimCallback(LoggerCallback):
         experiment_name: Optional[str] = None,
         metrics: Optional[List[str]] = None,
         as_multirun: Optional[bool] = False,
-        **aim_run_kwargs
+        **aim_run_kwargs,
     ):
         """
         See help(AimCallback) for more information about parameters.
@@ -77,7 +75,7 @@ class AimCallback(LoggerCallback):
             " the command: `pip install aim`."
         )
         self._repo_path = repo
-        self._experiment_name = experiment
+        self._experiment_name = experiment_name
         assert bool(metrics) or metrics is None
         self._metrics = metrics
         self._as_multirun = as_multirun
@@ -94,7 +92,7 @@ class AimCallback(LoggerCallback):
         run = self._run_cls(
             repo=self._repo_path or experiment_dir,
             experiment=self._experiment_name or trial.experiment_dir_name,
-            **self._aim_run_kwargs
+            **self._aim_run_kwargs,
         )
         if self._as_multirun:
             run["trial_id"] = trial.trial_id
@@ -177,7 +175,11 @@ class AimCallback(LoggerCallback):
                 ):
                     valid_result[attr] = value
                     trial_run.track(
-                        value=value, name=full_attr, epoch=epoch, step=step, context=context
+                        value=value,
+                        name=full_attr,
+                        epoch=epoch,
+                        step=step,
+                        context=context,
                     )
                 elif (isinstance(value, list) and len(value) > 0) or (
                     isinstance(value, np.ndarray) and value.size > 0
