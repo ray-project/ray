@@ -155,9 +155,7 @@ class PPOTorchRLModule(TorchRLModule):
         config = PPOModuleConfig(
             observation_space=observation_space,
             action_space=action_space,
-            encoder_config=catalog.encoder_config,
-            pi_config=catalog.pi_config,
-            vf_config=catalog.vf_config,
+            catalog=catalog,
             free_log_std=free_log_std,
         )
 
@@ -267,7 +265,9 @@ class PPOTorchRLModule(TorchRLModule):
     def output_specs_train(self) -> SpecDict:
         spec = SpecDict(
             {
-                SampleBatch.ACTION_DIST: self.__get_action_dist_type(),
+                SampleBatch.ACTION_DIST: TorchCategorical
+                if self._is_discrete
+                else TorchDiagGaussian,
                 SampleBatch.ACTION_LOGP: TorchTensorSpec("b", dtype=torch.float32),
                 SampleBatch.VF_PREDS: TorchTensorSpec("b", dtype=torch.float32),
                 "entropy": TorchTensorSpec("b", dtype=torch.float32),
@@ -302,6 +302,3 @@ class PPOTorchRLModule(TorchRLModule):
         output["entropy"] = entropy
 
         return output
-
-    def __get_action_dist_type(self):
-        return TorchCategorical if self._is_discrete else TorchDiagGaussian

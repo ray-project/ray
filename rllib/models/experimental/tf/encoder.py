@@ -1,5 +1,4 @@
-import torch
-import torch.nn as nn
+import tensorflow as tf
 import tree
 
 from ray.rllib.models.experimental.base import (
@@ -10,6 +9,9 @@ from ray.rllib.models.experimental.encoder import (
     Encoder,
     STATE_IN,
     STATE_OUT,
+    ENCODER_OUT,
+    ACTOR,
+    CRITIC,
 )
 from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -18,7 +20,6 @@ from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
-from ray.rllib.models.experimental.torch.encoder import ENCODER_OUT
 from ray.rllib.models.experimental.tf.primitives import TfModel
 
 
@@ -39,17 +40,28 @@ class TfMLPEncoder(Encoder, TfModel):
     @property
     def input_spec(self):
         return SpecDict(
-            {SampleBatch.OBS: TFTensorSpecs("b, h", h=self.config.input_dim)}
+            {
+                SampleBatch.OBS: TFTensorSpecs("b, h", h=self.config.input_dim),
+                STATE_IN: None,
+            }
         )
 
     @property
     def output_spec(self):
-        return SpecDict({ENCODER_OUT: TFTensorSpecs("b, h", h=self.config.output_dim)})
+        return SpecDict(
+            {
+                ENCODER_OUT: TFTensorSpecs("b, h", h=self.config.output_dim),
+                STATE_OUT: None,
+            }
+        )
 
     @check_input_specs("input_spec", cache=False)
     @check_output_specs("output_spec", cache=False)
     def __call__(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
-        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
+        return {
+            ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
+            STATE_OUT: inputs[STATE_IN],
+        }
 
 
 class LSTMEncoder(Encoder, TfModel):
@@ -59,19 +71,11 @@ class LSTMEncoder(Encoder, TfModel):
         Encoder.__init__(self, config)
         TfModel.__init__(self, config)
 
-        self.lstm = nn.LSTM(
-            config.input_dim,
-            config.hidden_dim,
-            config.num_layers,
-            batch_first=config.batch_first,
-        )
-        self.linear = nn.Linear(config.hidden_dim, config.output_dim)
-
     def get_initial_state(self):
         config = self.config
         return {
-            "h": torch.zeros(config.num_layers, config.hidden_dim),
-            "c": torch.zeros(config.num_layers, config.hidden_dim),
+            "h": tf.zeros(config.num_layers, config.hidden_dim),
+            "c": tf.zeros(config.num_layers, config.hidden_dim),
         }
 
     @property
@@ -121,7 +125,7 @@ class LSTMEncoder(Encoder, TfModel):
         x = add_time_dimension(
             x,
             seq_lens=inputs[SampleBatch.SEQ_LENS],
-            framework="torch",
+            framework="tf",
             time_major=not self.config.batch_first,
         )
         states_o = {}
@@ -146,14 +150,117 @@ class TfIdentityEncoder(TfModel):
     def input_spec(self):
         return SpecDict(
             # Use the output dim as input dim because identity.
-            {SampleBatch.OBS: TFTensorSpecs("b, h", h=self.config.output_dim)}
+            {
+                SampleBatch.OBS: TFTensorSpecs("b, h", h=self.config.output_dim),
+                STATE_IN: None,
+            }
         )
 
     @property
     def output_spec(self):
-        return SpecDict({ENCODER_OUT: TFTensorSpecs("b, h", h=self.config.output_dim)})
+        return SpecDict(
+            {
+                ENCODER_OUT: TFTensorSpecs("b, h", h=self.config.output_dim),
+                STATE_OUT: None,
+            }
+        )
 
     @check_input_specs("input_spec", cache=False)
     @check_output_specs("output_spec", cache=False)
     def __call__(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
-        return {ENCODER_OUT: inputs[SampleBatch.OBS]}
+        return {ENCODER_OUT: inputs[SampleBatch.OBS], STATE_OUT: inputs[STATE_IN]}
+
+
+class TfActorCriticEncoder(TfModel, Encoder):
+    """An encoder that potentially holds two encoders.
+
+    This is a special case of encoder that potentially holds two encoders:
+    One for the actor and one for the critic. If not, it will use the same encoder
+    for both. The two encoders are of the same type and we can therefore make the
+    assumption that they have the same input and output specs.
+    """
+
+    def __init__(self, config: ModelConfig) -> None:
+        TfModel.__init__(self, config)
+        Encoder.__init__(self, config)
+        if self.config.shared:
+            self.encoder = self.config.base_encoder_config.build(framework="tf")
+        else:
+            self.actor_encoder = self.config.base_encoder_config.build(framework="tf")
+            self.critic_encoder = self.config.base_encoder_config.build(framework="tf")
+
+    def get_initial_state(self):
+        if self.config.shared:
+            return self.encoder.get_initial_state()
+        else:
+            return {
+                ACTOR: self.actor_encoder.get_initial_state(),
+                CRITIC: self.critic_encoder.get_initial_state(),
+            }
+
+    @property
+    def input_spec(self) -> SpecDict:
+        if self.config.shared:
+            return self.encoder.input_spec
+        else:
+            actor_input_spec = self.actor_encoder.input_spec
+            critic_input_spec = self.critic_encoder.input_spec
+            assert actor_input_spec == critic_input_spec
+            # We only make assumptions about OBS, STATE_IN and SEQ_LENS here.
+            # By extending this class, one could feed inputs that hold more keys.
+
+            return SpecDict(
+                {
+                    SampleBatch.OBS: actor_input_spec[SampleBatch.OBS],
+                    STATE_IN: {
+                        ACTOR: actor_input_spec[STATE_IN],
+                        CRITIC: critic_input_spec[STATE_IN],
+                    },
+                    SampleBatch.SEQ_LENS: actor_input_spec[SampleBatch.SEQ_LENS],
+                }
+            )
+
+    @property
+    def output_spec(self):
+        if self.config.shared:
+            state_out_spec = self.encoder.output_spec[STATE_OUT]
+            actor_out_spec = self.encoder.output_spec[ENCODER_OUT]
+            critic_out_spec = self.encoder.output_spec[ENCODER_OUT]
+        else:
+            state_out_spec = {
+                ACTOR: self.actor_encoder.output_spec[STATE_OUT],
+                CRITIC: self.critic_encoder.output_spec[STATE_OUT],
+            }
+            actor_out_spec = self.actor_encoder.output_spec[ENCODER_OUT]
+            critic_out_spec = self.critic_encoder.output_spec[ENCODER_OUT]
+            assert actor_out_spec == critic_out_spec
+
+        return {
+            ENCODER_OUT: {ACTOR: actor_out_spec, CRITIC: critic_out_spec},
+            STATE_OUT: state_out_spec,
+        }
+
+    @check_input_specs("input_spec", cache=True)
+    @check_output_specs("output_spec", cache=True)
+    def __call__(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
+        if self.config.shared:
+            outs = self.encoder(inputs, **kwargs)
+            return {
+                ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
+                STATE_OUT: outs[STATE_OUT],
+            }
+        else:
+            actor_inputs = {**inputs, **{STATE_IN: inputs[STATE_IN]["actor"]}}
+            critic_inputs = {**inputs, **{STATE_IN: inputs[STATE_IN]["critic"]}}
+            actor_out = self.actor_encoder(actor_inputs, **kwargs)
+            critic_out = self.critic_encoder(critic_inputs, **kwargs)
+            return {
+                ENCODER_OUT: {
+                    ACTOR: actor_out[ENCODER_OUT],
+                    CRITIC[ENCODER_OUT]: critic_out,
+                },
+                STATE_OUT: {
+                    ACTOR: actor_out[STATE_OUT],
+                    CRITIC: critic_out[ENCODER_OUT],
+                },
+            }

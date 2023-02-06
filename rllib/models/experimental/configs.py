@@ -8,6 +8,18 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI
+def _maybe_fit_activation_fn_to_tf(activation_fn: str):
+    """Maybe fit the given activation function to reflect tf."""
+    if activation_fn == "tanh":
+        activation_fn = "Tanh"
+    elif activation_fn == "relu":
+        activation_fn = "ReLU"
+    elif activation_fn == "linear":
+        activation_fn = "linear"
+    return activation_fn
+
+
+@DeveloperAPI
 def _framework_implemented(torch: bool = True, tf2: bool = True):
     """Decorator to check if a model was implemented in a framework.
 
@@ -32,7 +44,11 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
         @functools.wraps(fn)
         def checked_build(self, framework, **kwargs):
             if framework not in accepted:
-                raise ValueError(f"Framework {framework} not supported.")
+                raise ValueError(
+                    f"This config does not support framework "
+                    f"{framework}. Only frameworks in {accepted} are "
+                    f"supported."
+                )
             return fn(self, framework, **kwargs)
 
         return checked_build
@@ -66,6 +82,12 @@ class MLPModelConfig(ModelConfig):
         else:
             from ray.rllib.models.experimental.tf.mlp import TfMLPModel
 
+            self.output_activation = _maybe_fit_activation_fn_to_tf(
+                self.output_activation
+            )
+            self.hidden_layer_activation = _maybe_fit_activation_fn_to_tf(
+                self.hidden_layer_activation
+            )
             return TfMLPModel(self)
 
 
@@ -122,7 +144,7 @@ class ActorCriticEncoderConfig(ModelConfig):
     base_encoder_config: ModelConfig = None
     shared: bool = True
 
-    @_framework_implemented(tf2=False)
+    @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
             from ray.rllib.models.experimental.torch.encoder import (
@@ -130,3 +152,7 @@ class ActorCriticEncoderConfig(ModelConfig):
             )
 
             return TorchActorCriticEncoder(self)
+        else:
+            from ray.rllib.models.experimental.tf.encoder import TfActorCriticEncoder
+
+            return TfActorCriticEncoder(self)

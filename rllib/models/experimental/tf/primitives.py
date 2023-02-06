@@ -77,9 +77,6 @@ class TfMLP(tf.Module):
     ):
         super().__init__()
 
-        assert hidden_layer_activation in ("linear", "ReLU", "Tanh"), (
-            "Activation function not " "supported"
-        )
         assert input_dim is not None, "Input dimension must not be None"
         assert output_dim is not None, "Output dimension must not be None"
         layers = []

@@ -233,12 +233,14 @@ class TestPPO(unittest.TestCase):
                 for param in module.parameters():
                     self.assertIsNotNone(param.grad)
             else:
-                batch = tree.map_structure(
+                fwd_in = tree.map_structure(
                     lambda x: tf.convert_to_tensor(x, dtype=tf.float32), batch
                 )
+                fwd_in[STATE_IN] = initial_state
+                fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
                 with tf.GradientTape() as tape:
-                    fwd_out = module.forward_train(batch)
-                    loss = dummy_tf_ppo_loss(batch, fwd_out)
+                    fwd_out = module.forward_train(fwd_in)
+                    loss = dummy_tf_ppo_loss(fwd_in, fwd_out)
                 grads = tape.gradient(loss, module.trainable_variables)
                 for grad in grads:
                     self.assertIsNotNone(grad)
