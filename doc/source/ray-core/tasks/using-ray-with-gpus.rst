@@ -99,7 +99,7 @@ task tries to use the same GPU. To address the problem, Ray disables the worker
 process reuse between GPU tasks by default, where the GPU resources is released after
 the task process exits. Since this adds overhead to GPU task scheduling,
 you can re-enable worker reuse by setting ``max_calls=0``
-in the :ref:`ray.remote <ray-remote-ref>` decorator.
+in the :meth:`ray.remote <ray.remote>` decorator.
 
 .. literalinclude:: ../doc_code/gpus.py
     :language: python

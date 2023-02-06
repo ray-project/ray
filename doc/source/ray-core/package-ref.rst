@@ -11,48 +11,11 @@ ray.is_initialized
 
 .. autofunction:: ray.is_initialized
 
-.. _ray-remote-ref:
-
 .. _scheduling-strategy-ref:
 
 .. autofunction:: ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy
 
 .. autofunction:: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy
-
-.. _ray-get-ref:
-
-ray.get
-~~~~~~~
-
-.. autofunction:: ray.get
-
-.. _ray-wait-ref:
-
-ray.wait
-~~~~~~~~
-
-.. autofunction:: ray.wait
-
-.. _ray-put-ref:
-
-ray.put
-~~~~~~~
-
-.. autofunction:: ray.put
-
-.. _ray-kill-ref:
-
-ray.kill
-~~~~~~~~
-
-.. autofunction:: ray.kill
-
-.. _ray-cancel-ref:
-
-ray.cancel
-~~~~~~~~~~
-
-.. autofunction:: ray.cancel
 
 .. _ray-get_actor-ref:
 
@@ -68,13 +31,6 @@ ray.get_gpu_ids
 ~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.get_gpu_ids
-
-.. _ray-method-ref:
-
-ray.method
-~~~~~~~~~~
-
-.. autofunction:: ray.method
 
 .. _ray-actor-pool-ref:
 
