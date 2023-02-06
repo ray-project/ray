@@ -38,20 +38,25 @@ class AimCallback(LoggerCallback):
     Source: https://github.com/aimhubio/aim
 
 
-    Arguments:
-        repo (:obj:`str`, optional): Aim repository path or Repo object to which Run object is bound.
-            If skipped, default Repo is used.
-        experiment (:obj:`str`, optional): Sets Run's `experiment` property. 'default' if not specified.
-            Can be used later to query runs/sequences.
-        metrics (:obj:`List[str]`, optional): Specific metrics to track.
-            If no metric is specified, log everything that is reported.
-        as_multirun (:obj:`bool`, optional): Enable/Disable creating new runs for each trial.
-        system_tracking_interval (:obj:`int`, optional): Sets the tracking interval in seconds for system usage
-            metrics (CPU, Memory, etc.). Set to `None` to disable system metrics tracking.
-        log_system_params (:obj:`bool`, optional): Enable/Disable logging of system params such as installed packages,
-            git info, environment variables, etc.
-
-    For more arguments please see the Aim documentation: https://aimstack.readthedocs.io/en/latest/refs/sdk.html
+        """
+        Args:
+            repo: Aim repository directory or a `Repo` object that the Run object will
+                log results to. If not provided, a default repo will be set up in the
+                experiment directory (one level above trial directories).
+            experiment: Sets the `experiment` property of each Run object, which is the
+                experiment name associated with it. Can be used later to query
+                runs/sequences.
+                If not provided, the default will be the Tune experiment name set
+                by `RunConfig(name=...)`.
+            metrics: List of metric names (out of the metrics reported by Tune) to
+                track in Aim. If no metric are specified, log everything that
+                is reported.
+            as_multirun: If True, create a new Run for each trial.
+            **aim_run_kwargs: Additional arguments that will be passed when creating the
+                individual `Run` objects for each trial. For the full list of arguments,
+                please see the Aim documentation:
+                https://aimstack.readthedocs.io/en/latest/refs/sdk.html
+        """
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
