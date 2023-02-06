@@ -407,7 +407,8 @@ RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
 RAY_CONFIG(bool, task_events_record_task_info_worker, false)
-RAY_CONFIG(bool, task_events_skip_status, false)
+// TODO(rickyx): skipping status events.
+RAY_CONFIG(bool, task_events_skip_status, true)
 RAY_CONFIG(bool, task_events_skip_args, false)
 RAY_CONFIG(bool, task_events_skip_node, false)
 RAY_CONFIG(bool, task_events_skip_submit, false)
