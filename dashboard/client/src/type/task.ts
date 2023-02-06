@@ -37,4 +37,17 @@ export type Task = {
   events: { [key: string]: string }[];
   start_time_ms: number | null;
   end_time_ms: number | null;
+  worker_id: string | null;
+  profiling_data: ProfilingData;
+};
+
+export type ProfilingData = {
+  node_ip_address?: string;
+  events: {
+    event_name: string;
+    extra_data?: {
+      type?: string;
+      traceback?: string;
+    };
+  }[];
 };
