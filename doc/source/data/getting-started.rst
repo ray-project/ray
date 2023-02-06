@@ -88,6 +88,8 @@ Pass datasets to Ray tasks or actors, and access records with methods like
         1                5.4  ...       1
         2                4.9  ...       2
 
+        [3 rows x 5 columns]
+
 .. tabbed:: Tasks
 
    .. testcode::
