@@ -86,7 +86,7 @@ class AimCallback(LoggerCallback):
         Returns:
             run (:obj:`aim.sdk.Run`): The created aim run for a specific trial.
         """
-        experiment_dir = str(Path(trial.logdir).parent)
+        experiment_dir = trial.local_dir
         run = self._run_cls(
             repo=self._repo_path or experiment_dir,
             experiment=self._experiment_name or trial.experiment_dir_name,
