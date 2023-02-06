@@ -446,11 +446,8 @@ class DatabaseDatasource(Datasource, ABC):
             )
                        
             metadata = dataclasses.replace(metadata)
-            print('raw:',self.write_queries)
             queries = self.write_queries.filter(mode or self.write_mode)
-            print(f'filtered ({self.write_mode}):',queries)
             queries = queries.replace_all(**replacements)
-            print('replaced:',queries)
                 
             task = self._create_write_task(
                 connector=self.connector, 
