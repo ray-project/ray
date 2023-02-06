@@ -1,5 +1,5 @@
 base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
-env_vars: {}
+env_vars: {"RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S": "50000"}
 debian_packages:
   - curl
 
