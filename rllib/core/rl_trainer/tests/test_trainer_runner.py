@@ -65,7 +65,17 @@ class RemoteTrainingHelper:
         )
         check(local_trainer.update(ma_batch), runner.update(ma_batch)[0])
 
-        # check(local_trainer.get_state(), runner.get_state()[0])
+        check(local_trainer.get_state(), runner.get_state()[0])
+
+        for _ in range(500):
+            batch = reader.next()
+            ma_batch = MultiAgentBatch(
+                {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
+            )
+            check(local_trainer.update(ma_batch), runner.update(ma_batch)[0])
+        import time
+
+        time.sleep(1)
 
 
 class TestTrainerRunner(unittest.TestCase):
@@ -80,20 +90,24 @@ class TestTrainerRunner(unittest.TestCase):
         fws = [
             "tf",
         ]
-        test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
-        # test_iterator = itertools.product(fws, ["local-gpu", ])
+
+        # test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
+        test_iterator = itertools.product(
+            fws,
+            [
+                "local-gpu",
+            ],
+        )
 
         # run the logic of this test inside of a ray actor because we want tensorflow
         # resources to be gracefully released. Tensorflow blocks the gpu resources
         # otherwise between test cases, causing a gpu oom error.
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
-            # if scaling_mode == "local-gpu":
-            #     remote_helper_fn_w_gpu = local_training_helper)
-            #     ray.get(remote_helper_fn_w_gpu.remote(fw, scaling_mode))
-            # else:
             training_helper = RemoteTrainingHelper.remote()
             ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
+            # training_helper = RemoteTrainingHelper()
+            # training_helper.local_training_helper(fw, scaling_mode)
 
     def test_update_multigpu(self):
         fws = ["tf", "torch"]

@@ -95,6 +95,7 @@ class TfRLTrainer(RLTrainer):
         tf1.enable_eager_execution()
 
         self._enable_tf_function = framework_hyperparameters.eager_tracing
+        tf.config.run_functions_eagerly(not self._enable_tf_function)
         # the default strategy is a no-op that can be used in the local mode
         # cpu only case
         self._strategy = tf.distribute.get_strategy()
@@ -116,22 +117,15 @@ class TfRLTrainer(RLTrainer):
                 self._strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
         with self._strategy.scope():
             super().build()
-        # if self._enable_tf_function:
-        #     # self._update_fn = tf.function(
-        #     #     self._traced_update_helper, reduce_retracing=True
-        #     # )
-        #     self._update_fn = self._traced_update_helper
-        # else:
-        #     self._update_fn = self._traced_update_helper
-        self._update_fn = None
 
-    @tf.function(reduce_retracing=True)
-    def _traced_update_helper(self, batch, rl_module):
-        return self._strategy.run(self._do_update_fn, args=(batch, rl_module))
+        self._update_fn = tf.function(self._traced_update_helper, reduce_retracing=True)
 
-    def _do_update_fn(self, batch: MultiAgentBatch, rl_module) -> Mapping[str, Any]:
+    def _traced_update_helper(self, batch):
+        return self._strategy.run(self._do_update_fn, args=(batch,))
+
+    def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
         with tf.GradientTape() as tape:
-            fwd_out = rl_module.forward_train(batch)
+            fwd_out = self._module.forward_train(batch)
             loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
             if isinstance(loss, tf.Tensor):
                 loss = {"total_loss": loss}
@@ -161,7 +155,7 @@ class TfRLTrainer(RLTrainer):
             )
         batch = self.convert_batch_to_tf_tensor(batch)
         # self._update_fn.pretty_printed_concrete_signatures()
-        update_outs = self._update_fn(batch, self._module)
+        update_outs = self._update_fn(batch)
         loss = update_outs["loss"]
         fwd_out = update_outs["fwd_out"]
         postprocessed_gradients = update_outs["postprocessed_gradients"]
@@ -195,6 +189,14 @@ class TfRLTrainer(RLTrainer):
         set_optimizer_fn: Optional[Callable[[RLModule], ParamOptimizerPairs]] = None,
         optimizer_cls: Optional[Type[Optimizer]] = None,
     ) -> None:
+        # TODO(Avnishn):
+        # WARNING:tensorflow:Using MirroredStrategy eagerly has significant overhead
+        # currently. We will be working on improving this in the future, but for now
+        # please wrap `call_for_each_replica` or `experimental_run` or `run` inside a
+        # tf.function to get the best performance.
+        # I get this warning any time I add a new module. I see the warning a few times
+        # and then it disappears. I think that I will need to open an issue with the TF
+        # team.
         with self._strategy.scope():
             super().add_module(
                 module_id=module_id,
@@ -202,19 +204,13 @@ class TfRLTrainer(RLTrainer):
                 set_optimizer_fn=set_optimizer_fn,
                 optimizer_cls=optimizer_cls,
             )
-        if self._enable_tf_function:
-            self._update_fn = tf.function(
-                self._traced_update_helper, reduce_retracing=True
-            )
+        self._update_fn = tf.function(self._traced_update_helper, reduce_retracing=True)
 
     @override(RLTrainer)
     def remove_module(self, module_id: ModuleID) -> None:
         with self._strategy.scope():
             super().remove_module(module_id)
-        if self._enable_tf_function:
-            self._update_fn = tf.function(
-                self._traced_update_helper, reduce_retracing=True
-            )
+        self._update_fn = tf.function(self._traced_update_helper, reduce_retracing=True)
 
     def convert_batch_to_tf_tensor(self, batch: MultiAgentBatch) -> NestedDict:
         """Convert the arrays of batch to tf.Tensor's.

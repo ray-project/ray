@@ -107,6 +107,21 @@ def get_trainer_runner(
     is_multi_agent: bool = False,
     eager_tracing: bool = False,
 ) -> TrainerRunner:
+    """Construct a trainer runner for testing.
+
+    Args:
+        framework: The framework used for training.
+        env: The environment to train on.
+        scaling_config: A config for the amount and types of resources to use for
+            training.
+        is_multi_agent: Whether to construct a multi agent rl module.
+        eager_tracing: TF Specific. Whether to use tf.function for tracing
+            optimizations.
+
+    Returns:
+        A trainer runner.
+
+    """
     if framework == "tf":
         trainer_hps = FrameworkHPs(eager_tracing=eager_tracing)
     else:
