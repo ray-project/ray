@@ -11,12 +11,6 @@ ray.is_initialized
 
 .. autofunction:: ray.is_initialized
 
-.. _scheduling-strategy-ref:
-
-.. autofunction:: ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy
-
-.. autofunction:: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy
-
 .. _ray-get_actor-ref:
 
 
@@ -83,39 +77,6 @@ ray.cross_language
 
 .. autofunction:: ray.cross_language.java_actor_class
 
-.. _ray-placement-group-ref:
-
-Placement Group APIs
---------------------
-
-placement_group
-~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.util.placement_group.placement_group
-
-
-PlacementGroup (class)
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.util.placement_group.PlacementGroup
-   :members:
-
-placement_group_table
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.util.placement_group.placement_group_table
-
-
-remove_placement_group
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.util.placement_group.remove_placement_group
-
-get_current_placement_group
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.util.placement_group.get_current_placement_group
-
 .. _custom-metric-api-ref:
 
 Custom Metrics APIs
@@ -149,17 +110,6 @@ Runtime Context APIs
 .. autoclass:: ray.runtime_context.RuntimeContext
     :members:
 
-.. _runtime-env-apis:
-
-Runtime Env APIs
-----------------
-
-.. autoclass:: ray.runtime_env.RuntimeEnvConfig
-    :members:
-
-.. autoclass:: ray.runtime_env.RuntimeEnv
-    :members:
-
 .. _package-ref-debugging-apis:
 
 Debugging APIs
@@ -174,18 +124,9 @@ Debugging APIs
 Exceptions
 ----------
 
-.. autoclass:: ray.exceptions.RayError
-   :members:
-
-.. _ray-core-exceptions-ray-task-error:
-.. autoclass:: ray.exceptions.RayTaskError
-   :members:
 .. autoclass:: ray.exceptions.TaskCancelledError
    :members:
 .. autoclass:: ray.exceptions.GetTimeoutError
-   :members:
-.. _ray-core-exceptions-ray-actor-error:
-.. autoclass:: ray.exceptions.RayActorError
    :members:
 .. _ray-core-exceptions-runtime-env-setup-error:
 .. autoclass:: ray.exceptions.RuntimeEnvSetupError
