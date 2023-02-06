@@ -305,8 +305,8 @@ if setup_spec.type == SetupType.RAY:
         # Tracking issue: https://github.com/ray-project/ray/issues/30984
         "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10'",  # noqa
         "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10'",  # noqa
-        "grpcio >= 1.32.0, <= 1.51.1; python_version < '3.10' and sys_platform != 'darwin'",
-        "grpcio >= 1.42.0, <= 1.51.1; python_version >= '3.10' and sys_platform != 'darwin'",
+        "grpcio >= 1.32.0, < 1.50.0; python_version < '3.10' and sys_platform != 'darwin'",
+        "grpcio >= 1.42.0, < 1.50.0; python_version >= '3.10' and sys_platform != 'darwin'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
