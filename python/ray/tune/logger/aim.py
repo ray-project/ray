@@ -63,7 +63,7 @@ class AimCallback(LoggerCallback):
 
     def __init__(
         self,
-        repo: Optional[str] = None,
+        repo: Optional[Union[str, "Repo"]] = None,
         experiment: Optional[str] = None,
         metrics: Optional[List[str]] = None,
         as_multirun: Optional[bool] = False,
