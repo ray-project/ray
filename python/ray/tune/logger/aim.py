@@ -16,7 +16,6 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
 try:
-    from aim.ext.resource import DEFAULT_SYSTEM_TRACKING_INT
     from aim.sdk import Run
 except ImportError:
     DEFAULT_SYSTEM_TRACKING_INT = None
