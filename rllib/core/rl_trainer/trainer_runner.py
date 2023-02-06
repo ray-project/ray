@@ -14,6 +14,7 @@ from ray.rllib.core.rl_trainer.rl_trainer import (
     Optimizer,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.train._internal.backend_executor import BackendExecutor
 
 if TYPE_CHECKING:
@@ -48,20 +49,12 @@ class TrainerRunner:
                          this TrainerRunner.
         .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
                             by this TrainerRunner.
-
-    TODO(avnishn):
-        1. Add trainer runner with async operations
-        2. Use fault tolerant actor manager to handle failures
-        3. Add from_xxx constructor pattern. For example
-           add a `from_policy_map(self.local_worker().policy_map, cfg)`
-           constructor to make it easier to create a TrainerRunner from a
-           rollout worker.
-
     """
 
     def __init__(
         self,
         rl_trainer_spec: RLTrainerSpec,
+        max_remote_requests_in_flight_per_actor: int = 2,
     ):
         scaling_config = rl_trainer_spec.trainer_scaling_config
         rl_trainer_class = rl_trainer_spec.rl_trainer_class
@@ -75,6 +68,7 @@ class TrainerRunner:
         if self._is_local:
             self._trainer = rl_trainer_class(**rl_trainer_spec.get_params_dict())
             self._trainer.build()
+            self._worker_manager = None
         else:
             backend_config = _get_backend_config(rl_trainer_class)
             backend_executor = BackendExecutor(
@@ -95,6 +89,11 @@ class TrainerRunner:
 
             # run the neural network building code on remote workers
             ray.get([w.build.remote() for w in self._workers])
+            max_remote_requests = max_remote_requests_in_flight_per_actor
+            self._worker_manager = FaultTolerantActorManager(
+                self._workers,
+                max_remote_requests_in_flight_per_actor=max_remote_requests,
+        )
 
     @property
     def is_local(self) -> bool:
