@@ -254,7 +254,7 @@ class Trainable:
             TRIAL_ID: self.trial_id,
             "experiment_id": self._experiment_id,
             "date": now.strftime("%Y-%m-%d_%H-%M-%S"),
-            "timestamp": int(time.mktime(now.timetuple())),
+            "timestamp": timestamp if timestamp else int(time.mktime(now.timetuple())),
             TIME_THIS_ITER_S: time_this_iter,
             TIME_TOTAL_S: self._time_total,
             PID: os.getpid(),
@@ -384,6 +384,8 @@ class Trainable:
 
         if result.get(TIMESTAMP) is not None:
             result_timestamp = result[TIMESTAMP]
+        else:
+            result_timestamp = None
 
         result.setdefault(DONE, False)
 
