@@ -48,7 +48,3 @@ setup_commands:
 
 # Specify the node type of the head node (as configured above).
 head_node_type: ray_head_default
-
-head_setup_commands: []
-
-worker_setup_commands: []
