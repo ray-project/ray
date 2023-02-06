@@ -103,7 +103,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     datasets <saving_datasets>`, :ref:`transform datasets <transforming_datasets>`,
     :ref:`access and exchange datasets <consuming_datasets>`, :ref:`pipeline
     transformations <pipelining_datasets>`, :ref:`load and process data for ML <datasets-ml-preprocessing>`,
-    :ref:`work with tensor data <datasets_tensor_support>`, or :ref:`use pipelines <data_pipeline_usage>`.
+    :ref:`work with tensor data <datasets_tensor_support>`, :ref:`work with databases <datasets_database_support>` or :ref:`use pipelines <data_pipeline_usage>`.
 
     +++
     .. link-button:: data_user_guide
@@ -237,6 +237,15 @@ Supported Input Formats
    * - 🤗 (Hugging Face) Dataset
      - :func:`ray.data.from_huggingface()`
      - ✅
+   * - DB API 2
+     - :func:`ray.data.read_dbapi2()`
+     - ✅
+   * - Databricks
+     - :func:`ray.data.read_databricks()`
+     - ✅
+   * - Snowflake
+     - :func:`ray.data.read_snowflake()`
+     - ✅
    * - MongoDB
      - :func:`ray.data.read_mongo()`
      - ✅
@@ -268,6 +277,15 @@ Supported Output Formats
      - ✅
    * - TFRecords File Format
      - :meth:`ds.write_tfrecords() <ray.data.Dataset.write_tfrecords>`
+     - ✅
+   * - DB API 2
+     - :meth:`ds.write_dbapi2() <ray.data.Dataset.write_dbapi2>`
+     - ✅
+   * - Databricks
+     - :meth:`ds.write_databricks() <ray.data.Dataset.write_databricks>`
+     - ✅
+   * - Snowflake
+     - :meth:`ds.write_snowflake() <ray.data.Dataset.write_snowflake>`
      - ✅
    * - MongoDB
      - :meth:`ds.write_mongo() <ray.data.Dataset.write_mongo>`

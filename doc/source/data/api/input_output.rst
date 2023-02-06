@@ -118,6 +118,33 @@ Arrow
    from_arrow_refs
    Dataset.to_arrow_refs
 
+DB API 2
+--------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_dbapi2
+   Dataset.write_dbapi2
+
+Databricks
+----------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_databricks
+   Dataset.write_databricks
+
+Snowflake
+----------
+
+.. autosummary::
+   :toctree: doc/
+   
+   read_snowflake
+   Dataset.write_snowflake
+
 MongoDB
 -------
 
@@ -218,6 +245,9 @@ Built-in Datasources
    datasource.RangeDatasource
    datasource.TFRecordDatasource
    datasource.MongoDatasource
+   datasource.DBAPI2Datasource
+   datasource.DatabricksDatasource
+   datasource.SnowflakeDatasource
 
 Partitioning API
 ----------------

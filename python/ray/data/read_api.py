@@ -40,6 +40,8 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
+    DBAPI2Connector, DBAPI2Datasource,
+    SnowflakeConnector, SnowflakeDatasource,
     MongoDatasource,
     ReadTask,
     TextDatasource,
@@ -352,6 +354,74 @@ def read_datasource(
         logical_plan=logical_plan,
     )
 
+@PublicAPI(stability="alpha")
+def read_dbapi2(
+    connect_fn: Callable,
+    connect_properties: Dict[str, Any] = {},
+    *,
+    table: Optional[str] = None,
+    query: Optional[str] = None,
+    mode: Optional[str] = 'partitioned',
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    **dbapi2_args,
+) -> Dataset[ArrowRow]:
+    connector = DBAPI2Connector(connect_fn, **connect_properties)
+    datasource = DBAPI2Datasource(connector)
+    return read_datasource(
+        datasource,
+        table=table,
+        query=query,
+        mode = mode,
+        parallelism = parallelism,
+        ray_remote_args=ray_remote_args,
+        **dbapi2_args,
+    )
+    
+@PublicAPI(stability="alpha")
+def read_databricks(
+    connect_properties: Dict[str, Any] = {},
+    *,
+    table: Optional[str] = None,
+    query: Optional[str] = None,
+    mode: Optional[str] = 'partitioned',
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    **databricks_args,
+) -> Dataset[ArrowRow]:
+    from databricks.sql import connect as connect_fn
+    connector = DBAPI2Connector(connect_fn, **connect_properties)
+    datasource = DBAPI2Datasource(connector)
+    return read_datasource(
+        datasource,
+        table=table,
+        query=query,
+        mode = mode,
+        parallelism = parallelism,
+        ray_remote_args=ray_remote_args,
+        **databricks_args,
+    )
+
+@PublicAPI(stability="alpha")
+def read_snowflake(
+    connect_properties: Dict[str, Any] = {},
+    *,
+    table: Optional[str] = None,
+    query: Optional[str] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    **snowflake_args,
+) -> Dataset[ArrowRow]:
+    connector = SnowflakeConnector(**connect_properties)
+    datasource = SnowflakeDatasource(connector)
+    return read_datasource(
+        datasource,
+        table=table,
+        query=query,
+        parallelism = parallelism,
+        ray_remote_args=ray_remote_args,
+        **snowflake_args,
+    )
 
 @PublicAPI(stability="alpha")
 def read_mongo(

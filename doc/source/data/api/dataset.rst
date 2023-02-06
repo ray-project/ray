@@ -102,6 +102,9 @@ I/O and Conversion
    Dataset.write_csv
    Dataset.write_numpy
    Dataset.write_tfrecords
+   Dataset.write_dbapi2
+   Dataset.write_databricks
+   Dataset.write_snowflake
    Dataset.write_mongo
    Dataset.write_datasource
    Dataset.to_torch

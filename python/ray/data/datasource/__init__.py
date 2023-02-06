@@ -9,6 +9,9 @@ from ray.data.datasource.datasource import (
     Reader,
     WriteResult,
 )
+
+from ray.data.datasource.dbapi2_datasource import DBAPI2Connector, DBAPI2Datasource
+from ray.data.datasource.snowflake_datasource import SnowflakeConnector, SnowflakeDatasource
 from ray.data.datasource.mongo_datasource import MongoDatasource
 
 from ray.data.datasource.file_based_datasource import (
@@ -68,6 +71,10 @@ __all__ = [
     "Partitioning",
     "RandomIntRowDatasource",
     "RangeDatasource",
+    "DBAPI2Connector",
+    "DBAPI2Datasource",
+    "SnowflakeConnector",
+    "SnowflakeDatasource",
     "MongoDatasource",
     "ReadTask",
     "Reader",

@@ -2556,7 +2556,66 @@ class Dataset(Generic[T]):
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
         )
-
+    def write_dbapi2(
+        self,
+        connect_fn: Callable,
+        connect_properties: Dict[str, Any] = {},
+        *,
+        table: Optional[str] = None,
+        mode: Optional[str] = None,
+        ray_remote_args: Dict[str, Any] = None,
+        **dbapi2_args,
+    ) -> None:
+        from ray.data.datasource import DBAPI2Connector, DBAPI2Datasource
+        connector = DBAPI2Connector(connect_fn, **connect_properties)
+        datasource = DBAPI2Datasource(connector)
+        self.write_datasource(
+            datasource,
+            table=table,
+            mode=mode,
+            ray_remote_args=ray_remote_args,
+            **dbapi2_args
+        )
+    
+    def write_databricks(
+        self,
+        connect_properties: Dict[str, Any] = {},
+        *,
+        table: Optional[str] = None,
+        mode: Optional[str] = None,
+        ray_remote_args: Dict[str, Any] = None,
+        **databrick_args,
+    ) -> None:
+        from ray.data.datasource import DBAPI2Connector, DBAPI2Datasource 
+        from databricks.sql import connect as connect_fn
+        connector = DBAPI2Connector(connect_fn, **connect_properties)
+        datasource = DBAPI2Datasource(connector)
+        self.write_datasource(
+            datasource,
+            table=table,
+            mode=mode,
+            ray_remote_args=ray_remote_args,
+            **databrick_args
+        )
+    
+    def write_snowflake(
+        self,
+        connect_properties: Dict[str, Any] = {},
+        *,
+        table: Optional[str] = None,
+        ray_remote_args: Dict[str, Any] = None,
+        **databrick_args,
+    ) -> None:
+        from ray.data.datasource import SnowflakeConnector, SnowflakeDatasource 
+        connector = SnowflakeConnector(**connect_properties)
+        datasource = SnowflakeDatasource(connector)
+        self.write_datasource(
+            datasource,
+            table=table,
+            ray_remote_args=ray_remote_args,
+            **databrick_args
+        )
+        
     def write_mongo(
         self,
         uri: str,
