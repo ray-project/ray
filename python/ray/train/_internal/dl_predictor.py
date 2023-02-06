@@ -21,7 +21,7 @@ class DLPredictor(Predictor):
     def _arrays_to_tensors(
         self,
         numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtype: Union[TensorDtype, Dict[str, TensorDtype]],
+        dtype: Optional[Union[TensorDtype, Dict[str, TensorDtype]]],
     ) -> Union[TensorType, Dict[str, TensorType]]:
         """Converts a NumPy ndarray batch to the tensor type for the DL framework.
 
