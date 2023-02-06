@@ -40,7 +40,7 @@ and assign GPUs to the task or actor by setting the ``CUDA_VISIBLE_DEVICES`` env
     :start-after: __get_gpu_ids_start__
     :end-before: __get_gpu_ids_end__
 
-Inside a task or actor, :ref:`ray.get_gpu_ids() <ray-get_gpu_ids-ref>` will return a
+Inside a task or actor, :meth:`ray.get_gpu_ids() <ray.get_gpu_ids>` will return a
 list of GPU IDs that are available to the task or actor.
 Typically, it is not necessary to call ``ray.get_gpu_ids()`` because Ray will
 automatically set the ``CUDA_VISIBLE_DEVICES`` environment variable,

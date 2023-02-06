@@ -4,56 +4,12 @@ Ray Core API
 Python API
 ----------
 
-.. _ray-get_gpu_ids-ref:
-
-ray.get_gpu_ids
-~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.get_gpu_ids
-
-.. _ray-actor-pool-ref:
-
-ray.util.ActorPool
-~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.util.ActorPool
-   :members:
-
-ray.util.queue.Queue
-~~~~~~~~~~~~~~~~~~~~
-
-.. _ray-queue-ref:
-
-.. autoclass:: ray.util.queue.Queue
-   :members:
-
-.. _ray-nodes-ref:
-
-ray.nodes
-~~~~~~~~~
-
-.. autofunction:: ray.nodes
-
 .. _ray-timeline-ref:
 
 ray.timeline
 ~~~~~~~~~~~~
 
 .. autofunction:: ray.timeline
-
-.. _ray-cluster_resources-ref:
-
-ray.cluster_resources
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.cluster_resources
-
-.. _ray-available_resources-ref:
-
-ray.available_resources
-~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.available_resources
 
 ray.cross_language
 ~~~~~~~~~~~~~~~~~~
@@ -84,16 +40,6 @@ Histogram
 
 .. autoclass:: ray.util.metrics.Histogram
    :members:
-
-.. _runtime-context-apis:
-
-Runtime Context APIs
---------------------
-
-.. autofunction:: ray.runtime_context.get_runtime_context
-
-.. autoclass:: ray.runtime_context.RuntimeContext
-    :members:
 
 .. _package-ref-debugging-apis:
 
