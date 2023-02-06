@@ -1,10 +1,10 @@
-API References
-==============
+Ray Core API References
+=======================
 
 .. toctree::
     :maxdepth: 2
-    :caption: Ray Core API References
 
+    api/core.rst
     package-ref.rst
     cli.rst
     ../ray-observability/state/cli.rst
