@@ -4,13 +4,6 @@ Ray Core API
 Python API
 ----------
 
-.. _ray-init-ref:
-
-ray.init
-~~~~~~~~
-
-.. autofunction:: ray.init
-
 .. _ray-is_initialized-ref:
 
 ray.is_initialized
