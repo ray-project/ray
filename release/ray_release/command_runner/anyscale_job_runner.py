@@ -100,7 +100,7 @@ class AnyscaleJobRunner(JobRunner):
         try:
             output_json = self.fetch_output()
         except Exception:
-            logger.exception()
+            logger.exception("Exception when obtaining output from S3.")
             try:
                 logs = self.get_last_logs()
                 output_json = re.search(r"### JSON \|([^\|]*)\| ###", logs)
