@@ -53,7 +53,7 @@ class Result:
             return None
         return self.metrics.get("config", None)
 
-    def _repr_with_indent(self, offset: int = 0) -> str:
+    def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""
         from ray.tune.result import AUTO_RESULT_KEYS
 
@@ -68,8 +68,8 @@ class Result:
                 k: v for k, v in self.metrics.items() if k not in AUTO_RESULT_KEYS
             }
 
-        cls_indent = " " * offset
-        kws_indent = " " * (offset + 2)
+        cls_indent = " " * indent
+        kws_indent = " " * (indent + 2)
 
         kws = [
             f"{kws_indent}{key}={value!r}" for key, value in shown_attributes.items()
@@ -78,4 +78,4 @@ class Result:
         return "{0}{1}(\n{2}\n{0})".format(cls_indent, type(self).__name__, kws_repr)
 
     def __repr__(self) -> str:
-        return self._repr_with_indent(offset=0)
+        return self._repr(indent=0)

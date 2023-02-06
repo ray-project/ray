@@ -69,13 +69,9 @@ class ResultGrid:
         experiment_analysis: ExperimentAnalysis,
     ):
         self._experiment_analysis = experiment_analysis
-        self._results = list()
-
-        if experiment_analysis:
-            self._results = [
-                self._trial_to_result(trail)
-                for trail in self._experiment_analysis.trials
-            ]
+        self._results = [
+            self._trial_to_result(trial) for trial in self._experiment_analysis.trials
+        ]
 
     def get_best_result(
         self,
@@ -247,6 +243,6 @@ class ResultGrid:
         return result
 
     def __repr__(self) -> str:
-        all_results_repr = [result._repr_with_indent(2) for result in self]
+        all_results_repr = [result._repr(indent=2) for result in self]
         all_results_repr = ",\n".join(all_results_repr)
         return f"ResultGrid<[\n{all_results_repr}\n]>"

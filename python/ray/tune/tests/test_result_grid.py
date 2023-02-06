@@ -12,6 +12,7 @@ import ray
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray import air, tune
 from ray.air import Checkpoint, session
+from ray.air.result import Result
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
@@ -224,11 +225,13 @@ def test_result_repr(ray_start_2_cpus):
     assert not any(key in representation for key in AUTO_RESULT_KEYS)
 
 
-def test_result_grid_repr(ray_start_2_cpus, tmpdir):
-    from ray.air.result import Result
+def test_result_grid_repr():
+    class MockExperimentAnalysis:
+        trials = []
 
-    results = list()
-    results.append(
+    result_grid = ResultGrid(experiment_analysis=MockExperimentAnalysis())
+
+    result_grid._results = [
         Result(
             metrics={"loss": 1.0},
             checkpoint=Checkpoint(data_dict={"weight": 1.0}),
@@ -236,9 +239,7 @@ def test_result_grid_repr(ray_start_2_cpus, tmpdir):
             error=None,
             metrics_dataframe=None,
             best_checkpoints=None,
-        )
-    )
-    results.append(
+        ),
         Result(
             metrics={"loss": 2.0},
             checkpoint=Checkpoint(data_dict={"weight": 2.0}),
@@ -246,11 +247,8 @@ def test_result_grid_repr(ray_start_2_cpus, tmpdir):
             error=RuntimeError(),
             metrics_dataframe=None,
             best_checkpoints=None,
-        )
-    )
-
-    result_grid = ResultGrid(experiment_analysis=None)
-    result_grid._results = results
+        ),
+    ]
 
     representation = result_grid.__repr__()
 
@@ -259,7 +257,7 @@ def test_result_grid_repr(ray_start_2_cpus, tmpdir):
     assert len(result_grid) == 2
     assert not any(key in representation for key in AUTO_RESULT_KEYS)
 
-    gold_representation = """ResultGrid<[
+    expected_repr = """ResultGrid<[
   Result(
     metrics={'loss': 1.0},
     log_dir=PosixPath('log_1'),
@@ -273,11 +271,7 @@ def test_result_grid_repr(ray_start_2_cpus, tmpdir):
   )
 ]>"""
 
-    assert representation == gold_representation
-    assert representation.count("metrics=") == 2
-    assert representation.count("log_dir=") == 2
-    assert representation.count("checkpoint=") == 2
-    assert representation.count("error=") == 1 and "RuntimeError" in representation
+    assert representation == expected_repr
 
 
 def test_no_metric_mode(ray_start_2_cpus):
