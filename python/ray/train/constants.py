@@ -73,3 +73,8 @@ DEFAULT_NCCL_SOCKET_IFNAME = "^lo,docker,veth"
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata
 CHECKPOINT_METADATA_KEY = "checkpoint_metadata"
+
+# Name of the marker dropped by the Trainable. If a worker detects
+# the presence of the marker in the trial dir, it will use lazy
+# checkpointing.
+LAZY_CHECKPOINT_MARKER_FILE = ".lazy_checkpoint_marker"
