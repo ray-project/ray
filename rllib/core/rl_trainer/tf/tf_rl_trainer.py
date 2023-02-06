@@ -154,7 +154,6 @@ class TfRLTrainer(RLTrainer):
                 "currently support training of only some modules and not others"
             )
         batch = self.convert_batch_to_tf_tensor(batch)
-        # self._update_fn.pretty_printed_concrete_signatures()
         update_outs = self._update_fn(batch)
         loss = update_outs["loss"]
         fwd_out = update_outs["fwd_out"]
