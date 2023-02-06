@@ -170,11 +170,11 @@ if [ "$NODETYPE" = "head" ]; then
         /crate/bin/crate \
                     -Cnetwork.host=_tailscale0_,_local_ \
                     -Ccluster.initial_master_nodes=nexus \
+                    -Cnode.store.allow_mmap=true \
+                    -Cnode.attr.location=$location \
                     -Cnode.master=true \
                     -Cnode.name=nexus \
                     -Cnode.data=false \
-                    -Cnode.store.allow_mmap=true \
-                    -Cnode.attr.location=$location \
                     -Ccluster.graceful_stop.min_availability=primaries \
                     -Ccluster.routing.allocation.awareness.attributes=location \
                     -Cstats.enabled=false \
