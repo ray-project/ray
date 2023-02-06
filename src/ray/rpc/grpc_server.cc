@@ -83,7 +83,8 @@ void GrpcServer::Run() {
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
-
+  builder.AddChannelArgument(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE,
+                             RayConfig::instance().grpc_stream_buffer_size());
   // NOTE(rickyyx): This argument changes how frequent the gRPC server expects a keepalive
   // ping from the client. See https://github.com/grpc/grpc/blob/HEAD/doc/keepalive.md#faq
   // We set this to 1min because GCS gRPC client currently sends keepalive every 1min:

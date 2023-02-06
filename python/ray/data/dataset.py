@@ -30,8 +30,25 @@ import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
+from ray.data._internal.logical.operators.all_to_all_operator import (
+    RandomShuffle,
+    RandomizeBlocks,
+    Repartition,
+    Sort,
+)
+from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.operators.map_operator import (
+    Filter,
+    FlatMap,
+    MapRows,
+    MapBatches,
+)
+from ray.data._internal.planner.filter import generate_filter_fn
+from ray.data._internal.planner.flat_map import generate_flat_map_fn
+from ray.data._internal.planner.map_batches import generate_map_batches_fn
+from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data.dataset_iterator import DatasetIterator
-from ray.data._internal.block_batching import batch_block_refs, batch_blocks
+from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.bulk_dataset_iterator import BulkDatasetIterator
 from ray.data._internal.compute import (
@@ -43,7 +60,6 @@ from ray.data._internal.compute import (
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
@@ -53,7 +69,6 @@ from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
     OneToOneStage,
-    _adapt_for_multiple_blocks,
 )
 from ray.data._internal.stage_impl import (
     RandomizeBlocksStage,
@@ -184,7 +199,7 @@ class Dataset(Generic[T]):
         >>> ds = ray.data.range(1000)
         >>> # Transform in parallel with map_batches().
         >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
-        MapBatches
+        MapBatches(<lambda>)
         +- Dataset(num_blocks=17, num_rows=1000, schema=<class 'int'>)
         >>> # Compute max.
         >>> ds.max()
@@ -214,6 +229,7 @@ class Dataset(Generic[T]):
         plan: ExecutionPlan,
         epoch: int,
         lazy: bool = True,
+        logical_plan: Optional[LogicalPlan] = None,
     ):
         """Construct a Dataset (internal API).
 
@@ -227,6 +243,9 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
+        self._logical_plan = logical_plan
+        if logical_plan is not None:
+            self._plan.link_logical_plan(logical_plan)
 
         if not lazy:
             self._plan.execute(allow_clear_input_blocks=False)
@@ -290,6 +309,20 @@ class Dataset(Generic[T]):
                 must be used.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+
+        .. seealso::
+
+            :meth:`~Dataset.flat_map`:
+                Call this method to create new records from existing ones. Unlike
+                :meth:`~Dataset.map`, a function passed to :meth:`~Dataset.flat_map`
+                can return multiple records.
+
+                :meth:`~Dataset.flat_map` isn't recommended because it's slow; call
+                :meth:`~Dataset.map_batches` instead.
+
+            :meth:`~Dataset.map_batches`
+                Call this method to transform batches of data. It's faster and more
+                flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
         """
         if isinstance(fn, CallableClass) and (
             compute is None
@@ -304,31 +337,29 @@ class Dataset(Generic[T]):
             )
 
         self._warn_slow()
-        context = DatasetContext.get_current()
 
-        @_adapt_for_multiple_blocks
-        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
-            DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
-            block = BlockAccessor.for_block(block)
-            for row in block.iter_rows():
-                output_buffer.add(fn(row))
-                if output_buffer.has_next():
-                    yield output_buffer.next()
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
+        transform_fn = generate_map_rows_fn()
 
         plan = self._plan.with_stage(
             OneToOneStage(
                 "map",
-                transform,
+                transform_fn,
                 compute,
                 ray_remote_args,
                 fn=fn,
             )
         )
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            map_op = MapRows(
+                logical_plan.dag,
+                fn,
+                compute=compute,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(map_op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def map_batches(
         self,
@@ -337,6 +368,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[Union[int, Literal["default"]]] = "default",
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
+        prefetch_batches: int = 0,
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -481,6 +513,9 @@ class Dataset(Generic[T]):
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+            prefetch_batches: The number of batches to fetch ahead of the current batch
+                to process. If set to greater than 0, a separate thread will be used
+                to fetch the specified amount of formatted batches from blocks. This improves performance for non-CPU bound UDFs, allowing batch fetching compute and formatting to be overlapped with the UDF. Defaults to 0 (no prefetching enabled.) Increasing the number of batches to prefetch can result in higher throughput, at the expense of requiring more heap memory to buffer the batches.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch will be a zero-copy, read-only
@@ -512,9 +547,21 @@ class Dataset(Generic[T]):
 
             :meth:`~Dataset.default_batch_format`
                 Call this function to determine the default batch type.
+
+            :meth:`~Dataset.flat_map`:
+                Call this method to create new records from existing ones. Unlike
+                :meth:`~Dataset.map`, a function passed to :meth:`~Dataset.flat_map`
+                can return multiple records.
+
+                :meth:`~Dataset.flat_map` isn't recommended because it's slow; call
+                :meth:`~Dataset.map_batches` instead.
+
+            :meth:`~Dataset.map`
+                Call this method to transform one record at time.
+
+                This method isn't recommended because it's slow; call
+                :meth:`~Dataset.map_batches` instead.
         """  # noqa: E501
-        import pandas as pd
-        import pyarrow as pa
 
         if batch_format == "native":
             warnings.warn(
@@ -565,101 +612,55 @@ class Dataset(Generic[T]):
                     f"{fn}"
                 )
 
-        context = DatasetContext.get_current()
+        transform_fn = generate_map_batches_fn(
+            batch_size=batch_size,
+            batch_format=batch_format,
+            prefetch_batches=prefetch_batches,
+            zero_copy_batch=zero_copy_batch,
+        )
 
-        def transform(
-            blocks: Iterable[Block],
-            batch_fn: BatchUDF,
-            *fn_args,
-            **fn_kwargs,
-        ) -> Iterable[Block]:
-            DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
+        # TODO(chengsu): pass function name to MapBatches logical operator.
+        if hasattr(fn, "__self__") and isinstance(
+            fn.__self__, ray.data.preprocessor.Preprocessor
+        ):
+            stage_name = fn.__self__.__class__.__name__
+        else:
+            stage_name = f'MapBatches({getattr(fn, "__name__", type(fn))})'
 
-            def validate_batch(batch: Block) -> None:
-                if not isinstance(
-                    batch, (list, pa.Table, np.ndarray, dict, pd.core.frame.DataFrame)
-                ):
-                    raise ValueError(
-                        "The `fn` you passed to `map_batches` returned a value of type "
-                        f"{type(batch)}. This isn't allowed -- `map_batches` expects "
-                        "`fn` to return a `pandas.DataFrame`, `pyarrow.Table`, "
-                        "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
-                    )
+        stage = OneToOneStage(
+            stage_name,
+            transform_fn,
+            compute,
+            ray_remote_args,
+            # TODO(Clark): Add a strict cap here.
+            target_block_size=target_block_size,
+            fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+        )
+        plan = self._plan.with_stage(stage)
 
-                if isinstance(batch, dict):
-                    for key, value in batch.items():
-                        if not isinstance(value, np.ndarray):
-                            raise ValueError(
-                                "The `fn` you passed to `map_batches` returned a "
-                                f"`dict`. `map_batches` expects all `dict` values "
-                                f"to be of type `numpy.ndarray`, but the value "
-                                f"corresponding to key {key!r} is of type "
-                                f"{type(value)}. To fix this issue, convert "
-                                f"the {type(value)} to a `numpy.ndarray`."
-                            )
-
-            def process_next_batch(batch: DataBatch) -> Iterator[Block]:
-                # Apply UDF.
-                try:
-                    batch = batch_fn(batch, *fn_args, **fn_kwargs)
-                except ValueError as e:
-                    read_only_msgs = [
-                        "assignment destination is read-only",
-                        "buffer source array is read-only",
-                    ]
-                    err_msg = str(e)
-                    if any(msg in err_msg for msg in read_only_msgs):
-                        raise ValueError(
-                            f"Batch mapper function {fn.__name__} tried to mutate a "
-                            "zero-copy read-only batch. To be able to mutate the "
-                            "batch, pass zero_copy_batch=False to map_batches(); "
-                            "this will create a writable copy of the batch before "
-                            "giving it to fn. To elide this copy, modify your mapper "
-                            "function so it doesn't try to mutate its input."
-                        ) from e
-                    else:
-                        raise e from None
-
-                validate_batch(batch)
-                # Add output batch to output buffer.
-                output_buffer.add_batch(batch)
-                if output_buffer.has_next():
-                    yield output_buffer.next()
-
-            # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
-            formatted_batch_iter = batch_blocks(
-                blocks=blocks,
-                stats=None,
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            map_batches_op = MapBatches(
+                logical_plan.dag,
+                fn,
                 batch_size=batch_size,
                 batch_format=batch_format,
-                ensure_copy=not zero_copy_batch and batch_size is not None,
-            )
-
-            for batch in formatted_batch_iter:
-                yield from process_next_batch(batch)
-
-            # Yield remainder block from output buffer.
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
-
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "map_batches",
-                transform,
-                compute,
-                ray_remote_args,
-                # TODO(Clark): Add a strict cap here.
+                zero_copy_batch=zero_copy_batch,
                 target_block_size=target_block_size,
-                fn=fn,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
                 fn_constructor_kwargs=fn_constructor_kwargs,
+                compute=compute,
+                ray_remote_args=ray_remote_args,
             )
-        )
-        return Dataset(plan, self._epoch, self._lazy)
+            logical_plan = LogicalPlan(map_batches_op)
+
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def add_column(
         self,
@@ -825,6 +826,18 @@ class Dataset(Generic[T]):
                 must be used.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+
+        .. seealso::
+
+            :meth:`~Dataset.map_batches`
+                Call this method to transform batches of data. It's faster and more
+                flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
+
+            :meth:`~Dataset.map`
+                Call this method to transform one record at time.
+
+                This method isn't recommended because it's slow; call
+                :meth:`~Dataset.map_batches` instead.
         """
         if isinstance(fn, CallableClass) and (
             compute is None
@@ -839,26 +852,23 @@ class Dataset(Generic[T]):
             )
 
         self._warn_slow()
-        context = DatasetContext.get_current()
 
-        @_adapt_for_multiple_blocks
-        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
-            DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
-            block = BlockAccessor.for_block(block)
-            for row in block.iter_rows():
-                for r2 in fn(row):
-                    output_buffer.add(r2)
-                    if output_buffer.has_next():
-                        yield output_buffer.next()
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
+        transform_fn = generate_flat_map_fn()
 
         plan = self._plan.with_stage(
-            OneToOneStage("flat_map", transform, compute, ray_remote_args, fn=fn)
+            OneToOneStage("flat_map", transform_fn, compute, ray_remote_args, fn=fn)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = FlatMap(
+                input_op=logical_plan.dag,
+                fn=fn,
+                compute=compute,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def filter(
         self,
@@ -908,22 +918,24 @@ class Dataset(Generic[T]):
             )
 
         self._warn_slow()
-        context = DatasetContext.get_current()
 
-        @_adapt_for_multiple_blocks
-        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
-            DatasetContext._set_current(context)
-            block = BlockAccessor.for_block(block)
-            builder = block.builder()
-            for row in block.iter_rows():
-                if fn(row):
-                    builder.add(row)
-            return [builder.build()]
+        transform_fn = generate_filter_fn()
 
         plan = self._plan.with_stage(
-            OneToOneStage("filter", transform, compute, ray_remote_args, fn=fn)
+            OneToOneStage("filter", transform_fn, compute, ray_remote_args, fn=fn)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = Filter(
+                input_op=logical_plan.dag,
+                fn=fn,
+                compute=compute,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(op)
+
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
@@ -953,7 +965,16 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = Repartition(
+                logical_plan.dag,
+                num_outputs=num_blocks,
+                shuffle=shuffle,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def random_shuffle(
         self,
@@ -993,7 +1014,17 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = RandomShuffle(
+                logical_plan.dag,
+                seed=seed,
+                num_outputs=num_blocks,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def randomize_block_order(
         self,
@@ -1019,7 +1050,15 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = RandomizeBlocks(
+                logical_plan.dag,
+                seed=seed,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -1968,7 +2007,16 @@ class Dataset(Generic[T]):
         """
 
         plan = self._plan.with_stage(SortStage(self, key, descending))
-        return Dataset(plan, self._epoch, self._lazy)
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = Sort(
+                logical_plan.dag,
+                key=key,
+                descending=descending,
+            )
+            logical_plan = LogicalPlan(op)
+        return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.

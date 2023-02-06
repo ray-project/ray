@@ -112,8 +112,13 @@ def run_xgboost_prediction(model_path: str, data_path: str):
     ds = data.read_parquet(data_path)
     ckpt = XGBoostCheckpoint.from_model(booster=model)
     batch_predictor = BatchPredictor.from_checkpoint(ckpt, XGBoostPredictor)
+    # TODO(https://github.com/ray-project/ray/issues/31723): Once autoscaling
+    # is supported in new execution backend's actor pool, we should remove the
+    # min_scoring_workers and max_scoring_workers.
     result = batch_predictor.predict(
         ds.drop_columns(["labels"]),
+        min_scoring_workers=10,
+        max_scoring_workers=10,
         # Improve prediction throughput for xgboost with larger
         # batch size than default 4096
         batch_size=8192,
