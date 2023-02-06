@@ -248,9 +248,9 @@ if setup_spec.type == SetupType.RAY:
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
-            "opentelemetry-api==1.1.0",
-            "opentelemetry-sdk==1.1.0",
-            "opentelemetry-exporter-otlp==1.1.0",
+            "opentelemetry-api",
+            "opentelemetry-sdk",
+            "opentelemetry-exporter-otlp",
         ],
     }
 

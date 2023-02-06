@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterable, Tuple
+from typing import Dict, List, Optional, Iterable, Tuple, Callable
 
 import ray
 from ray.data._internal.logical.interfaces import Operator
@@ -155,6 +155,24 @@ class ExecutionOptions:
     preserve_order: bool = True
 
 
+@dataclass
+class TaskContext:
+    """This describes the information of a task running block transform."""
+
+    # The index of task. Each task has a unique task index within the same
+    # operator.
+    task_idx: int
+
+
+# Block transform function applied by task and actor pools in MapOperator.
+MapTransformFn = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
+
+# Block transform function applied in AllToAllOperator.
+AllToAllTransformFn = Callable[
+    [List[RefBundle], TaskContext], Tuple[List[RefBundle], StatsDict]
+]
+
+
 class PhysicalOperator(Operator):
     """Abstract class for physical operators.
 
@@ -217,6 +235,13 @@ class PhysicalOperator(Operator):
         obj_store_mem_allocated, obj_store_mem_freed.
         """
         return {}
+
+    def get_transformation_fn(self) -> Callable:
+        """Returns the underlying transformation function for this operator.
+
+        This is used by the physical plan optimizer for e.g. operator fusion.
+        """
+        raise NotImplementedError
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
