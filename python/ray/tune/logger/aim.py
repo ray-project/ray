@@ -74,7 +74,7 @@ class AimCallback(LoggerCallback):
         )
         self._repo_path = repo
         self._experiment_name = experiment
-        assert bool(metrics) is True or metrics is None
+        assert bool(metrics) or metrics is None
         self._metrics = metrics
         self._as_multirun = as_multirun
         self._run_cls = Run
