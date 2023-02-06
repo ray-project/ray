@@ -13,17 +13,6 @@ ray.is_initialized
 
 .. _ray-remote-ref:
 
-ray.remote
-~~~~~~~~~~
-
-.. autofunction:: ray.remote
-
-.. _ray-options-ref:
-
-.. autofunction:: ray.remote_function.RemoteFunction.options
-
-.. autofunction:: ray.actor.ActorClass.options
-
 .. _scheduling-strategy-ref:
 
 .. autofunction:: ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy
@@ -79,13 +68,6 @@ ray.get_gpu_ids
 ~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.get_gpu_ids
-
-.. _ray-shutdown-ref:
-
-ray.shutdown
-~~~~~~~~~~~~
-
-.. autofunction:: ray.shutdown
 
 .. _ray-method-ref:
 

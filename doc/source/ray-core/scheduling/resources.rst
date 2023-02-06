@@ -78,7 +78,7 @@ There are several ways to do that depending on how you start the Ray cluster:
 
 .. tabbed:: ray.init()
 
-    If you are using :meth:`~ray.init` to start a single node Ray cluster, you can do the following to manually specify node resources:
+    If you are using :meth:`ray.init() <ray.init>` to start a single node Ray cluster, you can do the following to manually specify node resources:
 
     .. literalinclude:: ../doc_code/resources.py
         :language: python

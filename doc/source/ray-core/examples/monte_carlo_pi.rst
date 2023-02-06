@@ -19,7 +19,7 @@ To get started, install Ray via ``pip install -U ray``. See :ref:`Installing Ray
 
 Starting Ray
 ------------
-First, let's include all modules needed for this tutorial and start a local Ray cluster with :meth:`~ray.init`:
+First, let's include all modules needed for this tutorial and start a local Ray cluster with :meth:`ray.init() <ray.init>`:
 
 .. literalinclude:: ../doc_code/monte_carlo_pi.py
     :language: python
