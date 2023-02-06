@@ -76,20 +76,27 @@ class AimLoggerCallback(LoggerCallback):
         )
         self._repo_path = repo
         self._experiment_name = experiment_name
-        assert bool(metrics) or metrics is None
+        if not (bool(metrics) or metrics is None):
+            raise ValueError(
+                "`metrics` must either contain at least one metric name, or be None, "
+                "in which case all reported metrics will be logged to the aim repo."
+            )
         self._metrics = metrics
         self._as_multirun = as_multirun
-        self._run_cls = Run
         self._aim_run_kwargs = aim_run_kwargs
         self._trial_run: Dict["Trial", Run] = {}
 
     def _create_run(self, trial: "Trial") -> Run:
-        """
+        """Initializes an Aim Run object for a given trial.
+
+        Args:
+            trial: The Tune trial that aim will track as a Run.
+
         Returns:
-            run (:obj:`aim.sdk.Run`): The created aim run for a specific trial.
+            Run: The created aim run for a specific trial.
         """
         experiment_dir = trial.local_dir
-        run = self._run_cls(
+        run = Run(
             repo=self._repo_path or experiment_dir,
             experiment=self._experiment_name or trial.experiment_dir_name,
             **self._aim_run_kwargs,
@@ -122,7 +129,7 @@ class AimLoggerCallback(LoggerCallback):
         # create local copy to avoid problems
         tmp_result = result.copy()
 
-        step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+        step = result[TIMESTEPS_TOTAL] or result[TRAINING_ITERATION]
 
         for k in ["config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION]:
             if k in tmp_result:
@@ -137,54 +144,29 @@ class AimLoggerCallback(LoggerCallback):
 
         path = ["ray", "tune"]
 
-        if self._metrics:
-            flat_result = flatten_dict(tmp_result, delimiter="/")
-            valid_result = {}
-            for metric in self._metrics:
-                full_attr = "/".join(path + [metric])
-                value = flat_result[metric]
-                if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(
-                    value
-                ):
-                    valid_result[metric] = value
-                    try:
-                        trial_run.track(
-                            value=tmp_result[metric],
-                            epoch=epoch,
-                            name=full_attr,
-                            step=step,
-                            context=context,
-                        )
-                    except KeyError:
-                        logger.warning(
-                            f"The metric {metric} is specified but not reported."
-                        )
-                elif (isinstance(value, list) and len(value) > 0) or (
-                    isinstance(value, np.ndarray) and value.size > 0
-                ):
-                    valid_result[metric] = value
-        else:
-            # if no metric is specified log everything that is reported
-            flat_result = flatten_dict(tmp_result, delimiter="/")
-            valid_result = {}
+        flat_result = flatten_dict(tmp_result, delimiter="/")
+        valid_result = {}
 
-            for attr, value in flat_result.items():
-                full_attr = "/".join(path + [attr])
-                if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(
-                    value
-                ):
-                    valid_result[attr] = value
-                    trial_run.track(
-                        value=value,
-                        name=full_attr,
-                        epoch=epoch,
-                        step=step,
-                        context=context,
-                    )
-                elif (isinstance(value, list) and len(value) > 0) or (
-                    isinstance(value, np.ndarray) and value.size > 0
-                ):
-                    valid_result[attr] = value
+        for attr, value in flat_result.items():
+            if self._metrics and attr not in self._metrics:
+                continue
+
+            full_attr = "/".join(path + [attr])
+            if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not (
+                np.isnan(value) or np.isinf(value)
+            ):
+                valid_result[attr] = value
+                trial_run.track(
+                    value=value,
+                    name=full_attr,
+                    epoch=epoch,
+                    step=step,
+                    context=context,
+                )
+            elif (isinstance(value, list) and len(value) > 0) or (
+                isinstance(value, np.ndarray) and value.size > 0
+            ):
+                valid_result[attr] = value
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         # cleanup in the end
