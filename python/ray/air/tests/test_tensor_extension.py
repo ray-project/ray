@@ -15,7 +15,6 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray._private.utils import _get_pyarrow_version
-from ray.air.util.tensor_extensions.utils import _create_strict_ragged_ndarray
 
 
 @pytest.mark.parametrize(
@@ -597,7 +596,7 @@ pytest_tensor_array_concat_arrs = [
     for shape in pytest_tensor_array_concat_shapes
 ]
 pytest_tensor_array_concat_arrs += [
-    _create_strict_ragged_ndarray(
+    create_ragged_ndarray(
         [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))]
     )
 ]
