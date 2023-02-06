@@ -147,7 +147,7 @@ const App = () => {
             {/* Dummy MainNavContext so we can re-use existing pages in new layout */}
             <MainNavContext.Provider value={DEFAULT_VALUE}>
               <Routes>
-                <Route element={<Navigate replace to="/node" />} path="/" />
+                <Route element={<Navigate replace to="/new" />} path="/" />
                 <Route
                   element={<BasicLayout setTheme={setTheme} theme={theme} />}
                 >
@@ -199,7 +199,10 @@ const App = () => {
                         }
                         path=""
                       />
-                      <Route element={<NodeDetailPage />} path="nodes/:id" />
+                      <Route
+                        element={<NodeDetailPage newIA />}
+                        path="nodes/:id"
+                      />
                     </Route>
                   </Route>
                   <Route element={<NewIAJobsPage />} path="jobs">
@@ -232,7 +235,7 @@ const App = () => {
                       <Route element={<ActorDetailPage />} path="actors/:id" />
                     </Route>
                   </Route>
-                  <Route element={<Actors />} path="actors" />
+                  <Route element={<Actors newIA />} path="actors" />
                   <Route element={<ActorDetailPage />} path="actors/:id" />
                   <Route element={<Metrics newIA />} path="metrics" />
                   <Route element={<NewIALogsPage />} path="logs">
