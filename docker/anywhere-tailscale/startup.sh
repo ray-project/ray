@@ -223,11 +223,11 @@ term_handler(){
     echo "Running Cluster Election"
     /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'new_primaries';"
     echo "Running Decommission"
-    clusterhosts=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].name')
-    if [ -z clusterhosts ]; then
-        clusterhosts="nexus.chimp-beta.ts.net"
-    fi
-    export clusterhosts=$clusterhosts
+#    clusterhosts=$(curl -s -u "${TSAPIKEY}:" https://api.tailscale.com/api/v2/tailnet/jcoffi.github/devices | jq -r '.devices[].name')
+#    if [ -z clusterhosts ]; then
+#        clusterhosts="nexus.chimp-beta.ts.net"
+#    fi
+#    export clusterhosts=$clusterhosts
     /usr/local/bin/crash --hosts ${clusterhosts} -c "ALTER CLUSTER DECOMMISSION '"$HOSTNAME"';"
     /usr/local/bin/crash -c "SET GLOBAL TRANSIENT 'cluster.routing.allocation.enable' = 'all';"
 
