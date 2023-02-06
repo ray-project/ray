@@ -8,7 +8,7 @@ from ray.tune.logger.csv import CSVLogger, CSVLoggerCallback
 from ray.tune.logger.json import JsonLogger, JsonLoggerCallback
 from ray.tune.logger.noop import NoopLogger
 from ray.tune.logger.tensorboardx import TBXLogger, TBXLoggerCallback
-from ray.tune.logger.aim import AimCallback
+from ray.tune.logger.aim import AimLoggerCallback
 
 DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
 
@@ -27,5 +27,5 @@ __all__ = [
     "TBXLogger",
     "TBXLoggerCallback",
     "UnifiedLogger",
-    "AimCallback",
+    "AimLoggerCallback",
 ]

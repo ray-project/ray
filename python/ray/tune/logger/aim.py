@@ -28,7 +28,7 @@ VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
 
 @PublicAPI
-class AimCallback(LoggerCallback):
+class AimLoggerCallback(LoggerCallback):
     """Aim Logger: logs metrics in Aim format.
 
     Aim is an open-source, self-hosted ML experiment tracking tool.
@@ -68,7 +68,7 @@ class AimCallback(LoggerCallback):
         **aim_run_kwargs,
     ):
         """
-        See help(AimCallback) for more information about parameters.
+        See help(AimLoggerCallback) for more information about parameters.
         """
         assert Run is not None, (
             "aim must be installed!. You can install aim with"

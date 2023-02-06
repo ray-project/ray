@@ -17,7 +17,7 @@ see :ref:`Trainable Logging <trainable-logging>`.
 Aim
 ---------
 
-.. autoclass:: ray.tune.logger.AimCallback
+.. autoclass:: ray.tune.logger.AimLoggerCallback
 
 Install Aim via ``pip install aim``.
 See the :doc:`tutorial here </tune/examples/tune-aim>`

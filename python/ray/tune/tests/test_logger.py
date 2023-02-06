@@ -16,7 +16,7 @@ from ray.tune.logger import (
     CSVLogger,
     TBXLoggerCallback,
     TBXLogger,
-    AimCallback,
+    AimLoggerCallback,
 )
 from ray.tune.result import (
     EXPR_PARAM_FILE,
