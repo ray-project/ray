@@ -163,7 +163,7 @@ class AimLoggerCallback(LoggerCallback):
                     step=step,
                     context=context,
                 )
-            elif (isinstance(value, list) and len(value) > 0) or (
+            elif (isinstance(value, (list, tuple, set)) and len(value) > 0) or (
                 isinstance(value, np.ndarray) and value.size > 0
             ):
                 valid_result[attr] = value
