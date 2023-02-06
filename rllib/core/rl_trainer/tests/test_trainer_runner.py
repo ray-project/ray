@@ -1,6 +1,7 @@
 import gymnasium as gym
 import itertools
 import numpy as np
+import tensorflow as tf
 import unittest
 
 import ray
@@ -36,6 +37,7 @@ LOCAL_SCALING_CONFIGS = {
 @ray.remote(num_gpus=1)
 class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
+        tf.keras.utils.set_random_seed(0)
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
         runner = get_trainer_runner(fw, env, scaling_config, eager_tracing=True)
@@ -73,9 +75,6 @@ class RemoteTrainingHelper:
                 {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
             )
             check(local_trainer.update(ma_batch), runner.update(ma_batch)[0])
-        import time
-
-        time.sleep(1)
 
 
 class TestTrainerRunner(unittest.TestCase):
