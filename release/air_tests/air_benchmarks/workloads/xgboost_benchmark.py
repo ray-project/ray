@@ -102,7 +102,6 @@ def run_xgboost_training(data_path: str, num_workers: int, cpus_per_worker: int)
     checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
     xgboost_model = checkpoint.get_model()
     xgboost_model.save_model(_XGB_MODEL_PATH)
-    ray.shutdown()
 
 
 @run_and_time_it
