@@ -562,10 +562,10 @@ def test_delete_application(serve_instance):
     assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
 
 
-def test_deployment_name_with_app_name():
+def test_deployment_name_with_app_name(serve_instance):
     """Test replica name with app name as prefix"""
 
-    controller = serve.context._global_client._controller
+    controller = serve_instance._controller
 
     @serve.deployment
     def g():
@@ -579,9 +579,69 @@ def test_deployment_name_with_app_name():
     def f():
         return "got f"
 
-    serve.run(f.bind(), name="app1")
+    serve.run(f.bind(), route_prefix="/f", name="app1")
     deployment_info = ray.get(controller._all_running_replicas.remote())
     assert "app1_f" in deployment_info
+
+
+def test_deploy_application_with_same_name(serve_instance):
+    """Test deploy application with same name"""
+
+    controller = serve_instance._controller
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            return "got model"
+
+    handle = serve.run(Model.bind(), name="app")
+    assert ray.get(handle.remote()) == "got model"
+    assert requests.get("http://127.0.0.1:8000/").text == "got model"
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "app_Model" in deployment_info
+
+    # Redeploy with same app name, and then no app_Model replica should be running.
+    @serve.deployment
+    class Model1:
+        def __call__(self):
+            return "got model1"
+
+    handle = serve.run(Model1.bind(), name="app")
+    assert ray.get(handle.remote()) == "got model1"
+    assert requests.get("http://127.0.0.1:8000/").text == "got model1"
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "app_Model1" in deployment_info
+    assert "app_Model" not in deployment_info or deployment_info["app_Model"] == []
+
+
+def test_deploy_application_with_route_prefix_conflict(serve_instance):
+    """Test route_prefix conflicts with different app"""
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            return "got model"
+
+    handle = serve.run(Model.bind(), name="app")
+    assert ray.get(handle.remote()) == "got model"
+    assert requests.get("http://127.0.0.1:8000/").text == "got model"
+
+    # Second app with same route prefix fails to be deployed
+    @serve.deployment
+    class Model1:
+        def __call__(self):
+            return "got model1"
+
+    with pytest.raises(RuntimeError):
+        handle = serve.run(Model1.bind(), name="app1")
+
+    # Update the route prefix
+    handle = serve.run(Model1.bind(), name="app1", route_prefix="/model1")
+    assert ray.get(handle.remote()) == "got model1"
+    assert requests.get("http://127.0.0.1:8000/model1").text == "got model1"
+
+    # "app" can be still working properly
+    assert requests.get("http://127.0.0.1:8000/").text == "got model"
 
 
 if __name__ == "__main__":

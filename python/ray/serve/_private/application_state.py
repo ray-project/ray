@@ -24,7 +24,6 @@ class ApplicationState:
         self,
         name: str,
         deployment_state_manager: DeploymentStateManager,
-        deployment_params: List[Dict] = None,
         deploy_obj_ref: ObjectRef = None,
         deployment_time: float = 0,
     ):
@@ -42,7 +41,7 @@ class ApplicationState:
         else:
             self.status: ApplicationStatus = ApplicationStatus.NOT_STARTED
         self.name = name
-        self.deployment_params = deployment_params
+        self.deployment_params: List[Dict] = []
         self.to_be_deleted = False
         self.deployment_state_manager = deployment_state_manager
         if deployment_time:
@@ -51,14 +50,55 @@ class ApplicationState:
             self.deployment_timestamp = time.time()
         self.deploy_obj_ref = deploy_obj_ref
         self.app_msg = ""
+        self.route_prefix = None
+
+        # As application keep updated, this is the variable to keep track
+        # old unused deployments deletion
+        self.deployments_to_delete = set()
 
     def delete(self):
         """Delete the application"""
         self.status = ApplicationStatus.DELETING
 
-    def deploy(self):
+    def deploy(self, deployment_params: List[Dict]) -> None:
         """Deploy the application"""
+
+        # Filter unused deployments from the new deployment_params
+        to_be_deployed_deployments = {params["name"] for params in deployment_params}
+        for deployment_name in self.get_all_deployments():
+            if deployment_name not in to_be_deployed_deployments:
+                self.deployment_state_manager.delete_deployment(deployment_name)
+                self.deployments_to_delete.add(deployment_name)
+        self.deployment_params = deployment_params
+
+        # Update route prefix for application
+        num_route_prefixes = 0
+        for deploy_param in deployment_params:
+            if (
+                "route_prefix" in deploy_param
+                and deploy_param["route_prefix"] is not None
+            ):
+                self.route_prefix = deploy_param["route_prefix"]
+                num_route_prefixes += 1
+        if num_route_prefixes > 1:
+            logger.warning(
+                f"Found multiple route prefix from application {self.name},"
+                " Other applications might overwrite route prefixes of "
+                "this application."
+            )
         self.status = ApplicationStatus.DEPLOYING
+
+    def _update_unused_deployments(self):
+        """Update the tracking for all unused deployment
+
+        When the deployment status is None, the deployment will be
+        removed in application.
+        """
+        for name in list(self.deployments_to_delete):
+            if self.deployment_state_manager.get_deployment(name):
+                logger.info(f"Deleting deployment {name} for application {self.name}.")
+            else:
+                self.deployments_to_delete.remove(name)
 
     def update(self):
         """Update the application status, maintain the ApplicationStatus.
@@ -75,11 +115,18 @@ class ApplicationState:
 
         if self.status == ApplicationStatus.DELETING:
             mark_delete = True
+            # Application won't be deleted until all deployments get cleaned up
             for name in self.get_all_deployments():
                 if self.deployment_state_manager.get_deployment(name):
+                    logger.info(
+                        f"Deleting deployment {name} from application {self.name}."
+                    )
                     mark_delete = False
                     break
+            if self.deployments_to_delete:
+                mark_delete = False
             self.to_be_deleted = mark_delete
+            self._update_unused_deployments()
             return
 
         if self.status == ApplicationStatus.DEPLOYING:
@@ -116,6 +163,8 @@ class ApplicationState:
             if num_health_deployments == len(deployments_statuses):
                 self.status = ApplicationStatus.RUNNING
 
+            self._update_unused_deployments()
+
     def get_all_deployments(self) -> List[str]:
         """Return all deployments name from the application"""
         if self.deployment_params is None:
@@ -148,22 +197,47 @@ class ApplicationStateManager:
             return
         self._application_states[name].delete()
 
-    def deploy_application(self, name: str, deployment_args: List[Dict]):
+    def deploy_application(self, name: str, deployment_args: List[Dict]) -> bool:
         """Deploy single application
 
         Args:
             name: application name
             deployment_args: deployment args
+        Returns:
+            whether the application is deployed successfully or not.
         """
-        if name in self._application_states:
-            self._application_states[name].deployment_params = deployment_args
-        else:
+
+        # Make sure route_prefix is not being used by other application.
+        all_route_prefixes: Dict[str, str] = {
+            self._application_states[app_name].route_prefix: app_name
+            for app_name in self._application_states
+        }
+        for deploy_param in deployment_args:
+            if "route_prefix" in deploy_param:
+                deploy_app_prefix = deploy_param["route_prefix"]
+                if (
+                    deploy_app_prefix
+                    and deploy_app_prefix in all_route_prefixes
+                    and name != all_route_prefixes[deploy_app_prefix]
+                ):
+                    logger.error(
+                        f"Prefix {deploy_app_prefix} is being used by application "
+                        f"{all_route_prefixes[deploy_app_prefix]},"
+                        f" failed to deploy application {name}."
+                    )
+                    return False
+
+        if name not in self._application_states:
             self._application_states[name] = ApplicationState(
                 name,
                 self.deployment_state_manager,
-                deployment_args,
             )
-        self._application_states[name].deploy()
+        try:
+            self._application_states[name].deploy(deployment_args)
+        except Exception as e:
+            logger.warning(f"Failed to deploy application f{name}, {e}")
+            return False
+        return True
 
     def get_deployments(self, app_name: str) -> List[str]:
         """Return all deployment names by app name"""
@@ -185,6 +259,13 @@ class ApplicationStateManager:
                 deployment_timestamp=0,
             )
         return self._application_states[name].get_application_status_info()
+
+    def list_app_status(self) -> Dict[str, ApplicationStatusInfo]:
+        """Return a list of applications"""
+        return {
+            name: self._application_states[name].get_application_status_info()
+            for name in self._application_states
+        }
 
     def create_application_state(
         self, name: str, deploy_obj_ref: ObjectRef, deployment_time: float = 0

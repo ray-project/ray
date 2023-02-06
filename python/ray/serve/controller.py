@@ -434,8 +434,12 @@ class ServeController:
         group of deployments.
         """
 
+        application_deploy_success = self.application_state_manager.deploy_application(
+            name, deployment_args_list
+        )
+        if application_deploy_success is False:
+            return [False] * len(deployment_args_list)
         deployments_success = [self.deploy(**args) for args in deployment_args_list]
-        self.application_state_manager.deploy_application(name, deployment_args_list)
         return deployments_success
 
     def deploy_apps(
@@ -664,6 +668,12 @@ class ServeController:
     def get_serve_statuses(self, names: List[str]) -> List[bytes]:
         statuses = []
         for name in names:
+            statuses.append(self.get_serve_status(name))
+        return statuses
+
+    def list_serve_statuses(self) -> List[bytes]:
+        statuses = []
+        for name in self.application_state_manager.list_app_status():
             statuses.append(self.get_serve_status(name))
         return statuses
 
