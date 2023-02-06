@@ -946,7 +946,7 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
   task_event.set_job_id(spec.JobId().Binary());
   task_event.set_attempt_number(attempt_number);
   auto state_updates = task_event.mutable_state_updates();
-  if (include_task_info || status == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
+  if (include_task_info || status == rpc::TaskStatus::RUNNING) {
     // Initialize a new TaskInfoEntry
     auto task_info = MakeTaskInfoEntry(spec);
     task_event.mutable_task_info()->Swap(&task_info);
