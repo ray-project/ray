@@ -940,31 +940,46 @@ void TaskManager::RecordTaskStatusEvent(int32_t attempt_number,
   if (!task_event_buffer_.Enabled()) {
     return;
   }
-  // Make task event
-  rpc::TaskEvents task_event;
-  task_event.set_task_id(spec.TaskId().Binary());
-  task_event.set_job_id(spec.JobId().Binary());
-  task_event.set_attempt_number(attempt_number);
-  auto state_updates = task_event.mutable_state_updates();
-  if (include_task_info || status == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    // Initialize a new TaskInfoEntry
-    auto task_info = MakeTaskInfoEntry(spec);
-    task_event.mutable_task_info()->Swap(&task_info);
-  }
+  worker::TaskEvent task_event;
+  task_event.task_id = spec.TaskId();
+  task_event.job_id = spec.JobId();
+  task_event.attempt_number = attempt_number;
+  task_event.timestamp = absl::GetCurrentTimeNanos();
+  task_event.task_status = status;
+  task_event.task_spec = std::make_shared<const TaskSpecification>(spec);
+  task_event.node_id = node_id;
+  task_event.worker_id = worker_id;
+  task_event.include_task_info = include_task_info;
 
-  if (node_id.has_value()) {
-    RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
-        << "Node ID should be included when task status changes to SUBMITTED_TO_WORKER.";
-    state_updates->set_node_id(node_id->Binary());
-  }
-  if (worker_id.has_value()) {
-    RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
-        << "Worker ID should be included when task status changes to "
-           "SUBMITTED_TO_WORKER.";
-    state_updates->set_worker_id(worker_id->Binary());
-  }
-  gcs::FillTaskStatusUpdateTime(status, absl::GetCurrentTimeNanos(), state_updates);
+  RAY_CHECK(task_event.task_spec != nullptr);
+
   task_event_buffer_.AddTaskEvent(std::move(task_event));
+  // // Make task event
+  // rpc::TaskEvents task_event;
+  // task_event.set_task_id(spec.TaskId().Binary());
+  // task_event.set_job_id(spec.JobId().Binary());
+  // task_event.set_attempt_number(attempt_number);
+  // auto state_updates = task_event.mutable_state_updates();
+  // if (include_task_info || status == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
+  //   // Initialize a new TaskInfoEntry
+  //   auto task_info = MakeTaskInfoEntry(spec);
+  //   task_event.mutable_task_info()->Swap(&task_info);
+  // }
+
+  // if (node_id.has_value()) {
+  //   RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+  //       << "Node ID should be included when task status changes to
+  //       SUBMITTED_TO_WORKER.";
+  //   state_updates->set_node_id(node_id->Binary());
+  // }
+  // if (worker_id.has_value()) {
+  //   RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+  //       << "Worker ID should be included when task status changes to "
+  //          "SUBMITTED_TO_WORKER.";
+  //   state_updates->set_worker_id(worker_id->Binary());
+  // }
+  // gcs::FillTaskStatusUpdateTime(status, absl::GetCurrentTimeNanos(), state_updates);
+  // task_event_buffer_.AddTaskEvent(std::move(task_event));
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

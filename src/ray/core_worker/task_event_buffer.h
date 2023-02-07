@@ -33,6 +33,19 @@ namespace core {
 
 namespace worker {
 
+struct TaskEvent {
+  TaskID task_id;
+  JobID job_id;
+  int32_t attempt_number;
+  rpc::TaskStatus task_status;
+  int64_t timestamp;
+  std::shared_ptr<const TaskSpecification> task_spec = nullptr;
+  bool include_task_info = false;
+  absl::optional<NodeID> node_id = absl::nullopt;
+  absl::optional<WorkerID> worker_id = absl::nullopt;
+  absl::optional<rpc::ProfileEvents> profile_events = absl::nullopt;
+};
+
 /// An interface for a buffer that stores task status changes and profiling events,
 /// and reporting these events to the GCS periodically.
 ///
@@ -57,7 +70,7 @@ class TaskEventBuffer {
   /// Add a task event to be reported.
   ///
   /// \param task_events Task events.
-  virtual void AddTaskEvent(rpc::TaskEvents task_events) = 0;
+  virtual void AddTaskEvent(TaskEvent task_event) = 0;
 
   /// Flush all task events stored in the buffer to GCS.
   ///
@@ -111,7 +124,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
-  void AddTaskEvent(rpc::TaskEvents task_events) LOCKS_EXCLUDED(mutex_) override;
+  void AddTaskEvent(TaskEvent task_event) LOCKS_EXCLUDED(mutex_) override;
 
   void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
 
@@ -124,10 +137,14 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   const std::string DebugString() LOCKS_EXCLUDED(mutex_) override;
 
  private:
+  void MakeRpcTaskEvents(rpc::TaskEvents *rpc_task_events, const TaskEvent &task_event);
+
+  void MakeTaskInfo(rpc::TaskInfoEntry *task_info, const TaskSpecification &task_spec);
+
   /// Test only functions.
-  std::vector<rpc::TaskEvents> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
+  std::vector<TaskEvent> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
-    std::vector<rpc::TaskEvents> copy(buffer_.begin(), buffer_.end());
+    std::vector<TaskEvent> copy(buffer_.begin(), buffer_.end());
     return copy;
   }
 
@@ -171,7 +188,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task events.
-  boost::circular_buffer_space_optimized<rpc::TaskEvents> buffer_ GUARDED_BY(mutex_);
+  boost::circular_buffer_space_optimized<TaskEvent> buffer_ GUARDED_BY(mutex_);
 
   /// Number of profile task events dropped since the last report flush.
   size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;

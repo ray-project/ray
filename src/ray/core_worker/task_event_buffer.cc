@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/task_event_buffer.h"
 
+#include "ray/gcs/pb_util.h"
+
 namespace ray {
 namespace core {
 
@@ -94,7 +96,7 @@ void TaskEventBufferImpl::Stop() {
 
 bool TaskEventBufferImpl::Enabled() const { return enabled_; }
 
-void TaskEventBufferImpl::AddTaskEvent(rpc::TaskEvents task_events) {
+void TaskEventBufferImpl::AddTaskEvent(TaskEvent task_event) {
   if (!enabled_) {
     return;
   }
@@ -103,13 +105,92 @@ void TaskEventBufferImpl::AddTaskEvent(rpc::TaskEvents task_events) {
   auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
   if (limit > 0 && buffer_.full()) {
     const auto &to_evict = buffer_.front();
-    if (to_evict.has_profile_events()) {
+    if (to_evict.profile_events.has_value()) {
       num_profile_task_events_dropped_++;
     } else {
       num_status_task_events_dropped_++;
     }
   }
-  buffer_.push_back(std::move(task_events));
+  buffer_.push_back(std::move(task_event));
+}
+
+void TaskEventBufferImpl::MakeTaskInfo(rpc::TaskInfoEntry *task_info,
+                                       const TaskSpecification &task_spec) {
+  rpc::TaskType type;
+  if (task_spec.IsNormalTask()) {
+    type = rpc::TaskType::NORMAL_TASK;
+  } else if (task_spec.IsDriverTask()) {
+    type = rpc::TaskType::DRIVER_TASK;
+  } else if (task_spec.IsActorCreationTask()) {
+    type = rpc::TaskType::ACTOR_CREATION_TASK;
+    task_info->set_actor_id(task_spec.ActorCreationId().Binary());
+  } else {
+    RAY_CHECK(task_spec.IsActorTask());
+    type = rpc::TaskType::ACTOR_TASK;
+    task_info->set_actor_id(task_spec.ActorId().Binary());
+  }
+  task_info->set_type(type);
+  task_info->set_name(task_spec.GetName());
+  task_info->set_language(task_spec.GetLanguage());
+  task_info->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+  // NOTE(rickyx): we will have scheduling states recorded in the events list.
+  task_info->set_scheduling_state(rpc::TaskStatus::NIL);
+  task_info->set_job_id(task_spec.JobId().Binary());
+
+  task_info->set_task_id(task_spec.TaskId().Binary());
+  // NOTE: we set the parent task id of a task to be submitter's task id, where
+  // the submitter depends on the owner coreworker's:
+  // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
+  // - if the owner coreworker runs an actor, the submitter's task id will be the actor's
+  // creation task id.
+  task_info->set_parent_task_id(task_spec.SubmitterTaskId().Binary());
+  const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
+  task_info->mutable_required_resources()->insert(resources_map.begin(),
+                                                  resources_map.end());
+  task_info->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+  const auto &pg_id = task_spec.PlacementGroupBundleId().first;
+  if (!pg_id.IsNil()) {
+    task_info->set_placement_group_id(pg_id.Binary());
+  }
+}
+
+void TaskEventBufferImpl::MakeRpcTaskEvents(rpc::TaskEvents *rpc_task_events,
+                                            const TaskEvent &task_event) {
+  const auto &status = task_event.task_status;
+  // Common fields
+  rpc_task_events->set_task_id(task_event.task_id.Binary());
+  rpc_task_events->set_job_id(task_event.job_id.Binary());
+  rpc_task_events->set_attempt_number(task_event.attempt_number);
+
+  // Task info
+  if (task_event.include_task_info || status == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
+    RAY_CHECK(task_event.task_spec != nullptr)
+        << "include?" << task_event.include_task_info << ", status: " << status
+        << ", task: " << task_event.task_id << " attempt: " << task_event.attempt_number;
+    MakeTaskInfo(rpc_task_events->mutable_task_info(), *task_event.task_spec);
+  }
+
+  if (task_event.profile_events.has_value()) {
+    // Profile events
+    rpc_task_events->mutable_profile_events()->CopyFrom(
+        task_event.profile_events.value());
+  } else {
+    // Task update
+    auto state_updates = rpc_task_events->mutable_state_updates();
+    if (task_event.node_id.has_value()) {
+      RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+          << "Node ID should be included when task status changes to "
+             "SUBMITTED_TO_WORKER.";
+      state_updates->set_node_id(task_event.node_id->Binary());
+    }
+    if (task_event.worker_id.has_value()) {
+      RAY_CHECK(status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+          << "Worker ID should be included when task status changes to "
+             "SUBMITTED_TO_WORKER.";
+      state_updates->set_worker_id(task_event.worker_id->Binary());
+    }
+    gcs::FillTaskStatusUpdateTime(status, task_event.timestamp, state_updates);
+  }
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
@@ -118,7 +199,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   }
   size_t num_status_task_events_dropped = 0;
   size_t num_profile_task_events_dropped = 0;
-  std::vector<rpc::TaskEvents> to_send;
+  std::vector<TaskEvent> to_send;
 
   {
     absl::MutexLock lock(&mutex_);
@@ -141,9 +222,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     size_t num_to_send =
         std::min(static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()),
                  static_cast<size_t>(buffer_.size()));
-    to_send.insert(to_send.end(),
-                   std::make_move_iterator(buffer_.begin()),
-                   std::make_move_iterator(buffer_.begin() + num_to_send));
+    to_send.insert(to_send.end(), buffer_.begin(), buffer_.begin() + num_to_send);
     buffer_.erase(buffer_.begin(), buffer_.begin() + num_to_send);
 
     // Send and reset the counters
@@ -162,14 +241,14 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   size_t num_task_events = to_send.size();
   size_t num_profile_event_to_send = 0;
   size_t num_status_event_to_send = 0;
-  for (auto &task_event : to_send) {
+  for (const auto &task_event : to_send) {
     auto events_by_task = data->add_events_by_task();
-    if (task_event.has_profile_events()) {
+    if (task_event.profile_events.has_value()) {
       num_profile_event_to_send++;
     } else {
       num_status_event_to_send++;
     }
-    events_by_task->Swap(&task_event);
+    MakeRpcTaskEvents(events_by_task, task_event);
   }
 
   gcs::TaskInfoAccessor *task_accessor;

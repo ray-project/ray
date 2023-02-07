@@ -37,7 +37,7 @@ class ProfileEvent {
  private:
   TaskEventBuffer &task_event_buffer_;
 
-  rpc::TaskEvents rpc_profile_event_;
+  TaskEvent event_;
 };
 
 }  // namespace worker

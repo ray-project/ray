@@ -388,16 +388,15 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
     // Add the driver task info.
     if (task_event_buffer_->Enabled()) {
-      rpc::TaskEvents task_event;
+      worker::TaskEvent task_event;
       const auto spec = builder.Build();
-      auto task_info = task_manager_->MakeTaskInfoEntry(spec);
-      task_event.set_task_id(task_id.Binary());
-      task_event.set_job_id(spec.JobId().Binary());
-      task_event.set_attempt_number(0);
-      task_event.mutable_task_info()->Swap(&task_info);
-      gcs::FillTaskStatusUpdateTime(rpc::TaskStatus::RUNNING,
-                                    absl::GetCurrentTimeNanos(),
-                                    task_event.mutable_state_updates());
+      task_event.task_spec = std::make_shared<const TaskSpecification>(spec);
+      task_event.include_task_info = true;
+      task_event.task_id = task_id;
+      task_event.job_id = spec.JobId();
+      task_event.attempt_number = 0;
+      task_event.task_status = rpc::TaskStatus::RUNNING;
+      task_event.timestamp = absl::GetCurrentTimeNanos();
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
@@ -683,14 +682,12 @@ void CoreWorker::Disconnect(
 
   // Driver exiting.
   if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
-    // Mark Driver as finished.
-    rpc::TaskEvents task_event;
-    task_event.set_task_id(worker_context_.GetCurrentTaskID().Binary());
-    task_event.set_job_id(worker_context_.GetCurrentJobID().Binary());
-    task_event.set_attempt_number(0);
-    gcs::FillTaskStatusUpdateTime(rpc::TaskStatus::FINISHED,
-                                  absl::GetCurrentTimeNanos(),
-                                  task_event.mutable_state_updates());
+    worker::TaskEvent task_event;
+    task_event.task_id = worker_context_.GetCurrentTaskID();
+    task_event.job_id = worker_context_.GetCurrentJobID();
+    task_event.attempt_number = 0;
+    task_event.task_status = rpc::TaskStatus::FINISHED;
+    task_event.timestamp = absl::GetCurrentTimeNanos();
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
