@@ -33,12 +33,17 @@ namespace core {
 
 namespace worker {
 
-struct TaskEvent {
-  TaskID task_id;
-  JobID job_id;
-  int32_t attempt_number;
-  rpc::TaskStatus task_status;
-  int64_t timestamp;
+class TaskEvent {
+ public:
+  void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) const;
+
+  bool IsProfileEvent() const { return profile_events.has_value(); }
+
+  TaskID task_id = TaskID::Nil();
+  JobID job_id = JobID::Nil();
+  int32_t attempt_number = -1;
+  rpc::TaskStatus task_status = rpc::TaskStatus::NIL;
+  int64_t timestamp = -1;
   std::shared_ptr<const TaskSpecification> task_spec = nullptr;
   bool include_task_info = false;
   absl::optional<NodeID> node_id = absl::nullopt;
