@@ -263,8 +263,10 @@ train_dataset, test_dataset = dataset.train_test_split(0.2)
 A `Preprocessor` is an object that defines preprocessing logic. It's the standard way
 to preprocess data with Ray.
 
-To preprocess the images, create a `TorchVisionPreprocessor` and call
-`Preprocessor.transform` on the dataset.
+Create two preprocessors: one to transpose and scale images (`ToTensor`), and another to
+randomly augment images every epoch (`RandomHorizontalFlip`). You'll later pass these
+preprocessors to a `Trainer`.
+
 
 ```python
 from torchvision import transforms
@@ -286,13 +288,12 @@ Write a function that trains `fasterrcnn_resnet50_fpn`. Your code will look like
 standard Torch code with a few changes.
 
 Here are a few things to point out:
-1. Wrap your model with `ray.train.torch.prepare_model`. Don't use `DistributedDataParallel`.
+1. Distribute the model with `ray.train.torch.prepare_model`. Don't use `DistributedDataParallel`.
 2. Pass your Dataset to the Trainer. The Trainer automatically shards the data across workers.
-3. Iterate over data with `DatasetIterator.iter_batches`. Don't use a `DataLoader`.
+3. Iterate over data with `DatasetIterator.iter_batches`. Don't use a Torch `DataLoader`.
 4. Pass preprocessors to the Trainer.
 
-In addition, report metrics and checkpoints with `session.report`. `session.report`
-lets you monitor training and analyze training runs after they've finished.
+In addition, report metrics and checkpoints with `session.report`. `session.report` tracks these metrics in Ray AIR's internal bookkeeping, allowing you to monitor training and analyze training runs after they've finished.
 
 ```python
 import torch
