@@ -290,8 +290,7 @@ Here are a few things to point out:
 2. Pass your Dataset to the Trainer. The Trainer automatically shards the data across workers.
 3. Iterate over data with `DatasetIterator.iter_batches`. Don't use a PyTorch `DataLoader`.
 
-In addition, report metrics and checkpoints with `session.report`. `session.report`
-lets you monitor training and analyze training runs after they've finished.
+In addition, report metrics and checkpoints with `session.report`. `session.report` tracks these metrics in Ray AIR's internal bookkeeping, allowing you to monitor training and analyze training runs after they've finished.
 
 ```python
 import torch
