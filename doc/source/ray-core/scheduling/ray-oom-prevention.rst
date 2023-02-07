@@ -47,7 +47,7 @@ When a task or actor is killed by the memory monitor it will be retried with exp
 
 The first ``retry_attempt`` will be delayed by 1 second. There is a cap on the maximum delay, which is 60 seconds.
 
-This retry is applied only when the worker is killed by the memory monitor. Otherwise, when the worker dies, it uses :ref:`max_retries <task-fault-tolerance>`, or :ref:`max_restarts <actor-fault-tolerance>` and :ref:`max_task_retries <actor-fault-tolerance>` depending on whether it is a task or actor.
+This retry is applied only when the worker is killed by the memory monitor. For other types of failures (e.g., node failure), it uses :ref:`max_retries <task-fault-tolerance>`, or :ref:`max_restarts <actor-fault-tolerance>` and :ref:`max_task_retries <actor-fault-tolerance>` depending on whether it is a task or actor.
 
 Worker killing policy
 ~~~~~~~~~~~~~~~~~~~~~
