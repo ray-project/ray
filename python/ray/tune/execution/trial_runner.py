@@ -1049,6 +1049,10 @@ class TrialRunner:
         # `self._queued_trial_decisions` now contains a final decision
         # based on all results
         final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
+        if final_decision == TrialScheduler.PAUSE:
+            # Since we just come out of process save result,
+            # overwrite with PAUSE_WO_CKPT
+            final_decision = TrialScheduler.PAUSE_WO_CKPT
         if final_decision:
             self._execute_action(trial, final_decision)
 
@@ -1366,6 +1370,8 @@ class TrialRunner:
             self.trial_executor.continue_training(trial)
         elif decision == TrialScheduler.PAUSE:
             self.pause_trial(trial)
+        elif decision == TrialScheduler.PAUSE_WO_CKPT:
+            self.pause_trial(trial, should_checkpoint=False)
         elif decision == TrialScheduler.STOP:
             self.stop_trial(trial)
         elif decision == TrialScheduler.NOOP:
