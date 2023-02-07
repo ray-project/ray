@@ -1,7 +1,10 @@
 import { makeStyles } from "@material-ui/core";
 import React, { useEffect, useState } from "react";
 import { UnifiedJob } from "../../type/job";
-import { AdvancedProgressBar } from "./AdvancedProgressBar";
+import {
+  AdvancedProgressBar,
+  AdvancedProgressBarProps,
+} from "./AdvancedProgressBar";
 import { useJobProgress, useJobProgressByLineage } from "./hook/useJobProgress";
 import { TaskProgressBar } from "./TaskProgressBar";
 
@@ -14,9 +17,13 @@ const useStyles = makeStyles((theme) => ({
 type JobProgressBarProps = {
   jobId: string;
   job: Pick<UnifiedJob, "status">;
-};
+} & Pick<AdvancedProgressBarProps, "onClickLink">;
 
-export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
+export const JobProgressBar = ({
+  jobId,
+  job,
+  ...advancedProgressBarProps
+}: JobProgressBarProps) => {
   const classes = useStyles();
 
   // Controls the first time we fetch the advanced progress bar data
@@ -75,6 +82,7 @@ export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
         <AdvancedProgressBar
           className={classes.advancedProgressBar}
           progressGroups={progressGroups}
+          {...advancedProgressBarProps}
         />
       )}
     </div>

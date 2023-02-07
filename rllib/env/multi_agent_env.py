@@ -536,6 +536,13 @@ def make_multi_agent(
         @override(MultiAgentEnv)
         def step(self, action_dict):
             obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
+
+            # the environment is expecting action for at least one agent
+            if len(action_dict) == 0:
+                raise ValueError(
+                    "The environment is expecting action for at least one agent."
+                )
+
             for i, action in action_dict.items():
                 obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[
                     i
