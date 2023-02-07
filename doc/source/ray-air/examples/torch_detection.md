@@ -20,7 +20,7 @@ dataset, using the [Ray AI Runtime](air) for parallel data ingest and training.
 
 Here's what you'll do:
 1. Load Pascal VOC into a Dataset
-2. Fine-tune `fasterrcnn_resnet50_fpn`
+2. Fine-tune `fasterrcnn_resnet50_fpn` (the backbone is pre-trained on ImageNet)
 3. Evaluate the model's accuracy
 
 You should be familiar with [PyTorch](https://pytorch.org/) before starting the
@@ -291,8 +291,7 @@ Here are a few things to point out:
 3. Iterate over data with `DatasetIterator.iter_batches`. Don't use a `DataLoader`.
 
 In addition, report metrics and checkpoints with `session.report`. `session.report`
-lets you monitor training and analyze training runs after they've finished. If you're
-performing hyperparameter tuning,
+lets you monitor training and analyze training runs after they've finished.
 
 ```python
 import torch
