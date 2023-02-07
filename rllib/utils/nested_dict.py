@@ -59,7 +59,9 @@ class StrKey(str):
 
 @ExperimentalAPI
 class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
-    """A nested dict type:
+    """A dict with special properties to support indexing with a sequence of strings.
+
+    The main properties of NestedDict are::
         * The nested dict gives access to nested elements as a sequence of
         strings.
         * These nested dicts can also be used to filter a superset into a subset of
@@ -67,6 +69,12 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         * This can be instantiated with any mapping of strings, or an iterable of
         key value tuples where the values can themselves be recursively the values
         that a nested dict can take.
+        * The length of a nested dict is the number of leaves in the tree, excluding
+        empty leafs.
+        * Iterating over a nested dict yields the leaves of the tree, including empty
+        leafs.
+    More information on these properties can be found in the docstrings of the
+    respective methods.
 
     Args:
         x: a representation of a nested dict: it can be an iterable of `SeqStrType`
@@ -204,17 +212,26 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
             data_ptr = data_ptr[key]
 
     def __iter__(self) -> Iterator[SeqStrType]:
+        """Iterate over NestedDict, returning tuples of paths.
+
+        Every iteration yields a tuple of strings, with each element of
+        such a tuple representing a branch in the NestedDict. Each yielded tuple
+        represents the path to a leaf. This includes leafs that are empty dicts.
+        For example, if the NestedDict is: {'a': {'b': 1, 'c': {}}}, then this
+        iterator will yield: ('a', 'b'), ('a', 'c').
+        """
         data_ptr = self._data
         # do a DFS to get all the keys
         stack = [((StrKey(k),), v) for k, v in data_ptr.items()]
         while stack:
             k, v = stack.pop(0)
             if isinstance(v, NestedDict):
-                items = v._data.items()
-                if len(items) == 0:
+                if len(v._data) == 0:
                     yield tuple(k)
                 else:
-                    stack = [(k + (StrKey(k2),), v) for k2, v in items] + stack
+                    stack = [
+                        (k + (StrKey(k2),), v) for k2, v in v._data.items()
+                    ] + stack
             else:
                 yield tuple(k)
 
@@ -237,8 +254,11 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
                 del ns[i][ks[i]]
 
     def __len__(self) -> int:
-        """Returns the number of leaf nodes in the `NestedDict` that
-        are not of type Mappings.
+        """Returns the length of the NestedDict.
+
+        The length is defined as the number of leaf nodes in the `NestedDict` that
+        are not of type Mapping. For example, if the `NestedDict` is: {'a': {'b': 1,
+        'c': {}}}, then the length is 1.
         """
 
         # do a DFS to count the number of leaf nodes
