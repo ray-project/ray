@@ -268,7 +268,7 @@ class _CheckpointManager:
         checkpoint.id = checkpoint.id or self._latest_checkpoint_id
 
         if self._checkpoint_strategy.num_to_keep != 0:
-            self._process_checkpoint(checkpoint)
+            self._process_persistent_checkpoint(checkpoint)
 
         self._latest_checkpoint_id += 1
 
@@ -327,7 +327,7 @@ class _CheckpointManager:
             checkpoint.id,
         )
 
-    def _process_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
 
         checkpoint_score = self._get_checkpoint_score(checkpoint)
         wrapped_checkpoint = _HeapCheckpointWrapper(

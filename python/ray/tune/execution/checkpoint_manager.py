@@ -41,7 +41,7 @@ class _CheckpointManager(CommonCheckpointManager):
             self._checkpoint_strategy.num_to_keep is None
             or self._checkpoint_strategy.num_to_keep > 0
         )
-        self._process_checkpoint(checkpoint)
+        self._process_persistent_checkpoint(checkpoint)
 
     def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
         """Ray Tune's entry point to handle a checkpoint."""
