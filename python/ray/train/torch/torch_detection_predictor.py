@@ -93,13 +93,13 @@ class TorchDetectionPredictor(TorchPredictor):
             torch.as_tensor(image, dtype=dtype).to(self.device) for image in images
         ]
         outputs = self.call_model(inputs)
-        outputs = convert_outputs_to_ndarray_batch(outputs)
+        outputs = _convert_outputs_to_ndarray_batch(outputs)
         outputs = {"pred_" + key: value for key, value in outputs.items()}
 
         return outputs
 
 
-def convert_outputs_to_ndarray_batch(
+def _convert_outputs_to_ndarray_batch(
     outputs: List[Dict[str, torch.Tensor]],
 ) -> Dict[str, np.ndarray]:
     """Batch detection model outputs.
@@ -120,8 +120,8 @@ def convert_outputs_to_ndarray_batch(
 
     This function batches values and returns a `Dict[str, np.ndarray]`.
 
-    >>> from ray.train.torch.torch_detection_predictor import convert_outputs_to_ndarray_batch
-    >>> batch = convert_outputs_to_ndarray_batch(outputs)
+    >>> from ray.train.torch.torch_detection_predictor import _convert_outputs_to_ndarray_batch
+    >>> batch = _convert_outputs_to_ndarray_batch(outputs)
     >>> batch.keys()
     dict_keys(['boxes', 'labels', 'scores'])
     >>> batch["boxes"].shape
