@@ -39,7 +39,7 @@ class TestNestedDict(unittest.TestCase):
         ]
 
         # We have 5 leafs that are not empty and two empty leafs
-        desired_values = [100, 200, 300, 400, 500, NestedDict({}), NestedDict({})]
+        desired_values = [100, 200, 300, 400, 500, NestedDict(), NestedDict()]
 
         foo_dict["aa"] = 100
         foo_dict["b", "c"] = 200
@@ -63,7 +63,8 @@ class TestNestedDict(unittest.TestCase):
 
         # test __len__ again
         # We have included d, j and l in foo_dict, but j and l don't contribute to
-        # the length
+        # the length because they are empty sub-roots of the tree structure with no
+        # leafs.
         self.assertEqual(len(foo_dict), len(desired_keys) - 2)
 
         # test __iter__ again
@@ -169,6 +170,9 @@ class TestNestedDict(unittest.TestCase):
         # test init with nested empty element
         foo_dict = NestedDict({"a": {"b": {}, "c": 2}})
         self.assertEqual(foo_dict.asdict(), {"a": {"b": {}, "c": 2}})
+
+        # test init with empty dict
+        self.assertEqual(NestedDict().asdict(), {})
 
 
 if __name__ == "__main__":

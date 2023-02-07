@@ -3329,7 +3329,7 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_independent_learning.py"],
-    args = ["--stop-iters=4", "--framework=torch"]
+    args = ["--num-gpus=0", "--as-test"]
 )
 
 py_test(

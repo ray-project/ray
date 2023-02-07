@@ -1365,7 +1365,6 @@ class StandardAutoscaler:
     def launch_new_node(self, count: int, node_type: str) -> None:
         logger.info("StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(node_type, count)
-        self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
         if self.foreground_node_launch:
             assert self.foreground_node_launcher is not None
