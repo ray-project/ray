@@ -10,8 +10,10 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
 class RandomizeBlockOrderRule(Rule):
     """Rule for handling RandomizeBlockOrder Logical Operator.
 
-    1. Dedupes multiple RandomizeBlocks operators.
-    2. Moves RandomizeBlocks operator to the end of the operator DAG.
+    1. Dedupes multiple RandomizeBlocks operators if they are not seeded.
+    2. Moves RandomizeBlocks operator to the end of a sequence of AbstractMap
+    operators. RandomizeBlocks operators are not moved across AllToAll operator
+    boundaries.
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
