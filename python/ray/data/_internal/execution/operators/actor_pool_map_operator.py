@@ -225,6 +225,8 @@ class ActorPoolMapOperator(MapOperator):
         if self._actor_locality_enabled:
             base += f" [{self._actor_pool._locality_hits} locality hits,"
             base += f" {self._actor_pool._locality_misses} misses]"
+        else:
+            base += " [locality off]"
         return base
 
     def base_resource_usage(self) -> ExecutionResources:
