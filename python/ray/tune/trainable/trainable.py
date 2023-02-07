@@ -514,7 +514,7 @@ class Trainable:
 
         TrainableUtil.write_metadata(checkpoint_dir, metadata)
 
-        if not prevent_upload:
+        if not prevent_upload and self.uses_cloud_checkpointing:
             # First, upload the new trial checkpoint to cloud
             self._save_to_cloud(checkpoint_dir)
             # Then, save other artifacts that live in the trial logdir
