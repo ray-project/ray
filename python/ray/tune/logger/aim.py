@@ -84,7 +84,7 @@ class AimLoggerCallback(LoggerCallback):
         self._metrics = metrics
         self._as_multirun = as_multirun
         self._aim_run_kwargs = aim_run_kwargs
-        self._trial_run: Dict["Trial", Run] = {}
+        self._trial_run: Dict[str, Run] = {}
 
     def _create_run(self, trial: "Trial") -> Run:
         """Initializes an Aim Run object for a given trial.
