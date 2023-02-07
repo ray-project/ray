@@ -8,6 +8,7 @@ from typing import List, Optional
 from unittest.mock import patch
 
 import pytest
+import boto3
 from freezegun import freeze_time
 
 import ray
@@ -18,6 +19,7 @@ from ray.tune import TuneError
 from ray.tune.syncer import Syncer, _DefaultSyncer
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 from ray.air._internal.remote_storage import upload_to_uri, download_from_uri
+from ray._private.test_utils import simulate_storage
 
 
 @pytest.fixture
@@ -671,6 +673,23 @@ def test_final_experiment_checkpoint_sync(tmpdir):
         "Should have seen 2 syncs, once at the beginning of the experiment, and one "
         f"forced sync at the end. Got {syncer._num_syncs} syncs instead."
     )
+
+
+def test_sync_folder_with_many_files(tmpdir):
+    root = "bucket_2/dir"
+    with simulate_storage("s3", root) as s3_uri:
+        for i in range(256):
+            with open(os.path.join(tmpdir, str(i)), "w"):
+                pass
+        print(s3_uri)
+        s3 = boto3.client(
+            "s3", region_name="us-west-2", endpoint_url="http://localhost:5002"
+        )
+        s3.create_bucket(
+            Bucket="bucket_2",
+            CreateBucketConfiguration={"LocationConstraint": "us-west-2"},
+        )
+        upload_to_uri(tmpdir, s3_uri)
 
 
 if __name__ == "__main__":
