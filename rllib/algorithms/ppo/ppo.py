@@ -217,7 +217,7 @@ class PPOConfig(PGConfig):
         if use_critic is not NotProvided:
             self.use_critic = use_critic
             # TODO (Kourosh) This is experimental. Set rl_trainer_hps parameters as
-            # well. Don't forget to remote .use_critic from algorithm config.
+            # well. Don't forget to remove .use_critic from algorithm config.
             self._rl_trainer_hps.use_critic = use_critic
         if use_gae is not NotProvided:
             self.use_gae = use_gae
@@ -415,6 +415,9 @@ class PPO(Algorithm):
             # subtract that to get the total set of pids to update.
             # TODO (Kourosh): We need to make a better design for the hierarchy of the
             # train results, so that all the policy ids end up in the same level.
+            # TODO (Kourosh): We should also not be using train_results as a message
+            # passing medium to infer whcih policies to update. We could use
+            # policies_to_train variable that is given by the user to infer this.
             policies_to_update = set(train_results["loss"].keys()) - {"total_loss"}
         else:
             policies_to_update = list(train_results.keys())

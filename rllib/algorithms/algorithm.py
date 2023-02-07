@@ -2194,7 +2194,7 @@ class Algorithm(Trainable):
                 trainer_bundle = [
                     {
                         "CPU": cf.num_cpus_per_trainer_worker,
-                        "GPU": int(cf.num_gpus_per_trainer_worker > 0),
+                        "GPU": cf.num_gpus_per_trainer_worker,
                     }
                 ]
             else:

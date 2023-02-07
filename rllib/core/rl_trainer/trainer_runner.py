@@ -7,8 +7,8 @@ import ray
 
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.minibatch_utils import MiniBatchCyclicIterator
 from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
-from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
@@ -131,39 +131,12 @@ class TrainerRunner:
             A dictionary of results summarizing the statistics of the updates.
         """
 
-        start = {mid: 0 for mid in batch.policy_batches.keys()}
-        num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
-        results = []
         # TODO (Kourosh): One data transfer is probably better than many for each mini
         # batch. How should we do this?
         # loop until the number of passes through all modules batches reaches the
         # num_iters
-        while min(num_covered_epochs.values()) < num_iters:
-            minibatch = {}
-            for module_id, module_batch in batch.policy_batches.items():
-                s = start[module_id]  # start
-                e = s + minibatch_size  # end
-
-                samples_to_concat = []
-                # cycle through the batch until we have enough samples
-                while e >= len(module_batch):
-                    samples_to_concat.append(module_batch[s:])
-                    e = minibatch_size - len(module_batch[s:])
-                    s = 0
-                    num_covered_epochs[module_id] += 1
-
-                samples_to_concat.append(module_batch[s:e])
-
-                # concatenate all the samples, we should have minibatch_size of sample
-                # after this step
-                minibatch[module_id] = concat_samples(samples_to_concat)
-                # roll miniback to zero when we reach the end of the batch
-                start[module_id] = e
-
-            # TODO (Kourosh): len(batch) is not correct here. However it's also not
-            # clear what the correct value should be. Since training does not depend on
-            # this it will be fine for now.
-            minibatch = MultiAgentBatch(minibatch, len(batch))
+        results = []
+        for minibatch in MiniBatchCyclicIterator(batch, minibatch_size, num_iters):
             results.append(self.update(minibatch, reduce_fn=reduce_fn))
 
         # return the average of the results using tree map
