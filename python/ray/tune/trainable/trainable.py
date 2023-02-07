@@ -572,11 +572,12 @@ class Trainable:
         return max(checkpoint_candidates)
 
     def _maybe_save_artifacts_to_cloud(self) -> bool:
+        if not self.sync_config.sync_artifacts:
+            return False
+
         if self._last_artifact_sync_iter == self.iteration:
             # No need to sync again, if we have already synced this iteration.
             return False
-        # Avoid double uploading checkpoints and driver artifacts,
-        # if those live in the same directory
         self._last_artifact_sync_iter = self.iteration
         with warn_if_slow(
             name="trial_artifact_cloud_upload",
@@ -590,9 +591,10 @@ class Trainable:
             threshold=10,
             disable=not self.uses_cloud_checkpointing,
         ):
-            uploaded = self._maybe_save_to_cloud(
-                self.logdir, exclude=("checkpoint_*",) + EXPR_FILES
-            )
+            # Avoid double uploading checkpoints and driver artifacts,
+            exclude = ("checkpoint_*",) + EXPR_FILES
+            # if those live in the same directory
+            uploaded = self._maybe_save_to_cloud(self.logdir, exclude=exclude)
         return uploaded
 
     def _maybe_save_to_cloud(self, local_dir: str, exclude: List[str] = None) -> bool:
