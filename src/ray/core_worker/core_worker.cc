@@ -2250,7 +2250,7 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
         success += 1;
       } else {
         // Only record up to sample sizes.
-        if (failures <= kMaxFailedTaskSampleSize) {
+        if (failures < kMaxFailedTaskSampleSize) {
           ostr << "\t" << child_id << ", " << status.ToString() << "\n";
         }
         failures += 1;
