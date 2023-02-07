@@ -91,9 +91,9 @@ def main(test_collection_file: Optional[str] = None):
     except ReleaseTestConfigError as e:
         raise ReleaseTestConfigError(
             "Cannot load test yaml file.\nHINT: If you're kicking off tests for a "
-            "specific commit on Buildkite, after clicking 'New build', leave the "
-            "commit at HEAD, and only specify the commit in the dialog that asks "
-            "for the Ray wheels."
+            "specific commit on Buildkite to test Ray wheels, after clicking "
+            "'New build', leave the commit at HEAD, and only specify the commit "
+            "in the dialog that asks for the Ray wheels."
         ) from e
 
     if tmpdir:
