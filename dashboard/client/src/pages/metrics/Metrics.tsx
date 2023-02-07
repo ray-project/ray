@@ -94,7 +94,7 @@ const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
 
 type MetricConfig = {
   title: string;
-  path: string;
+  pathParams: string;
 };
 
 type MetricsSectionConfig = {
@@ -109,19 +109,19 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Scheduler Task State",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=26",
+        pathParams: "orgId=1&theme=light&panelId=26",
       },
       {
         title: "Active Tasks by Name",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=35",
+        pathParams: "orgId=1&theme=light&panelId=35",
       },
       {
         title: "Scheduler Actor State",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=33",
+        pathParams: "orgId=1&theme=light&panelId=33",
       },
       {
         title: "Active Actors by Name",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=36",
+        pathParams: "orgId=1&theme=light&panelId=36",
       },
     ],
   },
@@ -130,19 +130,19 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Scheduler CPUs (logical slots)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=27",
+        pathParams: "orgId=1&theme=light&panelId=27",
       },
       {
         title: "Scheduler GPUs (logical slots)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
+        pathParams: "orgId=1&theme=light&panelId=28",
       },
       {
         title: "Object Store Memory",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=29",
+        pathParams: "orgId=1&theme=light&panelId=29",
       },
       {
         title: "Placement Groups",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=40",
+        pathParams: "orgId=1&theme=light&panelId=40",
       },
     ],
   },
@@ -151,43 +151,43 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Node Count",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24",
+        pathParams: "orgId=1&theme=light&panelId=24",
       },
       {
         title: "Node CPU (hardware utilization)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
+        pathParams: "orgId=1&theme=light&panelId=2",
       },
       {
         title: "Node Memory (heap + object store)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4",
+        pathParams: "orgId=1&theme=light&panelId=4",
       },
       {
         title: "Node GPU (hardware utilization)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=8",
+        pathParams: "orgId=1&theme=light&panelId=8",
       },
       {
         title: "Node GPU Memory (GRAM)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=18",
+        pathParams: "orgId=1&theme=light&panelId=18",
       },
       {
         title: "Node Disk",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=6",
+        pathParams: "orgId=1&theme=light&panelId=6",
       },
       {
         title: "Node Disk IO Speed",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=32",
+        pathParams: "orgId=1&theme=light&panelId=32",
       },
       {
         title: "Node Network",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=20",
+        pathParams: "orgId=1&theme=light&panelId=20",
       },
       {
         title: "Node CPU by Component",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=37",
+        pathParams: "orgId=1&theme=light&panelId=37",
       },
       {
         title: "Node Memory by Component",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=34",
+        pathParams: "orgId=1&theme=light&panelId=34",
       },
     ],
   },
@@ -199,8 +199,12 @@ type MetricsProps = {
 
 export const Metrics = ({ newIA = false }: MetricsProps) => {
   const classes = useStyles();
-  const { grafanaHost, sessionName, prometheusHealth } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    sessionName,
+    prometheusHealth,
+    grafanaDefaultDashboardUid = "rayDefaultDashboard",
+  } = useContext(GlobalContext);
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.FIVE_MINS,
@@ -276,22 +280,27 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
                 keepRendered
               >
                 <div className={classes.grafanaEmbedsContainer}>
-                  {contents.map(({ title, path }) => (
-                    <Paper
-                      key={path}
-                      className={classes.chart}
-                      elevation={1}
-                      variant="outlined"
-                    >
-                      <iframe
-                        key={title}
-                        title={title}
-                        className={classes.grafanaEmbed}
-                        src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
-                        frameBorder="0"
-                      />
-                    </Paper>
-                  ))}
+                  {contents.map(({ title, pathParams }) => {
+                    const path =
+                      `/d-solo/${grafanaDefaultDashboardUid}?${pathParams}` +
+                      `&refresh${timeRangeParams}&var-SessionName=${sessionName}`;
+                    return (
+                      <Paper
+                        key={pathParams}
+                        className={classes.chart}
+                        elevation={1}
+                        variant="outlined"
+                      >
+                        <iframe
+                          key={title}
+                          title={title}
+                          className={classes.grafanaEmbed}
+                          src={`${grafanaHost}${path}`}
+                          frameBorder="0"
+                        />
+                      </Paper>
+                    );
+                  })}
                 </div>
               </CollapsibleSection>
             ))}

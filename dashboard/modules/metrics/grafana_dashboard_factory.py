@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 @dataclass
@@ -527,11 +527,13 @@ PANEL_TEMPLATE = {
 }
 
 
-def generate_grafana_dashboard() -> str:
+def generate_grafana_dashboard(override_uid: Optional[str] = None) -> str:
     base_json = json.load(
         open(os.path.join(os.path.dirname(__file__), "grafana_dashboard_base.json"))
     )
     base_json["panels"] = _generate_grafana_panels()
+    if override_uid:
+        base_json["uid"] = override_uid
     return json.dumps(base_json, indent=4)
 
 
