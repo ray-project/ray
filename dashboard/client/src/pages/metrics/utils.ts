@@ -9,6 +9,7 @@ type GrafanaHealthcheckRsp = {
   data: {
     grafanaHost: string;
     sessionName: string;
+    grafanaDefaultDashboardUid: string;
   };
 };
 
@@ -29,6 +30,7 @@ type MetricsInfo = {
   grafanaHost?: string;
   sessionName?: string;
   prometheusHealth?: boolean;
+  grafanaDefaultDashboardUid?: string;
 };
 
 export const getMetricsInfo = async () => {
@@ -36,12 +38,15 @@ export const getMetricsInfo = async () => {
     grafanaHost: undefined,
     sessionName: undefined,
     prometheusHealth: undefined,
+    grafanaDefaultDashboardUid: undefined,
   };
   try {
     const resp = await fetchGrafanaHealthcheck();
     if (resp.data.result) {
       info.grafanaHost = resp.data.data.grafanaHost;
       info.sessionName = resp.data.data.sessionName;
+      info.grafanaDefaultDashboardUid =
+        resp.data.data.grafanaDefaultDashboardUid;
     }
   } catch (e) {}
   try {
