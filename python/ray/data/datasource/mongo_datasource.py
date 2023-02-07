@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.block import (
@@ -8,10 +8,8 @@ from ray.data.block import (
     BlockMetadata,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import PublicAPI
 from typing import Iterable
 
 if TYPE_CHECKING:

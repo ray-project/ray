@@ -2658,9 +2658,7 @@ class Dataset(Generic[T]):
             # WriteResult (one element per write task). Otherwise, an error will
             # be raised. The Datasource can handle execution outcomes with the
             # on_write_complete() and on_write_failed().
-            def transform(
-                blocks: Iterable[Block], ctx, fn
-            ) -> Iterable[Block]:
+            def transform(blocks: Iterable[Block], ctx, fn) -> Iterable[Block]:
                 return [[datasource.write(blocks, ctx, **write_args)]]
 
             plan = self._plan.with_stage(
@@ -2675,7 +2673,7 @@ class Dataset(Generic[T]):
             try:
                 self._write_ds = Dataset(plan, self._epoch, self._lazy).fully_executed()
                 datasource.on_write_complete(
-                    self._write_ds._plan.execute().get_blocks()
+                    ray.get(self._write_ds._plan.execute().get_blocks())
                 )
             except Exception as e:
                 datasource.on_write_failed([], e)

@@ -17,10 +17,8 @@ from typing import (
 
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.block_list import BlockMetadata
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
@@ -36,7 +34,7 @@ from ray.data.datasource.partitioning import (
 )
 
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 
 if TYPE_CHECKING:

@@ -5516,6 +5516,7 @@ def test_ragged_tensors(ray_start_regular_shared):
         ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
     ]
 
+
 class LoggerWarningCalled(Exception):
     """Custom exception used in test_warning_execute_with_no_cpu() and
     test_nowarning_execute_with_cpu(). Raised when the `logger.warning` method
