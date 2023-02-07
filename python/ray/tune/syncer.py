@@ -138,6 +138,9 @@ class SyncConfig:
             )
         if not self.upload_dir and isinstance(self.syncer, Syncer):
             raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
+        if not self.upload_dir:
+            # Can't upload artifacts without specifying upload_dir
+            self.sync_artifacts = False
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig.
