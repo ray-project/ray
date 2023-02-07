@@ -40,7 +40,7 @@ class MongoDatasource(Datasource):
     def create_reader(self, **kwargs) -> Reader:
         return _MongoDatasourceReader(**kwargs)
 
-    def direct_write(
+    def write(
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
@@ -71,30 +71,6 @@ class MongoDatasource(Datasource):
         # TODO: decide if we want to return richer object when the task
         # succeeds.
         return "ok"
-
-    @Deprecated
-    def do_write(
-        self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        ray_remote_args: Optional[Dict[str, Any]],
-        uri: str,
-        database: str,
-        collection: str,
-    ) -> List[ObjectRef[WriteResult]]:
-        def write_block(block_idx, block):
-            ctx = TaskContext(task_idx=block_idx)
-            return self.direct_write([block], ctx, uri, database, collection)
-
-        if ray_remote_args is None:
-            ray_remote_args = {}
-
-        write_block = cached_remote_fn(write_block).options(**ray_remote_args)
-        write_tasks = []
-        for idx, block in enumerate(blocks):
-            write_task = write_block.remote(idx, block)
-            write_tasks.append(write_task)
-        return write_tasks
 
 
 class _MongoDatasourceReader(Reader):

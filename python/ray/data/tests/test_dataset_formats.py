@@ -248,7 +248,7 @@ class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
         self.num_ok = 0
         self.num_failed = 0
 
-    def direct_write(
+    def write(
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,

@@ -2653,7 +2653,7 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        if hasattr(datasource, "direct_write"):
+        if hasattr(datasource, "write"):
             # If the write operator succeeds, the resulting Dataset is a list of
             # WriteResult (one element per write task). Otherwise, an error will
             # be raised. The Datasource can handle execution outcomes with the
@@ -2661,7 +2661,7 @@ class Dataset(Generic[T]):
             def transform(
                 blocks: Iterable[Block], ctx, fn
             ) -> Iterable[Block]:
-                return [[datasource.direct_write(blocks, ctx, **write_args)]]
+                return [[datasource.write(blocks, ctx, **write_args)]]
 
             plan = self._plan.with_stage(
                 OneToOneStage(

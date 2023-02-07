@@ -259,7 +259,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             "then you need to implement `_convert_block_to_tabular_block."
         )
 
-    def direct_write(
+    def write(
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
@@ -327,51 +327,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             file_format=file_format,
         )
         return write_block(write_path, block)
-
-    @Deprecated
-    def do_write(
-        self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        path: str,
-        dataset_uuid: str,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        try_create_dir: bool = True,
-        open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
-        write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        _block_udf: Optional[Callable[[Block], Block]] = None,
-        ray_remote_args: Dict[str, Any] = None,
-        **write_args,
-    ) -> List[ObjectRef[WriteResult]]:
-        """Creates and returns write tasks for a file-based datasource."""
-        if ray_remote_args is None:
-            ray_remote_args = {}
-
-        def write_block(block_idx, block):
-            ctx = TaskContext(task_idx=block_idx)
-            return self.direct_write(
-                [block],
-                ctx,
-                path,
-                dataset_uuid,
-                filesystem,
-                try_create_dir,
-                open_stream_args,
-                block_path_provider,
-                write_args_fn,
-                _block_udf,
-                **write_args,
-            )
-
-        write_block = cached_remote_fn(write_block).options(**ray_remote_args)
-
-        write_tasks = []
-        for block_idx, block in enumerate(blocks):
-            write_task = write_block.remote(block_idx, block)
-            write_tasks.append(write_task)
-
-        return write_tasks
 
     def _write_block(
         self,

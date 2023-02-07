@@ -51,7 +51,7 @@ class Datasource(Generic[T]):
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
-    def direct_write(
+    def write(
         self,
         blocks: Iterable[Block],
         **write_args,
@@ -348,7 +348,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         self.num_failed = 0
         self.enabled = True
 
-    def direct_write(
+    def write(
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
