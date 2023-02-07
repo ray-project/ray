@@ -545,7 +545,6 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial_runner,
                 upper_quantile,
                 lower_quantile,
-                is_current_incoming_trial=True,
             )
             # By now, if the trial needs to be checkpointed and paused,
             # the checkpoint part has already happened and runner only
@@ -565,6 +564,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 for t in trial_runner.get_live_trials()
             ):
                 logger.debug("Pausing trial {}".format(trial))
+                # Normal PAUSE with checkpointing.
+                return TrialScheduler.PAUSE
             else:
                 # All trials are synced at the same timestep.
                 lower_quantile, upper_quantile = self._quantiles()
@@ -585,7 +586,6 @@ class PopulationBasedTraining(FIFOScheduler):
                         trial_runner,
                         upper_quantile,
                         lower_quantile,
-                        is_current_incoming_trial=(t == trial),
                     )
 
                 all_train_times = [
@@ -597,16 +597,16 @@ class PopulationBasedTraining(FIFOScheduler):
                     self._next_perturbation_sync + self._perturbation_interval,
                     max_last_train_time,
                 )
-            # In sync mode we should pause all trials once result comes in.
-            # Once a perturbation step happens for all trials, they should
-            # still all be paused.
-            # choose_trial_to_run will then pick the next trial to run out of
-            # the paused trials.
-            return (
-                TrialScheduler.NOOP
-                if trial.status == Trial.PAUSED
-                else TrialScheduler.PAUSE_WO_CKPT
-            )
+                # In sync mode we should pause all trials once result comes in.
+                # Once a perturbation step happens for all trials, they should
+                # still all be paused.
+                # choose_trial_to_run will then pick the next trial to run out of
+                # the paused trials.
+                return (
+                    TrialScheduler.NOOP
+                    if trial.status == Trial.PAUSED
+                    else TrialScheduler.PAUSE_WO_CKPT
+                )
 
     def _save_trial_state(
         self, state: _PBTTrialState, time: int, result: Dict, trial: Trial
@@ -634,15 +634,11 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_runner: "trial_runner.TrialRunner",
         upper_quantile: List[Trial],
         lower_quantile: List[Trial],
-        is_current_incoming_trial: bool,
     ):
         """Checkpoint if in upper quantile, exploits if in lower.
 
         This is invoked when the trial is either in PAUSED state
         (roughly ~ sync pbt) or running state (roughly ~ async pbt).
-
-        Returns:
-            A boolean indicate that if the trial is just saved.
         """
         state = self._trial_state[trial]
         if trial in upper_quantile:
