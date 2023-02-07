@@ -59,7 +59,7 @@ class StrKey(str):
 
 @ExperimentalAPI
 class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
-    """A dict with special properties to support indexing with a sequence of strings.
+    """A dict with special properties to support partial indexing.
 
     The main properties of NestedDict are::
         * The nested dict gives access to nested elements as a sequence of
@@ -73,8 +73,6 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         empty leafs.
         * Iterating over a nested dict yields the leaves of the tree, including empty
         leafs.
-    More information on these properties can be found in the docstrings of the
-    respective methods.
 
     Args:
         x: a representation of a nested dict: it can be an iterable of `SeqStrType`
@@ -139,6 +137,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
             raise ValueError(f"Input must be a Mapping or Iterable, got {type(x)}.")
 
     def __contains__(self, k: SeqStrType) -> bool:
+        """Returns true if the key is in the nested dict."""
         k = _flatten_index(k)
 
         data_ptr = self._data  # type: Dict[str, Any]
@@ -156,12 +155,13 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         self, k: SeqStrType, default: Optional[T] = None
     ) -> Union[T, "NestedDict[T]"]:
         """Returns `self[k]`, with partial indexing allowed.
+
         If `k` is not in the `NestedDict`, returns default. If default is `None`,
         and `k` is not in the `NestedDict`, a `KeyError` is raised.
 
         Args:
-            k: the key to get. This can be a string or a sequence of strings.
-            default: the default value to return if `k` is not in the `NestedDict`. If
+            k: The key to get. This can be a string or a sequence of strings.
+            default: The default value to return if `k` is not in the `NestedDict`. If
                 default is `None`, and `k` is not in the `NestedDict`, a `KeyError` is
                 raised.
 
@@ -192,8 +192,11 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         return output
 
     def __setitem__(self, k: SeqStrType, v: Union[T, _NestedMappingType]) -> None:
-        """This is a zero-copy operation. The pointer to value if preserved in the
-        internal data structure."""
+        """Sets item at `k` to `v`.
+
+        This is a zero-copy operation. The pointer to value if preserved in the
+        internal data structure.
+        """
         if not k:
             raise IndexError(
                 f"Key for {self.__class__.__name__} cannot be empty. Got {k}."
@@ -236,6 +239,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
                 yield tuple(k)
 
     def __delitem__(self, k: SeqStrType) -> None:
+        """Deletes item at `k`."""
         ks, ns = [], []
         data_ptr = self._data
         for k in _flatten_index(k):
@@ -287,6 +291,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         ignore_missing: bool = False,
     ) -> "NestedDict[T]":
         """Returns a NestedDict with only entries present in `other`.
+
         The values in the `other` NestedDict are ignored. Only the keys are used.
 
         Args:
