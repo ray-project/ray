@@ -239,7 +239,6 @@ class TfRLTrainer(RLTrainer):
         batch = NestedDict(batch.policy_batches)
         for key, value in batch.items():
             batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
-        batch = batch.asdict()
         return batch
 
     @override(RLTrainer)

@@ -116,7 +116,7 @@ class TorchRLTrainer(RLTrainer):
                 )
                 # this is an index into the available cuda devices. For example if
                 # os.environ["CUDA_VISIBLE_DEVICES"] = "1" then
-                # torch.cuda.device_count() = 0 and torch.device(0) will actuall map to
+                # torch.cuda.device_count() = 1 and torch.device(0) will actuall map to
                 # the gpu with id 1 on the node.
                 self._device = torch.device(self._local_gpu_idx)
         else:
