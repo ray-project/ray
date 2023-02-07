@@ -32,7 +32,7 @@ class Datasource(Generic[T]):
     of how to implement readable and writable datasources.
 
     Datasource instances must be serializable, since ``create_reader()`` and
-    ``do_write()`` are called in remote tasks.
+    ``write()`` are called in remote tasks.
     """
 
     def create_reader(self, **read_args) -> "Reader[T]":
@@ -63,11 +63,13 @@ class Datasource(Generic[T]):
             write_args: Additional kwargs to pass to the datasource impl.
 
         Returns:
-            The output of the write tasks.
+            The output of the write task.
         """
         raise NotImplementedError
 
-    @Deprecated
+    @Deprecated(
+        message="do_write() is deprecated in Ray 2.4. Use write() instead", warning=True
+    )
     def do_write(
         self,
         blocks: List[ObjectRef[Block]],
