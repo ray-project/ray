@@ -140,7 +140,7 @@ void TaskEventBufferImpl::AddTaskEvent(TaskEvent task_event) {
   auto limit = RayConfig::instance().task_events_max_num_task_events_in_buffer();
   if (limit > 0 && buffer_.full()) {
     const auto &to_evict = buffer_.front();
-    if (to_evict.profile_events.has_value()) {
+    if (to_evict.IsProfileEvent()) {
       num_profile_task_events_dropped_++;
     } else {
       num_status_task_events_dropped_++;
