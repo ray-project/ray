@@ -642,6 +642,9 @@ class RLTrainer:
                 "RLTrainer and before calling any methods on it."
             )
 
+    def apply(self, func, *_args, **_kwargs):
+        return func(self, *_args, **_kwargs)
+
 
 @dataclass
 class RLTrainerSpec:
