@@ -35,20 +35,24 @@ except (ImportError, ModuleNotFoundError):
 
 from ray import logger
 
-if pyarrow and packaging.version.parse(pyarrow.__version__) < packaging.version.parse(
-    "11.0.0"
+
+def _pyarrow_fs_copy_files(
+    source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    # Fixes an issue with pyarrow<11.0.0 where pyarrow.fs.copy_files
-    # deadlocks if there are more files in a directory than
-    # there are CPUs available.
-    _PYARROW_COPY_FILES_DEFAULT_KWARGS = {"use_threads": False}
-else:
-    _PYARROW_COPY_FILES_DEFAULT_KWARGS = {}
+    if isinstance(source_filesystem, pyarrow.fs.S3FileSystem) or isinstance(
+        destination_filesystem, pyarrow.fs.S3FileSystem
+    ):
+        # Workaround multi-threading issue with pyarrow
+        # https://github.com/apache/arrow/issues/32372
+        kwargs.setdefault("use_threads", False)
 
-
-def _pyarrow_fs_copy_files(*args, **kwargs):
-    kwargs = {**_PYARROW_COPY_FILES_DEFAULT_KWARGS, **kwargs}
-    return pyarrow.fs.copy_files(*args, **kwargs)
+    return pyarrow.fs.copy_files(
+        source,
+        destination,
+        source_filesystem=source_filesystem,
+        destination_filesystem=destination_filesystem,
+        **kwargs,
+    )
 
 
 def _assert_pyarrow_installed():
