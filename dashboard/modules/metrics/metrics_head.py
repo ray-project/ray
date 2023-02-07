@@ -45,6 +45,7 @@ DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
 GRAFANA_HOST_DISABLED_VALUE = "DISABLED"
 GRAFANA_IFRAME_HOST_ENV_VAR = "RAY_GRAFANA_IFRAME_HOST"
+GRAFANA_DEFAULT_DASHBOARD_UID = "RAY_GRAFANA_DEFAULT_DASHBOARD_UID"
 GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 GRAFANA_HEALTHCHECK_PATH = "api/health"
@@ -111,6 +112,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR,
             os.path.join(grafana_config_output_path, "dashboards"),
         )
+        self._grafana_default_dashboard_uid = os.environ.get(
+            GRAFANA_DEFAULT_DASHBOARD_UID, "rayDefaultDashboard"
+        )
 
         self._session = aiohttp.ClientSession()
         self._ip = dashboard_head.ip
@@ -159,6 +163,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
                     session_name=self._session_name,
+                    grafana_default_dashboard_uid=self._grafana_default_dashboard_uid,
                 )
 
         except Exception as e:
@@ -341,7 +346,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             ),
             "w",
         ) as f:
-            f.write(generate_grafana_dashboard())
+            f.write(generate_grafana_dashboard(self._grafana_default_dashboard_uid))
 
     def _create_default_prometheus_configs(self):
         """

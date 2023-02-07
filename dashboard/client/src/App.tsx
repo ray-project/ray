@@ -54,6 +54,10 @@ type GlobalContextType = {
    */
   grafanaHost: string | undefined;
   /**
+   * The uid of the default dashboard that powers the Metrics page.
+   */
+  grafanaDefaultDashboardUid: string | undefined;
+  /**
    * Whether prometheus is runing or not
    */
   prometheusHealth: boolean | undefined;
@@ -68,6 +72,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   ipLogMap: {},
   namespaceMap: {},
   grafanaHost: undefined,
+  grafanaDefaultDashboardUid: undefined,
   prometheusHealth: undefined,
   sessionName: undefined,
 });
@@ -85,6 +90,7 @@ const App = () => {
     ipLogMap: {},
     namespaceMap: {},
     grafanaHost: undefined,
+    grafanaDefaultDashboardUid: undefined,
     prometheusHealth: undefined,
     sessionName: undefined,
   });
@@ -126,11 +132,16 @@ const App = () => {
   // Detect if grafana is running
   useEffect(() => {
     const doEffect = async () => {
-      const { grafanaHost, sessionName, prometheusHealth } =
-        await getMetricsInfo();
+      const {
+        grafanaHost,
+        sessionName,
+        prometheusHealth,
+        grafanaDefaultDashboardUid,
+      } = await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
         grafanaHost,
+        grafanaDefaultDashboardUid,
         sessionName,
         prometheusHealth,
       }));

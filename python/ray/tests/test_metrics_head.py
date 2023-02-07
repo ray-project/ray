@@ -1,4 +1,5 @@
 # coding: utf-8
+import json
 import logging
 import os
 import pytest
@@ -47,7 +48,17 @@ def override_dashboard_dir():
         del os.environ["RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"]
 
 
-def test_metrics_folder_with_dashboard_override(override_dashboard_dir):
+@pytest.fixture
+def override_dashboard_uid():
+    uid = "test_uid_ses_12345"
+    os.environ["RAY_GRAFANA_DEFAULT_DASHBOARD_UID"] = "test_uid_ses_12345"
+    yield uid
+    del os.environ["RAY_GRAFANA_DEFAULT_DASHBOARD_UID"]
+
+
+def test_metrics_folder_with_dashboard_override(
+    override_dashboard_dir, override_dashboard_uid
+):
     """
     Tests that the default dashboard files get created.
     """
@@ -61,6 +72,9 @@ def test_metrics_folder_with_dashboard_override(override_dashboard_dir):
         ) as f:
             contents = f.read()
             assert override_dashboard_dir in contents
+        with open(f"{override_dashboard_dir}/default_grafana_dashboard.json") as f:
+            contents = json.loads(f.read())
+            assert contents["uid"] == override_dashboard_uid
 
 
 def test_metrics_folder_when_dashboard_disabled():
