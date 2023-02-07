@@ -236,7 +236,7 @@ class ResultGrid:
             metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
                 trial.logdir
             )
-            if self._experiment_analysis
+            if self._experiment_analysis.trial_dataframes
             else None,
             best_checkpoints=best_checkpoints,
         )

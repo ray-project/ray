@@ -146,6 +146,7 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
 
     class MockExperimentAnalysis:
         trials = []
+        trial_dataframes = None
 
     result_grid = ResultGrid(MockExperimentAnalysis())
 
