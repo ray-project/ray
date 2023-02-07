@@ -2,29 +2,23 @@
 ```
 
 # Welcome to the Ray documentation
+Today's ML workloads are increasingly compute-intensive. While convenient, single-node development environments such as your laptop cannot scale to meet these demands.
 
+With Ray, you can seamlessly scale Python code from a laptop to a cluster. Ray is designed to be general-purpose, so it performantly runs any kind of workload. If your application is in Python, you can scale it with Ray, without any additional infrastructure.
 
 ## What is Ray?
 
-Ray is a unified framework for scaling AI and Python applications. Ray provides the compute layer to scale applications without a distributed systems expert. These are some key processes that Ray automatically handles:
+Ray is a unified framework for scaling AI and Python applications. It provides the compute layer to scale applications without a distributed systems expert. Ray automatically handles these key processes:
 
 * **Orchestration**--Managing the various components of a distributed system.
 * **Scheduling**--Coordinating when and where tasks are executed.
 * **Fault tolerance**--Ensuring tasks complete regardless of inevitable points of failure.
 * **Auto-scaling**--Adjusting the number of resources allocated to dynamic demand.
 
-To lower the effort needed to scale compute intensive workloads, Ray takes a Python-first approach and integrates with many common data science tools. This allows ML practitioners to parallelize Python applications from a laptop to a cluster with minimal code changes.
+To lower the effort needed to scale compute intensive workloads, Ray takes a Python-first approach and integrates with many common data science tools. ML practitioners can parallelize Python applications from a laptop to a cluster with minimal code changes.
 
 
-## Why Ray?
-
-Today's ML workloads are increasingly compute-intensive. As convenient as they are, single-node development environments such as your laptop cannot scale to meet these demands.
-
-Ray is a unified way to scale Python and AI applications from a laptop to a cluster.
-
-With Ray, you can seamlessly scale the same code from a laptop to a cluster. Ray is designed to be general-purpose, meaning that it can performantly run any kind of workload. If your application is written in Python, you can scale it with Ray, no other infrastructure required.
-
-## What can you do with Ray?
+## What you can do with Ray
 
 
 ````{panels}
@@ -92,7 +86,7 @@ Ray's unified compute framework comprises of four layers:
 1. **Ray Core**--An open-source, Python, general purpose, distributed computing library that enables ML engineers and Python developers to scale Python applications and accelerate machine learning workloads.
 1. **Ray cluster**--A set of worker nodes connected to a common Ray head node. Ray clusters can be fixed-size, or they can autoscale up and down according to the resources requested by applications running on the cluster.
 
-## Ray AIR and Ray Core
+## Ray Core and Ray AIR
 
 Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for
 simplifying ML compute:
@@ -101,17 +95,20 @@ simplifying ML compute:
 
 &nbsp;
 
-Learn more about [Ray AIR](ray-air/getting-started) and its libraries:
-- [Datasets](data/dataset): Distributed Data Preprocessing
-- [Train](train/train): Distributed Training
-- [Tune](tune/index): Scalable Hyperparameter Tuning
-- [Serve](serve/index): Scalable and Programmable Serving
-- [RLlib](rllib/index): Scalable Reinforcement Learning
+[Ray Core](ray-core/walkthrough) is the foundation that Ray's ML libraries (Ray AIR) and third-party integrations (Ray ecosystem) are built on. This library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud or Kubernetes.
 
-Or more about [Ray Core](ray-core/walkthrough) and its key abstractions:
-- [Tasks](ray-core/tasks): Stateless functions executed in the cluster.
-- [Actors](ray-core/actors): Stateful worker processes created in the cluster.
-- [Objects](ray-core/objects): Immutable values accessible across the cluster.
+Ray gives you flexibility with easy-to-use primitives in native Python code for composing distributed applications. Getting started with Ray Core involves a few key abstractions:
+
+- [Tasks](ray-core/tasks): Stateless Python functions executed in the cluster.
+- [Actors](ray-core/actors): Stateful Python classes (worker processes) created in the cluster.
+- [Objects](ray-core/objects): Immutable values accessible across the cluster; cached in Ray's distributed [shared-memory](https://en.wikipedia.org/wiki/Shared_memory) object store.
+
+[Ray AIR](ray-air/getting-started) is built on top of Ray Core and focuses on distributed individual and end-to-end machine learning workflows. Each of the five native libraries that Ray AIR wraps distributes a specific ML task:
+- [Datasets](data/dataset): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
+- [Serve](serve/index): Scalable and programmable serving to deploy models for online inference, with optional microbatching to improve performance.
+- [RLlib](rllib/index): Scalable distributed reinforcement learning workloads that integrate with the other Ray AIR libraries.
+- [Train](train/train): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
+- [Tune](tune/index): Scalable hyperparameter tuning to optimize model performance.
 
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 [ecosystem of community integrations](ray-overview/ray-libraries).
@@ -191,17 +188,17 @@ Spotify [uses Ray for advanced applications](https://www.anyscale.com/ray-summit
 See [ML platform examples](https://docs.ray.io/en/latest/ray-overview/use-cases.html#ml-platform) for use cases.
 
 
-## How to get involved?
+## Getting involved
 
-Ray is more than a framework for distributed applications but also an active community of developers, researchers, and folks that love machine learning.
-Here's a list of tips for getting involved with the Ray community:
+Ray is a framework for distributed applications and also an active community of developers, researchers, and folks that love machine learning.
+Here's how to get involved with the Ray community:
 
 ```{include} _includes/_contribute.md
 ```
 
-If you're interested in contributing to Ray, check out our
-[contributing guide for this release](ray-contribute/getting-involved)
-or see the
+If you're interested in contributing to Ray, see the
+[contributing guide for the current release](ray-contribute/getting-involved)
+or the
 [latest version of our contributing guide](https://docs.ray.io/en/latest/ray-contribute/getting-involved.html)
 to read about the contribution process and see what you can work on.
 
