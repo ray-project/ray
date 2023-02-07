@@ -43,11 +43,15 @@ class TorchDetectionPredictor(TorchPredictor):
 
         .. testcode::
 
+            import numpy as np
+            from torchvision import models
+
             import ray
             from ray.train.batch_predictor import BatchPredictor
-            from ray.train.torch import TorchCheckpoint
+            from ray.train.torch import TorchCheckpoint, TorchDetectionPredictor
 
             dataset = ray.data.from_items([{"image": np.zeros((3, 32, 32), dtype=np.float32)}])
+            model = models.detection.fasterrcnn_resnet50_fpn_v2(pretrained=True)
             checkpoint = TorchCheckpoint.from_model(model)
             predictor = BatchPredictor.from_checkpoint(checkpoint, TorchDetectionPredictor)
             predictions = predictor.predict(dataset, feature_columns=["image"])
