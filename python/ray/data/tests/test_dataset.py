@@ -59,6 +59,10 @@ class SlowCSVDatasource(CSVDatasource):
 # https://github.com/ray-project/ray/issues/20625
 @pytest.mark.parametrize("block_split", [False, True])
 def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
+    # Defensively shutdown Ray for the first test here to make sure there
+    # is no existing Ray cluster.
+    ray.shutdown()
+
     ray.init(num_cpus=8)
     ctx = ray.data.context.DatasetContext.get_current()
 
