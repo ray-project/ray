@@ -1,6 +1,8 @@
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
+from ray.rllib.utils.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class MiniBatchCyclicIterator:
     """This implements a simple multi-agent minibatch iterator.
 
