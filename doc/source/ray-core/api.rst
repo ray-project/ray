@@ -8,7 +8,7 @@ API References
     api/scheduling.rst
     api/runtime-env.rst
     api/utility.rst
-    package-ref.rst
+    api/exceptions.rst
     cli.rst
     ../ray-observability/state/cli.rst
     ../ray-observability/state/ray-state-api-reference.rst
