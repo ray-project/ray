@@ -17,7 +17,8 @@ from ray.exceptions import (
     ObjectLostError,
 )
 from ray._private.utils import DeferSigint
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.experimental.state.api import list_tasks
 
 
 def valid_exceptions(use_force):
@@ -526,6 +527,73 @@ def test_recursive_cancel(shutdown_only, use_force):
         ray.get(outer_fut, timeout=10)
 
     assert ray.get(many_fut, timeout=30)
+
+
+def test_recursive_cancel_actor_task(shutdown_only):
+    ray.init()
+
+    @ray.remote(num_cpus=0)
+    class Semaphore:
+        def wait(self):
+            print("wait called")
+            time.sleep(600)
+
+    @ray.remote(num_cpus=0)
+    class Actor2:
+        def __init__(self, obj):
+            (self.obj,) = obj
+
+        def cancel(self):
+            ray.cancel(self.obj)
+
+    @ray.remote
+    def task(sema):
+        return ray.get(sema.wait.remote())
+
+    sema = Semaphore.remote()
+
+    t = task.remote(sema)
+
+    def wait_until_wait_task_starts():
+        wait_state = list_tasks(
+            filters=[("func_or_class_name", "=", "Semaphore.wait")]
+        )[0]
+        return wait_state["state"] == "RUNNING"
+
+    wait_for_condition(wait_until_wait_task_starts)
+
+    # Make sure this will not crash ray.
+    # https://github.com/ray-project/ray/issues/31398
+    a2 = Actor2.remote((t,))
+    a2.cancel.remote()
+
+    with pytest.raises(RayTaskError, match="TaskCancelledError"):
+        ray.get(t)
+
+    wait_state = list_tasks(filters=[("func_or_class_name", "=", "Semaphore.wait")])
+    assert len(wait_state) == 1
+    wait_state = wait_state[0]
+    task_state = list_tasks(filters=[("func_or_class_name", "=", "task")])
+    assert len(task_state) == 1
+    task_state = task_state[0]
+
+    def verify():
+        wait_state = list_tasks(filters=[("func_or_class_name", "=", "Semaphore.wait")])
+        assert len(wait_state) == 1
+        wait_state = wait_state[0]
+        task_state = list_tasks(filters=[("func_or_class_name", "=", "task")])
+        assert len(task_state) == 1
+        task_state = task_state[0]
+
+        assert task_state["state"] == "FINISHED"
+        assert wait_state["state"] == "RUNNING"
+
+        return True
+
+    wait_for_condition(verify)
+
+    print("done")
+    time.sleep(50)
 
 
 if __name__ == "__main__":
