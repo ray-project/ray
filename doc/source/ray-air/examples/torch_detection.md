@@ -16,14 +16,12 @@ jupyter:
 
 This tutorial explains how to fine-tune `fasterrcnn_resnet50_fpn` on
 [Pascal VOC](http://host.robots.ox.ac.uk/pascal/VOC/), a canonical object detection
-dataset.
+dataset, using the [Ray AI Runtime](air) for parallel data ingest and training.
 
 Here's what you'll do:
 1. Load Pascal VOC into a Dataset
 2. Fine-tune `fasterrcnn_resnet50_fpn`
 3. Evaluate the model's accuracy
-
-By the end of this tutorial, you'll have a fine-tuned detection model.
 
 You should be familiar with [PyTorch](https://pytorch.org/) before starting the
 tutorial. If you need a refresher, read PyTorch's
@@ -141,12 +139,13 @@ Notice how there's one object labeled "train"
 </bndbox>
 ```
 
-A Datasource is an object that reads data of a particular type. For example, Ray
-implements a Datasource that reads CSV files.
+[Ray Datasets](datasets) lets you read and preprocess data in parallel. Datasets doesn't
+have built-in support for Pascal VOC annotations, so you'll need to define a custom
+datasource.
 
-Ray doesn't provide built-in support for Pascal VOC annotations, so you'll define a
-custom datasource. Your datasource will parse labels and bounding boxes from XML files.
-Later, you'll read the corresponding images.
+A Datasource is an object that reads data of a particular type. For example, Datasets
+implements a Datasource that reads CSV files. Your datasource will parse labels and
+bounding boxes from XML files. Later, you'll read the corresponding images.
 
 To implement the datasource, extend the built-in `FileBasedDatasource` class
 and override the `_read_file` method.
@@ -267,7 +266,6 @@ to preprocess data with Ray.
 To preprocess the images, create a `TorchVisionPreprocessor` and call
 `Preprocessor.transform` on the dataset.
 
-
 ```python
 from torchvision import transforms
 
@@ -282,16 +280,19 @@ per_epoch_preprocessor = TorchVisionPreprocessor(columns=["image"], transform=pe
 
 ## Fine-tune the object detection model
 
-
 ### Define the training loop
 
+Write a function that trains `fasterrcnn_resnet50_fpn`. Your code will look like
+standard Torch code with a few changes.
 
-Write a function that trains `fasterrcnn_resnet50_fpn`. Your
-function should contain standard Torch code with the following changes:
-1. Wrap your model with `ray.train.torch.prepare_model` instead of `DistributedDataParallel`.
-2. Distribute data with `session.get_dataset_shard` instead of `DistributedSampler`.
-3. Iterate over data with `DatasetIterator.iter_batches` instead of `DataLoader`.
-5. Report metrics and checkpoints with `session.report`.
+Here are a few things to point out:
+1. Wrap your model with `ray.train.torch.prepare_model`. Don't use `DistributedDataParallel`.
+2. Pass your Dataset to the Trainer. The Trainer automatically shards the data across workers.
+3. Iterate over data with `DatasetIterator.iter_batches`. Don't use a `DataLoader`.
+
+In addition, report metrics and checkpoints with `session.report`. `session.report`
+lets you monitor training and analyze training runs after they've finished. If you're
+performing hyperparameter tuning,
 
 ```python
 import torch
@@ -345,6 +346,7 @@ def train_one_epoch(*, model, optimizer, batch_size, epoch):
 
 
 def train_loop_per_worker(config):
+    # By default, `fasterrcnn_resnet50_fpn`'s backbone is pre-trained on ImageNet.
     model = models.detection.fasterrcnn_resnet50_fpn(num_classes=21)
     model = ray.train.torch.prepare_model(model)
     parameters = [p for p in model.parameters() if p.requires_grad]
@@ -403,6 +405,8 @@ trainer = TorchTrainer(
     scaling_config=ScalingConfig(num_workers=8, use_gpu=True),
     datasets={"train": train_dataset},
     dataset_config={
+        # Don't augment test images. Only apply `per_epoch_preprocessor` to the train
+        # set.
         "train": DatasetConfig(
             per_epoch_preprocessor=per_epoch_preprocessor,
         ),
@@ -417,8 +421,12 @@ results = trainer.fit()
 ### Generate predictions on the test data
 
 
+`Predictors` let you perform scalable [batch prediction](batch-prediction) and
+[online inference](air-serving-guide). To evaluate the model, you'll use
+`BatchPredictor` to perform inference in a distributed fashion.
+
 Create a `BatchPredictor` and pass `TorchDetectionPredictor` to the constructor. Then,
-call `BatchPredictor.predict` to detect objects in the test dataset.
+call `BatchPredictor.predict` to detect objects in the test data.
 
 ```python
 from ray.train.batch_predictor import BatchPredictor
