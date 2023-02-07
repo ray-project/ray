@@ -21,6 +21,9 @@ from ray.data._internal.execution.operators.map_operator import (
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
+# Type alias for a node id.
+NodeIdStr = str
+
 
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool."""
@@ -74,6 +77,7 @@ class ActorPoolMapOperator(MapOperator):
         return len(self._bundle_queue)
 
     def start(self, options: ExecutionOptions):
+        self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options)
 
         # Create the actor workers and add them to the pool.
@@ -103,7 +107,7 @@ class ActorPoolMapOperator(MapOperator):
         """
         while self._bundle_queue:
             # Pick an actor from the pool.
-            if self._options.actor_locality_enabled:
+            if self._actor_locality_enabled:
                 selected_pair = self._actor_pool.pick_actor_and_bundle_locality_aware(
                     self._bundle_queue
                 )
@@ -217,6 +221,10 @@ class ActorPoolMapOperator(MapOperator):
         pending = self._actor_pool.num_pending_actors()
         if pending:
             base += f" ({pending} pending)"
+        # TODO(ekl): remove this once we enable by default.
+        if self._actor_locality_enabled:
+            base += f" [{self._actor_pool._locality_hits} locality hits,"
+            base += f" {self._actor_pool._locality_misses} misses]"
         return base
 
     def base_resource_usage(self) -> ExecutionResources:
@@ -253,6 +261,13 @@ class ActorPoolMapOperator(MapOperator):
             num_gpus = 0
         return ExecutionResources(cpu=num_cpus, gpu=num_gpus)
 
+    def get_metrics(self) -> Dict[str, int]:
+        parent = super().get_metrics()
+        if self._actor_locality_enabled:
+            parent["locality_hits"] = self._actor_pool._locality_hits
+            parent["locality_misses"] = self._actor_pool._locality_misses
+        return parent
+
     @staticmethod
     def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
         """Apply defaults to the actor creation remote args."""
@@ -269,7 +284,7 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
-    def get_location(self) -> str:
+    def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
 
     def submit(
@@ -505,14 +520,15 @@ class _ActorPool:
         """
 
         assert len(bundles) == self._locality_manager.num_tracked_bundles(), (
-            len(bundles) == self._locality_manager.num_tracked_bundles()
+            len(bundles),
+            self._locality_manager.num_tracked_bundles(),
         )
 
         # Generate candidate list of [no_local, num_tasks_in_flight, actor]
         candidates: List[Tuple[bool, int, ray.actor.ActorHandle]] = []
         for actor, num_in_flight in self._num_tasks_in_flight.items():
             if num_in_flight < self._max_tasks_in_flight:
-                actor_location = self._get_actor_location(actor)
+                actor_location = self._actor_locations[actor]
                 matching = self._locality_manager.get_bundles_at_location(
                     actor_location
                 )
@@ -524,11 +540,11 @@ class _ActorPool:
             return None
 
         # Find the best candidate pair.
-        candidates.sort()
+        candidates.sort(key=lambda t: t[:2])
         _, _, actor = candidates[0]
 
         # Generate the pair.
-        actor_location = self._get_actor_location(actor)
+        actor_location = self._actor_locations[actor]
         matching = self._locality_manager.get_bundles_at_location(actor_location)
         if matching:
             self._locality_hits += 1
@@ -665,16 +681,41 @@ class _ActorPool:
 
 class _LocalityManager:
     def __init__(self):
-        pass
+        self._loc_to_bundles: Dict[
+            NodeIdStr, List[RefBundle]
+        ] = collections.defaultdict(list)
+        self._bundle_to_loc: Dict[RefBundle, Optional[NodeIdStr]] = {}
+        self._num_bundles = 0
 
     def start_tracking(self, bundle: RefBundle) -> None:
-        raise NotImplementedError
+        loc = self._get_location(bundle)
+        if loc:
+            self._loc_to_bundles[loc].append(bundle)
+            self._bundle_to_loc[bundle] = loc
+        else:
+            self._bundle_to_loc[bundle] = None
+        self._num_bundles += 1
 
     def stop_tracking(self, bundle: RefBundle) -> None:
-        raise NotImplementedError
+        loc = self._bundle_to_loc.pop(bundle)
+        if loc is not None:
+            self._loc_to_bundles[loc].remove(bundle)
+        self._num_bundles -= 1
 
-    def get_bundles_at_location(self, node_id: str) -> List[RefBundle]:
-        raise NotImplementedError
+    def get_bundles_at_location(self, node_id: NodeIdStr) -> List[RefBundle]:
+        return self._loc_to_bundles[node_id]
 
     def num_tracked_bundles(self) -> int:
-        raise NotImplementedError
+        return self._num_bundles
+
+    @staticmethod
+    def _get_location(bundle: RefBundle) -> Optional[NodeIdStr]:
+        ref = bundle.blocks[0][0]
+        # This call is pretty fast for owned objects (~5k/s), so we don't need to
+        # batch it for now.
+        locs = ray.experimental.get_object_locations([ref])
+        nodes = locs[ref]["node_ids"]
+        if nodes:
+            return nodes[0]
+        else:
+            return None

@@ -70,6 +70,12 @@ class RefBundle:
             trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
         return self.size_bytes() if should_free else 0
 
+    def __eq__(self, other) -> bool:
+        return self is other
+
+    def __hash__(self) -> int:
+        return id(self)
+
 
 @dataclass
 class ExecutionResources:
