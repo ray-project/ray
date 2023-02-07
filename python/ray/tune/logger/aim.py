@@ -47,7 +47,7 @@ class AimLoggerCallback(LoggerCallback):
         metrics: List of metric names (out of the metrics reported by Tune) to
             track in Aim. If no metric are specified, log everything that
             is reported.
-        **aim_run_kwargs: Additional arguments that will be passed when creating the
+        aim_run_kwargs: Additional arguments that will be passed when creating the
             individual `Run` objects for each trial. For the full list of arguments,
             please see the Aim documentation:
             https://aimstack.readthedocs.io/en/latest/refs/sdk.html
