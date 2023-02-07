@@ -1,6 +1,7 @@
 import collections
 import itertools
 import logging
+import os
 import sys
 import time
 import html
@@ -76,6 +77,7 @@ from ray.data._internal.stage_impl import (
     ZipStage,
     SortStage,
 )
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
@@ -112,6 +114,10 @@ from ray.data.datasource import (
     ReadTask,
     TFRecordDatasource,
     WriteResult,
+)
+from ray.data.datasource.file_based_datasource import (
+    _unwrap_arrow_serialization_workaround,
+    _wrap_arrow_serialization_workaround,
 )
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
@@ -2647,28 +2653,68 @@ class Dataset(Generic[T]):
                 soft=False,
             )
 
-        # If the write operator succeeds, the resulting Dataset is a list of
-        # WriteResult (one element per write task). Otherwise, an error will
-        # be raised. The Datasource can handle execution outcomes with the
-        # on_write_complete() and on_write_failed().
-        def transform(blocks: Iterable[Block], ctx, fn) -> List[ObjectRef[WriteResult]]:
-            return [[datasource.direct_write(blocks, ctx, **write_args)]]
+        if hasattr(datasource, "direct_write"):
+            # If the write operator succeeds, the resulting Dataset is a list of
+            # WriteResult (one element per write task). Otherwise, an error will
+            # be raised. The Datasource can handle execution outcomes with the
+            # on_write_complete() and on_write_failed().
+            def transform(
+                blocks: Iterable[Block], ctx, fn
+            ) -> Iterable[Block]:
+                return [[datasource.direct_write(blocks, ctx, **write_args)]]
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "write",
-                transform,
-                "tasks",
-                ray_remote_args,
-                fn=lambda x: x,
+            plan = self._plan.with_stage(
+                OneToOneStage(
+                    "write",
+                    transform,
+                    "tasks",
+                    ray_remote_args,
+                    fn=lambda x: x,
+                )
             )
-        )
-        try:
-            self._write_ds = Dataset(plan, self._epoch, self._lazy).fully_executed()
-            datasource.on_write_complete(self._write_ds._plan.execute().get_blocks())
-        except Exception as e:
-            datasource.on_write_failed([], e)
-            raise
+            try:
+                self._write_ds = Dataset(plan, self._epoch, self._lazy).fully_executed()
+                datasource.on_write_complete(
+                    self._write_ds._plan.execute().get_blocks()
+                )
+            except Exception as e:
+                datasource.on_write_failed([], e)
+                raise
+        else:
+            ctx = DatasetContext.get_current()
+            blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
+
+            # TODO(ekl) remove this feature flag.
+            if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
+                write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
+                    blocks, metadata, ray_remote_args=ray_remote_args, **write_args
+                )
+            else:
+                # Prepare write in a remote task so that in Ray client mode, we
+                # don't do metadata resolution from the client machine.
+                do_write = cached_remote_fn(
+                    _do_write, retry_exceptions=False, num_cpus=0
+                )
+                write_results: List[ObjectRef[WriteResult]] = ray.get(
+                    do_write.remote(
+                        datasource,
+                        ctx,
+                        blocks,
+                        metadata,
+                        ray_remote_args,
+                        _wrap_arrow_serialization_workaround(write_args),
+                    )
+                )
+
+            progress = ProgressBar("Write Progress", len(write_results))
+            try:
+                progress.block_until_complete(write_results)
+                datasource.on_write_complete(ray.get(write_results))
+            except Exception as e:
+                datasource.on_write_failed(write_results, e)
+                raise
+            finally:
+                progress.close()
 
     def iterator(self) -> DatasetIterator:
         """Return a :class:`~ray.data.DatasetIterator` that
@@ -4391,3 +4437,16 @@ def _sliding_window(iterable: Iterable, n: int):
     for elem in it:
         window.append(elem)
         yield tuple(window)
+
+
+def _do_write(
+    ds: Datasource,
+    ctx: DatasetContext,
+    blocks: List[Block],
+    meta: List[BlockMetadata],
+    ray_remote_args: Dict[str, Any],
+    write_args: Dict[str, Any],
+) -> List[ObjectRef[WriteResult]]:
+    write_args = _unwrap_arrow_serialization_workaround(write_args)
+    DatasetContext._set_current(ctx)
+    return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)
