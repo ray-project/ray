@@ -5516,17 +5516,6 @@ def test_ragged_tensors(ray_start_regular_shared):
         ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
     ]
 
-
-def test_legacy_do_write(ray_start_regular_shared, tmp_path):
-    out = CSVDatasource()
-    ds = ray.data.range(100).fully_executed()
-    blocks, metadata = zip(*ds._plan.execute().get_blocks_with_metadata())
-    out.do_write(blocks, metadata, tmp_path, ds._uuid)
-
-    ds = ray.data.read_csv(tmp_path)
-    assert [e["value"] for e in ds.take_all()] == list(range(100))
-
-
 class LoggerWarningCalled(Exception):
     """Custom exception used in test_warning_execute_with_no_cpu() and
     test_nowarning_execute_with_cpu(). Raised when the `logger.warning` method

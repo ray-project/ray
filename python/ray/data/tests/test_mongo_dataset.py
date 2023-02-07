@@ -257,35 +257,6 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     df[df["int_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
 
 
-def test_legacy_do_write(ray_start_regular_shared, start_mongo):
-    client, mongo_url = start_mongo
-    foo_db = "foo-db"
-    foo_collection = "foo-collection"
-    foo = client[foo_db][foo_collection]
-    foo.delete_many({})
-
-    docs = [{"float_field": 2.0 * val, "int_field": val} for val in range(5)]
-    foo.insert_many(docs)
-
-    docs = [{"float_field": 2.0 * val, "int_field": val} for val in range(5, 10)]
-    df = pd.DataFrame(docs).astype({"int_field": "int32"})
-    ds = ray.data.from_pandas(df)
-
-    out = MongoDatasource()
-    blocks, metadata = zip(*ds._plan.execute().get_blocks_with_metadata())
-    tasks = out.do_write(blocks, metadata, {}, mongo_url, foo_db, foo_collection)
-    ray.get(tasks)
-
-    ds = ray.data.read_mongo(
-        uri=mongo_url,
-        database=foo_db,
-        collection=foo_collection,
-    )
-    docs = [{"float_field": 2.0 * val, "int_field": val} for val in range(10)]
-    df = pd.DataFrame(docs).astype({"int_field": "int32"})
-    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
-
-
 if __name__ == "__main__":
     import sys
 
