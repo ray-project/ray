@@ -65,7 +65,7 @@ CUDA_FULL = {
 
 # The CUDA version to use for the ML Docker image.
 # If changing the CUDA version in the below line, you should also change the base Docker
-# image being used in ~/ci/docker/Dockerfile.gpu to match the same image being used
+# image being used in ~/ci/docker/Dockerfile.base.gpu to match the same image being used
 # here.
 ML_CUDA_VERSION = "cu118"
 
