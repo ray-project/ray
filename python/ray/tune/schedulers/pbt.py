@@ -549,7 +549,7 @@ class PopulationBasedTraining(FIFOScheduler):
             # By now, if the trial needs to be checkpointed and paused,
             # the checkpoint part has already happened and runner only
             # needs to pause it.
-            if trial.status == Trial.PAUSE:
+            if trial.status == Trial.PAUSED:
                 return TrialScheduler.NOOP
             elif decision == TrialScheduler.PAUSE:
                 return TrialScheduler.PAUSE_WO_CKPT
@@ -564,7 +564,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 for t in trial_runner.get_live_trials()
             ):
                 logger.debug("Pausing trial {}".format(trial))
-                # Normal PAUSE with checkpointing.
+                # Normal PAUSE with checkpointing.test_worker_kill_checkpoint
                 return TrialScheduler.PAUSE
             else:
                 # All trials are synced at the same timestep.
