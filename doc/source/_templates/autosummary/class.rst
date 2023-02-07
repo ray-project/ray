@@ -1,5 +1,4 @@
-{{ fullname }}
-{{ underline }}
+{{ fullname | escape | underline }}
 
 .. currentmodule:: {{ module }}
 
