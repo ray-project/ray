@@ -110,7 +110,7 @@ class ActorPoolMapOperator(MapOperator):
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(task_idx=self._next_task_idx)
-            ref = actor.submit.options(num_returns="dynamic").remote(
+            ref = actor.submit.options(num_returns="dynamic", name="haha").remote(
                 self._transform_fn_ref, ctx, *input_blocks
             )
             self._next_task_idx += 1
@@ -270,6 +270,10 @@ class _MapWorker:
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(fn, ctx, *blocks)
+    
+    def __repr__(self):
+        # TODO(Scott) eventually: add informative name here which gets displayed in logs
+        return "HahaWorker"
 
 
 # TODO(Clark): Promote this to a public config once we deprecate the legacy compute
