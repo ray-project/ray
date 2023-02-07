@@ -68,25 +68,6 @@ Log APIs
 State APIs Schema
 -----------------
 
-.. _state-api-schema-actor:
-.. _state-api-schema-task:
-.. _state-api-schema-node:
-.. _state-api-schema-pg:
-.. _state-api-schema-worker:
-.. _state-api-schema-obj:
-.. _state-api-schema-runtime-env:
-.. _state-api-schema-job:
-.. _state-api-schema-summary:
-.. _state-api-schema-task-summary:
-.. _state-api-schema-task-summaries:
-.. _state-api-schema-task-summary-per-key:
-.. _state-api-schema-actor-summary:
-.. _state-api-schema-actor-summaries:
-.. _state-api-schema-actor-summary-per-key:
-.. _state-api-schema-object-summary:
-.. _state-api-schema-object-summaries:
-.. _state-api-schema-object-summary-per-key:
-
 .. autosummary::
    :toctree: api/
 

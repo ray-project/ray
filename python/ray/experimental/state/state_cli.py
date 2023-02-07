@@ -353,7 +353,7 @@ def ray_get(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray get tasks <task-id>` is
-    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+    :class:`ray.experimental.state.common.TaskState <ray.experimental.state.common.TaskState>`.
 
     Usage:
 
@@ -466,7 +466,7 @@ def ray_list(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray list tasks` is
-    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+    :class:`ray.experimental.state.common.TaskState <ray.experimental.state.common.TaskState>`.
 
     Usage:
 
@@ -581,7 +581,7 @@ def task_summary(ctx, timeout: float, address: str):
     task function names.
 
     The output schema is
-    :ref:`ray.experimental.state.common.TaskSummaries <state-api-schema-task-summary>`.
+    :class:`ray.experimental.state.common.TaskSummaries <ray.experimental.state.common.TaskSummaries>`.
 
     Raises:
         :ref:`RayStateApiException <state-api-exceptions>`
@@ -612,8 +612,8 @@ def actor_summary(ctx, timeout: float, address: str):
     actor class names.
 
     The output schema is
-    :ref:`ray.experimental.state.common.ActorSummaries
-    <state-api-schema-actor-summary>`.
+    :class:`ray.experimental.state.common.ActorSummaries
+    <ray.experimental.state.common.ActorSummaries>`.
 
     Raises:
         :ref:`RayStateApiException <state-api-exceptions>`
@@ -663,8 +663,8 @@ def object_summary(ctx, timeout: float, address: str):
         ```
 
     The output schema is
-    :ref:`ray.experimental.state.common.ObjectSummaries
-    <state-api-schema-object-summary>`.
+    :class:`ray.experimental.state.common.ObjectSummaries
+    <ray.experimental.state.common.ObjectSummaries>`.
 
     Raises:
         :ref:`RayStateApiException <state-api-exceptions>`
