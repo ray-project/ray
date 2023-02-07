@@ -21,8 +21,6 @@ class RandomizeBlockOrderRule(Rule):
         return LogicalPlan(dag=optimized_dag)
 
     def _apply(self, op: LogicalOperator) -> LogicalOperator:
-        seed = op._seed if isinstance(op, RandomizeBlocks) else None
-
         seeds = []
 
         # Post-order traversal.
