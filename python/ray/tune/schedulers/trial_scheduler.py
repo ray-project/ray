@@ -13,11 +13,16 @@ class TrialScheduler:
     CONTINUE = "CONTINUE"  #: Status for continuing trial execution
     PAUSE = "PAUSE"  #: Status for pausing trial execution
     STOP = "STOP"  #: Status for stopping trial execution
-    # Caution: Temporary and anti-pattern! This means Scheduler calls
-    # into Executor directly without going through TrialRunner.
+    # Caution: The following two are temporary and anti - pattern!
+    # Only used for the interface between pbt scheduler and trial runner.
     # TODO(xwjiang): Deprecate this after we control the interaction
     #  between schedulers and executor.
+
+    # This means Scheduler calls into Executor directly
+    # without going through TrialRunner.
     NOOP = "NOOP"
+    # This means that the trial being paused does not need to be checkpointed.
+    PAUSE_WO_CKPT = "PAUSE_WO_CKPT"
 
     _metric = None
 

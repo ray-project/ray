@@ -7,7 +7,7 @@ import unittest
 
 import ray
 from ray.air import CheckpointConfig
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.rllib import _register_all
 
@@ -386,7 +386,6 @@ class TrialRunnerTest2(unittest.TestCase):
 
             tune_cp = _TrackedCheckpoint(
                 dir_or_data=checkpoint_dir,
-                storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=result,
             )
             trial.saving_to = tune_cp

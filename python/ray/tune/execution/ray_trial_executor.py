@@ -14,7 +14,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Set, Union, Tuple
 
 import ray
 from ray.air import Checkpoint, AcquiredResources, ResourceRequest
-from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
 from ray.air.execution import ResourceManager
 from ray.air.execution.resources.placement_group import (
@@ -744,7 +744,7 @@ class RayTrialExecutor:
         """Pauses the trial, releasing resources (specifically GPUs)
 
         We do this by:
-        1. Checkpoint the trial (if `should_checkpoint`) in memory to allow us to resume
+        1. Checkpoint the trial (if `should_checkpoint`) to allow us to resume
         from this state in the future. We may not always  want to checkpoint, if we
         know that the checkpoint will not be used.
         2. Stop the trial and release resources, see `RayTrialExecutor.stop_trial` above
@@ -753,12 +753,12 @@ class RayTrialExecutor:
 
         Args:
             trial: Trial to pause.
-            should_checkpoint: Whether to save an in-memory checkpoint before stopping.
+            should_checkpoint: Whether to save a checkpoint before stopping.
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
             if should_checkpoint:
-                self.save(trial, CheckpointStorage.MEMORY)
+                self.save(trial)
             self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -966,15 +966,12 @@ class RayTrialExecutor:
     def save(
         self,
         trial: Trial,
-        storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
     ) -> _TrackedCheckpoint:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
             trial: The trial to be saved.
-            storage: Where to store the checkpoint. Defaults to
-                PERSISTENT.
             result: The state of this trial as a dictionary to be saved.
                 If result is None, the trial's last result will be used.
 
@@ -984,28 +981,20 @@ class RayTrialExecutor:
         logger.debug(f"saving trial {trial}")
         result = result or trial.last_result
         with self._change_working_directory(trial):
-            if storage == CheckpointStorage.MEMORY:
-                value = trial.runner.save_to_object.remote()
-                checkpoint = _TrackedCheckpoint(
-                    dir_or_data=value, storage_mode=storage, metrics=result
+            value = trial.runner.save.remote()
+            checkpoint = _TrackedCheckpoint(
+                dir_or_data=value,
+                metrics=result,
+                local_to_remote_path_fn=partial(
+                    TrainableUtil.get_remote_storage_path,
+                    logdir=trial.logdir,
+                    remote_checkpoint_dir=trial.remote_checkpoint_dir,
                 )
-                trial.on_checkpoint(checkpoint)
-            else:
-                value = trial.runner.save.remote()
-                checkpoint = _TrackedCheckpoint(
-                    dir_or_data=value,
-                    storage_mode=storage,
-                    metrics=result,
-                    local_to_remote_path_fn=partial(
-                        TrainableUtil.get_remote_storage_path,
-                        logdir=trial.logdir,
-                        remote_checkpoint_dir=trial.remote_checkpoint_dir,
-                    )
-                    if trial.uses_cloud_checkpointing
-                    else None,
-                )
-                trial.saving_to = checkpoint
-                self._futures[value] = (_ExecutorEventType.SAVING_RESULT, trial)
+                if trial.uses_cloud_checkpointing
+                else None,
+            )
+            trial.saving_to = checkpoint
+            self._futures[value] = (_ExecutorEventType.SAVING_RESULT, trial)
         return checkpoint
 
     def restore(self, trial: Trial) -> None:
@@ -1028,50 +1017,45 @@ class RayTrialExecutor:
             )
         checkpoint_dir = checkpoint.dir_or_data
         node_ip = checkpoint.node_ip
-        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            logger.debug("Trial %s: Attempting restore from object", trial)
-            # Note that we don't store the remote since in-memory checkpoints
-            # don't guarantee fault tolerance and don't need to be waited on.
+        logger.debug("Trial %s: Attempting restore from %s", trial, checkpoint_dir)
+        if (
+            trial.uses_cloud_checkpointing
+            or not trial.sync_on_checkpoint
+            or not os.path.exists(checkpoint_dir)
+        ):
+            # If using cloud checkpointing, trial will get cp from cloud.
+            # If not syncing to driver, assume it has access to the cp
+            # on the local fs.
+            fallback_to_latest = bool(
+                int(os.environ.get("TUNE_FALLBACK_TO_LATEST_CHECKPOINT", "1"))
+            )
+
             with self._change_working_directory(trial):
-                trial.runner.restore_from_object.remote(checkpoint_dir)
+                remote = trial.runner.restore.remote(
+                    checkpoint_dir,
+                    checkpoint_node_ip=node_ip,
+                    fallback_to_latest=fallback_to_latest,
+                )
+
+        elif trial.sync_on_checkpoint:
+            # This provides FT backwards compatibility in the
+            # case where no cloud checkpoints are provided.
+            logger.debug("Trial %s: Reading checkpoint into object store", trial)
+            checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint_dir)
+            # The following is not exactly FT, as node failure could happen
+            # in the middle.
+            obj = Checkpoint.from_directory(checkpoint_path).to_bytes()
+            with self._change_working_directory(trial):
+                remote = trial.runner.restore_from_object.remote(obj)
         else:
-            logger.debug("Trial %s: Attempting restore from %s", trial, checkpoint_dir)
-            if (
-                trial.uses_cloud_checkpointing
-                or not trial.sync_on_checkpoint
-                or not os.path.exists(checkpoint_dir)
-            ):
-                # If using cloud checkpointing, trial will get cp from cloud.
-                # If not syncing to driver, assume it has access to the cp
-                # on the local fs.
-                fallback_to_latest = bool(
-                    int(os.environ.get("TUNE_FALLBACK_TO_LATEST_CHECKPOINT", "1"))
-                )
+            raise _AbortTrialExecution(
+                "Pass in `sync_on_checkpoint=True` for driver-based trial"
+                "restoration. Pass in an `upload_dir` for remote "
+                "storage-based restoration"
+            )
 
-                with self._change_working_directory(trial):
-                    remote = trial.runner.restore.remote(
-                        checkpoint_dir,
-                        checkpoint_node_ip=node_ip,
-                        fallback_to_latest=fallback_to_latest,
-                    )
-
-            elif trial.sync_on_checkpoint:
-                # This provides FT backwards compatibility in the
-                # case where no cloud checkpoints are provided.
-                logger.debug("Trial %s: Reading checkpoint into memory", trial)
-                checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint_dir)
-                obj = Checkpoint.from_directory(checkpoint_path).to_bytes()
-                with self._change_working_directory(trial):
-                    remote = trial.runner.restore_from_object.remote(obj)
-            else:
-                raise _AbortTrialExecution(
-                    "Pass in `sync_on_checkpoint=True` for driver-based trial"
-                    "restoration. Pass in an `upload_dir` for remote "
-                    "storage-based restoration"
-                )
-
-            self._futures[remote] = (_ExecutorEventType.RESTORING_RESULT, trial)
-            trial.restoring_from = checkpoint
+        self._futures[remote] = (_ExecutorEventType.RESTORING_RESULT, trial)
+        trial.restoring_from = checkpoint
 
     def export_trial_if_needed(self, trial: Trial) -> Dict:
         """Exports model of this trial based on trial.export_formats.

@@ -9,7 +9,7 @@ import pytest
 import pandas as pd
 
 import ray
-from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray import air, tune
 from ray.air import Checkpoint, session
 from ray.tune.registry import get_trainable_cls
@@ -137,9 +137,7 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     else:
         checkpoint_data = trainable.save.remote()
 
-    trial.on_checkpoint(
-        _TrackedCheckpoint(checkpoint_data, storage_mode=CheckpointStorage.MEMORY)
-    )
+    trial.on_checkpoint(_TrackedCheckpoint(checkpoint_data))
     trial.pickled_error_filename = None
     trial.error_filename = None
     result_grid = ResultGrid(None)

@@ -1,6 +1,6 @@
 import unittest
 
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.tune import PlacementGroupFactory
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.experiment import Trial
@@ -51,7 +51,6 @@ class MockTrial(Trial):
     def checkpoint(self):
         return _TrackedCheckpoint(
             dir_or_data="None",
-            storage_mode=CheckpointStorage.MEMORY,
             metrics={},
         )
 

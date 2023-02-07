@@ -11,7 +11,7 @@ import pytest
 
 import ray
 from ray import tune
-from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.tune.experiment import Trial
 
 
@@ -269,7 +269,6 @@ def test_load_trial_from_json_state(tmpdir):
     trial.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
-            storage_mode=CheckpointStorage.PERSISTENT,
             metrics={"training_iteration": 1},
         )
     )
@@ -291,7 +290,6 @@ def test_change_trial_local_dir(tmpdir):
     trial.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
-            storage_mode=CheckpointStorage.PERSISTENT,
             metrics={"training_iteration": 1},
         )
     )

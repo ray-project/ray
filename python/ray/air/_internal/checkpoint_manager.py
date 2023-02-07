@@ -1,6 +1,3 @@
-import copy
-import enum
-import gc
 import heapq
 import logging
 import numbers
@@ -22,11 +19,6 @@ from ray._private.ray_constants import env_integer
 logger = logging.getLogger(__name__)
 
 
-class CheckpointStorage(enum.Enum):
-    MEMORY = enum.auto()
-    PERSISTENT = enum.auto()
-
-
 class _TrackedCheckpoint:
     """Checkpoint tracked by a checkpoint manager.
 
@@ -44,7 +36,6 @@ class _TrackedCheckpoint:
 
     Args:
         dir_or_data: Checkpoint directory, checkpoint data, or a future to either.
-        storage_mode: Either MEMORY or PERSISTENT.
         checkpoint_id: Checkpoint number. Will be used to determine checkpoint order
             if metrics are not available. Usually this should be monotonically
             increasing for each tracked checkpoint.
@@ -65,7 +56,6 @@ class _TrackedCheckpoint:
     def __init__(
         self,
         dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef, Checkpoint]],
-        storage_mode: CheckpointStorage,
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
@@ -75,7 +65,6 @@ class _TrackedCheckpoint:
 
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id
-        self.storage_mode = storage_mode
         # This is a function because dir_or_data may be an object ref
         # and we need to wait until its resolved first.
         self.local_to_remote_path_fn = local_to_remote_path_fn
@@ -89,26 +78,12 @@ class _TrackedCheckpoint:
             env_integer(COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV, 0)
         )
 
-        if (
-            dir_or_data is not None
-            and storage_mode == CheckpointStorage.MEMORY
-            and not isinstance(dir_or_data, (dict, ray.ObjectRef, Checkpoint))
-        ):
-            raise ValueError(
-                f"Memory checkpoints only support Ray object references, dicts "
-                f"and AIR Checkpoint as their data. Got: {dir_or_data}"
-            )
-
     def commit(self, path: Optional[Path] = None) -> None:
         """Commit checkpoint to disk, if needed.
 
         Args:
             path: Path to commit checkpoint to.
         """
-        if self.storage_mode == CheckpointStorage.MEMORY:
-            # Do not persist memory checkpoints
-            return
-
         if not path:
             # If no path is given, skip
             return
@@ -189,21 +164,10 @@ class _TrackedCheckpoint:
         return checkpoint
 
     def __repr__(self):
-        if self.storage_mode == CheckpointStorage.MEMORY:
-            return (
-                f"<_TrackedCheckpoint id={self.id} storage='MEMORY' "
-                f"result={self.metrics}>"
-            )
-
-        return (
-            f"<_TrackedCheckpoint id={self.id} storage='PERSISTENT' "
-            f"dir_or_data={self.dir_or_data}>"
-        )
+        return f"<_TrackedCheckpoint id={self.id} " f"dir_or_data={self.dir_or_data}>"
 
 
 def _default_delete_fn(checkpoint: _TrackedCheckpoint):
-    if checkpoint.storage_mode != CheckpointStorage.PERSISTENT:
-        return
 
     if isinstance(checkpoint.dir_or_data, (str, bytes, os.PathLike)):
         if os.path.isfile(checkpoint.dir_or_data):
@@ -234,8 +198,8 @@ class _CheckpointManager:
     """Common checkpoint management and bookkeeping class for Ray Train and Tune.
 
     This class acts as the common core for checkpoint bookkeeping in Ray ML libraries.
-    On a high level, this manager keeps a reference to all stored checkpoints
-    (both in-memory and on-disk checkpoints). For on-disk checkpoints, it
+    On a high level, this manager keeps a reference to all stored checkpoints.
+    For on-disk checkpoints, it
     keeps a configured number of checkpoints according to specified metrics.
 
     The manager supports lazy data writing by utilizing the
@@ -248,12 +212,9 @@ class _CheckpointManager:
         latest_checkpoint_id: First checkpoint ID to use (e.g. in case we
             continue training an existing experiment).
         delete_fn: Function that takes a TrackedCheckpoint and deletes it from disk
-            or memory upon request.
+            upon request.
 
     """
-
-    # If memory checkpoints should be persisted
-    _persist_memory_checkpoints: bool = False
 
     def __init__(
         self,
@@ -267,17 +228,16 @@ class _CheckpointManager:
         self._latest_checkpoint_id = latest_checkpoint_id
 
         # Used for keeping top K checkpoints.
-        self._top_persisted_checkpoints: List[_HeapCheckpointWrapper] = []
+        self._top_checkpoints: List[_HeapCheckpointWrapper] = []
 
         # Best checkpoint altogether.
         # Used for exposing best_checkpoint_path.
-        self._best_persisted_checkpoint: Optional[_TrackedCheckpoint] = None
-        self._latest_persisted_checkpoint: Optional[_TrackedCheckpoint] = None
-        self._latest_memory_checkpoint: Optional[_TrackedCheckpoint] = None
+        self._best_checkpoint: Optional[_TrackedCheckpoint] = None
+        self._latest_checkpoint: Optional[_TrackedCheckpoint] = None
 
         # Deletion of some checkpoints should be deferred. Specifically, if the
-        # latest persisted checkpoint should be deleted, we will only delete it
-        # once a new checkpoint came in (so that `_latest_persisted_checkpoint` is
+        # latest checkpoint should be deleted, we will only delete it
+        # once a new checkpoint came in (so that `_latest_checkpoint` is
         # always available).
         self._checkpoints_to_clean_up = set()
 
@@ -286,7 +246,7 @@ class _CheckpointManager:
     def set_delete_fn(
         self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]]
     ):
-        """Update the function called to delete persisted checkpoints.
+        """Update the function called to delete checkpoints.
 
         Args:
             delete_fn: Function that takes a tracked checkpoint as an argument and
@@ -307,49 +267,26 @@ class _CheckpointManager:
         """
         checkpoint.id = checkpoint.id or self._latest_checkpoint_id
 
-        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            self._replace_latest_memory_checkpoint(checkpoint)
-
-            if self._persist_memory_checkpoints:
-                persisted_checkpoint = copy.copy(checkpoint)
-                persisted_checkpoint.storage_mode = CheckpointStorage.PERSISTENT
-            else:
-                persisted_checkpoint = None
-        else:
-            persisted_checkpoint = checkpoint
-
-        if persisted_checkpoint and self._checkpoint_strategy.num_to_keep != 0:
-            self._process_persistent_checkpoint(persisted_checkpoint)
+        if self._checkpoint_strategy.num_to_keep != 0:
+            self._process_checkpoint(checkpoint)
 
         self._latest_checkpoint_id += 1
 
-    def _replace_latest_memory_checkpoint(self, memory_checkpoint: _TrackedCheckpoint):
-        assert memory_checkpoint.storage_mode == CheckpointStorage.MEMORY
-        self._latest_memory_checkpoint = memory_checkpoint
-        # Avoid memory leaks on k8s pods
-        gc.collect()
-
-    def _replace_latest_persisted_checkpoint(
-        self, persisted_checkpoint: _TrackedCheckpoint
-    ):
-        second_to_latest_persisted_checkpoint = self._latest_persisted_checkpoint
-        self._latest_persisted_checkpoint = persisted_checkpoint
+    def _replace_latest_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        second_to_latest_checkpoint = self._latest_checkpoint
+        self._latest_checkpoint = checkpoint
 
         if self._checkpoint_strategy.num_to_keep == 0:
-            self._maybe_delete_persisted_checkpoint(
-                second_to_latest_persisted_checkpoint
-            )
+            self._maybe_delete_checkpoint(second_to_latest_checkpoint)
 
-    def _maybe_replace_best_persisted_checkpoint(
-        self, persisted_checkpoint: _TrackedCheckpoint
-    ):
-        if self._best_persisted_checkpoint is None:
-            self._best_persisted_checkpoint = persisted_checkpoint
+    def _maybe_replace_best_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        if self._best_checkpoint is None:
+            self._best_checkpoint = checkpoint
         else:
-            old_score = self._get_checkpoint_score(self._best_persisted_checkpoint)
-            candidate_score = self._get_checkpoint_score(persisted_checkpoint)
+            old_score = self._get_checkpoint_score(self._best_checkpoint)
+            candidate_score = self._get_checkpoint_score(checkpoint)
             if candidate_score >= old_score:
-                self._best_persisted_checkpoint = persisted_checkpoint
+                self._best_checkpoint = checkpoint
 
     def _get_checkpoint_score(
         self, checkpoint: _TrackedCheckpoint
@@ -390,8 +327,7 @@ class _CheckpointManager:
             checkpoint.id,
         )
 
-    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        assert checkpoint.storage_mode == CheckpointStorage.PERSISTENT
+    def _process_checkpoint(self, checkpoint: _TrackedCheckpoint):
 
         checkpoint_score = self._get_checkpoint_score(checkpoint)
         wrapped_checkpoint = _HeapCheckpointWrapper(
@@ -401,54 +337,50 @@ class _CheckpointManager:
         if self._checkpoint_strategy.num_to_keep is None:
             # Keep all checkpoints
             checkpoint.commit(path=self._get_next_checkpoint_path())
-            self._replace_latest_persisted_checkpoint(checkpoint)
-            self._top_persisted_checkpoints.append(wrapped_checkpoint)
-        elif (
-            len(self._top_persisted_checkpoints) < self._checkpoint_strategy.num_to_keep
-        ):
+            self._replace_latest_checkpoint(checkpoint)
+            self._top_checkpoints.append(wrapped_checkpoint)
+        elif len(self._top_checkpoints) < self._checkpoint_strategy.num_to_keep:
             # Heap is not full yet, so keep this checkpoint
             checkpoint.commit(path=self._get_next_checkpoint_path())
-            heapq.heappush(self._top_persisted_checkpoints, wrapped_checkpoint)
-            self._replace_latest_persisted_checkpoint(checkpoint)
-        elif wrapped_checkpoint.priority >= self._top_persisted_checkpoints[0].priority:
+            heapq.heappush(self._top_checkpoints, wrapped_checkpoint)
+            self._replace_latest_checkpoint(checkpoint)
+        elif wrapped_checkpoint.priority >= self._top_checkpoints[0].priority:
             # Priority is higher than current worst checkpoint, so replace worst
             checkpoint.commit(path=self._get_next_checkpoint_path())
             worst_checkpoint = heapq.heappushpop(
-                self._top_persisted_checkpoints, wrapped_checkpoint
+                self._top_checkpoints, wrapped_checkpoint
             ).tracked_checkpoint
 
             # Only remove if checkpoint data is different
             if worst_checkpoint.dir_or_data != checkpoint.dir_or_data:
-                self._maybe_delete_persisted_checkpoint(worst_checkpoint)
+                self._maybe_delete_checkpoint(worst_checkpoint)
                 logger.debug(f"Removed worst checkpoint from " f"{worst_checkpoint}.")
 
-            self._replace_latest_persisted_checkpoint(checkpoint)
+            self._replace_latest_checkpoint(checkpoint)
         else:
             # If the latest checkpoint has the same or lower priority, skip it.
-            self._skip_persisted_checkpoint(checkpoint)
+            self._skip_checkpoint(checkpoint)
 
-        self._maybe_replace_best_persisted_checkpoint(persisted_checkpoint=checkpoint)
+        self._maybe_replace_best_checkpoint(checkpoint=checkpoint)
         self._cleanup_checkpoints()
 
-    def _maybe_delete_persisted_checkpoint(
-        self, persisted_checkpoint: _TrackedCheckpoint
-    ):
-        if persisted_checkpoint == self._latest_persisted_checkpoint:
-            self._checkpoints_to_clean_up.add(persisted_checkpoint)
+    def _maybe_delete_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        if checkpoint == self._latest_checkpoint:
+            self._checkpoints_to_clean_up.add(checkpoint)
         else:
-            self._delete_persisted_checkpoint(persisted_checkpoint=persisted_checkpoint)
+            self._delete_checkpoint(checkpoint=checkpoint)
 
-    def _delete_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
-        persisted_checkpoint.delete(delete_fn=self._delete_fn)
-        self._checkpoints_to_clean_up.discard(persisted_checkpoint)
+    def _delete_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        checkpoint.delete(delete_fn=self._delete_fn)
+        self._checkpoints_to_clean_up.discard(checkpoint)
 
     def _cleanup_checkpoints(self):
         for checkpoint in list(self._checkpoints_to_clean_up):
-            self._maybe_delete_persisted_checkpoint(persisted_checkpoint=checkpoint)
+            self._maybe_delete_checkpoint(checkpoint=checkpoint)
 
-    def _skip_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
-        logger.debug(f"Skipping checkpoint due to low score: {persisted_checkpoint}.")
-        self._checkpoints_to_clean_up.add(persisted_checkpoint)
+    def _skip_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        logger.debug(f"Skipping checkpoint due to low score: {checkpoint}.")
+        self._checkpoints_to_clean_up.add(checkpoint)
 
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         return None
@@ -462,12 +394,6 @@ class _CheckpointManager:
         # Do not serialize the delete fn
         state.pop("_delete_fn", None)
 
-        # Avoid serializing the memory checkpoint.
-        state["_newest_memory_checkpoint"] = _TrackedCheckpoint(
-            dir_or_data=None,
-            checkpoint_id=0,
-            storage_mode=CheckpointStorage.MEMORY,
-        )
         return state
 
     def __setstate__(self, state):

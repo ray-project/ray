@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import ray
 from ray import tune
 from ray.air import CheckpointConfig
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.tune import Trainable
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
@@ -251,21 +251,11 @@ class _MockTrialExecutor(RayTrialExecutor):
     def restore(self, trial, checkpoint=None, block=False):
         pass
 
-    def save(self, trial, type=CheckpointStorage.PERSISTENT, result=None):
-        if type == CheckpointStorage.MEMORY:
-            checkpoint = _TrackedCheckpoint(
-                dir_or_data={"data": trial.trainable_name},
-                storage_mode=CheckpointStorage.MEMORY,
-                metrics=result,
-            )
-            trial.on_checkpoint(checkpoint)
-            return checkpoint
-        else:
-            return _TrackedCheckpoint(
-                dir_or_data=trial.trainable_name,
-                storage_mode=CheckpointStorage.PERSISTENT,
-                metrics=result,
-            )
+    def save(self, trial, result=None):
+        return _TrackedCheckpoint(
+            dir_or_data=trial.trainable_name,
+            metrics=result,
+        )
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -306,7 +296,7 @@ class _MockTrialRunner:
 
     def pause_trial(self, trial, should_checkpoint: bool = True):
         if should_checkpoint:
-            self.trial_executor.save(trial, CheckpointStorage.MEMORY, None)
+            self.trial_executor.save(trial, None)
         trial.status = Trial.PAUSED
 
     def stop_trial(self, trial):
@@ -868,10 +858,7 @@ class _MockTrial(Trial):
 
     def on_checkpoint(self, checkpoint):
         super().on_checkpoint(checkpoint)
-        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            self.restored_checkpoint = checkpoint.dir_or_data["data"]
-        else:
-            self.restored_checkpoint = checkpoint.dir_or_data
+        self.restored_checkpoint = checkpoint.dir_or_data
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -1168,13 +1155,12 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         )
         trials = runner.get_trials()
 
-        memory = _TrackedCheckpoint(
+        ckpt = _TrackedCheckpoint(
             dir_or_data={"data": 0},
-            storage_mode=CheckpointStorage.MEMORY,
             metrics=result(0, 0),
         )
-        trials[0].on_checkpoint(memory)
-        self.assertEqual(trials[0].checkpoint, memory)
+        trials[0].on_checkpoint(ckpt)
+        self.assertEqual(trials[0].checkpoint, ckpt)
         self.assertEqual(trials[0].checkpoint.id, 0)
 
         # Save persistent checkpoint for trial 0 with a fresher checkpoint id
@@ -1184,15 +1170,16 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # replaced with another trial's checkpoint
         persistent = _TrackedCheckpoint(
             dir_or_data="not used",
-            storage_mode=CheckpointStorage.PERSISTENT,
             metrics=result(0, 0),
         )
         trials[0].on_checkpoint(persistent)
         self.assertEqual(trials[0].checkpoint, persistent)
         self.assertEqual(trials[0].checkpoint.id, 1)
 
-        # Trial 0 result, score=0
-        self.on_trial_result(pbt, runner, trials[0], result(1, 0), TrialScheduler.PAUSE)
+        # Trial 0 result, score=10
+        self.on_trial_result(
+            pbt, runner, trials[0], result(1, 10), TrialScheduler.PAUSE
+        )
         # Trial 1 result, score=100
         self.on_trial_result(
             pbt, runner, trials[1], result(1, 100), TrialScheduler.PAUSE
@@ -1201,13 +1188,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         assert (
             trial1_checkpoint
         ), "Trial 1 should have saved a checkpoint, since it is in the upper quantile"
-        assert trials[0].checkpoint.storage_mode == CheckpointStorage.MEMORY, (
-            "Trial 0 should exploit trial 1 by using its in-memory checkpoint. Instead,"
-            " it's using a different checkpoint of type "
-            f"{trials[0].checkpoint.storage_mode}\n"
-            f"Expected:\n{trial1_checkpoint}\nActual:\n{trials[0].checkpoint}"
-        )
-        assert trials[0].checkpoint != memory
+        # `trials[0].checkpoint` should be the same as `trials[1].checkpoint` apart from
+        # the `id` part.
         # PBT ensures that the exploited checkpoint is used by setting the id to 1
         # more than the last checkpoint id (the persistent checkpoint had id = 1).
         self.assertEqual(trials[0].checkpoint.id, 2)

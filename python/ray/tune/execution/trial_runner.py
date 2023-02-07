@@ -13,7 +13,6 @@ import warnings
 
 import ray
 from ray.air.config import CheckpointConfig
-from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
@@ -1293,8 +1292,7 @@ class TrialRunner:
             )
             trial.on_checkpoint(trial.saving_to)
             self._checkpoint_manager.on_trial_checkpoint(trial)
-            if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
-                self.trial_executor.mark_trial_to_checkpoint(trial)
+            self.trial_executor.mark_trial_to_checkpoint(trial)
         except Exception:
             logger.exception(
                 "Trial %s: Error handling checkpoint %s", trial, checkpoint_value
@@ -1380,7 +1378,7 @@ class TrialRunner:
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible.
             if trial.runner:
-                self.trial_executor.save(trial, storage=CheckpointStorage.PERSISTENT)
+                self.trial_executor.save(trial)
 
     def _try_recover(self, trial: Trial, exc: Union[TuneError, RayTaskError]):
         """Tries to recover trial.
@@ -1507,7 +1505,7 @@ class TrialRunner:
 
         Args:
             trial: Trial to pause.
-            should_checkpoint: Whether or not an in-memory checkpoint should be created
+            should_checkpoint: Whether or not a checkpoint should be created
                 for this paused trial. Defaults to True.
         """
         # NOTE: The cached trial decision is not needed since we will overrule this

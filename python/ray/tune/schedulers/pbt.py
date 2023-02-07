@@ -7,7 +7,6 @@ import random
 import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.tune.execution import trial_runner
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
@@ -542,13 +541,26 @@ class PopulationBasedTraining(FIFOScheduler):
                     decision = TrialScheduler.PAUSE
                     break
             self._checkpoint_or_exploit(
-                trial, trial_runner, upper_quantile, lower_quantile
+                trial,
+                trial_runner,
+                upper_quantile,
+                lower_quantile,
+                is_current_incoming_trial=True,
             )
-            return TrialScheduler.NOOP if trial.status == Trial.PAUSED else decision
+            # By now, if the trial needs to be checkpointed and paused,
+            # the checkpoint part has already happened and runner only
+            # needs to pause it.
+            if trial.status == Trial.PAUSE:
+                return TrialScheduler.NOOP
+            elif decision == TrialScheduler.PAUSE:
+                return TrialScheduler.PAUSE_WO_CKPT
+            else:
+                return decision
         else:
             # Synchronous mode.
             if any(
                 self._trial_state[t].last_train_time < self._next_perturbation_sync
+                # Any trial other than the current incoming one.
                 and t != trial
                 for t in trial_runner.get_live_trials()
             ):
@@ -569,7 +581,11 @@ class PopulationBasedTraining(FIFOScheduler):
                     logger.debug("Perturbing Trial {}".format(t))
                     self._trial_state[t].last_perturbation_time = time
                     self._checkpoint_or_exploit(
-                        t, trial_runner, upper_quantile, lower_quantile
+                        t,
+                        trial_runner,
+                        upper_quantile,
+                        lower_quantile,
+                        is_current_incoming_trial=(t == trial),
                     )
 
                 all_train_times = [
@@ -589,7 +605,7 @@ class PopulationBasedTraining(FIFOScheduler):
             return (
                 TrialScheduler.NOOP
                 if trial.status == Trial.PAUSED
-                else TrialScheduler.PAUSE
+                else TrialScheduler.PAUSE_WO_CKPT
             )
 
     def _save_trial_state(
@@ -618,9 +634,16 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_runner: "trial_runner.TrialRunner",
         upper_quantile: List[Trial],
         lower_quantile: List[Trial],
+        is_current_incoming_trial: bool,
     ):
-        """Checkpoint if in upper quantile, exploits if in lower."""
-        trial_executor = trial_runner.trial_executor
+        """Checkpoint if in upper quantile, exploits if in lower.
+
+        This is invoked when the trial is either in PAUSED state
+        (roughly ~ sync pbt) or running state (roughly ~ async pbt).
+
+        Returns:
+            A boolean indicate that if the trial is just saved.
+        """
         state = self._trial_state[trial]
         if trial in upper_quantile:
             # The trial last result is only updated after the scheduler
@@ -628,21 +651,29 @@ class PopulationBasedTraining(FIFOScheduler):
             logger.debug("Trial {} is in upper quantile".format(trial))
             logger.debug("Checkpointing {}".format(trial))
             if trial.status == Trial.PAUSED:
-                # Paused trial will always have an in-memory checkpoint.
+                # Paused trial will always have a checkpoint.
                 state.last_checkpoint = trial.checkpoint
             else:
-                state.last_checkpoint = trial_executor.save(
-                    trial, CheckpointStorage.MEMORY, result=state.last_result
+                # This `state.last_result` has to be used because by this time
+                # `trial.last_result` has not yet been updated, which is done
+                # later in `trial_runner.on_trial_result`.
+                # This should be fixed with scheduler API overhaul at
+                # some point.
+                state.last_checkpoint = trial_runner.trial_executor.save(
+                    trial, result=state.last_result
                 )
             self._num_checkpoints += 1
-        else:
-            state.last_checkpoint = None  # not a top trial
+            # hopefully upper and lower quantiles are mutually exclusive
+            assert trial not in lower_quantile
 
         if trial in lower_quantile:
             logger.debug("Trial {} is in lower quantile".format(trial))
-            trial_to_clone = random.choice(upper_quantile)
-            assert trial is not trial_to_clone
-            if not self._trial_state[trial_to_clone].last_checkpoint:
+            # A trial to clone must have a checkpoint to clone from.
+            trial_to_clone = random.choice(
+                [u for u in upper_quantile if self._trial_state[u].last_checkpoint]
+            )
+            if not trial_to_clone.checkpoint:
+                # This is not a big deal, as this trial will just continue on.
                 logger.info(
                     "[pbt]: no checkpoint for trial."
                     " Skip exploit for Trial {}".format(trial)
@@ -799,6 +830,8 @@ class PopulationBasedTraining(FIFOScheduler):
         If specified, also logs the updated hyperparam state.
         """
         trial_state = self._trial_state[trial]
+        # If a trial is about to be perturbed, its checkpoint should be reset to None.
+        trial_state.last_checkpoint = None
         new_state = self._trial_state[trial_to_clone]
         class_name = self.__class__.__name__
         logger.info(
@@ -848,6 +881,7 @@ class PopulationBasedTraining(FIFOScheduler):
                     " please raise an issue on Ray Github."
                 )
         else:
+            # Only during async pbt.
             trial_runner.pause_trial(trial, should_checkpoint=False)
         trial.set_experiment_tag(new_tag)
         # Clone hyperparameters from the `trial_to_clone`
@@ -1083,9 +1117,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
             "Configuration will be changed to {}.".format(step, new_config)
         )
 
-        checkpoint = trial_runner.trial_executor.save(
-            trial, CheckpointStorage.MEMORY, result=result
-        )
+        checkpoint = trial_runner.trial_executor.save(trial, result=result)
 
         new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
 

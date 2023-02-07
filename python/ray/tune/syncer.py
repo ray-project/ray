@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 
 import ray
-from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.air._internal.remote_storage import (
     fs_hint,
     upload_to_uri,
@@ -825,9 +825,6 @@ class SyncerCallback(Callback):
         checkpoint: _TrackedCheckpoint,
         **info,
     ):
-        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            return
-
         if self._sync_trial_dir(
             trial, force=trial.sync_on_checkpoint, wait=True
         ) and not os.path.exists(checkpoint.dir_or_data):

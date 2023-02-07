@@ -8,7 +8,7 @@ import pytest
 from freezegun import freeze_time
 
 import ray.util
-from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
@@ -152,9 +152,7 @@ def test_syncer_callback_disabled():
         iteration=1,
         trials=[],
         trial=trial1,
-        checkpoint=_TrackedCheckpoint(
-            dir_or_data="/does/not/exist", storage_mode=CheckpointStorage.PERSISTENT
-        ),
+        checkpoint=_TrackedCheckpoint(dir_or_data="/does/not/exist"),
     )
 
 
@@ -179,9 +177,7 @@ def test_syncer_callback_noop_on_trial_cloud_checkpointing():
         iteration=1,
         trials=[],
         trial=trial1,
-        checkpoint=_TrackedCheckpoint(
-            dir_or_data="/does/not/exist", storage_mode=CheckpointStorage.PERSISTENT
-        ),
+        checkpoint=_TrackedCheckpoint(dir_or_data="/does/not/exist"),
     )
 
 
@@ -329,9 +325,7 @@ def test_syncer_callback_force_on_checkpoint(ray_start_2_cpus, temp_data_dirs):
             iteration=2,
             trials=[],
             trial=trial1,
-            checkpoint=_TrackedCheckpoint(
-                dir_or_data=tmp_target, storage_mode=CheckpointStorage.PERSISTENT
-            ),
+            checkpoint=_TrackedCheckpoint(dir_or_data=tmp_target),
         )
         syncer_callback.wait_for_all()
 

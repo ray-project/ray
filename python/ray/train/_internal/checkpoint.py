@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Type, Union
 
 from ray.air import Checkpoint, CheckpointConfig
-from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.air._internal.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
 )
@@ -62,8 +61,6 @@ class CheckpointManager(CommonCheckpointManager):
         latest_checkpoint: The latest saved checkpoint. This
             checkpoint may not be saved to disk.
     """
-
-    _persist_memory_checkpoints = True
 
     def __init__(
         self,
@@ -132,7 +129,6 @@ class CheckpointManager(CommonCheckpointManager):
         tracked_checkpoint = _TrackedCheckpoint(
             dir_or_data=checkpoint_data,
             checkpoint_id=self._latest_checkpoint_id,
-            storage_mode=CheckpointStorage.MEMORY,
             metrics={score_attr: checkpoint_metadata.get(score_attr, 0.0)},
         )
         self.register_checkpoint(checkpoint=tracked_checkpoint)
@@ -161,9 +157,9 @@ class CheckpointManager(CommonCheckpointManager):
     # Train-specific attributes
     @property
     def latest_checkpoint(self):
-        if not self._latest_memory_checkpoint:
+        if not self._latest_checkpoint:
             return None
-        return self._latest_memory_checkpoint.dir_or_data
+        return self._latest_checkpoint.dir_or_data
 
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:

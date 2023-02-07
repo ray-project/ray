@@ -9,7 +9,7 @@ from collections import OrderedDict
 
 import ray
 from ray import tune
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.rllib import _register_all
 from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import (
@@ -152,7 +152,6 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # Just a placeholder object ref for cp.value.
         cp = _TrackedCheckpoint(
             dir_or_data=ray.put(1),
-            storage_mode=CheckpointStorage.PERSISTENT,
             metrics={TRAINING_ITERATION: 0},
         )
         trials[0].saving_to = cp
