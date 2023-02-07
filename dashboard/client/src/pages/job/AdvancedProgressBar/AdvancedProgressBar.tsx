@@ -16,16 +16,18 @@ import {
   RiSubtractLine,
 } from "react-icons/ri";
 import { ClassNameProps } from "../../../common/props";
-import { JobProgressGroup } from "../../../type/job";
+import { JobProgressGroup, NestedJobProgressLink } from "../../../type/job";
 import { MiniTaskProgressBar } from "../TaskProgressBar";
 
 export type AdvancedProgressBarProps = {
   progressGroups: JobProgressGroup[] | undefined;
-} & ClassNameProps;
+} & ClassNameProps &
+  Pick<AdvancedProgressBarSegmentProps, "onClickLink">;
 
 export const AdvancedProgressBar = ({
   progressGroups,
   className,
+  ...segmentProps
 }: AdvancedProgressBarProps) => {
   return (
     <Table className={className}>
@@ -35,6 +37,7 @@ export const AdvancedProgressBar = ({
             <AdvancedProgressBarSegment
               key={group.key}
               jobProgressGroup={group}
+              {...segmentProps}
             />
           ))
         ) : (
@@ -71,6 +74,13 @@ const useAdvancedProgressBarSegmentStyles = makeStyles((theme) =>
     iconHidden: {
       visibility: "hidden",
     },
+    link: {
+      border: "none",
+      cursor: "pointer",
+      color: "#036DCF",
+      textDecoration: "underline",
+      background: "none",
+    },
   }),
 );
 
@@ -92,14 +102,16 @@ export type AdvancedProgressBarSegmentProps = {
    */
   showParentCollapseButton?: boolean;
   onParentCollapseButtonPressed?: () => void;
+  onClickLink?: (link: NestedJobProgressLink) => void;
 };
 
 export const AdvancedProgressBarSegment = ({
-  jobProgressGroup: { name, progress, children, type },
+  jobProgressGroup: { name, progress, children, type, link },
   startExpanded = false,
   nestedIndex = 1,
   showParentCollapseButton = false,
   onParentCollapseButtonPressed,
+  onClickLink,
 }: AdvancedProgressBarSegmentProps) => {
   const classes = useAdvancedProgressBarSegmentStyles();
 
@@ -153,7 +165,19 @@ export const AdvancedProgressBarSegment = ({
                 marginRight: isGroup ? 28 : 4,
               }}
             />
-            {name}
+            {link ? (
+              <button
+                className={classes.link}
+                onClick={(event) => {
+                  onClickLink?.(link);
+                  event.stopPropagation();
+                }}
+              >
+                {name}
+              </button>
+            ) : (
+              name
+            )}
             {isGroup && (
               <React.Fragment>
                 <span className={classes.spacer} />
@@ -176,6 +200,7 @@ export const AdvancedProgressBarSegment = ({
             nestedIndex={isGroup ? nestedIndex : nestedIndex + 1}
             showParentCollapseButton={showCollapse && index === 0}
             onParentCollapseButtonPressed={handleCollapse}
+            onClickLink={onClickLink}
           />
         ))}
     </React.Fragment>
