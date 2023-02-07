@@ -515,11 +515,11 @@ class Trainable:
 
         TrainableUtil.write_metadata(checkpoint_dir, metadata)
 
-        if not prevent_upload and self.uses_cloud_checkpointing:
+        if not prevent_upload:
             # First, upload the new trial checkpoint to cloud
-            self._save_to_cloud(checkpoint_dir)
+            self._maybe_save_to_cloud(checkpoint_dir)
             # Then, save other artifacts that live in the trial logdir
-            self._save_artifacts_to_cloud()
+            self._maybe_save_artifacts_to_cloud()
 
         return checkpoint_dir
 
@@ -573,12 +573,14 @@ class Trainable:
 
         return max(checkpoint_candidates)
 
-    def _save_artifacts_to_cloud(self) -> bool:
+    def _maybe_save_artifacts_to_cloud(self) -> bool:
         # Avoid double uploading checkpoints and driver artifacts,
         # if those live in the same directory
-        return self._save_to_cloud(self.logdir, exclude=("checkpoint_*",) + EXPR_FILES)
+        return self._maybe_save_to_cloud(
+            self.logdir, exclude=("checkpoint_*",) + EXPR_FILES
+        )
 
-    def _save_to_cloud(self, local_dir: str, exclude: List[str] = None) -> bool:
+    def _maybe_save_to_cloud(self, local_dir: str, exclude: List[str] = None) -> bool:
         """Saves the given directory to the cloud. This is used for checkpoint
         and artifact uploads to cloud.
 
@@ -586,9 +588,11 @@ class Trainable:
             local_dir: The local directory to upload to the `remote_checkpoint_dir`
 
         Returns:
-            bool: True if successfully saved to cloud
+            bool: True if (successfully) saved to cloud
         """
-        assert self.uses_cloud_checkpointing
+        if not self.uses_cloud_checkpointing:
+            return False
+
         assert self.syncer
 
         checkpoint_uri = self._storage_path(local_dir)
@@ -893,6 +897,10 @@ class Trainable:
 
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
+        # Save artifacts one last time, if this actor has been swapped to a
+        # different trial.
+        self._maybe_save_artifacts_to_cloud()
+
         self.config = new_config
 
         trial_info = new_config.pop(TRIAL_INFO, None)
@@ -1022,6 +1030,8 @@ class Trainable:
         Calls ``Trainable.cleanup`` internally. Subclasses should override
         ``Trainable.cleanup`` for custom cleanup procedures.
         """
+        self._maybe_save_artifacts_to_cloud()
+
         self._result_logger.flush()
         self._result_logger.close()
         if self._monitor.is_alive():
