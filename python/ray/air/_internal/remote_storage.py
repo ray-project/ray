@@ -36,6 +36,25 @@ except (ImportError, ModuleNotFoundError):
 from ray import logger
 
 
+def _pyarrow_fs_copy_files(
+    source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
+):
+    if isinstance(source_filesystem, pyarrow.fs.S3FileSystem) or isinstance(
+        destination_filesystem, pyarrow.fs.S3FileSystem
+    ):
+        # Workaround multi-threading issue with pyarrow
+        # https://github.com/apache/arrow/issues/32372
+        kwargs.setdefault("use_threads", False)
+
+    return pyarrow.fs.copy_files(
+        source,
+        destination,
+        source_filesystem=source_filesystem,
+        destination_filesystem=destination_filesystem,
+        **kwargs,
+    )
+
+
 def _assert_pyarrow_installed():
     if pyarrow is None:
         raise RuntimeError(
@@ -214,9 +233,9 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
 
     if filelock:
         with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
-            pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
+            _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
     else:
-        pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
+        _pyarrow_fs_copy_files(bucket_path, local_path, source_filesystem=fs)
 
 
 def upload_to_uri(
@@ -233,7 +252,7 @@ def upload_to_uri(
         )
 
     if not exclude:
-        pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
+        _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
         return
 
     # Else, walk and upload
@@ -262,7 +281,7 @@ def _upload_to_uri_with_exclude(
             full_source_path = os.path.normpath(os.path.join(local_path, candidate))
             full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
 
-            pyarrow.fs.copy_files(
+            _pyarrow_fs_copy_files(
                 full_source_path, full_target_path, destination_filesystem=fs
             )
 
