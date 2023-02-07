@@ -62,20 +62,20 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
     """A dict with special properties to support partial indexing.
 
     The main properties of NestedDict are::
-        * The nested dict gives access to nested elements as a sequence of
+        * The NestedDict gives access to nested elements as a sequence of
         strings.
-        * These nested dicts can also be used to filter a superset into a subset of
+        * These NestedDicts can also be used to filter a superset into a subset of
         nested elements with the filter function.
         * This can be instantiated with any mapping of strings, or an iterable of
         key value tuples where the values can themselves be recursively the values
-        that a nested dict can take.
-        * The length of a nested dict is the number of leaves in the tree, excluding
+        that a NestedDict can take.
+        * The length of a NestedDict is the number of leaves in the tree, excluding
         empty leafs.
-        * Iterating over a nested dict yields the leaves of the tree, including empty
+        * Iterating over a NestedDict yields the leaves of the tree, including empty
         leafs.
 
     Args:
-        x: a representation of a nested dict: it can be an iterable of `SeqStrType`
+        x: a representation of a NestedDict: it can be an iterable of `SeqStrType`
         to values. e.g. `[(("a", "b") , 1), ("b", 2)]` or a mapping of flattened
         keys to values. e.g. `{("a", "b"): 1, ("b",): 2}` or any nested mapping,
         e.g. `{"a": {"b": 1}, "b": {}}`.
@@ -137,7 +137,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
             raise ValueError(f"Input must be a Mapping or Iterable, got {type(x)}.")
 
     def __contains__(self, k: SeqStrType) -> bool:
-        """Returns true if the key is in the nested dict."""
+        """Returns true if the key is in the NestedDict."""
         k = _flatten_index(k)
 
         data_ptr = self._data  # type: Dict[str, Any]
