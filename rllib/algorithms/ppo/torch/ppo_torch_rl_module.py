@@ -82,7 +82,7 @@ class PPOCatalog(Catalog):
 # TODO (Artur): Move to Torch-unspecific file
 @ExperimentalAPI
 @dataclass
-class PPOModuleConfig(RLModuleConfig):
+class PPOModuleConfig(RLModuleConfig):  # TODO (Artur): Move to non-torch-specific file
     """Configuration for the PPORLModule.
 
     Attributes:

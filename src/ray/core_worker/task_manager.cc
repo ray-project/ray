@@ -862,7 +862,12 @@ rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
   task_info.set_job_id(task_spec.JobId().Binary());
 
   task_info.set_task_id(task_spec.TaskId().Binary());
-  task_info.set_parent_task_id(task_spec.ParentTaskId().Binary());
+  // NOTE: we set the parent task id of a task to be submitter's task id, where
+  // the submitter depends on the owner coreworker's:
+  // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
+  // - if the owner coreworker runs an actor, the submitter's task id will be the actor's
+  // creation task id.
+  task_info.set_parent_task_id(task_spec.SubmitterTaskId().Binary());
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info.mutable_required_resources()->insert(resources_map.begin(),
                                                  resources_map.end());

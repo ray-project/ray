@@ -1,7 +1,7 @@
 import { Grid } from "@material-ui/core";
 import dayjs from "dayjs";
 import React, { useState } from "react";
-import ActorTable from "../../components/ActorTable";
+import ActorTable, { ActorTableProps } from "../../components/ActorTable";
 import { Actor } from "../../type/actor";
 import { useActorList } from "./hook/useActorList";
 
@@ -10,17 +10,17 @@ import { useActorList } from "./hook/useActorList";
  */
 const ActorList = ({
   jobId = null,
-  detailPathPrefix = null,
+  newIA = false,
+  detailPathPrefix = "",
+  ...actorTableProps
 }: {
   jobId?: string | null;
-  detailPathPrefix: string | null;
-}) => {
+  newIA?: boolean;
+  detailPathPrefix?: string;
+} & Pick<ActorTableProps, "filterToActorId" | "onFilterChange">) => {
   const [timeStamp] = useState(dayjs());
   const data: { [actorId: string]: Actor } | undefined = useActorList();
   const actors: { [actorId: string]: Actor } = data ? data : {};
-  if (detailPathPrefix === null) {
-    detailPathPrefix = "";
-  }
 
   return (
     <div>
@@ -32,7 +32,9 @@ const ActorList = ({
       <ActorTable
         actors={actors}
         jobId={jobId}
+        newIA={newIA}
         detailPathPrefix={detailPathPrefix}
+        {...actorTableProps}
       />
     </div>
   );

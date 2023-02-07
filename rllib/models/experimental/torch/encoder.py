@@ -29,6 +29,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
 
     def __init__(self, config: ModelConfig) -> None:
         TorchModel.__init__(self, config)
+        Encoder.__init__(self, config)
 
         self.net = TorchMLP(
             input_dim=config.input_dim,

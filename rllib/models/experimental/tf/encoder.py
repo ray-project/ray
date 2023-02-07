@@ -1,4 +1,3 @@
-import tensorflow as tf
 import tree
 
 from ray.rllib.models.experimental.base import (
@@ -13,14 +12,17 @@ from ray.rllib.models.experimental.encoder import (
     ACTOR,
     CRITIC,
 )
-from ray.rllib.models.temp_spec_classes import TensorDict
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.experimental.tf.primitives import TfMLP
-from ray.rllib.policy.rnn_sequencing import add_time_dimension
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
-from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.models.experimental.tf.primitives import TfModel
+from ray.rllib.models.specs.checker import check_input_specs, check_output_specs
+from ray.rllib.models.specs.specs_dict import SpecDict
+from ray.rllib.models.specs.specs_tf import TFTensorSpecs
+from ray.rllib.models.temp_spec_classes import TensorDict
+from ray.rllib.policy.rnn_sequencing import add_time_dimension
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.framework import try_import_torch
+
+torch, nn = try_import_torch()
 
 
 class TfMLPEncoder(Encoder, TfModel):
@@ -71,11 +73,19 @@ class LSTMEncoder(Encoder, TfModel):
         Encoder.__init__(self, config)
         TfModel.__init__(self, config)
 
+        self.lstm = nn.LSTM(
+            config.input_dim,
+            config.hidden_dim,
+            config.num_layers,
+            batch_first=config.batch_first,
+        )
+        self.linear = nn.Linear(config.hidden_dim, config.output_dim)
+
     def get_initial_state(self):
         config = self.config
         return {
-            "h": tf.zeros(config.num_layers, config.hidden_dim),
-            "c": tf.zeros(config.num_layers, config.hidden_dim),
+            "h": torch.zeros(config.num_layers, config.hidden_dim),
+            "c": torch.zeros(config.num_layers, config.hidden_dim),
         }
 
     @property
