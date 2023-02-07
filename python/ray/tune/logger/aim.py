@@ -64,7 +64,7 @@ class AimLoggerCallback(LoggerCallback):
         repo: Optional[Union[str, "Repo"]] = None,
         experiment_name: Optional[str] = None,
         metrics: Optional[List[str]] = None,
-        as_multirun: Optional[bool] = False,
+        as_multirun: Optional[bool] = True,
         **aim_run_kwargs,
     ):
         """
@@ -115,21 +115,14 @@ class AimLoggerCallback(LoggerCallback):
         trial.init_logdir()
         self._trial_run[trial] = self._create_run(trial)
 
-        # log hyperparameters
-        if trial and trial.evaluated_params:
-            flat_result = flatten_dict(trial.evaluated_params, delimiter="/")
-            scrubbed_result = {
-                k: value
-                for k, value in flat_result.items()
-                if isinstance(value, tuple(VALID_SUMMARY_TYPES))
-            }
-            self._log_hparams(trial, scrubbed_result)
+        if trial.evaluated_params:
+            self._log_trial_hparams(trial)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         # create local copy to avoid problems
         tmp_result = result.copy()
 
-        step = result[TIMESTEPS_TOTAL] or result[TRAINING_ITERATION]
+        step = result.get(TIMESTEPS_TOTAL, None) or result[TRAINING_ITERATION]
 
         for k in ["config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION]:
             if k in tmp_result:
@@ -174,7 +167,8 @@ class AimLoggerCallback(LoggerCallback):
         trial_run.close()
         del trial_run
 
-    def _log_hparams(self, trial: "Trial", params: Dict):
+    def _log_trial_hparams(self, trial: "Trial"):
+        params = flatten_dict(trial.evaluated_params, delimiter="/")
         flat_params = flatten_dict(params)
 
         scrubbed_params = {
