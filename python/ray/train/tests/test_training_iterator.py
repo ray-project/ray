@@ -1,7 +1,11 @@
 import functools
 import time
 from unittest.mock import patch
+import os
 import pytest
+import shutil
+import tempfile
+
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
 from ray.train._internal.dataset_spec import RayDatasetSpec
@@ -30,6 +34,12 @@ def ray_start_4_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def temp_dir():
+    tmp_dir = os.path.realpath(tempfile.mkdtemp())
+    shutil.rmtree(tmp_dir)
 
 
 def gen_execute_single_async_special(special_f):
@@ -68,6 +78,7 @@ def create_iterator(
     num_workers=2,
     backend_executor=BackendExecutor,
     init_hook=None,
+    run_dir=None,
 ):
     # Similar logic to the old Trainer.run_iterator().
 
@@ -89,7 +100,8 @@ def create_iterator(
         def __post_init__(self):
             pass
 
-    checkpoint_strategy = _CheckpointConfig(num_to_keep=0)
+    # keep infinite number of checkpoints on disk.
+    checkpoint_strategy = _CheckpointConfig()
 
     return TrainingIterator(
         backend_executor=backend_executor,
@@ -97,7 +109,9 @@ def create_iterator(
         train_func=train_func,
         run_dir=None,
         dataset_spec=dataset_spec,
-        checkpoint_manager=CheckpointManager(checkpoint_strategy=checkpoint_strategy),
+        checkpoint_manager=CheckpointManager(
+            run_dir=run_dir, checkpoint_strategy=checkpoint_strategy
+        ),
         checkpoint=None,
         checkpoint_strategy=checkpoint_strategy,
     )
@@ -361,7 +375,7 @@ def test_worker_kill(ray_start_4_cpus, backend):
     assert kill_callback.counter == 4
 
 
-def test_worker_kill_checkpoint(ray_start_4_cpus):
+def test_worker_kill_checkpoint(ray_start_4_cpus, temp_dir):
     def train_func():
         checkpoint = session.get_checkpoint()
         if checkpoint:
@@ -376,7 +390,7 @@ def test_worker_kill_checkpoint(ray_start_4_cpus):
 
     test_config = BackendConfig()
 
-    iterator = create_iterator(train_func, test_config)
+    iterator = create_iterator(train_func, test_config, run_dir=temp_dir)
     kill_callback = KillCallback(fail_on=0, backend_executor=iterator._backend_executor)
 
     for intermediate_result in iterator:

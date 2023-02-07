@@ -37,29 +37,25 @@ def load_checkpoint_from_path(checkpoint_to_load: Union[str, Path]) -> Checkpoin
 class CheckpointManager(CommonCheckpointManager):
     """Manages checkpoint processing, writing, and loading.
 
+    This Train CheckpointManager can be used in a standalone fashion or together
+    with Tune CheckpointManager.
 
-    - A ``checkpoints`` directory is created in the ``run_dir`` and contains
-    all the checkpoint files.
+    - Standalone fashion:
+    In this case, one may choose to provide a ``run_dir``, under which a
+    ``checkpoints`` directory is created to persist the checkpoint files.
 
-    The full default path will be:
-
-    ~/ray_results/train_<datestring>/run_<run_id>/checkpoints/
-    checkpoint_<checkpoint_id>
-
-    Attributes:
-        latest_checkpoint_dir: Path to the file directory for
-            the checkpoints from the latest run. Configured through
+    The following attributes can be accessed:
+        * checkpoint_dir: Path to the file directory for
+            the checkpoints from the run. Configured through
             ``start_training``.
-        latest_checkpoint_filename: Filename for the latest
-            checkpoint.
-        next_checkpoint_path: Path to the next checkpoint to
-            persist from the latest run.
-        best_checkpoint_path: Path to the best persisted
-            checkpoint from the latest run.
-        latest_checkpoint_id: The id of the most recently
-            saved checkpoint.
-        latest_checkpoint: The latest saved checkpoint. This
-            checkpoint may not be saved to disk.
+        * best_checkpoint_path: Path to the best persisted
+            checkpoint from the run.
+        * latest_checkpoint: The latest persisted checkpoint.
+
+    - used in conjunction with Tune CheckpointManager.
+    In this case, no ``run_dir`` is provided, no checkpoints will be persisted by this
+    CheckpointManager. However, since Train is executed by Tune, persistent guarantee
+    is provided by Ray Tune CheckpointManager.
     """
 
     def __init__(
@@ -135,10 +131,12 @@ class CheckpointManager(CommonCheckpointManager):
 
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         """Path to the next checkpoint to persist."""
+        if not self.run_dir:
+            return None
         checkpoint_path = _construct_checkpoint_path_name(
             self._latest_checkpoint_id + 1
         )
-        return self.latest_checkpoint_dir.joinpath(checkpoint_path)
+        return self.checkpoint_dir.joinpath(checkpoint_path)
 
     def on_start_training(
         self,
@@ -162,32 +160,18 @@ class CheckpointManager(CommonCheckpointManager):
         return self._latest_checkpoint.dir_or_data
 
     @property
-    def latest_checkpoint_dir(self) -> Optional[Path]:
+    def checkpoint_dir(self) -> Optional[Path]:
         """Path to the latest checkpoint directory."""
+        if not self.run_dir:
+            return None
         checkpoint_dir = Path(TRAIN_CHECKPOINT_SUBDIR)
         return construct_path(checkpoint_dir, self.run_dir)
 
     @property
-    def latest_checkpoint_file_name(self) -> Optional[str]:
-        """Filename to use for the latest checkpoint."""
-        if self._latest_checkpoint_id > 0:
-            return _construct_checkpoint_path_name(self._latest_checkpoint_id)
-        else:
-            return None
-
-    @property
-    def next_checkpoint_path(self) -> Optional[Path]:
-        """Path to the next checkpoint to persist."""
-        checkpoint_file = _construct_checkpoint_path_name(
-            self._latest_checkpoint_id + 1
-        )
-        return self.latest_checkpoint_dir.joinpath(checkpoint_file)
-
-    @property
     def best_checkpoint_path(self) -> Optional[Path]:
         """Path to the best persisted checkpoint."""
-        if self._best_persisted_checkpoint:
-            return Path(self._best_persisted_checkpoint.dir_or_data)
+        if self._best_checkpoint:
+            return Path(self._best_checkpoint.dir_or_data)
         else:
             return None
 
@@ -233,12 +217,8 @@ class TuneCheckpointManager(CheckpointManager):
         return super()._process_persistent_checkpoint(checkpoint)
 
     @property
-    def latest_checkpoint_dir(self) -> Optional[Path]:
+    def checkpoint_dir(self) -> Optional[Path]:
         raise NotImplementedError
-
-    @property
-    def next_checkpoint_path(self) -> Optional[Path]:
-        return None
 
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         return None
