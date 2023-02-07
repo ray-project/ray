@@ -109,7 +109,7 @@ class Trainable:
         config: Dict[str, Any] = None,
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
         remote_checkpoint_dir: Optional[str] = None,
-        custom_syncer: Optional[Syncer] = None,
+        syncer: Optional[Syncer] = None,
         sync_timeout: Optional[int] = None,
     ):
         """Initialize a Trainable.
@@ -128,7 +128,7 @@ class Trainable:
             remote_checkpoint_dir: Upload directory (S3 or GS path).
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
-            custom_syncer: Syncer used for synchronizing data from Ray nodes
+            syncer: Syncer used for synchronizing data from Ray nodes
                 to external storage.
             sync_timeout: Timeout after which sync processes are aborted.
         """
@@ -181,7 +181,7 @@ class Trainable:
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
-        self.custom_syncer = custom_syncer
+        self.syncer = syncer
         self.sync_timeout = sync_timeout
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
         self.sync_sleep_time = float(
@@ -573,11 +573,9 @@ class Trainable:
         if not self.uses_cloud_checkpointing:
             return False
 
-        if self.custom_syncer:
-            self.custom_syncer.sync_up(
-                checkpoint_dir, self._storage_path(checkpoint_dir)
-            )
-            self.custom_syncer.wait_or_retry(
+        if self.syncer:
+            self.syncer.sync_up(checkpoint_dir, self._storage_path(checkpoint_dir))
+            self.syncer.wait_or_retry(
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
@@ -623,10 +621,10 @@ class Trainable:
         local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
         path_existed_before = os.path.exists(local_dir)
 
-        if self.custom_syncer:
+        if self.syncer:
             # Only keep for backwards compatibility
-            self.custom_syncer.sync_down(remote_dir=external_uri, local_dir=local_dir)
-            self.custom_syncer.wait_or_retry(
+            self.syncer.sync_down(remote_dir=external_uri, local_dir=local_dir)
+            self.syncer.wait_or_retry(
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
@@ -831,10 +829,10 @@ class Trainable:
             return
         else:
             if self.uses_cloud_checkpointing:
-                if self.custom_syncer:
+                if self.syncer:
                     # Keep for backwards compatibility
-                    self.custom_syncer.delete(self._storage_path(checkpoint_dir))
-                    self.custom_syncer.wait_or_retry(
+                    self.syncer.delete(self._storage_path(checkpoint_dir))
+                    self.syncer.wait_or_retry(
                         max_retries=self.sync_num_retries,
                         backoff_s=self.sync_sleep_time,
                     )

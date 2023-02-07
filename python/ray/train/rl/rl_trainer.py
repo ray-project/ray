@@ -198,7 +198,7 @@ class RLTrainer(BaseTrainer):
                 env: Optional[Union[str, EnvType]] = None,
                 logger_creator: Optional[Callable[[], Logger]] = None,
                 remote_checkpoint_dir: Optional[str] = None,
-                custom_syncer: Optional[Syncer] = None,
+                syncer: Optional[Syncer] = None,
             ):
                 resolved_config = merge_dicts(base_config, config or {})
                 param_dict["config"] = resolved_config
@@ -211,7 +211,7 @@ class RLTrainer(BaseTrainer):
                     env=env,
                     logger_creator=logger_creator,
                     remote_checkpoint_dir=remote_checkpoint_dir,
-                    custom_syncer=custom_syncer,
+                    syncer=syncer,
                 )
 
             def save_checkpoint(self, checkpoint_dir: str):

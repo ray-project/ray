@@ -571,7 +571,7 @@ def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
 
     trainable = ray.remote(TestTrainable).remote(
         remote_checkpoint_dir=f"file://{tmp_target}",
-        custom_syncer=CustomSyncer(),
+        syncer=CustomSyncer(),
     )
 
     checkpoint_dir = ray.get(trainable.save.remote())
@@ -591,7 +591,7 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
 
     trainable = ray.remote(TestTrainable).remote(
         remote_checkpoint_dir=f"file://{tmp_target}",
-        custom_syncer=CustomCommandSyncer(
+        syncer=CustomCommandSyncer(
             sync_up_template="cp -rf {source} `echo '{target}' | cut -c 8-`",
             sync_down_template="cp -rf `echo '{source}' | cut -c 8-` {target}",
             delete_template="rm -rf `echo '{target}' | cut -c 8-`",
