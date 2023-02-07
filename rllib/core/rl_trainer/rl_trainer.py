@@ -24,7 +24,6 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
@@ -32,8 +31,13 @@ from ray.rllib.core.rl_module.marl_module import (
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorType, ResultDict
+from ray.rllib.utils.minibatch_utils import (
+    MiniBatchDummyIterator,
+    MiniBatchCyclicIterator,
+)
 from ray.rllib.core.rl_trainer.scaling_config import TrainerScalingConfig
+from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
 
 
 torch, _ = try_import_torch()
@@ -337,7 +341,7 @@ class RLTrainer:
 
         return ret
 
-    def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+    def update(self, batch: MultiAgentBatch, **kwargs) -> Mapping[str, Any]:
         """Perform an update on this Trainer.
 
         Args:
@@ -348,20 +352,42 @@ class RLTrainer:
         """
         self.__check_if_build_called()
         if not self.distributed:
-            return self._update(batch)
+            return self._update(batch, **kwargs)
         else:
-            return self.do_distributed_update(batch)
+            return self.do_distributed_update(batch, **kwargs)
 
-    def _update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
-        # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
-        # NestedDict from the base class.
-        batch = self._convert_batch_type(batch)
-        fwd_out = self._module.forward_train(batch)
-        loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
-        gradients = self.compute_gradients(loss)
-        postprocessed_gradients = self.postprocess_gradients(gradients)
-        self.apply_gradients(postprocessed_gradients)
-        return self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+    def _update(
+        self,
+        batch: MultiAgentBatch,
+        *,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+    ) -> Mapping[str, Any]:
+
+        batch_iter = (
+            MiniBatchCyclicIterator
+            if minibatch_size is not None
+            else MiniBatchDummyIterator
+        )
+
+        results = []
+        for minibatch in batch_iter(batch, minibatch_size, num_iters):
+            # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
+            # NestedDict from the base class.
+            minibatch = self._convert_batch_type(minibatch)
+            fwd_out = self._module.forward_train(minibatch)
+            loss = self.compute_loss(fwd_out=fwd_out, batch=minibatch)
+            gradients = self.compute_gradients(loss)
+            postprocessed_gradients = self.postprocess_gradients(gradients)
+            self.apply_gradients(postprocessed_gradients)
+            result = self.compile_results(
+                minibatch, fwd_out, loss, postprocessed_gradients
+            )
+            results.append(result)
+
+        results = convert_to_numpy(results)
+        return reduce_fn(results)
 
     @abc.abstractmethod
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
@@ -578,7 +604,9 @@ class RLTrainer:
                 self._params[param_ref] = param
                 self._param_to_optim[param_ref] = optimizer
 
-    def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+    def do_distributed_update(
+        self, batch: MultiAgentBatch, **kwargs
+    ) -> Mapping[str, Any]:
         """Perform a distributed update on this Trainer.
 
         Args:

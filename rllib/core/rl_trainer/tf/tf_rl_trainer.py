@@ -108,6 +108,7 @@ class TfRLTrainer(RLTrainer):
             self._update_fn = self._do_update_fn
 
     def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        # TODO (Avnish): Match this base class's implementation.
         with tf.GradientTape() as tape:
             fwd_out = self._module.forward_train(batch)
             loss = self.compute_loss(fwd_out=fwd_out, batch=batch)

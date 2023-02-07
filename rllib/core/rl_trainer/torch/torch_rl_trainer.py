@@ -146,9 +146,11 @@ class TorchRLTrainer(RLTrainer):
         return batch
 
     @override(RLTrainer)
-    def do_distributed_update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+    def do_distributed_update(
+        self, batch: MultiAgentBatch, **kwargs
+    ) -> Mapping[str, Any]:
         # in torch the distributed update is no different than the normal update
-        return self._update(batch)
+        return self._update(batch, **kwargs)
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the state of the underlying MultiAgentRLModule"""
