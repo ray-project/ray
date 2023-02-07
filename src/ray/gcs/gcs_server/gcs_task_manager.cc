@@ -262,7 +262,7 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   // A new task event, add to storage and index.
 
   // Bump the task counters by type.
-  if (events_by_task.has_task_info()) {
+  if (events_by_task.has_task_info() && events_by_task.attempt_number() == 0) {
     num_tasks_by_type_[events_by_task.task_info().type()]++;
   }
 
