@@ -570,9 +570,12 @@ class Trainable:
 
         return max(checkpoint_candidates)
 
-    def _save_to_cloud(self, checkpoint_dir: str) -> bool:
+    def _save_to_cloud(self, local_dir: str) -> bool:
         """Saves the given directory to the cloud. This is used for checkpoint
         and artifact uploads to cloud.
+
+        Args:
+            local_dir: The local directory to upload to the `remote_checkpoint_dir`
 
         Returns:
             bool: True if successfully saved to cloud
@@ -580,8 +583,8 @@ class Trainable:
         assert self.uses_cloud_checkpointing
         assert self.syncer
 
-        checkpoint_uri = self._storage_path(checkpoint_dir)
-        self.syncer.sync_up(local_dir=checkpoint_dir, remote_dir=checkpoint_uri)
+        checkpoint_uri = self._storage_path(local_dir)
+        self.syncer.sync_up(local_dir=local_dir, remote_dir=checkpoint_uri)
         try:
             self.syncer.wait_or_retry(
                 max_retries=self.sync_num_retries,
