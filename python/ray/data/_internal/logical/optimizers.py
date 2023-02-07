@@ -35,9 +35,7 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
-    import pdb
 
-    pdb.set_trace()
     logical_plan = LogicalOptimizer().optimize(logical_plan)
     physical_plan = Planner().plan(logical_plan)
     return PhysicalOptimizer().optimize(physical_plan)

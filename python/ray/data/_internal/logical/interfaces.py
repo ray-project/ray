@@ -29,7 +29,7 @@ class Operator:
         return self._input_dependencies
 
     def __iter__(self) -> Iterator["Operator"]:
-        """Depth-first traversal of this operator and it's input dependencies."""
+        """Depth-first traversal of this operator and its input dependencies."""
         for op in self.input_dependencies:
             yield from op
         yield self

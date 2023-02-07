@@ -4,6 +4,7 @@ import ray
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     Repartition,
@@ -11,6 +12,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
 from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.rules.randomize_blocks import RandomizeBlockOrderRule
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.planner.planner import Planner
 
 
@@ -30,11 +32,10 @@ def test_randomize_blocks_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
 
-@pytest.mark.parametrize("seed", [None, 1])
-def test_randomize_block_order_rule(seed):
+def test_randomize_block_order_rule():
     read = Read(datasource=None)
-    operator1 = RandomizeBlocks(input_op=read, seed=seed)
-    operator2 = RandomizeBlocks(input_op=operator1, seed=seed)
+    operator1 = RandomizeBlocks(input_op=read, seed=None)
+    operator2 = RandomizeBlocks(input_op=operator1, seed=None)
     operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
     original_plan = LogicalPlan(dag=operator3)
 
@@ -44,7 +45,7 @@ def test_randomize_block_order_rule(seed):
     # Check that RandomizeBlocks is the last operator in the DAG.
     assert isinstance(optimized_plan.dag, RandomizeBlocks)
     # Check that the seed is maintained.
-    assert optimized_plan.dag._seed == seed
+    assert optimized_plan.dag._seed is None
 
     # Check that multiple RandomizeBlocks operators are deduped.
     operator_count = 0
@@ -52,6 +53,33 @@ def test_randomize_block_order_rule(seed):
         operator_count += 1
 
     assert operator_count == 3
+
+
+def test_randomize_block_order_rule_seed():
+    read = Read(datasource=None)
+    operator1 = RandomizeBlocks(input_op=read, seed=None)
+    operator2 = RandomizeBlocks(input_op=operator1, seed=2)
+    operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
+    original_plan = LogicalPlan(dag=operator3)
+
+    rule = RandomizeBlockOrderRule()
+    optimized_plan = rule.apply(original_plan)
+
+    # Check that RandomizeBlocks is the last operator in the DAG.
+    assert isinstance(optimized_plan.dag, RandomizeBlocks)
+    # Check that the seed is maintained.
+    assert optimized_plan.dag._seed == 2
+
+    # Check that the two RandomizeBlocks operators are not collapsed since seeds are
+    # provided.
+    assert isinstance(optimized_plan.dag.input_dependencies[0], RandomizeBlocks)
+    assert optimized_plan.dag.input_dependencies[0]._seed is None
+    operator_count = 0
+    for _ in optimized_plan.dag:
+        operator_count += 1
+
+    # RandomizeBlocks operators should not be deduped.
+    assert operator_count == 4
 
 
 def test_randomize_block_order_after_repartition():
@@ -81,33 +109,10 @@ def test_randomize_block_order_after_repartition():
     assert operator_count == 6
 
 
-def test_randomize_block_order_rule_fail():
-    """Tests that optimization fails with multiple RandomizeBlock
-    operators with different seeds."""
-
-    read = Read(datasource=None)
-    operator1 = RandomizeBlocks(input_op=read, seed=1)
-    operator2 = RandomizeBlocks(input_op=operator1, seed=2)
-    operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
-    original_plan = LogicalPlan(dag=operator3)
-
-    rule = RandomizeBlockOrderRule()
-    with pytest.raises(RuntimeError):
-        rule.apply(original_plan)
-
-
 def test_randomize_blocks_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(12, parallelism=4)
     ds = ds.randomize_block_order(seed=0)
     assert ds.take_all() == [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11], ds
-
-
-def test_randomize_blocks_fail_e2e(ray_start_regular_shared, enable_optimizer):
-    ds = ray.data.range(12, parallelism=4)
-    ds = ds.randomize_block_order(seed=0)
-    ds = ds.randomize_block_order(seed=1)
-    with pytest.raises(RuntimeError):
-        ds.take_all()
 
 
 def test_randomize_blocks_rule_e2e(ray_start_regular_shared, enable_optimizer):
@@ -115,24 +120,25 @@ def test_randomize_blocks_rule_e2e(ray_start_regular_shared, enable_optimizer):
         return x
 
     ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map)
-    ds.take_all()
-    stats = ds.stats()
-    print(ds._logical_plan.dag)
-    expected_stages = ["read->MapBatches(dummy_map)", "randomize_block_order"]
-    for name in expected_stages:
-        assert name in stats, stats
+    plan = ds._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(plan)
 
-    # ds2 = (
-    #     ray.data.range(10)
-    #     .randomize_block_order()
-    #     .repartition(10)
-    #     .map_batches(dummy_map)
-    # )
-    # expect_stages(
-    #     ds2,
-    #     3,
-    #     ["read->randomize_block_order", "repartition", "MapBatches(dummy_map)"],
-    # )
+    inverse_order = iter([Read, AbstractMap, RandomizeBlocks])
+    for node in optimized_plan.dag:
+        assert isinstance(node, next(inverse_order))
+
+    ds = (
+        ray.data.range(10)
+        .randomize_block_order()
+        .repartition(10)
+        .map_batches(dummy_map)
+    )
+    plan = ds._logical_plan
+    optimized_plan = LogicalOptimizer().optimize(plan)
+
+    inverse_order = iter([Read, RandomizeBlocks, Repartition, AbstractMap])
+    for node in optimized_plan.dag:
+        assert isinstance(node, next(inverse_order))
 
 
 if __name__ == "__main__":
