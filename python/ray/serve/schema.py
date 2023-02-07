@@ -353,7 +353,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     def get_empty_schema_dict() -> Dict:
         """Returns an empty app schema dictionary.
 
-        Schema can be used as a representation of an empty Serve config.
+        Schema can be used as a representation of an empty Serve application config.
         """
 
         return {
@@ -408,6 +408,51 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         config = dict_keys_snake_to_camel_case(config)
 
         return config
+
+
+@PublicAPI(stability="alpha")
+class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+    host: str = Field(
+        default="0.0.0.0",
+        description=(
+            "Host for HTTP servers to listen on. Defaults to "
+            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new host instead."
+        ),
+    )
+    port: int = Field(
+        default=8000,
+        description=(
+            "Port for HTTP server. Defaults to 8000. Cannot be updated once "
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new port instead."
+        ),
+    )
+    applications: List[ServeApplicationSchema] = Field(
+        default=[],
+        description=("The set of Serve applications to run on the Ray cluster."),
+    )
+
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Returns an empty deploy schema dictionary.
+
+        Schema can be used as a representation of an empty Serve deploy config.
+        """
+
+        return {"applications": []}
+
+
+@DeveloperAPI
+def serve_application_to_deploy_schema(
+    application_schema: ServeApplicationSchema,
+) -> ServeDeploySchema:
+    return ServeDeploySchema(
+        host=application_schema.host,
+        port=application_schema.port,
+        applications=[application_schema],
+    )
 
 
 @PublicAPI(stability="beta")

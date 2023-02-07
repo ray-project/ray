@@ -38,7 +38,7 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
 from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.long_poll import LongPollHost
-from ray.serve.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
@@ -308,11 +308,13 @@ class ServeController:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
             config_checkpoints_dict = pickle.loads(checkpoint)
-            for name in config_checkpoints_dict:
-                deployment_time, config, _ = config_checkpoints_dict[name]
-                self.deploy_app(
-                    ServeApplicationSchema.parse_obj(config), deployment_time
-                )
+            applications = [
+                app_config_dict
+                for _, app_config_dict, _ in config_checkpoints_dict.values()
+            ]
+            self.deploy_apps(
+                ServeDeploySchema.parse_obj({"applications": applications})
+            )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing.
@@ -430,11 +432,7 @@ class ServeController:
         self.application_state_manager.deploy_application(name, deployment_args_list)
         return deployments_success
 
-    def deploy_app(
-        self,
-        config: ServeApplicationSchema,
-        deployment_time: float = 0,
-    ) -> None:
+    def deploy_apps(self, config: ServeDeploySchema) -> None:
         """Kicks off a task that deploys a Serve application.
 
         Cancels in-progress task that is deploying a Serve
@@ -449,54 +447,72 @@ class ServeController:
                     contain argument-value options that can be passed directly
                     into a set_options() call. Overrides deployment options set
                     in the graph's code itself.
-            deployment_time: set deployment_timestamp. If not provided, time.time() is
-                    used to indicate the deployment time.
         """
-        config_dict = config.dict(exclude_unset=True)
+        timestamp = time.time()
 
-        # Compare new config options with old ones and set versions of new deployments
-        config_checkpoints = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if config_checkpoints is None:
+        config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+        if config_checkpoint is None:
             config_checkpoints_dict = {}
         else:
-            config_checkpoints_dict = pickle.loads(config_checkpoints)
-        if config.name in config_checkpoints_dict:
-            _, last_config_dict, last_version_dict = config_checkpoints_dict[
-                config.name
-            ]
-            updated_version_dict = _generate_deployment_config_versions(
-                config_dict, last_config_dict, last_version_dict
+            config_checkpoints_dict = pickle.loads(config_checkpoint)
+
+        new_config_checkpoint = {}
+
+        for app_config in config.applications:
+            app_config_dict = app_config.dict(exclude_unset=True)
+
+            # Compare new config options with old ones, set versions of new deployments
+            if app_config.name in config_checkpoints_dict:
+                (
+                    prev_deployment_time,
+                    prev_app_config,
+                    prev_versions,
+                ) = config_checkpoints_dict[app_config.name]
+
+                updated_versions = _generate_deployment_config_versions(
+                    app_config_dict,
+                    prev_app_config,
+                    prev_versions,
+                )
+
+                # If none of the deployments' versions were changed, the application
+                # effectively was not redeployed, so don't update the deployment time.
+                if updated_versions == prev_versions:
+                    deployment_time = prev_deployment_time
+                else:
+                    deployment_time = timestamp
+            else:
+                updated_versions = _generate_deployment_config_versions(app_config_dict)
+                deployment_time = timestamp
+
+            deployment_override_options = app_config_dict.get("deployments", [])
+
+            new_config_checkpoint[app_config.name] = (
+                deployment_time,
+                app_config_dict,
+                updated_versions,
             )
-        else:
-            updated_version_dict = _generate_deployment_config_versions(config_dict)
 
-        deployment_override_options = config_dict.get("deployments", [])
+            deploy_obj_ref = run_graph.options(
+                runtime_env=app_config.runtime_env
+            ).remote(
+                app_config.import_path,
+                app_config.runtime_env,
+                deployment_override_options,
+                updated_versions,
+                app_config.name,
+                app_config_dict.get("route_prefix", "/"),
+            )
 
-        if not deployment_time:
-            deployment_time = time.time()
+            self.application_state_manager.create_application_state(
+                app_config.name,
+                deploy_obj_ref=deploy_obj_ref,
+                deployment_time=deployment_time,
+            )
 
-        config_checkpoints_dict[config.name] = (
-            deployment_time,
-            config_dict,
-            updated_version_dict,
-        )
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps(config_checkpoints_dict),
-        )
-
-        deploy_obj_ref = run_graph.options(runtime_env=config.runtime_env).remote(
-            config.import_path,
-            config.runtime_env,
-            deployment_override_options,
-            updated_version_dict,
-            config.name,
-            config_dict.get("route_prefix", "/"),
-        )
-        self.application_state_manager.create_application_state(
-            config.name,
-            deploy_obj_ref=deploy_obj_ref,
-            deployment_time=deployment_time,
+            pickle.dumps(new_config_checkpoint),
         )
 
     def delete_deployment(self, name: str):
@@ -787,7 +803,7 @@ def run_graph(
         serve.run(app, name=name, route_prefix=route_prefix)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
-        # happens when deploy_app() is called.
+        # happens when deploy_apps() is called.
         logger.debug("Existing config deployment request terminated.")
 
 

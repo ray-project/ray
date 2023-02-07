@@ -113,7 +113,10 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
-        from ray.serve.schema import ServeApplicationSchema
+        from ray.serve.schema import (
+            ServeApplicationSchema,
+            serve_application_to_deploy_schema,
+        )
         from ray.serve._private.api import serve_start
         from pydantic import ValidationError
 
@@ -168,7 +171,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 ),
             )
 
-        client.deploy_app(config)
+        client.deploy_apps(serve_application_to_deploy_schema(config))
 
         return Response()
 
