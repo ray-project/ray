@@ -45,6 +45,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   void Exit(const rpc::ExitRequest &request,
             const rpc::ClientCallback<rpc::ExitReply> &callback) {
+    exit_count++;
+    last_exit_forced = request.force_exit();
     callbacks_.push_back(callback);
   }
 
@@ -72,7 +74,11 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
+  bool last_exit_forced = false;
+  int64_t exit_count = 0;
   std::list<rpc::ClientCallback<rpc::ExitReply>> callbacks_;
+
+ private:
   instrumented_io_context &io_service_;
 };
 
@@ -1213,6 +1219,8 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   // workers will be killed.
   auto mock_rpc_client_it = mock_worker_rpc_clients_.find(
       worker_pool_->GetIdleWorkers().front().first->WorkerId());
+  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
   mock_rpc_client_it->second->ExitReplySucceed();
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 1);
@@ -1220,6 +1228,8 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   // The second core worker doesn't exit, meaning idle worker shouldn't have been killed.
   mock_rpc_client_it = mock_worker_rpc_clients_.find(
       worker_pool_->GetIdleWorkers().front().first->WorkerId());
+  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
   mock_rpc_client_it->second->ExitReplyFailed();
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 1);
@@ -1234,11 +1244,15 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   worker_pool_->TryKillingIdleWorkers();
   mock_rpc_client_it = mock_worker_rpc_clients_.find(
       worker_pool_->GetIdleWorkers().back().first->WorkerId());
+  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
   ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
 
   // Now let's make sure the pending exiting workers exitted properly.
   mock_rpc_client_it = mock_worker_rpc_clients_.find(
       worker_pool_->GetIdleWorkers().front().first->WorkerId());
+  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
   mock_rpc_client_it->second->ExitReplySucceed();
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 2);
@@ -1249,6 +1263,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   worker_pool_->TryKillingIdleWorkers();
   mock_rpc_client_it = mock_worker_rpc_clients_.find(
       worker_pool_->GetIdleWorkers().front().first->WorkerId());
+  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 0);
   ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
 
   // Start two IO workers. These don't count towards the limit.
@@ -1280,6 +1295,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 2);
   for (auto &worker : worker_pool_->GetIdleWorkers()) {
     mock_rpc_client_it = mock_worker_rpc_clients_.find(worker.first->WorkerId());
+    ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
     ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
   }
   int num_callbacks = 0;
@@ -1433,6 +1449,51 @@ TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
   }
 
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+}
+
+TEST_F(WorkerPoolTest, TestJobFinishedForceKillIdleWorker) {
+  auto job_id = JOB_ID;
+
+  /// Add worker to the pool.
+  PopWorkerStatus status;
+  auto [proc, token] = worker_pool_->StartWorkerProcess(
+      Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+  auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
+  worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(
+      worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
+  worker_pool_->OnWorkerStarted(worker);
+  worker_pool_->PushWorker(worker);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  /// Execute some task with the worker.
+  auto task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
+  worker = worker_pool_->PopWorkerSync(task_spec, false);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+
+  /// Return the worker.
+  worker_pool_->PushWorker(worker);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+  auto mock_rpc_client = mock_rpc_client_it->second;
+
+  worker_pool_->SetCurrentTimeMs(2000);
+
+  // Won't kill the worker since job hasn't finished and we are under
+  // the soft limit (5).
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(mock_rpc_client->exit_count, 0);
+
+  // Finish the job.
+  worker_pool_->HandleJobFinished(job_id);
+
+  // The pool should try to force kill the worker.
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(mock_rpc_client->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
+
+  mock_rpc_client->ExitReplySucceed();
 }
 
 TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
