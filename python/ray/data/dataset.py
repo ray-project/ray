@@ -2684,14 +2684,15 @@ class Dataset(Generic[T]):
 
             # TODO(ekl) remove this feature flag.
             if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
-                logger.warning(
-                    "RAY_DATASET_FORCE_LOCAL_METADATA is deprecated in "
-                    "Ray 2.4 and will be removed in future release."
-                )
                 write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
                     blocks, metadata, ray_remote_args=ray_remote_args, **write_args
                 )
             else:
+                logger.warning(
+                    "The Datasource.do_write() is deprecated in "
+                    "Ray 2.4 and will be removed in future release. Use "
+                    "Datasource.write() instead."
+                )
                 # Prepare write in a remote task so that in Ray client mode, we
                 # don't do metadata resolution from the client machine.
                 do_write = cached_remote_fn(
