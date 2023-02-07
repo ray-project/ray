@@ -189,6 +189,7 @@ class Trainable:
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
+        self._last_artifact_sync_iter = None
 
     @property
     def uses_cloud_checkpointing(self):
@@ -574,8 +575,12 @@ class Trainable:
         return max(checkpoint_candidates)
 
     def _maybe_save_artifacts_to_cloud(self) -> bool:
+        if self._last_artifact_sync_iter == self.iteration:
+            # No need to sync again, if we have already synced this iteration.
+            return False
         # Avoid double uploading checkpoints and driver artifacts,
         # if those live in the same directory
+        self._last_artifact_sync_iter = self.iteration
         return self._maybe_save_to_cloud(
             self.logdir, exclude=("checkpoint_*",) + EXPR_FILES
         )
