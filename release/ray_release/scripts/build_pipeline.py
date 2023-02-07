@@ -93,10 +93,9 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
             "RAY_TEST_REPO": repo,
             "RAY_TEST_BRANCH": branch,
         }
-    else:
-        test_collection_file = test_collection_file or os.path.join(
-            os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-        )
+    test_collection_file = test_collection_file or os.path.join(
+        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
+    )
 
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
