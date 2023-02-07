@@ -35,9 +35,15 @@ except (ImportError, ModuleNotFoundError):
 
 from ray import logger
 
-# Fixes an issue where pyarrow.fs.copy_files deadlocks if there are
-# more files in a directory then there are CPUs available.
-_PYARROW_COPY_FILES_DEFAULT_KWARGS = {"use_threads": False}
+if pyarrow and packaging.version.parse(pyarrow.__version__) < packaging.version.parse(
+    "11.0.0"
+):
+    # Fixes an issue with pyarrow<11.0.0 where pyarrow.fs.copy_files
+    # deadlocks if there are more files in a directory than
+    # there are CPUs available.
+    _PYARROW_COPY_FILES_DEFAULT_KWARGS = {"use_threads": False}
+else:
+    _PYARROW_COPY_FILES_DEFAULT_KWARGS = {}
 
 
 def _pyarrow_fs_copy_files(*args, **kwargs):
