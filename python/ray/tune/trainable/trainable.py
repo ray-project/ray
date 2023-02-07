@@ -514,9 +514,12 @@ class Trainable:
 
         TrainableUtil.write_metadata(checkpoint_dir, metadata)
 
-        # Maybe sync to cloud
         if not prevent_upload:
+            # First, upload the new trial checkpoint to cloud
             self._save_to_cloud(checkpoint_dir)
+            # Then, save other artifacts that live in the trial logdir
+            # Avoid double uploading checkpoints, if those live in the same directory
+            self._save_to_cloud(self.logdir, exclude=["checkpoint_*"])
 
         return checkpoint_dir
 
@@ -570,7 +573,7 @@ class Trainable:
 
         return max(checkpoint_candidates)
 
-    def _save_to_cloud(self, local_dir: str) -> bool:
+    def _save_to_cloud(self, local_dir: str, exclude: List[str] = None) -> bool:
         """Saves the given directory to the cloud. This is used for checkpoint
         and artifact uploads to cloud.
 
@@ -584,7 +587,9 @@ class Trainable:
         assert self.syncer
 
         checkpoint_uri = self._storage_path(local_dir)
-        self.syncer.sync_up(local_dir=local_dir, remote_dir=checkpoint_uri)
+        self.syncer.sync_up(
+            local_dir=local_dir, remote_dir=checkpoint_uri, exclude=exclude
+        )
         try:
             self.syncer.wait_or_retry(
                 max_retries=self.sync_num_retries,
