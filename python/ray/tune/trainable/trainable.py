@@ -516,7 +516,7 @@ class Trainable:
 
         # Maybe sync to cloud
         if not prevent_upload:
-            self._maybe_save_to_cloud(checkpoint_dir)
+            self._save_to_cloud(checkpoint_dir)
 
         return checkpoint_dir
 
@@ -570,10 +570,14 @@ class Trainable:
 
         return max(checkpoint_candidates)
 
-    def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
-        if not self.uses_cloud_checkpointing:
-            return False
+    def _save_to_cloud(self, checkpoint_dir: str) -> bool:
+        """Saves the given directory to the cloud. This is used for checkpoint
+        and artifact uploads to cloud.
 
+        Returns:
+            bool: True if successfully saved to cloud
+        """
+        assert self.uses_cloud_checkpointing
         assert self.syncer
 
         checkpoint_uri = self._storage_path(checkpoint_dir)
