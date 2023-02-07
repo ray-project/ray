@@ -6,6 +6,14 @@ export enum PlacementGroupState {
   RESCHEDULING = "RESCHEDULING",
 }
 
+export type Bundle = {
+  bundle_id: string;
+  node_id: string | null;
+  unit_resources: {
+    [key: string]: number;
+  };
+};
+
 export type PlacementGroup = {
   placement_group_id: string;
   name: string;
@@ -14,4 +22,5 @@ export type PlacementGroup = {
   stats?: {
     [key: string]: number | string;
   } | null;
+  bundles: Bundle[];
 };

@@ -62,13 +62,21 @@ const ray::rpc::ActorDeathCause GenWorkerDiedCause(
     const ray::rpc::WorkerExitType &disconnect_type,
     const std::string &disconnect_detail) {
   ray::rpc::ActorDeathCause death_cause;
-  auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
-  AddActorInfo(actor, actor_died_error_ctx);
-  actor_died_error_ctx->set_error_message(absl::StrCat(
-      "The actor is dead because its worker process has died. Worker exit type: ",
-      ray::rpc::WorkerExitType_Name(disconnect_type),
-      " Worker exit detail: ",
-      disconnect_detail));
+  if (disconnect_type == ray::rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+    auto oom_ctx = death_cause.mutable_oom_context();
+    /// TODO(clarng): actors typically don't retry. Support actor (task) oom retry
+    /// and set this value from raylet here.
+    oom_ctx->set_fail_immediately(false);
+    oom_ctx->set_error_message(disconnect_detail);
+  } else {
+    auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
+    AddActorInfo(actor, actor_died_error_ctx);
+    actor_died_error_ctx->set_error_message(absl::StrCat(
+        "The actor is dead because its worker process has died. Worker exit type: ",
+        ray::rpc::WorkerExitType_Name(disconnect_type),
+        " Worker exit detail: ",
+        disconnect_detail));
+  }
   return death_cause;
 }
 const ray::rpc::ActorDeathCause GenOwnerDiedCause(
@@ -908,6 +916,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                      rpc::WorkerExitType_Name(disconnect_type),
                                      ", has creation_task_exception = ",
                                      (creation_task_exception != nullptr));
+  RAY_LOG(DEBUG) << "on worker dead worker id " << worker_id << " disconnect detail "
+                 << disconnect_detail;
   if (disconnect_type == rpc::WorkerExitType::INTENDED_USER_EXIT ||
       disconnect_type == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
     RAY_LOG(DEBUG) << message;
