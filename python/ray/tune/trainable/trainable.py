@@ -40,6 +40,7 @@ from ray.tune.result import (
     TRAINING_ITERATION,
     TRIAL_ID,
     TRIAL_INFO,
+    EXPR_FILES,
 )
 from ray.tune import TuneError
 from ray.tune.syncer import Syncer
@@ -518,8 +519,7 @@ class Trainable:
             # First, upload the new trial checkpoint to cloud
             self._save_to_cloud(checkpoint_dir)
             # Then, save other artifacts that live in the trial logdir
-            # Avoid double uploading checkpoints, if those live in the same directory
-            self._save_to_cloud(self.logdir, exclude=["checkpoint_*"])
+            self._save_artifacts_to_cloud()
 
         return checkpoint_dir
 
@@ -572,6 +572,11 @@ class Trainable:
             return None
 
         return max(checkpoint_candidates)
+
+    def _save_artifacts_to_cloud(self) -> bool:
+        # Avoid double uploading checkpoints and driver artifacts,
+        # if those live in the same directory
+        return self._save_to_cloud(self.logdir, exclude=("checkpoint_*",) + EXPR_FILES)
 
     def _save_to_cloud(self, local_dir: str, exclude: List[str] = None) -> bool:
         """Saves the given directory to the cloud. This is used for checkpoint

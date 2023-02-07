@@ -148,3 +148,11 @@ EXPR_RESULT_FILE = "result.json"
 
 # Config prefix when using ExperimentAnalysis.
 CONFIG_PREFIX = "config"
+
+# Files that the Tune driver saves by default to each trial directory.
+EXPR_FILES = (
+    EXPR_PARAM_FILE,
+    EXPR_PARAM_PICKLE_FILE,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+)
