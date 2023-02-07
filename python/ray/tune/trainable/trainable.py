@@ -41,6 +41,7 @@ from ray.tune.result import (
     TRIAL_ID,
     TRIAL_INFO,
 )
+from ray.tune import TuneError
 from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.log import disable_ipython
@@ -573,32 +574,26 @@ class Trainable:
         if not self.uses_cloud_checkpointing:
             return False
 
-        if self.syncer:
-            self.syncer.sync_up(checkpoint_dir, self._storage_path(checkpoint_dir))
+        assert self.syncer
+
+        checkpoint_uri = self._storage_path(checkpoint_dir)
+        self.syncer.sync_up(local_dir=checkpoint_dir, remote_dir=checkpoint_uri)
+        try:
             self.syncer.wait_or_retry(
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
-            return True
-
-        checkpoint = self._checkpoint_cls.from_directory(checkpoint_dir)
-        checkpoint_uri = self._storage_path(checkpoint_dir)
-        if not retry_fn(
-            lambda: checkpoint.to_uri(checkpoint_uri),
-            subprocess.CalledProcessError,
-            num_retries=self.sync_num_retries,
-            sleep_time=self.sync_sleep_time,
-            timeout=self.sync_timeout,
-        ):
+        except TuneError:
             num_retries = self.sync_num_retries
             logger.error(
-                f"Could not upload checkpoint even after {num_retries} retries."
+                f"Could not upload checkpoint to {checkpoint_uri} even after "
+                f"{num_retries} retries."
                 f"Please check if the credentials expired and that the remote "
                 f"filesystem is supported.. For large checkpoints, consider "
                 f"increasing `SyncConfig(sync_timeout)` "
-                f"(current value: {self.sync_timeout} seconds). Checkpoint URI: "
-                f"{checkpoint_uri}"
+                f"(current value: {self.sync_timeout} seconds)."
             )
+            return False
         return True
 
     def _maybe_load_from_cloud(self, checkpoint_path: str) -> bool:
