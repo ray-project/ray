@@ -11,6 +11,7 @@ azure-mgmt-compute==23.1.0
 azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 msrestazure==0.6.4
+beautifulsoup4==4.11.1
 boto3==1.23.10
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
@@ -54,7 +55,7 @@ pygame==2.1.2; python_version < '3.11'
 Pygments==2.13.0
 pymongo==4.3.2
 # TODO: Replace this with pyspark==3.4 once it is released.
-https://ml-team-public-read.s3.us-west-2.amazonaws.com/pyspark-3.4.0.dev0.tar.gz
+https://ml-team-public-read.s3.us-west-2.amazonaws.com/spark-pkgs/pyspark-3.4.0.dev0-0cb0fa313979e1b82ddd711a05d8c4e78cf6c9f5.tar.gz
 pytest==7.0.1
 pytest-asyncio==0.16.0
 pytest-rerunfailures==10.2

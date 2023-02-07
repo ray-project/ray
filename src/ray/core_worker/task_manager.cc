@@ -548,7 +548,8 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
-                 << rpc::ErrorType_Name(error_type);
+                 << rpc::ErrorType_Name(error_type) << " Fail immediately? "
+                 << fail_immediately;
   bool will_retry = false;
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(
@@ -842,6 +843,8 @@ rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
   rpc::TaskType type;
   if (task_spec.IsNormalTask()) {
     type = rpc::TaskType::NORMAL_TASK;
+  } else if (task_spec.IsDriverTask()) {
+    type = rpc::TaskType::DRIVER_TASK;
   } else if (task_spec.IsActorCreationTask()) {
     type = rpc::TaskType::ACTOR_CREATION_TASK;
     task_info.set_actor_id(task_spec.ActorCreationId().Binary());
@@ -859,7 +862,12 @@ rpc::TaskInfoEntry TaskManager::MakeTaskInfoEntry(
   task_info.set_job_id(task_spec.JobId().Binary());
 
   task_info.set_task_id(task_spec.TaskId().Binary());
-  task_info.set_parent_task_id(task_spec.ParentTaskId().Binary());
+  // NOTE: we set the parent task id of a task to be submitter's task id, where
+  // the submitter depends on the owner coreworker's:
+  // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
+  // - if the owner coreworker runs an actor, the submitter's task id will be the actor's
+  // creation task id.
+  task_info.set_parent_task_id(task_spec.SubmitterTaskId().Binary());
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info.mutable_required_resources()->insert(resources_map.begin(),
                                                  resources_map.end());

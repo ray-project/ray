@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import ActorDetailPage from "./pages/actor/ActorDetail";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
 import JobList, { NewIAJobsPage } from "./pages/job";
@@ -53,6 +54,10 @@ type GlobalContextType = {
    */
   grafanaHost: string | undefined;
   /**
+   * Whether prometheus is runing or not
+   */
+  prometheusHealth: boolean | undefined;
+  /**
    * The name of the currently running ray session.
    */
   sessionName: string | undefined;
@@ -63,6 +68,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   ipLogMap: {},
   namespaceMap: {},
   grafanaHost: undefined,
+  prometheusHealth: undefined,
   sessionName: undefined,
 });
 
@@ -79,6 +85,7 @@ const App = () => {
     ipLogMap: {},
     namespaceMap: {},
     grafanaHost: undefined,
+    prometheusHealth: undefined,
     sessionName: undefined,
   });
   const getTheme = (name: string) => {
@@ -119,11 +126,13 @@ const App = () => {
   // Detect if grafana is running
   useEffect(() => {
     const doEffect = async () => {
-      const { grafanaHost, sessionName } = await getMetricsInfo();
+      const { grafanaHost, sessionName, prometheusHealth } =
+        await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
         grafanaHost,
         sessionName,
+        prometheusHealth,
       }));
     };
     doEffect();
@@ -138,7 +147,7 @@ const App = () => {
             {/* Dummy MainNavContext so we can re-use existing pages in new layout */}
             <MainNavContext.Provider value={DEFAULT_VALUE}>
               <Routes>
-                <Route element={<Navigate replace to="/node" />} path="/" />
+                <Route element={<Navigate replace to="/new" />} path="/" />
                 <Route
                   element={<BasicLayout setTheme={setTheme} theme={theme} />}
                 >
@@ -164,6 +173,7 @@ const App = () => {
                   />
                   <Route element={<NodeDetail />} path="/node/:id" />
                   <Route element={<JobDetailChartsPage />} path="/job/:id" />
+                  <Route element={<ActorDetailPage />} path="/actors/:id" />
                   <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
                   <Route element={<Loading />} path="/loading" />
                 </Route>
@@ -189,7 +199,10 @@ const App = () => {
                         }
                         path=""
                       />
-                      <Route element={<NodeDetailPage />} path="nodes/:id" />
+                      <Route
+                        element={<NodeDetailPage newIA />}
+                        path="nodes/:id"
+                      />
                     </Route>
                   </Route>
                   <Route element={<NewIAJobsPage />} path="jobs">
@@ -219,8 +232,12 @@ const App = () => {
                         }
                         path="actors"
                       />
+                      <Route element={<ActorDetailPage />} path="actors/:id" />
                     </Route>
                   </Route>
+                  <Route element={<Actors newIA />} path="actors" />
+                  <Route element={<ActorDetailPage />} path="actors/:id" />
+                  <Route element={<Metrics newIA />} path="metrics" />
                   <Route element={<NewIALogsPage />} path="logs">
                     {/* TODO(aguo): Refactor Logs component to use optional query
                         params since react-router 6 doesn't support optional path params... */}

@@ -2259,6 +2259,14 @@ class Algorithm(Trainable):
                         return isinstance(self, MultiAgentEnv)
 
                 return env_id, lambda cfg: _wrapper.remote(cfg)
+            # gym.Env-subclass: Also go through our RLlib gym-creator.
+            elif issubclass(env_specifier, gym.Env):
+                return env_id, functools.partial(
+                    _gym_env_creator,
+                    env_descriptor=env_specifier,
+                    auto_wrap_old_gym_envs=config.get("auto_wrap_old_gym_envs", True),
+                )
+            # All other env classes: Call c'tor directly.
             else:
                 return env_id, lambda cfg: env_specifier(cfg)
 
@@ -2725,15 +2733,6 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the evaluation call.
         """
-
-        eval_results = {
-            "evaluation": {
-                "episode_reward_max": np.nan,
-                "episode_reward_min": np.nan,
-                "episode_reward_mean": np.nan,
-            }
-        }
-
         eval_func_to_use = (
             self._evaluate_async
             if self.config.enable_async_evaluation
