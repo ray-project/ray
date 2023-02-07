@@ -1,6 +1,6 @@
 import collections
 from dataclasses import dataclass
-from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
+from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional, Deque
 
 import ray
 from ray.data.block import Block, BlockMetadata
@@ -85,9 +85,10 @@ class ActorPoolMapOperator(MapOperator):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
         actor = self._cls.remote()
-        self._actor_pool.add_pending_actor(actor, actor.ready.remote())
+        self._actor_pool.add_pending_actor(actor, actor.get_location.remote())
 
     def _add_bundled_input(self, bundle: RefBundle):
+        self._actor_pool._locality_manager.start_tracking(bundle)
         self._bundle_queue.append(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
         self._dispatch_tasks()
@@ -268,8 +269,8 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
-    def ready(self):
-        return "ok"
+    def get_location(self) -> str:
+        return ray.get_runtime_context().get_node_id()
 
     def submit(
         self,
@@ -414,11 +415,18 @@ class _ActorPool:
         self._max_tasks_in_flight = max_tasks_in_flight
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
+        # Node id of each ready actor.
+        self._actor_locations: Dict[ray.actor.ActorHandle, str] = {}
         # Actors that are not yet ready (still pending creation).
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
         # Whether actors that become idle should be eagerly killed. This is False until
         # the first call to kill_idle_actors().
         self._should_kill_idle_actors = False
+        # Tracks locations of bundles that are to be executed by this actor pool.
+        self._locality_manager = _LocalityManager()
+        # Track locality matching stats.
+        self._locality_hits: int = 0
+        self._locality_misses: int = 0
 
     def add_pending_actor(self, actor: ray.actor.ActorHandle, ready_ref: ray.ObjectRef):
         """Adds a pending actor to the pool.
@@ -453,6 +461,7 @@ class _ActorPool:
             return False
         actor = self._pending_actors.pop(ready_ref)
         self._num_tasks_in_flight[actor] = 0
+        self._actor_locations[actor] = ray.get(ready_ref)
         return True
 
     def pick_actor(self) -> Optional[ray.actor.ActorHandle]:
@@ -476,6 +485,63 @@ class _ActorPool:
         else:
             self._num_tasks_in_flight[actor] += 1
             return actor
+
+    def pick_actor_and_bundle_locality_aware(
+        self, bundles: Deque[RefBundle]
+    ) -> Optional[Tuple[ray.actor.ActorHandle, RefBundle]]:
+        """Picks a local actor and bundle pair, if possible.
+
+        We pick pairs based on the following order in decreasing preference:
+            (lightly loaded actor, local bundle)
+            (heavily loaded actor, local bundle)
+            (lightly loaded actor, remote bundle)
+            (heavily loaded actor, remote bundle)
+
+        If a pair is selected, the actor's max tasks in flight count will be
+        incremented, and the bundle will be popped from the bundle queue.
+
+        Returns:
+            None if all actors are at capacity or are pending.
+        """
+
+        assert len(bundles) == self._locality_manager.num_tracked_bundles(), (
+            len(bundles) == self._locality_manager.num_tracked_bundles()
+        )
+
+        # Generate candidate list of [no_local, num_tasks_in_flight, actor]
+        candidates: List[Tuple[bool, int, ray.actor.ActorHandle]] = []
+        for actor, num_in_flight in self._num_tasks_in_flight.items():
+            if num_in_flight < self._max_tasks_in_flight:
+                actor_location = self._get_actor_location(actor)
+                matching = self._locality_manager.get_bundles_at_location(
+                    actor_location
+                )
+                num_local = len(matching)
+                candidates.append((num_local == 0, num_in_flight, actor))
+
+        if not candidates:
+            # No valid actors to return.
+            return None
+
+        # Find the best candidate pair.
+        candidates.sort()
+        _, _, actor = candidates[0]
+
+        # Generate the pair.
+        actor_location = self._get_actor_location(actor)
+        matching = self._locality_manager.get_bundles_at_location(actor_location)
+        if matching:
+            self._locality_hits += 1
+            bundle = matching[0]
+        else:
+            self._locality_misses += 1
+            bundle = bundles[0]
+
+        # Update tracking structures and return.
+        self._num_tasks_in_flight[actor] += 1
+        bundles.remove(bundle)
+        self._locality_manager.stop_tracking(bundle)
+        return (actor, bundle)
 
     def return_actor(self, actor: ray.actor.ActorHandle):
         """Returns the provided actor to the pool."""
@@ -595,3 +661,20 @@ class _ActorPool:
         """Kill the provided pending actor and remove it from the pool."""
         actor = self._pending_actors.pop(ready_ref)
         ray.kill(actor)
+
+
+class _LocalityManager:
+    def __init__(self):
+        pass
+
+    def start_tracking(self, bundle: RefBundle) -> None:
+        raise NotImplementedError
+
+    def stop_tracking(self, bundle: RefBundle) -> None:
+        raise NotImplementedError
+
+    def get_bundles_at_location(self, node_id: str) -> List[RefBundle]:
+        raise NotImplementedError
+
+    def num_tracked_bundles(self) -> int:
+        raise NotImplementedError
