@@ -143,7 +143,11 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     )
     trial.pickled_error_filename = None
     trial.error_filename = None
-    result_grid = ResultGrid(None)
+
+    class MockExperimentAnalysis:
+        trials = []
+
+    result_grid = ResultGrid(MockExperimentAnalysis())
 
     # Internal result grid conversion
     result = result_grid._trial_to_result(trial)
