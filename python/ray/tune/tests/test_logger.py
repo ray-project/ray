@@ -1,10 +1,11 @@
 import csv
+from dataclasses import dataclass
 import glob
 import json
 import os
-from collections import namedtuple
 import unittest
 import tempfile
+from typing import Optional
 import shutil
 import numpy as np
 from ray.cloudpickle import cloudpickle
@@ -24,9 +25,17 @@ from ray.tune.result import (
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
 )
+from ray.tune.utils import flatten_dict
 
 
-class Trial(namedtuple("MockTrial", ["evaluated_params", "trial_id", "logdir"])):
+@dataclass
+class Trial:
+    evaluated_params: dict
+    trial_id: str
+    logdir: str
+    local_dir: Optional[str] = None
+    experiment_dir_name: Optional[str] = None
+
     @property
     def config(self):
         return self.evaluated_params
@@ -264,72 +273,124 @@ class LoggerSuite(unittest.TestCase):
             logger.on_trial_complete(3, [], t)
         assert "INFO" in cm.output[0]
 
-    def testAim(self):
-        config = {
-            "a": 2,
-            "b": [1, 2],
-            "c": {"c": {"D": 123}},
-            "int32": np.int32(1),
-            "int64": np.int64(2),
-            "bool8": np.bool8(True),
-            "float32": np.float32(3),
-            "float64": np.float64(4),
-            "bad": np.float128(4),
-        }
-        # Test that aim repo is saved to the experiment directory
-        # (one up from the trial directory) as the default
-        trial_logdir = os.path.join(self.test_dir, "trial_logdir")
-        t = Trial(evaluated_params=config,
-                  trial_id="aim", logdir=self.test_dir)
-        logger = AimCallback(repo=self.test_dir, experiment="aim_test")
-        logger.log_trial_start(t)
-        logger.on_trial_result(0, [], t, result(0, 4))
-        logger.on_trial_result(1, [], t, result(1, 5))
-        logger.on_trial_result(
-            2, [], t, result(2, 6, score=[1, 2, 3], hello={"world": 1})
-        )
 
-        logger.on_trial_complete(3, [], t)
+class AimLoggerSuite(unittest.TestCase):
+    """Test Aim integration."""
 
-        self._validate_aimresults(
-            params=(b"float32", b"float64", b"int32", b"int64", b"bool8"),
-            excluded_params=(b"bad",),
-        )
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
 
-    def _validate_aimresults(self, params=None, excluded_params=None):
+    def tearDown(self):
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+
+    def initialize_logger(self, repo=None, experiment_name=None, metrics=None):
         try:
             from aim import Repo
         except ImportError:
             print("Skipping rest of test as aim is not installed.")
             return
 
-        # Check result logs
-        aim_repo = Repo(self.test_dir)
-        aim_run = list(aim_repo.iter_runs())[0]
+        class Dummy:
+            pass
 
-        results = []
-        excluded_params = excluded_params or []
-        for metric in aim_run.metrics():
-            if metric.name == "ray/tune/episode_reward_mean":
-                results = metric.values.values_list()
+        self.config = {
+            "a": 2,
+            "b": [1, 2],
+            "c": {"d": {"e": 123}},
+            "int32": np.int32(1),
+            "int64": np.int64(2),
+            "bool8": np.bool8(True),
+            "float32": np.float32(3),
+            "float64": np.float64(4),
+            "bad": Dummy(),
+        }
+        # Test that aim repo is saved to the experiment directory
+        # (one up from the trial directory) as the default
+        trial_logdir = os.path.join(self.test_dir, "trial_logdir")
+        trials = [
+            Trial(
+                evaluated_params=self.config,
+                trial_id="aim_1",
+                local_dir=self.test_dir,
+                logdir=trial_logdir,
+                experiment_dir_name="aim_test",
+            ),
+            Trial(
+                evaluated_params=self.config,
+                trial_id="aim_2",
+                local_dir=self.test_dir,
+                logdir=trial_logdir,
+                experiment_dir_name="aim_test",
+            ),
+        ]
 
-        self.assertEqual(len(results), 3)
-        self.assertSequenceEqual([int(res) for res in results], [4, 5, 6])
-
-    def testBadAim(self):
-        config = {"b": (1, 2, 3)}
-        t = Trial(evaluated_params=config,
-                  trial_id="aim", logdir=self.test_dir)
-        logger = AimCallback(repo=self.test_dir, experiment="aim_test")
-        logger.log_trial_start(t)
-        logger.on_trial_result(0, [], t, result(0, 4))
-        logger.on_trial_result(1, [], t, result(1, 5))
-        logger.on_trial_result(
-            2, [], t, result(2, 6, score=[1, 2, 3], hello={"world": 1})
+        repo = repo or self.test_dir
+        logger = AimLoggerCallback(
+            repo=repo, experiment_name=experiment_name, metrics=metrics
         )
-        with self.assertLogs("ray.tune.logger", level="INFO") as cm:
+
+        for i, t in enumerate(trials):
+            with self.assertLogs("ray.tune.logger", level="INFO") as cm:
+                logger.log_trial_start(t)
+                # Check that we log that the "bad" hparam gets thrown away
+                assert "INFO" in cm.output[0]
+
+            logger.on_trial_result(0, [], t, result(0, 3 * i + 1))
+            logger.on_trial_result(1, [], t, result(1, 3 * i + 2))
+            logger.on_trial_result(
+                2, [], t, result(2, 3 * i + 3, score=[1, 2, 3], hello={"world": 1})
+            )
             logger.on_trial_complete(3, [], t)
-        assert "INFO" in cm.output[0]
+
+        aim_repo = Repo(repo)
+        runs = list(aim_repo.iter_runs())
+        assert len(runs) == 2
+        runs.sort(key=lambda r: r["trial_id"])
+        return runs
+
+    def validateLogs(self, runs: list, metrics: list = None):
+        expected_logged_hparams = set(flatten_dict(self.config)) - {"bad"}
+
+        for i, run in enumerate(runs):
+            assert set(run["hparams"]) == expected_logged_hparams
+
+            results = None
+            all_tune_metrics = set()
+            for metric in run.metrics():
+                if metric.name.startswith("ray/tune/"):
+                    all_tune_metrics.add(metric.name.replace("ray/tune/", ""))
+                if metric.name == "ray/tune/episode_reward_mean":
+                    results = metric.values.values_list()
+
+            assert results
+            # Make sure that the set of reported metrics matches with the
+            # set of metric names passed in
+            # If None is passed in, then all Tune metrics get reported
+            assert metrics is None or set(metrics) == all_tune_metrics
+
+            results = [int(res) for res in results]
+            if i == 0:
+                self.assertSequenceEqual(results, [1, 2, 3])
+            elif i == 1:
+                self.assertSequenceEqual(results, [4, 5, 6])
+
+    def testDefault(self):
+        runs = self.initialize_logger()
+        self.validateLogs(runs)
+        assert all([run.experiment == "aim_test" for run in runs])
+
+    def testFilteredMetrics(self):
+        metrics_to_log = ("episode_reward_mean",)
+        runs = self.initialize_logger(metrics=metrics_to_log)
+        self.validateLogs(runs=runs, metrics=metrics_to_log)
+
+    def testCustomConfigurations(self):
+        custom_repo = os.path.join(self.test_dir, "custom_repo")
+        runs = self.initialize_logger(repo=custom_repo, experiment_name="custom")
+        self.validateLogs(runs)
+        for run in runs:
+            assert run.repo.path == os.path.join(custom_repo, ".aim")
+            assert run.experiment == "custom"
 
 
 if __name__ == "__main__":
