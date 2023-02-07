@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 import numpy as np
 from typing import TYPE_CHECKING, Dict, Optional, List, Union
@@ -17,10 +16,9 @@ if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
 
 try:
-    from aim.sdk import Run
+    from aim.sdk import Repo, Run
 except ImportError:
-    DEFAULT_SYSTEM_TRACKING_INT = None
-    Run = None
+    Repo, Run = None, None
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +47,6 @@ class AimLoggerCallback(LoggerCallback):
         metrics: List of metric names (out of the metrics reported by Tune) to
             track in Aim. If no metric are specified, log everything that
             is reported.
-        as_multirun: If True, create a new Run for each trial.
         **aim_run_kwargs: Additional arguments that will be passed when creating the
             individual `Run` objects for each trial. For the full list of arguments,
             please see the Aim documentation:
@@ -64,7 +61,6 @@ class AimLoggerCallback(LoggerCallback):
         repo: Optional[Union[str, "Repo"]] = None,
         experiment_name: Optional[str] = None,
         metrics: Optional[List[str]] = None,
-        as_multirun: Optional[bool] = True,
         **aim_run_kwargs,
     ):
         """
@@ -82,9 +78,8 @@ class AimLoggerCallback(LoggerCallback):
                 "in which case all reported metrics will be logged to the aim repo."
             )
         self._metrics = metrics
-        self._as_multirun = as_multirun
         self._aim_run_kwargs = aim_run_kwargs
-        self._trial_run: Dict["Trial", Run] = {}
+        self._trial_to_run: Dict["Trial", Run] = {}
 
     def _create_run(self, trial: "Trial") -> Run:
         """Initializes an Aim Run object for a given trial.
@@ -101,40 +96,41 @@ class AimLoggerCallback(LoggerCallback):
             experiment=self._experiment_name or trial.experiment_dir_name,
             **self._aim_run_kwargs,
         )
-        if self._as_multirun:
-            run["trial_id"] = trial.trial_id
+        # Attach a few useful trial properties
+        run["trial_id"] = trial.trial_id
+        run["trial_log_dir"] = trial.logdir
+        if trial.remote_checkpoint_dir:
+            run["trial_remote_log_dir"] = trial.remote_checkpoint_dir
+        trial_ip = trial.get_runner_ip()
+        if trial_ip:
+            run["trial_ip"] = trial_ip
         return run
 
     def log_trial_start(self, trial: "Trial"):
-        if self._as_multirun:
-            if trial in self._trial_run:
-                self._trial_run[trial].close()
-        elif self._trial_run:
-            return
+        if trial in self._trial_to_run:
+            # Cleanup an existing run if the trial has been restarted
+            self._trial_to_run[trial].close()
 
         trial.init_logdir()
-        self._trial_run[trial] = self._create_run(trial)
+        self._trial_to_run[trial] = self._create_run(trial)
 
         if trial.evaluated_params:
             self._log_trial_hparams(trial)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
-        # create local copy to avoid problems
         tmp_result = result.copy()
 
         step = result.get(TIMESTEPS_TOTAL, None) or result[TRAINING_ITERATION]
 
         for k in ["config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION]:
-            if k in tmp_result:
-                del tmp_result[k]  # not useful to log these
+            tmp_result.pop(k, None)  # not useful to log these
 
+        # `context` and `epoch` are special keys that users can report,
+        # which are treated as special aim metrics/configurations.
         context = tmp_result.pop("context", None)
         epoch = tmp_result.pop("epoch", None)
 
-        trial_run = self._get_trial_run(trial)
-        if not self._as_multirun:
-            context["trial"] = trial.trial_id
-
+        trial_run = self._trial_to_run[trial]
         path = ["ray", "tune"]
 
         flat_result = flatten_dict(tmp_result, delimiter="/")
@@ -162,10 +158,8 @@ class AimLoggerCallback(LoggerCallback):
                 valid_result[attr] = value
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
-        # cleanup in the end
-        trial_run = self._get_trial_run(trial)
+        trial_run = self._trial_to_run.pop(trial)
         trial_run.close()
-        del trial_run
 
     def _log_trial_hparams(self, trial: "Trial"):
         params = flatten_dict(trial.evaluated_params, delimiter="/")
@@ -194,9 +188,5 @@ class AimLoggerCallback(LoggerCallback):
                 str(removed),
             )
 
-        self._trial_run[trial]["hparams"] = scrubbed_params
-
-    def _get_trial_run(self, trial):
-        if not self._as_multirun:
-            return list(self._trial_run.values())[0]
-        return self._trial_run[trial]
+        run = self._trial_to_run[trial]
+        run["hparams"] = scrubbed_params
