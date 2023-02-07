@@ -14,7 +14,7 @@ filter_pattern = os.environ.get("TESTS_TO_RUN", "")
 def timeit(
     name, fn, multiplier=1, warmup_time_sec=10
 ) -> List[Optional[Tuple[str, float, float]]]:
-    if filter_pattern not in name:
+    if filter_pattern and name not in filter_pattern:
         return [None]
     # sleep for a while to avoid noisy neigbhors.
     # related issue: https://github.com/ray-project/ray/issues/22045
