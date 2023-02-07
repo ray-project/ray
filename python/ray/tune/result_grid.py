@@ -69,6 +69,9 @@ class ResultGrid:
         experiment_analysis: ExperimentAnalysis,
     ):
         self._experiment_analysis = experiment_analysis
+        self._results = [
+            self._trial_to_result(trial) for trial in self._experiment_analysis.trials
+        ]
 
     def get_best_result(
         self,
@@ -178,13 +181,11 @@ class ResultGrid:
         )
 
     def __len__(self) -> int:
-        return len(self._experiment_analysis.trials)
+        return len(self._results)
 
     def __getitem__(self, i: int) -> Result:
         """Returns the i'th result in the grid."""
-        return self._trial_to_result(
-            self._experiment_analysis.trials[i],
-        )
+        return self._results[i]
 
     @property
     def errors(self):
@@ -235,8 +236,13 @@ class ResultGrid:
             metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
                 trial.logdir
             )
-            if self._experiment_analysis
+            if self._experiment_analysis.trial_dataframes
             else None,
             best_checkpoints=best_checkpoints,
         )
         return result
+
+    def __repr__(self) -> str:
+        all_results_repr = [result._repr(indent=2) for result in self]
+        all_results_repr = ",\n".join(all_results_repr)
+        return f"ResultGrid<[\n{all_results_repr}\n]>"
