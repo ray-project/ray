@@ -44,7 +44,7 @@ from ray.tune.result import (
 )
 from ray.tune import TuneError
 from ray.tune.syncer import Syncer
-from ray.tune.utils import UtilMonitor
+from ray.tune.utils import UtilMonitor, warn_if_slow
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
@@ -581,9 +581,22 @@ class Trainable:
         # Avoid double uploading checkpoints and driver artifacts,
         # if those live in the same directory
         self._last_artifact_sync_iter = self.iteration
-        return self._maybe_save_to_cloud(
-            self.logdir, exclude=("checkpoint_*",) + EXPR_FILES
-        )
+        with warn_if_slow(
+            name="trial_artifact_cloud_upload",
+            message=(
+                "Uploading trial artifacts took {duration:.3f} s, which may be a "
+                "performance bottleneck. Consider saving fewer/smaller artifacts to "
+                "the trial log directory, or disable artifact uploading with "
+                "`SyncConfig(sync_artifacts=False)`."
+            ),
+            # Log a warning if upload time surpasses 10s
+            threshold=10,
+            disable=not self.uses_cloud_checkpointing,
+        ):
+            uploaded = self._maybe_save_to_cloud(
+                self.logdir, exclude=("checkpoint_*",) + EXPR_FILES
+            )
+        return uploaded
 
     def _maybe_save_to_cloud(self, local_dir: str, exclude: List[str] = None) -> bool:
         """Saves the given directory to the cloud. This is used for checkpoint
