@@ -223,7 +223,7 @@ annotations.take(2)
 
 Each row of `annotations` contains the filename of an image.
 
-Write a user-defined that loads these images. For each annotation, your function will:
+Write a user-defined function that loads these images. For each annotation, your function will:
 1. Open the image associated with the annotation.
 2. Add the image to a new `"image"` column.
 
