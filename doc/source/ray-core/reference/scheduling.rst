@@ -5,7 +5,7 @@ Scheduling Strategy
 -------------------
 
 .. autosummary::
-    :toctree: doc/
+    :toctree: api/
 
     ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy
     ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy
@@ -16,7 +16,7 @@ Placement Group
 ---------------
 
 .. autosummary::
-    :toctree: doc/
+    :toctree: api/
 
     ray.util.placement_group.placement_group
     ray.util.placement_group.PlacementGroup

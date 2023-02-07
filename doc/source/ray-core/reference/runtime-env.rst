@@ -2,7 +2,7 @@ Runtime Env API
 ===============
 
 .. autosummary::
-    :toctree: doc/
+    :toctree: api/
 
     ray.runtime_env.RuntimeEnvConfig
     ray.runtime_env.RuntimeEnv

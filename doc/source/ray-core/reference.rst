@@ -4,11 +4,11 @@ API References
 .. toctree::
     :maxdepth: 2
 
-    api/core.rst
-    api/scheduling.rst
-    api/runtime-env.rst
-    api/utility.rst
-    api/exceptions.rst
-    cli.rst
+    reference/core.rst
+    reference/scheduling.rst
+    reference/runtime-env.rst
+    reference/utility.rst
+    reference/exceptions.rst
+    reference/cli.rst
     ../ray-observability/state/cli.rst
     ../ray-observability/state/ray-state-api-reference.rst
