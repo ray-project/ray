@@ -10,5 +10,5 @@ API References
     reference/utility.rst
     reference/exceptions.rst
     reference/cli.rst
-    ../ray-observability/state/cli.rst
-    ../ray-observability/state/ray-state-api-reference.rst
+    ../ray-observability/reference/state/cli.rst
+    ../ray-observability/reference/state/api.rst
