@@ -24,15 +24,6 @@
 namespace ray {
 namespace gcs {
 
-// Please keep this in sync with the definition in ray_constants.py.
-const std::string kRayInternalNamespacePrefix = "_ray_internal_";
-
-// Please keep these in sync with the definition in dashboard/modules/job/common.py.
-const std::string kJobDataKeyPrefix = kRayInternalNamespacePrefix + "job_info_";
-inline std::string JobDataKey(const std::string submission_id) {
-  return kJobDataKeyPrefix + submission_id;
-}
-
 using JobFinishListenerCallback = rpc::JobInfoHandler::JobFinishListenerCallback;
 
 /// This implementation class of `JobInfoHandler`.
@@ -41,13 +32,11 @@ class GcsJobManager : public rpc::JobInfoHandler {
   explicit GcsJobManager(std::shared_ptr<GcsTableStorage> gcs_table_storage,
                          std::shared_ptr<GcsPublisher> gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
-                         GcsFunctionManager &function_manager,
-                         InternalKVInterface &internal_kv)
+                         GcsFunctionManager &function_manager)
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_publisher_(std::move(gcs_publisher)),
         runtime_env_manager_(runtime_env_manager),
-        function_manager_(function_manager),
-        internal_kv_(internal_kv) {}
+        function_manager_(function_manager) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -87,7 +76,6 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   ray::RuntimeEnvManager &runtime_env_manager_;
   GcsFunctionManager &function_manager_;
-  InternalKVInterface &internal_kv_;
   void ClearJobInfos(const rpc::JobTableData &job_data);
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,
