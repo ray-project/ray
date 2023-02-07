@@ -13,7 +13,7 @@ from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.tune.experiment.trial import Trial  # noqa: F401
+    from ray.tune.experiment.trial import Trial
 
 try:
     from aim.sdk import Repo, Run
@@ -79,11 +79,7 @@ class AimLoggerCallback(LoggerCallback):
             )
         self._metrics = metrics
         self._aim_run_kwargs = aim_run_kwargs
-<<<<<<< HEAD
         self._trial_to_run: Dict["Trial", Run] = {}
-=======
-        self._trial_run: Dict[str, Run] = {}
->>>>>>> c1c79970f3a61a2df1929e9e983719899a96c5ee
 
     def _create_run(self, trial: "Trial") -> Run:
         """Initializes an Aim Run object for a given trial.
@@ -129,13 +125,9 @@ class AimLoggerCallback(LoggerCallback):
         for k in ["config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION]:
             tmp_result.pop(k, None)  # not useful to log these
 
-<<<<<<< HEAD
         # `context` and `epoch` are special keys that users can report,
         # which are treated as special aim metrics/configurations.
         context = tmp_result.pop("context", None)
-=======
-        context = tmp_result.pop("context", {})
->>>>>>> c1c79970f3a61a2df1929e9e983719899a96c5ee
         epoch = tmp_result.pop("epoch", None)
 
         trial_run = self._trial_to_run[trial]
