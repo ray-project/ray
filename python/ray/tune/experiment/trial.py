@@ -35,7 +35,7 @@ from ray.tune.result import (
     DEBUG_METRICS,
 )
 from ray.tune.resources import Resources
-from ray.tune.syncer import SyncConfig, Syncer, get_node_to_storage_syncer
+from ray.tune.syncer import SyncConfig
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
@@ -373,10 +373,6 @@ class Trial:
 
         # Checkpoint syncing
         self.sync_config = sync_config or SyncConfig()
-
-        self.syncer = get_node_to_storage_syncer(self.sync_config)
-        if isinstance(self.sync_config.syncer, Syncer):
-            self.syncer = sync_config.syncer
 
         # Checkpoint config
         checkpoint_config = checkpoint_config or CheckpointConfig()

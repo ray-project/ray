@@ -43,10 +43,10 @@ from ray.tune.result import (
     EXPR_FILES,
 )
 from ray.tune import TuneError
-from ray.tune.syncer import Syncer
 from ray.tune.utils import UtilMonitor, warn_if_slow
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.syncer import SyncConfig
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import (
     Tee,
@@ -111,8 +111,7 @@ class Trainable:
         config: Dict[str, Any] = None,
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
         remote_checkpoint_dir: Optional[str] = None,
-        syncer: Optional[Syncer] = None,
-        sync_timeout: Optional[int] = None,
+        sync_config: Optional[SyncConfig] = None,
     ):
         """Initialize a Trainable.
 
@@ -130,9 +129,8 @@ class Trainable:
             remote_checkpoint_dir: Upload directory (S3 or GS path).
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
-            syncer: Syncer used for synchronizing data from Ray nodes
-                to external storage.
-            sync_timeout: Timeout after which sync processes are aborted.
+            sync_config: Configuration object for syncing.
+                See :class:`~ray.tune.syncer.SyncConfig`.
         """
 
         self._experiment_id = uuid.uuid4().hex
@@ -183,8 +181,7 @@ class Trainable:
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
-        self.syncer = syncer
-        self.sync_timeout = sync_timeout
+        self.sync_config = sync_config
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
@@ -611,14 +608,13 @@ class Trainable:
         if not self.uses_cloud_checkpointing:
             return False
 
-        assert self.syncer
+        syncer = self.sync_config.syncer
+        assert syncer
 
         checkpoint_uri = self._storage_path(local_dir)
-        self.syncer.sync_up(
-            local_dir=local_dir, remote_dir=checkpoint_uri, exclude=exclude
-        )
+        syncer.sync_up(local_dir=local_dir, remote_dir=checkpoint_uri, exclude=exclude)
         try:
-            self.syncer.wait_or_retry(
+            syncer.wait_or_retry(
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
@@ -630,7 +626,7 @@ class Trainable:
                 f"Please check if the credentials expired and that the remote "
                 f"filesystem is supported.. For large checkpoints, consider "
                 f"increasing `SyncConfig(sync_timeout)` "
-                f"(current value: {self.sync_timeout} seconds)."
+                f"(current value: {self.sync_config.sync_timeout} seconds)."
             )
             return False
         return True
@@ -655,10 +651,11 @@ class Trainable:
         local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
         path_existed_before = os.path.exists(local_dir)
 
-        if self.syncer:
+        syncer = self.sync_config.syncer
+        if syncer:
             # Only keep for backwards compatibility
-            self.syncer.sync_down(remote_dir=external_uri, local_dir=local_dir)
-            self.syncer.wait_or_retry(
+            syncer.sync_down(remote_dir=external_uri, local_dir=local_dir)
+            syncer.wait_or_retry(
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
@@ -670,7 +667,7 @@ class Trainable:
             (subprocess.CalledProcessError, FileNotFoundError),
             num_retries=self.sync_num_retries,
             sleep_time=self.sync_sleep_time,
-            timeout=self.sync_timeout,
+            timeout=self.sync_config.sync_timeout,
         ):
             num_retries = self.sync_num_retries
             logger.error(
@@ -863,10 +860,11 @@ class Trainable:
             return
         else:
             if self.uses_cloud_checkpointing:
-                if self.syncer:
+                syncer = self.syncer
+                if syncer:
                     # Keep for backwards compatibility
-                    self.syncer.delete(self._storage_path(checkpoint_dir))
-                    self.syncer.wait_or_retry(
+                    syncer.delete(self._storage_path(checkpoint_dir))
+                    syncer.wait_or_retry(
                         max_retries=self.sync_num_retries,
                         backoff_s=self.sync_sleep_time,
                     )
@@ -877,7 +875,7 @@ class Trainable:
                         subprocess.CalledProcessError,
                         num_retries=self.sync_num_retries,
                         sleep_time=self.sync_sleep_time,
-                        timeout=self.sync_timeout,
+                        timeout=self.sync_config.sync_timeout,
                     ):
                         num_retries = self.sync_num_retries
                         logger.error(

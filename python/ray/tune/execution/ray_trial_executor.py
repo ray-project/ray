@@ -438,7 +438,7 @@ class RayTrialExecutor:
             # We keep these kwargs separate for backwards compatibility
             # with trainables that don't provide these keyword arguments
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
-            kwargs["syncer"] = trial.syncer
+            kwargs["sync_config"] = trial.sync_config
 
             if self._trainable_kwargs:
                 kwargs.update(self._trainable_kwargs)

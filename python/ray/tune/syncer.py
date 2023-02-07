@@ -142,6 +142,10 @@ class SyncConfig:
             # Can't upload artifacts without specifying upload_dir
             self.sync_artifacts = False
 
+        if self.upload_dir and self.syncer == "auto":
+            # Setup the default cloud syncer
+            self.syncer = get_node_to_storage_syncer(self)
+
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig.
 
