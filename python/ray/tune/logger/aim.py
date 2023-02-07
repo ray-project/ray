@@ -128,7 +128,7 @@ class AimLoggerCallback(LoggerCallback):
             if k in tmp_result:
                 del tmp_result[k]  # not useful to log these
 
-        context = tmp_result.pop("context", None)
+        context = tmp_result.pop("context", {})
         epoch = tmp_result.pop("epoch", None)
 
         trial_run = self._get_trial_run(trial)
