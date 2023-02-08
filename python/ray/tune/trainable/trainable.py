@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union, Type, TYPE_CHECKING
 
 import ray
-from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.remote_storage import list_at_uri, _ensure_directory
 from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.air.checkpoint import (
     Checkpoint,
@@ -613,6 +613,8 @@ class Trainable:
         assert syncer
 
         checkpoint_uri = self._storage_path(local_dir)
+        _ensure_directory(checkpoint_uri)
+
         syncer.sync_up(local_dir=local_dir, remote_dir=checkpoint_uri, exclude=exclude)
         try:
             syncer.wait_or_retry(

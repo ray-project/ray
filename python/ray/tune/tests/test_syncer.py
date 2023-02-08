@@ -75,10 +75,24 @@ def assert_file(exists: bool, root: str, path: str):
 
 
 class TestTrainable(tune.Trainable):
+    def __init__(self, logdir=None, **kwargs):
+        super().__init__(**kwargs)
+        if logdir:
+            self._logdir = logdir
+
     def save_checkpoint(self, checkpoint_dir: str):
         with open(os.path.join(checkpoint_dir, "checkpoint.data"), "w") as f:
             f.write("Data")
         return checkpoint_dir
+
+    def load_checkpoint(self, checkpoint):
+        pass
+
+    def step(self):
+        # Mock some artifact logging (appending to a log)
+        with open(os.path.join(self.logdir, "artifact.txt"), "a") as f:
+            f.write("test\n")
+        return {"loss": 1}
 
 
 class CustomSyncer(Syncer):
@@ -616,8 +630,46 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
 
 
+def test_artifact_syncing(ray_start_2_cpus, temp_data_dirs, tmp_path):
+    """Test that the trainable syncs artifacts along with checkpoints.
+    In this test:
+    - `tmp_target` == mocked remote storage location where Tune will sync to
+    - `tmp_path/dir1` == local storage location of initial run
+    - `tmp_path/dir2` == local storage location of restored trainable
+    """
+    tmp_source, tmp_target = temp_data_dirs
+
+    local_dir_1 = tmp_path / "dir1"
+    local_dir_2 = tmp_path / "dir2"
+    local_dir_1.mkdir()
+    local_dir_2.mkdir()
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}", logdir=str(local_dir_1)
+    )
+
+    for i in range(1, 4):
+        # Step, save, then check that artifacts are uploaded
+        ray.get(trainable.train.remote())
+        checkpoint_dir = ray.get(trainable.save.remote())
+        assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+        assert_file(True, tmp_target, "artifact.txt")
+        with open(os.path.join(tmp_target, "artifact.txt"), "r") as f:
+            artifact_data = f.read()
+            assert artifact_data.split("\n")[:-1] == ["test"] * i
+
+    restored_trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}", logdir=str(local_dir_2)
+    )
+
+    ray.get(restored_trainable.restore.remote(checkpoint_dir))
+    # Should have synced down artifacts as well upon restore
+    with open(os.path.join(local_dir_2, "artifact.txt"), "r") as f:
+        artifact_data = f.read()
+        assert artifact_data.split("\n")[:-1] == ["test"] * 3
+
+
 def test_syncer_serialize(temp_data_dirs):
-    """Check that syncing up and down works"""
     tmp_source, tmp_target = temp_data_dirs
 
     syncer = _DefaultSyncer()
@@ -626,7 +678,9 @@ def test_syncer_serialize(temp_data_dirs):
         local_dir=tmp_source, remote_dir="memory:///test/test_syncer_sync_up_down"
     )
 
-    pickle.dumps(syncer)
+    serialized = pickle.dumps(syncer)
+    loaded_syncer = pickle.loads(serialized)
+    assert not loaded_syncer._sync_process
 
 
 def test_final_experiment_checkpoint_sync(tmpdir):
