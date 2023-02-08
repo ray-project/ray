@@ -584,7 +584,7 @@ class Trainable:
             message=(
                 "Uploading trial artifacts took {duration:.3f} s, which may be a "
                 "performance bottleneck. Consider saving fewer/smaller artifacts to "
-                "the trial log directory, or disable artifact uploading with "
+                "the trial log directory, or disable artifact syncing with "
                 "`SyncConfig(sync_artifacts=False)`."
             ),
             # Log a warning if upload time surpasses 10s
@@ -592,8 +592,8 @@ class Trainable:
             disable=not self.uses_cloud_checkpointing,
         ):
             # Avoid double uploading checkpoints and driver artifacts,
-            exclude = ("checkpoint_*",) + EXPR_FILES
             # if those live in the same directory
+            exclude = ("checkpoint_*",) + EXPR_FILES
             uploaded = self._maybe_save_to_cloud(self.logdir, exclude=exclude)
         return uploaded
 
@@ -626,14 +626,14 @@ class Trainable:
                 f"Could not upload checkpoint to {checkpoint_uri} even after "
                 f"{num_retries} retries."
                 f"Please check if the credentials expired and that the remote "
-                f"filesystem is supported.. For large checkpoints, consider "
-                f"increasing `SyncConfig(sync_timeout)` "
+                f"filesystem is supported. For large checkpoints or artifacts, "
+                f"consider increasing `SyncConfig(sync_timeout)` "
                 f"(current value: {self.sync_config.sync_timeout} seconds)."
             )
             return False
         return True
 
-    def _maybe_load_from_cloud(self, checkpoint_path: str) -> bool:
+    def _maybe_load_checkpoint_from_cloud(self, checkpoint_path: str) -> bool:
         if os.path.exists(checkpoint_path):
             try:
                 TrainableUtil.find_checkpoint_dir(checkpoint_path)
@@ -653,32 +653,63 @@ class Trainable:
         local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
         path_existed_before = os.path.exists(local_dir)
 
+        success = self._maybe_load_from_cloud(
+            remote_dir=external_uri, local_dir=local_dir
+        )
+        if not success:
+            # We may have created this dir when we tried to sync, so clean up
+            if not path_existed_before and os.path.exists(local_dir):
+                shutil.rmtree(local_dir)
+        return success
+
+    def _maybe_load_artifacts_from_cloud(self) -> bool:
+        if not self.sync_config.sync_artifacts:
+            return False
+
+        remote_dir = self._storage_path(self.logdir)
+        with warn_if_slow(
+            name="trial_artifact_cloud_download",
+            message=(
+                "Downloading trial artifacts took {duration:.3f} s, which may be a "
+                "performance bottleneck. Consider saving fewer/smaller artifacts to "
+                "the trial log directory, or disable artifact syncing with "
+                "`SyncConfig(sync_artifacts=False)`."
+            ),
+            # Log a warning if upload time surpasses 10s
+            threshold=10,
+            disable=not self.uses_cloud_checkpointing,
+        ):
+            exclude = ("checkpoint_*",) + EXPR_FILES
+            uploaded = self._maybe_load_from_cloud(
+                remote_dir=remote_dir, local_dir=self.logdir, exclude=exclude
+            )
+        return uploaded
+
+    def _maybe_load_from_cloud(
+        self, remote_dir: str, local_dir: str, exclude: List[str] = None
+    ) -> bool:
+        if not self.uses_cloud_checkpointing:
+            return False
+
         syncer = self.sync_config.syncer
-        if syncer:
-            # Only keep for backwards compatibility
-            syncer.sync_down(remote_dir=external_uri, local_dir=local_dir)
+        assert syncer
+
+        syncer.sync_down(remote_dir=remote_dir, local_dir=local_dir, exclude=exclude)
+        try:
             syncer.wait_or_retry(
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
-            return True
-
-        checkpoint = self._checkpoint_cls.from_uri(external_uri)
-        if not retry_fn(
-            lambda: checkpoint.to_directory(local_dir),
-            (subprocess.CalledProcessError, FileNotFoundError),
-            num_retries=self.sync_num_retries,
-            sleep_time=self.sync_sleep_time,
-            timeout=self.sync_config.sync_timeout,
-        ):
+        except TuneError:
             num_retries = self.sync_num_retries
             logger.error(
-                f"Could not download checkpoint even after {num_retries} "
-                f"retries: {external_uri}"
+                f"Could not download from {remote_dir} even after {num_retries} "
+                f"retries. "
+                f"Please check if the credentials expired and that the remote "
+                f"filesystem is supported. For large checkpoints or artifacts, "
+                f"consider increasing `SyncConfig(sync_timeout)` "
+                f"(current value: {self.sync_config.sync_timeout} seconds)."
             )
-            # We may have created this dir when we tried to sync, so clean up
-            if not path_existed_before and os.path.exists(local_dir):
-                shutil.rmtree(local_dir)
             return False
 
         return True
@@ -750,7 +781,7 @@ class Trainable:
         if isinstance(checkpoint_path, Checkpoint):
             return self._restore_from_checkpoint_obj(checkpoint_path)
 
-        if not self._maybe_load_from_cloud(checkpoint_path) and (
+        if not self._maybe_load_checkpoint_from_cloud(checkpoint_path) and (
             # If a checkpoint source IP is given
             checkpoint_node_ip
             # And the checkpoint does not currently exist on the local node
