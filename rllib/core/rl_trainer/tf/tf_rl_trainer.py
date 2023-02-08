@@ -92,7 +92,11 @@ class TfRLTrainer(RLTrainer):
 
     @override(RLTrainer)
     def configure_optimizers(self) -> ParamOptimizerPairs:
+        """Configures the optimizers for the Learner.
 
+        By default it sets up a single Adam optimizer for each sub-module in module
+        accessible via `moduel.keys()`.
+        """
         # TODO (Kourosh): convert optimizer_config to dataclass later.
         lr = self.optimizer_config["lr"]
         return [

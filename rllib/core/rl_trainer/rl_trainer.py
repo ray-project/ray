@@ -270,7 +270,7 @@ class RLTrainer:
         parameters. To support both tf and torch, we must explicitly return the
         parameters as the first element of the tuple regardless of whether those
         exist in the optimizer objects or not. This method is called once at
-        initialization and everytime a new sub-module is added to the module.
+        initialization.
 
         Returns:
             A list of tuples (parameters, optimizer), where parameters is a list of
