@@ -22,44 +22,32 @@ logger = logging.getLogger(__name__)
 
 
 class RayActorManager:
-    """Management class for Ray actors, tasks, and actor tasks.
+    """Management class for Ray actors and actor tasks.
 
-    This class provides an event-based management interface for actors, tasks, and
+    This class provides an event-based management interface for actors, and
     actor tasks.
 
     The manager can be used to start actors, stop actors, and schedule and
-    track task futures individually or on these actors.
+    track task futures on these actors.
     The manager will then invoke callbacks related to the tracked entities.
 
     For instance, when an actor is added with
     :meth:`add_actor() <RayActorManager.add_actor>`,
     a :ref:`TrackedActor <ray.air.execution._internal.tracked_actor.TrackedActor`
-    object is returned.
-    The :meth:`TrackedActor.on_start()
-    <ray.air.execution._internal.tracked_actor.TrackedActor.on_start>`
-    method can then be used to specify a callback that is invoked once the actor
-    successfully started. The other callbacks relating to tracked actors
-    :meth:`TrackedActor.on_stop()
-    <ray.air.execution._internal.tracked_actor.TrackedActor.on_stop>` and
-    :meth:`TrackedActor.on_error()
-    <ray.air.execution._internal.tracked_actor.TrackedActor.on_error>`
+    object is returned. An ``on_start`` callback can be specified that is invoked
+    once the actor successfully started. Similarly, ``on_stop`` and ``on_error``
+    can be used to specify callbacks relating to the graceful or ungraceful
+    end of an actor's lifetime.
 
-    Similarly, when scheduling an actor task using
+    When scheduling an actor task using
     :meth:`schedule_actor_task()
     <ray.air.execution._internal.actor_manager.RayActorManager.schedule_actor_task>`,
-    a :ref:`TrackedActorTask <TrackedActorTask>`
-    object is returned.
-    The :meth:`TrackedActorTask.on_result()
-    <ray.air.execution._internal.tracked_actor_task.TrackedActorTask.on_result>`
-    method can then be used to specify a callback that is invoked when the task
-    successfully resolved.
-    The :meth:`TrackedActorTask.on_error()
-    <ray.air.execution._internal.tracked_actor_task.TrackedActorTask.on_error>`
-    method can then be used to specify a callback that is invoked when the task
-    fails.
+    an ``on_result`` callback can be specified that is invoked when the task
+    successfully resolves, and an ``on_error`` callback will resolve when the
+    task fails.
 
     The RayActorManager does not implement any true asynchronous processing. Control
-    has to be explicitly yielded to the event manager via :meth:`RayActorManager.wait`.
+    has to be explicitly yielded to the event manager via :meth:`RayActorManager.next`.
     Callbacks will only be invoked when control is with the RayActorManager, and
     callbacks will always be executed sequentially in order of arriving events.
 
@@ -167,7 +155,7 @@ class RayActorManager:
         self._live_actors_to_kill: Set[TrackedActor] = set()
 
     def next(self, timeout: Optional[Union[int, float]] = None) -> None:
-        """Yield control to event manager to await events and invoke callbacks.
+        """Yield control to event manager to await the next event and invoke callbacks.
 
         Calling this method will wait for up to ``timeout`` seconds for the next
         event to arrive.
@@ -240,8 +228,10 @@ class RayActorManager:
 
         self._try_start_actors()
 
-    def _actor_start_resolved(self, tracked_actor: TrackedActor):
+    def _actor_start_resolved(self, tracked_actor: TrackedActor, future: ray.ObjectRef):
         """Callback to be invoked when actor started"""
+        self._tracked_actors_to_state_futures[tracked_actor].remove(future)
+
         if tracked_actor._on_start:
             tracked_actor._on_start(tracked_actor)
 
@@ -361,11 +351,17 @@ class RayActorManager:
                 # Schedule ready future
                 future = actor.__ray_ready__.remote()
 
+                self._tracked_actors_to_state_futures[tracked_actor].add(future)
+
                 # We need to create the callbacks in a function so tracked_actors
                 # are captured correctly.
-                def create_callbacks(tracked_actor: TrackedActor):
+                def create_callbacks(
+                    tracked_actor: TrackedActor, future: ray.ObjectRef
+                ):
                     def on_actor_start(result: Any):
-                        self._actor_start_resolved(tracked_actor=tracked_actor)
+                        self._actor_start_resolved(
+                            tracked_actor=tracked_actor, future=future
+                        )
 
                     def on_error(exception: Exception):
                         self._actor_start_failed(
@@ -374,7 +370,9 @@ class RayActorManager:
 
                     return on_actor_start, on_error
 
-                on_actor_start, on_error = create_callbacks(tracked_actor=tracked_actor)
+                on_actor_start, on_error = create_callbacks(
+                    tracked_actor=tracked_actor, future=future
+                )
 
                 self._actor_state_events.track_future(
                     future=future,
@@ -558,7 +556,7 @@ class RayActorManager:
                     on_result=on_actor_stop,
                     on_error=on_actor_stop,
                 )
-                self._tracked_actors_to_task_futures[tracked_actor].add(stop_future)
+                self._tracked_actors_to_state_futures[tracked_actor].add(stop_future)
 
             else:
                 # kill = True
