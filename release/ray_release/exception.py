@@ -129,8 +129,8 @@ class TestCommandError(CommandError):
     exit_code = ExitCode.COMMAND_ERROR
 
 
-class ResultsError(CommandError):
-    pass
+class FetchResultError(FileManagerError):
+    exit_code = ExitCode.FETCH_RESULT_ERROR
 
 
 class LogsError(CommandError):

@@ -11,7 +11,7 @@ from ray_release.exception import (
     CommandTimeout,
     LocalEnvSetupError,
     LogsError,
-    ResultsError,
+    FetchResultError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
@@ -138,7 +138,7 @@ class JobRunner(CommandRunner):
             os.unlink(tmpfile)
             return data
         except Exception as e:
-            raise ResultsError(f"Could not fetch results from session: {e}") from e
+            raise FetchResultError(f"Could not fetch results from session: {e}") from e
 
     def fetch_results(self) -> Dict[str, Any]:
         return self._fetch_json(self.result_output_json)
