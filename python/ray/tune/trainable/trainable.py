@@ -3,7 +3,6 @@ import logging
 import os
 import platform
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -48,12 +47,7 @@ from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.syncer import SyncConfig
 from ray.tune.trainable.util import TrainableUtil
-from ray.tune.utils.util import (
-    Tee,
-    _delete_external_checkpoint,
-    _get_checkpoint_from_remote_node,
-    retry_fn,
-)
+from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
