@@ -16,7 +16,7 @@ from ray_release.config import (
     DEFAULT_WHEEL_WAIT_TIMEOUT,
     parse_python_version,
 )
-from ray_release.exception import ReleaseTestCLIError
+from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.wheels import (
     find_and_wait_for_ray_wheels_url,
@@ -44,12 +44,12 @@ def main(test_collection_file: Optional[str] = None):
     env = {}
     if repo:
         # If the Ray test repo is set, we clone that repo to fetch
-        # the test configuration file. Otherwise we might be missing newly
+        # the test configuration file. Otherwise, we might be missing newly
         # added test.
-        repo = settings["ray_test_repo"]
         tmpdir = tempfile.mktemp()
 
         clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {tmpdir}"
+        logger.info(f"Cloning test repository: {clone_cmd}")
         try:
             subprocess.check_output(clone_cmd, shell=True)
         except Exception as e:
@@ -65,10 +65,6 @@ def main(test_collection_file: Optional[str] = None):
         test_collection_file = test_collection_file or os.path.join(
             os.path.dirname(__file__), "..", "..", "release_tests.yaml"
         )
-    test_collection = read_and_validate_release_test_collection(test_collection_file)
-
-    if tmpdir:
-        shutil.rmtree(tmpdir, ignore_errors=True)
 
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
@@ -87,6 +83,21 @@ def main(test_collection_file: Optional[str] = None):
         f"  priority =                {settings['priority']}\n"
         f"  no_concurrency_limit =    {settings['no_concurrency_limit']}\n"
     )
+
+    try:
+        test_collection = read_and_validate_release_test_collection(
+            test_collection_file
+        )
+    except ReleaseTestConfigError as e:
+        raise ReleaseTestConfigError(
+            "Cannot load test yaml file.\nHINT: If you're kicking off tests for a "
+            "specific commit on Buildkite to test Ray wheels, after clicking "
+            "'New build', leave the commit at HEAD, and only specify the commit "
+            "in the dialog that asks for the Ray wheels."
+        ) from e
+
+    if tmpdir:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
     filtered_tests = filter_tests(
         test_collection,
