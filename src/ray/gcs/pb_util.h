@@ -105,24 +105,20 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
-    const NodeID &raylet_id,
     const WorkerID &worker_id,
-    const std::string &address,
-    int32_t port,
     int64_t timestamp,
     rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
     int pid,
     const rpc::RayException *creation_task_exception = nullptr) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
-  worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
+  // Only report the worker id + delta (new data upon worker failures).
+  // GCS will merge the data with original worker data.
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
-  worker_failure_info_ptr->mutable_worker_address()->set_ip_address(address);
-  worker_failure_info_ptr->mutable_worker_address()->set_port(port);
   worker_failure_info_ptr->set_timestamp(timestamp);
   worker_failure_info_ptr->set_exit_type(disconnect_type);
   worker_failure_info_ptr->set_exit_detail(disconnect_detail);
-  worker_failure_info_ptr->set_pid(pid);
+  worker_failure_info_ptr->set_end_time_ms(current_sys_time_ms());
   if (creation_task_exception != nullptr) {
     // this pointer will be freed by protobuf internal codes
     auto copied_data = new rpc::RayException(*creation_task_exception);
@@ -151,6 +147,8 @@ inline rpc::ErrorType GenErrorTypeFromDeathCause(
     return rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
   } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
     return rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR;
+  } else if (death_cause.context_case() == ContextCase::kOomContext) {
+    return rpc::ErrorType::OUT_OF_MEMORY;
   } else {
     return rpc::ErrorType::ACTOR_DIED;
   }
@@ -163,7 +161,8 @@ inline const std::string &GetActorDeathCauseString(
       {ContextCase::kRuntimeEnvFailedContext, "RuntimeEnvFailedContext"},
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
       {ContextCase::kActorUnschedulableContext, "ActorUnschedulableContext"},
-      {ContextCase::kActorDiedErrorContext, "ActorDiedErrorContext"}};
+      {ContextCase::kActorDiedErrorContext, "ActorDiedErrorContext"},
+      {ContextCase::kOomContext, "OOMContext"}};
   auto it = death_cause_string.find(death_cause.context_case());
   RAY_CHECK(it != death_cause_string.end())
       << "Given death cause case " << death_cause.context_case() << " doesn't exist.";
@@ -186,6 +185,9 @@ inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
   } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
     *(error_info.mutable_error_message()) =
         death_cause.actor_unschedulable_context().error_message();
+  } else if (death_cause.context_case() == ContextCase::kOomContext) {
+    error_info.mutable_actor_died_error()->CopyFrom(death_cause);
+    *(error_info.mutable_error_message()) = death_cause.oom_context().error_message();
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
   }

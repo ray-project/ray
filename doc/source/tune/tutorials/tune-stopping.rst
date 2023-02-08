@@ -10,7 +10,7 @@ usually what happens when you press Ctrl+C in the console), Ray Tune shuts
 down training gracefully and saves a final experiment-level checkpoint.
 
 Ray Tune also accepts the SIGUSR1 signal to interrupt training gracefully. This
-should be used when running Ray Tune in a remote process (e.g. via Ray client)
+should be used when running Ray Tune in a remote Ray task
 as Ray will filter out SIGINT and SIGTERM signals per default.
 
 How to resume a Tune run?
@@ -51,7 +51,7 @@ of your original tuning run:
 What's happening under the hood in a Tune run?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:ref:`Here <tune-two-types-of-ckpt>`, we describe the two types of Tune checkpoints:
+:ref:`Here <tune-persisted-experiment-data>`, we describe the two types of Tune checkpoints:
 experiment-level and trial-level checkpoints.
 
 Upon resuming an interrupted/errored Tune run:

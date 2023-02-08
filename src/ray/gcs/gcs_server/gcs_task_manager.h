@@ -18,6 +18,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -48,7 +49,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
           // Keep io_service_ alive.
           boost::asio::io_service::work io_service_work_(io_service_);
           io_service_.run();
-        })) {}
+        })),
+        timer_(io_service_) {}
 
   /// Handles a AddTaskEventData request.
   ///
@@ -76,6 +78,13 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// This function returns when the io thread is joined.
   void Stop() LOCKS_EXCLUDED(mutex_);
 
+  /// Handler to be called when a job finishes. This marks all non-terminated tasks
+  /// of the job as failed.
+  ///
+  /// \param job_id Job Id
+  /// \param job_finish_time_ms Job finish time in ms.
+  void OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms);
+
   /// Returns the io_service.
   ///
   /// \return Reference to its io_service.
@@ -88,6 +97,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
   /// Record metrics.
   void RecordMetrics() LOCKS_EXCLUDED(mutex_);
+
+  /// Set telemetry client.
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) LOCKS_EXCLUDED(mutex_);
 
   /// A storage component that stores the task events.
   ///
@@ -129,7 +141,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
     /// Get all task events.
     ///
-    /// \return all task events stored.
+    /// This retrieves copies of all task events ordered from the least recently inserted
+    /// to the most recently inserted task events.
+    ///
+    /// \return all task events stored sorted with insertion order.
     std::vector<rpc::TaskEvents> GetTaskEvents() const;
 
     /// Get task events from tasks corresponding to `task_ids`.
@@ -145,6 +160,13 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \return task events from the `task_attempts`.
     std::vector<rpc::TaskEvents> GetTaskEvents(
         const absl::flat_hash_set<TaskAttempt> &task_attempts) const;
+
+    ///  Mark tasks from a job as failed.
+    ///
+    /// \param job_id Job ID
+    /// \param job_finish_time_ns job finished time in nanoseconds, which will be the task
+    /// failed time.
+    void MarkTasksFailed(const JobID &job_id, int64_t job_finish_time_ns);
 
    private:
     /// Mark the task tree containing this task attempt as failure if necessary.
@@ -192,6 +214,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     absl::optional<int64_t> GetTaskStatusUpdateTime(
         const TaskID &task_id, const rpc::TaskStatus &task_status) const;
 
+    ///  Return if task has terminated.
+    ///
+    /// \param task_id Task id
+    /// \return True if the task has finished or failed timestamp sets, false otherwise.
+    bool IsTaskTerminated(const TaskID &task_id) const;
+
     /// Mark the task as failure with the failed timestamp.
     ///
     /// This also overwrites the finished state of the task if the task has finished by
@@ -201,6 +229,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \param failed_ts The failure timestamp that's the same from parent's failure
     /// timestamp.
     void MarkTaskFailed(const TaskID &task_id, int64_t failed_ts);
+
+    ///  Mark a task attempt as failed.
+    ///
+    /// \param task_attempt Task attempt.
+    /// \param failed_ts The failure timestamp.
+    void MarkTaskAttemptFailed(const TaskAttempt &task_attempt, int64_t failed_ts);
 
     /// Get the latest task attempt for the task.
     ///
@@ -224,6 +258,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
     /// A iterator into task_events_ that determines which element to be overwritten.
     size_t next_idx_to_overwrite_ = 0;
+
+    /// Total number of tasks by types, including ones have been evicted/finished.
+    absl::flat_hash_map<rpc::TaskType, size_t> num_tasks_by_type_;
 
     /// TODO(rickyx): Refactor this into LRI(least recently inserted) buffer:
     /// https://github.com/ray-project/ray/issues/31158
@@ -279,10 +316,16 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// Its own IO thread from the main thread.
   std::unique_ptr<std::thread> io_service_thread_;
 
+  /// Timer for delay functions.
+  boost::asio::deadline_timer timer_;
+
+  UsageStatsClient *usage_stats_client_ GUARDED_BY(mutex_) = nullptr;
+
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
+  FRIEND_TEST(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks);
 };
 
 }  // namespace gcs

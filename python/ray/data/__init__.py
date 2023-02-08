@@ -37,6 +37,12 @@ from ray.data.read_api import (  # noqa: F401
     read_tfrecords,
 )
 
+
+# Module-level cached global functions for callable classes. It needs to be defined here
+# since it has to be process-global across cloudpickled funcs.
+_cached_fn = None
+_cached_cls = None
+
 __all__ = [
     "ActorPoolStrategy",
     "Dataset",

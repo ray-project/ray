@@ -20,6 +20,7 @@ from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
+from ray.tune.impl.tuner_internal import _TUNER_PKL
 
 
 @pytest.fixture
@@ -272,11 +273,39 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
                 resume_errored=True,
             )
         # Should warn about the RunConfig being ignored
-        assert "RunConfig" in str(warn_record[0].message)
+        assert any("RunConfig" in str(record.message) for record in warn_record)
         assert "The trainable will be overwritten" in caplog.text
 
     results = tuner.fit()
     assert not results.errors
+
+
+def test_run_config_in_trainer_and_tuner(
+    ray_start_4_cpus, tmp_path, propagate_logs, caplog
+):
+    trainer = DataParallelTrainer(
+        lambda config: None,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(name="ignored", local_dir="ignored"),
+    )
+    with caplog.at_level(logging.INFO, logger="ray.tune.impl.tuner_internal"):
+        Tuner(trainer, run_config=RunConfig(name="used", local_dir=str(tmp_path)))
+    assert list((tmp_path / "used").glob(_TUNER_PKL))
+    assert (
+        "`RunConfig` was passed to both the `Tuner` and the `DataParallelTrainer`"
+        in caplog.text
+    )
+
+
+def test_run_config_in_param_space():
+    trainer = DataParallelTrainer(
+        lambda config: None,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    with pytest.raises(ValueError):
+        Tuner(trainer, param_space={"run_config": RunConfig(name="ignored")})
 
 
 if __name__ == "__main__":

@@ -3,7 +3,6 @@ import React from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import EventTable from "../../components/EventTable";
 import { MainNavPageInfo } from "../layout/mainNavContext";
-import { Metrics } from "../metrics";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";
 import { NodeCountCard } from "./cards/NodeCountCard";
 import { RecentJobsCard } from "./cards/RecentJobsCard";
@@ -17,17 +16,23 @@ const useStyles = makeStyles((theme) =>
     overviewCardsContainer: {
       display: "flex",
       flexDirection: "row",
-      flexWrap: "nowrap",
+      flexWrap: "wrap",
       marginBottom: theme.spacing(4),
       gap: theme.spacing(3),
+      [theme.breakpoints.up("md")]: {
+        flexWrap: "nowrap",
+      },
     },
     overviewCard: {
       flex: "1 0 448px",
-      // Calculate max width based on 1/3 of the total width minus padding between cards
-      maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+      maxWidth: "100%",
+      [theme.breakpoints.up("md")]: {
+        // Calculate max width based on 1/3 of the total width minus padding between cards
+        maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+      },
     },
     section: {
-      marginTop: theme.spacing(2),
+      marginTop: theme.spacing(4),
     },
   }),
 );
@@ -52,15 +57,6 @@ export const OverviewPage = () => {
         startExpanded
       >
         <EventTable />
-      </CollapsibleSection>
-
-      {/* TODO (aguo): Make section match the design */}
-      <CollapsibleSection
-        className={classes.section}
-        title="Node metrics"
-        startExpanded
-      >
-        <Metrics />
       </CollapsibleSection>
     </div>
   );

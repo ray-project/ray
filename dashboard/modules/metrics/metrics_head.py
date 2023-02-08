@@ -4,11 +4,10 @@ import logging
 import os
 import shutil
 
-from typing import Any, Dict, Optional, List
+from typing import Optional
 
 import psutil
 
-from pydantic import BaseModel
 from urllib.parse import quote
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_grafana_dashboard,
@@ -45,29 +44,10 @@ DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
 GRAFANA_HOST_DISABLED_VALUE = "DISABLED"
 GRAFANA_IFRAME_HOST_ENV_VAR = "RAY_GRAFANA_IFRAME_HOST"
+GRAFANA_DEFAULT_DASHBOARD_UID = "RAY_GRAFANA_DEFAULT_DASHBOARD_UID"
 GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 GRAFANA_HEALTHCHECK_PATH = "api/health"
-
-
-class TaskProgress(BaseModel):
-    num_finished: int = 0
-    num_pending_args_avail: int = 0
-    num_submitted_to_worker: int = 0
-    num_running: int = 0
-    num_pending_node_assignment: int = 0
-    num_failed: int = 0
-    num_unknown: int = 0
-
-
-class TaskProgressWithTaskName(BaseModel):
-    name: str
-    progress: TaskProgress
-
-
-class TaskProgressByTaskNameResponse(BaseModel):
-    tasks: List[TaskProgressWithTaskName]
-
 
 PROMETHEUS_METRIC_MAP = {
     "FINISHED": "num_finished",
@@ -110,6 +90,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._grafana_dashboard_output_dir = os.environ.get(
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR,
             os.path.join(grafana_config_output_path, "dashboards"),
+        )
+        self._grafana_default_dashboard_uid = os.environ.get(
+            GRAFANA_DEFAULT_DASHBOARD_UID, "rayDefaultDashboard"
         )
 
         self._session = aiohttp.ClientSession()
@@ -159,6 +142,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
                     session_name=self._session_name,
+                    grafana_default_dashboard_uid=self._grafana_default_dashboard_uid,
                 )
 
         except Exception as e:
@@ -171,7 +155,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             )
 
     @routes.get("/api/prometheus_health")
-    async def prometheus_health(self, req) -> bool:
+    async def prometheus_health(self, req):
         try:
             path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
 
@@ -203,75 +187,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             )
             return dashboard_optional_utils.rest_response(
                 success=False, message="prometheus healthcheck failed.", reason=str(e)
-            )
-
-    # TODO(aguo): DEPRECATED: Delete this endpoint
-    @routes.get("/api/progress")
-    async def get_progress(self, req):
-        """
-        Fetches the progress of tasks by job id. If job_id is not provided,
-        then we will fetch the progress across all jobs.
-        """
-        job_id = req.query.get("job_id")
-
-        job_id_filter = f'JobId="{job_id}"' if job_id else None
-
-        query = self._create_prometheus_query_for_progress(
-            [job_id_filter] if job_id_filter else [], ["State"]
-        )
-
-        try:
-            prom_data = await self._query_prometheus(query)
-            progress = _format_prometheus_output(prom_data) or TaskProgress()
-            return dashboard_optional_utils.rest_response(
-                success=True, message="success", detail=progress.dict()
-            )
-
-        except PrometheusQueryError as e:
-            return dashboard_optional_utils.rest_response(
-                success=False,
-                message=e.message,
-            )
-        except aiohttp.client_exceptions.ClientConnectorError as e:
-            return dashboard_optional_utils.rest_response(
-                success=False,
-                message=str(e),
-            )
-
-    # TODO(aguo): DEPRECATED: Delete this endpoint
-    @routes.get("/api/progress_by_task_name")
-    async def get_progress_by_task_name(self, req):
-        """
-        Fetches the progress of tasks by job id. If job_id is not provided,
-        then we will fetch the progress across all jobs.
-        """
-        if "job_id" not in req.query:
-            return dashboard_optional_utils.rest_response(
-                success=False,
-                message="job_id query is required!",
-            )
-
-        job_id = req.query["job_id"]
-        job_id_filter = f'JobId="{job_id}"'
-        query = self._create_prometheus_query_for_progress(
-            [job_id_filter], ["State", "Name"]
-        )
-
-        try:
-            prom_data = await self._query_prometheus(query)
-            progress = _format_prometheus_output_by_task_names(prom_data)
-            return dashboard_optional_utils.rest_response(
-                success=True, message="success", detail=progress.dict()
-            )
-        except PrometheusQueryError as e:
-            return dashboard_optional_utils.rest_response(
-                success=False,
-                message=e.message,
-            )
-        except aiohttp.client_exceptions.ClientConnectorError as e:
-            return dashboard_optional_utils.rest_response(
-                success=False,
-                message=str(e),
             )
 
     @staticmethod
@@ -341,7 +256,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             ),
             "w",
         ) as f:
-            f.write(generate_grafana_dashboard())
+            f.write(generate_grafana_dashboard(self._grafana_default_dashboard_uid))
 
     def _create_default_prometheus_configs(self):
         """
@@ -382,43 +297,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             f"Generated prometheus and grafana configurations in: {self._metrics_root}"
         )
 
-    def _create_prometheus_query_for_progress(
-        self, filters: List[str], sum_by: List[str]
-    ) -> str:
-        filter_for_terminal_states = [
-            'State=~"FINISHED|FAILED"',
-            f'SessionName="{self._session_name}"',
-        ] + filters
-        filter_for_non_terminal_states = [
-            'State!~"FINISHED|FAILED"',
-            f'SessionName="{self._session_name}"',
-        ] + filters
-
-        filter_for_terminal_states_str = ",".join(filter_for_terminal_states)
-        filter_for_non_terminal_states_str = ",".join(filter_for_non_terminal_states)
-        sum_by_str = ",".join(sum_by)
-
-        # Ray does not currently permanently track worker task metrics.
-        # The metric is cleared after a worker exits. We need to work around
-        # these restrictions when we query metrics.
-
-        # For terminal states (Finished, Failed), we know that the count can
-        # never decrease. Therefore, we get the latest count of tasks by
-        # fetching the max value over the past 14 days.
-        query_for_terminal_states = (
-            "sum(max_over_time("
-            f"ray_tasks{{{filter_for_terminal_states_str}}}[14d])) by ({sum_by_str})"
-        )
-
-        # For non-terminal states, we assume that if a worker has at least
-        # one task in one of these states, the worker has not exited. Therefore,
-        # we fetch the current count.
-        query_for_non_terminal_states = (
-            f"clamp_min(sum(ray_tasks{{{filter_for_non_terminal_states_str}}}) "
-            f"by ({sum_by_str}), 0)"
-        )
-        return f"{query_for_terminal_states} or {query_for_non_terminal_states}"
-
     async def _query_prometheus(self, query):
         async with self.http_session.get(
             f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
@@ -429,57 +307,3 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
             message = await resp.text()
             raise PrometheusQueryError(resp.status, message)
-
-
-def _format_prometheus_output(prom_data: Dict[str, Any]) -> Optional[TaskProgress]:
-    if prom_data["status"] == "success" and prom_data["data"]["resultType"] == "vector":
-        metrics = prom_data["data"]["result"]
-        kwargs = {}
-        for metric in metrics:
-            metric_name = metric["metric"]["State"]
-            kwarg_name = (
-                PROMETHEUS_METRIC_MAP[metric_name]
-                if metric_name in PROMETHEUS_METRIC_MAP
-                else "num_unknown"
-            )
-            # metric["value"] is a tuple where first item is a timestamp
-            # and second item is the value.
-            metric_value = int(metric["value"][1])
-            kwargs[kwarg_name] = kwargs.get(kwarg_name, 0) + metric_value
-
-        return TaskProgress(**kwargs)
-
-    return None
-
-
-def _format_prometheus_output_by_task_names(
-    prom_data: Dict[str, Any]
-) -> TaskProgressByTaskNameResponse:
-    """
-    Returns a list of task names with number of tasks for
-    each state with that task name.
-    """
-    task_map = {}
-
-    if prom_data["status"] == "success" and prom_data["data"]["resultType"] == "vector":
-        metrics = prom_data["data"]["result"]
-        for metric in metrics:
-            task_name = metric["metric"]["Name"]
-            metric_name = metric["metric"]["State"]
-            kwargs = task_map.setdefault(task_name, {})
-            kwarg_name = (
-                PROMETHEUS_METRIC_MAP[metric_name]
-                if metric_name in PROMETHEUS_METRIC_MAP
-                else "num_unknown"
-            )
-            # metric["value"] is a tuple where first item is a timestamp
-            # and second item is the value.
-            metric_value = int(metric["value"][1])
-            kwargs[kwarg_name] = kwargs.get(kwarg_name, 0) + metric_value
-
-    tasks = [
-        TaskProgressWithTaskName(name=task_name, progress=TaskProgress(**kwargs))
-        for task_name, kwargs in task_map.items()
-    ]
-
-    return TaskProgressByTaskNameResponse(tasks=tasks)
