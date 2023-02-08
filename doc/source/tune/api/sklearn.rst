@@ -8,13 +8,29 @@ Tune Scikit-Learn API  (tune.sklearn)
 TuneGridSearchCV
 ----------------
 
-.. autoclass:: ray.tune.sklearn.TuneGridSearchCV
-	:members:
+.. currentmodule:: ray.tune.sklearn
+
+.. autosummary::
+	:toctree: doc/
+
+	TuneGridSearchCV
+	TuneGridSearchCV.fit
+	TuneGridSearchCV.score
+	TuneGridSearchCV.score_samples
+	TuneGridSearchCV.get_params
+	TuneGridSearchCV.set_params
 
 .. _tunesearchcv-docs:
 
 TuneSearchCV
 ------------
 
-.. autoclass:: ray.tune.sklearn.TuneSearchCV
-	:members:
+.. autosummary::
+	:toctree: doc/
+
+	TuneSearchCV
+	TuneSearchCV.fit
+	TuneSearchCV.score
+	TuneSearchCV.score_samples
+	TuneSearchCV.get_params
+	TuneSearchCV.set_params
