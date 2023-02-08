@@ -72,7 +72,7 @@ steps:
     - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
     # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
     # with dynamic linking.
-    - bazel test --config=ci --dynamic_mode=off --test_env=CI $(./ci/run/bazel_export_options) --test_env=RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1" --build_tests_only --test_tag_filters=-post_wheel_build --
+    - bazel test --config=ci --dynamic_mode=off --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --
       //:all python/ray/dashboard/... -python/ray/serve/... -rllib/... -core_worker_test
     - *epilogue_commands
 
@@ -96,7 +96,7 @@ steps:
   commands:
     - *prelude_commands
     - bazel test $(./ci/run/bazel_export_options) --config=ci
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
@@ -116,7 +116,7 @@ steps:
   conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI --test_env=RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       python/ray/tests/...
     - *epilogue_commands
@@ -126,7 +126,7 @@ steps:
   conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI --test_env=RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
     - *epilogue_commands
