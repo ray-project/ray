@@ -162,6 +162,14 @@ py_test(
 )
 
 py_test(
+    name = "test_e2e_train_flow",
+    size = "medium",
+    srcs = ["tests/execution/test_e2e_train_flow.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_e2e_tune_flow",
     size = "medium",
     srcs = ["tests/execution/test_e2e_tune_flow.py"],

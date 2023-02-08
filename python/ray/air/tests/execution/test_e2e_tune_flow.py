@@ -52,7 +52,7 @@ class Actor:
 
 
 class TuneFlow:
-    """This is a Ray-tune like execution flow.
+    """This is a Ray Tune-like execution flow.
 
     - We want to run 10 actors in total ("trials")
     - Each actor collects 11 results sequentially
