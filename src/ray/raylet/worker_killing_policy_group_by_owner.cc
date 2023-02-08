@@ -71,16 +71,20 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   /// else it picks the newest group.
   std::sort(
       sorted.begin(), sorted.end(), [](const Group &left, const Group &right) -> bool {
-        int left_retriable = left.IsRetriable() ? 0 : 1;
-        int right_retriable = right.IsRetriable() ? 0 : 1;
-
-        if (left_retriable == right_retriable) {
-          if (left.GetAllWorkers().size() == right.GetAllWorkers().size()) {
-            return left.GetAssignedTaskTime() > right.GetAssignedTaskTime();
+        int left_idle = left.OwnerId() == TaskID::Nil() ? 0 : 1;
+        int right_idle = right.OwnerId() == TaskID::Nil() ? 0 : 1;
+        if (left_idle == right_idle) {
+          int left_retriable = left.IsRetriable() ? 0 : 1;
+          int right_retriable = right.IsRetriable() ? 0 : 1;
+          if (left_retriable == right_retriable) {
+            if (left.GetAllWorkers().size() == right.GetAllWorkers().size()) {
+              return left.GetAssignedTaskTime() > right.GetAssignedTaskTime();
+            }
+            return left.GetAllWorkers().size() > right.GetAllWorkers().size();
           }
-          return left.GetAllWorkers().size() > right.GetAllWorkers().size();
+          return left_retriable < right_retriable;
         }
-        return left_retriable < right_retriable;
+        return left_idle < right_idle;
       });
 
   Group selected_group = sorted.front();
