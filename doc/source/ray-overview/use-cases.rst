@@ -100,7 +100,7 @@ There are three ways of using Ray to express this workload.
 
 1. If you have a large amount of data, use Ray Data (:ref:`Tutorial <mmt-datasets>`).
 2. If you have a small amount of data (<10GB), want to integrate with tools, such as Weights&Biases, MLflow, and have less than 20,000 models, use Ray Tune (:ref:`Tutorial <mmt-tune>`).
-3. If your use case does not fit in any of the above categories(e.g., you need to scale up to 1 million models), use Ray Core (:ref:`Tutorial <mmt-core>`), which gives you finer-grained control over the application. This option requires you to understand Ray CoreRay Core :ref:`design patterns and anti-patterns <core-patterns>`.
+3. If your use case does not fit in any of the above categories(e.g., you need to scale up to 1 million models), use Ray Core (:ref:`Tutorial <mmt-core>`), which gives you finer-grained control over the application. This option requires you to understand Ray Core :ref:`design patterns and anti-patterns <core-patterns>`.
 
 .. TODO
   Add link to many model training blog.
