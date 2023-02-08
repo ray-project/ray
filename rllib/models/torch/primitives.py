@@ -11,8 +11,8 @@ class FCNet(nn.Module):
 
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
-        output_dim: The output dimension of the network. if None, the last layer would
-            be the last hidden layer.
+        output_dim: The output dimension of the network. If None, the output_dim will
+            be the number of nodes in the last hidden layer.
         hidden_layers: The sizes of the hidden layers.
         activation: The activation function to use after each layer.
     """
