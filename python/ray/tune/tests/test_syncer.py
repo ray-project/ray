@@ -637,7 +637,7 @@ def test_artifact_syncing(ray_start_2_cpus, temp_data_dirs, tmp_path):
     - `tmp_path/dir1` == local storage location of initial run
     - `tmp_path/dir2` == local storage location of restored trainable
     """
-    tmp_source, tmp_target = temp_data_dirs
+    _, tmp_target = temp_data_dirs
 
     local_dir_1 = tmp_path / "dir1"
     local_dir_2 = tmp_path / "dir2"
@@ -667,6 +667,35 @@ def test_artifact_syncing(ray_start_2_cpus, temp_data_dirs, tmp_path):
     with open(os.path.join(local_dir_2, "artifact.txt"), "r") as f:
         artifact_data = f.read()
         assert artifact_data.split("\n")[:-1] == ["test"] * 3
+
+
+def test_artifact_syncing_disabled(ray_start_2_cpus, temp_data_dirs, tmp_path):
+    """Test that the trainable does NOT sync artifacts when disabled via SyncConfig."""
+    _, tmp_target = temp_data_dirs
+
+    local_dir_1 = tmp_path / "dir1"
+    local_dir_2 = tmp_path / "dir2"
+    local_dir_1.mkdir()
+    local_dir_2.mkdir()
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        logdir=str(local_dir_1),
+        sync_config=SyncConfig(
+            upload_dir="file:///not_used", syncer="auto", sync_artifacts=False
+        ),
+    )
+
+    ray.get(trainable.train.remote())
+    checkpoint_dir = ray.get(trainable.save.remote())
+    assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+    assert_file(False, tmp_target, "artifact.txt")
+
+    restored_trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}", logdir=str(local_dir_2)
+    )
+    ray.get(restored_trainable.restore.remote(checkpoint_dir))
+    assert_file(False, str(local_dir_2), "artifact.txt")
 
 
 def test_syncer_serialize(temp_data_dirs):
