@@ -149,7 +149,7 @@ void GrpcServer::Run() {
       if (entry->GetMaxActiveRPCs() != -1) {
         buffer_size = entry->GetMaxActiveRPCs();
       }
-      for (int j = 0; j < std::min(1, buffer_size / num_threads_); j++) {
+      for (int j = 0; j < std::max(1, buffer_size / num_threads_); j++) {
         entry->CreateCall();
       }
     }
