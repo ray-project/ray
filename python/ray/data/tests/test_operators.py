@@ -112,7 +112,7 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     )
 
     # Feed data and block on exec.
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(actor_locality_enabled=False))
     if use_actors:
         # Actor will be pending after starting the operator.
         assert op.progress_str() == "0 actors (1 pending) [locality off]"
@@ -192,9 +192,12 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     assert metrics["obj_store_mem_alloc"] == pytest.approx(8800, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(88, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(6400, 0.5), metrics
-    # Locality is off when preserve_order=True.
-    assert "locality_hits" not in metrics, metrics
-    assert "locality_misses" not in metrics, metrics
+    if use_actors:
+        assert "locality_hits" in metrics, metrics
+        assert "locality_misses" in metrics, metrics
+    else:
+        assert "locality_hits" not in metrics, metrics
+        assert "locality_misses" not in metrics, metrics
     assert not op.completed()
 
 
