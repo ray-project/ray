@@ -119,6 +119,8 @@ scripts/nodes.txt
 /doc/_build
 /doc/source/_static/thumbs
 /doc/source/tune/generated_guides/
+/doc/source/*/api/doc/
+/doc/source/cluster/running-applications/job-submission/doc/
 
 # User-specific stuff:
 .idea/**/workspace.xml
