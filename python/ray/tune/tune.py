@@ -745,6 +745,9 @@ def run(
         driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),
     )
 
+    import ipdb
+
+    ipdb.set_trace()
     if not runner.resumed:
         for exp in experiments:
             search_alg.add_configurations([exp])

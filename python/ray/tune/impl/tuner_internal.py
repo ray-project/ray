@@ -104,15 +104,13 @@ class TunerInternal:
 
         self._missing_params_error_message = None
 
-        self._param_space = param_space or {}
-        self._process_scaling_config()
-
         # Restore from Tuner checkpoint.
         if restore_path:
             self._restore_from_path_or_uri(
                 path_or_uri=restore_path,
                 resume_config=resume_config,
                 overwrite_trainable=trainable,
+                overwrite_param_space=param_space,
             )
             return
 
@@ -122,7 +120,10 @@ class TunerInternal:
 
         self._is_restored = False
         self.trainable = trainable
+        self._param_space = param_space or {}
         self._resume_config = None
+
+        self._process_scaling_config()
 
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
         self._experiment_checkpoint_dir = self._setup_create_experiment_checkpoint_dir(
@@ -301,6 +302,7 @@ class TunerInternal:
         path_or_uri: str,
         resume_config: Optional[_ResumeConfig],
         overwrite_trainable: Optional[TrainableTypeOrTrainer],
+        overwrite_param_space: Optional[Dict[str, Any]],
     ):
         # Sync down from cloud storage if needed
         synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
@@ -332,6 +334,8 @@ class TunerInternal:
 
         self._is_restored = True
         self.trainable = trainable
+        if overwrite_param_space:
+            self._param_space = overwrite_param_space
         self._resume_config = resume_config
 
         if not synced:
@@ -559,7 +563,7 @@ class TunerInternal:
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
-                config={**param_space},
+                config=param_space,
                 num_samples=self._tune_config.num_samples,
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
@@ -599,7 +603,7 @@ class TunerInternal:
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
-                config={**param_space},
+                config=param_space,
                 resume=resume,
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
