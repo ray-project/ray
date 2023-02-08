@@ -883,6 +883,13 @@ class AlgorithmConfig:
             rl_module_class_path = self.get_default_rl_module_class()
             self.rl_module_class = _resolve_class_path(rl_module_class_path)
 
+        # make sure the resource requirements for trainer runner is valid
+        if self.num_trainer_workers == 0 and self.num_gpus_per_worker > 1:
+            raise ValueError(
+                "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
+                "(i.e. num_trainer_workers = 0)"
+            )
+
         # resolve rl_trainer class
         if self._enable_rl_trainer_api and self.rl_trainer_class is None:
             rl_trainer_class_path = self.get_default_rl_trainer_class()

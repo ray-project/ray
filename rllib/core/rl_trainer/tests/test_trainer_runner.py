@@ -47,12 +47,12 @@ class TestTrainerRunner(unittest.TestCase):
         local_trainer.build()
 
         # make the state of the trainer and the local runner identical
-        local_trainer.set_state(runner.get_state()[0])
+        local_trainer.set_state(runner.get_state())
 
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
         batch = batch.as_multi_agent()
-        check(local_trainer.update(batch), runner.update(batch)[0])
+        check(local_trainer.update(batch), runner.update(batch))
 
         new_module_id = "test_module"
 
@@ -60,16 +60,16 @@ class TestTrainerRunner(unittest.TestCase):
         add_module_to_runner_or_trainer(fw, env, new_module_id, local_trainer)
 
         # make the state of the trainer and the local runner identical
-        local_trainer.set_state(runner.get_state()[0])
+        local_trainer.set_state(runner.get_state())
 
         # do another update
         batch = reader.next()
         ma_batch = MultiAgentBatch(
             {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
         )
-        check(local_trainer.update(ma_batch), runner.update(ma_batch)[0])
+        check(local_trainer.update(ma_batch), runner.update(ma_batch))
 
-        check(local_trainer.get_state(), runner.get_state()[0])
+        check(local_trainer.get_state(), runner.get_state())
 
     def test_trainer_runner_local(self):
         fws = ["tf", "torch"]
@@ -98,7 +98,7 @@ class TestTrainerRunner(unittest.TestCase):
             min_loss = float("inf")
             for iter_i in range(1000):
                 batch = reader.next()
-                results = runner.update(batch.as_multi_agent())
+                results = runner.update(batch.as_multi_agent(), reduce_fn=None)
 
                 loss = np.mean([res["loss"]["total_loss"] for res in results])
                 min_loss = min(loss, min_loss)
@@ -130,11 +130,11 @@ class TestTrainerRunner(unittest.TestCase):
             env = gym.make("CartPole-v1")
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
             runner = get_trainer_runner(fw, env, scaling_config)
-            reader = get_cartpole_dataset_reader(batch_size=500)
+            reader = get_cartpole_dataset_reader(batch_size=512)
             batch = reader.next()
 
             # update once with the default policy
-            results = runner.update(batch.as_multi_agent())
+            results = runner.update(batch.as_multi_agent(), reduce_fn=None)
             module_ids_before_add = {DEFAULT_POLICY_ID}
             new_module_id = "test_module"
 
@@ -145,7 +145,8 @@ class TestTrainerRunner(unittest.TestCase):
             results = runner.update(
                 MultiAgentBatch(
                     {new_module_id: batch, DEFAULT_POLICY_ID: batch}, batch.count
-                )
+                ),
+                reduce_fn=None,
             )
 
             # check that module weights are updated across workers and synchronized
@@ -168,7 +169,7 @@ class TestTrainerRunner(unittest.TestCase):
             runner.remove_module(module_id=new_module_id)
 
             # run training without the test_module
-            results = runner.update(batch.as_multi_agent())
+            results = runner.update(batch.as_multi_agent(), reduce_fn=None)
 
             # check that module weights are updated across workers and synchronized
             for i in range(1, len(results)):

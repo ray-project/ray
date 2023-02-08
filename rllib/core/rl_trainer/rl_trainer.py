@@ -12,6 +12,7 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Set,
     Tuple,
     Type,
     Union,
@@ -68,6 +69,10 @@ class RLTrainerHPs:
 
     When creating a new RLTrainer, the new hyper-parameters have to be defined by
     subclassing this class and adding the new hyper-parameters as fields.
+
+    # TODO (Kourosh): The things that could be part of the base class:
+    - lr_schedule
+    - grad_clip
     """
 
     pass
@@ -438,6 +443,14 @@ class RLTrainer:
             gradients: A dictionary of gradients.
         """
 
+    @abc.abstractmethod
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        """Returns the state of the underlying MultiAgentRLModule"""
+
+    @abc.abstractmethod
+    def set_weights(self, weights: Mapping[str, Any]) -> None:
+        """Sets the state of the underlying MultiAgentRLModule"""
+
     def set_state(self, state: Mapping[str, Any]) -> None:
         """Set the state of the trainer.
 
@@ -446,6 +459,8 @@ class RLTrainer:
                 from `get_state`.
 
         """
+        # TODO (Kourosh): We have both get(set)_state and get(set)_weights. I think
+        # having both can become confusing. Can we simplify this API requirement?
         self.__check_if_build_called()
         # TODO: once we figure out the optimizer format, we can set/get the state
         self._module.set_state(state.get("module_state", {}))
