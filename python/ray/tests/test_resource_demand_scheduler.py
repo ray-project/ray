@@ -3060,8 +3060,8 @@ Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3140,8 +3140,8 @@ Total Usage:
  1/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3153,16 +3153,16 @@ Node: 192.168.1.1
   0.1/1 AcceleratorType:V100
   5.0/20.0 CPU
   0.7/1 GPU
-  1.00/4.000 GiB memory
-  3.14/4.000 GiB object_store_memory
+  1.00GiB/4.00GiB memory
+  3.14GiB/4.00GiB object_store_memory
 
 Node: 192.168.1.2
  Usage:
   0.9/1 AcceleratorType:V100
   15.0/20.0 CPU
   0.3/1 GPU
-  1.00/12.000 GiB memory
-  0.00/4.000 GiB object_store_memory
+  1.00GiB/12.00GiB memory
+  0B/4.00GiB object_store_memory
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3227,8 +3227,8 @@ Total Usage:
  1/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3318,8 +3318,8 @@ Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
@@ -3402,8 +3402,8 @@ Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU (2.0 used of 2.0 reserved in placement groups)
  2/2 GPU
- 2.00/8.000 GiB memory
- 3.14/16.000 GiB object_store_memory
+ 2.00GiB/8.00GiB memory
+ 3.14GiB/16.00GiB object_store_memory
 
 Demands:
  {'CPU': 2.0}: 153+ pending tasks/actors (3+ using placement groups)
