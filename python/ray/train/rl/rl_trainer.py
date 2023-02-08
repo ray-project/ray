@@ -1,6 +1,6 @@
 import inspect
 import os
-from typing import Optional, Dict, Type, Union, Callable, Any, TYPE_CHECKING
+from typing import Optional, Dict, Type, Union, Any, TYPE_CHECKING
 
 import ray.cloudpickle as cpickle
 from ray.air.checkpoint import Checkpoint
@@ -10,12 +10,10 @@ from ray.air._internal.checkpointing import (
     save_preprocessor_to_dir,
 )
 from ray.rllib.algorithms.algorithm import Algorithm as RLlibAlgo
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict, EnvType
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import Trainable, PlacementGroupFactory
-from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.resources import Resources
-from ray.tune.syncer import Syncer
 from ray.util.annotations import PublicAPI
 from ray.train.rl.rl_checkpoint import RL_TRAINER_CLASS_FILE, RL_CONFIG_FILE
 from ray._private.dict import merge_dicts
