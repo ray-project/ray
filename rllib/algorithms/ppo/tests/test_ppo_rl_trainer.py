@@ -20,6 +20,10 @@ FAKE_BATCH = {
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32,
     ),
+    SampleBatch.NEXT_OBS: np.array(
+        [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
+        dtype=np.float32,
+    ),
     SampleBatch.ACTIONS: np.array([0, 1, 1]),
     SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
     SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
@@ -57,7 +61,7 @@ class TestPPO(unittest.TestCase):
             .training(
                 gamma=0.99,
                 model=dict(
-                    fcnet_hiddens=[10],
+                    fcnet_hiddens=[10, 10],
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
