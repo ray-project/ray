@@ -456,9 +456,9 @@ void GcsTaskManager::RecordMetrics() {
       total_num_task_events_reported_);
 
   ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
-      total_num_status_task_events_dropped_, ray::stats::kGcsTaskStatusEventDropped);
+      total_num_status_task_events_dropped_, ray::stats::kTaskStatusEvent);
   ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
-      total_num_profile_task_events_dropped_, ray::stats::kGcsProfileEventDropped);
+      total_num_profile_task_events_dropped_, ray::stats::kProfileEvent);
 
   ray::stats::STATS_gcs_task_manager_task_events_stored.Record(
       task_event_storage_->GetTaskEventsCount());

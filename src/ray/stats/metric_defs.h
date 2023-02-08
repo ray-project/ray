@@ -105,6 +105,11 @@ DECLARE_stats(gcs_task_manager_task_events_stored);
 DECLARE_stats(gcs_task_manager_task_events_stored_bytes);
 DECLARE_stats(gcs_task_manager_task_events_reported);
 
+/// Worker metrics - Task Event Buffer
+DECLARE_stats(core_worker_task_events_reported);
+DECLARE_stats(core_worker_task_events_dropped);
+DECLARE_stats(core_worker_task_events_stored);
+
 /// Object Store
 DECLARE_stats(object_store_memory);
 

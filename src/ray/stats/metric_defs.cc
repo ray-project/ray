@@ -329,6 +329,25 @@ DEFINE_stats(gcs_task_manager_task_events_stored_bytes,
              (),
              ray::stats::GAUGE);
 
+/// Core Worker Task Event Buffer
+DEFINE_stats(core_worker_task_events_reported,
+             "Number of task events reported from the worker.",
+             ("Type"),
+             (),
+             ray::stats::COUNT);
+
+DEFINE_stats(core_worker_task_events_stored,
+             "Number of task events stored in the buffer.",
+             (),
+             (),
+             ray::stats::GAUGE);
+
+DEFINE_stats(core_worker_task_events_dropped,
+             "Number of task events dropped from the worker.",
+             ("Type"),
+             (),
+             ray::stats::COUNT);
+
 /// Memory Manager
 DEFINE_stats(memory_manager_worker_eviction_total,
              "Total worker eviction events broken per work type {Actor, Task}",
