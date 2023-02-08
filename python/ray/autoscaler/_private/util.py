@@ -537,10 +537,15 @@ def parse_placement_group_resource_str(
     return (placement_group_resource_str, None, True)
 
 
-MEMORY_SUFFIXES = [("TiB", 2**40), ("GiB", 2**30), ("MiB", 2**20), ("KiB", 2**10)]
+MEMORY_SUFFIXES = [
+    ("TiB", 2**40),
+    ("GiB", 2**30),
+    ("MiB", 2**20),
+    ("KiB", 2**10),
+]
 
 
-def format_memory(mem_bytes : Number) -> str:
+def format_memory(mem_bytes: Number) -> str:
     """Formats memory in bytes in friendly unit. E.g. (2**30 + 1) bytes should
     be displayed as 1GiB but 1 byte should be displayed as 1B, (as opposed to
     rounding it to 0GiB).
