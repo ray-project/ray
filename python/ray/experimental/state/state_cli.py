@@ -353,7 +353,7 @@ def ray_get(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray get tasks <task-id>` is
-    :class:`ray.experimental.state.common.TaskState <ray.experimental.state.common.TaskState>`.
+    :class:`~ray.experimental.state.common.TaskState`.
 
     Usage:
 
@@ -466,7 +466,7 @@ def ray_list(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray list tasks` is
-    :class:`ray.experimental.state.common.TaskState <ray.experimental.state.common.TaskState>`.
+    :class:`~ray.experimental.state.common.TaskState`.
 
     Usage:
 
@@ -581,7 +581,7 @@ def task_summary(ctx, timeout: float, address: str):
     task function names.
 
     The output schema is
-    :class:`ray.experimental.state.common.TaskSummaries <ray.experimental.state.common.TaskSummaries>`.
+    :class:`~ray.experimental.state.common.TaskSummaries`.
 
     Raises:
         :ref:`RayStateApiException <state-api-exceptions>`

@@ -589,7 +589,7 @@ def get_placement_group(
 
     Returns:
         None if actor not found, or dictionarified
-        :class:`PlacementGroupState <ray.experimental.state.common.PlacementGroupState>`.
+        :class:`~ray.experimental.state.common.PlacementGroupState`.
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
@@ -685,7 +685,8 @@ def get_task(
 
     Returns:
         None if task not found, or a list of dictionarified
-        :class:`TaskState <ray.experimental.state.common.TaskState>` from the task attempts.
+        :class:`~ray.experimental.state.common.TaskState`
+        from the task attempts.
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
@@ -719,7 +720,8 @@ def get_objects(
             failed query information.
 
     Returns:
-        List of dictionarified :class:`ObjectState <ray.experimental.state.common.ObjectState>`.
+        List of dictionarified
+        :class:`~ray.experimental.state.common.ObjectState`.
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>`  if the CLI
@@ -800,7 +802,7 @@ def list_placement_groups(
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `PlacementGroupState`)
             will be queried and returned. See
-            :class:`PlacementGroupState <ray.experimental.state.common.PlacementGroupState>`.
+            :class:`~ray.experimental.state.common.PlacementGroupState`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -808,7 +810,7 @@ def list_placement_groups(
 
     Returns:
         List of dictionarified
-        :class:`PlacementGroupState <ray.experimental.state.common.PlacementGroupState>`.
+        :class:`~ray.experimental.state.common.PlacementGroupState`.
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
@@ -1291,7 +1293,8 @@ def summarize_tasks(
             failed query information.
 
     Return:
-        Dictionarified :class:`TaskSummaries <ray.experimental.state.common.TaskSummaries>`
+        Dictionarified
+        :class:`~ray.experimental.state.common.TaskSummaries`
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>`
@@ -1323,7 +1326,8 @@ def summarize_actors(
             failed query information.
 
     Return:
-        Dictionarified :class:`ActorSummaries <ray.experimental.state.common.ActorSummaries>`
+        Dictionarified
+        :class:`~ray.experimental.state.common.ActorSummaries`
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
@@ -1355,7 +1359,7 @@ def summarize_objects(
             failed query information.
 
     Return:
-        Dictionarified :class:`ObjectSummaries <ray.experimental.state.common.ObjectSummaries>`
+        Dictionarified :class:`~ray.experimental.state.common.ObjectSummaries`
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
