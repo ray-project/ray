@@ -357,7 +357,7 @@ class TestDeployApp:
     def test_deploy_app_basic(self, client: ServeControllerClient):
 
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
-        client.deploy_app(config)
+        client.deploy_apps(config)
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
@@ -386,7 +386,7 @@ class TestDeployApp:
             },
         ]
 
-        client.deploy_app(ServeApplicationSchema.parse_obj(config))
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config))
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json()
@@ -399,7 +399,7 @@ class TestDeployApp:
 
     def test_deploy_app_update_config(self, client: ServeControllerClient):
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
-        client.deploy_app(config)
+        client.deploy_apps(config)
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
@@ -416,7 +416,7 @@ class TestDeployApp:
             },
         ]
 
-        client.deploy_app(ServeApplicationSchema.parse_obj(config))
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config))
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
@@ -425,7 +425,7 @@ class TestDeployApp:
 
     def test_deploy_app_update_num_replicas(self, client: ServeControllerClient):
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
-        client.deploy_app(config)
+        client.deploy_apps(config)
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
@@ -458,7 +458,7 @@ class TestDeployApp:
             },
         ]
 
-        client.deploy_app(ServeApplicationSchema.parse_obj(config))
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config))
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
@@ -482,7 +482,7 @@ class TestDeployApp:
         assert client.get_serve_status().app_status.deployment_timestamp == 0
 
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
-        client.deploy_app(config)
+        client.deploy_apps(config)
 
         assert client.get_serve_status().app_status.deployment_timestamp > 0
 
@@ -496,7 +496,7 @@ class TestDeployApp:
                 "num_replicas": 2,
             },
         ]
-        client.deploy_app(ServeApplicationSchema.parse_obj(config))
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config))
 
         assert (
             client.get_serve_status().app_status.deployment_timestamp
@@ -516,7 +516,7 @@ class TestDeployApp:
                 "import_path": "ray.serve.tests.test_config_files.world.DagNode",
             }
         )
-        client.deploy_app(test_config_1)
+        client.deploy_apps(test_config_1)
 
         wait_for_condition(
             lambda: requests.get("http://localhost:8000/").text == "wonderful world"
@@ -529,7 +529,7 @@ class TestDeployApp:
                 "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
             }
         )
-        client.deploy_app(test_config_2)
+        client.deploy_apps(test_config_2)
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
@@ -548,7 +548,7 @@ class TestDeployApp:
         }
 
         config1 = ServeApplicationSchema.parse_obj(config_template)
-        client.deploy_app(config1)
+        client.deploy_apps(config1)
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
@@ -565,7 +565,7 @@ class TestDeployApp:
             }
         ]
         config2 = ServeApplicationSchema.parse_obj(config_template)
-        client.deploy_app(config2)
+        client.deploy_apps(config2)
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
@@ -576,7 +576,7 @@ class TestDeployApp:
         """Ensure that in-progress deploy can finish even after controller dies."""
 
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
-        client.deploy_app(config)
+        client.deploy_apps(config)
 
         # Wait for app to deploy
         wait_for_condition(
@@ -660,7 +660,7 @@ class TestDeployApp:
             ],
         }
 
-        client.deploy_app(ServeApplicationSchema.parse_obj(config_template))
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
         wait_for_condition(deployment_running, timeout=15)
         pid1 = requests.get("http://localhost:8000/f").text
 
@@ -681,7 +681,7 @@ class TestDeployApp:
                 option_to_update
             ]
 
-        client.deploy_app(ServeApplicationSchema.parse_obj(config_template))
+        client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
         wait_for_condition(deployment_running, timeout=15)
 
         # This assumes that Serve implements round-robin routing for its replicas. As

@@ -28,7 +28,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import ServeDeploySchema
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 logger = logging.getLogger(__file__)
 
@@ -307,7 +307,11 @@ class ServeControllerClient:
             self.delete_deployments(deployment_names_to_delete, blocking=_blocking)
 
     @_ensure_connected
-    def deploy_apps(self, config: ServeDeploySchema, _blocking: bool = False) -> None:
+    def deploy_apps(
+        self,
+        config: Union[ServeApplicationSchema, ServeDeploySchema],
+        _blocking: bool = False,
+    ) -> None:
         ray.get(self._controller.deploy_apps.remote(config))
 
         if _blocking:

@@ -13,7 +13,7 @@ from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
-from ray.serve.schema import ServeApplicationSchema, serve_application_to_deploy_schema
+from ray.serve.schema import ServeApplicationSchema
 
 
 def main():
@@ -84,9 +84,7 @@ def main():
 
     try:
         if is_config:
-            client.deploy_apps(
-                serve_application_to_deploy_schema(config), _blocking=args.gradio
-            )
+            client.deploy_apps(config, _blocking=args.gradio)
             cli_logger.success("Submitted deploy config successfully.")
             if args.gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()

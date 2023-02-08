@@ -38,7 +38,11 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
 from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.long_poll import LongPollHost
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    serve_application_to_deploy_schema,
+)
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
@@ -432,7 +436,9 @@ class ServeController:
         self.application_state_manager.deploy_application(name, deployment_args_list)
         return deployments_success
 
-    def deploy_apps(self, config: ServeDeploySchema) -> None:
+    def deploy_apps(
+        self, config: Union[ServeApplicationSchema, ServeDeploySchema]
+    ) -> None:
         """Kicks off a task that deploys a Serve application.
 
         Cancels in-progress task that is deploying a Serve
@@ -448,8 +454,14 @@ class ServeController:
                     into a set_options() call. Overrides deployment options set
                     in the graph's code itself.
         """
+        # We should still support single-app mode, i.e. ServeApplicationSchema.
+        # Eventually, after migration is complete, we should deprecate such usage.
+        if isinstance(config, ServeApplicationSchema):
+            config = serve_application_to_deploy_schema(config)
+
         timestamp = time.time()
 
+        # Load checkpointed data from last time deploy_apps was called
         config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if config_checkpoint is None:
             config_checkpoints_dict = {}
