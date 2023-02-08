@@ -2,8 +2,8 @@ from dataclasses import dataclass, field
 from typing import List, Callable
 import functools
 
-from ray.rllib.models.experimental.base import ModelConfig, Model
-from ray.rllib.models.experimental.encoder import Encoder
+from ray.rllib.core.models.base import ModelConfig, Model
+from ray.rllib.core.models.encoder import Encoder
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
@@ -76,11 +76,11 @@ class MLPModelConfig(ModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.mlp import TorchMLPModel
+            from ray.rllib.core.models.torch.mlp import TorchMLPModel
 
             return TorchMLPModel(self)
         else:
-            from ray.rllib.models.experimental.tf.mlp import TfMLPModel
+            from ray.rllib.core.models.tf.mlp import TfMLPModel
 
             self.output_activation = _maybe_fit_activation_fn_to_tf(
                 self.output_activation
@@ -96,11 +96,11 @@ class MLPEncoderConfig(MLPModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.encoder import TorchMLPEncoder
+            from ray.rllib.core.models.torch.encoder import TorchMLPEncoder
 
             return TorchMLPEncoder(self)
         else:
-            from ray.rllib.models.experimental.tf.encoder import TfMLPEncoder
+            from ray.rllib.core.models.tf.encoder import TfMLPEncoder
 
             return TfMLPEncoder(self)
 
@@ -116,7 +116,7 @@ class LSTMEncoderConfig(ModelConfig):
     @_framework_implemented(tf2=False)
     def build(self, framework: str = "torch") -> Encoder:
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.encoder import TorchLSTMEncoder
+            from ray.rllib.core.models.torch.encoder import TorchLSTMEncoder
 
             return TorchLSTMEncoder(self)
 
@@ -128,11 +128,11 @@ class IdentityConfig(ModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.encoder import TorchIdentityEncoder
+            from ray.rllib.core.models.torch.encoder import TorchIdentityEncoder
 
             return TorchIdentityEncoder(self)
         else:
-            from ray.rllib.models.experimental.tf.encoder import TfIdentityEncoder
+            from ray.rllib.core.models.tf.encoder import TfIdentityEncoder
 
             return TfIdentityEncoder(self)
 
@@ -147,12 +147,12 @@ class ActorCriticEncoderConfig(ModelConfig):
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
         if framework == "torch":
-            from ray.rllib.models.experimental.torch.encoder import (
+            from ray.rllib.core.models.torch.encoder import (
                 TorchActorCriticEncoder,
             )
 
             return TorchActorCriticEncoder(self)
         else:
-            from ray.rllib.models.experimental.tf.encoder import TfActorCriticEncoder
+            from ray.rllib.core.models.tf.encoder import TfActorCriticEncoder
 
             return TfActorCriticEncoder(self)

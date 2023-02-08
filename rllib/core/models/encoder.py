@@ -1,6 +1,6 @@
 import abc
 
-from ray.rllib.models.experimental.base import Model, ModelConfig
+from ray.rllib.core.models.base import Model, ModelConfig
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.policy.sample_batch import SampleBatch
 

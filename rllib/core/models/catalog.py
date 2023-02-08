@@ -1,10 +1,10 @@
-from ray.rllib.models.experimental.configs import (
+from ray.rllib.core.models.configs import (
     MLPModelConfig,
     MLPEncoderConfig,
     LSTMEncoderConfig,
 )
-from ray.rllib.models.experimental.base import ModelConfig
-from ray.rllib.models.catalog import MODEL_DEFAULTS
+from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.models import MODEL_DEFAULTS
 from gymnasium.spaces import Box
 
 

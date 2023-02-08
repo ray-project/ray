@@ -1,6 +1,6 @@
-from ray.rllib.models.experimental.base import Model
-from ray.rllib.models.experimental.base import ModelConfig
-from ray.rllib.models.experimental.tf.primitives import TfMLP, TfModel
+from ray.rllib.core.models.base import Model
+from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.tf.primitives import TfMLP, TfModel
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import override

@@ -1,7 +1,9 @@
+import torch
+import torch.nn as nn
 import tree
 
-from ray.rllib.models.experimental.base import ModelConfig, Model
-from ray.rllib.models.experimental.encoder import (
+from ray.rllib.core.models.base import ModelConfig, Model
+from ray.rllib.core.models.encoder import (
     Encoder,
     STATE_IN,
     STATE_OUT,
@@ -9,26 +11,22 @@ from ray.rllib.models.experimental.encoder import (
     ACTOR,
     CRITIC,
 )
-from ray.rllib.models.experimental.tf.primitives import TfMLP
-from ray.rllib.models.experimental.tf.primitives import TfModel
+from ray.rllib.core.models.torch.primitives import TorchMLP, TorchModel
 from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.models.specs.specs_tf import TFTensorSpecs
+from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
 
-torch, nn = try_import_torch()
 
-
-class TfMLPEncoder(Encoder, TfModel):
+class TorchMLPEncoder(TorchModel, Encoder):
     def __init__(self, config: ModelConfig) -> None:
-        TfModel.__init__(self, config)
+        TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
         # Create the neural networks
-        self.net = TfMLP(
+        self.net = TorchMLP(
             input_dim=config.input_dim,
             hidden_layer_dims=config.hidden_layer_dims,
             output_dim=config.output_dim,
@@ -38,7 +36,7 @@ class TfMLPEncoder(Encoder, TfModel):
         # Define the input spec
         self.input_spec = SpecDict(
             {
-                SampleBatch.OBS: TFTensorSpecs("b, h", h=self.config.input_dim),
+                SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.input_dim),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
             }
@@ -47,25 +45,24 @@ class TfMLPEncoder(Encoder, TfModel):
         # Define the output spec
         self.output_spec = SpecDict(
             {
-                ENCODER_OUT: TFTensorSpecs("b, h", h=self.config.output_dim),
+                ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim),
                 STATE_OUT: None,
             }
         )
 
     @override(Model)
-    def _forward(self, inputs: NestedDict) -> NestedDict:
+    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         return {
             ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
             STATE_OUT: inputs[STATE_IN],
         }
 
 
-class LSTMEncoder(Encoder, TfModel):
+class TorchLSTMEncoder(TorchModel, Encoder):
     """An encoder that uses an LSTM cell and a linear layer."""
 
     def __init__(self, config: ModelConfig) -> None:
-        TfModel.__init__(self, config)
-        Encoder.__init__(self, config)
+        TorchModel.__init__(self, config)
 
         # Create the neural networks
         self.lstm = nn.LSTM(
@@ -80,12 +77,12 @@ class LSTMEncoder(Encoder, TfModel):
         self.input_spec = SpecDict(
             {
                 # bxt is just a name for better readability to indicated padded batch
-                SampleBatch.OBS: TFTensorSpecs("bxt, h", h=config.input_dim),
+                SampleBatch.OBS: TorchTensorSpec("bxt, h", h=config.input_dim),
                 STATE_IN: {
-                    "h": TFTensorSpecs(
+                    "h": TorchTensorSpec(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
-                    "c": TFTensorSpecs(
+                    "c": TorchTensorSpec(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
                 },
@@ -96,12 +93,12 @@ class LSTMEncoder(Encoder, TfModel):
         # Define the output spec
         self.output_spec = SpecDict(
             {
-                ENCODER_OUT: TFTensorSpecs("bxt, h", h=config.output_dim),
+                ENCODER_OUT: TorchTensorSpec("bxt, h", h=config.output_dim),
                 STATE_OUT: {
-                    "h": TFTensorSpecs(
+                    "h": TorchTensorSpec(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
-                    "c": TFTensorSpecs(
+                    "c": TorchTensorSpec(
                         "b, l, h", h=config.hidden_dim, l=config.num_layers
                     ),
                 },
@@ -126,7 +123,7 @@ class LSTMEncoder(Encoder, TfModel):
         x = add_time_dimension(
             x,
             seq_lens=inputs[SampleBatch.SEQ_LENS],
-            framework="tf",
+            framework="torch",
             time_major=not self.config.batch_first,
         )
         states_o = {}
@@ -141,29 +138,28 @@ class LSTMEncoder(Encoder, TfModel):
         }
 
 
-class TfIdentityEncoder(TfModel):
+class TorchIdentityEncoder(TorchModel, Encoder):
     """An encoder that does nothing but passing on inputs.
 
     We use this so that we avoid having many if/else statements in the RLModule.
     """
 
     def __init__(self, config: ModelConfig) -> None:
-        TfModel.__init__(self, config)
+        TorchModel.__init__(self, config)
+        Encoder.__init__(self, config)
 
-        # Define the input spec
         self.input_spec = SpecDict(
+            # Use the output dim as input dim because identity.
             {
-                # Use the output dim as input dim because identity.
-                SampleBatch.OBS: TFTensorSpecs("b, h", h=config.output_dim),
+                SampleBatch.OBS: TorchTensorSpec("b, h", h=self.config.output_dim),
                 STATE_IN: None,
                 SampleBatch.SEQ_LENS: None,
             }
         )
 
-        # Define the output spec
         self.output_spec = SpecDict(
             {
-                ENCODER_OUT: TFTensorSpecs("b, h", h=config.input_dim),
+                ENCODER_OUT: TorchTensorSpec("b, h", h=self.config.output_dim),
                 STATE_OUT: None,
             }
         )
@@ -173,7 +169,7 @@ class TfIdentityEncoder(TfModel):
         return {ENCODER_OUT: inputs[SampleBatch.OBS], STATE_OUT: inputs[STATE_IN]}
 
 
-class TfActorCriticEncoder(TfModel, Encoder):
+class TorchActorCriticEncoder(TorchModel, Encoder):
     """An encoder that potentially holds two encoders.
 
     This is a special case of encoder that potentially holds two encoders:
@@ -183,17 +179,19 @@ class TfActorCriticEncoder(TfModel, Encoder):
     """
 
     def __init__(self, config: ModelConfig) -> None:
-        TfModel.__init__(self, config)
+        TorchModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        # Create the neural networks
         if self.config.shared:
-            self.encoder = self.config.base_encoder_config.build(framework="tf")
+            self.encoder = self.config.base_encoder_config.build(framework="torch")
         else:
-            self.actor_encoder = self.config.base_encoder_config.build(framework="tf")
-            self.critic_encoder = self.config.base_encoder_config.build(framework="tf")
+            self.actor_encoder = self.config.base_encoder_config.build(
+                framework="torch"
+            )
+            self.critic_encoder = self.config.base_encoder_config.build(
+                framework="torch"
+            )
 
-        # Define the input spec
         if self.config.shared:
             self.input_spec = self.encoder.input_spec
         else:
@@ -214,7 +212,6 @@ class TfActorCriticEncoder(TfModel, Encoder):
                 }
             )
 
-        # Define the output spec
         if self.config.shared:
             state_out_spec = self.encoder.output_spec[STATE_OUT]
             actor_out_spec = self.encoder.output_spec[ENCODER_OUT]
@@ -228,12 +225,10 @@ class TfActorCriticEncoder(TfModel, Encoder):
             critic_out_spec = self.critic_encoder.output_spec[ENCODER_OUT]
             assert actor_out_spec == critic_out_spec
 
-        self.output_spec = SpecDict(
-            {
-                ENCODER_OUT: {ACTOR: actor_out_spec, CRITIC: critic_out_spec},
-                STATE_OUT: state_out_spec,
-            }
-        )
+        self.output_spec = {
+            ENCODER_OUT: {ACTOR: actor_out_spec, CRITIC: critic_out_spec},
+            STATE_OUT: state_out_spec,
+        }
 
     @override(Model)
     def get_initial_state(self):
@@ -267,6 +262,6 @@ class TfActorCriticEncoder(TfModel, Encoder):
                 },
                 STATE_OUT: {
                     ACTOR: actor_out[STATE_OUT],
-                    CRITIC: critic_out[ENCODER_OUT],
+                    CRITIC: critic_out[STATE_OUT],
                 },
             }

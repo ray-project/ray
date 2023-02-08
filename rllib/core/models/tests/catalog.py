@@ -3,7 +3,7 @@ import numpy as np
 
 from gymnasium.spaces import Box
 
-from ray.rllib.models.experimental.catalog import Catalog
+from ray.rllib.core.models.catalog import Catalog
 
 
 class TestCatalog(unittest.TestCase):

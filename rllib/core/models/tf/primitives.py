@@ -1,7 +1,7 @@
 import abc
 from typing import List
 
-from ray.rllib.models.experimental.base import Model, ModelConfig
+from ray.rllib.core.models.base import Model, ModelConfig
 from ray.rllib.models.specs.checker import (
     check_input_specs,
     check_output_specs,

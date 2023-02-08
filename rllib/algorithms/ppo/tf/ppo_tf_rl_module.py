@@ -8,8 +8,8 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOModuleConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.models.experimental.encoder import ACTOR, CRITIC, STATE_IN
-from ray.rllib.models.experimental.tf.encoder import ENCODER_OUT
+from ray.rllib.core.models.encoder import ACTOR, CRITIC, STATE_IN
+from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_tf import TFTensorSpecs
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic, DiagGaussian

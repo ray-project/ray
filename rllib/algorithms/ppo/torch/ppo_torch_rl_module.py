@@ -6,12 +6,12 @@ import tree
 
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.experimental.catalog import Catalog
-from ray.rllib.models.experimental.configs import (
+from ray.rllib.core.models.catalog import Catalog
+from ray.rllib.core.models.configs import (
     MLPModelConfig,
     ActorCriticEncoderConfig,
 )
-from ray.rllib.models.experimental.encoder import STATE_IN, ACTOR, CRITIC, ENCODER_OUT
+from ray.rllib.core.models.encoder import STATE_IN, ACTOR, CRITIC, ENCODER_OUT
 from ray.rllib.models.specs.specs_dict import SpecDict
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.models.torch.torch_distributions import (
@@ -117,10 +117,11 @@ class PPOTorchRLModule(TorchRLModule):
 
         assert isinstance(catalog, PPOCatalog), "A PPOCatalog is required for PPO."
 
-        self.config.encoder_config.input_dim = self.config.observation_space.shape[0]
-        self.config.pi_config.input_dim = self.config.encoder_config.output_dim
-        if isinstance(self.config.action_space, gym.spaces.Discrete):
-            self.config.pi_config.output_dim = self.config.action_space.n
+        # Set output dimensions according
+        catalog.encoder_config.input_dim = config.observation_space.shape[0]
+        catalog.pi_head_config.input_dim = catalog.encoder_config.output_dim
+        if isinstance(config.action_space, gym.spaces.Discrete):
+            catalog.pi_head_config.output_dim = config.action_space.n
         else:
             catalog.pi_head_config.output_dim = config.action_space.shape[0] * 2
         catalog.vf_head_config.output_dim = 1

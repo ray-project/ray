@@ -1,6 +1,6 @@
-from ray.rllib.models.experimental.base import ModelConfig
-from ray.rllib.models.experimental.base import Model
-from ray.rllib.models.experimental.torch.primitives import TorchMLP, TorchModel
+from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.base import Model
+from ray.rllib.core.models.torch.primitives import TorchMLP, TorchModel
 from ray.rllib.models.specs.specs_torch import TorchTensorSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
