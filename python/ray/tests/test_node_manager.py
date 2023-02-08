@@ -9,6 +9,7 @@ from ray._private.test_utils import (
 import pytest
 import os
 from ray.experimental.state.api import list_objects
+import subprocess
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -242,7 +243,7 @@ ds.map(leak_repro, max_retries=0)
   """
     try:
         run_string_as_driver(driver)
-    except ray.exceptions.RayTaskError:
+    except subprocess.CalledProcessError:
         pass
 
     ray.init(address=call_ray_start)
