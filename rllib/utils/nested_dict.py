@@ -59,20 +59,26 @@ class StrKey(str):
 
 @ExperimentalAPI
 class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
-    """A nested dict type:
-        * The nested dict gives access to nested elements as a sequence of
+    """A dict with special properties to support partial indexing.
+
+    The main properties of NestedDict are::
+        * The NestedDict gives access to nested elements as a sequence of
         strings.
-        * These nested dicts can also be used to filter a superset into a subset of
+        * These NestedDicts can also be used to filter a superset into a subset of
         nested elements with the filter function.
         * This can be instantiated with any mapping of strings, or an iterable of
         key value tuples where the values can themselves be recursively the values
-        that a nested dict can take.
+        that a NestedDict can take.
+        * The length of a NestedDict is the number of leaves in the tree, excluding
+        empty leafs.
+        * Iterating over a NestedDict yields the leaves of the tree, including empty
+        leafs.
 
     Args:
-        x: a representation of a nested dict: it can be an iterable of `SeqStrType`
+        x: a representation of a NestedDict: it can be an iterable of `SeqStrType`
         to values. e.g. `[(("a", "b") , 1), ("b", 2)]` or a mapping of flattened
         keys to values. e.g. `{("a", "b"): 1, ("b",): 2}` or any nested mapping,
-        e.g. `{"a": {"b": 1}, "b": 2}`.
+        e.g. `{"a": {"b": 1}, "b": {}}`.
 
     Example:
         Basic usage:
@@ -131,6 +137,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
             raise ValueError(f"Input must be a Mapping or Iterable, got {type(x)}.")
 
     def __contains__(self, k: SeqStrType) -> bool:
+        """Returns true if the key is in the NestedDict."""
         k = _flatten_index(k)
 
         data_ptr = self._data  # type: Dict[str, Any]
@@ -148,12 +155,13 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         self, k: SeqStrType, default: Optional[T] = None
     ) -> Union[T, "NestedDict[T]"]:
         """Returns `self[k]`, with partial indexing allowed.
+
         If `k` is not in the `NestedDict`, returns default. If default is `None`,
         and `k` is not in the `NestedDict`, a `KeyError` is raised.
 
         Args:
-            k: the key to get. This can be a string or a sequence of strings.
-            default: the default value to return if `k` is not in the `NestedDict`. If
+            k: The key to get. This can be a string or a sequence of strings.
+            default: The default value to return if `k` is not in the `NestedDict`. If
                 default is `None`, and `k` is not in the `NestedDict`, a `KeyError` is
                 raised.
 
@@ -184,10 +192,11 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         return output
 
     def __setitem__(self, k: SeqStrType, v: Union[T, _NestedMappingType]) -> None:
-        """This is a zero-copy operation. The pointer to value if preserved in the
-        internal data structure."""
-        if isinstance(v, Mapping) and len(v) == 0:
-            return
+        """Sets item at `k` to `v`.
+
+        This is a zero-copy operation. The pointer to value if preserved in the
+        internal data structure.
+        """
         if not k:
             raise IndexError(
                 f"Key for {self.__class__.__name__} cannot be empty. Got {k}."
@@ -206,17 +215,31 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
             data_ptr = data_ptr[key]
 
     def __iter__(self) -> Iterator[SeqStrType]:
+        """Iterate over NestedDict, returning tuples of paths.
+
+        Every iteration yields a tuple of strings, with each element of
+        such a tuple representing a branch in the NestedDict. Each yielded tuple
+        represents the path to a leaf. This includes leafs that are empty dicts.
+        For example, if the NestedDict is: {'a': {'b': 1, 'c': {}}}, then this
+        iterator will yield: ('a', 'b'), ('a', 'c').
+        """
         data_ptr = self._data
         # do a DFS to get all the keys
         stack = [((StrKey(k),), v) for k, v in data_ptr.items()]
         while stack:
             k, v = stack.pop(0)
             if isinstance(v, NestedDict):
-                stack = [(k + (StrKey(k2),), v) for k2, v in v._data.items()] + stack
+                if len(v._data) == 0:
+                    yield tuple(k)
+                else:
+                    stack = [
+                        (k + (StrKey(k2),), v) for k2, v in v._data.items()
+                    ] + stack
             else:
                 yield tuple(k)
 
     def __delitem__(self, k: SeqStrType) -> None:
+        """Deletes item at `k`."""
         ks, ns = [], []
         data_ptr = self._data
         for k in _flatten_index(k):
@@ -235,8 +258,11 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
                 del ns[i][ks[i]]
 
     def __len__(self) -> int:
-        """Returns the number of leaf nodes in the `NestedDict` that
-        are not of type Mappings.
+        """Returns the length of the NestedDict.
+
+        The length is defined as the number of leaf nodes in the `NestedDict` that
+        are not of type Mapping. For example, if the `NestedDict` is: {'a': {'b': 1,
+        'c': {}}}, then the length is 1.
         """
 
         # do a DFS to count the number of leaf nodes
@@ -265,6 +291,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         ignore_missing: bool = False,
     ) -> "NestedDict[T]":
         """Returns a NestedDict with only entries present in `other`.
+
         The values in the `other` NestedDict are ignored. Only the keys are used.
 
         Args:

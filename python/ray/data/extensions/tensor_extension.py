@@ -10,3 +10,4 @@ from ray.air.util.tensor_extensions.arrow import (  # noqa: F401
     ArrowVariableShapedTensorType,
     ArrowVariableShapedTensorArray,
 )
+from ray.air.util.tensor_extensions.utils import create_ragged_ndarray  # noqa: F401
