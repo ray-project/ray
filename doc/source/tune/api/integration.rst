@@ -3,17 +3,17 @@
 External library integrations for Ray Tune (tune.integration)
 =============================================================
 
-.. contents::
-    :local:
-    :depth: 1
-
+.. currentmodule:: ray
 
 Comet (tune.integration.comet)
 -------------------------------------------
 
-:ref:`See also here <tune-comet-ref>`.
+:ref:`See here for an example. <tune-comet-ref>`
 
-.. autoclass:: ray.air.integrations.comet.CometLoggerCallback
+.. autosummary::
+    :toctree: doc/
+
+    air.integrations.comet.CometLoggerCallback
     :noindex:
 
 .. _tune-integration-keras:
@@ -21,9 +21,11 @@ Comet (tune.integration.comet)
 Keras (tune.integration.keras)
 ------------------------------------------------------
 
-.. autoclass:: ray.tune.integration.keras.TuneReportCallback
+.. autosummary::
+    :toctree: doc/
 
-.. autoclass:: ray.tune.integration.keras.TuneReportCheckpointCallback
+    tune.integration.keras.TuneReportCallback
+    tune.integration.keras.TuneReportCheckpointCallback
 
 
 .. _tune-integration-mlflow:
@@ -31,12 +33,14 @@ Keras (tune.integration.keras)
 MLflow (tune.integration.mlflow)
 --------------------------------
 
-:ref:`See also here <tune-mlflow-ref>`.
+:ref:`See here for an example. <tune-mlflow-ref>`
 
-.. autoclass:: ray.air.integrations.mlflow.MLflowLoggerCallback
+.. autosummary::
+    :toctree: doc/
+
+    air.integrations.mlflow.MLflowLoggerCallback
     :noindex:
-
-.. autofunction:: ray.air.integrations.mlflow.setup_mlflow
+    air.integrations.mlflow.setup_mlflow
 
 
 .. _tune-integration-mxnet:
@@ -44,9 +48,11 @@ MLflow (tune.integration.mlflow)
 MXNet (tune.integration.mxnet)
 ------------------------------
 
-.. autoclass:: ray.tune.integration.mxnet.TuneReportCallback
+.. autosummary::
+    :toctree: doc/
 
-.. autoclass:: ray.tune.integration.mxnet.TuneCheckpointCallback
+    tune.integration.mxnet.TuneReportCallback
+    tune.integration.mxnet.TuneCheckpointCallback
 
 
 .. _tune-integration-pytorch-lightning:
@@ -54,21 +60,25 @@ MXNet (tune.integration.mxnet)
 PyTorch Lightning (tune.integration.pytorch_lightning)
 ------------------------------------------------------
 
-.. autoclass:: ray.tune.integration.pytorch_lightning.TuneReportCallback
+.. autosummary::
+    :toctree: doc/
 
-.. autoclass:: ray.tune.integration.pytorch_lightning.TuneReportCheckpointCallback
+    tune.integration.pytorch_lightning.TuneReportCallback
+    tune.integration.pytorch_lightning.TuneReportCheckpointCallback
 
 .. _tune-integration-wandb:
 
 Weights and Biases (tune.integration.wandb)
 -------------------------------------------
 
-:ref:`See also here <tune-wandb-ref>`.
+:ref:`See here for an example. <tune-wandb-ref>`
 
-.. autoclass:: ray.air.integrations.wandb.WandbLoggerCallback
+.. autosummary::
+    :toctree: doc/
+
+    air.integrations.wandb.WandbLoggerCallback
     :noindex:
-
-.. autofunction:: ray.air.integrations.wandb.setup_wandb
+    air.integrations.wandb.setup_wandb
 
 
 .. _tune-integration-xgboost:
@@ -76,9 +86,11 @@ Weights and Biases (tune.integration.wandb)
 XGBoost (tune.integration.xgboost)
 ----------------------------------
 
-.. autoclass:: ray.tune.integration.xgboost.TuneReportCallback
+.. autosummary::
+    :toctree: doc/
 
-.. autoclass:: ray.tune.integration.xgboost.TuneReportCheckpointCallback
+    tune.integration.xgboost.TuneReportCallback
+    tune.integration.xgboost.TuneReportCheckpointCallback
 
 
 .. _tune-integration-lightgbm:
@@ -86,6 +98,8 @@ XGBoost (tune.integration.xgboost)
 LightGBM (tune.integration.lightgbm)
 ------------------------------------
 
-.. autoclass:: ray.tune.integration.lightgbm.TuneReportCallback
+.. autosummary::
+    :toctree: doc/
 
-.. autoclass:: ray.tune.integration.lightgbm.TuneReportCheckpointCallback
+    tune.integration.lightgbm.TuneReportCallback
+    tune.integration.lightgbm.TuneReportCheckpointCallback
