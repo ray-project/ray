@@ -1,5 +1,5 @@
-API References
-==============
+Ray Core API
+============
 
 .. toctree::
     :maxdepth: 2
