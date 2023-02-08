@@ -152,7 +152,7 @@ class GroupedDataset(Generic[T]):
                     init=lambda k: [],
                     accumulate_row=lambda a, r: a + [r],
                     merge=lambda a1, a2: a1 + a2,
-                    finalize=lambda a: a
+                    finalize=lambda a: sorted(a)
                 ))
                 result.show()
 
