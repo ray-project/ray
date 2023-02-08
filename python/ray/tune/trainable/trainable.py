@@ -893,28 +893,22 @@ class Trainable:
             return
         else:
             if self.uses_cloud_checkpointing:
-                syncer = self.syncer
-                if syncer:
-                    # Keep for backwards compatibility
-                    syncer.delete(self._storage_path(checkpoint_dir))
+                syncer = self.sync_config.syncer
+                assert syncer
+
+                checkpoint_uri = self._storage_path(checkpoint_dir)
+                syncer.delete(checkpoint_uri)
+                try:
                     syncer.wait_or_retry(
                         max_retries=self.sync_num_retries,
                         backoff_s=self.sync_sleep_time,
                     )
-                else:
-                    checkpoint_uri = self._storage_path(checkpoint_dir)
-                    if not retry_fn(
-                        lambda: _delete_external_checkpoint(checkpoint_uri),
-                        subprocess.CalledProcessError,
-                        num_retries=self.sync_num_retries,
-                        sleep_time=self.sync_sleep_time,
-                        timeout=self.sync_config.sync_timeout,
-                    ):
-                        num_retries = self.sync_num_retries
-                        logger.error(
-                            f"Could not delete checkpoint even after {num_retries} "
-                            f"retries: {checkpoint_uri}"
-                        )
+                except TuneError:
+                    num_retries = self.sync_num_retries
+                    logger.error(
+                        f"Could not delete checkpoint even after {num_retries} "
+                        f"retries: {checkpoint_uri}"
+                    )
 
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
