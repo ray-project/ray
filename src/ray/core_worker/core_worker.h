@@ -99,7 +99,8 @@ class TaskCounter {
                    {"JobId", job_id_},
                    {"Source", "executor"}});
               // Record sub-state for get.
-              RAY_LOG(INFO) << "SANG-TODO Get called, " << func_name << ", count: " << num_in_get;
+              RAY_LOG(INFO) << "SANG-TODO Get called, " << func_name
+                            << ", count: " << num_in_get;
               ray::stats::STATS_tasks.Record(
                   num_in_get,
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
@@ -197,6 +198,9 @@ class TaskCounter {
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
     }
+    // Add a no-op increment to counter_ so that
+    // it will invoke a callback upon RecordMetrics.
+    counter_.Increment({func_name, TaskStatusType::kRunning, is_retry}, 0);
   }
 
   void UnsetMetricStatus(const std::string &func_name,
@@ -211,6 +215,9 @@ class TaskCounter {
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
     }
+    // Add a no-op decrement to counter_ so that
+    // it will invoke a callback upon RecordMetrics.
+    counter_.Decrement({func_name, TaskStatusType::kRunning, is_retry}, 0);
   }
 
   std::unordered_map<std::string, std::vector<int64_t>> AsMap() const {

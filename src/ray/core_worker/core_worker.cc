@@ -67,7 +67,8 @@ class ScopedTaskMetricSetter {
     RAY_LOG(INFO) << "SANG-TODO Created a scoped metric setter";
     if (task_spec != nullptr) {
       task_name_ = task_spec->GetName();
-      RAY_LOG(INFO) << "SANG-TODO Created a scoped metric setter. " << task_spec->GetName();
+      RAY_LOG(INFO) << "SANG-TODO Created a scoped metric setter. "
+                    << task_spec->GetName();
       is_retry_ = task_spec->IsRetry();
     } else {
       task_name_ = "Unknown task";
@@ -1257,8 +1258,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   RAY_LOG(INFO) << "SANG-TODO Get called";
-  ScopedTaskMetricSetter state(
-      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
+  if (options_.worker_type == WorkerType::WORKER) {
+    // We track the state change only from workers.
+    state = std::make_unique<ScopedTaskMetricSetter>(
+        worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  }
   RAY_LOG(INFO) << "SANG-TODO Created a scoped state";
   results->resize(ids.size(), nullptr);
 
@@ -1420,8 +1425,12 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int64_t timeout_ms,
                         std::vector<bool> *results,
                         bool fetch_local) {
-  ScopedTaskMetricSetter state(
-      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+  std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
+  if (options_.worker_type == WorkerType::WORKER) {
+    // We track the state change only from workers.
+    state = std::make_unique<ScopedTaskMetricSetter>(
+        worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+  }
 
   results->resize(ids.size(), false);
 
