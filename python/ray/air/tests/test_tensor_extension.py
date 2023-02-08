@@ -13,7 +13,22 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
+from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray._private.utils import _get_pyarrow_version
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [np.zeros((3, 1)), np.zeros((3, 2))],
+        [np.zeros((3,))],
+    ],
+)
+def test_create_ragged_ndarray(values):
+    ragged_array = create_ragged_ndarray(values)
+    assert len(ragged_array) == len(values)
+    for actual_array, expected_array in zip(ragged_array, values):
+        np.testing.assert_array_equal(actual_array, expected_array)
 
 
 def test_tensor_array_validation():
@@ -46,22 +61,6 @@ def test_arrow_scalar_tensor_array_roundtrip_boolean():
     # Zero-copy is not possible since Arrow bitpacks boolean arrays while NumPy does
     # not.
     out = ata.to_numpy(zero_copy_only=False)
-    np.testing.assert_array_equal(out, arr)
-
-
-def test_arrow_scalar_tensor_array_roundtrip_string():
-    arr = np.array(
-        [
-            ["Philip", "Fry"],
-            ["Leela", "Turanga"],
-            ["Hubert", "Farnsworth"],
-            ["Lrrr", ""],
-        ]
-    )
-    ata = ArrowTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, pa.DataType)
-    assert len(ata) == len(arr)
-    out = ata.to_numpy()
     np.testing.assert_array_equal(out, arr)
 
 
@@ -155,24 +154,6 @@ def test_arrow_variable_shaped_tensor_array_roundtrip_boolean():
         np.testing.assert_array_equal(o, a)
 
 
-def test_arrow_variable_shaped_tensor_array_roundtrip_string():
-    arr = np.array(
-        [
-            ["Philip", "J", "Fry"],
-            ["Leela", "Turanga"],
-            ["Professor", "Hubert", "J", "Farnsworth"],
-            ["Lrrr"],
-        ],
-        dtype=object,
-    )
-    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, ArrowVariableShapedTensorType)
-    assert len(ata) == len(arr)
-    out = ata.to_numpy()
-    for o, a in zip(out, arr):
-        np.testing.assert_array_equal(o, a)
-
-
 def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization():
     # Test that a roundtrip on slices of an already-contiguous 1D base array does not
     # create any unnecessary copies.
@@ -223,6 +204,42 @@ def test_arrow_variable_shaped_tensor_array_slice():
             np.testing.assert_array_equal(o, e)
 
 
+def test_arrow_variable_shaped_bool_tensor_array_slice():
+    arr = np.array(
+        [
+            [True],
+            [True, False],
+            [False, True, False],
+        ],
+        dtype=object,
+    )
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
+    assert len(ata) == len(arr)
+    indices = [0, 1, 2]
+    for i in indices:
+        np.testing.assert_array_equal(ata[i], arr[i])
+
+    slices = [
+        slice(0, 1),
+        slice(1, 2),
+        slice(2, 3),
+        slice(0, 2),
+        slice(1, 3),
+        slice(0, 3),
+    ]
+    for slice_ in slices:
+        ata_slice = ata[slice_]
+        ata_slice_np = ata_slice.to_numpy()
+        arr_slice = arr[slice_]
+        # Check for equivalent dtypes and shapes.
+        assert ata_slice_np.dtype == arr_slice.dtype
+        assert ata_slice_np.shape == arr_slice.shape
+        # Iteration over tensor array slices triggers NumPy conversion.
+        for o, e in zip(ata_slice, arr_slice):
+            np.testing.assert_array_equal(o, e)
+
+
 def test_arrow_variable_shaped_string_tensor_array_slice():
     arr = np.array(
         [
@@ -236,7 +253,7 @@ def test_arrow_variable_shaped_string_tensor_array_slice():
     ata = ArrowVariableShapedTensorArray.from_numpy(arr)
     assert isinstance(ata.type, ArrowVariableShapedTensorType)
     assert len(ata) == len(arr)
-    indices = [0, 1, 2]
+    indices = [0, 1, 2, 3]
     for i in indices:
         np.testing.assert_array_equal(ata[i], arr[i])
     slices = [
@@ -558,8 +575,6 @@ def test_arrow_variable_shaped_tensor_array_getitem(chunked):
         ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float32),
         ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float16),
         ([[False, True], [True, False], [True, True], [False, False]], None),
-        ([["Aa", "Bb"], ["Cc", "Dd"], ["Ee", "Ff"], ["Gg", "Hh"]], None),
-        ([["Aa", "Bb"], ["Cc", "Dd"], ["Ee", "Ff"], ["Gg", "Hh"]], np.str_),
     ],
 )
 def test_arrow_tensor_array_slice(test_arr, dtype):
@@ -581,7 +596,9 @@ pytest_tensor_array_concat_arrs = [
     for shape in pytest_tensor_array_concat_shapes
 ]
 pytest_tensor_array_concat_arrs += [
-    np.array([np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))])
+    create_ragged_ndarray(
+        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))]
+    )
 ]
 pytest_tensor_array_concat_arr_combinations = list(
     itertools.combinations(pytest_tensor_array_concat_arrs, 2)

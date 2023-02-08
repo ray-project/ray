@@ -4,10 +4,12 @@ import shutil
 import subprocess
 import tempfile
 import time
+from pathlib import Path
 from typing import List, Optional
 from unittest.mock import patch
 
 import pytest
+import boto3
 from freezegun import freeze_time
 
 import ray
@@ -18,6 +20,7 @@ from ray.tune import TuneError
 from ray.tune.syncer import Syncer, _DefaultSyncer
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 from ray.air._internal.remote_storage import upload_to_uri, download_from_uri
+from ray._private.test_utils import simulate_storage
 
 
 @pytest.fixture
@@ -671,6 +674,43 @@ def test_final_experiment_checkpoint_sync(tmpdir):
         "Should have seen 2 syncs, once at the beginning of the experiment, and one "
         f"forced sync at the end. Got {syncer._num_syncs} syncs instead."
     )
+
+
+def test_sync_folder_with_many_files_s3(tmpdir):
+    # Create 256 files to upload
+    for i in range(256):
+        (tmpdir / str(i)).write_text("", encoding="utf-8")
+
+    root = "bucket_test_syncer/dir"
+    with simulate_storage("s3", root) as s3_uri:
+        # Upload to S3
+
+        s3 = boto3.client(
+            "s3", region_name="us-west-2", endpoint_url="http://localhost:5002"
+        )
+        s3.create_bucket(
+            Bucket="bucket_test_syncer",
+            CreateBucketConfiguration={"LocationConstraint": "us-west-2"},
+        )
+        upload_to_uri(tmpdir, s3_uri)
+
+        with tempfile.TemporaryDirectory() as download_dir:
+            download_from_uri(s3_uri, download_dir)
+
+            assert (Path(download_dir) / "255").exists()
+
+
+def test_sync_folder_with_many_files_fs(tmpdir):
+    # Create 256 files to upload
+    for i in range(256):
+        (tmpdir / str(i)).write_text("", encoding="utf-8")
+
+    # Upload to file URI
+    with tempfile.TemporaryDirectory() as upload_dir:
+        target_uri = "file://" + upload_dir
+        upload_to_uri(tmpdir, target_uri)
+
+        assert (tmpdir / "255").exists()
 
 
 if __name__ == "__main__":

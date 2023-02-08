@@ -104,6 +104,9 @@ class TunerInternal:
 
         self._missing_params_error_message = None
 
+        self._param_space = param_space or {}
+        self._process_scaling_config()
+
         # Restore from Tuner checkpoint.
         if restore_path:
             self._restore_from_path_or_uri(
@@ -127,10 +130,6 @@ class TunerInternal:
         )
 
         self._experiment_analysis = None
-
-        # Not used for restored Tuner.
-        self._param_space = param_space or {}
-        self._process_scaling_config()
 
         # This needs to happen before `tune.run()` is kicked in.
         # This is because currently tune does not exit gracefully if
@@ -251,7 +250,7 @@ class TunerInternal:
                 "# Reconstruct the trainable with the same parameters\n"
                 "trainable_with_params = tune.with_parameters(trainable, ...)\n"
                 "tuner = tune.Tuner.restore(\n"
-                "    ..., overwrite_trainable=trainable_with_params\n"
+                "    ..., trainable=trainable_with_params\n"
                 ")\n\nSee https://docs.ray.io/en/master/tune/api_docs/trainable.html"
                 "#tune-with-parameters for more details."
             )
@@ -259,9 +258,8 @@ class TunerInternal:
             return
 
         error_message = (
-            "Usage of `overwrite_trainable` is limited to re-specifying the "
-            "same trainable that was passed to `Tuner`, in the case "
-            "that the trainable is not serializable (e.g. it holds object references)."
+            "Invalid trainable input. To avoid errors, pass in the same trainable "
+            "that was used to initialize the Tuner."
         )
 
         if type(original_trainable) != type(overwrite_trainable):
@@ -451,11 +449,11 @@ class TunerInternal:
     def fit(self) -> ResultGrid:
         trainable = self.converted_trainable
         assert self._experiment_checkpoint_dir
+        param_space = copy.deepcopy(self._param_space)
         if not self._is_restored:
-            param_space = copy.deepcopy(self._param_space)
             analysis = self._fit_internal(trainable, param_space)
         else:
-            analysis = self._fit_resume(trainable)
+            analysis = self._fit_resume(trainable, param_space)
 
         self._experiment_analysis = analysis
 
@@ -554,7 +552,7 @@ class TunerInternal:
         )
 
     def _fit_internal(
-        self, trainable: TrainableType, param_space
+        self, trainable: TrainableType, param_space: Dict[str, Any]
     ) -> ExperimentAnalysis:
         """Fitting for a fresh Tuner."""
         args = {
@@ -576,7 +574,9 @@ class TunerInternal:
         self.clear_remote_string_queue()
         return analysis
 
-    def _fit_resume(self, trainable: TrainableType) -> ExperimentAnalysis:
+    def _fit_resume(
+        self, trainable: TrainableType, param_space: Dict[str, Any]
+    ) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
         if self._missing_params_error_message:
             raise ValueError(self._missing_params_error_message)
@@ -599,6 +599,7 @@ class TunerInternal:
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
+                config={**param_space},
                 resume=resume,
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
