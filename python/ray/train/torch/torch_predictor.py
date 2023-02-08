@@ -121,6 +121,8 @@ class TorchPredictor(DLPredictor):
 
             .. testcode::
 
+                from ray.train.torch import TorchPredictor
+
                 # List outputs are not supported by default TorchPredictor.
                 # So let's define a custom TorchPredictor and override call_model
                 class MyModel(torch.nn.Module):
