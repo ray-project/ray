@@ -2998,6 +2998,24 @@ def format_pg(pg):
     return f"{bundles_str} ({strategy})"
 
 
+def test_memory_string_formatting():
+    assert ray.autoscaler._private.util.format_memory(0) == "0B"
+    assert ray.autoscaler._private.util.format_memory(0.0) == "0B", "Bytes aren't decimals"
+    assert ray.autoscaler._private.util.format_memory(1) == "1B"
+    assert ray.autoscaler._private.util.format_memory(1023) == "1023B"
+    assert ray.autoscaler._private.util.format_memory(1024) == "1.00KiB"
+    assert ray.autoscaler._private.util.format_memory(1025) == "1.00KiB"
+    assert ray.autoscaler._private.util.format_memory(1037) == "1.01KiB"
+    assert ray.autoscaler._private.util.format_memory(1200) == "1.17KiB"
+    assert ray.autoscaler._private.util.format_memory(2**20 - 10) == "1023.99KiB"
+    assert ray.autoscaler._private.util.format_memory(2**20 - 1) == "1024.00KiB"
+    assert ray.autoscaler._private.util.format_memory(2**20) == "1.00MiB"
+    assert ray.autoscaler._private.util.format_memory(2**30) == "1.00GiB"
+    assert ray.autoscaler._private.util.format_memory(5.001 * 2**30) == "5.00GiB"
+    assert ray.autoscaler._private.util.format_memory(5.004 * 2**30) == "5.00GiB", "rounds down"
+    assert ray.autoscaler._private.util.format_memory(5.005 * 2**30) == "5.00GiB", "rounds down"
+    assert ray.autoscaler._private.util.format_memory(2**40) == "1.00TiB"
+
 def test_info_string():
     lm_summary = LoadMetricsSummary(
         usage={
