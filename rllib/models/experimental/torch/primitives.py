@@ -10,7 +10,6 @@ from ray.rllib.models.temp_spec_classes import TensorDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.models.experimental.base import ModelConfig
-from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.models.specs.checker import (
     check_input_specs,
     check_output_specs,
