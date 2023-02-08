@@ -33,7 +33,7 @@ class Barrier:
         self._on_completion = None
 
         # on_first_error_callback
-        self._has_error = False
+        self._error_callback_called = False
         self._on_first_error = None
 
         # Collect received results + errors
@@ -70,14 +70,13 @@ class Barrier:
         self._check_completion()
 
     def _check_first_error(self):
-        if self._has_error:
+        if self._error_callback_called:
             # Already fired callback
             return
 
         num_errors = self.num_errors
         if num_errors:
-            # First error arrived
-            self._has_error = True
+            self._error_callback_called = True
 
             # Invoke callback
             if self._on_first_error:
@@ -153,11 +152,6 @@ class Barrier:
         return self._completed
 
     @property
-    def has_error(self) -> bool:
-        """Returns True if the barrier had an error arrive."""
-        return self._has_error
-
-    @property
     def num_results(self) -> int:
         """Number of received (successful) results."""
         return len(self._results)
@@ -187,6 +181,6 @@ class Barrier:
         :meth:`on_completion` callback will be invoked again.
         """
         self._completed = False
-        self._has_error = False
+        self._error_callback_called = False
         self._results = []
         self._errors = []

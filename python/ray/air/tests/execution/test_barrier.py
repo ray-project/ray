@@ -94,10 +94,10 @@ def test_barrier_on_first_error():
 
     barrier.arrive(1)
 
-    assert not barrier.has_error
+    assert barrier.num_errors == 0
     with pytest.raises(AssertionError):
         barrier.error(2)
-    assert barrier.has_error
+    assert barrier.num_errors > 0
 
     assert barrier.num_results == 1
     assert barrier.num_errors == 1
