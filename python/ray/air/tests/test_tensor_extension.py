@@ -13,8 +13,22 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
+from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray._private.utils import _get_pyarrow_version
-from ray.air.util.tensor_extensions.utils import _create_strict_ragged_ndarray
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [np.zeros((3, 1)), np.zeros((3, 2))],
+        [np.zeros((3,))],
+    ],
+)
+def test_create_ragged_ndarray(values):
+    ragged_array = create_ragged_ndarray(values)
+    assert len(ragged_array) == len(values)
+    for actual_array, expected_array in zip(ragged_array, values):
+        np.testing.assert_array_equal(actual_array, expected_array)
 
 
 def test_tensor_array_validation():
@@ -582,7 +596,7 @@ pytest_tensor_array_concat_arrs = [
     for shape in pytest_tensor_array_concat_shapes
 ]
 pytest_tensor_array_concat_arrs += [
-    _create_strict_ragged_ndarray(
+    create_ragged_ndarray(
         [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))]
     )
 ]

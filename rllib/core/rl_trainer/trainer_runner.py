@@ -1,9 +1,12 @@
 from collections import deque
 import math
-from typing import Any, List, Mapping, Type, Optional, Callable, Dict, TYPE_CHECKING
+from typing import Any, List, Mapping, Type, Optional, Callable, Set, TYPE_CHECKING
 
 import ray
 
+from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.core.rl_trainer.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
@@ -103,24 +106,66 @@ class TrainerRunner:
         return self._is_local
 
     def update(
-        self, batch: MultiAgentBatch, block: bool = True
+        
+        self,
+        batch: MultiAgentBatch,
+        *,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        block: bool = True
     ) -> List[Mapping[str, Any]]:
-        """Do a gradient based update to the RLTrainer(s) maintained by this TrainerRunner.
+        """Do one gradient based update to the RLTrainer(s).
 
         Args:
             batch: The data to use for the update.
+            minibatch_size: The minibatch size to use for the update.
+            num_iters: The number of complete passes over all the sub-batches in the
+                input multi-agent batch.
+            reduce_fn: A function to reduce the results from a list of RLTrainer Actors
+                into a single result. This can be any arbitrary function that takes a
+                list of dictionaries and returns a single dictionary. For example you
+                can either take an average (default) or concatenate the results (for
+                example for metrics) or be more selective about you want to report back
+                to the algorithm's training_step. If None is passed, the results will
+                not get reduced.
             block: Whether to block until the update is complete.
 
         Returns:
             A list of dictionaries of results from the updates from the RLTrainer(s)
         """
         if self.is_local:
-            return [self._trainer.update(batch)]
+            results = [
+                self._trainer.update(
+                    batch,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                    reduce_fn=reduce_fn,
+                )
+            ]
         else:
-            return self._distributed_update(batch, block=block)
+            results = self._distributed_update(
+                batch,
+                minibatch_size=minibatch_size,
+                num_iters=num_iters,
+                reduce_fn=reduce_fn,
+                block=block,
+            )
+
+        # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
+        if reduce_fn is None:
+            return results
+        return reduce_fn(results, block=block)
 
     def _distributed_update(
-        self, batch: MultiAgentBatch, block: bool = True
+        
+        self,
+        batch: MultiAgentBatch,
+        *,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        block: bool = True
     ) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the RLTrainers using DDP training.
 
@@ -130,7 +175,7 @@ class TrainerRunner:
             different backend than the cuda backend.
 
         Args:
-            batch: The data to use for the update.
+            See `.update()` docstring.
 
         Returns:
             A list of dictionaries of results from the updates from the RLTrainer(s)
@@ -149,7 +194,9 @@ class TrainerRunner:
                 batch = self._in_queue.popleft()
                 batches = self._shard_sample_batch(batch)
                 self._worker_manager.foreach_actor_async(
-                    [lambda w: w.update(b) for b in batches]
+                    [lambda w: w.update(b,minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                    reduce_fn=reduce_fn) for b in batches]
                 )
 
         return self._get_results(results)
@@ -168,6 +215,7 @@ class TrainerRunner:
                 start = batch_size * i
                 end = min(start + batch_size, len(sub_batch))
                 batch_to_send[pid] = sub_batch[int(start) : int(end)]
+            # TODO (Avnish): int(batch_size) ? How should we shard MA batches really?
             new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
             batches.append(new_batch)
         return batches
@@ -182,7 +230,12 @@ class TrainerRunner:
                 raise result_or_error
         return processed_results
 
-    def additional_update(self, *args, **kwargs) -> List[Mapping[str, Any]]:
+    def additional_update(
+        self,
+        *,
+        reduce_fn: Optional[Callable[[ResultDict], ResultDict]] = _reduce_mean_results,
+        **kwargs,
+    ) -> List[Mapping[str, Any]]:
         """Apply additional non-gradient based updates to the RLTrainers.
 
         For example, this could be used to do a polyak averaging update
@@ -191,7 +244,7 @@ class TrainerRunner:
         By default this is a pass through that calls `RLTrainer.additional_update`
 
         Args:
-            *args: Arguments to pass to each RLTrainer.
+            reduce_fn: See `update()` documentation for more details.
             **kwargs: Keyword arguments to pass to each RLTrainer.
 
         Returns:
@@ -199,15 +252,18 @@ class TrainerRunner:
         """
 
         if self.is_local:
-            return [self._trainer.additional_update(*args, **kwargs)]
+            results = [self._trainer.additional_update(**kwargs)]
         else:
             results = self._worker_manager.foreach_actor(
                 [
-                    lambda w: w.additional_update(*args, **kwargs)
+                    lambda w: w.additional_update(**kwargs)
                     for worker in self._workers
                 ]
             )
-            return self._get_results(results)
+            results = self._get_results(results)
+            if reduce_fn is None:
+                return results
+            return reduce_fn(results)
 
     def add_module(
         self,
@@ -258,23 +314,40 @@ class TrainerRunner:
         if self.is_local:
             self._trainer.remove_module(module_id)
         else:
-            self._worker_manager.foreach_actor(lambda w: w.remove_module(module_id))
+            refs = []
+            for worker in self._workers:
+                ref = worker.remove_module.remote(module_id)
+                refs.append(ref)
+            ray.get(refs)
 
-    def get_weight(self) -> Dict:
-        """Get the weights of the MARLModule.
-
-        Returns:
-            The weights of the neural networks that can be exchanged with the policy.
-        """
-        # TODO (Avnish): implement this.
-        pass
-
-    def get_state(self) -> List[Mapping[ModuleID, Mapping[str, Any]]]:
-        """Get the states of the RLTrainers"""
+    def set_weights(self, weights) -> None:
+        # TODO (Kourosh) Set / get weight has to be thoroughly
+        # tested across actors and multi-gpus
         if self.is_local:
-            return [self._trainer.get_state()]
+            self._trainer.set_weights(weights)
         else:
-            results = self._worker_manager.foreach_actor(lambda w: w.get_state())
+            ray.get([worker.set_weights.remote(weights) for worker in self._workers])
+
+    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        if self.is_local:
+            weights = self._trainer.get_weights(module_ids)
+        else:
+            worker = next(iter(self._workers))
+            weights = ray.get(worker.get_weights.remote(module_ids))
+
+        return convert_to_numpy(weights)
+
+    def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
+        """Get the states of the first RLTrainers.
+
+        This should be the same across RLTrainers
+        """
+        if self.is_local:
+            return self._trainer.get_state()
+        else:
+            worker = next(iter(self._workers))
+            results = self._worker_manager.foreach_actor(lambda w: w.get_state(), 
+                remote_actor_ids=[worker])
             return self._get_results(results)
 
     def set_state(self, state: List[Mapping[ModuleID, Mapping[str, Any]]]) -> None:
