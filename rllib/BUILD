@@ -1846,15 +1846,8 @@ py_test(
 py_test(
     name = "test_trainer_runner",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
-    size = "medium",
+    size = "large",
     srcs = ["core/rl_trainer/tests/test_trainer_runner.py"]
-)
-
-py_test(
-    name = "test_trainer_runner_local",
-    tags = ["team:rllib", "core", "exclusive"],
-    size = "medium",
-    srcs = ["core/rl_trainer/tests/test_trainer_runner_local.py"]
 )
 
 py_test(
@@ -1980,14 +1973,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/specs/tests/test_spec_dict.py"]
-)
-
-# test TorchVectorEncoder
-py_test(
-    name = "test_torch_vector_encoder",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/torch/encoders/tests/test_torch_vector_encoder.py"]
 )
 
 

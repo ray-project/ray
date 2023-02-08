@@ -11,6 +11,6 @@ API References
     ../tune/api_docs/overview.rst
     ../serve/package-ref.rst
     ../rllib/package_ref/index.rst
-    ../workflows/package-ref.rst
+    ../workflows/api/api.rst
     ../cluster/package-overview.rst
     ../ray-core/package-ref.rst
