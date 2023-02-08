@@ -502,6 +502,7 @@ py_test(
     srcs = ["tests/test_torch_detection_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib", ":conftest"]
+)
 
 py_test(
     name = "test_torch_trainer",
