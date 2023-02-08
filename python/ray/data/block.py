@@ -209,8 +209,7 @@ class _BlockExecStatsBuilder:
 @DeveloperAPI
 @dataclass
 class BlockMetadata:
-    """Metadata about the block.
-    """
+    """Metadata about the block."""
 
     #: The number of rows contained in this block, or None.
     num_rows: Optional[int]
