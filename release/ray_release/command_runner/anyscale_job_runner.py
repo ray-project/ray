@@ -14,7 +14,7 @@ from ray_release.exception import (
     PrepareCommandError,
     PrepareCommandTimeout,
     JobBrokenError,
-    ResultsError,
+    FetchResultError,
     JobTerminatedError,
     JobNoLogsError,
 )
@@ -241,7 +241,7 @@ class AnyscaleJobRunner(JobRunner):
             os.unlink(tmpfile)
             return data
         except Exception as e:
-            raise ResultsError(f"Could not fetch results from session: {e}") from e
+            raise FetchResultError(f"Could not fetch results from session: {e}") from e
 
     def fetch_results(self) -> Dict[str, Any]:
         return self._fetch_json(
