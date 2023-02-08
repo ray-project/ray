@@ -4,6 +4,11 @@ from ray_release.config import Test
 from ray_release.result import Result
 
 
+def require_result(test: Test):
+    test_name = test["legacy"]["test_name"]
+    return test_name not in ["distributed_api_test", "ft_small_elastic", "ft_small_nonelastic"]
+
+
 def handle_result(
     test: Test,
     result: Result,
