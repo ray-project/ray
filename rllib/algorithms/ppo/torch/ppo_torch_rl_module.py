@@ -76,7 +76,6 @@ class PPOTorchRLModule(TorchRLModule):
         assert self.config.vf_config, "vf_config must be provided."
         assert self.config.encoder_config, "shared encoder config must be " "provided."
 
-        # build policy network head
         self.config.encoder_config.input_dim = self.config.observation_space.shape[0]
         self.config.pi_config.input_dim = self.config.encoder_config.output_dim
         if isinstance(self.config.action_space, gym.spaces.Discrete):
