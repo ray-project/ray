@@ -13,9 +13,26 @@ Trainable and is maximized or minimized according to ``mode``.
 .. code-block:: python
 
     from ray import tune
-    tuner = tune.Tuner( ... , tune_config=tune.TuneConfig(scheduler=Scheduler(metric="accuracy", mode="max")))
+    from ray.air import session
+    from tune.schedulers import ASHAScheduler
+
+    def train_fn(config):
+        # This objective function is just for demonstration purposes
+        session.report({"loss": config["param"]})
+
+    tuner = tune.Tuner(
+        train_fn,
+        tune_config=tune.TuneConfig(
+            scheduler=ASHAScheduler(),
+            metric="loss",
+            mode="min",
+            num_samples=10,
+        ),
+        param_space={"param": tune.uniform(0, 1)},
+    )
     results = tuner.fit()
 
+.. currentmodule:: ray.tune.schedulers
 
 .. _tune-scheduler-hyperband:
 
@@ -28,15 +45,21 @@ setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by
 .. code-block:: python
 
     from ray import tune
+    from tune.schedulers import ASHAScheduler
+
     asha_scheduler = ASHAScheduler(
         time_attr='training_iteration',
-        metric='episode_reward_mean',
-        mode='max',
+        metric='loss',
+        mode='min',
         max_t=100,
         grace_period=10,
         reduction_factor=3,
-        brackets=1)
-    tuner = tune.Tuner( ... , tune_config=tune.TuneConfig(scheduler=asha_scheduler))
+        brackets=1,
+    )
+    tuner = tune.Tuner(
+        train_fn,
+        tune_config=tune.TuneConfig(scheduler=asha_scheduler),
+    )
     results = tuner.fit()
 
 Compared to the original version of HyperBand, this implementation provides better
@@ -48,9 +71,11 @@ Even though the original paper mentions a bracket count of 3, discussions with t
 that the value should be left to 1 bracket.
 This is the default used if no value is provided for the ``brackets`` argument.
 
-.. autoclass:: ray.tune.schedulers.AsyncHyperBandScheduler
+.. autosummary::
+    :toctree: doc/
 
-.. autoclass:: ray.tune.schedulers.ASHAScheduler
+    AsyncHyperBandScheduler
+    ASHAScheduler
 
 .. _tune-original-hyperband:
 
@@ -60,7 +85,10 @@ HyperBand (tune.schedulers.HyperBandScheduler)
 Tune implements the `standard version of HyperBand <https://arxiv.org/abs/1603.06560>`__.
 **We recommend using the ASHA Scheduler over the standard HyperBand scheduler.**
 
-.. autoclass:: ray.tune.schedulers.HyperBandScheduler
+.. autosummary::
+    :toctree: doc/
+
+    HyperBandScheduler
 
 
 HyperBand Implementation Details
@@ -105,7 +133,10 @@ Median Stopping Rule (tune.schedulers.MedianStoppingRule)
 The Median Stopping Rule implements the simple strategy of stopping a trial if its performance falls
 below the median of other trials at similar points in time.
 
-.. autoclass:: ray.tune.schedulers.MedianStoppingRule
+.. autosummary::
+    :toctree: doc/
+
+    MedianStoppingRule
 
 .. _tune-scheduler-pbt:
 
@@ -117,23 +148,25 @@ This can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig`
 
 .. code-block:: python
 
+    from ray import tune
+    from ray.tune.schedulers import PopulationBasedTraining
+
     pbt_scheduler = PopulationBasedTraining(
         time_attr='training_iteration',
-        metric='mean_accuracy',
-        mode='max',
-        perturbation_interval=600.0,
+        metric='loss',
+        mode='min',
+        perturbation_interval=1,
         hyperparam_mutations={
             "lr": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
-            "alpha": lambda: random.uniform(0.0, 1.0),
-            ...
+            "alpha": tune.uniform(0.0, 1.0),
         }
     )
     tuner = tune.Tuner(
-        ...,
+        train_fn,
         tune_config=tune.TuneConfig(
             num_samples=4,
-            scheduler=pbt_scheduler
-        )
+            scheduler=pbt_scheduler,
+        ),
     )
     tuner.fit()
 
@@ -150,7 +183,10 @@ Take a look at :doc:`/tune/examples/pbt_visualization/pbt_visualization` to get 
 of how PBT operates. :doc:`/tune/examples/pbt_guide` gives more examples
 of PBT usage.
 
-.. autoclass:: ray.tune.schedulers.PopulationBasedTraining
+.. autosummary::
+    :toctree: doc/
+
+    PopulationBasedTraining
 
 
 .. _tune-scheduler-pbt-replay:
@@ -165,20 +201,26 @@ config according to the obtained schedule.
 
 .. code-block:: python
 
+    from ray import tune
+    from ray.tune.schedulers import PopulationBasedTrainingReplay
+
     replay = PopulationBasedTrainingReplay(
         experiment_dir="~/ray_results/pbt_experiment/",
-        trial_id="XXXXX_00001")
+        trial_id="XXXXX_00001"
+    )
     tuner = tune.Tuner(
-        ...,
+        train_fn,
         tune_config=tune.TuneConfig(scheduler=replay)
-        )
+    )
     results = tuner.fit()
 
 See :ref:`here for an example <tune-advanced-tutorial-pbt-replay>` on how to use the
 replay utility in practice.
 
-.. autoclass:: ray.tune.schedulers.PopulationBasedTrainingReplay
+.. autosummary::
+    :toctree: doc/
 
+    PopulationBasedTrainingReplay
 
 .. _tune-scheduler-pb2:
 
@@ -203,15 +245,16 @@ PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig``
     from ray.tune.schedulers.pb2 import PB2
 
     pb2_scheduler = PB2(
-            time_attr='time_total_s',
-            metric='mean_accuracy',
-            mode='max',
-            perturbation_interval=600.0,
-            hyperparam_bounds={
-                "lr": [1e-3, 1e-5],
-                "alpha": [0.0, 1.0],
-            ...
-            })
+        time_attr='time_total_s',
+        metric='mean_accuracy',
+        mode='max',
+        perturbation_interval=600.0,
+        hyperparam_bounds={
+            "lr": [1e-3, 1e-5],
+            "alpha": [0.0, 1.0],
+        ...
+        }
+    )
     tuner = tune.Tuner( ... , tune_config=tune.TuneConfig(scheduler=pb2_scheduler))
     results = tuner.fit()
 
@@ -227,7 +270,10 @@ With that in mind, you can run this :doc:`PB2 PPO example </tune/examples/includ
 with a population size of ``4`` (as in the paper).
 The example uses the ``BipedalWalker`` environment so does not require any additional licenses.
 
-.. autoclass:: ray.tune.schedulers.pb2.PB2
+.. autosummary::
+    :toctree: doc/
+
+    pb2.PB2
 
 
 .. _tune-scheduler-bohb:
@@ -244,7 +290,11 @@ See :ref:`TuneBOHB <suggest-TuneBOHB>` for package requirements, examples, and d
 
 An example of this in use can be found here: :doc:`/tune/examples/includes/bohb_example`.
 
-.. autoclass:: ray.tune.schedulers.HyperBandForBOHB
+
+.. autosummary::
+    :toctree: doc/
+
+    HyperBandForBOHB
 
 .. _tune-resource-changing-scheduler:
 
@@ -265,28 +315,32 @@ It wraps around another scheduler and uses its decisions.
 
 An example of this in use can be found here: :doc:`/tune/examples/includes/xgboost_dynamic_resources_example`.
 
-.. autoclass:: ray.tune.schedulers.ResourceChangingScheduler
+.. autosummary::
+    :toctree: doc/
 
-DistributeResources
-~~~~~~~~~~~~~~~~~~~
+    ResourceChangingScheduler
+    resource_changing_scheduler.DistributeResources
+    resource_changing_scheduler.DistributeResourcesToTopJob
 
-.. autoclass:: ray.tune.schedulers.resource_changing_scheduler.DistributeResources
+FIFOScheduler (Default Scheduler)
+---------------------------------
 
-DistributeResourcesToTopJob
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+    :toctree: doc/
 
-.. autoclass:: ray.tune.schedulers.resource_changing_scheduler.DistributeResourcesToTopJob
+    FIFOScheduler
 
-FIFOScheduler
--------------
+TrialScheduler Interface
+------------------------
 
-.. autoclass:: ray.tune.schedulers.FIFOScheduler
+.. autosummary::
+    :toctree: doc/
 
-TrialScheduler
---------------
+    TrialScheduler
+    TrialScheduler.choose_trial_to_run
+    TrialScheduler.on_trial_result
+    TrialScheduler.on_trial_complete
 
-.. autoclass:: ray.tune.schedulers.TrialScheduler
-    :members:
 
 Shim Instantiation (tune.create_scheduler)
 ------------------------------------------
@@ -295,4 +349,7 @@ There is also a shim function that constructs the scheduler based on the provide
 This can be useful if the scheduler you want to use changes often (e.g., specifying the scheduler
 via a CLI option or config file).
 
-.. automethod:: ray.tune.create_scheduler
+.. autosummary::
+    :toctree: doc/
+
+    create_scheduler

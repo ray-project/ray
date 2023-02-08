@@ -344,6 +344,8 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
     Searcher.suggest
     Searcher.save
     Searcher.restore
+    Searcher.on_trial_result
+    Searcher.on_trial_complete
 
 If contributing, make sure to add test cases and an entry in the function described below.
 
