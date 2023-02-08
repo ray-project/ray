@@ -226,11 +226,11 @@ class TorchPredictor(DLPredictor):
     def _arrays_to_tensors(
         self,
         numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtypes: Union[torch.dtype, Dict[str, torch.dtype]],
+        dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]],
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         return convert_ndarray_batch_to_torch_tensor_batch(
             numpy_arrays,
-            dtypes=dtypes,
+            dtypes=dtype,
             device="cuda" if self.use_gpu else None,
         )
 
