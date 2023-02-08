@@ -630,7 +630,7 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
 
 
-def test_artifact_syncing(ray_start_2_cpus, temp_data_dirs, tmp_path):
+def test_artifact_syncing_on_save_restore(ray_start_2_cpus, temp_data_dirs, tmp_path):
     """Test that the trainable syncs artifacts along with checkpoints.
     In this test:
     - `tmp_target` == mocked remote storage location where Tune will sync to
@@ -696,6 +696,36 @@ def test_artifact_syncing_disabled(ray_start_2_cpus, temp_data_dirs, tmp_path):
     )
     ray.get(restored_trainable.restore.remote(checkpoint_dir))
     assert_file(False, str(local_dir_2), "artifact.txt")
+
+
+def test_artifact_syncing_on_stop(ray_start_2_cpus, temp_data_dirs, tmp_path):
+    """Check that artifacts get uploaded on trial stop (ex: on complete/error)."""
+    _, tmp_target = temp_data_dirs
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        logdir=str(tmp_path),
+    )
+
+    ray.get(trainable.train.remote())
+    assert_file(False, tmp_target, "artifact.txt")
+    ray.get(trainable.stop.remote())
+    assert_file(True, tmp_target, "artifact.txt")
+
+
+def test_artifact_syncing_on_reset(ray_start_2_cpus, temp_data_dirs, tmp_path):
+    """Check that artifacts get uploaded on trial reset (ex: paused + reuse actors)."""
+    _, tmp_target = temp_data_dirs
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        logdir=str(tmp_path),
+    )
+
+    ray.get(trainable.train.remote())
+    assert_file(False, tmp_target, "artifact.txt")
+    ray.get(trainable.reset.remote(new_config={}))
+    assert_file(True, tmp_target, "artifact.txt")
 
 
 def test_syncer_serialize(temp_data_dirs):
