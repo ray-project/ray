@@ -476,7 +476,7 @@ RAY_CONFIG(uint64_t, task_events_min_buffer_capacity, 10 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
-RAY_CONFIG(uint64_t, task_events_send_batch_size, 200)
+RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 
 /// Max number of profile events allowed for a single task when sent to GCS.
 /// NOTE: this limit only applies to the profile events per task in a single
