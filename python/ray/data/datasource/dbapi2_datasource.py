@@ -49,14 +49,14 @@ class DBAPI2Connector(DatabaseConnector[DatabaseConnection]):
     def _close(self) -> None:
         self.connection.close()  # type: ignore  
           
-    def query(self, query: str, data: Optional[Any]=None, **query_args) -> None:
+    def query(self, query: str, data: Optional[Any]=None, **query_args) -> Any:
         queries = query.split(';')
         for q in queries:
             if 'insert' in q.lower():
-                self._execute(q, data=data, **query_args)
+                ret = self._execute(q, data=data, **query_args)
             else:
-                self._execute(q, **query_args)
-        return None
+                ret = self._execute(q, **query_args)
+        return ret
     
     def query_value(self, query: str, **query_args: Dict[str, Any]) -> QueryResult:
         results = self._execute(query, **query_args).fetchone()
