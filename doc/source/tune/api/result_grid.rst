@@ -3,23 +3,38 @@
 .. _result-grid-docstring:
 
 ResultGrid (tune.ResultGrid)
-----------------------------
+============================
 
-.. autoclass:: ray.tune.ResultGrid
-    :members:
+.. currentmodule:: ray
+
+.. autosummary::
+    :toctree: doc/
+
+    tune.ResultGrid
+    tune.ResultGrid.get_best_result
+    tune.ResultGrid.get_dataframe
 
 .. _result-docstring:
 
 Result (air.Result)
 -------------------
 
-.. autoclass:: ray.air.Result
-    :members:
+.. autosummary::
+    :toctree: doc/
+
+    air.Result
 
 .. _exp-analysis-docstring:
 
 ExperimentAnalysis (tune.ExperimentAnalysis)
 --------------------------------------------
 
-.. autoclass:: ray.tune.ExperimentAnalysis
-    :members:
+.. note::
+
+    An experiment analysis is the output of the ``tune.run`` API.
+    It's now recommended to use ``Tuner.fit``, which outputs a ``ResultGrid`` object.
+
+.. autosummary::
+    :toctree: doc/
+
+    tune.ExperimentAnalysis

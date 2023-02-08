@@ -1,6 +1,6 @@
 .. _tune-stoppers:
 
-Tune Stopping mechanisms (tune.stopper)
+Tune Stopping Mechanisms (tune.stopper)
 =======================================
 
 In addition to Trial Schedulers like :ref:`ASHA <tune-scheduler-hyperband>`, where a number of
@@ -13,40 +13,29 @@ inherit from the :class:`Stopper <ray.tune.Stopper>` class.
 
 Other stopping behaviors are described :ref:`in the user guide <tune-stopping-ref>`.
 
-.. contents::
-    :local:
-    :depth: 1
-
 
 .. _tune-stop-ref:
 
-Stopper (tune.Stopper)
+Stopper Interface (tune.Stopper)
+--------------------------------
+
+.. currentmodule:: ray.tune.stopper
+
+.. autosummary::
+    :toctree: doc/
+
+    Stopper
+    Stopper.__call__
+    Stopper.stop_all
+
+Tune Built-in Stoppers
 ----------------------
 
-.. autoclass:: ray.tune.Stopper
-    :members: __call__, stop_all
+.. autosummary::
+    :toctree: doc/
 
-MaximumIterationStopper (tune.stopper.MaximumIterationStopper)
---------------------------------------------------------------
-
-.. autoclass:: ray.tune.stopper.MaximumIterationStopper
-
-ExperimentPlateauStopper (tune.stopper.ExperimentPlateauStopper)
-----------------------------------------------------------------
-
-.. autoclass:: ray.tune.stopper.ExperimentPlateauStopper
-
-TrialPlateauStopper (tune.stopper.TrialPlateauStopper)
-------------------------------------------------------
-
-.. autoclass:: ray.tune.stopper.TrialPlateauStopper
-
-TimeoutStopper (tune.stopper.TimeoutStopper)
---------------------------------------------
-
-.. autoclass:: ray.tune.stopper.TimeoutStopper
-
-CombinedStopper (tune.stopper.CombinedStopper)
-----------------------------------------------
-
-.. autoclass:: ray.tune.stopper.CombinedStopper
+    MaximumIterationStopper
+    ExperimentPlateauStopper
+    TrialPlateauStopper
+    TimeoutStopper
+    CombinedStopper
