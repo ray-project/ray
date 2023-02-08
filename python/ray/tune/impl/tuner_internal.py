@@ -99,6 +99,9 @@ class TunerInternal:
                     "Tuner(..., run_config=RunConfig(...))"
                 )
 
+        self.trainable = trainable
+        self.param_space = param_space or {}
+
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
 
@@ -119,11 +122,7 @@ class TunerInternal:
             raise TuneError("You need to provide a trainable to tune.")
 
         self._is_restored = False
-        self.trainable = trainable
-        self._param_space = param_space or {}
         self._resume_config = None
-
-        self._process_scaling_config()
 
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
         self._experiment_checkpoint_dir = self._setup_create_experiment_checkpoint_dir(
@@ -335,7 +334,7 @@ class TunerInternal:
         self._is_restored = True
         self.trainable = trainable
         if overwrite_param_space:
-            self._param_space = overwrite_param_space
+            self.param_space = overwrite_param_space
         self._resume_config = resume_config
 
         if not synced:
@@ -438,6 +437,15 @@ class TunerInternal:
     def trainable(self, trainable: TrainableTypeOrTrainer):
         self._trainable = trainable
         self._converted_trainable = self._convert_trainable(trainable)
+
+    @property
+    def param_space(self) -> Dict[str, Any]:
+        return self._param_space
+
+    @param_space.setter
+    def param_space(self, param_space: Dict[str, Any]):
+        self._param_space = param_space
+        self._process_scaling_config()
 
     def _convert_trainable(self, trainable: TrainableTypeOrTrainer) -> TrainableType:
         """Converts an AIR Trainer to a Tune trainable and saves the converted
@@ -556,7 +564,7 @@ class TunerInternal:
         )
 
     def _fit_internal(
-        self, trainable: TrainableType, param_space: Dict[str, Any]
+        self, trainable: TrainableType, param_space: Optional[Dict[str, Any]]
     ) -> ExperimentAnalysis:
         """Fitting for a fresh Tuner."""
         args = {
@@ -579,7 +587,7 @@ class TunerInternal:
         return analysis
 
     def _fit_resume(
-        self, trainable: TrainableType, param_space: Dict[str, Any]
+        self, trainable: TrainableType, param_space: Optional[Dict[str, Any]]
     ) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
         if self._missing_params_error_message:
