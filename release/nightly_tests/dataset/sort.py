@@ -119,6 +119,7 @@ if __name__ == "__main__":
         else:
             ds = ds.sort(key="c_0")
         ds.fully_executed()
+        print(ds.stats())
     except Exception as e:
         exc = e
         pass
@@ -142,8 +143,6 @@ if __name__ == "__main__":
         print("Failed to retrieve memory summary")
         print(traceback.format_exc())
     print("")
-
-    print(ds.stats())
 
     if "TEST_OUTPUT_JSON" in os.environ:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
