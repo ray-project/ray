@@ -37,8 +37,11 @@ Currently the supported strategies are the followings.
 "DEFAULT"
 ~~~~~~~~~
 
-``"DEFAULT"`` is the default strategy used by Ray. With the current implementation, Ray will try to pack tasks or actors on nodes
-until the resource utilization is beyond a certain threshold and spread them afterwards.
+``"DEFAULT"`` is the default strategy used by Ray.
+With the current implementation, Ray calculates a score for each node based on the node's logical resource utilization.
+If the utilization is below a threshold, the score is 0. Otherwise, the score is the resource utilization itself (score 1 means the node is fully utilized).
+Ray randomly picks a node from the top k nodes with the lowest scores as the best node for scheduling.
+This strategy balances locality and load balancing.
 
 Currently Ray handles actors that don't require any resources (i.e., ``num_cpus=0`` with no other resources) specially by randomly choosing a node in the cluster without considering resource utilization.
 Since nodes are randomly chosen, actors that don't require any resources are effectively SPREAD across the cluster.
