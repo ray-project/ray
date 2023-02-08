@@ -150,8 +150,7 @@ class ExecutionOptions:
     # node (node driving the execution).
     locality_with_output: bool = False
 
-    # Always preserve ordering of blocks, even if using operators that
-    # don't require it.
+    # Set this to preserve the ordering between blocks processed by operators.
     preserve_order: bool = False
 
 
