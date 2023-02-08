@@ -36,27 +36,27 @@ class DiscreteBCTFModule(TfRLModule):
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
-        return self._default_inputs()
+        return ["obs"]
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecType:
-        return self._default_inputs()
+        return ["obs"]
 
     @override(RLModule)
     def input_specs_train(self) -> SpecType:
-        return self._default_inputs()
-
+        return ["obs"]
+        
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return self._default_outputs()
+        return ["action_dist"]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return self._default_outputs()
+        return ["action_dist"]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
-        return self._default_outputs()
+        return ["action_dist"]
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -101,10 +101,3 @@ class DiscreteBCTFModule(TfRLModule):
         }
 
         return cls(**config)
-
-    def _default_inputs(self) -> SpecDict:
-        obs_dim = self._input_dim
-        return {"obs": TFTensorSpecs("b, do", do=obs_dim)}
-
-    def _default_outputs(self) -> SpecDict:
-        return {"action_dist": tfp.distributions.Distribution}
