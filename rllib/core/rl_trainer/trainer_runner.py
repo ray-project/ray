@@ -147,6 +147,8 @@ class TrainerRunner:
             )
 
         # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
+        if reduce_fn is None:
+            return results
         return reduce_fn(results)
 
     def _distributed_update(
