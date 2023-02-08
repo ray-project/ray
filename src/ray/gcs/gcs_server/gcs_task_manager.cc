@@ -251,6 +251,10 @@ GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     auto &existing_events = task_events_.at(idx);
 
     // Update the events.
+    if (events_by_task.has_task_info() && !existing_events.has_task_info()) {
+      num_tasks_by_type_[events_by_task.task_info().type()]++;
+    }
+
     num_bytes_task_events_ -= existing_events.ByteSizeLong();
     existing_events.MergeFrom(events_by_task);
     num_bytes_task_events_ += existing_events.ByteSizeLong();

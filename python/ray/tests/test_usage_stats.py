@@ -179,40 +179,46 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
             "ray://127.0.0.1:10001" if ray_client else address
         )
         run_string_as_driver(driver)
-        result = ray_usage_lib.get_extra_usage_tags_to_report(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(
+                ray.experimental.internal_kv.internal_kv_get_gcs_client()
+            )
+            == {
+                "key": "val",
+                "_test1": "val1",
+                "_test2": "val2",
+                "actor_num_created": "0",
+                "pg_num_created": "0",
+                "num_actor_creation_tasks": "0",
+                "num_actor_tasks": "0",
+                "num_normal_tasks": "0",
+                "num_drivers": "2",
+                "gcs_storage": gcs_storage_type,
+                "dashboard_used": "False",
+            },
+            timeout=10,
         )
-        assert result == {
-            "key": "val",
-            "_test1": "val1",
-            "_test2": "val2",
-            "actor_num_created": "0",
-            "pg_num_created": "0",
-            "num_actor_creation_tasks": "0",
-            "num_actor_tasks": "0",
-            "num_normal_tasks": "0",
-            "num_drivers": "2",
-            "gcs_storage": gcs_storage_type,
-            "dashboard_used": "False",
-        }
         # Make sure the value is overwritten.
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
-        result = ray_usage_lib.get_extra_usage_tags_to_report(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        wait_for_condition(
+            lambda: ray_usage_lib.get_extra_usage_tags_to_report(
+                ray.experimental.internal_kv.internal_kv_get_gcs_client()
+            )
+            == {
+                "key": "val",
+                "_test1": "val1",
+                "_test2": "val3",
+                "actor_num_created": "0",
+                "pg_num_created": "0",
+                "num_actor_creation_tasks": "0",
+                "num_actor_tasks": "0",
+                "num_normal_tasks": "0",
+                "num_drivers": "2",
+                "gcs_storage": gcs_storage_type,
+                "dashboard_used": "False",
+            },
+            timeout=10,
         )
-        assert result == {
-            "key": "val",
-            "_test1": "val1",
-            "_test2": "val3",
-            "gcs_storage": gcs_storage_type,
-            "dashboard_used": "False",
-            "actor_num_created": "0",
-            "pg_num_created": "0",
-            "num_actor_creation_tasks": "0",
-            "num_actor_tasks": "0",
-            "num_normal_tasks": "0",
-            "num_drivers": "2",
-        }
 
 
 @pytest.mark.skipif(
@@ -285,7 +291,7 @@ def test_actor_stats(reset_usage_stats):
             and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
                 "num_actor_creation_tasks"
             )
-            == "1"
+            == "2"
             and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
                 "num_actor_tasks"
             )
@@ -302,7 +308,7 @@ def test_actor_stats(reset_usage_stats):
             and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
                 "num_actor_creation_tasks"
             )
-            == "1"
+            == "2"
             and ray_usage_lib.get_extra_usage_tags_to_report(gcs_client).get(
                 "num_actor_tasks"
             )
@@ -1579,6 +1585,10 @@ def test_usage_stats_tags(
                 "dashboard_used": "False",
                 "actor_num_created": "0",
                 "pg_num_created": "0",
+                "num_actor_creation_tasks": "0",
+                "num_actor_tasks": "0",
+                "num_normal_tasks": "0",
+                "num_drivers": "1",
             }
             assert num_nodes == 2
             return True
