@@ -603,7 +603,7 @@ def parse_usage(usage: Usage) -> List[str]:
                 formatted_pg_total = format_memory(pg_total)
                 line = line + (
                     f" ({formatted_pg_used} used of "
-                    f"{formatted_pg_total} GiB " + "reserved in placement groups)"
+                    f"{formatted_pg_total} " + "reserved in placement groups)"
                 )
             usage_lines.append(line)
         else:
