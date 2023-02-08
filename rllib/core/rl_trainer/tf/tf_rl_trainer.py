@@ -29,7 +29,11 @@ from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorType, ResultDict
+from ray.rllib.utils.minibatch_utils import (
+    MiniBatchDummyIterator,
+    MiniBatchCyclicIterator,
+)
 from ray.rllib.utils.nested_dict import NestedDict
 
 
@@ -108,6 +112,7 @@ class TfRLTrainer(RLTrainer):
             self._update_fn = self._do_update_fn
 
     def _do_update_fn(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+        # TODO (Avnish): Match this base class's implementation.
         with tf.GradientTape() as tape:
             fwd_out = self._module.forward_train(batch)
             loss = self.compute_loss(fwd_out=fwd_out, batch=batch)
@@ -131,22 +136,47 @@ class TfRLTrainer(RLTrainer):
         ]
 
     @override(RLTrainer)
-    def update(self, batch: MultiAgentBatch) -> Mapping[str, Any]:
+    def update(
+        self,
+        batch: MultiAgentBatch,
+        *,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        reduce_fn: Callable[[ResultDict], ResultDict] = ...,
+    ) -> Mapping[str, Any]:
         if set(batch.policy_batches.keys()) != set(self._module.keys()):
             raise ValueError(
                 "Batch keys must match module keys. RLTrainer does not "
                 "currently support training of only some modules and not others"
             )
         batch = self.convert_batch_to_tf_tensor(batch)
-        if self.distributed:
-            update_outs = self.do_distributed_update(batch)
+
+        batch_iter = (
+            MiniBatchCyclicIterator
+            if minibatch_size is not None
+            else MiniBatchDummyIterator
+        )
+
+        results = []
+        for minibatch in batch_iter(batch, minibatch_size, num_iters):
+
+            if self.distributed:
+                update_outs = self.do_distributed_update(minibatch)
+            else:
+                update_outs = self._update_fn(minibatch)
+            loss = update_outs["loss"]
+            fwd_out = update_outs["fwd_out"]
+            postprocessed_gradients = update_outs["postprocessed_gradients"]
+            result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+            results.append(result)
+
+        # Reduce results across all minibatches, if necessary.
+        if len(results) == 1:
+            return results[0]
         else:
-            update_outs = self._update_fn(batch)
-        loss = update_outs["loss"]
-        fwd_out = update_outs["fwd_out"]
-        postprocessed_gradients = update_outs["postprocessed_gradients"]
-        results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
-        return results
+            if reduce_fn is None:
+                return results
+            return reduce_fn(results)
 
     @override(RLTrainer)
     def compute_gradients(
