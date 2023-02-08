@@ -780,7 +780,11 @@ class Trainable:
         if isinstance(checkpoint_path, Checkpoint):
             return self._restore_from_checkpoint_obj(checkpoint_path)
 
-        if not self._maybe_load_checkpoint_from_cloud(checkpoint_path) and (
+        synced_from_cloud = self._maybe_load_checkpoint_from_cloud(checkpoint_path)
+        if synced_from_cloud:
+            self._maybe_load_artifacts_from_cloud()
+
+        if not synced_from_cloud and (
             # If a checkpoint source IP is given
             checkpoint_node_ip
             # And the checkpoint does not currently exist on the local node
