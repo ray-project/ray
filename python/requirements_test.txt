@@ -16,7 +16,7 @@ boto3==1.23.10
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
 # Keep in sync with `ci/build/upload_build_info.sh`
-cryptography==38.0.1
+cryptography==39.0.1
 cython==0.29.32
 dataclasses; python_version < '3.7'
 # 0.85.0 of fastapi is breaking the ci because
