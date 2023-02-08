@@ -12,6 +12,7 @@ connect-4-leela-zero:
       num_workers: 8
       model:
         custom_model: ray.rllib.tuned_examples.leela_chess_zero.custom_model.DenseModel
+        max_seq_len: 0
       multiagent:
         policies: ["p_0","p_1"]
         policies_to_train: ["p_0"]
