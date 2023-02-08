@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import DefaultDict, List, Optional, Union, Tuple, Set
+from typing import Any, DefaultDict, Dict, List, Optional, Union, Tuple, Set
 
 import click
 from datetime import datetime
@@ -331,7 +331,9 @@ class TrialRunner:
 
     def __init__(
         self,
+        *,
         search_alg: Optional[SearchAlgorithm] = None,
+        placeholder_resolvers: Optional[Dict[Tuple, Any]] = None,
         scheduler: Optional[TrialScheduler] = None,
         local_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
@@ -349,6 +351,7 @@ class TrialRunner:
         driver_sync_trial_checkpoints: bool = False,
     ):
         self._search_alg = search_alg or BasicVariantGenerator()
+        self._placeholder_resolvers = placeholder_resolvers
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
         self._callbacks = CallbackList(callbacks or [])
@@ -823,7 +826,6 @@ class TrialRunner:
             if not ray.util.client.ray.is_connected():
                 trial.init_logdir()  # Create logdir if it does not exist
 
-            trial.refresh_default_resource_request()
             trials.append(trial)
 
         # 4. Set trial statuses according to the resume configuration
@@ -1085,6 +1087,14 @@ class TrialRunner:
         Args:
             trial: Trial to queue.
         """
+        # If the config map has had all the references replaced with placeholders,
+        # resolve them before adding the trial.
+        if self._placeholder_resolvers:
+            trial.resolve_config_placeholders(self._placeholder_resolvers)
+
+        # With trial.config resolved, create placement group factory if needed.
+        trial.create_placement_group_factory()
+
         self._trials.append(trial)
         if trial.status != Trial.TERMINATED:
             self._live_trials.add(trial)
@@ -1586,6 +1596,7 @@ class TrialRunner:
             "_stop_queue",
             "_server",
             "_search_alg",
+            "_placeholder_resolvers",
             "_scheduler_alg",
             "_pending_trial_queue_times",
             "trial_executor",
