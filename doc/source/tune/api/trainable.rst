@@ -296,9 +296,6 @@ Trainable (Class API)
     tune.Trainable.cleanup
     tune.Trainable.default_resource_request
 
-    .. :member-order: groupwise
-    .. :private-members:
-    .. :members:
 
 .. _tune-util-ref:
 

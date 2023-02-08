@@ -1,26 +1,35 @@
-Tune Execution (Tuner, tune.Experiment)
-=======================================
+Tune Execution (Tuner)
+======================
 
 .. _tune-run-ref:
 
 Tuner
 -----
 
-.. autofunction:: ray.tune.Tuner
+.. currentmodule:: ray.tune
+
+.. autosummary::
+    :toctree: doc/
+
+    Tuner
+    Tuner.fit
+
+Restoring a Tuner
+~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    Tuner.restore
+    Tuner.can_restore
+    Tuner.get_results
+
 
 tune.run_experiments
 --------------------
 
-.. autofunction:: ray.tune.run_experiments
+.. autosummary::
+    :toctree: doc/
 
-tune.Experiment
----------------
-
-.. autofunction:: ray.tune.Experiment
-
-.. _tune-sync-config:
-
-tune.SyncConfig
----------------
-
-.. autofunction:: ray.tune.SyncConfig
+    run_experiments
+    Experiment
