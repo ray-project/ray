@@ -165,6 +165,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   size_t num_status_task_events_dropped = 0;
   size_t num_profile_task_events_dropped = 0;
   std::vector<std::unique_ptr<TaskEvent>> to_send;
+  to_send.reserve(RayConfig::instance().task_events_send_batch_size());
 
   {
     absl::MutexLock lock(&mutex_);
