@@ -68,7 +68,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
 
-  buffer_.set_capacity({RayConfig::instance().task_events_max_buffer_size()});
+  buffer_.set_capacity(RayConfig::instance().task_events_max_buffer_size());
   // Reporting to GCS, set up gcs client and and events flushing.
   auto status = gcs_client_->Connect(io_service_);
   if (!status.ok()) {

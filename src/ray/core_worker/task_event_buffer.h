@@ -210,7 +210,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task events.
-  boost::circular_buffer_space_optimized<TaskEvent> buffer_ GUARDED_BY(mutex_);
+  boost::circular_buffer<TaskEvent> buffer_ GUARDED_BY(mutex_);
 
   /// Number of profile task events dropped since the last report flush.
   size_t num_profile_task_events_dropped_ GUARDED_BY(mutex_) = 0;
